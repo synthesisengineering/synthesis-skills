@@ -35,7 +35,7 @@ def test_gate_passes_no_owned_runs(world):
 
 
 @pytest.mark.parametrize("repeat", [False, True])
-def test_native_feedback_is_bounded_and_preserves_durable_run(world, repeat):
+def test_unclassified_native_feedback_is_terminal_and_preserves_durable_run(world, repeat):
     state = create(world)
     home = world["project"] / "resources/autopilot-runs" / state["run_id"]
     before = {str(p):p.read_bytes() for p in home.rglob("*") if p.is_file()}
@@ -43,7 +43,11 @@ def test_native_feedback_is_bounded_and_preserves_durable_run(world, repeat):
     done = run(world, "--gate", payload=payload)
     assert done.returncode == 0, done.stderr
     result = json.loads(done.stdout)
-    assert (result.get("continue") is False) if repeat else (result["decision"] == "block")
+    # This run has no owner-derived failure classification or correction
+    # reservation. Neither a first Stop nor a repeat may manufacture one.
+    assert result.get("continue") is False
+    assert result.get("decision") != "block"
+    assert "incomplete" in result["stopReason"].lower()
     assert {str(p):p.read_bytes() for p in home.rglob("*") if p.is_file()} == before
 
 

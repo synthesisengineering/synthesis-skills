@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.18.4"
+  version: "2.18.5"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -56,13 +56,10 @@ When working with AI assistants on multi-session projects:
   other's in-flight state
 - **Lessons learned** get lost instead of compounding
 
-This system provides persistent state that survives context loss. The project
-files are the durable memory layer: chat history, model memory, and compaction
-summaries are helpful but insufficient. A user should be able to pause in one
-capable agent environment, open the project in another, and continue. A
-tool's built-in per-project memory is not a substitute — it is single-tool,
-single-machine, and not version-controlled (full argument:
-[references/records-and-conventions.md](references/records-and-conventions.md)).
+This system provides persistent state that survives context loss. Project files are
+the durable memory layer; chat history, model memory and compaction summaries are insufficient.
+A user can pause in one capable agent environment and continue in another. Built-in per-project
+memory is single-tool, single-machine and not version-controlled; see [records and conventions](references/records-and-conventions.md).
 
 ---
 
@@ -334,6 +331,8 @@ Rules:
    release needs explicit authorization and recorded reason.
 9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
    so the protocol and checkpoint hooks make the shared obligation visible.
+
+Inbox actions retain the current hook's authenticated identity through the board transaction, regardless of shell exports. Seat heartbeat updates compare the exact captured seat before writing, preserving concurrent release, owner replacement or other seat changes. Board commit failure cannot produce a successful action receipt.
 
 The script uses an OS file lock, verified backups, and atomic replacement,
 and refuses overlapping areas, duplicate context owners, and contributor claims

@@ -589,7 +589,8 @@ def valid_stop_payload(payload):
     return (isinstance(payload, dict)
             and payload.get("hook_event_name") in ("Stop", "SubagentStop")
             and isinstance(payload.get("session_id"), str)
-            and bool(payload["session_id"].strip())
+            and 0 < len(payload["session_id"].strip()) <= 256
+            and not any(ord(char) < 32 for char in payload["session_id"])
             and type(payload.get("stop_hook_active")) is bool)
 
 
@@ -600,22 +601,39 @@ def stop_failure(payload, reason, system_message=None, *, terminal=False):
     and sibling order cannot reset this budget. Missing native identity cannot
     authorize even one corrective continuation. This is NOT a tool denial API.
     """
-    valid = valid_stop_payload(payload)
     # Structured diagnostics already carry their own FAIL/UNKNOWN verdict and
     # have consumers that parse their prefix. Preserve them byte-for-byte.
     output = {"systemMessage": system_message or (reason if reason.startswith("UNRESOLVED: ") else "UNRESOLVED: " + reason)}
-    if terminal or not valid or payload["stop_hook_active"]:
-        output.update({"continue": False, "stopReason": reason})
-    else:
-        output.update({"decision": "block", "reason": reason})
+    # No current owner reservation exists on this error path.
+    output.update({"continue": False, "stopReason": reason})
     return output
 
 
-def stop_result(payload, result):
+def _policy_reservation(payload, proof, *, consume):
+    # The launcher itself is pinned by the release descriptor. Resolve only
+    # its sibling policy owner, never a caller-provided module/search path.
+    active = verified_release()
+    path = Path(active["release_root"]) / "skills/synthesis-autopilot/scripts"
+    helper = path / "workflow.py"
+    if helper.is_symlink() or not helper.is_file():
+        raise RuntimeContractError("Stop policy owner helper is unavailable")
+    import importlib.util
+    previous = list(sys.path)
+    try:
+        sys.path.insert(0, str(path))
+        spec = importlib.util.spec_from_file_location("release_stop_policy_owner", helper)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.validate_stop_reservation(payload, proof, consume=consume)
+    finally:
+        sys.path[:] = previous
+
+
+def stop_result(payload, result, *, consume_policy=True):
     """Validate Stop wire output before the host can re-enter the model."""
     try:
         output = json.loads(result.stdout) if result.stdout.strip() else {}
-        allowed = {"continue", "stopReason", "systemMessage", "suppressOutput", "decision", "reason"}
+        allowed = {"continue", "stopReason", "systemMessage", "suppressOutput", "decision", "reason", "_synthesis_policy"}
         if (not isinstance(output, dict) or set(output) - allowed
                 or ("continue" in output and type(output["continue"]) is not bool)
                 or ("suppressOutput" in output and type(output["suppressOutput"]) is not bool)
@@ -627,6 +645,17 @@ def stop_result(payload, result):
     except (ValueError, UnicodeError):
         return stop_failure(payload, "Stop hook returned invalid output; protection remains unverified.", terminal=True)
     if output.get("continue") is False:
+        output.pop("_synthesis_policy", None)
+        return output
+    proof = output.pop("_synthesis_policy", None)
+    if proof is not None and not result.returncode and output.get("decision") == "block":
+        try:
+            if not valid_stop_payload(payload) or not _policy_reservation(payload, proof, consume=consume_policy):
+                raise ValueError("Stop reservation was not verified")
+        except Exception:
+            return stop_failure(payload, "Stop correction reservation is unavailable, stale or consumed.", terminal=True)
+        if not consume_policy:
+            output["_synthesis_policy"] = proof
         return output
     if result.returncode or output.get("decision") == "block":
         reason = output.get("reason") or result.stderr.decode("utf-8", errors="replace").strip() or "Stop hook failed without a diagnostic."

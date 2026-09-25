@@ -147,8 +147,11 @@ def test_pending_context_blocks_when_local_receipt_cannot_be_written(
     )
 
     output = json.loads(invoke_with_session(monkeypatch, capsys, tmp_path, session_id))
-    assert output["decision"] == "block"
-    assert "Local project handoff evidence" in output["reason"]
+    assert output["continue"] is False
+    assert "Local project handoff evidence" in output["stopReason"]
+    assert "UNRESOLVED" in output["systemMessage"]
+    assert "decision" not in output and "reason" not in output
+    assert MODULE.pending_manifest(session_id).read_text() == "{}\n"
 
 
 def test_invalid_stop_payload_fails_closed(monkeypatch, capsys) -> None:
@@ -173,8 +176,12 @@ def test_dangling_pending_manifest_symlink_fails_closed(
 
     output = json.loads(invoke_with_session(monkeypatch, capsys, tmp_path, session_id))
 
-    assert output["decision"] == "block"
-    assert "unsafe symlink" in output["reason"]
+    assert output["continue"] is False
+    assert "unsafe symlink" in output["stopReason"]
+    assert "UNRESOLVED" in output["systemMessage"]
+    assert "decision" not in output and "reason" not in output
+    assert MODULE.pending_manifest(session_id).is_symlink()
+    assert not (tmp_path / "missing").exists()
 
 
 @pytest.mark.parametrize("terminal", [False, True])
@@ -193,7 +200,12 @@ def test_pending_checkpoint_failure_payload_is_not_normalized_to_success(
     monkeypatch.setattr(MODULE, "run", lambda *args, **kwargs:
                         subprocess.CompletedProcess([], 0, json.dumps(response), ""))
     output = json.loads(invoke_with_session(monkeypatch, capsys, tmp_path, session_id))
-    assert output == response
+    # Child failure evidence remains exact; an unreserved block cannot grant
+    # corrective continuation merely because the child exited successfully.
+    assert output == {"continue": False,
+                      "stopReason": response["stopReason"] if terminal else response["reason"],
+                      "systemMessage": response["systemMessage"]}
+    assert MODULE.pending_manifest(session_id).read_text() == "{}\n"
 
 
 def test_repeated_failed_stop_halts_without_requesting_another_turn(tmp_path, monkeypatch, capsys):

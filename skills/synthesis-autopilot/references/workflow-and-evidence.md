@@ -101,6 +101,31 @@ preserves those obligations; it does not turn them into successful integration.
 
 ## Budget and progress
 
+### Persistent attempts and current native instructions
+
+`workflow.attempt` derives its outcome from an actual owner observation or a
+supported current native process result. Task labels and caller-supplied success
+do not classify the result. Attempts, materially changed strategies, re-arms,
+failure families and lineage remain in the existing run journal. Productive
+observations do not spend failed-attempt allowances, while new receipt IDs,
+renamed tasks and graph changes cannot erase prior failures.
+
+Current native instructions constrain task admission, completion and Stop
+feedback even when the positive progress observation came from a local owner.
+Authenticated retry approval can reconcile its exact message and condition;
+it cannot clear an unrelated cancellation. Missing enrollment or incomplete
+source coverage produces an explicit recovery obligation. The controller's
+[native evidence contract](controller.md#native-evidence-and-currentness)
+separates current interval coverage from historical absence claims.
+
+The current Stop policy first screens every unresolved run, reserves one
+eligible correction in the existing journal and lets the verified native
+launcher consume that exact reservation. A repeated native callback or another
+process cannot emit the same correction again. A terminal diagnostic is not a
+completion receipt, and a Stop reservation never grants action authority.
+
+### Resource accounting
+
 Declare `workflow.budget` once, before distributing work. Its `limits` map names
 each resource with an integer `limit` and `enforcement: hard` or `forecast`.
 A forecast may have a null limit; an unknown hard limit is invalid. Include a

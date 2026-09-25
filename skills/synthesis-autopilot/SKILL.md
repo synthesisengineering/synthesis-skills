@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.0"
+  version: "3.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -42,18 +42,21 @@ user remains usable within its stated scope.
    deliverables, exclusions, existing decisions, authority references and
    acceptance methods. Map every deliverable to a criterion and an integration
    owner. A mixed writing/software request needs both kinds of acceptance.
-3. **Resolve the workflow.** Use `scripts/run_profile.py resolve` with the task's
+3. **Resolve the workflow.** The `start` controller operation resolves the task's
    domains, uncertainty, effect class, horizon and available parallelism. Inspect
    the explanation and provenance. Public defaults preserve outcome, authority,
    evidence and recovery checks; domain checks follow the actual work. Blog
    material is opt-in, lessons depend on reusable evidence, and the completion
    report fits the domain. Existing active profiles do not change on upgrade.
-4. **Create durable state.** Use `scripts/autopilot.py create` with the selected
-   project, plan, contract, effective profile and native actor. The engine admits
-   exact paths through PM, creates a stable run ID and projects its event log
-   into readable state. Read [run contracts](references/run-contracts.md) for the
-   command interface and a working example. The agent prepares these inputs;
-   the user does not need to learn the configuration format.
+4. **Create durable state.** Use `scripts/autopilot.py start --request` with the
+   selected project, plan, contract, dimensions, resource envelope and native
+   actor. This admitted controller resolves the profile, configures the existing
+   workflow and enrolls the native source in the same journal. It resumes only
+   the exact committed request prefix after interruption. Read the
+   [controller contract](references/controller.md); the agent prepares its
+   inputs, so the user need not learn the configuration format. The underlying
+   [run owners](references/run-contracts.md) remain available for specialized
+   operations without creating a second source of authority.
 5. **Bound execution.** Configure the adaptive workflow and, when there are
    separable tasks, its dependency graph. Set a resource envelope, deadline and
    reserved integration/verification capacity. Distinguish enforceable limits
@@ -76,6 +79,13 @@ their inputs become known. Change the approach when evidence warrants it;
 changing promised outcomes or weakening required checks needs the owning
 approval, a versioned amendment and fresh verification.
 
+Use `next`, `record`, `checkpoint`, `explain`, `cancel`, `recover` and `finish`
+for the normal execution loop. Stable request identities bind the complete
+input and expected revision. Read the returned status, coverage and diagnostics;
+a successfully invoked CLI can still report unresolved work. An interrupted
+request may already have committed steps. Inspect that prefix before choosing
+a new action, and never change its input while reusing its identity.
+
 At every checkpoint, phase boundary, wake and re-entry:
 
 - Read the board/inbox and handle intake on the existing coordination lane.
@@ -86,6 +96,11 @@ At every checkpoint, phase boundary, wake and re-entry:
   Narration alone is not progress. Identical transient failures have a bounded
   retry allowance; permanent failures and ambiguous writes require different
   handling. See [workflow and evidence](references/workflow-and-evidence.md).
+- Consume fresh native instructions and cancellation before admitting work,
+  issuing corrective feedback or declaring completion. Missing enrollment,
+  truncated history, changed observed bytes and incomplete intervals are
+  explicit gaps. Root and child sources have separate scopes. A native success
+  label alone neither proves the user's outcome nor overrides a later cancel.
 - Persist required scripts, inputs and findings in the project at the boundary.
   Temporary files and chat context cannot be the only recovery copy. Refresh
   project records through context lifecycle and its compiler.
@@ -203,11 +218,23 @@ or unknown. A previous notification cannot satisfy a new question. Audio and
 banners carry only generic counts and a private-detail pointer; respect the
 user's mute setting. A written report remains required when audio is muted.
 
-The Stop boundary requests at most the supported bounded correction. Repeated
+The Stop boundary reserves and consumes at most one owner-verified correction
+for the same current condition, including across new processes and repeat-bit
+changes. Productive observations do not consume failed-attempt allowances;
+renamed tasks, new receipt labels and unchanged strategies do not reset failure
+history. Unknown or ambiguous external effects require their existing owner's
+reconciliation before another attempt. Repeated
 or infrastructure failures end feedback with an explicit unresolved diagnostic;
 that is not completed work and does not relax pre-mutation guards. Preserve
 state and foreign evidence. Resume through the registry, then fresh ownership,
 current run journal, outstanding effects and the next ready task.
+
+Completion requires a current outcome readback even when the journal already
+contains a completed tombstone. Changed artifacts or expired proof make the
+current result unresolved. For an adopted PM project, the active execution basis
+is deliberately narrower than the normal whole-project checkpoint. The latter
+is created after terminal journal writes; interrupted closure retries only that
+postamble, without replaying effects or rewriting historical success.
 
 ## Close
 

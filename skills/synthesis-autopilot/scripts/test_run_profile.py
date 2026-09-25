@@ -55,7 +55,7 @@ def test_legacy_migration_preserves_custom_disabled_and_report_text(module, tmp_
     legacy = {"schema": 1, "items": {
         "morning-report": {"text": "User preferred report wording", "evidence_hint": "Report artifact"},
         "blog-seeds": {"enabled": True}, "framework-decisions": {"enabled": False},
-        "personal-check": {"text": "Retain the user's own convention", "evidence_hint": "Evidence artifact"}}}
+        "personal-check": {"text": "Retain the user's own convention", "evidence_hint": "Evidence artifact", "criterion_ids": ["accept"]}}}
     before = copy.deepcopy(legacy)
     result = resolve(module, tmp_path, user=legacy)
     items = {item["id"]: item for item in result["items"]}
@@ -160,3 +160,37 @@ def test_profile_adapter_matches_engine_schema_without_authority(module, world):
     state = create(engine, world, profile=profile)
     assert state["profile"] == profile
     assert state["contract"]["authority_refs"] == []
+
+
+def test_new_custom_obligation_requires_concrete_declared_criteria(module):
+    value = {"schema": 2, "items": {"local-custom": {"text": "User-selected proof", "evidence_hint": "Current bound criterion"}}}
+    with pytest.raises(ValueError, match="concrete criterion_ids"):
+        module.resolve_layers(user=value)
+    value["items"]["local-custom"]["criterion_ids"] = ["accept"]
+    profile = module.resolve_layers(user=value)
+    module.validate_profile_contract(profile, {"criteria": [{"id": "accept"}]})
+    with pytest.raises(ValueError, match="undeclared"):
+        module.validate_profile_contract(profile, {"criteria": [{"id": "different"}]})
+
+
+def test_explicit_optional_selection_and_later_conditional_override_are_preserved(module):
+    from profile_evidence import _selected
+    user = {"schema": 2, "items": {"lessons-filed": {"enabled": True}}}
+    profile = module.resolve_layers(user=user)
+    item = next(row for row in profile["items"] if row["id"] == "lessons-filed")
+    assert _selected(item)
+    project = {"schema": 2, "items": {"lessons-filed": {"applicability": "if_reusable_evidence"}}}
+    profile = module.resolve_layers(user=user, project=project)
+    item = next(row for row in profile["items"] if row["id"] == "lessons-filed")
+    assert not _selected(item)
+    assert item["applicability"] == "if_reusable_evidence"
+
+
+def test_criteria_select_known_profile_obligations_without_editing_frozen_profile(module):
+    profile = module.resolve_layers()
+    before = copy.deepcopy(profile)
+    module.validate_profile_contract(profile, {"criteria": [{"id": "capture", "profile_item_ids": ["lessons-filed"]}]})
+    assert profile == before
+    for refs in (["unknown"], ["lessons-filed", "lessons-filed"], "lessons-filed"):
+        with pytest.raises(ValueError):
+            module.validate_profile_contract(profile, {"criteria": [{"id": "capture", "profile_item_ids": refs}]})

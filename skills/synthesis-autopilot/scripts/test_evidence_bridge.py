@@ -169,16 +169,25 @@ def test_ordinary_local_artifact_task_completes_through_cli_without_verifier_con
 
 
 def ready_context(observed, world):
-    engine = importlib.import_module("run_state")
+    import autopilot
+    engine = autopilot.engine()
+    # The workflow owner requires a current native instruction interval; use
+    # the fixture's real source enrollment instead of bypassing admission.
+    enrolled = command(engine, world, observed["state"], "native.enroll", {
+        "source_handle": "root", "mode": "synthetic"})
     output = world["project"] / "output.txt"
     output.write_text("Actual result\n")
-    current = command(engine, world, observed["state"], "artifact.register", {
+    current = command(engine, world, enrolled, "artifact.register", {
         "id": "output", "path": str(output), "role": "output", "retention": "durable", "required": True})
+    current = command(engine, world, current, "workflow.configure", {"dimensions": {
+        "domains": ["software"], "uncertainty": "low", "effect": "local-reversible", "horizon": "session", "parallelizable": False}})
+    current = command(engine, world, current, "workflow.graph", {"nodes": [
+        {"id": "build", "deps": [], "criteria": ["accept"], "estimate": 1}], "wip_limit": 1})
+    current = command(engine, world, current, "workflow.task", {"task_id": "build", "action": "start"})
     current = command(engine, world, current, "transition", {"status": "verifying"})
     current = command(engine, world, current, "verify", {"criteria": ["accept"]})
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
-    current["extensions"]["workflow"] = {"graph": {"nodes": {"build": {"id": "build", "criteria": ["accept"], "status": "running"}}}}
-    return {**observed, "state": current, "artifacts": pure["artifacts"],
+    return {**observed, **pure, "state": current, "artifacts": pure["artifacts"],
             "criterion_report": engine.criterion_report(current, pure)}
 
 
@@ -529,8 +538,12 @@ def test_quality_resolution_derives_changed_output_from_real_consumer_attempts(b
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
     assert pure["verify_receipt"]("repair-resolution", "quality_resolution", {})
     assert not pure["verify_receipt"]("failed-review", "quality_observation", {})  # Honest stale old artifact.
-    current = command(engine, world, current, "workflow.grade", {"criterion_id": "accept",
-        "receipt_ids": ["repaired-review"], "independent": False, "resolution_receipt_id": "repair-resolution"})
+    import workflow
+    workflow.register_preparers(engine.register_preparer)
+    payload = {"criterion_id": "accept", "receipt_ids": ["repaired-review"], "independent": False,
+               "resolution_receipt_id": "repair-resolution"}
+    current = command(engine, world, current, "workflow.rearm", workflow.prepare_grade(current, payload, pure))
+    current = command(engine, world, current, "workflow.grade", payload)
     assert current["extensions"]["workflow"]["quality"]["accept"]["verdict"] == "PASS"
     assert current["observations"]["failed-review"] == failed_snapshot
     pure = engine.inspect_context(current, world["actor"], project=world["project"])
@@ -1208,3 +1221,54 @@ def test_native_worker_observer_rejects_caller_execution_overrides(bridge, obser
 
 def test_native_worker_receipt_file_cannot_claim_engine_execution(bridge, observed):
     assert not bridge.verify_source(record("native_worker", {"preservation": "PASS", "native_exit_code": 0, "producer": "invented"}, observed), observed)
+
+
+def test_owner_four_quality_generations_keep_three_failed_grades_and_repairs(world):
+    """Real OS consumer + observer + rearm/grade journal, synthetic project."""
+    import workflow
+    from test_workflow import _policy_owner, _owner_register
+    engine, current = _policy_owner(world)
+    program = world["project"] / "quality-program.py"
+    program.write_text('from pathlib import Path\nprint(Path("output.json").read_text())\n')
+    current = command(engine, world, current, "artifact.register", {"id": "program", "path": str(program),
+        "role": "input", "required": False, "retention": "durable"})
+    current = _owner_register(engine, world, current, "consumer", {"schema_version": 1, "kind": "python-consumer",
+        "criterion_id": "accept", "artifact_id": "output", "script_artifact_id": "program",
+        "expected": {"answer": 3}, "argv": [], "timeout_seconds": 2})
+    originals = []
+    for number in range(4):
+        current = _owner_register(engine, world, current, "output", {"answer": number}, role="output")
+        consumer_id, quality_id = "consumer-" + str(number), "quality-" + str(number)
+        current = engine.observe(world["project"], current["run_id"], "consumer-check", {"check_id": "consumer"},
+            expected_revision=current["revision"], command_id=consumer_id, actor=world["actor"], runtime_root=world["runtime"])
+        current = _owner_register(engine, world, current, "review-spec-" + str(number), {"schema_version": 1,
+            "kind": "quality_observation", "arguments": {"observation_id": consumer_id}})
+        current = engine.observe(world["project"], current["run_id"], "quality_observation", {"check_id": "review-spec-" + str(number)},
+            expected_revision=current["revision"], command_id=quality_id, actor=world["actor"], runtime_root=world["runtime"])
+        payload = {"criterion_id": "accept", "receipt_ids": [quality_id], "independent": False}
+        if number:
+            prior = current["extensions"]["workflow"]["quality"]["accept"]
+            resolution_id = "resolution-" + str(number)
+            current = _owner_register(engine, world, current, "resolution-spec-" + str(number), {"schema_version": 1,
+                "kind": "quality_resolution", "arguments": {"criterion_id": "accept",
+                    "prior_grade_digest": prior["grade_digest"], "receipt_ids": [quality_id]}})
+            current = engine.observe(world["project"], current["run_id"], "quality_resolution", {"check_id": "resolution-spec-" + str(number)},
+                expected_revision=current["revision"], command_id=resolution_id, actor=world["actor"], runtime_root=world["runtime"])
+            payload["resolution_receipt_id"] = resolution_id
+            with pytest.raises(ValueError, match="rearm"):
+                command(engine, world, current, "workflow.grade", payload)
+            context = engine.inspect_context(current, world["actor"], project=world["project"])
+            rearm_payload = workflow.prepare_grade(current, payload, context)
+            current = command(engine, world, current, "workflow.rearm", rearm_payload, command_id="rearm-step-" + str(number))
+            assert workflow.prepare_grade(current, payload, engine.inspect_context(current, world["actor"], project=world["project"])) is None
+            with pytest.raises(ValueError):
+                command(engine, world, current, "workflow.rearm", rearm_payload, command_id="alias-rearm-" + str(number))
+        current = command(engine, world, current, "workflow.grade", payload)
+        originals.append(copy.deepcopy(current["observations"][quality_id]))
+    flow = current["extensions"]["workflow"]
+    assert flow["quality"]["accept"]["verdict"] == "PASS"
+    assert [row["verdict"] for row in flow["quality_history"]["accept"]] == ["FAIL"] * 3
+    policy = current["extensions"]["workflow_persistence"]
+    assert len(policy["attempts"]) == 4 and len(policy["rearms"]) == 3
+    assert [current["observations"]["quality-" + str(n)] for n in range(4)] == originals
+    assert next(iter(policy["decisions"].values()))["failed_attempts"] == 3

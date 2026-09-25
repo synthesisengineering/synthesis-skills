@@ -44,12 +44,12 @@ def checkpoint_result(payload):
         raise ValueError("Stop dispatcher does not belong to the verified active release")
     result = runtime.execute(active, "synthesis-project-management/scripts/project_state.py",
                              ["hook"], json.dumps(payload).encode(), timeout=8)
-    return runtime.stop_result(payload, result)
+    return runtime.stop_result(payload, result, consume_policy=False)
 
 
-def _autopilot_result(payload):
+def _autopilot_result(payload, *, reserve_feedback=True):
     from autopilot import actor_from_hook, default_runtime_root, stop_result
-    return stop_result(actor_from_hook(payload), runtime_root=default_runtime_root())
+    return stop_result(actor_from_hook(payload), runtime_root=default_runtime_root(), reserve_feedback=reserve_feedback)
 
 
 def combined_result(payload, *, checkpoint=None, autopilot_check=None):
@@ -65,11 +65,14 @@ def combined_result(payload, *, checkpoint=None, autopilot_check=None):
     results = []
     for label, check in checks:
         try:
-            value = check(payload)
+            if label == "Autopilot" and autopilot_check is None:
+                value = _autopilot_result(payload, reserve_feedback=not any(item.get("continue") is False for item in results))
+            else:
+                value = check(payload)
             wire = json.dumps(value, allow_nan=False).encode()
             # Reuse the public native parser: malformed output, nested terminal
             # results and repeat limits follow the exact outer-launcher contract.
-            result = runtime.stop_result(payload, subprocess.CompletedProcess([], 0, wire, b""))
+            result = runtime.stop_result(payload, subprocess.CompletedProcess([], 0, wire, b""), consume_policy=False)
         except Exception as exc:
             result = runtime.stop_failure(payload, f"{label} could not be verified: {exc}", terminal=True)
         results.append(result)
@@ -86,7 +89,11 @@ def combined_result(payload, *, checkpoint=None, autopilot_check=None):
         return result
     blocked = [value["reason"] for value in results if value.get("decision") == "block"]
     if blocked:
-        return runtime.stop_failure(payload, "\n".join(blocked), "\n".join(diagnostics) or None)
+        reserved = [value for value in results if value.get("decision") == "block" and value.get("_synthesis_policy")]
+        if len(reserved) != 1:
+            return runtime.stop_failure(payload, "Combined Stop lacks one current correction reservation.", terminal=True)
+        return {"decision": "block", "reason": "\n".join(blocked),
+                "systemMessage": "\n".join(diagnostics), "_synthesis_policy": reserved[0]["_synthesis_policy"]}
     return {"systemMessage": "\n".join(diagnostics)} if diagnostics else {}
 
 

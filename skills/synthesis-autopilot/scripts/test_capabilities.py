@@ -175,7 +175,7 @@ def test_native_repeat_signal_and_terminal_override(surface):
     normalized = CAP.normalize_event(surface, payload)
     assert normalized["session_id"] == "native-1"
     assert normalized["repeat_count"] == 0
-    assert CAP.stop_response(surface, payload, "unfinished")["decision"] == "block"
+    assert CAP.stop_response(surface, payload, "unfinished")["continue"] is False
     payload["stop_hook_active"] = True
     terminal = CAP.stop_response(surface, payload, "unfinished")
     assert terminal["continue"] is False
@@ -186,7 +186,7 @@ def test_native_repeat_signal_and_terminal_override(surface):
 def test_cursor_uses_its_native_contract_and_has_no_terminal_override_claim():
     payload = {"conversation_id": "cursor-1", "generation_id": "generation-1",
                "status": "completed", "loop_count": 0}
-    assert CAP.stop_response("cursor-ide", payload, "unfinished") == {"followup_message": "unfinished"}
+    assert CAP.stop_response("cursor-ide", payload, "unfinished") == {}
     payload["loop_count"] = 1
     assert CAP.stop_response("cursor-ide", payload, "unfinished") == {}
     payload["loop_count"] = 0
@@ -199,7 +199,7 @@ def test_copilot_normalizes_both_event_spellings_without_unsupported_output():
     for payload in [{"sessionId": "copilot-1", "stop_hook_active": False},
                     {"session_id": "copilot-1", "hook_event_name": "Stop", "stop_hook_active": False}]:
         assert CAP.normalize_event("copilot-cli", payload)["session_id"] == "copilot-1"
-        assert CAP.stop_response("copilot-cli", payload, "unfinished")["decision"] == "block"
+        assert CAP.stop_response("copilot-cli", payload, "unfinished") == {"decision": "allow"}
         payload["stop_hook_active"] = True
         assert CAP.stop_response("copilot-cli", payload, "unfinished") == {"decision": "allow"}
 
@@ -211,11 +211,11 @@ def test_malformed_native_identity_never_creates_a_corrective_turn(payload):
     assert result.get("decision") != "block"
 
 
-def test_fresh_user_turn_does_not_inherit_native_retry_flag():
+def test_fresh_wake_cannot_reset_an_unauthenticated_retry():
     base = {"session_id": "same", "hook_event_name": "Stop", "stop_hook_active": True, "turn_id": "t1"}
     assert CAP.stop_response("codex-cli", base, "unfinished")["continue"] is False
     fresh = {**base, "stop_hook_active": False, "turn_id": "t2"}
-    assert CAP.stop_response("codex-cli", fresh, "unfinished")["decision"] == "block"
+    assert CAP.stop_response("codex-cli", fresh, "unfinished")["continue"] is False
 
 
 def test_missing_receipt_cannot_self_attest_capability():
@@ -540,3 +540,36 @@ def test_explain_keeps_worker_operations_distinct_from_root_support():
     assert rows['cursor-cli']['native_worker']['status']=='UNAVAILABLE'
     selected=json.loads(subprocess.run(command+['--surface','muse-cli'],capture_output=True,text=True,check=True).stdout)
     assert selected['native_worker']==muse['native_worker']
+
+
+@pytest.mark.parametrize("repeat", [False, True])
+def test_translator_preserves_reserved_policy_correction_independent_of_repeat_bit(repeat):
+    # This is an internal owner-to-launcher envelope. The separate launcher
+    # acceptance proves a shaped assertion cannot substitute for its journal.
+    proof = {"schema_version": 1, "run_id": "fixture", "correction_id": "a" * 64}
+    disposition = {"action": "corrective", "allow_attempt": True, "authority_granted": False,
+                   "completion_granted": False, "reservation": proof}
+    result = CAP.stop_response("codex-cli", {"hook_event_name": "Stop", "session_id": "native",
+        "stop_hook_active": repeat}, "Productive work remains", policy_disposition=disposition)
+    assert result["decision"] == "block" and result["_synthesis_policy"] == proof
+    denied = CAP.stop_response("codex-cli", {"hook_event_name": "Stop", "session_id": "native",
+        "stop_hook_active": repeat}, "Cancelled", policy_disposition={**disposition, "action": "terminal"})
+    assert denied["continue"] is False and "_synthesis_policy" not in denied
+
+
+def test_late_scheduler_wake_cannot_reinject_unverified_policy_or_erase_cancel():
+    current, records, ctx = configured()
+    current['extensions']['workflow_persistence'] = {'decisions': {'missing-owner': {'allow_attempt': True}}}
+    records['late'] = receipt('continuation-wake', job_id='job-1', event_id='late-after-policy',
+        native_observed_at=NOW, next_wake_at=NOW + 60)
+    current = CAP.observe_wake(current, {'receipt': 'late'}, context(records))
+    assert current['extensions']['capabilities']['continuation']['wakes'] == []
+    assert current['extensions']['capabilities']['ignored_wakes'][-1]['reason'] == 'policy_wait'
+    status = CAP.continuation_status(current, context(records))
+    assert status['state'] == 'policy_wait' and status['cleanup_required']
+    current = CAP.request_cancel(current, {'reason': 'No admitted continuation'}, context(records))
+    records['late2'] = receipt('continuation-wake', job_id='job-1', event_id='late-after-cancel',
+        native_observed_at=NOW, next_wake_at=NOW + 60)
+    current = CAP.observe_wake(current, {'receipt': 'late2'}, context(records))
+    assert current['extensions']['capabilities']['ignored_wakes'][-1]['reason'] == 'cancellation_pending'
+    assert CAP.continuation_status(current, context(records))['state'] == 'cancellation_pending'

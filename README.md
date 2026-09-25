@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.147.0** adds autopilot 3.2.0: the native-observation controller,
+productive persistence, current cancellation gates and verified project closure.
+
 Release **4.146.0** adds autopilot 3.1.0: qualified outcome evaluation,
 current domain evidence, shared decision ownership and verified decision pages.
 

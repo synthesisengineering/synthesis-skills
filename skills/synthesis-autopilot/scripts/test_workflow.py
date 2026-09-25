@@ -309,6 +309,7 @@ def artifact_only_dispatch(wf,state,context):
     brief.update(child_id='/root/artifact_worker',mode='artifact-only',dispatch_receipt_id='native-dispatch')
     data={key:value for key,value in brief.items() if key not in {'admission_id','admission_requests','dispatch_receipt_id'}}
     context=receipt(result,context,'native-dispatch','delegation',data)
+    context["evidence"]["native-dispatch"]["data"]["source"] = {"kind": "native-dispatch", "call_id": "dispatch"}
     return result,context,brief
 
 
@@ -860,13 +861,14 @@ def test_same_quality_ids_revalidate_proof_and_reject_replaced_bytes(wf, state, 
         call(wf, state, changed, "grade", criterion_id="c1", receipt_ids=["q1"], independent=True)
 
 
-def test_repaired_grade_cannot_spend_another_quality_round(wf, state, context):
+def test_repaired_grade_can_accept_fresh_quality_evidence_after_two_rounds(wf, state, context):
     state, context, prior = _failed_grade_and_repair(wf, state, context)
     context = _repair_resolution(wf, state, context, prior)
     state = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q2"], independent=True, resolution_receipt_id="resolution")
     context = receipt(state, context, "q3", "quality_observation", context["evidence"]["q2"]["data"])
-    with pytest.raises(ValueError, match="budget"):
-        call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q3"], independent=True, resolution_receipt_id="resolution")
+    result = call(wf, state, context, "grade", criterion_id="c1", receipt_ids=["q3"], independent=True)
+    assert result["extensions"]["workflow"]["quality"]["c1"]["round"] == 3
+    assert len(result["extensions"]["workflow"]["quality_history"]["c1"]) == 2
 
 
 def test_repair_cannot_change_only_passing_artifact_and_discard_unchanged_failure(wf, state, context):
@@ -1071,6 +1073,7 @@ def rich_quality_fixture(wf, state, context, tmp_path, verdict="PASS"):
     if verdict == "UNKNOWN": raw["criteria"][0]["verdict"] = "UNKNOWN"
     data = complete_data(fixture, defects, target_assessment=raw)
     merged = {**context, **fixture}
+    merged["binding"] = {**merged["binding"], "project_root": str(fixture["project"])}
     state = configured(wf, state, merged, domain="writing")
     merged["state"] = state
     return state, receipt(state, merged, "rich-one", "quality_observation", data), data, defects
@@ -1121,3 +1124,422 @@ def test_rich_historical_failure_retains_interpretation_after_repair(wf, state, 
     assert repaired["extensions"]["workflow"]["quality"]["accept"]["verdict"] == "PASS"
     assert repaired["extensions"]["workflow"]["quality_history"]["accept"] == [prior]
     assert prior["receipt_verdicts"] == {"rich-one": "FAIL"}
+
+
+# Owner integration fixtures exercise real journal/CAS/PM/file verification.
+# The native transcript and project are temporary; this is not host acceptance.
+def _policy_owner(world):
+    import autopilot
+    import workflow
+    from test_run_state import create, command
+    runtime = autopilot.engine()
+    workflow.register_preparers(runtime.register_preparer)
+    state = create(runtime, world)
+    state = command(runtime, world, state, "native.enroll", {"source_handle": "root", "mode": "synthetic"})
+    state = command(runtime, world, state, "workflow.configure", {"dimensions": dimensions(parallelizable=False)})
+    state = command(runtime, world, state, "workflow.graph", {"nodes": [
+        {"id": "work", "deps": [], "criteria": ["accept"], "estimate": 1}], "wip_limit": 1})
+    return runtime, state
+
+
+def _owner_register(runtime, world, state, ident, value, *, role="input"):
+    import json
+    from test_run_state import command
+    path = world["project"] / (ident + ".json")
+    path.write_text(json.dumps(value))
+    return command(runtime, world, state, "artifact.register", {"id": ident, "path": str(path),
+        "role": role, "required": role == "output", "retention": "durable"})
+
+
+def _owner_progress(runtime, world, state, number):
+    from test_run_state import command
+    state = _owner_register(runtime, world, state, "output", {"generation": number}, role="output")
+    state = runtime.observe(world["project"], state["run_id"], "progress_observation", {"check_id": "progress-spec"},
+        expected_revision=state["revision"], command_id="observed-" + str(number), actor=world["actor"], runtime_root=world["runtime"])
+    state = command(runtime, world, state, "workflow.attempt", {"task_id": "work", "attempt_id": "attempt-" + str(number),
+        "strategy_id": "artifact-owner", "outcome": "artifact", "observation_ids": ["observed-" + str(number)], "rationale_ref": None})
+    return state
+
+
+def test_owner_records_35_productive_attempts_without_spending_failures(world):
+    import workflow
+    runtime, state = _policy_owner(world)
+    state = _owner_register(runtime, world, state, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    for number in range(35):
+        state = _owner_progress(runtime, world, state, number)
+        policy = workflow.retry_decision(state, "work")["policy"]
+        assert policy["allow_attempt"] is True and policy["failed_attempts"] == 0
+    stored = state["extensions"]["workflow_persistence"]
+    assert len(stored["attempts"]) == 35
+    assert len(state["observations"]) == 35
+    assert runtime.load_run(world["project"], state["run_id"])["extensions"]["workflow_persistence"] == stored
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_current_native_instruction_controls_owner_task_admission(world, interrupted):
+    import json
+    from test_run_state import command
+    runtime, state = _policy_owner(world)
+    before = runtime.load_run(world["project"], state["run_id"])
+    if interrupted:
+        with world["transcript"].open("a") as handle:
+            handle.write(json.dumps({"type": "user", "sessionId": world["actor"]["native_payload"]["session_id"],
+                "message": {"role": "user", "content": "Cancel the earlier execution."}}) + "\n")
+        with pytest.raises(ValueError, match="Native instruction or cancellation"):
+            command(runtime, world, state, "workflow.task", {"task_id": "work", "action": "start"})
+        assert runtime.load_run(world["project"], state["run_id"]) == before
+    else:
+        started = command(runtime, world, state, "workflow.task", {"task_id": "work", "action": "start"})
+        assert started["extensions"]["workflow"]["graph"]["nodes"]["work"]["status"] == "running"
+
+
+def test_owner_refuses_claimed_failure_from_success_and_reused_source(world):
+    import workflow
+    from test_run_state import command
+    runtime, state = _policy_owner(world)
+    state = _owner_register(runtime, world, state, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    state = _owner_progress(runtime, world, state, 1)
+    original = copy.deepcopy(state)
+    for outcome in ("failure", "blocked", "ambiguous_effect", "artifact"):
+        with pytest.raises(ValueError):
+            command(runtime, world, state, "workflow.attempt", {"task_id": "work", "attempt_id": "alias-" + outcome,
+                "strategy_id": "cosmetic", "outcome": outcome, "observation_ids": ["observed-1"], "rationale_ref": None})
+        assert runtime.load_run(world["project"], state["run_id"]) == original
+
+
+def test_stop_correction_is_reserved_once_and_cancelled_task_never_rearms(world, monkeypatch):
+    import workflow
+    from test_run_state import command
+    runtime, state = _policy_owner(world)
+    state = _owner_register(runtime, world, state, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    state = _owner_progress(runtime, world, state, 1)
+    context = runtime.inspect_context(state, world["actor"], project=world["project"])
+    assert workflow.stop_feedback_status(state, context)["action"] == "eligible"
+    disposition = workflow.reserve_stop_feedback(runtime, state, world["actor"], project=world["project"], runtime_root=world["runtime"])
+    assert disposition["action"] == "corrective"
+    state = runtime.load_run(world["project"], state["run_id"])
+    assert workflow.reserve_stop_feedback(runtime, state, world["actor"], project=world["project"], runtime_root=world["runtime"])["action"] == "terminal"
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(world["board"]))
+    monkeypatch.setenv("SYNTHESIS_AUTOPILOT_RUNTIME", str(world["runtime"]))
+    assert workflow.validate_stop_reservation(world["actor"]["native_payload"], disposition["reservation"]) is True
+    with pytest.raises(ValueError):
+        workflow.validate_stop_reservation(world["actor"]["native_payload"], disposition["reservation"])
+    state = runtime.load_run(world["project"], state["run_id"])
+    state = command(runtime, world, state, "workflow.task", {"task_id": "work", "action": "cancel", "reason": "User cancelled"})
+    context = runtime.inspect_context(state, world["actor"], project=world["project"])
+    assert workflow.stop_feedback_status(state, context)["action"] == "terminal"
+    with pytest.raises(ValueError):
+        _owner_progress(runtime, world, state, 2)
+
+
+def _native_process_fixture(world, monkeypatch, *, exit_code=0, damage=None):
+    """Actual local process output in synthetic Codex source, with real PM/CAS."""
+    import json, os, shlex, subprocess, sys
+    from test_run_state import command
+    native = world["actor"]["native_payload"]["session_id"]
+    home = world["scratch"] / "codex-native-fixture"
+    transcript = home / "sessions" / "2026" / "09" / "25" / ("rollout-" + native + ".jsonl")
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({"type": "session_meta", "payload": {"id": native, "cwd": str(world["repo"])}}) + "\n")
+    world["transcript"] = transcript
+    world["actor"]["native_payload"]["transcript_path"] = str(transcript)
+    world["board"].write_text(world["board"].read_text().replace("| claude |", "| codex |").replace("cc:" + native, "codex:" + native))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:" + native)
+    runtime, state = _policy_owner(world)
+    state = _owner_register(runtime, world, state, "output", {"answer": 7}, role="output")
+    program = world["project"] / "native-program.py"
+    program.write_text('import json\nfrom pathlib import Path\nprint(Path("output.json").read_text())\nraise SystemExit(' + str(exit_code) + ')\n')
+    state = command(runtime, world, state, "artifact.register", {"id": "native-program", "path": str(program),
+        "role": "input", "retention": "durable", "required": False})
+    spec = {"schema_version": 1, "kind": "native-python-consumer", "task_id": "work", "strategy_id": "native-strategy",
+        "call_id": "native-process-1", "script_artifact_id": "native-program", "artifact_id": "output",
+        "expected": {"answer": 7}, "argv": []}
+    state = _owner_register(runtime, world, state, "native-check", spec)
+    state = command(runtime, world, state, "native.enroll", {"source_handle": "root", "mode": "synthetic"})
+    args = [sys.executable, "-I", str(program)]
+    executed = subprocess.run(args, cwd=world["project"], capture_output=True, text=True, check=False)
+    call_args = {"cmd": shlex.join(args), "workdir": str(world["project"])}
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).isoformat()
+    rows = [{"type": "response_item", "timestamp": stamp, "payload": {"type": "function_call", "namespace": "functions",
+        "name": "exec_command", "call_id": "native-process-1", "arguments": json.dumps(call_args)}},
+        {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "native-process-1",
+            "output": {"exit_code": executed.returncode, "output": executed.stdout, "wall_time_seconds": 0.01}}}]
+    if damage == "opaque":
+        rows[1]["payload"]["output"] = "completed successfully"
+    elif damage == "ongoing":
+        rows[1]["payload"]["output"]["session_id"] = 99
+    elif damage == "wrong-tool":
+        rows[0]["payload"]["name"] = "browser"
+    elif damage == "wrong-command":
+        changed = {**call_args, "cmd": call_args["cmd"] + " && true"}
+        rows[0]["payload"]["arguments"] = json.dumps(changed)
+    elif damage in {"wrapper", "wrapper-extra"}:
+        rows[0]["payload"] = {"type": "custom_tool_call", "name": "exec",
+            "call_id": "native-process-1", "input": "text(await tools.exec_command(" + json.dumps(call_args) + "));" + ("text('extra');" if damage == "wrapper-extra" else "")}
+        rows[1]["payload"]["type"] = "custom_tool_call_output"
+        rows[1]["payload"]["output"] = [{"type": "input_text", "text": "Script completed\nWall time 0.7 seconds\nOutput:\n"},
+            {"type": "input_text", "text": json.dumps(rows[1]["payload"]["output"])}]
+    elif damage == "misleading-label":
+        rows[1]["payload"]["status"] = "completed"
+    with transcript.open("a") as stream:
+        for row in rows: stream.write(json.dumps(row) + "\n")
+    state = command(runtime, world, state, "native.observe", {"source_handle": "root", "through_event": None,
+        "task_id": "work", "attempt_id": "native-attempt"})
+    ids = [event["event_id"] for event in state["extensions"]["native_observations"]["latest_batch"]["events"]]
+    return runtime, state, {"task_id": "work", "attempt_id": "native-attempt", "strategy_id": "native-strategy",
+        "outcome": "evidence" if exit_code == 0 else "failure", "observation_ids": ids, "rationale_ref": "native-check"}
+
+
+def test_native_structured_process_result_joins_exact_current_task_source(world, monkeypatch):
+    from test_run_state import command
+    runtime, state, payload = _native_process_fixture(world, monkeypatch)
+    state = command(runtime, world, state, "workflow.attempt", payload)
+    attempt = state["extensions"]["workflow_persistence"]["attempts"][-1]
+    assert attempt["family"] == "productive_work"
+    assert attempt["coverage"]["status"] == "complete"
+    assert attempt["relevant_state"]["facts"]["execution"]["exit_code"] == 0
+    import workflow
+    context = runtime.inspect_context(state, world["actor"], project=world["project"])
+    assert workflow.stop_feedback_status(state, context)["action"] == "eligible"
+
+
+@pytest.mark.parametrize("damage", ["opaque", "ongoing", "wrong-tool", "wrong-command", "wrapper-extra", "missing-spec", "wrong-task", "source-edit", "late-cancel"])
+def test_native_owner_refuses_unqualified_or_changed_execution(world, monkeypatch, damage):
+    import json
+    from test_run_state import command
+    runtime, state, payload = _native_process_fixture(world, monkeypatch, damage=damage)
+    if damage == "missing-spec": payload["rationale_ref"] = None
+    elif damage == "wrong-task": payload["task_id"] = "foreign"
+    elif damage == "source-edit":
+        world["transcript"].write_text(world["transcript"].read_text().replace('"exit_code": 0', '"exit_code": 1'))
+    elif damage == "late-cancel":
+        with world["transcript"].open("a") as stream:
+            stream.write(json.dumps({"type": "event_msg", "payload": {"type": "turn_aborted", "turn_id": "native-turn"}}) + "\n")
+    before = copy.deepcopy(state)
+    with pytest.raises(ValueError):
+        command(runtime, world, state, "workflow.attempt", payload)
+    assert runtime.load_run(world["project"], state["run_id"]) == before
+
+
+def test_native_literal_wrapper_and_nonzero_process_semantics(world, monkeypatch):
+    from test_run_state import command
+    runtime, state, payload = _native_process_fixture(world, monkeypatch, exit_code=7, damage="misleading-label")
+    current = command(runtime, world, state, "workflow.attempt", payload)
+    retained = current["extensions"]["workflow_persistence"]["attempts"][-1]
+    assert retained["family"] == "permanent_tool" and retained["outcome"] == "failure"
+    assert next(iter(current["extensions"]["workflow_persistence"]["decisions"].values()))["failed_attempts"] == 1
+
+
+def test_exact_native_exec_wrapper_is_interpreted_without_executing_wrapper_code(world, monkeypatch):
+    from test_run_state import command
+    runtime, state, payload = _native_process_fixture(world, monkeypatch, damage="wrapper")
+    current = command(runtime, world, state, "workflow.attempt", payload)
+    assert current["extensions"]["workflow_persistence"]["attempts"][-1]["family"] == "productive_work"
+
+
+def test_real_transient_consumer_quarantines_only_unchanged_failures(world):
+    """Two actual sandbox timeouts, then useful work, retain the quarantine."""
+    import workflow
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    current = _owner_register(runtime, world, current, "output", {"answer": 1}, role="output")
+    program = world["project"] / "timeout-consumer.py"
+    program.write_text("import time\ntime.sleep(3)\n")
+    current = command(runtime, world, current, "artifact.register", {"id": "timeout-program", "path": str(program),
+        "role": "input", "required": False, "retention": "durable"})
+    current = _owner_register(runtime, world, current, "timeout-check", {"schema_version": 1, "kind": "python-consumer",
+        "criterion_id": "accept", "artifact_id": "output", "script_artifact_id": "timeout-program",
+        "expected": {"answer": 1}, "argv": [], "timeout_seconds": 1})
+    for number in range(2):
+        current = runtime.observe(world["project"], current["run_id"], "consumer-check", {"check_id": "timeout-check"},
+            expected_revision=current["revision"], command_id="timeout-observed-" + str(number), actor=world["actor"], runtime_root=world["runtime"])
+        current = command(runtime, world, current, "workflow.attempt", {"task_id": "work", "attempt_id": "timeout-" + str(number),
+            "strategy_id": "renamed-" + str(number), "outcome": "failure", "observation_ids": ["timeout-observed-" + str(number)], "rationale_ref": None})
+        decision = workflow.retry_decision(current, "work")["policy"]
+        assert decision["failed_attempts"] == number + 1
+        assert decision["allow_attempt"] is (number == 0)
+    saved = copy.deepcopy(current["extensions"]["workflow_persistence"]["attempts"])
+    assert saved[0]["strategy_key"] == saved[1]["strategy_key"]
+    assert decision["reason_code"] == "unchanged_failure"
+    current = _owner_register(runtime, world, current, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    current = _owner_progress(runtime, world, current, 10)
+    assert current["extensions"]["workflow_persistence"]["attempts"][:2] == saved
+    assert workflow.retry_decision(current, "work")["policy"]["failed_attempts"] == 2
+    assert workflow.retry_decision(current, "work")["action"] == "wait"
+    with pytest.raises(ValueError):
+        command(runtime, world, current, "workflow.task", {"task_id": "work", "action": "start"})
+
+
+@pytest.mark.parametrize("policy,actual,expected", [("hard", {"units": 2}, "resource_exhausted"),
+    ("hard", None, "resource_unknown"), ("forecast", None, "productive_work")])
+def test_actual_resource_owner_state_separates_hard_and_forecast_unknown(world, policy, actual, expected):
+    import workflow
+    from datetime import datetime, timezone, timedelta
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    current = _owner_register(runtime, world, current, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    current = command(runtime, world, current, "workflow.budget", {"limits": {"units": {"limit": 2, "enforcement": policy}},
+        "deadline": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    current = command(runtime, world, current, "workflow.reserve", {"reservation_id": "bounded-work", "amounts": {"units": 2}, "category": "work"})
+    current = command(runtime, world, current, "workflow.settle", {"reservation_id": "bounded-work", "actual": actual})
+    current = _owner_progress(runtime, world, current, 1)
+    assert workflow.retry_decision(current, "work")["policy"]["reason_code"] == expected
+
+
+def test_owner_full_history_detects_omitted_legacy_grade_and_cancellation_survives_rename(world):
+    import workflow
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    current = _owner_register(runtime, world, current, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    current = _owner_progress(runtime, world, current, 1)
+    context = runtime.inspect_context(current, world["actor"], project=world["project"])
+    assert workflow._history(current, context)["coverage"]["status"] == "complete"
+    legacy = copy.deepcopy(current)
+    grade = {"verdict": "FAIL", "receipt_ids": ["old-review"], "receipt_bindings": {
+        "old-review": {"digest": "a" * 64, "artifact_id": "output", "artifact_digest": "b" * 64}},
+        "receipt_verdicts": {"old-review": "FAIL"}, "round": 1, "independent": False, "certifies_authority": False}
+    grade["grade_digest"] = workflow._digest(grade)
+    legacy["extensions"]["workflow_history"] = [{"quality": {"accept": grade}}]
+    # This is an intentionally contradictory projection, not an admitted run.
+    assert workflow._history(legacy, context)["coverage"]["status"] == "unknown"
+    current = command(runtime, world, current, "workflow.task", {"task_id": "work", "action": "cancel", "reason": "User cancelled"})
+    context = runtime.inspect_context(current, world["actor"], project=world["project"])
+    # A proposed reconfiguration cannot reset the retained obligation tombstone.
+    renamed = copy.deepcopy(current)
+    renamed["extensions"]["workflow"]["graph"]["nodes"] = {"renamed": {"id": "renamed", "deps": [], "criteria": ["accept"], "estimate": 1, "status": "pending"}}
+    assert workflow.retry_decision(renamed, "renamed")["condition"] == "cancelled"
+
+
+def test_runtime_without_required_progress_preparer_refuses_raw_outcomes(world, monkeypatch):
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    monkeypatch.delitem(runtime._PREPARERS, "workflow.progress")
+    with pytest.raises(ValueError, match="preparer"):
+        command(runtime, world, current, "workflow.progress", {"task_id": "work", "attempt_id": "invented",
+            "input_digest": "a" * 64, "output_digest": "b" * 64, "evidence_ids": [],
+            "outcome": "transient_failure", "summary": "Caller claim"})
+    assert runtime.load_run(world["project"], current["run_id"]) == current
+
+
+def _owner_native_authorization(runtime, world, current, ident, kind, data):
+    """Programmed native user evidence, never a live approval assertion."""
+    import json
+    from datetime import datetime, timezone, timedelta
+    from test_run_state import command
+    binding = {key: current[key] for key in ("run_id", "contract_digest", "profile_digest")}
+    envelope = {"schema_version": 1, "kind": kind, "bindings": binding, "data": data}
+    event = {"type": "user", "uuid": ident, "sessionId": world["actor"]["native_payload"]["session_id"],
+        "message": {"role": "user", "content": json.dumps({"autopilot_authorization": envelope})}}
+    with world["transcript"].open("a") as stream: stream.write(json.dumps(event) + "\n")
+    stamp = datetime.now(timezone.utc)
+    current = _owner_register(runtime, world, current, ident + "-file", {"kind": kind,
+        "observed_at": stamp.isoformat(), "expires_at": (stamp + timedelta(hours=1)).isoformat(),
+        "bindings": {**current["owner"], **binding},
+        "data": {**data, "source": {"kind": "native-user", "message_id": ident}}}, role="evidence")
+    return command(runtime, world, current, "evidence.record", {"id": ident, "kind": kind, "artifact_id": ident + "-file"})
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_real_owner_rearm_requires_material_strategy_and_current_program(world, changed):
+    import workflow
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    current = _owner_register(runtime, world, current, "output", {"answer": 7}, role="output")
+    program = world["project"] / "failed-program.py"
+    program.write_text("raise SystemExit(7)\n")
+    current = command(runtime, world, current, "artifact.register", {"id": "failed-program", "path": str(program),
+        "role": "input", "required": False, "retention": "durable"})
+    spec = {"schema_version": 1, "kind": "python-consumer", "criterion_id": "accept", "artifact_id": "output",
+        "script_artifact_id": "failed-program", "expected": {"answer": 7}, "argv": [], "timeout_seconds": 2}
+    current = _owner_register(runtime, world, current, "old-check", spec)
+    current = runtime.observe(world["project"], current["run_id"], "consumer-check", {"check_id": "old-check"},
+        expected_revision=current["revision"], command_id="failed-consumer", actor=world["actor"], runtime_root=world["runtime"])
+    current = command(runtime, world, current, "workflow.attempt", {"task_id": "work", "attempt_id": "failed-attempt",
+        "strategy_id": "initial", "outcome": "failure", "observation_ids": ["failed-consumer"], "rationale_ref": None})
+    original = copy.deepcopy(current["extensions"]["workflow_persistence"]["attempts"])
+    if changed:
+        program = world["project"] / "changed-program.py"
+        program.write_text('import json\nprint(json.dumps({"answer": 7}))\n')
+        current = command(runtime, world, current, "artifact.register", {"id": "changed-program", "path": str(program),
+            "role": "input", "required": False, "retention": "durable"})
+        spec = {**spec, "script_artifact_id": "changed-program"}
+    current = _owner_register(runtime, world, current, "new-check", spec)
+    current = _owner_register(runtime, world, current, "new-strategy", {"schema_version": 1, "strategy_id": "renamed",
+        "method": {"kind": "python-consumer", "script_artifact_id": spec["script_artifact_id"]},
+        "intervention": {"artifact_ids": ["output"]}, "discriminator": {"check_id": "new-check"}})
+    current = _owner_native_authorization(runtime, world, current, "retry-approved", "retry_clearance",
+        {**workflow.retry_binding(current, "work"), "changed_condition": "Use the registered revised consumer", "approved": True})
+    payload = {"task_id": "work", "criterion_id": None, "receipt_id": "retry-approved", "rationale_ref": "new-strategy"}
+    if not changed:
+        with pytest.raises(ValueError, match="Reworded strategy"):
+            command(runtime, world, current, "workflow.rearm", payload)
+        assert runtime.load_run(world["project"], current["run_id"]) == current
+        return
+    current = command(runtime, world, current, "workflow.rearm", payload)
+    assert current["extensions"]["workflow_persistence"]["attempts"] == original
+    assert workflow.retry_decision(current, "work")["policy"]["failed_attempts"] == 1
+    assert workflow.stop_feedback_status(current, runtime.inspect_context(current, world["actor"], project=world["project"]))["action"] == "eligible"
+    with pytest.raises(ValueError): command(runtime, world, current, "workflow.rearm", payload)
+    program.write_text("raise SystemExit(7)\n")
+    assert workflow.stop_feedback_status(current, runtime.inspect_context(current, world["actor"], project=world["project"]))["action"] == "terminal"
+
+
+def test_real_dispatch_owner_joins_native_source_without_weakening_verifier(world, monkeypatch):
+    import json, workflow
+    from datetime import datetime, timezone, timedelta
+    from test_run_state import command
+    runtime, current, _ = _native_process_fixture(world, monkeypatch)
+    current = command(runtime, world, current, "workflow.budget", {"limits": {"units": {"limit": 10, "enforcement": "hard"}},
+        "deadline": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    for ident, category, units in (("worker", "work", 5), ("audit", "integration", 1)):
+        current = command(runtime, world, current, "workflow.reserve", {"reservation_id": ident, "amounts": {"units": units}, "category": category})
+    root = world["project"] / "delegated"
+    for sub in ("output", "scratch"): (root / sub).mkdir(parents=True)
+    brief = {"child_id": "/root/worker", "task_id": "work", "deliverables": ["Produce reviewed output"],
+        "paths": [str(root)], "criteria": ["accept"], "reservation_id": "worker", "integration_reservation_id": "audit",
+        "integration_owner": current["owner"]["session_uuid"], "return_contract": ["artifact_ids", "evidence_ids", "disposition"],
+        "cancellation": "Retain partial evidence and return", "mode": "artifact-only",
+        "file_contract": {"schema_version": 1, "immutable_inputs": [], "output_roots": [str(root / "output")], "scratch_root": str(root / "scratch")}}
+    binding = {key: current[key] for key in ("run_id", "contract_digest", "profile_digest")}
+    envelope = {"schema_version": 1, "kind": "delegation", "bindings": binding, "data": brief}
+    rows = [{"type": "response_item", "payload": {"type": "function_call", "namespace": "collaboration", "name": "followup_task",
+        "call_id": "real-dispatch", "arguments": json.dumps({"target": brief["child_id"], "message": json.dumps({"autopilot_delegation": envelope})})}},
+        {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "real-dispatch", "output": ""}}]
+    with world["transcript"].open("a") as stream:
+        for row in rows: stream.write(json.dumps(row) + "\n")
+    stamp = datetime.now(timezone.utc)
+    current = _owner_register(runtime, world, current, "dispatch-file", {"kind": "delegation", "bindings": {**current["owner"], **binding},
+        "observed_at": stamp.isoformat(), "expires_at": (stamp + timedelta(hours=1)).isoformat(),
+        "data": {**brief, "source": {"kind": "native-dispatch", "call_id": "real-dispatch"}}}, role="evidence")
+    current = command(runtime, world, current, "evidence.record", {"id": "dispatch-proof", "kind": "delegation", "artifact_id": "dispatch-file"})
+    context = runtime.inspect_context(current, world["actor"], project=world["project"])
+    assert context["verify_receipt"]("dispatch-proof", "delegation", binding)
+    current = command(runtime, world, current, "workflow.dispatch", {**brief, "admission_id": "parent",
+        "dispatch_receipt_id": "dispatch-proof", "admission_requests": [{"id": "parent", "actor": world["actor"], "paths": [str(root)]}]})
+    assert current["extensions"]["workflow"]["children"]["/root/worker"]["authority_granted"] is False
+    world["transcript"].write_text(world["transcript"].read_text().replace('"name": "followup_task"', '"name": "exec_command"'))
+    context = runtime.inspect_context(current, world["actor"], project=world["project"])
+    assert not context["verify_receipt"]("dispatch-proof", "delegation", binding)
+
+
+def test_resource_exhaustion_after_progress_blocks_fresh_task_admission(world):
+    from datetime import datetime, timezone, timedelta
+    from test_run_state import command
+    runtime, current = _policy_owner(world)
+    current = _owner_register(runtime, world, current, "progress-spec", {"schema_version": 1,
+        "kind": "progress_observation", "arguments": {"task_id": "work"}})
+    current = _owner_progress(runtime, world, current, 1)
+    current = command(runtime, world, current, "workflow.budget", {"limits": {"units": {"limit": 2, "enforcement": "hard"}},
+        "deadline": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    current = command(runtime, world, current, "workflow.reserve", {"reservation_id": "work", "amounts": {"units": 2}, "category": "work"})
+    current = command(runtime, world, current, "workflow.settle", {"reservation_id": "work", "actual": {"units": 2}})
+    with pytest.raises(ValueError, match="resource"):
+        command(runtime, world, current, "workflow.task", {"task_id": "work", "action": "start"})

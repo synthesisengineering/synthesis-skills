@@ -200,15 +200,13 @@ def test_stop_feedback_is_bounded_without_accepting_failed_checkpoint(
     captured = capsys.readouterr()
     output = json.loads(captured.out)
     assert code == 0
-    assert '"checkpoint_accepted": false' in output["systemMessage"]
-    assert '"status": "UNKNOWN"' in output["systemMessage"]
-    if repeat:
-        assert output["continue"] is False
-        assert "unresolved" in output["stopReason"]
-        assert output.get("decision") != "block"
-    else:
-        assert output["decision"] == "block"
-        assert "unresolved" in output["reason"]
+    report = json.loads(output["systemMessage"].removeprefix("PROJECT_CHECKPOINT_JSON: "))
+    assert report == {"status": "UNKNOWN", "issues": ["fixture checkpoint is unresolved"],
+                      "checkpoint_accepted": False}
+    # An unreserved first Stop cannot request another turn either.
+    assert output["continue"] is False
+    assert "unresolved" in output["stopReason"]
+    assert "decision" not in output and "reason" not in output
 
 
 @pytest.mark.parametrize("payload", [{}, {"hook_event_name": "Stop"},

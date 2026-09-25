@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.147.0] - 2026-09-25
+
+Autopilot 3.2.0 makes the eight-operation controller the ordinary execution path.
+Requests bind identity, current ownership, exact input and journal revision.
+Native observations retain verifiable source ranges and cursor continuity.
+Current cancellation and unresolved instructions constrain task admission,
+Stop continuation and completion; explicit resume retains the earlier evidence.
+Historical negative coverage remains unknown outside the declared append-only
+producer boundary.
+
+Productive work can continue without the former fixed observation and grading
+ceilings. Repeated causal failures, unresolved effects, hard resources and
+current authority still bound execution. Stop reserves one correction and
+revalidates before emission. Adaptive profile checks require the selected
+domain outcomes, and terminal retry rechecks current acceptance while retaining
+the original terminal record.
+
+Project checkpoint integration separates a narrowly verified execution basis
+from the full terminal checkpoint. Native inbox processing retains decoded
+identity through the transaction and uses compare-and-swap for heartbeat updates.
+These source guarantees do not establish installed native scheduling, complete
+usage accounting, or comparative superiority.
+
 ## [4.146.0] - 2026-09-25
 
 Autopilot 3.1.0 binds comparative evaluations to qualified task configurations

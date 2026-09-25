@@ -63,6 +63,7 @@ from peer_addressing import (
     render_inbox,
     seat_for_identity,
     unread_messages,
+    update_seat_heartbeat,
     write_receipt,
     write_seat,
 )
@@ -3614,13 +3615,17 @@ def _honor_roots(board_content: str, holder: Session, cwd: Path) -> list[Path]:
 
 
 def honor_open_requests(
-    board: Path, holder_uuid: str, cwd: Path | None = None
+    board: Path, holder_uuid: str, cwd: Path | None = None,
+    *, caller_identity: SelfIdentity | None = None,
 ) -> list[str]:
     """Narrow clean requested areas off one owned row; reply to each.
 
     Runs as the holder — the per-turn inbox and the Stop hook both execute
     in the holder's own session context — so holder ownership is verified
     and every outcome is reported back to the caller for the inbox text.
+    Native hook callers pass their decoded identity explicitly; shell callers
+    use process identity. The same identity is checked again inside the board
+    transaction and retained in the seat heartbeat after a successful update.
     Git silence is never clean: an unverifiable checkout defers the
     request without a reply, and Layer 3 applies its own checks later.
     """
@@ -3634,7 +3639,8 @@ def honor_open_requests(
     holder = find_session(current, holder_uuid)
     if holder is None or not active(holder):
         return []
-    if not _caller_owns_session(board, holder):
+    caller = caller_identity if caller_identity is not None else detect_self()
+    if not isinstance(caller, SelfIdentity) or not _caller_owns_session(board, holder, caller=caller):
         return ["honor pass refused: hook identity does not own this row"]
     forms = _holder_identity_forms(holder)
     targeted = [
@@ -3686,6 +3692,10 @@ def honor_open_requests(
         holder_now = find_session(rows_now, holder.session_uuid)
         if holder_now is None or not active(holder_now):
             raise RuntimeError("holder row went terminal during the honor pass")
+        current_seat = read_seat(board, holder_now.session_uuid)
+        if not _caller_owns_record(holder_now, caller, current_seat):
+            raise RuntimeError("hook identity no longer owns this row")
+        honor_outcome["seat"] = current_seat
         answered = parse_release_replies(live)
         narrowed = [
             area for _req, areas, result, _d in verdicts
@@ -3726,26 +3736,13 @@ def honor_open_requests(
     try:
         locked_update(board, operation)
     except RuntimeError as exc:
-        return outcomes + [f"honor pass failed to record: {exc}"]
+        return [f"honor pass failed to record: {exc}"]
     row_heartbeat = honor_outcome.get("heartbeat")
-    existing = read_seat(board, holder.session_uuid)
+    existing = honor_outcome.get("seat")
     if existing is not None:
-        write_seat(
-            board,
-            session_uuid=existing.session_uuid,
-            compact_id=existing.compact_id,
-            machine=existing.machine,
-            machine_label=existing.machine_label,
-            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
-                client=existing.client,
-                harness_session_id=existing.harness_session_id,
-                host_session_id=existing.host_session_id,
-                pid=existing.pid,
-            ),
-            cwd=existing.cwd,
-            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
-            status="active",
-        )
+        if not update_seat_heartbeat(board, expected=existing,
+                                     last_heartbeat=row_heartbeat):
+            outcomes.append("honor pass preserved a concurrent seat change; heartbeat was not overwritten")
     return outcomes
 
 
@@ -4248,7 +4245,7 @@ def seat_ownership_error(extra: str = "") -> str:
     return message
 
 
-def _caller_owns_session(board: Path, session: Session) -> bool:
+def _caller_owns_session(board: Path, session: Session, *, caller: SelfIdentity | None = None) -> bool:
     """Whether the running client identity owns this board session.
 
     The compact id is an address, not authority. A refused claim may mention a
@@ -4260,8 +4257,12 @@ def _caller_owns_session(board: Path, session: Session) -> bool:
     falls through to the row's own ref instead of failing closed on an empty
     sidecar (defect 6: the s-tgy2 class).
     """
-    caller = detect_self()
-    seat = read_seat(board, session.session_uuid)
+    caller = caller if caller is not None else detect_self()
+    return _caller_owns_record(session, caller, read_seat(board, session.session_uuid))
+
+
+def _caller_owns_record(session: Session, caller: SelfIdentity, seat) -> bool:
+    """Apply ownership to the exact sidecar captured for the transaction."""
     if seat is not None:
         if seat.harness_session_id:
             return bool(
@@ -4284,7 +4285,7 @@ def _caller_owns_session(board: Path, session: Session) -> bool:
     # selector cannot establish authority and must fail closed.
     if session.client_ref:
         try:
-            return detect_client_ref() == session.client_ref
+            return caller.primary_ref == session.client_ref
         except ValueError:
             return False
     return False

@@ -298,6 +298,7 @@ def test_muse_boundary_rejects_invalid_native_permission_frame(observer, tmp_pat
 def domain_review_context(tmp_path, family="writing"):
     from test_domain_quality import make_package
     context, defects = make_package(tmp_path, family)
+    context["binding"]["project_root"] = str(context["project"])
     context["state"]["extensions"] = {"workflow": {"budget": {
         "limits": {"usd_micros": {"enforcement": "forecast"}}, "reservations": {
             "review-domain": {"status": "reserved", "category": "verification",

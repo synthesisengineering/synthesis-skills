@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import importlib
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -199,7 +200,7 @@ def engine(monkeypatch):
     module = importlib.import_module("run_state")
     # Tests register deliberately synthetic trusted-code callbacks. Isolate
     # them from production bridge/extension registration in other test files.
-    for name in ("_COMMANDS", "_VERIFIERS", "_CONSTRAINTS", "_EVIDENCE_SOURCES", "_OBSERVERS", "_ACCEPTANCE"):
+    for name in ("_COMMANDS", "_PREPARERS", "_VERIFIERS", "_CONSTRAINTS", "_EVIDENCE_SOURCES", "_OBSERVERS", "_ACCEPTANCE"):
         if hasattr(module, name):
             monkeypatch.setattr(module, name, {})
     if hasattr(module, "_TERMINAL_COMMANDS"):
@@ -1059,3 +1060,161 @@ def test_replayed_command_still_readmits_inside_existing_lock(engine,world,monke
     assert len(calls)==1
     write_board(world,status='released')
     with pytest.raises(ValueError):command(engine,world,state,'progress',{'summary':'Once'},command_id='once')
+
+
+def body():
+    return {'schema_version': 1, 'kind': 'task_completion', 'arguments': {'task_id': 'work'}}
+
+
+def materialize(engine, world, state, **kwargs):
+    return command(engine, world, state, 'input.materialize', {'id': 'managed', 'value': body()}, **kwargs)
+
+
+def test_managed_input_is_digest_addressed_registered_and_immutable(engine, world):
+    state = create(engine, world)
+    state = materialize(engine, world, state)
+    item = state['artifacts']['managed']
+    raw = (world['project'] / item['path']).read_bytes()
+    assert json.loads(raw) == body()
+    assert item['digest'] == hashlib.sha256(raw).hexdigest()
+    assert Path(item['path']).name == item['digest'] + '.json'
+    assert item['role'] == 'input' and item['required'] is False
+    assert not state['evidence'] and not state['verification']
+
+
+@pytest.mark.parametrize('boundary', ['before-write', 'after-write', 'after-append'])
+def test_interrupted_materialization_does_not_turn_staging_into_evidence(engine, world, monkeypatch, boundary):
+    state = create(engine, world)
+    original_write, original_append = engine._install_input, engine._append
+    def writing(path, raw):
+        if Path(path).parent.name == 'inputs':
+            if boundary == 'before-write':
+                raise OSError('synthetic before materialization')
+            original_write(path, raw)
+            if boundary == 'after-write':
+                raise OSError('synthetic after materialization')
+            return
+        return original_write(path, raw)
+    def appending(*args, **kwargs):
+        original_append(*args, **kwargs)
+        if boundary == 'after-append':
+            raise OSError('synthetic after durable append')
+    monkeypatch.setattr(engine, '_install_input', writing)
+    monkeypatch.setattr(engine, '_append', appending)
+    with pytest.raises(OSError):
+        materialize(engine, world, state, command_id='materialize-once')
+    current = engine.load_run(world['project'], state['run_id'])
+    assert not current['evidence'] and not current['verification']
+    assert ('managed' in current['artifacts']) == (boundary == 'after-append')
+    monkeypatch.setattr(engine, '_install_input', original_write)
+    monkeypatch.setattr(engine, '_append', original_append)
+    retried = materialize(engine, world, state, command_id='materialize-once')
+    assert retried['revision'] == state['revision'] + 1
+
+
+@pytest.mark.parametrize('damage', ['bytes', 'symlink', 'ancestor'])
+def test_managed_input_refuses_changed_path_or_ancestor(engine, world, damage):
+    state = create(engine, world)
+    first = materialize(engine, world, state)
+    path = world['project'] / first['artifacts']['managed']['path']
+    if damage == 'bytes':
+        path.write_bytes(b'{}')
+    elif damage == 'symlink':
+        path.unlink()
+        path.symlink_to(world['plan'])
+    else:
+        kept = path.parent.with_name('saved-inputs')
+        path.parent.rename(kept)
+        path.parent.symlink_to(kept, target_is_directory=True)
+    with pytest.raises(ValueError):
+        materialize(engine, world, first, command_id='check-current-bytes')
+    assert engine.load_run(world['project'], first['run_id']) == first
+
+
+def test_stale_managed_input_does_no_materialization(engine, world):
+    state = create(engine, world)
+    current = command(engine, world, state, 'progress', {'summary': 'Prior revision'})
+    with pytest.raises(ValueError, match='stale'):
+        materialize(engine, world, state)
+    assert not (engine._home(world['project'], state['run_id']) / 'inputs').exists()
+    assert engine.load_run(world['project'], state['run_id']) == current
+
+
+def test_changed_start_request_before_first_followup_is_refused(engine, world):
+    binding = {'request_id': 'start', 'request_digest': 'a' * 64, 'operation': 'start',
+               'step': 'create', 'initial_revision': 0}
+    state = create(engine, world, request_binding=binding)
+    changed = {**binding, 'request_digest': 'b' * 64}
+    with pytest.raises(ValueError):
+        create(engine, world, request_binding=changed)
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_command_and_prefix_commit_atomically(engine, world):
+    state = create(engine, world)
+    binding = {'request_id': 'note', 'request_digest': 'a' * 64, 'operation': 'record',
+               'step': 'note', 'initial_revision': state['revision']}
+    updated = command(engine, world, state, 'progress', {'summary': 'Synthetic note'}, request_binding=binding)
+    entry = updated['extensions']['controller']['requests']['note']
+    assert entry['request_digest'] == 'a' * 64
+    assert entry['steps']['note']['revision'] == updated['revision']
+    assert updated['progress']['measured'] is False
+    changed = deepcopy(binding)
+    changed['request_digest'] = 'b' * 64
+    with pytest.raises(ValueError):
+        command(engine, world, updated, 'progress', {'summary': 'Different request'}, request_binding=changed)
+
+
+def test_managed_input_concurrent_existing_digest_is_never_overwritten(engine, world, monkeypatch):
+    import os
+    state = create(engine, world)
+    original = os.link
+    foreign = b'foreign bytes retained'
+    def collide(source, target, **options):
+        fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600, dir_fd=options['dst_dir_fd'])
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(foreign)
+        return original(source, target, **options)
+    monkeypatch.setattr(os, 'link', collide)
+    with pytest.raises(ValueError):
+        materialize(engine, world, state)
+    files = list((engine._home(world['project'], state['run_id']) / 'inputs').glob('*.json'))
+    assert len(files) == 1 and files[0].read_bytes() == foreign
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_managed_input_open_directory_survives_ancestor_substitution_without_escape(engine, world, monkeypatch):
+    import os
+    state = create(engine, world)
+    home = engine._home(world['project'], state['run_id'])
+    outside = world['scratch'] / 'foreign'
+    outside.mkdir()
+    original = os.link
+    def substitute(source, target, **options):
+        (home / 'inputs').rename(home / 'retained-inputs')
+        (home / 'inputs').symlink_to(outside, target_is_directory=True)
+        return original(source, target, **options)
+    monkeypatch.setattr(os, 'link', substitute)
+    with pytest.raises((ValueError, OSError)):
+        materialize(engine, world, state)
+    assert not list(outside.iterdir())
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_trusted_preparer_gets_exact_verified_journal_head(engine, world):
+    state = create(engine, world)
+    expected = list(engine._events(world['project'], state['run_id']))[-1]
+    received = []
+    def prepare(context, payload):
+        received.append(deepcopy(context['journal_head']))
+        return payload
+    def reduce(state, payload, context):
+        return state
+    engine.register_command('head-probe', reduce)
+    engine.register_preparer('head-probe', prepare)
+    command(engine, world, state, 'head-probe', {})
+    assert received == [{'revision': state['revision'], 'digest': expected['digest'], 'scope': 'full_run'}]
+    current = engine.load_run(world['project'], state['run_id'])
+    readback = engine.inspect_context(current, world['actor'])
+    assert readback['journal_head']['revision'] == current['revision']
+    assert 'admission_observation' not in readback

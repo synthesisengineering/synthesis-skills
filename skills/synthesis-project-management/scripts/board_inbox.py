@@ -152,6 +152,7 @@ def inbox_text(
                 honor = honor_open_requests(
                     board, seat_rows[0].session_uuid,
                     Path(str(cwd)).expanduser() if cwd else None,
+                    caller_identity=identity,
                 )
         except Exception as exc:  # the inbox never blocks a prompt on honor trouble
             honor = [f"honor pass skipped: {exc}"]

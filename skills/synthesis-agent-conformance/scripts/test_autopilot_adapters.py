@@ -63,8 +63,13 @@ def test_both_checkpoint_and_autopilot_run_even_when_one_is_terminal():
 
 
 @pytest.mark.parametrize("terminal_index", [0, 1])
-def test_terminal_result_has_precedence_over_sibling_corrective_result(terminal_index):
-    responses = [{"decision": "block", "reason": "unfinished"}] * 2
+def test_terminal_result_has_precedence_over_sibling_corrective_result(terminal_index, monkeypatch):
+    # This seam isolates composition, not the independently tested journal owner.
+    # A corrective sibling now requires its owner-issued reservation.
+    proof = {"synthetic_reservation": "composition-only"}
+    monkeypatch.setattr(NATIVE._runtime(), "_policy_reservation",
+        lambda event, supplied, *, consume: supplied == proof and not consume)
+    responses = [{"decision": "block", "reason": "unfinished", "_synthesis_policy": proof}] * 2
     responses[terminal_index] = {"continue": False, "stopReason": "infrastructure failure"}
     result = NATIVE.combined_result(payload(), checkpoint=lambda _: responses[0], autopilot_check=lambda _: responses[1])
     assert result["continue"] is False
@@ -73,10 +78,12 @@ def test_terminal_result_has_precedence_over_sibling_corrective_result(terminal_
 
 
 @pytest.mark.parametrize("repeat", [False, True])
-def test_composed_feedback_uses_native_repeat_budget(repeat):
+def test_composed_feedback_without_owner_reservation_is_terminal(repeat):
     result = NATIVE.combined_result(payload(repeat), checkpoint=lambda _: {},
         autopilot_check=lambda _: {"decision": "block", "reason": "unfinished"})
-    assert (result.get("continue") is False) if repeat else result["decision"] == "block"
+    assert result.get("continue") is False
+    assert result.get("decision") != "block"
+    assert "unfinished" in result["systemMessage"]
 
 
 @pytest.mark.parametrize("malformed", [None, [], {}, {"session_id": "n", "hook_event_name": "Stop", "stop_hook_active": "false"}])
@@ -136,7 +143,8 @@ def test_verified_checkpoint_execution_preserves_terminal_wire_result(monkeypatc
         def execute(self, active, script, arguments, body, *, timeout):
             calls.append((active, script, arguments, json.loads(body), timeout))
             return subprocess.CompletedProcess([], 0, b'{"continue":false,"stopReason":"terminal"}', b'')
-        def stop_result(self, event, result):
+        def stop_result(self, event, result, *, consume_policy=True):
+            calls.append(("consume_policy", consume_policy))
             return json.loads(result.stdout)
     monkeypatch.setattr(NATIVE, "_runtime", lambda: Runtime())
     result = NATIVE.checkpoint_result(payload())
@@ -145,6 +153,7 @@ def test_verified_checkpoint_execution_preserves_terminal_wire_result(monkeypatc
     assert calls[1][1] == "synthesis-project-management/scripts/project_state.py"
     assert calls[1][2] == ["hook"]
     assert 0 < calls[1][4] < 13
+    assert calls[2] == ("consume_policy", False)
 
 
 def test_checkpoint_refuses_a_different_verified_release_root(monkeypatch, tmp_path):

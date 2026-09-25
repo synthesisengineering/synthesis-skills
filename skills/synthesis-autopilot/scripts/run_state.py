@@ -29,6 +29,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import tempfile
 import uuid
@@ -49,12 +50,15 @@ MAX_JSON_BYTES = 4 * 1024 * 1024
 MAX_EVENTS = 10000
 MAX_HANDOFF_SECONDS = 3600
 _COMMANDS = {}
+_PREPARERS = {}
 _VERIFIERS = {}
 _CONSTRAINTS = {}
 _TERMINAL_COMMANDS = set()
 _EVIDENCE_SOURCES = {}
 _OBSERVERS = {}
 _ACCEPTANCE = {}
+REQUEST_OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish"})
+MAX_INPUT_BYTES = 256 * 1024
 
 
 class RunStateError(ValueError):
@@ -70,6 +74,83 @@ def _json(value):
 
 def _digest(value):
     return hashlib.sha256(_json(value)).hexdigest()
+
+
+def _request_binding(value):
+    """Request metadata binds replay; it never supplies action authority."""
+    if value is None:
+        return None
+    fields = {"request_id", "request_digest", "operation", "step", "initial_revision"}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value["operation"] not in REQUEST_OPERATIONS
+            or not isinstance(value["request_digest"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", value["request_digest"])
+            or type(value["initial_revision"]) is not int or value["initial_revision"] < 0):
+        raise RunStateError("invalid controller request binding")
+    _id(value["request_id"], "request ID")
+    _id(value["step"], "request step")
+    return deepcopy(value)
+
+
+def _check_request(state, binding):
+    if binding is None:
+        return
+    saved = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"])
+    if saved is not None:
+        if any(saved.get(key) != binding[key] for key in ("request_digest", "operation", "initial_revision")):
+            raise RunStateError("request ID was already used with different input")
+    elif binding["initial_revision"] != state["revision"]:
+        raise RunStateError("new request does not bind its initial revision")
+
+
+def _record_request(state, binding, command_id, command_digest):
+    if binding is None:
+        return
+    controller = state.setdefault("extensions", {}).setdefault("controller", {"schema_version": 1})
+    requests = controller.setdefault("requests", {})
+    if len(requests) >= MAX_EVENTS and binding["request_id"] not in requests:
+        raise RunStateError("controller request journal capacity reached")
+    entry = requests.setdefault(binding["request_id"], {
+        key: binding[key] for key in ("request_digest", "operation", "initial_revision")})
+    steps = entry.setdefault("steps", {})
+    step = {"command_id": command_id, "revision": state["revision"], "command_digest": command_digest}
+    if binding["step"] in steps and steps[binding["step"]] != step:
+        raise RunStateError("request step identity already has a committed effect")
+    steps[binding["step"]] = step
+
+
+def _input_bytes(value):
+    if (not isinstance(value, dict) or type(value.get("schema_version")) is not int
+            or value["schema_version"] not in {1, 2}):
+        raise RunStateError("managed input requires a typed schema 1 or 2 JSON object")
+    pending = [(value, 0)]
+    nodes = 0
+    while pending:
+        item, depth = pending.pop()
+        nodes += 1
+        if depth > 32 or nodes > 32768:
+            raise RunStateError("managed input exceeds depth or node bound")
+        if isinstance(item, dict):
+            if len(item) > 1024 or any(not isinstance(key, str) for key in item):
+                raise RunStateError("managed input has invalid object keys")
+            pending.extend((key, depth + 1) for key in item)
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            if len(item) > 4096:
+                raise RunStateError("managed input exceeds array bound")
+            pending.extend((child, depth + 1) for child in item)
+        elif isinstance(item, str):
+            try:
+                if len(item.encode("utf-8")) > MAX_INPUT_BYTES:
+                    raise RunStateError("managed input string exceeds size bound")
+            except UnicodeError as exc:
+                raise RunStateError("managed input has invalid Unicode") from exc
+        elif item is not None and type(item) not in {bool, int, float}:
+            raise RunStateError("managed input must be finite JSON")
+    raw = _json(value) + b"\n"
+    if len(raw) > MAX_INPUT_BYTES:
+        raise RunStateError("managed input exceeds size bound")
+    return raw
 
 
 def _now():
@@ -99,6 +180,58 @@ def _uuid(value):
     except (ValueError, TypeError, AttributeError) as exc:
         raise RunStateError("run/owner identity must be a canonical UUID") from exc
     return value
+
+
+def _install_input(path, raw):
+    """Install immutable bounded bytes through no-follow directory handles."""
+    path = Path(path)
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    staged = None
+    try:
+        for part in path.parent.parts[1:]:
+            if part == "inputs":
+                try:
+                    os.mkdir(part, 0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        def existing():
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+            with os.fdopen(fd, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode) or before.st_size != len(raw):
+                    raise RunStateError("digest-addressed managed input bytes changed")
+                if stream.read(MAX_INPUT_BYTES + 1) != raw:
+                    raise RunStateError("digest-addressed managed input bytes changed")
+                present = path.lstat()
+                if (present.st_dev, present.st_ino) != (before.st_dev, before.st_ino):
+                    raise RunStateError("managed input path changed during materialization")
+        try:
+            existing()
+            return
+        except FileNotFoundError:
+            pass
+        staged = ".stage-" + uuid.uuid4().hex
+        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=descriptor)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(staged, path.name, src_dir_fd=descriptor, dst_dir_fd=descriptor, follow_symlinks=False)
+            os.fsync(descriptor)
+        except FileExistsError:
+            pass  # Concurrent install must have the same exact bytes.
+        existing()
+    finally:
+        if staged is not None:
+            try:
+                os.unlink(staged, dir_fd=descriptor)
+            except FileNotFoundError:
+                pass
+        os.close(descriptor)
 
 
 def _read(path):
@@ -411,6 +544,40 @@ def rebuild_projections(project, run_id, *, actor):
     return state
 
 
+def replay_request_step(project, run_id, *, request_binding, actor, command=None):
+    """Readmit and restore a committed facade prefix without repeating effects.
+
+    The request binding is a replay key, never permission. The selected step's
+    identity and command digest must still agree with the immutable journal.
+    """
+    binding = _request_binding(request_binding)
+    if binding is None:
+        raise RunStateError("request replay requires an exact binding")
+    project = Path(project).resolve(strict=True)
+    home = _home(project, run_id)
+    with bounded_lock(home / ".run.lock", create=False):
+        events = _events(project, run_id)
+        selected = None
+        last = None
+        for event in events:
+            last = event
+            entry = event["state"].get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"], {})
+            step = entry.get("steps", {}).get(binding["step"])
+            if step and step["revision"] == event["revision"]:
+                selected = event
+        state = deepcopy(last["state"])
+        _binding(project, state, actor)
+        _check_request(state, binding)
+        step = state.get("extensions", {}).get("controller", {}).get("requests", {}).get(binding["request_id"], {}).get("steps", {}).get(binding["step"])
+        if (not selected or not step or step["command_id"] != selected["command_id"]
+                or step["command_digest"] != selected["command_digest"]
+                or command is not None and selected["command"] != command):
+            raise RunStateError("request step does not bind its committed journal event")
+        if state["status"] not in TERMINAL:
+            _project(project, state)
+        return state
+
+
 def _append(project, state, command_id, command_digest, command, previous_digest, proof):
     home = _home(project, state["run_id"])
     event = {"schema_version": SCHEMA, "revision": state["revision"], "previous_digest": previous_digest,
@@ -428,16 +595,21 @@ def _append(project, state, command_id, command_digest, command, previous_digest
 
 def create_run(project: Path, *, project_id: str, plan: Path, contract: dict, profile: dict,
                actor: dict, command_id: str, run_id: str | None = None,
-               runtime_root: Path | None = None) -> dict:
+               runtime_root: Path | None = None, request_binding: dict | None = None) -> dict:
     return _create(project, project_id=project_id, plan=plan, contract=contract, profile=profile,
-                   actor=actor, command_id=command_id, run_id=run_id, runtime_root=runtime_root)
+                   actor=actor, command_id=command_id, run_id=run_id, runtime_root=runtime_root,
+                   request_binding=request_binding)
 
 
 def _create(project, *, project_id, plan, contract, profile, actor, command_id, run_id=None,
-            runtime_root=None, migration=None):
+            runtime_root=None, migration=None, request_binding=None):
     project = Path(project).resolve(strict=True)
     _id(project_id, "project ID")
     _id(command_id, "command ID")
+    request_binding = _request_binding(request_binding)
+    if request_binding and (request_binding["operation"] != "start" or request_binding["step"] != "create"
+                            or request_binding["initial_revision"] != 0):
+        raise RunStateError("creation request must be the initial start step")
     contract, profile = _contract(contract), _profile(profile)
     reference = _plan(project, plan)
     identity = native_binding(Path(actor["board"]), actor["native_payload"])
@@ -450,9 +622,13 @@ def _create(project, *, project_id, plan, contract, profile, actor, command_id, 
              "waits": {}, "effects": {}, "observations": {}, "extensions": {}, "progress": {}, "created_at": _now(), "updated_at": _now()}
     proof = _binding(project, state, actor)
     state["owner"] = proof
-    creation_digest = _digest({"project_id": project_id, "plan": reference.relative_path, "contract": contract,
+    creation_material = {"project_id": project_id, "plan": reference.relative_path, "contract": contract,
                                "profile": profile, "migration": migration[1] if migration else None,
-                               "owner": proof["session_uuid"], "native_ref": proof["native_ref"]})
+                               "owner": proof["session_uuid"], "native_ref": proof["native_ref"]}
+    if request_binding is not None:
+        creation_material["request_binding"] = request_binding
+    creation_digest = _digest(creation_material)
+    _record_request(state, request_binding, command_id, creation_digest)
     home = _home(project, run_id)
     with bounded_lock(home / ".run.lock"):
         if (home / "events").exists() and any((home / "events").iterdir()):
@@ -497,6 +673,20 @@ def register_command(name, reducer, *, allowed_fields=("extensions",), terminal_
         _TERMINAL_COMMANDS.add(name)
     else:
         _TERMINAL_COMMANDS.discard(name)
+
+
+def register_preparer(name, callback):
+    """Install trusted observation code inside the existing admitted command.
+
+    This is an in-process code registration, never a JSON callback. Its bounded
+    result is passed to the already registered pure extension reducer. Replay
+    checks use the original requested payload and do not repeat observation.
+    """
+    if name not in _COMMANDS or not callable(callback):
+        raise RunStateError("preparer requires a registered extension command")
+    if name in _PREPARERS and _PREPARERS[name] is not callback:
+        raise RunStateError("command preparer is already registered")
+    _PREPARERS[name] = callback
 
 
 def register_verifier(kind, verifier):
@@ -567,11 +757,46 @@ def unregister_constraint(name):
 def inspect_context(state, actor, *, project=None):
     """Read-only fresh state/admission/evidence view for trusted owner modules."""
     project = Path(project or state["owner"]["project_root"])
-    current = load_run(project, state["run_id"])
+    last = None
+    for last in _events(project, state["run_id"]):
+        pass
+    current = last["state"]
     if current != state:
         raise RunStateError("inspection state is stale; reload the current journal")
     proof = _binding(project, current, actor, readonly=True)
-    return _context(project, current, {}, proof, actor=actor)
+    context = _context(project, current, {}, proof, actor=actor)
+    context["journal_head"] = {"revision": current["revision"], "digest": last["digest"], "scope": "full_run"}
+    context["current_native_events"] = _native_readback(project, current, actor, context["journal_head"])
+    context["current_native_invalidation"] = _native_readback(project, current, actor, context["journal_head"], invalidation=True)
+    return context
+
+
+def _native_readback(project, state, actor, journal_head, *, passive=False, invalidation=False):
+    """An ephemeral fresh-read operation, never a reusable admission token.
+
+    The closure binds an already chain-verified state. Each invocation acquires
+    fresh native/PM admission and rejects an intervening journal append before
+    and after the selected current source ranges are read.
+    """
+    selected, principal, head = deepcopy(state), deepcopy(actor), deepcopy(journal_head)
+    project = Path(project)
+    def read(event_ids=None, interval=None, *, source_handle="root"):
+        import observation_bridge
+        base = {"project": project, "state": selected, "actor": principal}
+        if observation_bridge._current_head(base) != head["digest"]:
+            raise RunStateError("native readback journal head changed")
+        proof = _binding(project, selected, principal, readonly=True, passive=passive)
+        purpose = "passive-stop" if passive else "mutation"
+        with admission_scope(proof, principal, project, purpose=purpose) as token:
+            context = ({"binding": deepcopy(proof)} if invalidation and source_handle == "root" else
+                _context_observed(project, selected, {}, proof, actor=principal, observation=token))
+            context.update(base, admission_observation=token, journal_head=deepcopy(head))
+            result = (observation_bridge.current_invalidation(context, source_handle=source_handle) if invalidation
+                else observation_bridge.current_events(context, event_ids, required_interval=interval))
+        if observation_bridge._current_head(base) != head["digest"]:
+            raise RunStateError("native readback journal head changed")
+        return result
+    return read
 
 
 def completion_report(project, run_id, *, actor):
@@ -788,11 +1013,16 @@ def _complete(project, state, context):
     verified = {row["id"] for row in report["criteria"] if row["status"] == "PASS"}
     for item in state["profile"]["items"]:
         refs = item.get("criterion_ids")
-        if refs and all(ref in verified for ref in refs):
+        from profile_evidence import CANONICAL_IDS
+        if item["id"] not in CANONICAL_IDS and refs and all(ref in verified for ref in refs):
             continue
         record = _receipt(context, state, state.get("profile_evidence"), "profile")
-        if item["id"] not in record["data"].get("satisfied_items", []):
-            raise RunStateError("standing profile item lacks validated disposition")
+        if "dispositions" in record["data"]:
+            from profile_evidence import accept_profile
+            if not accept_profile(record["data"], state):
+                raise RunStateError("standing profile dispositions contain unresolved or invalid obligations")
+        elif item["id"] in CANONICAL_IDS or item["id"] not in record["data"].get("satisfied_items", []):
+            raise RunStateError("standing profile item lacks validated disposition: " + item["id"])
     return {"at": context["now"], "run_id": state["run_id"], "contract_digest": state["contract_digest"],
             "profile_digest": state["profile_digest"], "criteria": sorted(verified), "verifier_version": VERIFIER_VERSION}
 
@@ -877,6 +1107,24 @@ def _reduce(project, state, name, payload, context):
         state["artifacts"][key] = {**payload, "path": str(path.relative_to(Path(project).resolve())),
                                     "digest": hashlib.sha256(path.read_bytes()).hexdigest(), "registered_at": context["now"]}
         state["verification"] = {}
+    elif name == "input.materialize":
+        if set(payload) != {"id", "value"}:
+            raise RunStateError("managed input accepts only an ID and typed JSON value")
+        key = _id(payload["id"])
+        raw = _input_bytes(payload["value"])
+        digest = hashlib.sha256(raw).hexdigest()
+        home = _home(project, state["run_id"])
+        path = safe_path(home / "inputs" / (digest + ".json"), Path(project))
+        previous = state["artifacts"].get(key)
+        if previous and (previous.get("managed_input") is not True or previous.get("digest") != digest):
+            raise RunStateError("managed input ID is immutable")
+        _install_input(path, raw)
+        safe_path(path, Path(project))
+        if path.read_bytes() != raw:
+            raise RunStateError("managed input changed during materialization")
+        state["artifacts"][key] = {"id": key, "path": str(path.relative_to(Path(project).resolve())),
+            "role": "input", "retention": "durable", "required": False, "digest": digest,
+            "managed_input": True, "registered_at": context["now"]}
     elif name == "evidence.record":
         _fields(payload, {"id", "kind", "artifact_id"}, {"id", "kind", "artifact_id"})
         key, kind = _id(payload["id"]), _id(payload["kind"])
@@ -1023,13 +1271,15 @@ def _reduce(project, state, name, payload, context):
 
 
 CORE_COMMANDS = frozenset({"transition", "progress", "wait.add", "wait.resolve", "contract.amend", "profile.amend",
-    "artifact.register", "evidence.record", "criterion.evidence.bind", "verify", "close", "effect.prepare", "effect.observe", "effect.reconcile",
+    "artifact.register", "input.materialize", "evidence.record", "criterion.evidence.bind", "verify", "close", "effect.prepare", "effect.observe", "effect.reconcile",
     "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke"})
 
 
 def apply_command(project: Path, run_id: str, command: str, payload: dict, *, expected_revision: int,
-                  command_id: str, actor: dict, runtime_root: Path | None = None) -> dict:
+                  command_id: str, actor: dict, runtime_root: Path | None = None,
+                  request_binding: dict | None = None) -> dict:
     _id(command_id, "command ID")
+    request_binding = _request_binding(request_binding)
     if type(expected_revision) is not int or expected_revision < 1 or not isinstance(payload, dict):
         raise RunStateError("mutation requires an integer expected revision and object payload")
     project = Path(project).resolve(strict=True)
@@ -1054,7 +1304,11 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 matching = event
         state = deepcopy(previous["state"])
         proof = _command_binding(project, state, actor, command, payload)
-        digest = _digest({"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]})
+        material = {"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
+        if request_binding is not None:
+            material["request_binding"] = request_binding
+        digest = _digest(material)
+        _check_request(state, request_binding)
         if matching is not None:
             if matching["command_digest"] != digest:
                 raise RunStateError("command ID was already used with different input")
@@ -1069,6 +1323,8 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
         # scope ends before the fresh mutation admission below.
         with admission_scope(proof, actor, project) as operation:
             context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
+            context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
+            context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True)
             updated = deepcopy(state)
             if command.startswith("observe:") and command.split(":", 1)[1] in _OBSERVERS:
                 if command_id in state["evidence"] or command_id in state.get("observations", {}):
@@ -1101,11 +1357,21 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 reducer = _COMMANDS.get(command)
                 if reducer is None:
                     raise RunStateError("unknown run command")
-                updated = reducer(updated, deepcopy(payload), context)
+                prepared = deepcopy(payload)
+                if command in _PREPARERS:
+                    observer_context = {**context, "state": deepcopy(state), "project": project,
+                        "actor": deepcopy(actor), "admission_observation": operation,
+                        "command_id": command_id, "command_digest": digest, "runtime_root": _runtime(runtime_root)}
+                    observer_context["criterion_report"] = lambda: criterion_report(state, context)
+                    prepared = _PREPARERS[command](observer_context, prepared)
+                    if not isinstance(prepared, dict) or len(_json(prepared)) > MAX_JSON_BYTES:
+                        raise RunStateError("command preparer returned invalid or oversized data")
+                updated = reducer(updated, prepared, context)
                 if not isinstance(updated, dict) or {k: v for k, v in updated.items() if k != "extensions"} != {k: v for k, v in state.items() if k != "extensions"} or not isinstance(updated.get("extensions"), dict):
                     raise RunStateError("extension reducer attempted to modify protected core fields")
         updated["revision"] = state["revision"] + 1
         updated["updated_at"] = _now()
+        _record_request(updated, request_binding, command_id, digest)
         for check in _CONSTRAINTS.values():
             check(deepcopy(updated), command, deepcopy(payload), context)
         # Re-admit after reducer work: a revoked seat must not commit after a
@@ -1141,7 +1407,16 @@ def inspect_owned_runs(actor, *, runtime_root=None):
             continue
         project = Path(state["owner"]["project_root"])
         proof = _binding(project, state, actor, readonly=True, passive=True)
-        result.append((state, _context(project, state, {}, proof, actor=actor, purpose="passive-stop")))
+        context = _context(project, state, {}, proof, actor=actor, purpose="passive-stop")
+        head = _read(_home(project, state["run_id"]) / "events" / f"{state['revision']:012d}.json")
+        if (head.get("state") != state or head.get("digest") != _digest({key: value for key, value in head.items() if key != "digest"})):
+            raise RunStateError("journal head changed after passive owner discovery")
+        # _owned_records already verified this chain; a later append only makes
+        # this deny/candidate screen stale. Reservation re-admits under CAS.
+        context["journal_head"] = {"revision": state["revision"], "digest": head["digest"], "scope": "full_run"}
+        context["current_native_events"] = _native_readback(project, state, actor, context["journal_head"], passive=True)
+        context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], passive=True, invalidation=True)
+        result.append((state, context))
     return result
 
 

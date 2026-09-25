@@ -1,5 +1,11 @@
 # Run contracts and command interface
 
+For ordinary delegated work, use the eight-operation
+[execution controller](controller.md). It prepares inputs and invokes the same
+owners described here, retaining exact request prefixes across interruption.
+The lower-level interface remains useful for specialized observations, effects
+and explicit recovery; it does not bypass current workflow constraints.
+
 The agent prepares these inputs after registry-first project recovery and exact
 PM ownership. A user asks for the outcome; JSON authoring is the agent's work.
 Use the installed verified skill root. Examples below use the shell variables

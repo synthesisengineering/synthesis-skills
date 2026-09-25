@@ -98,10 +98,16 @@ def test_absent_optional_state_is_healthy(inbox, missing):
     board, row = inbox
     if missing == "board":
         board.unlink()
-    elif missing in {"seats", "own-seat"}:
+    elif missing == "seats":
+        seats = PEER.seats_dir(board)
+        retained = board.parent / "retained-seats"
+        retained_before = snapshot(seats)
+        # Keep the real sidecar and its writer lock; only the lookup location
+        # is absent. Removing lock files would weaken the production fixture.
+        seats.rename(retained)
+        assert not seats.exists() and snapshot(retained) == retained_before
+    elif missing == "own-seat":
         PEER.seat_path(board, row.session_uuid).unlink()
-        if missing == "seats":
-            PEER.seats_dir(board).rmdir()
     before = snapshot(board.parent)
     text = diagnostic(board)
     if missing == "watermark":
@@ -109,6 +115,8 @@ def test_absent_optional_state_is_healthy(inbox, missing):
     else:
         assert "unread message(s)" not in text
     assert snapshot(board.parent) == before
+    if missing == "seats":
+        assert not seats.exists() and snapshot(retained) == retained_before
 
 
 @pytest.mark.parametrize("corruption", [
