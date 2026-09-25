@@ -40,6 +40,34 @@ def capture(engine, world):
     return state, receipt
 
 
+@pytest.mark.parametrize('limit', ['file-size', 'entry-count', 'receipt-size'])
+def test_large_retained_evidence_reaches_actual_checkpoint_consumer(engine, world, limit):
+    """D2: actual files and journal consumers, no raised production limits."""
+    root = world['project'] / 'resources/evidence/retained'
+    root.mkdir(parents=True)
+    if limit == 'file-size':
+        with (root / 'archive.part-000').open('wb') as stream:
+            stream.truncate(40 * 1024 * 1024)
+    else:
+        count = 20100 if limit == 'entry-count' else 9000
+        if limit == 'receipt-size':
+            root = root / ('a' * 120) / ('b' * 120) / ('c' * 120)
+            root.mkdir(parents=True)
+        for number in range(count):
+            (root / (f'{number:05d}-' + ('r' * 100 if limit == 'receipt-size' else 'evidence'))).write_bytes(b'x')
+    state, receipt = capture(engine, world)
+    assert len(json.dumps(receipt).encode()) < 64 * 1024
+    assert checkpoint.validate_execution_basis(view(engine, world, state), receipt) == ('EXECUTION_BASIS', [])
+    import controller
+    controller.register(engine)
+    state = command(engine, world, state, 'controller.checkpoint', {'reason': 'Retained evidence scale', 'include_pm': True})
+    saved = engine.load_run(world['project'], state['run_id'])
+    assert saved == state
+    pm = saved['extensions']['controller']['checkpoint']['pm']
+    assert checkpoint.validate_execution_basis(view(engine, world, saved), pm) == ('EXECUTION_BASIS', [])
+    assert len(engine._json(saved)) < engine.MAX_JSON_BYTES
+
+
 def test_derived_run_writes_advance_with_real_journal_and_immutable_inputs_verified(engine, world):
     state, receipt = capture(engine, world)
     old_state = (world['project'] / 'CURRENT_STATE.json').read_bytes()
@@ -52,7 +80,7 @@ def test_derived_run_writes_advance_with_real_journal_and_immutable_inputs_verif
     assert project_state.semantic_issues(world['project'])  # Never claim whole-project cleanliness here.
     assert checkpoint.current_proof(view(engine, world, state), receipt)['scope'] == 'EXECUTION_BASIS'
     assert len(receipt['immutable_inputs']) == 1
-    assert 'CURRENT_STATE.json' in receipt['project_files']
+    assert 'CURRENT_STATE.json' in receipt['project_files']['records']
     assert not list(world['project'].rglob('*receipt*.json'))
 
 
@@ -124,6 +152,113 @@ def test_execution_scope_or_head_cannot_be_substituted(engine, world):
     for key, value in [('scope', 'LOCAL_READY'), ('authority_granted', True), ('journal_head', {'revision': 1, 'digest': 'f' * 64})]:
         wrong = deepcopy(receipt); wrong[key] = value
         assert checkpoint.validate_execution_basis(view(engine, world, state), wrong)[0] == 'FAIL'
+
+
+@pytest.mark.parametrize('damage', ['root', 'body', 'count', 'record', 'algorithm', 'partial', 'old-schema'])
+def test_compact_receipt_tampering_never_passes_actual_consumer(engine, world, damage):
+    state, receipt = capture(engine, world)
+    wrong = deepcopy(receipt)
+    files = wrong['project_files']
+    if damage == 'root': files['sha256'] = 'f' * 64
+    elif damage == 'body': files['body']['sha256'] = 'f' * 64
+    elif damage == 'count': files['body']['files'] = True
+    elif damage == 'record': files['records']['CONTEXT.md'] = 'f' * 64
+    elif damage == 'algorithm': files['algorithm'] = 'unqualified-algorithm'
+    elif damage == 'partial': del files['body']
+    else: wrong['schema_version'] = 1
+    assert checkpoint.validate_execution_basis(view(engine, world, state), wrong)[0] == 'FAIL'
+
+
+@pytest.mark.parametrize('damage', ['changed', 'deleted', 'renamed', 'added'])
+def test_compact_membership_binds_every_preserved_file(engine, world, damage):
+    retained = world['project'] / 'retained.bin'
+    retained.write_bytes(b'original')
+    state, receipt = capture(engine, world)
+    if damage == 'changed': retained.write_bytes(b'changed!')
+    elif damage == 'deleted': retained.unlink()
+    elif damage == 'renamed': retained.rename(retained.with_name('renamed.bin'))
+    else: retained.with_name('extra.bin').write_bytes(b'original')
+    assert checkpoint.validate_execution_basis(view(engine, world, state), receipt)[0] == 'FAIL'
+
+
+@pytest.mark.parametrize('resource', ['entries', 'bytes', 'time', 'depth'])
+def test_inventory_resource_saturation_returns_no_partial_proof(engine, world, monkeypatch, resource):
+    state, _ = capture(engine, world)
+    context = view(engine, world, state)
+    if resource == 'entries': monkeypatch.setattr(checkpoint, 'MAX_SCAN_ENTRIES', 1)
+    elif resource == 'bytes': monkeypatch.setattr(checkpoint, 'MAX_SCAN_BYTES', 1)
+    elif resource == 'depth': monkeypatch.setattr(checkpoint, 'MAX_SCAN_DEPTH', 0)
+    else:
+        tick = iter(range(10000))
+        monkeypatch.setattr(checkpoint.time, 'monotonic', lambda: next(tick))
+        monkeypatch.setattr(checkpoint, 'MAX_SCAN_SECONDS', 0.5)
+    before = engine.load_run(world['project'], state['run_id'])
+    with pytest.raises(ValueError, match='budget'): checkpoint._inventory(context)
+    assert engine.load_run(world['project'], state['run_id']) == before
+
+
+@pytest.mark.parametrize('damage', ['earlier-file', 'added-member', 'removed-member', 'directory-swap'])
+def test_inventory_detects_changes_after_an_earlier_member_was_hashed(engine, world, monkeypatch, damage):
+    a, z = world['project'] / 'a-retained', world['project'] / 'z-retained'
+    a.write_bytes(b'original'); z.write_bytes(b'last')
+    state, _ = capture(engine, world)
+    context = view(engine, world, state)
+    original = checkpoint._stream_digest
+    def change(fd, name, info, budget):
+        result = original(fd, name, info, budget)
+        if name == z.name:
+            if damage == 'earlier-file': a.write_bytes(b'changed!')
+            elif damage == 'added-member': (world['project'] / 'a-added').write_bytes(b'new')
+            elif damage == 'removed-member': a.unlink()
+            else:
+                directory = world['project'] / 'resources'
+                directory.rename(directory.with_name('displaced'))
+                directory.mkdir()
+        return result
+    monkeypatch.setattr(checkpoint, '_stream_digest', change)
+    with pytest.raises((ValueError, OSError)): checkpoint._inventory(context)
+
+
+@pytest.mark.parametrize('damage', ['growth', 'replacement', 'truncation', 'partial-read', 'symlink', 'mode'])
+def test_streaming_file_reader_preserves_race_and_partial_refusals(tmp_path, monkeypatch, damage):
+    import os
+    path = tmp_path / 'binary'
+    path.write_bytes(b'original' * (checkpoint.CHUNK_BYTES // 4))
+    actual = os.fdopen
+    class ChangingFile:
+        def __init__(self, stream): self.stream, self.changed = stream, False
+        def __enter__(self): self.stream.__enter__(); return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def fileno(self): return self.stream.fileno()
+        def read(self, size):
+            assert size <= checkpoint.CHUNK_BYTES
+            if not self.changed:
+                self.changed = True
+                if damage == 'growth':
+                    with path.open('ab') as stream: stream.write(b'growth')
+                elif damage == 'replacement':
+                    replacement = path.with_name('replacement'); replacement.write_bytes(path.read_bytes()); replacement.replace(path)
+                elif damage == 'truncation':
+                    with path.open('wb'): pass
+                elif damage == 'symlink':
+                    saved = path.with_name('saved'); path.rename(saved); path.symlink_to(saved)
+                elif damage == 'mode': path.chmod(0o600 if path.stat().st_mode & 0o777 != 0o600 else 0o644)
+                else: return b''
+            return self.stream.read(size)
+    monkeypatch.setattr(checkpoint.os, 'fdopen', lambda *args, **kwargs: ChangingFile(actual(*args, **kwargs)))
+    fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with pytest.raises((ValueError, OSError)):
+            checkpoint._stream_digest(fd, path.name, path.stat(), checkpoint._ScanBudget())
+    finally: os.close(fd)
+
+
+def test_special_file_never_blocks_inventory(engine, world):
+    import os
+    state, _ = capture(engine, world)
+    os.mkfifo(world['project'] / 'named-pipe')
+    with pytest.raises(ValueError, match='regular files'):
+        checkpoint._inventory(view(engine, world, state))
 
 
 @pytest.mark.parametrize('size', [0, 1024, 256 * 1024])

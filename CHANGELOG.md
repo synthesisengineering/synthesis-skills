@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.1] - 2026-09-25
+
+Execution recovery streams retained evidence into compact complete-inventory
+commitments. Large archives and projects with many files no longer require a
+whole-file allocation or a repeated flat path map in every receipt. File,
+directory and resource-boundary changes still refuse incomplete proof.
+
+Project management 2.18.7 and autopilot 3.4.1 share receipt schema 2, including
+the existing verified terminal-state successor rule. Older execution receipts
+require fresh owner capture; they are never silently converted. Full native
+recovery, provider execution and unattended survival remain separate evidence.
+
 ## [4.149.0] - 2026-09-25
 
 Autopilot 3.4.0 connects domain judgments to current consumer results, preserves

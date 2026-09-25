@@ -140,6 +140,14 @@ def test_adopted_pm_default_finish_has_explicit_clean_successor_and_replays_with
     assert proof['scope'] == 'TERMINAL_CLEAN_CHECKPOINT_SUCCESSOR', proof
     assert Path(proof['receipt_path']).is_file()
     assert proof['journal_head']['revision'] == final['revision']
+    # D2: terminal normalization replaces the whole verified commitment, not
+    # two records beneath a stale all-files digest.
+    import profile_evidence
+    basis = profile_evidence.checkpoint_basis(profile_context(world, final))
+    original = final['extensions']['controller']['checkpoint']['pm']['project_files']
+    assert basis['project_files'] == original
+    assert basis['project_records'] == original['records']
+    execution_checkpoint._validate_file_commitment(basis['project_files'])
     assert final['profile'] == profile
     assert run_state.completion_report(world['project'], final['run_id'], actor=world['actor'])['status'] == 'PASS'
     before = {p.name: p.read_bytes() for p in (run_state._home(world['project'], final['run_id']) / 'events').iterdir()}
