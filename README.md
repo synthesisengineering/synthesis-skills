@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.7** recognizes additional native observation records and reads
+long run journals through complete, time-bounded validation. Unknown records,
+changed history and failed verification remain explicit.
+
 Release **4.149.6** reads large native compaction records within explicit memory
 and wire limits. Context remains an observation, with current-byte integrity,
 closed settings validation and unchanged authority and accounting boundaries. Native MCP application metadata remains bounded and inert.

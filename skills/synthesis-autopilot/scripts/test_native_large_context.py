@@ -204,7 +204,7 @@ def test_malformed_settings_container_is_a_dialect_gap(tmp_path,value,entrypoint
 
 
 
-@pytest.mark.parametrize("prior_version",["codex-dialect-v8","codex-dialect-v9"])
+@pytest.mark.parametrize("prior_version",["codex-dialect-v8","codex-dialect-v9","codex-dialect-v10"])
 def test_current_decoder_requires_explicit_prior_generation_reconciliation(tmp_path,monkeypatch,prior_version):
  import native_codex as codex
  from test_codex_compacted import usage
@@ -233,7 +233,7 @@ def test_current_decoder_requires_explicit_prior_generation_reconciliation(tmp_p
  # A separately requested candidate enrollment starts at the beginning, keeps
  # the old generation intact and supplies no authority to discard its gap.
  fresh,fresh_cursor=no.enroll_source(p,client='codex',expected_root_session_id=ROOT)
- assert fresh['producer']['adapter_version']=='codex-dialect-v10'
+ assert fresh['producer']['adapter_version']=='codex-dialect-v11'
  assert fresh['generation']!=b['generation'] and fresh_cursor['offset']==0
  assert fresh['authentication']=='owner_admission_required'
  assert (b,old_cursor,projection)==snapshot

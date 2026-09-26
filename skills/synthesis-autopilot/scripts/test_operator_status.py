@@ -84,10 +84,10 @@ def test_unsafe_or_foreign_journal_is_unhealthy(engine, world, fault):
     assert row["questions"] == [] and row["authority_granted"] is False
 
 
-def test_journal_size_bound_is_explicit_not_empty_success(engine, world, monkeypatch):
+def test_journal_time_bound_is_explicit_not_empty_success(engine, world, monkeypatch):
     state = create(engine, world)
     module = importlib.import_module("operator_status")
-    monkeypatch.setattr(module, "MAX_JOURNAL_BYTES", 1)
+    monkeypatch.setattr(module, "MAX_JOURNAL_SECONDS", 0)
     assert inspect(world, state)["status"] == "unhealthy"
 
 
