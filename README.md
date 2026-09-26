@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.6** reads large native compaction records within explicit memory
+and wire limits. Context remains an observation, with current-byte integrity,
+closed settings validation and unchanged authority and accounting boundaries. Native MCP application metadata remains bounded and inert.
+
 Release **4.149.5** reduces project-reader metadata work while retaining current
 file and history checks. Native context and item observations gain strict
 schema validation without applying reported settings or replaying actions.

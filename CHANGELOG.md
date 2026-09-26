@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.6] - 2026-09-26
+
+Read qualified large native compaction records with bounded structural memory,
+complete current-byte validation and explicit metadata limits. Retained context
+stays inert and does not replay actions, grant permissions or reset accounting.
+Accept omitted active-profile metadata while rejecting malformed settings and
+unpaired Unicode surrogate escapes. Original observation gaps remain recorded.
+Validate native MCP hints and retain bounded application metadata as inert
+content. Metadata cannot grant authority, override outcomes or change costs.
+
 ## [4.149.5] - 2026-09-25
 
 Validate command frames through bounded streaming, including current-byte and

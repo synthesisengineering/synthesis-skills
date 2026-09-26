@@ -151,7 +151,7 @@ def test_unknown_malformed_or_foreign_compaction_is_an_explicit_gap(tmp_path, pa
 
 @pytest.mark.parametrize("fault", ["over_bound", "duplicate", "malformed", "missing", "partial"])
 def test_actual_reader_retains_envelope_and_complete_json_bounds(tmp_path, fault):
-    row = compacted(1100000 if fault == "over_bound" else 300000)
+    row = compacted(no.MAX_STREAM_SPAN_BYTES + 1 if fault == "over_bound" else 300000)
     raw = wire(row)
     if fault == "duplicate": raw = raw.replace(b'"window_number":2', b'"window_number":1,"window_number":2')
     if fault == "malformed": raw = raw[:-2] + b'X\n'

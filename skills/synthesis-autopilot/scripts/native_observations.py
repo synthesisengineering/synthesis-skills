@@ -209,7 +209,7 @@ class _StreamJSON:
         self.s = deepcopy(state) if state else {
             "stack": [], "root": "value", "lex": None, "token": "", "key": False,
             "escape": False, "unicode": 0, "utf8": "", "error": None, "depth": depth, "key_bytes": 0,
-            "capture": None, "projection": {}}
+            "capture": None, "projection": {}, "unicode_hex": "", "high_surrogate": False}
         self.decoder = codecs.getincrementaldecoder("utf-8")("strict")
         self.decoder.setstate((base64.b64decode(self.s["utf8"]), 0))
 
@@ -233,6 +233,12 @@ class _StreamJSON:
     def _close(self, frame):
         pass
 
+    def _reserve(self, path):
+        self.s["projection"][".".join(path)] = None
+
+    def _scalar(self, path, value):
+        self.s["projection"][".".join(path)] = value
+
     def _finish_token(self):
         s, token = self.s, self.s["token"]
         if s["lex"] == "number":
@@ -241,7 +247,7 @@ class _StreamJSON:
         elif s["lex"] == "literal" and token not in {"true", "false", "null"}:
             raise SourceError("invalid JSON literal")
         if s["capture"]:
-            s["projection"][".".join(s["capture"])] = json.loads(token)
+            self._scalar(s["capture"], json.loads(token))
         s["lex"], s["token"], s["capture"] = None, "", None
         self._done()
 
@@ -266,13 +272,28 @@ class _StreamJSON:
                 if s["unicode"]:
                     if c not in "0123456789abcdefABCDEF":
                         raise SourceError("invalid unicode escape")
+                    s["unicode_hex"] = s.get("unicode_hex", "") + c
                     s["unicode"] -= 1
+                    if not s["unicode"]:
+                        unit = int(s["unicode_hex"], 16)
+                        high = s.get("high_surrogate", False)
+                        if 0xD800 <= unit <= 0xDBFF and not high:
+                            s["high_surrogate"] = True
+                        elif 0xDC00 <= unit <= 0xDFFF and high:
+                            s["high_surrogate"] = False
+                        elif high or 0xD800 <= unit <= 0xDFFF:
+                            raise SourceError("unpaired JSON unicode surrogate")
                 elif s["escape"]:
                     s["escape"] = False
+                    if s.get("high_surrogate", False) and c != "u":
+                        raise SourceError("unpaired JSON unicode surrogate")
                     if c == "u":
                         s["unicode"] = 4
+                        s["unicode_hex"] = ""
                     elif c not in '\\"/bfnrt':
                         raise SourceError("invalid JSON escape")
+                elif s.get("high_surrogate", False) and c != "\\":
+                    raise SourceError("unpaired JSON unicode surrogate")
                 elif c == '"':
                     if s["key"]:
                         key = json.loads('"' + s["token"])
@@ -289,7 +310,7 @@ class _StreamJSON:
                         parent["expect"] = "colon"
                     else:
                         if s["capture"]:
-                            s["projection"][".".join(s["capture"])] = json.loads('"' + s["token"])
+                            self._scalar(s["capture"], json.loads('"' + s["token"]))
                         self._done()
                     s["lex"], s["token"], s["capture"] = None, "", None
                 elif c == "\\":
@@ -344,7 +365,7 @@ class _StreamJSON:
                 path = self._path()
                 selected = self._selected(path, c)
                 if selected:
-                    s["projection"][".".join(path)] = None
+                    self._reserve(path)
                 if c in "{[":
                     self._done()
                     if len(s["stack"]) >= s["depth"]:
@@ -485,6 +506,109 @@ class _CommandJSON(_StreamJSON):
         return row, [native_codex._fact("item.observation", observed, data, row, mode=mode, source_locator=locator)]
 
 
+class _CompactionJSON(_StreamJSON):
+    """Bounded structural projection; the Codex owner validates every field.
+
+    Only explicitly known inert body strings are discarded. All container
+    shapes, keys, identity scalars and counters reach the existing closed owner
+    grammar. The wire digest, not a digest of elided bodies, authenticates content.
+    """
+    MAX_NODES = 16384
+    MAX_METADATA_BYTES = 256 * 1024
+    BODIES = {
+        ("payload", "message"),
+        ("payload", "replacement_history", "*", "content", "*", "text"),
+        ("payload", "replacement_history", "*", "content", "*", "image_url"),
+        ("payload", "replacement_history", "*", "encrypted_content"),
+        ("payload", "retained_context", "user_messages", "*", "text"),
+    }
+
+    def __init__(self, depth=32):
+        super().__init__(depth=depth)
+        self.nodes = 0
+        self.metadata_bytes = 0
+        self.containers = {}
+        self.row = None
+
+    def _path(self):
+        if self.s["stack"] and self.s["stack"][-1]["kind"] == "array":
+            frame = self.s["stack"][-1]
+            return frame["path"] + [str(len(self.containers[tuple(frame["path"])]))]
+        return super()._path()
+
+    def _put(self, path, value):
+        if not path:
+            self.row = value
+            return
+        parent = self.containers[tuple(path[:-1])]
+        if isinstance(parent, list):
+            if len(parent) >= 1024:
+                raise SourceError("compaction array exceeds metadata bound")
+            parent.append(value)
+        else:
+            parent[path[-1]] = value
+
+    def _reserve(self, path):
+        # Values attach directly to the bounded structure, without a flat cache.
+        return None
+
+    def _scalar(self, path, value):
+        if isinstance(value, str):
+            self.metadata_bytes += len(value.encode("utf-8"))
+        else:
+            self.metadata_bytes += len(str(value))
+        if self.metadata_bytes > self.MAX_METADATA_BYTES:
+            raise SourceError("compaction metadata exceeds byte bound")
+        self._put(path, value)
+
+    def _selected(self, path, char):
+        self.nodes += 1
+        self.metadata_bytes += len(path[-1].encode("utf-8")) if path else 0
+        if self.nodes > self.MAX_NODES or self.metadata_bytes > self.MAX_METADATA_BYTES:
+            raise SourceError("compaction metadata exceeds structural bound")
+        pattern = tuple("*" if isinstance(self.containers.get(tuple(path[:i])), list) else part
+                        for i, part in enumerate(path))
+        if char in "{[":
+            value = {} if char == "{" else []
+            self._put(path, value)
+            self.containers[tuple(path)] = value
+            return False
+        if pattern in self.BODIES and char == '"':
+            self._put(path, "")
+            return False
+        return True
+
+    def _close(self, frame):
+        # Only open containers need a second reference; the bounded root owns
+        # the completed structure until owner validation finishes.
+        del self.containers[tuple(frame["path"])]
+
+    def normalized(self, producer, digest, mode, locator):
+        if not self.finish():
+            raise SourceError(self.s["error"])
+        candidates = native_codex.decode_streamed_compaction(
+            self.row, producer, digest=digest, mode=mode, source_locator=locator)
+        row = {k: self.row[k] for k in ("type", "timestamp", "ordinal", "thread_id", "session_id") if k in self.row}
+        row["payload"] = {}
+        return row, candidates
+
+
+class _StreamOwnerJSON:
+    """Two qualified owners share the same physical span reads."""
+    def __init__(self, depth=32):
+        self.command = _CommandJSON(depth=depth)
+        self.compaction = _CompactionJSON(depth=depth)
+
+    def feed(self, raw):
+        self.command.feed(raw)
+        self.compaction.feed(raw)
+
+    def normalized(self, producer, digest, mode, locator):
+        if self.command.finish():
+            return self.command.normalized(producer, digest, mode, locator)
+        return self.compaction.normalized(producer, digest, mode, locator)
+
+
 def _span_accumulate(state, raw):
     state = deepcopy(state) if state else {"length":0, "chain":_sha(b"codex-command-chunks-v1"), "tail":""}
     if state.get("over_bound"):
@@ -504,13 +628,13 @@ def _span_accumulate(state, raw):
 
 
 def _stream_command(binding, start, length, *, depth=32, expected=None, overlap=None, accounting=None):
-    """Two complete current-byte passes, finite wire bound, no complete body allocation."""
+    """Qualified command/compaction spans with two complete current-byte passes."""
     if (binding["producer"]["client"] != "codex" or binding["producer"].get("dialect")
             or not MAX_RECORD_READBACK_BYTES < length <= MAX_STREAM_SPAN_BYTES):
         raise SourceError("unqualified command wire span")
     stream, info = _open(binding["path"], binding)
     with stream:
-        validator = _CommandJSON(depth=depth); first = hashlib.sha256(); commitment = None
+        validator = _StreamOwnerJSON(depth=depth); first = hashlib.sha256(); commitment = None
         for at in range(0, length, STREAM_CHUNK_BYTES):
             part = _stable_read(stream, binding["path"], start + at, min(STREAM_CHUNK_BYTES, length-at),
                                 (binding["device"], binding["inode"]), info.st_size)
@@ -961,7 +1085,8 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                     ranges.append([start, start + length])
                 elif (valid and not ignored and MAX_RECORD_READBACK_BYTES < length <= MAX_STREAM_SPAN_BYTES
                       and binding["producer"]["client"] == "codex"
-                      and validator.s["projection"].get("payload.item.type") == "CommandExecution"):
+                      and (validator.s["projection"].get("payload.item.type") == "CommandExecution"
+                           or validator.s["projection"].get("type") == "compacted")):
                     if result["stream_readback_bytes"] + length > MAX_STREAM_SPAN_BYTES:
                         next_cursor = checkpoint; result["cursor"] = next_cursor; break
                     try:
