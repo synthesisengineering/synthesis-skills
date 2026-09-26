@@ -1334,3 +1334,100 @@ def test_retire_without_session_identity_warns_not_fails(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     assert "no SYNTHESIS_COORDINATION_SESSION exported" in completed.stdout
+
+
+def _interrupted_retirement_fixture(tmp_path, monkeypatch):
+    _remote, repo = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, repo)
+    commit_and_merge(repo, worktree)
+    board = tmp_path / 'board' / 'active-sessions.md'
+    row = _claim_row(board, {}, [f'{worktree} @ feature/demo', f'{repo} @ main'],
+                     [f'{worktree}/change.txt', f'{repo}/seed.txt'])
+    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path / 'synthesis-home'))
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'test:caller')
+    monkeypatch.setenv('SYNTHESIS_COORDINATION_SESSION', row['compact_id'])
+    monkeypatch.setattr(sys, 'argv', [str(SCRIPT), '--repository', str(repo), '--worktree', str(worktree),
+        '--branch', 'feature/demo', '--board', str(board)])
+    original = MODULE.run_reconciler
+    def interrupted(executable, args, *rest, **kwargs):
+        if '--complete-worktree-retirement' in args:
+            assert not worktree.exists()
+            raise OSError('Fixture interruption after actual worktree removal')
+        return original(executable, args, *rest, **kwargs)
+    monkeypatch.setattr(MODULE, 'run_reconciler', interrupted)
+    assert MODULE.main() == 2
+    monkeypatch.setattr(MODULE, 'run_reconciler', original)
+    return repo, worktree, board, row
+
+
+def test_interrupted_retirement_retry_narrows_own_cells_idempotently(tmp_path, monkeypatch):
+    repo, worktree, board, row = _interrupted_retirement_fixture(tmp_path, monkeypatch)
+    assert MODULE.main() == 0
+    assert _row_cells(board) == ([f'{repo}/seed.txt'], [f'{repo} @ main'])
+    first = board.read_bytes()
+    assert MODULE.main() == 0
+    assert board.read_bytes() == first
+    assert not worktree.exists()
+
+
+def test_interrupted_retirement_wrong_native_cannot_narrow_and_owner_can_retry(tmp_path, monkeypatch):
+    repo, worktree, board, row = _interrupted_retirement_fixture(tmp_path, monkeypatch)
+    before = board.read_bytes()
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'test:different')
+    assert MODULE.main() == 2
+    assert board.read_bytes() == before
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'test:caller')
+    assert MODULE.main() == 0
+    assert _row_cells(board) == ([f'{repo}/seed.txt'], [f'{repo} @ main'])
+
+
+def test_interrupted_retirement_preserves_foreign_row_exactly(tmp_path, monkeypatch):
+    repo, worktree, board, row = _interrupted_retirement_fixture(tmp_path, monkeypatch)
+    foreign_env = dict(os.environ, SYNTHESIS_CLIENT_SESSION_REF='test:foreign')
+    foreign_env.pop('SYNTHESIS_COORDINATION_SESSION', None)
+    result = subprocess.run([sys.executable, str(COORDINATION), '--board', str(board), 'claim',
+        '--agent', 'test-harness', '--machine', 'test-machine', '--project', 'foreign', '--mode', 'autonomous',
+        '--goal', 'fixture foreign sentinel', '--context-role', 'none', '--client-ref', 'test:foreign',
+        '--workspace', f'{repo} @ main', '--area', f'{repo}/foreign.txt'], capture_output=True, text=True, env=foreign_env)
+    assert result.returncode == 0, result.stderr
+    def foreign_line():
+        return next(line for line in board.read_bytes().splitlines() if b'test:foreign' in line)
+    before = foreign_line()
+    assert MODULE.main() == 0
+    assert foreign_line() == before
+
+
+def test_unrecorded_removal_only_diagnoses_owned_cells(tmp_path, monkeypatch, capsys):
+    _remote, repo = build_repo(tmp_path); worktree = add_feature_worktree(tmp_path, repo)
+    commit_and_merge(repo, worktree)
+    board = tmp_path / 'board' / 'active-sessions.md'
+    row = _claim_row(board, {}, [f'{worktree} @ feature/demo'], [f'{worktree}/change.txt'])
+    git(repo, 'worktree', 'remove', str(worktree))
+    monkeypatch.setenv('SYNTHESIS_COORDINATION_SESSION', row['compact_id'])
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'test:caller')
+    before = board.read_bytes()
+    monkeypatch.setattr(sys, 'argv', [str(SCRIPT), '--repository', str(repo), '--worktree', str(worktree), '--board', str(board)])
+    assert MODULE.main() == 2
+    output = capsys.readouterr()
+    assert row['compact_id'] in output.err and 'narrow' in output.err
+    assert board.read_bytes() == before
+
+
+def test_narrowing_refuses_recreated_removed_path(tmp_path, monkeypatch):
+    recreated = tmp_path / 'recreated'; recreated.mkdir()
+    calls = []
+    monkeypatch.setattr(MODULE.subprocess, 'run', lambda *a, **kw: calls.append((a,kw)))
+    assert MODULE._narrow_retired_claims(recreated, tmp_path / 'board') is False
+    assert not calls
+
+
+def test_owned_narrow_timeout_is_incomplete_not_success(tmp_path, monkeypatch):
+    worktree = tmp_path / 'gone'
+    monkeypatch.setenv('SYNTHESIS_COORDINATION_SESSION', 'fixture-owner')
+    def invoke(argv, **kwargs):
+        if 'status' in argv:
+            return subprocess.CompletedProcess(argv, 0, json.dumps({'sessions': [{'compact_id': 'fixture-owner',
+                'claims': [str(worktree / 'input')], 'workspaces': [f'{worktree} @ branch']}]}), '')
+        raise subprocess.TimeoutExpired(argv, 60)
+    monkeypatch.setattr(MODULE.subprocess, 'run', invoke)
+    assert MODULE._narrow_retired_claims(worktree, tmp_path / 'board') is False

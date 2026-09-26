@@ -116,3 +116,66 @@ def test_prepared_attribution_does_not_claim_concurrent_foreign_bytes(facade, wo
     assert attributed != actual, 'prepared grant attributed a concurrent foreign write as its own projection'
     assert refused is not None, 'non-derived edit must refuse attribution instead of claiming path-name ownership'
 
+
+
+def test_large_snapshot_blocks_are_derived_and_attributed_by_the_existing_owner(engine, facade, world, monkeypatch):
+    import run_state
+    import prepared_native_launch as launch
+    from test_run_state import command
+    state = prepared(facade, world)
+    def grow(state, payload, context):
+        state['extensions']['synthetic_retained_history'] = {f'item-{i}': 'x' * 1600 for i in range(2700)}
+        return state
+    engine.register_command('fixture.large-history', grow, allowed_fields=('extensions',))
+    state = command(engine, world, state, 'fixture.large-history', {})
+    attribute_recovery_fixture(world)
+    calls = synthetic_transport(monkeypatch, world)
+    result = launch.execute(world['project'], state['run_id'], 'permit1', TOKEN, runtime_root=world['runtime'])
+    assert result['status'] == 'native_terminal' and result['task_accepted'] is False
+    assert calls == ['permit1']
+    current = run_state.load_run(world['project'], state['run_id'])
+    assert current['extensions']['synthetic_retained_history'] == state['extensions']['synthetic_retained_history']
+    home = run_state._home(world['project'], state['run_id'])
+    guard = world['runtime'].parent / 'repo-guard'
+    native = world['actor']['native_payload']['session_id']
+    manifest = json.loads((guard / 'pending' / (hashlib.sha256(native.encode()).hexdigest() + '.json')).read_text())
+    blocks = list((home / 'state-blocks/v1').glob('*.json'))
+    assert blocks
+    for path in blocks:
+        assert manifest['path_hashes'][str(path)] == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("damage", [None, "current", "summary", "foreign"])
+def test_original_inline_prepared_append_keeps_its_committed_attribution(engine, facade, world, monkeypatch, damage):
+    import journal_storage, prepared_native_launch as launch, run_state
+    from test_run_state import command
+    with monkeypatch.context() as before_upgrade:
+        before_upgrade.setattr(journal_storage, 'INLINE_BYTES', 4 * 1024 * 1024)
+        state = prepared(facade, world)
+        def grow(state, payload, context):
+            state['extensions']['history'] = 'x' * (1200 * 1024)
+            return state
+        engine.register_command('fixture.grow-inline', grow, allowed_fields=('extensions',))
+        state = command(engine, world, state, 'fixture.grow-inline', {})
+        attribute_recovery_fixture(world)
+        state = launch._step(world['project'], state['run_id'], 'permit1', TOKEN, 'reserve', runtime_root=world['runtime'])
+    home = run_state._home(world['project'], state['run_id'])
+    preserved = {p.name: p.read_bytes() for p in (home / 'events').iterdir()}
+    assert journal_storage.MARKER not in json.loads((home / 'current.json').read_text())
+    assert len((home / 'current.json').read_bytes()) > journal_storage.INLINE_BYTES
+    def attribute():
+        return owner().record_prepared_native_launch(project=world['project'], run_id=state['run_id'], permit_id='permit1', token=TOKEN, revision=state['revision'], guard_root=world['runtime'].parent / 'repo-guard')
+    if damage:
+        target = {'current': home / 'current.json', 'summary': home / 'summary.md',
+                  'foreign': world['project'] / 'unrelated.txt'}[damage]
+        target.write_bytes(b'Foreign unadmitted bytes\n')
+        guard = world['runtime'].parent / 'repo-guard'
+        baseline = {path: path.read_bytes() for path in (guard / 'pending').iterdir()}
+        with pytest.raises((ValueError, OSError)):
+            attribute()
+        assert {path: path.read_bytes() for path in (guard / 'pending').iterdir()} == baseline
+        assert target.read_bytes() == b'Foreign unadmitted bytes\n'
+    else:
+        assert attribute().is_file()
+    for name, raw in preserved.items():
+        assert (home / 'events' / name).read_bytes() == raw

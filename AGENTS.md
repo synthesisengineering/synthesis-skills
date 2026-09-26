@@ -59,7 +59,10 @@ python3 skills/synthesis-agent-conformance/scripts/conformance.py instructions -
 python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-checkpoint/scripts/ -q
-python3 -m pytest skills/synthesis-autopilot/scripts/ -q
+python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
+python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
+python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
+python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
 python3 -m pytest skills/synthesis-model-tiers/scripts/ -q
 python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
 python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
@@ -68,7 +71,7 @@ python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthe
 python3 -m pytest skills/synthesis-onboarding/scripts/ -q
 python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
 python3 skills/synthesis-onboarding/scripts/check_capabilities.py .
-python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q
+python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q
 python3 -m pytest skills/synthesis-agent-guardrails/tests/ -q
 python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
 python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py

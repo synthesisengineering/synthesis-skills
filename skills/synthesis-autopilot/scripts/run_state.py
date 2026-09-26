@@ -41,6 +41,7 @@ from plan_reference import resolve_plan_target
 from run_admission import admit_paths, admission_scope, bounded_lock, inspect_paths, native_binding, reconcile_readback, safe_path
 from project_state import observer_native_identity
 import coordination
+import journal_storage
 
 SCHEMA = 1
 VERIFIER_VERSION = "run-state-1"
@@ -236,12 +237,26 @@ def _install_input(path, raw):
 
 def _read(path):
     try:
-        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_JSON_BYTES:
-            raise RunStateError("missing, unsafe, or oversized state file")
-        with path.open(encoding="utf-8") as stream:
-            return json.load(stream, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+        raw = journal_storage.read_regular(path, MAX_JSON_BYTES)
+        value = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+        return journal_storage.decode(path, value)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise RunStateError(f"unreadable state at {path}: {exc}") from exc
+
+
+def _snapshot_bytes(path, value):
+    """Pure physical rendering shared with the attribution owner."""
+    raw, blocks = journal_storage.encode(value)
+    return {**journal_storage.block_paths(journal_storage.home_for(path), blocks), Path(path): raw}
+
+
+def _retained_snapshot_bytes(path, value):
+    """Derive existing storage form without rewriting admitted historical bytes."""
+    journal_storage.home_for(path)
+    physical = json.loads(journal_storage.read_regular(path, MAX_JSON_BYTES))
+    if isinstance(physical, dict) and journal_storage.MARKER in physical:
+        return _snapshot_bytes(path, value)
+    return {Path(path): _json(value) + b"\n"}
 
 
 def _write(path, raw):
@@ -406,9 +421,8 @@ def _plan_digest(project, state, *, admitted_path=None, repository=None):
     # operation. Recheck path safety without repeating Git root discovery.
     path = (_plan(project, state["plan"]).resolved if admitted_path is None else
             safe_path(Path(admitted_path), Path(repository)))
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"\n?<!-- autopilot:[0-9a-f-]+:start -->\n.*?<!-- autopilot:[0-9a-f-]+:end -->\n?", "", text, flags=re.S)
-    return hashlib.sha256(text.rstrip().encode()).hexdigest()
+    from required_citations import plan_text_digest
+    return plan_text_digest(path.read_text(encoding="utf-8"))
 
 
 def _binding(project, state, actor, *, readonly=False, passive=False):
@@ -687,7 +701,8 @@ def _events(project, run_id):
             raise RunStateError("event must be an object")
         digest = event.get("digest")
         body = {key: value for key, value in event.items() if key != "digest"}
-        if digest != _digest(body) or event.get("previous_digest") != previous or event.get("revision") != revision or event.get("schema_version") != SCHEMA:
+        body_digest = event.verified_body_digest if isinstance(event, journal_storage.DecodedEvent) else _digest(body)
+        if digest != body_digest or event.get("previous_digest") != previous or event.get("revision") != revision or event.get("schema_version") != SCHEMA:
             raise RunStateError("event chain failed integrity/schema validation")
         state = event.get("state")
         if not isinstance(state, dict) or state.get("schema_version") != SCHEMA or state.get("run_id") != run_id or state.get("revision") != revision or state.get("status") not in STATUSES:
@@ -715,10 +730,11 @@ def load_run(project: Path, run_id: str) -> dict:
     return deepcopy(last["state"])
 
 
-def _projection_bytes(project, state, plan_text):
-    """Pure bytes shared by the projection writer and delegated attribution."""
+def _projection_bytes(project, state, plan_text, *, retain_storage=False):
+    """Derive owned bytes; attribution can retain the committed storage form."""
     home = _home(project, state["run_id"])
-    output = {home / "current.json": _json(state) + b"\n"}
+    renderer = _retained_snapshot_bytes if retain_storage else _snapshot_bytes
+    output = renderer(home / "current.json", state)
     summary = f"Run: {state['run_id']}\nRevision: {state['revision']}\nStatus: {state['status']}\n"
     summary += f"Contract: {state['contract_revision']} ({state['contract_digest']})\n"
     summary += f"Profile: {state['profile_revision']} ({state['profile_digest']})\n"
@@ -745,8 +761,13 @@ def _project(project, state):
     # Different runs share the plan lock; render preserves all other ledger
     # blocks and human prose. Attribution uses the same pure byte compiler.
     with bounded_lock(_plan_lock(project, plan)):
-        for path, raw in _projection_bytes(project, state, plan.read_text(encoding="utf-8")).items():
-            _write(path, raw)
+        rendered = _projection_bytes(project, state, plan.read_text(encoding="utf-8"))
+        home = _home(project, state["run_id"])
+        blocks = {path.stem: raw for path, raw in rendered.items() if path.parent == home / "state-blocks/v1"}
+        journal_storage.materialize(home, blocks)
+        for path, raw in rendered.items():
+            if path.parent != home / "state-blocks/v1":
+                _write(path, raw)
 
 
 def _plan_lock(project, plan):
@@ -807,12 +828,15 @@ def _append(project, state, command_id, command_digest, command, previous_digest
         # A deterministic grant consumer is never represented as its native issuer.
         event["actor"] = {"kind": "prepared-native-launch", **deepcopy(prepared_authority)}
     event["digest"] = _digest(event)
-    raw = _json(event) + b"\n"
-    if len(raw) > MAX_JSON_BYTES or state["revision"] > MAX_EVENTS:
+    if state["revision"] > MAX_EVENTS:
         raise RunStateError("run exceeds the supported journal limits")
     path = home / "events" / f"{state['revision']:012d}.json"
     if path.exists():
         raise RunStateError("refusing to overwrite a committed event")
+    raw, blocks = journal_storage.encode(event)
+    _, projection_blocks = journal_storage.encode(state)
+    blocks.update(projection_blocks)
+    journal_storage.materialize(home, blocks)
     _write(path, raw)
 
 
@@ -1103,6 +1127,10 @@ def completion_report(project, run_id, *, actor):
     """Read-only criterion/profile/extension closure report; never emits a receipt."""
     state = load_run(project, run_id)
     context = inspect_context(state, actor, project=project)
+    from required_citations import observe_required_citations
+    context["required_citations"] = observe_required_citations(
+        Path(project), Path(context["binding"]["paths"][1]), context["artifacts"],
+        expected_plan_digest=context["plan_digest"])
     report = {"status": "PASS", "run_id": run_id, "revision": state["revision"], "issues": [],
               "profile_digest": state["profile_digest"], "contract_digest": state["contract_digest"]}
     try:
@@ -1226,8 +1254,14 @@ def _context_observed(project, state, payload, proof, *, actor, observation):
             raise RunStateError("invalid child native actor")
         admissions[key] = admit_paths(Path(actor["board"]), state["project_id"], Path(project),
             [Path(path) for path in request["paths"]], actor["native_payload"])
+    required_citations = None
+    if payload.get("status") == "completed":
+        from required_citations import observe_required_citations
+        required_citations = observe_required_citations(
+            Path(project), Path(proof["paths"][1]), artifacts, expected_plan_digest=plan_digest)
     return {"now": now, "binding": deepcopy(proof), "artifacts": artifacts, "evidence": evidence,
-            "admissions": admissions, "verify_receipt": verify_receipt, "plan_digest": plan_digest}
+            "admissions": admissions, "verify_receipt": verify_receipt, "plan_digest": plan_digest,
+            "required_citations": required_citations}
 
 
 def _fields(payload, allowed, required=()):
@@ -1306,6 +1340,10 @@ def _complete(project, state, context):
     for key, record in state["artifacts"].items():
         if record["required"] and key not in context["artifacts"]:
             raise RunStateError("required artifact is missing or changed")
+    citations = context.get("required_citations")
+    if not isinstance(citations, dict) or citations.get("status") != "PASS":
+        raise RunStateError("required plan/packet evidence retention is UNKNOWN: " +
+                            "; ".join(citations.get("issues", []) if isinstance(citations, dict) else ["not observed"]))
     report = criterion_report(state, context)
     if report["status"] != "PASS":
         raise RunStateError("required criterion lacks current bound verification: " + "; ".join(
@@ -1324,7 +1362,8 @@ def _complete(project, state, context):
         elif item["id"] in CANONICAL_IDS or item["id"] not in record["data"].get("satisfied_items", []):
             raise RunStateError("standing profile item lacks validated disposition: " + item["id"])
     return {"at": context["now"], "run_id": state["run_id"], "contract_digest": state["contract_digest"],
-            "profile_digest": state["profile_digest"], "criteria": sorted(verified), "verifier_version": VERIFIER_VERSION}
+            "profile_digest": state["profile_digest"], "criteria": sorted(verified), "verifier_version": VERIFIER_VERSION,
+            "required_citation_artifacts": citations["artifacts"]}
 
 
 def _reduce(project, state, name, payload, context):

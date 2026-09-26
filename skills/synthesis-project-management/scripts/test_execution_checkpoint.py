@@ -303,3 +303,39 @@ def test_execution_observed_size_bound_preserves_inode_and_growth_refusal(tmp_pa
     monkeypatch.setattr(checkpoint.os, 'fdopen', lambda *args, **kwargs: ChangingFile(actual(*args, **kwargs)))
     with pytest.raises(ValueError): checkpoint._read(path)
     assert path.exists()
+
+
+# Physical journal custody remains exact across retained and newly written events.
+from test_journal_storage import grow
+
+def test_current_execution_checkpoint_accepts_owned_block_storage(engine,world):
+ state=grow(engine,world);build(world);context=view(engine,world,state)
+ receipt=checkpoint.observe_execution_basis(context)
+ assert checkpoint.validate_execution_basis(context,receipt)==('EXECUTION_BASIS',[])
+
+
+def test_execution_basis_advances_without_counting_owned_historical_projection_blocks(engine,world):
+ state=create(engine,world)
+ def make(state,payload,context):
+  state['extensions']['large_map']={f'key-{i}':str(i)+'x'*40000 for i in range(70)};return state
+ engine.register_command('fixture.map',make,allowed_fields=('extensions',));state=command(engine,world,state,'fixture.map',{});build(world)
+ receipt=checkpoint.observe_execution_basis(view(engine,world,state))
+ state=command(engine,world,state,'transition',{'status':'running'})
+ assert checkpoint.validate_execution_basis(view(engine,world,state),receipt)==('EXECUTION_BASIS',[])
+
+
+def test_original_large_inline_history_is_unchanged_across_block_continuation(engine,world):
+ state=grow(engine,world);home=engine._home(world['project'],state['run_id'])
+ # Preserve the exact old inline representation; no codec existed in this fixture's predecessor.
+ for event in list(engine._events(world['project'],state['run_id'])):
+  (home/'events'/f"{event['revision']:012d}.json").write_bytes(engine._json(event)+b'\n')
+ (home/'current.json').write_bytes(engine._json(state)+b'\n')
+ directory=home/'state-blocks/v1'
+ for member in directory.iterdir(): assert member.is_file() and not member.is_symlink();member.unlink()
+ directory.rmdir();directory.parent.rmdir()
+ old={p.name:p.read_bytes() for p in (home/'events').iterdir()}
+ assert engine.load_run(world['project'],state['run_id'])==state
+ build(world);receipt=checkpoint.observe_execution_basis(view(engine,world,state))
+ state=command(engine,world,state,'transition',{'status':'running'})
+ assert checkpoint.validate_execution_basis(view(engine,world,state),receipt)==('EXECUTION_BASIS',[])
+ for name,raw in old.items():assert (home/'events'/name).read_bytes()==raw
