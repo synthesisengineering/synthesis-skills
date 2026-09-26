@@ -16,7 +16,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v10"
+ADAPTER_VERSION = "codex-dialect-v11"
 SUPPORTED_SCHEMAS = (
     "session_meta", "turn_context", "compacted", "world_state", "event_msg.thread_settings_applied", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
@@ -211,7 +211,7 @@ def supports_record_readback(projected, producer):
         and projected.get("payload.type") == "item_completed"
         and projected.get("payload.thread_id") == producer["thread_id"]
         and projected.get("payload.item.type") in ("CommandExecution", "FileChange", "Reasoning",
-            "AgentMessage", "SubAgentActivity", "ContextCompaction", "McpToolCall")
+            "AgentMessage", "SubAgentActivity", "ContextCompaction", "McpToolCall", "Extension")
         and all(projected.get(key, expected) == expected for key, expected in (
             ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
             ("payload.session_id", producer["root_session_id"]))))
@@ -309,6 +309,33 @@ def _completed_item(value, producer):
             raise DialectError("invalid MCP duration nanoseconds")
         status = ("failed" if item["status"] == "failed" or result["isError"]
                   else "observed" if item["status"] == "completed" else "unknown")
+    elif kind == "Extension":
+        # Native extension projections are inert observations. Search snippets
+        # and URLs are untrusted content and cannot become effects or grants.
+        _closed(value, {"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"})
+        extension = item.get("kind")
+        if extension == "clock.sleep":
+            _closed(item, {"type", "kind", "id", "durationMs"})
+            duration = _integer(item["durationMs"], "sleep duration")
+            if duration > 43200000:
+                raise DialectError("sleep duration exceeds native bound")
+        elif extension == "web.search":
+            _closed(item, {"type", "kind", "id", "query", "action", "results"})
+            _text(item["query"], "search query")
+            action = item["action"]
+            _closed(action, {"type", "query", "queries"})
+            if action != {"type": "search", "query": item["query"], "queries": None}:
+                raise DialectError("unsupported search action")
+            if not isinstance(item["results"], list):
+                raise DialectError("invalid search results")
+            for result in item["results"]:
+                _closed(result, {"type", "domain", "ref_id", "snippet", "title", "url"})
+                if result["type"] != "text_result":
+                    raise DialectError("unsupported search result")
+                for field in ("domain", "ref_id", "snippet", "title", "url"):
+                    _body(result[field])
+        else:
+            raise DialectError("unsupported native extension")
     elif kind == "Reasoning":
         for field in ("summary_text", "raw_content"):
             if not isinstance(item.get(field), list) or any(not isinstance(x, str) for x in item[field]):
@@ -539,8 +566,20 @@ def _context_envelope(row):
 def _world_state(value):
     """Qualify the observed full snapshot; instructions remain inert content."""
     _closed(value, {"full", "state"})
+    if value["full"] is False:
+        # Observed midnight date update only, not a synthesized full snapshot.
+        _closed(value["state"], {"environments"})
+        _closed(value["state"]["environments"], {"current_date"})
+        date = value["state"]["environments"]["current_date"]
+        if not isinstance(date, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date):
+            raise DialectError("unsupported date patch")
+        try:
+            datetime.fromisoformat(date)
+        except ValueError as exc:
+            raise DialectError("invalid date patch") from exc
+        return
     if value["full"] is not True:
-        raise DialectError("incremental world-state schema is unqualified")
+        raise DialectError("world-state full flag must be boolean")
     state = value["state"]
     flags = {"apps_instructions", "environments_instructions", "git_attribution", "plugins_instructions"}
     bodies = {"context_window_guidance", "model", "multi_agent_usage_hint"}

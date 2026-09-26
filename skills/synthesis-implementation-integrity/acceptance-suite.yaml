@@ -1,15 +1,17 @@
 schema: 2
-suite: native-large-context-4-149-6
+suite: native-observer-4-149-7
 membership: closed
-production_entry_point: Shared native observation reader and Codex context owner
+production_entry_point: Native Codex observation owner and shared operator journal
+  reader
 enforcing_boundary: Fresh transaction-bound acceptance before gated release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Native process execution, complete historical accounting and restart survival require
-  separate actual acceptance. Existing gaps are not erased.
+unverified_remainder: Actual installed history recovery, native execution and restart
+  survival require separate acceptance. Time checks are cooperative between bounded
+  events and are not preemptive process limits.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -22,144 +24,160 @@ changed_surfaces:
   - release-metadata
 - path: CHANGELOG.md
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
-  - mcp-extension
-  - mcp-wire
 - path: README.md
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
-  - mcp-extension
-  - mcp-wire
 - path: skills/synthesis-autopilot/SKILL.md
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
 - path: skills/synthesis-autopilot/scripts/native_codex.py
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
-  - mcp-extension
-  - mcp-wire
-- path: skills/synthesis-autopilot/scripts/native_observations.py
+- path: skills/synthesis-autopilot/scripts/operator_status.py
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
-  - release-metadata
-- path: skills/synthesis-autopilot/scripts/test_codex_compacted.py
-  cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
 - path: skills/synthesis-autopilot/scripts/test_native_large_context.py
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
+  - release-metadata
+- path: skills/synthesis-autopilot/scripts/test_native_observer_integration.py
+  cases:
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
+  - release-metadata
+- path: skills/synthesis-autopilot/scripts/test_operator_status.py
+  cases:
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - large-context
-  - closed-context
-  - changed-source
-  - memory-bound
-  - settings-container
-  - unicode
-  - prior-gaps
+  - native-extension
+  - native-negative
+  - sleep-negative
+  - date-patch
+  - patch-negative
+  - date-negative
+  - journal-complete
+  - journal-corrupt
+  - generation
   - release-metadata
-  - mcp-extension
-  - mcp-wire
-- path: skills/synthesis-autopilot/scripts/test_native_world_state.py
-  cases:
-  - mcp-extension
-  - mcp-wire
 cases:
-- id: large-context
+- id: native-extension
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_observed_large_compaction_shape_and_cancellation
-  motivating_defect: Bounded current source, inert context, cancellation and replay.
-- id: closed-context
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extension_is_inert_observation
+  motivating_defect: Native extension observations convey no authority.
+- id: native-negative
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_large_compaction_preserves_closed_owner_schema
-  motivating_defect: Unknown and malformed context remain gaps.
-- id: changed-source
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extension_refuses_ambiguous_schema
+  motivating_defect: Foreign and malformed records remain gaps.
+- id: sleep-negative
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_compaction_rejects_changed_complete_source
-  motivating_defect: Source mutation refuses current acceptance.
-- id: memory-bound
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_sleep_duration_refuses_invalid
+  motivating_defect: Bound and type-check sleep declarations.
+- id: date-patch
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_stream_physical_accounting_and_bounded_memory
-  motivating_defect: Physical accounting and finite memory.
-- id: settings-container
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_date_patch_is_inert_observation
+  motivating_defect: Qualified date patch remains inert.
+- id: patch-negative
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_malformed_settings_container_is_a_dialect_gap
-  motivating_defect: Malformed settings containers fail with the owner error.
-- id: unicode
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extra_patch_refuses
+  motivating_defect: Other incremental state remains unknown.
+- id: date-negative
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_compaction_escaped_unicode_is_complete
-  motivating_defect: Escaped Unicode remains valid and complete.
-- id: prior-gaps
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_invalid_date_refuses
+  motivating_defect: Calendar values must be valid.
+- id: journal-complete
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_large_compaction_keeps_existing_accounting_and_prior_gap
-  motivating_defect: Prior gaps and cost evidence are preserved.
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_large_valid_journal
+  motivating_defect: Verify complete chains beyond the old aggregate cap.
+- id: journal-corrupt
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_large_corrupt_early_event_refuses
+  motivating_defect: Early corruption refuses acceptance.
+- id: generation
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_current_decoder_requires_explicit_prior_generation_reconciliation
+  motivating_defect: Prior v8/v9/v10 evidence needs explicit new-generation reconciliation.
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Versioned manifests and public archive contract agree.
-- id: mcp-extension
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_application_metadata_extension_cannot_grant_authority_or_override_outcome
-  motivating_defect: Application metadata remains digest-only without authority or outcome overrides.
-- id: mcp-wire
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_metadata_exact_wire_is_required_for_read_and_revalidation
-  motivating_defect: Changed metadata cannot retain current-source acceptance.
+  motivating_defect: Version manifests and archived source agree.

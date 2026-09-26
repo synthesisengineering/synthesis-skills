@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 import stat
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_state
@@ -22,7 +23,7 @@ import run_state
 MAX_RUNS = 32
 DEFAULT_PAGE_SIZE = 8
 MAX_DISCOVERY_ENTRIES = 4096
-MAX_JOURNAL_BYTES = 32 * 1024 * 1024
+MAX_JOURNAL_SECONDS = 2.0
 MAX_OUTPUT_BYTES = 1024 * 1024
 SCHEMA = 1
 
@@ -47,13 +48,19 @@ def _safe(path, root, *, directory=False):
     return path
 
 
-def _guard_journal(project, run_id):
+def _check_deadline(deadline):
+    if time.monotonic() >= deadline:
+        raise ValueError("journal verification time budget exhausted; no partial state is accepted")
+
+
+def _guard_journal(project, run_id, deadline):
     run_state._uuid(run_id)
     home = project / "resources/autopilot-runs" / run_id
     directory = _safe(home / "events", project, directory=True)
     count, total, entries_seen = 0, 0, 0
     with os.scandir(directory) as entries:
         for entry in entries:
+            _check_deadline(deadline)
             entries_seen += 1
             if entries_seen > run_state.MAX_EVENTS + 64:
                 raise ValueError("journal directory exceeds operator entry bound")
@@ -67,8 +74,8 @@ def _guard_journal(project, run_id):
             if size > run_state.MAX_JSON_BYTES:
                 raise ValueError("event exceeds owner byte bound")
             total += size
-            if total > MAX_JOURNAL_BYTES:
-                raise ValueError("journal exceeds operator byte bound; use owner diagnostics")
+            # Full chains stream one bounded event at a time. Total history
+            # size does not imply concurrent memory use; elapsed work is bounded.
     return home
 
 
@@ -113,16 +120,18 @@ def _child_status(identity, row):
             "authority_granted": False}
 
 
-def _run(project, run_id):
-    home = _guard_journal(project, run_id)
+def _run(project, run_id, deadline):
+    home = _guard_journal(project, run_id, deadline)
     last = None
     progress_revisions = {}
     # Stream the owner-validated chain. Journal order, not dictionary order or
     # wall-clock monotonicity, determines when useful progress was committed.
     for last in run_state._events(project, run_id):
+        _check_deadline(deadline)
         for task_id, entry in _measured_progress(last["state"]):
             identity = (task_id, entry["attempt_id"], run_state._digest(entry))
             progress_revisions.setdefault(identity, last["state"]["revision"])
+    _check_deadline(deadline)
     state = last["state"]
     if state.get("owner", {}).get("project_root") != str(project):
         raise ValueError("journal belongs to another project root")
@@ -239,9 +248,10 @@ def inspect_project(project, run_id=None, *, limit=DEFAULT_PAGE_SIZE, cursor=Non
     next_cursor = (base64.urlsafe_b64encode(json.dumps([inventory_digest, offset + limit, limit], separators=(',', ':')).encode()).decode()
                    if offset + limit < total else None)
     rows = []
+    deadline = time.monotonic() + MAX_JOURNAL_SECONDS
     for identity in ids:
         try:
-            rows.append(_run(project, identity))
+            rows.append(_run(project, identity, deadline))
         except (OSError, ValueError, TypeError, KeyError) as error:
             rows.append({"run_id": identity, "status": "unhealthy", "recorded_status": "UNKNOWN",
                          "currentness": "UNVERIFIABLE", "authority_granted": False,
@@ -251,7 +261,7 @@ def inspect_project(project, run_id=None, *, limit=DEFAULT_PAGE_SIZE, cursor=Non
             "pagination": {"total": total, "offset": offset, "limit": limit, "next_cursor": next_cursor,
                            "order": "FILESYSTEM_RECENCY_HINT", "inventory_sha256": inventory_digest,
                            "questions_scope": "THIS_PAGE_ONLY"},
-            "limits": {"runs_per_page": MAX_RUNS, "discovery_entries": MAX_DISCOVERY_ENTRIES, "journal_bytes": MAX_JOURNAL_BYTES, "output_bytes": MAX_OUTPUT_BYTES},
+            "limits": {"runs_per_page": MAX_RUNS, "discovery_entries": MAX_DISCOVERY_ENTRIES, "journal_seconds": MAX_JOURNAL_SECONDS, "event_bytes": run_state.MAX_JSON_BYTES, "output_bytes": MAX_OUTPUT_BYTES},
             "helper": {"path": str(Path(__file__).resolve()), "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                        "loaded_in_native_session": "UNKNOWN"}}
 

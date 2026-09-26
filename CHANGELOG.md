@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.7] - 2026-09-26
+
+Validate native search, sleep and date-change records as inert observations,
+with strict schemas and explicit decoder-generation reconciliation. Stream
+complete run-journal validation within a shared time budget, retaining per-event
+size and count limits, corrupt-chain refusal and explicit unresolved output.
+
 ## [4.149.6] - 2026-09-26
 
 Read qualified large native compaction records with bounded structural memory,
