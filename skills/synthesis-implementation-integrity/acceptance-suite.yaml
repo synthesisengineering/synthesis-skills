@@ -1,16 +1,15 @@
 schema: 2
-suite: native-readers-4-149-5
+suite: native-large-context-4-149-6
 membership: closed
-production_entry_point: Shared project resolver and native observation owner
+production_entry_point: Shared native observation reader and Codex context owner
 enforcing_boundary: Fresh transaction-bound acceptance before gated release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Native process execution, full transcript accounting, restart
-  survival and universal reader latency are not established by this source package.
-  Actual installed outcome is checked separately.
+unverified_remainder: Native process execution, complete historical accounting and restart survival require
+  separate actual acceptance. Existing gaps are not erased.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
@@ -23,283 +22,144 @@ changed_surfaces:
   - release-metadata
 - path: CHANGELOG.md
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
+  - mcp-extension
+  - mcp-wire
 - path: README.md
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
+  - mcp-extension
+  - mcp-wire
 - path: skills/synthesis-autopilot/SKILL.md
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
 - path: skills/synthesis-autopilot/scripts/native_codex.py
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
+  - mcp-extension
+  - mcp-wire
 - path: skills/synthesis-autopilot/scripts/native_observations.py
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-autopilot/scripts/test_native_observations.py
+- path: skills/synthesis-autopilot/scripts/test_codex_compacted.py
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-autopilot/scripts/test_native_span_counter.py
+- path: skills/synthesis-autopilot/scripts/test_native_large_context.py
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-autopilot/scripts/test_native_world_state.py
-  cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
-  - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
+  - large-context
+  - closed-context
+  - changed-source
+  - memory-bound
+  - settings-container
+  - unicode
+  - prior-gaps
   - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-project-management/SKILL.md
+  - mcp-extension
+  - mcp-wire
+- path: skills/synthesis-autopilot/scripts/test_native_world_state.py
   cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
-  - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-project-management/scripts/project_state.py
-  cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
-  - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
-- path: skills/synthesis-project-management/scripts/test_project_resolution_batch_cost.py
-  cases:
-  - native-inert
-  - native-current-bytes
-  - native-negative
-  - native-usage
-  - reader-batch
-  - reader-races
-  - reader-join
-  - release-metadata
-  - span-wire
-  - span-cancel
-  - span-accounting
-  - context-i64
-  - span-current
-  - context-cost
-  - interval-snapshot
+  - mcp-extension
+  - mcp-wire
 cases:
-- id: native-inert
+- id: large-context
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_new_records_are_one_inert_digest_bound_observation
-  motivating_defect: Native content remains digest-bound observation, without authority.
-- id: native-current-bytes
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_observed_large_compaction_shape_and_cancellation
+  motivating_defect: Bounded current source, inert context, cancellation and replay.
+- id: closed-context
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_actual_reader_and_cancel_preserve_nonreplay
-  motivating_defect: Current-byte validation, cancellation and replay invariants.
-- id: native-negative
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_large_compaction_preserves_closed_owner_schema
+  motivating_defect: Unknown and malformed context remain gaps.
+- id: changed-source
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_unknown_malformed_and_foreign_records_remain_gaps
-  motivating_defect: Unknown/malformed/foreign records remain explicit gaps.
-- id: native-usage
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_compaction_rejects_changed_complete_source
+  motivating_defect: Source mutation refuses current acceptance.
+- id: memory-bound
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_contradictory_counters_stay_a_gap_not_zero_cost
-  motivating_defect: Conflicting usage does not become free or reset cost.
-- id: reader-batch
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_stream_physical_accounting_and_bounded_memory
+  motivating_defect: Physical accounting and finite memory.
+- id: settings-container
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_batch_cost.py::test_batch_matches_independent_single_queries_and_missing_tree
-  motivating_defect: Batch object reads retain exact Git semantics.
-- id: reader-races
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_malformed_settings_container_is_a_dialect_gap
+  motivating_defect: Malformed settings containers fail with the owner error.
+- id: unicode
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_batch_cost.py::test_canonical_project_target_movement_is_unresolved
-  motivating_defect: Moving canonical target refuses selection.
-- id: reader-join
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_compaction_escaped_unicode_is_complete
+  motivating_defect: Escaped Unicode remains valid and complete.
+- id: prior-gaps
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-project-management/scripts/test_project_resolution_batch_cost.py::test_history_pool_limits_two_children_and_joins_before_return
-  motivating_defect: Bound worker concurrency and join before accepting.
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_large_compaction_keeps_existing_accounting_and_prior_gap
+  motivating_defect: Prior gaps and cost evidence are preserved.
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Release manifests and archive metadata agree.
-- id: span-wire
+  motivating_defect: Versioned manifests and public archive contract agree.
+- id: mcp-extension
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_complete_wire_validation
-  motivating_defect: Validate the entire streamed wire, including late malformed data.
-- id: span-cancel
+  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_application_metadata_extension_cannot_grant_authority_or_override_outcome
+  motivating_defect: Application metadata remains digest-only without authority or outcome overrides.
+- id: mcp-wire
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_wire_span_work_yields_and_never_skips_cancel
-  motivating_defect: Bound work without skipping cancellation.
-- id: span-accounting
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_review_nonzero_interval_counts_boundary_byte
-  motivating_defect: Count every physical framing byte.
-- id: context-i64
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_review_context_estimate_matches_producer_i64
-  motivating_defect: Keep the evidenced signed-i64 producer boundary.
-- id: span-current
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_source_identity_loss_never_reuses_old_commitment
-  motivating_defect: Refuse changed source identity.
-- id: context-cost
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_context_estimate_cannot_relax_measured_response_or_cumulative_arithmetic
-  motivating_defect: Context estimates cannot clear contradictory measurements or
-    costs.
-- id: interval-snapshot
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_span_counter.py::test_interval_cannot_assemble_across_source_snapshot_change
-  motivating_defect: Refuse a mixed source snapshot before exposing interval facts,
-    retaining exact physical byte accounting.
+  fixture: ../synthesis-autopilot/scripts/test_native_world_state.py::test_metadata_exact_wire_is_required_for_read_and_revalidation
+  motivating_defect: Changed metadata cannot retain current-source acceptance.

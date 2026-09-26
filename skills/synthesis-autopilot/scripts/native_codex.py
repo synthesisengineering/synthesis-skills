@@ -16,7 +16,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v8"
+ADAPTER_VERSION = "codex-dialect-v10"
 SUPPORTED_SCHEMAS = (
     "session_meta", "turn_context", "compacted", "world_state", "event_msg.thread_settings_applied", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
@@ -275,14 +275,26 @@ def _completed_item(value, producer):
         status = "failed" if native_status == "failed" else "observed" if native_status == "completed" else "unknown"
     elif kind == "McpToolCall":
         _closed(value, {"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"})
-        _closed(item, {"type", "id", "server", "tool", "arguments", "pluginId", "status", "result", "duration"})
+        _closed(item, {"type", "id", "server", "tool", "arguments", "pluginId", "status", "result", "duration"}
+                | ({"readOnlyHint"} if "readOnlyHint" in item else set()))
+        if "readOnlyHint" in item:
+            _flag(item["readOnlyHint"])
+        if start > 2**63 - 1 or end > 2**63 - 1:
+            raise DialectError("MCP item time exceeds bound")
         for key in ("server", "tool", "pluginId", "status"):
             _text(item[key], key)
         # MCP arguments are opaque tool-defined JSON. Validate the bounded
         # object, then digest it; never interpret instructions or invoke it.
         _object(item["arguments"], "MCP arguments")
-        result = item["result"]
-        _closed(result, {"content", "isError"}); _flag(result["isError"])
+        result = _object(item["result"], "MCP result")
+        _closed(result, {"content", "isError"} | ({"_meta"} if "_meta" in result else set()))
+        _flag(result["isError"])
+        if "_meta" in result:
+            # MCP result _meta is an application extension object, like the
+            # opaque tool-defined arguments above. decode_record's whole-row
+            # JSON bounds apply; retain only the item digest, never authority,
+            # executable instructions, outcome overrides or usage from it.
+            _object(result["_meta"], "MCP result metadata")
         if not isinstance(result["content"], list):
             raise DialectError("unsupported MCP result content")
         for content in result["content"]:
@@ -345,8 +357,8 @@ def _compacted(row, producer):
             raise DialectError("compaction flag must be boolean")
 
     def string(value):
-        # Body text may exceed an identity's 4096-character bound; the existing
-        # whole-record decoder bounds still apply before this helper is reached.
+        # Body text may exceed identity bounds. The reader either bounds the
+        # whole decoder input or validates and elides inert strings in a span.
         if not isinstance(value, str):
             raise DialectError("compaction body must be text")
 
@@ -380,7 +392,7 @@ def _compacted(row, producer):
     array(history); array(metadata)
     if not history or len(history) != len(metadata):
         raise DialectError("compaction history metadata cardinality mismatch")
-    content_kinds = {"user.text", "user.image", "unknown", "generic.developer_instructions",
+    content_kinds = {"user.text", "user.image", "images.resize_notice", "unknown", "generic.developer_instructions",
                      "memories.instructions", "host_skills.instructions", "permissions.instructions",
                      "collaboration_mode.instructions", "multi_agent.role_instructions",
                      "multi_agent.mode_instructions", "agents_md.instructions", "environments.environment_context"}
@@ -467,6 +479,25 @@ def _compacted(row, producer):
             "grants_authority": False, "portable_completion": False, "recovery_proven": False}
 
 
+def decode_streamed_compaction(row, producer, *, digest, mode, source_locator):
+    """Normalize a strict streaming projection after complete wire validation.
+
+    The reader elides only known body strings and authenticates every original
+    byte with two stable passes. Reuse this owner's complete schema and counter
+    validation; never report body digests calculated from those placeholders.
+    """
+    if not isinstance(row, dict) or row.get("type") != "compacted":
+        raise DialectError("unsupported streamed context grammar")
+    facts = decode_record(row, producer, mode=mode, source_locator=source_locator)
+    data = facts[0]["data"]
+    for key in ("message_digest", "replacement_history_digest",
+                "replacement_history_metadata_digest", "retained_context_digest"):
+        del data[key]
+    data.update(record_digest=digest, commitment_algorithm="codex-compaction-wire-sha256-v1",
+                body_retained=False)
+    return facts
+
+
 def _closed(value, required):
     _object(value, "native context object")
     if set(value) != set(required):
@@ -550,16 +581,20 @@ def _thread_settings(value, producer):
     _closed(value, {"type", "thread_id", "thread_settings"})
     if value["thread_id"] != producer["thread_id"]:
         raise DialectError("thread settings producer mismatch")
-    settings = value["thread_settings"]
+    settings = _object(value["thread_settings"], "thread settings")
     strings = {"model", "model_provider_id", "service_tier", "approval_policy", "approvals_reviewer",
                "cwd", "reasoning_effort", "reasoning_summary", "personality"}
-    _closed(settings, strings | {"permission_profile", "active_permission_profile", "runtime_workspace_roots",
-                                 "collaboration_mode", "disabled_plugin_ids"})
+    # Native settings may omit the active profile descriptor. Absence is an
+    # observation of missing metadata, never an unrestricted profile or grant.
+    _closed(settings, strings | {"permission_profile", "runtime_workspace_roots",
+                                 "collaboration_mode", "disabled_plugin_ids"}
+            | ({"active_permission_profile"} if "active_permission_profile" in settings else set()))
     for key in strings: _body(settings[key])
     for key in ("runtime_workspace_roots", "disabled_plugin_ids"):
         if not isinstance(settings[key], list) or any(not isinstance(x, str) for x in settings[key]):
             raise DialectError("unsupported thread settings list")
-    _string_fields(settings["active_permission_profile"], {"id"})
+    if "active_permission_profile" in settings:
+        _string_fields(settings["active_permission_profile"], {"id"})
     mode = settings["collaboration_mode"]
     _closed(mode, {"mode", "settings"}); _body(mode["mode"])
     _string_fields(mode["settings"], {"model", "reasoning_effort", "developer_instructions"})

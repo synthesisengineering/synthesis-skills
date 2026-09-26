@@ -122,3 +122,121 @@ def test_contradictory_counters_stay_a_gap_not_zero_cost(tmp_path):
  with pytest.raises(c.DialectError):c.decode_record(row,P)
  _,b,cu=source(tmp_path,[row]);events,p,_=drain(b,cu)
  assert not events and p['gaps'] and not p['usage']
+
+
+def mcp_metadata_shape(variant, hint=True):
+ row=mcp(70000 if variant=='screenshot' else 0)
+ item=row['payload']['item'];item['readOnlyHint']=hint
+ meta={'codex/nodeReplExecutionDurationMs':0}
+ if variant!='duration':
+  meta.update({'browser_use':{'url':'https://synthetic.invalid/'},'codex/browserUse':True,
+   'codex/toolSurface':{'backend':'iab','browserId':'synthetic','kind':'browserUse'}})
+ if variant=='screenshot':
+  meta['codex/toolSurface'].update({'openTabIds':['synthetic-tab'],
+   'screenshot':{'url':'data:image/png;base64,'+'x'*340000,'pageUrl':'https://synthetic.invalid/','tabId':'synthetic-tab'}})
+ else:
+  item['status']='failed';item['result']['isError']=True
+ item['result']['_meta']=meta
+ return row
+
+
+@pytest.mark.parametrize('variant',['duration','browser','screenshot'])
+@pytest.mark.parametrize('hint',[True,False])
+def test_observed_mcp_metadata_is_an_inert_digest(tmp_path,variant,hint):
+ row=mcp_metadata_shape(variant,hint)
+ facts=c.decode_record(row,P)
+ assert len(facts)==1 and facts[0]['kind']=='item.observation'
+ assert facts[0]['status']==('observed' if variant=='screenshot' else 'failed')
+ assert not facts[0]['data']['grants_authority'] and not facts[0]['data']['portable_completion']
+ assert facts[0]['data']['item_digest']==no._digest(row['payload']['item'])
+ assert 'synthetic.invalid' not in json.dumps(facts) and 'readOnlyHint' not in json.dumps(facts)
+ p,b,cu=source(tmp_path,[row]);ev,pr,_=drain(b,cu)
+ assert len(ev)==1 and not pr['gaps'] and not pr['usage'] and not pr['pairs']
+ assert no.revalidate_observations(b,ev,required_interval=(0,p.stat().st_size),max_bytes=2*1024*1024)['status']=='current'
+
+
+MCP_METADATA_MUTATIONS=[
+ (('payload','item'),'readOnlyHint',None),(('payload','item'),'readOnlyHint',1),
+ (('payload','item'),'readOnlyHint','true'),(('payload','item'),'pluginId',False),
+ (('payload','item'),'future',True),(('payload',),'future',True),
+ (('payload',),'started_at_ms',False),(('payload',),'started_at_ms',-1),
+ (('payload',),'started_at_ms',0.5),(('payload',),'started_at_ms','0'),
+ (('payload',),'started_at_ms',2**63),(('payload',),'completed_at_ms',True),
+ (('payload',),'completed_at_ms',-1),(('payload',),'completed_at_ms',0.5),
+ (('payload',),'completed_at_ms',2**63),(('payload',),'started_at_ms',2),
+ (('payload','item','result'),'_meta',None),(('payload','item','result'),'_meta',False),
+ (('payload','item','result'),'_meta',[]),(('payload','item','result'),'future',True),
+]
+
+@pytest.mark.parametrize('path,key,value',MCP_METADATA_MUTATIONS)
+def test_mcp_metadata_keeps_closed_typed_fields(tmp_path,path,key,value):
+ row=mcp_metadata_shape('screenshot');at=row
+ for part in path:at=at[part]
+ at[key]=value
+ with pytest.raises(c.DialectError):c.decode_record(row,P)
+ _,b,cu=source(tmp_path,[row]);ev,pr,_=drain(b,cu)
+ assert not ev and pr['gaps']
+
+
+@pytest.mark.parametrize('meta',[
+ {}, {'future/application':{'unknown':[None,True,False,3,1.5,'opaque']}},
+ {'permissions':{'network':'allow','filesystem':'write'},'authority':True,
+  'status':'completed','isError':False,'cost':0,'total_tokens':0,'readOnlyHint':True},
+ {'codex/nodeReplExecutionDurationMs':'opaque','browser_use':None,
+  'codex/toolSurface':{'backend':'future','openTabIds':[1]}},
+])
+def test_application_metadata_extension_cannot_grant_authority_or_override_outcome(tmp_path,meta):
+ row=mcp_metadata_shape('duration');row['payload']['item']['result']['_meta']=meta
+ facts=c.decode_record(row,P)
+ assert len(facts)==1 and facts[0]['status']=='failed'
+ assert facts[0]['data']['grants_authority'] is False
+ assert facts[0]['data']['portable_completion'] is False
+ assert facts[0]['authentication']=='owner_admission_required'
+ assert facts[0]['native']['call_id'] is None
+ assert facts[0]['data']['item_digest']==no._digest(row['payload']['item'])
+ assert not any(k in facts[0]['data'] for k in ('permissions','cost','total_tokens','_meta'))
+ path,b,cu=source(tmp_path,[row]);events,pr,batches=drain(b,cu)
+ assert len(events)==1 and not pr['gaps'] and not pr['usage'] and not pr['pairs']
+ assert no.revalidate_observations(b,events,required_interval=(0,path.stat().st_size))['status']=='current'
+ for batch in batches:pr=no.reduce_observations(pr,batch)
+ assert len(pr['events'])==1 and not pr['usage'] and not pr['pairs']
+
+
+@pytest.mark.parametrize('fault',['depth','width','array','nodes','bytes','string','nan','infinity','surrogate'])
+def test_inert_metadata_retains_whole_record_resource_and_json_limits(tmp_path,fault):
+ row=mcp();meta={};row['payload']['item']['result']['_meta']=meta
+ if fault=='depth':
+  at=meta
+  for _ in range(33):at['x']={};at=at['x']
+ if fault=='width':meta.update({str(i):0 for i in range(1025)})
+ if fault=='array':meta['x']=[0]*1025
+ if fault=='nodes':meta['x']=[[0]*1000 for _ in range(17)]
+ if fault=='bytes':meta.update({'x':'x'*600000,'y':'y'*600000})
+ if fault=='string':meta['x']='x'*(1024*1024+1)
+ if fault=='nan':meta['x']=float('nan')
+ if fault=='infinity':meta['x']=float('inf')
+ if fault=='surrogate':meta['x']='\ud800'
+ with pytest.raises(c.DialectError):c.decode_record(row,P)
+ # Deliberately preserve invalid JSON numbers/escaped surrogates on the wire.
+ raw=json.dumps(row,ensure_ascii=True,separators=(',',':')).encode()+b'\n'
+ path,b,cu=source(tmp_path,[])
+ with path.open('ab') as f:f.write(raw)
+ events,pr,_=drain(b,cu)
+ assert not events and pr['gaps'] and not pr['usage']
+
+
+@pytest.mark.parametrize('fault',['duplicate','invalid_utf8','same_length_mutation'])
+def test_metadata_exact_wire_is_required_for_read_and_revalidation(tmp_path,fault):
+ row=mcp();row['payload']['item']['result']['_meta']={'marker':'opaque-a'}
+ raw=wire(row)
+ if fault=='duplicate':raw=raw.replace(b'"marker":"opaque-a"',b'"marker":"opaque-a","marker":"opaque-b"')
+ if fault=='invalid_utf8':raw=raw.replace(b'opaque-a',b'opaque-\xff')
+ path,b,cu=source(tmp_path,[])
+ with path.open('ab') as f:f.write(raw)
+ events,pr,_=drain(b,cu)
+ if fault=='same_length_mutation':
+  assert len(events)==1 and not pr['gaps']
+  assert no.revalidate_observations(b,events)['status']=='current'
+  path.write_bytes(path.read_bytes().replace(b'opaque-a',b'opaque-b'))
+  assert no.revalidate_observations(b,events)['status']=='invalid'
+ else:assert not events and pr['gaps']
