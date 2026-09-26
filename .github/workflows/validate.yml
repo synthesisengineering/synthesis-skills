@@ -32,7 +32,10 @@ jobs:
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-project-management/scripts/ -q
       - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
-      - run: python -m pytest skills/synthesis-autopilot/scripts/ -q
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
       - run: python -m pytest skills/synthesis-model-tiers/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
@@ -76,7 +79,7 @@ jobs:
       - run: python -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python skills/synthesis-onboarding/scripts/check_capabilities.py .
-      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q
+      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q
       - run: python -m pytest skills/synthesis-agent-guardrails/tests/ -q
       # Standalone runner, not pytest: the file must stay executable from inside a
       # deployed skill directory, where pytest is not guaranteed to be installed.

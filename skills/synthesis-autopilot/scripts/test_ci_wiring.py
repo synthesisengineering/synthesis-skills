@@ -5,10 +5,16 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_all_release_contracts_run_the_whole_autopilot_suite():
-    assert "python3 -m pytest skills/synthesis-autopilot/scripts/ -q" in (ROOT / "AGENTS.md").read_text()
-    assert "python -m pytest skills/synthesis-autopilot/scripts/ -q" in (ROOT / ".github/workflows/validate.yml").read_text()
-    text = (ROOT / "skills/synthesis-skills-manager/scripts/release.py").read_text()
-    assert '("pytest.autopilot", ["python3", "-m", "pytest", "skills/synthesis-autopilot/scripts/", "-q"])' in text
+    import ast
+    release = ast.parse((ROOT / 'skills/synthesis-skills-manager/scripts/release.py').read_text())
+    checks = next(n for n in release.body if isinstance(n, ast.AnnAssign) and getattr(n.target, 'id', '') == 'REQUIRED_CHECKS')
+    commands = dict(ast.literal_eval(checks.value))
+    for group in ('state', 'native', 'evaluation', 'core'):
+        command = 'skills/synthesis-skills-manager/scripts/release_check_groups.py --group ' + group
+        assert 'python3 ' + command in (ROOT / 'AGENTS.md').read_text()
+        assert 'python ' + command in (ROOT / '.github/workflows/validate.yml').read_text()
+        assert commands['pytest.autopilot.' + group] == ['python3', *command.split()]
+
 
 
 """Candidate additions for synthesis-autopilot/scripts/test_ci_wiring.py."""
@@ -47,7 +53,7 @@ def test_ci_sandbox_preflight_is_required_before_consumer_tests():
         'echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"',
     ]
     assert not setup.get('continue-on-error') and not job.get('continue-on-error')
-    consumers = next(step for step in steps if step.get('run') == 'python -m pytest skills/synthesis-autopilot/scripts/ -q')
+    consumers = next(step for step in steps if step.get('run') == 'python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state')
     assert steps.index(setup) < steps.index(consumers)
     browser_consumers = next(step for step in steps
                              if 'synthesis-decision-packet/scripts/test_*.py' in step.get('run', ''))

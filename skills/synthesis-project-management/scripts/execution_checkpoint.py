@@ -174,6 +174,19 @@ def _summary(state):
     return result
 
 
+def _snapshot_derivation(run_state, path, value):
+    """Derive exact owned bytes without rewriting historical inline snapshots."""
+    rendered = run_state._retained_snapshot_bytes(path, value)
+    if path.parent.name == 'events' and len(rendered) > 1:
+        # The append owner also installs this revision's projection blocks
+        # before committing. Retain their derivation after current.json moves.
+        projection = path.parent.parent / 'current.json'
+        rendered.update({item: content for item, content in
+            run_state._snapshot_bytes(projection, value['state']).items()
+            if item != projection})
+    return {str(item): _hash(content) for item, content in rendered.items()}
+
+
 def _inventory(context):
     import run_state
     budget = _ScanBudget()
@@ -185,11 +198,11 @@ def _inventory(context):
         budget.check()
         events.append({key: last[key] for key in ('revision', 'digest', 'actor')})
         path = str(home / 'events' / f"{last['revision']:012d}.json")
-        derived[path] = _hash(run_state._json(last) + b'\n')
+        derived.update(_snapshot_derivation(run_state, Path(path), last))
     if last is None or last['state'] != state:
         raise ValueError('execution basis needs the current selected journal')
-    derived.update({str(home / 'current.json'): _hash(run_state._json(state) + b'\n'),
-        str(home / 'summary.md'): _hash(('# Autopilot run\n\n' + _summary(state)).encode())})
+    derived.update(_snapshot_derivation(run_state, home / 'current.json', state))
+    derived[str(home / 'summary.md')] = _hash(('# Autopilot run\n\n' + _summary(state)).encode())
     if state['status'] in run_state.TERMINAL:
         derived[str(home / 'terminal.json')] = _hash(run_state._json({'schema_version': run_state.SCHEMA,
             'run_id': state['run_id'], 'revision': state['revision'], 'status': state['status'],

@@ -166,7 +166,7 @@ def _run(project, run_id, deadline):
     ext = state.get("extensions", {})
     checkpoint = ext.get("controller", {}).get("checkpoint", {})
     continuation = ext.get("capabilities", {}).get("continuation") or {}
-    return {
+    view = {
         "run_id": run_id, "project_id": state["owner"].get("project_id"), "revision": state["revision"],
         "journal_head": last["digest"], "status": display, "recorded_status": status,
         "created_at": state.get("created_at"), "updated_at": state.get("updated_at"),
@@ -188,6 +188,9 @@ def _run(project, run_id, deadline):
         "notification_delivery": "UNKNOWN", "loaded_in_native_session": "UNKNOWN", "authority_granted": False,
         "diagnostics": diagnostics, "currentness": "JOURNAL_VERIFIED_RECORDED_STATE",
     }
+
+    _check_deadline(deadline)
+    return view
 
 
 def inspect_project(project, run_id=None, *, limit=DEFAULT_PAGE_SIZE, cursor=None):
@@ -261,7 +264,11 @@ def inspect_project(project, run_id=None, *, limit=DEFAULT_PAGE_SIZE, cursor=Non
             "pagination": {"total": total, "offset": offset, "limit": limit, "next_cursor": next_cursor,
                            "order": "FILESYSTEM_RECENCY_HINT", "inventory_sha256": inventory_digest,
                            "questions_scope": "THIS_PAGE_ONLY"},
-            "limits": {"runs_per_page": MAX_RUNS, "discovery_entries": MAX_DISCOVERY_ENTRIES, "journal_seconds": MAX_JOURNAL_SECONDS, "event_bytes": run_state.MAX_JSON_BYTES, "output_bytes": MAX_OUTPUT_BYTES},
+            "limits": {"runs_per_page": MAX_RUNS, "discovery_entries": MAX_DISCOVERY_ENTRIES, "journal_seconds": MAX_JOURNAL_SECONDS, "event_bytes": run_state.MAX_JSON_BYTES, "output_bytes": MAX_OUTPUT_BYTES,
+                       "snapshot_logical_bytes": run_state.journal_storage.MAX_LOGICAL_BYTES,
+                       "snapshot_block_bytes": run_state.journal_storage.MAX_BLOCK_BYTES,
+                       "snapshot_store_bytes": run_state.journal_storage.MAX_STORE_BYTES,
+                       "snapshot_store_entries": run_state.journal_storage.MAX_STORE_ENTRIES},
             "helper": {"path": str(Path(__file__).resolve()), "sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                        "loaded_in_native_session": "UNKNOWN"}}
 

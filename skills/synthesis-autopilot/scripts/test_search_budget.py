@@ -125,3 +125,57 @@ def test_search_cli_actor_errors_are_bounded(tmp_path, capsys):
             "--expected-revision", "0", "--agents", "1", "--per-agent", "1"])
     assert error.value.code == 2
     assert "search budget:" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('configured', ['2', '0', '-1', 'invalid', ''])
+def test_configured_cap_refuses_before_any_ledger_operation(monkeypatch, configured):
+    monkeypatch.setenv(VAR, configured)
+    calls = []
+    monkeypatch.setattr(search_budget, '_command', lambda *args, **kwargs: calls.append((args, kwargs)))
+    with pytest.raises(ValueError, match='cap'):
+        search_budget.reserve_searches(project=None, run_id='fixture', actor=None, runtime_root=None,
+            expected_revision=1, command_id='no-dispatch', reservation_id='work', agents=3, per_agent=3)
+    assert calls == []
+
+
+def test_configured_cap_allows_exact_allocation_and_keeps_total_ledger(world, monkeypatch):
+    monkeypatch.setenv(VAR, '2')
+    state = create(world); engine = autopilot.engine()
+    for name, payload in [('workflow.configure', {'dimensions': {'domains': ['research'],
+        'uncertainty': 'low', 'effect': 'none', 'horizon': 'turn', 'parallelizable': True}}),
+        ('workflow.budget', {'limits': {'searches': {'limit': 5, 'enforcement': 'hard'}},
+                              'deadline': '2099-01-01T00:00:00Z'})]:
+        state = engine.apply_command(world['project'], state['run_id'], name, payload,
+            expected_revision=state['revision'], command_id=name, actor=world['actor'], runtime_root=world['runtime'])
+    kwargs = dict(project=world['project'], run_id=state['run_id'], actor=world['actor'], runtime_root=world['runtime'])
+    before = engine.load_run(world['project'], state['run_id'])
+    with pytest.raises(ValueError, match='cap'):
+        search_budget.reserve_searches(**kwargs, expected_revision=state['revision'], command_id='cap-refused',
+            reservation_id='too-large', agents=1, per_agent=3)
+    assert engine.load_run(world['project'], state['run_id']) == before
+    accepted = search_budget.reserve_searches(**kwargs, expected_revision=state['revision'], command_id='exact',
+        reservation_id='exact', agents=2, per_agent=2)
+    assert accepted['budget']['available'] == 1
+    with pytest.raises(ValueError):
+        search_budget.reserve_searches(**kwargs, expected_revision=accepted['revision'], command_id='total-refused',
+            reservation_id='total', agents=1, per_agent=2)
+
+
+def test_nested_search_reservation_keeps_configured_per_agent_cap(world, monkeypatch):
+    monkeypatch.setenv(VAR, '2')
+    state = create(world); engine = autopilot.engine()
+    for name, payload in [('workflow.configure', {'dimensions': {'domains': ['research'],
+        'uncertainty': 'low', 'effect': 'none', 'horizon': 'turn', 'parallelizable': True}}),
+        ('workflow.budget', {'limits': {'searches': {'limit': 6, 'enforcement': 'hard'}},
+                              'deadline': '2099-01-01T00:00:00Z'})]:
+        state = engine.apply_command(world['project'], state['run_id'], name, payload,
+            expected_revision=state['revision'], command_id=name, actor=world['actor'], runtime_root=world['runtime'])
+    kwargs = dict(project=world['project'], run_id=state['run_id'], actor=world['actor'], runtime_root=world['runtime'])
+    parent = search_budget.reserve_searches(**kwargs, expected_revision=state['revision'], command_id='parent',
+        reservation_id='parent', agents=2, per_agent=2)
+    with pytest.raises(ValueError, match='cap'):
+        search_budget.reserve_searches(**kwargs, expected_revision=parent['revision'], command_id='child-refused',
+            reservation_id='child-refused', parent_id='parent', agents=1, per_agent=3)
+    child = search_budget.reserve_searches(**kwargs, expected_revision=parent['revision'], command_id='child',
+        reservation_id='child', parent_id='parent', agents=1, per_agent=2)
+    assert child['admitted'] and child['budget']['available'] == parent['budget']['available']

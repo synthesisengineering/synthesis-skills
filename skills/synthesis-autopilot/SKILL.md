@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.4.7"
+  version: "3.4.8"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---

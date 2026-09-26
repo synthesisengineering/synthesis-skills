@@ -104,20 +104,23 @@ def _under_retired(cell: str, retired: str) -> bool:
     return real == retired or real.startswith(retired + os.sep)
 
 
-def _narrow_retired_claims(worktree: Path, board: Path | None) -> None:
+def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only: bool = False) -> bool:
     """Release the caller's claimed areas under the removed worktree.
 
     Retirement without narrowing leaves the seat's row naming a removed
     checkout, which fails every pairwise board check involving the seat
     and blocks its next claim on its own stale areas (intake 33). Only
     the CALLER's row is touched — narrow enforces ownership — and only
-    cells under the retired tree; covering areas stay held. Best effort
-    with loud output: the removal already succeeded, so a narrow failure
-    warns with the exact manual command instead of failing the
-    retirement. Runs on the fresh path only; an interrupted run's stale
-    cells surface through the owner-attributed refusal with the same
-    remedy.
+    cells under the retired tree; covering areas stay held. A failed owned
+    cleanup refuses successful completion while retaining the durable intent
+    for an authenticated retry. Missing session identity is reported without
+    inventing an owner. Runs after verified retirement completion on both the fresh
+    and resumed paths; retries use the same native ownership checks and
+    never acquire or release a foreign row.
     """
+    if worktree.exists() or worktree.is_symlink():
+        print(f"retire-worktree WARNING: removed-worktree path has been recreated: {worktree}; no claims changed", file=sys.stderr)
+        return False
     coordination = Path(__file__).resolve().parent / "coordination.py"
     retired = os.path.realpath(worktree)
     session_id = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
@@ -130,20 +133,24 @@ def _narrow_retired_claims(worktree: Path, board: Path | None) -> None:
             f"release areas under {worktree} by hand: coordination.py narrow "
             f"--session <id> --release {shlex.quote(str(worktree))}",
         )
-        return
+        return True
     try:
         completed = subprocess.run(
             base_cmd + ["status", "--json"],
             capture_output=True, text=True, timeout=60,
             env={**os.environ, "LC_ALL": "C"},
         )
-        sessions = json.loads(completed.stdout).get("sessions", [])
+        if completed.returncode != 0:
+            raise ValueError(completed.stderr.strip() or "coordination status failed")
+        sessions = json.loads(completed.stdout)["sessions"]
+        if not isinstance(sessions, list):
+            raise ValueError("coordination status lacks a sessions list")
     except Exception as exc:
         print(
             f"retire-worktree WARNING: cannot read board for claim narrowing: {exc}",
             file=sys.stderr,
         )
-        return
+        return False
     row = next(
         (candidate for candidate in sessions
          if session_id in (
@@ -155,21 +162,31 @@ def _narrow_retired_claims(worktree: Path, board: Path | None) -> None:
     )
     if row is None:
         print(f"retire-worktree: no board row for session {session_id}; nothing narrowed")
-        return
+        return True
     areas = [cell for cell in row.get("claims", []) if _under_retired(cell, retired)]
     workspaces = [cell for cell in row.get("workspaces", []) if _under_retired(cell, retired)]
     if not areas and not workspaces:
         print(f"retire-worktree: no claimed areas under {worktree}; nothing narrowed")
-        return
+        return True
     narrow_cmd = base_cmd + ["narrow", "--session", session_id]
     for cell in areas:
         narrow_cmd += ["--release", cell]
     for cell in workspaces:
         narrow_cmd += ["--release-workspace", cell]
-    narrowed = subprocess.run(
-        narrow_cmd, capture_output=True, text=True, timeout=60,
-        env={**os.environ, "LC_ALL": "C"},
-    )
+    if diagnose_only:
+        remedy = " ".join(shlex.quote(part) for part in narrow_cmd[2:])
+        print(f"retire-worktree: no verified intent; no claims changed. "
+              f"Session {session_id} retains cells under {worktree}. "
+              f"Owner recovery: coordination.py {remedy}", file=sys.stderr)
+        return False
+    try:
+        narrowed = subprocess.run(
+            narrow_cmd, capture_output=True, text=True, timeout=60,
+            env={**os.environ, "LC_ALL": "C"},
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"retire-worktree WARNING: claim narrowing did not finish: {exc}; retry verified retirement", file=sys.stderr)
+        return False
     if narrowed.returncode != 0:
         detail = narrowed.stderr.strip() or narrowed.stdout.strip()
         manual = " ".join(shlex.quote(part) for part in narrow_cmd[2:])
@@ -178,11 +195,13 @@ def _narrow_retired_claims(worktree: Path, board: Path | None) -> None:
             f"Release by hand: coordination.py {manual}",
             file=sys.stderr,
         )
-        return
+        return False
     print(
         f"retire-worktree: narrowed {len(areas)} area(s), "
         f"{len(workspaces)} workspace(s) under {worktree}"
     )
+
+    return True
 
 
 def worktree_entries(repository: Path) -> list[dict[str, str]]:
@@ -580,6 +599,7 @@ def resume_retirement(
     remote: str,
     *,
     delete_remote: bool,
+    board: Path | None = None,
 ) -> int | None:
     match = matching_retirement_intent(repository, worktree)
     if match is None:
@@ -614,6 +634,8 @@ def resume_retirement(
             print(f"Resumed retirement from {intent}")
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return fail(str(exc))
+    if not _narrow_retired_claims(worktree, board):
+        return fail("retirement is retained; caller claim cleanup requires an authenticated retry")
     branch = recorded_branch
     if not branch:
         print("retire-worktree: no recorded branch; branch cleanup was not attempted")
@@ -775,11 +797,13 @@ def main() -> int:
                 args.branch,
                 args.remote,
                 delete_remote=args.delete_remote,
+                board=args.board,
             )
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             return fail(str(exc))
         if resumed is not None:
             return resumed
+        _narrow_retired_claims(worktree, args.board, diagnose_only=True)
         return fail(f"{worktree} is not a worktree of {repository}")
     if Path(match["worktree"]).resolve() == main_worktree:
         return fail("refusing to retire the repository's main worktree")
@@ -934,8 +958,9 @@ def main() -> int:
 
     # Removal succeeded: the caller's cells under the retired tree are now
     # stale. Narrow them in the same step so the row never names a removed
-    # checkout (intake 33). Warn-only — see _narrow_retired_claims.
-    _narrow_retired_claims(worktree, args.board)
+    # checkout (intake 33). An incomplete cleanup remains an authenticated retry.
+    if not _narrow_retired_claims(worktree, args.board):
+        return fail("retirement is retained; caller claim cleanup requires an authenticated retry")
 
     if branch is None:
         print("Retired verified detached worktree; no branch cleanup was attempted")

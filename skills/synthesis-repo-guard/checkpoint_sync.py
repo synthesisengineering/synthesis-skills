@@ -2661,12 +2661,13 @@ def record_prepared_native_launch(*, project: Path, run_id: str, permit_id: str,
     if run_state._plan_digest(project, state) != grant["issuer"]["plan_digest"]:
         raise ValueError("prepared attribution controlling human plan changed")
     derived = {str(path): hashlib.sha256(raw).hexdigest() for path, raw in
-               run_state._projection_bytes(project, state, plan.read_text(encoding="utf-8")).items()}
+               run_state._projection_bytes(project, state, plan.read_text(encoding="utf-8"), retain_storage=True).items()}
     recorded = authority.get("projection_hashes")
     if not isinstance(recorded, dict) or set(recorded) != set(derived) or recorded != derived:
         raise ValueError("prepared attribution projection differs from its committed owner rendering")
+    event_bytes = run_state._retained_snapshot_bytes(home / "events" / f"{revision:012d}.json", event)
     expected = {**derived, str(run_state._plan_lock(project, plan)): hashlib.sha256(b"").hexdigest(),
-                str(home / "events" / f"{revision:012d}.json"): hashlib.sha256(run_state._json(event) + b"\n").hexdigest()}
+                **{str(path): hashlib.sha256(raw).hexdigest() for path, raw in event_bytes.items()}}
     allowed = set(expected)
     for path, digest in expected.items():
         target_path = Path(path)
