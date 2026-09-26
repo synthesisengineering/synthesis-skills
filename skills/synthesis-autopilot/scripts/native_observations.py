@@ -21,7 +21,9 @@ using the bounded string-run technique from live_receipt._TranscriptJSON. A
 fixed projection identifies ignored nonmaterial records or a client owner's
 explicit bounded-readback grammar. The latter is reopened in full within the
 existing 1 MiB decoder envelope; only compact derived facts are retained.
-Other oversized bodies produce a source gap/reference. Physical
+A separately bounded command grammar streams up to 4 MiB of complete current
+wire bytes using two passes and compact metadata. The 1 MiB complete-record
+memory envelope stays unchanged. Other oversized bodies produce a source gap/reference. Physical
 scan progress can cross gaps; trusted coverage cannot.
 No source transcript or auxiliary database is written by this module.
 """
@@ -49,13 +51,16 @@ import native_copilot
 import native_opencode
 
 
-ADAPTER_VERSION = "native-observations-v3"
+ADAPTER_VERSION = "native-observations-v4"
 ADAPTER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 MAX_INDEX_ENTRIES = 10000
 MAX_PROJECTION_BYTES = 2 * 1024 * 1024
 MAX_HEADER_BYTES = 1024 * 1024
 MAX_VALIDATOR_BYTES = 64 * 1024
 MAX_RECORD_READBACK_BYTES = 1024 * 1024
+MAX_STREAM_SPAN_BYTES = 4 * 1024 * 1024
+STREAM_CHUNK_BYTES = 16384
+COMMIT_CHUNK_BYTES = 1024
 _DIALECTS = {"codex": native_codex, "claude": native_claude, "muse": native_muse,
              "cursor": native_cursor, "copilot": native_copilot, "opencode": native_opencode}
 _DIALECT_HASHES = {client: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
@@ -222,6 +227,12 @@ class _StreamJSON:
             return None
         return frame["path"] + [frame["key"]]
 
+    def _selected(self, path, kind):
+        return path is not None and tuple(path) in _IGNORED_PROJECTION
+
+    def _close(self, frame):
+        pass
+
     def _finish_token(self):
         s, token = self.s, self.s["token"]
         if s["lex"] == "number":
@@ -313,6 +324,7 @@ class _StreamJSON:
                 # cumulative keys processed are work, not live cursor memory.
                 s["key_bytes"] -= sum(len(key.encode("utf-8", errors="surrogatepass"))
                                       for key in frame["keys"])
+                self._close(frame)
                 s["stack"].pop()
                 i += 1
                 continue
@@ -330,7 +342,7 @@ class _StreamJSON:
                 s.update(lex="string", token="", key=True, capture=None)
             elif expected in {"value", "value_or_end"}:
                 path = self._path()
-                selected = path is not None and tuple(path) in _IGNORED_PROJECTION
+                selected = self._selected(path, c)
                 if selected:
                     s["projection"][".".join(path)] = None
                 if c in "{[":
@@ -365,6 +377,171 @@ class _StreamJSON:
         except (UnicodeError, ValueError) as exc:
             self.s["error"] = str(exc)
         return not self.s["error"]
+
+
+class _CommandJSON(_StreamJSON):
+    """Closed command envelope; only finite metadata survives string bodies."""
+    OBJECTS = {
+        (): ({"type", "payload"}, {"timestamp", "ordinal", "thread_id", "session_id"}),
+        ("payload",): ({"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"}, set()),
+        ("payload", "item"): ({"type", "id", "command", "cwd", "status", "exit_code", "stdout", "stderr", "aggregated_output"},
+                              {"process_id", "parsed_cmd", "source", "duration", "formatted_output"}),
+        ("payload", "item", "duration"): ({"secs", "nanos"}, set()),
+        ("payload", "item", "parsed_cmd", "*"): ({"type", "cmd", "path"}, {"name"}),
+    }
+    ARRAYS = {("payload", "item", "command"), ("payload", "item", "parsed_cmd")}
+    INTS = {("ordinal",), ("payload", "started_at_ms"), ("payload", "completed_at_ms"),
+            ("payload", "item", "duration", "secs"), ("payload", "item", "duration", "nanos")}
+    BODIES = {("payload", "item", k) for k in ("stdout", "stderr", "aggregated_output", "formatted_output")}
+    BODIES |= {("payload", "item", "command", "*")}
+    BODIES |= {("payload", "item", "parsed_cmd", "*", k) for k in ("cmd", "name", "path")}
+
+    def __init__(self, depth=32):
+        super().__init__(depth=depth)
+        self.array_counts = {}
+
+    def _path(self):
+        if self.s["stack"] and self.s["stack"][-1]["kind"] == "array":
+            return self.s["stack"][-1]["path"] + ["*"]
+        return super()._path()
+
+    def _selected(self, path, char):
+        path = tuple(path) if path is not None else None
+        if path and path[-1] == "*":
+            array = path[:-1]
+            self.array_counts[array] = self.array_counts.get(array, 0) + 1
+            if self.array_counts[array] > 256:
+                raise SourceError("command array exceeds semantic work bound")
+        if path in self.OBJECTS:
+            if char != "{": raise SourceError("command object type mismatch")
+            return False
+        if path in self.ARRAYS:
+            if char != "[": raise SourceError("command array type mismatch")
+            self.array_counts[path] = 0
+            return False
+        if path in self.INTS:
+            if char not in "0123456789": raise SourceError("command integer type mismatch")
+            return True
+        if path == ("payload", "item", "exit_code"):
+            if char not in "n-0123456789": raise SourceError("command exit-code type mismatch")
+            return True
+        if path in self.BODIES:
+            if char != '"': raise SourceError("command body is not a string")
+            return False
+        if path and ((path[:-1] in self.OBJECTS and path[-1] in set.union(*self.OBJECTS[path[:-1]]))):
+            if char != '"': raise SourceError("command text type mismatch")
+            return True
+        raise SourceError("unsupported streamed command field")
+
+    def _close(self, frame):
+        path = tuple(frame["path"])
+        if frame["kind"] == "array":
+            if path == ("payload", "item", "command") and not self.array_counts[path]:
+                raise SourceError("empty command array")
+            return
+        required, optional = self.OBJECTS[path]
+        keys = set(frame["keys"])
+        if not required <= keys or keys - required - optional:
+            raise SourceError("unsupported streamed command fields")
+        if path == ("payload", "item", "parsed_cmd", "*"):
+            kind = self.s["projection"].get("payload.item.parsed_cmd.*.type")
+            if (kind not in {"read", "list_files"}
+                    or keys != ({"type","cmd","name","path"} if kind == "read" else {"type","cmd","path"})):
+                raise SourceError("unqualified parsed-command type")
+
+    def normalized(self, producer, digest, mode, locator):
+        if not self.finish(): raise SourceError(self.s["error"])
+        p = self.s["projection"]
+        for path in self.INTS:
+            key = ".".join(path)
+            if key in p and (type(p[key]) is not int or not 0 <= p[key] <= 2**63 - 1):
+                raise SourceError("invalid streamed command integer")
+        for key, value in p.items():
+            if isinstance(value, str) and not value:
+                raise SourceError("empty streamed command identity")
+        if (p["type"] != "event_msg" or p["payload.type"] != "item_completed"
+                or p["payload.item.type"] != "CommandExecution"):
+            raise SourceError("unqualified streamed command grammar")
+        for key, expected in (("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
+                              ("payload.thread_id", producer["thread_id"])):
+            if p.get(key, expected) != expected: raise SourceError("streamed command producer mismatch")
+        start, end = p["payload.started_at_ms"], p["payload.completed_at_ms"]
+        if end < start: raise SourceError("command completion precedes start")
+        if p.get("payload.item.duration.nanos", 0) >= 1000000000:
+            raise SourceError("command duration nanoseconds exceed bound")
+        code = p["payload.item.exit_code"]
+        if code is not None and (type(code) is not int or not -2**31 <= code < 2**31):
+            raise SourceError("invalid command exit code")
+        status = p["payload.item.status"]
+        observed = "failed" if status == "failed" or code not in (None, 0) else "observed" if status == "completed" and code == 0 else "unknown"
+        row = {k:p[k] for k in ("type", "timestamp", "ordinal", "thread_id", "session_id") if k in p}
+        row["payload"] = {"type":"item_completed"}
+        if "timestamp" in row:
+            native_codex._context_envelope({**row,"ordinal":row.get("ordinal",0)})
+        data = {"turn_id":p["payload.turn_id"], "item_id":p["payload.item.id"], "native_type":"CommandExecution",
+                "native_status":status, "record_digest":digest, "commitment_algorithm":"codex-command-wire-sha256-v1",
+                "started_at_ms":start, "completed_at_ms":end, "portable_completion":False, "grants_authority":False,
+                "body_retained":False, "usage_counted":False}
+        return row, [native_codex._fact("item.observation", observed, data, row, mode=mode, source_locator=locator)]
+
+
+def _span_accumulate(state, raw):
+    state = deepcopy(state) if state else {"length":0, "chain":_sha(b"codex-command-chunks-v1"), "tail":""}
+    if state.get("over_bound"):
+        return state
+    if state["length"] + len(raw) > MAX_STREAM_SPAN_BYTES:
+        return {"over_bound":True}
+    tail = base64.b64decode(state["tail"], validate=True)
+    # At most 1023 tail bytes survive. A versioned fixed-chunk hash chain
+    # commits every previous byte without serializing hash internals or bodies.
+    for at in range(0, len(raw), COMMIT_CHUNK_BYTES):
+        tail += raw[at:at + COMMIT_CHUNK_BYTES]
+        while len(tail) >= COMMIT_CHUNK_BYTES:
+            state["chain"] = _sha(bytes.fromhex(state["chain"]) + tail[:COMMIT_CHUNK_BYTES])
+            tail = tail[COMMIT_CHUNK_BYTES:]
+    state["length"] += len(raw); state["tail"] = base64.b64encode(tail).decode("ascii")
+    return state
+
+
+def _stream_command(binding, start, length, *, depth=32, expected=None, overlap=None, accounting=None):
+    """Two complete current-byte passes, finite wire bound, no complete body allocation."""
+    if (binding["producer"]["client"] != "codex" or binding["producer"].get("dialect")
+            or not MAX_RECORD_READBACK_BYTES < length <= MAX_STREAM_SPAN_BYTES):
+        raise SourceError("unqualified command wire span")
+    stream, info = _open(binding["path"], binding)
+    with stream:
+        validator = _CommandJSON(depth=depth); first = hashlib.sha256(); commitment = None
+        for at in range(0, length, STREAM_CHUNK_BYTES):
+            part = _stable_read(stream, binding["path"], start + at, min(STREAM_CHUNK_BYTES, length-at),
+                                (binding["device"], binding["inode"]), info.st_size)
+            if accounting is not None: accounting["bytes_read"] += 2*len(part)
+            if b"\n" in part[:-1] or (at + len(part) < length and b"\n" in part):
+                raise SourceError("command span crosses frame boundary")
+            final = at + len(part) == length
+            if final and not part.endswith(b"\n"): raise SourceError("incomplete command span")
+            if overlap is not None:
+                offset, current = overlap; left=max(start+at,offset);right=min(start+at+len(part),offset+len(current))
+                if left < right and part[left-start-at:right-start-at] != current[left-offset:right-offset]:
+                    raise SourceError("command changed after page observation")
+            first.update(part); commitment = _span_accumulate(commitment, part)
+            validator.feed(part[:-1] if final else part)
+        if expected is not None and commitment != expected:
+            raise SourceError("command span changed between pages")
+        second = hashlib.sha256()
+        for at in range(0, length, STREAM_CHUNK_BYTES):
+            part = _stable_read(stream, binding["path"], start+at, min(STREAM_CHUNK_BYTES,length-at),
+                                (binding["device"], binding["inode"]), info.st_size)
+            if accounting is not None: accounting["bytes_read"] += 2*len(part)
+            second.update(part)
+        if first.digest() != second.digest(): raise SourceError("command span changed during validation")
+        final = os.fstat(stream.fileno()); named = Path(binding["path"]).lstat()
+        snapshot = lambda st: (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+        if snapshot(final) != snapshot(info) or snapshot(named) != snapshot(info):
+            raise SourceError("source changed during complete command validation")
+    digest=first.hexdigest()
+    locator={"source_handle":binding["source_handle"],"generation":binding["generation"],"offset":start,"length":length,"sha256":digest}
+    row,candidates=validator.normalized(binding["producer"],digest,binding["mode"],locator)
+    return row,candidates,digest
 
 
 def _ignored_projection(projected, producer):
@@ -464,6 +641,21 @@ def _validate_binding(binding):
 
 
 def _validate_cursor(binding, cursor, limits):
+    commitment = cursor.get("span_commitment")
+    if commitment is not None:
+        if not isinstance(commitment, dict) or len(_canonical(commitment)) > MAX_VALIDATOR_BYTES:
+            raise SourceError("invalid span commitment bound")
+        if commitment != {"over_bound": True}:
+            if (set(commitment) != {"length", "chain", "tail"} or type(commitment["length"]) is not int
+                    or not 0 <= commitment["length"] <= MAX_STREAM_SPAN_BYTES
+                    or not isinstance(commitment["chain"],str) or re.fullmatch(r"[0-9a-f]{64}",commitment["chain"]) is None
+                    or not isinstance(commitment["tail"],str)):
+                raise SourceError("invalid span commitment")
+            tail=base64.b64decode(commitment["tail"],validate=True)
+            if len(tail)>=COMMIT_CHUNK_BYTES or commitment["length"]%COMMIT_CHUNK_BYTES!=len(tail):
+                raise SourceError("invalid span commitment length")
+            if commitment["length"] != cursor["offset"]-cursor["frame_start"]:
+                raise SourceError("span commitment does not cover pending bytes")
     lanes = cursor.get("dialect_sequences", {})
     if (not isinstance(lanes, dict) or len(lanes) > 8
             or any(not isinstance(k, str) or len(k) > 64 or type(v) is not int or v < 0 for k, v in lanes.items())):
@@ -550,12 +742,14 @@ def _header(stream, binding, size):
 
 
 
-def _events(row, binding, start, length, digest, ordinal, *, run_id=None, task_id=None, attempt_id=None, now=None):
+def _events(row, binding, start, length, digest, ordinal, *, run_id=None, task_id=None, attempt_id=None, now=None, candidates=None):
     events = []
     locator = {"source_handle": binding["source_handle"], "generation": binding["generation"],
                "offset": start, "length": length, "sha256": digest}
     module = _DIALECTS[binding["producer"]["client"]]
-    if binding["producer"].get("dialect"):
+    if candidates is not None:
+        pass
+    elif binding["producer"].get("dialect"):
         candidates = module.decode_wire(row, {"producer": binding["producer"], "mode": binding["mode"],
             "source_locator": locator, "dialect": binding["producer"]["dialect"],
             "invocation_id": binding["producer"]["invocation_id"]})
@@ -681,7 +875,9 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
     ``page_bytes`` bounds new input. One retained frame spanning a prior page
     additionally rechecks at most ``payload_bytes``. Eligible compact item
     observations have a separate aggregate 1 MiB full-record readback budget
-    per page. Exhaustion yields the unconsumed frame for the next transaction.
+    per page. Complete command wire spans have a separate aggregate 4 MiB
+    streaming-work allowance per page, read in 16 KiB chunks. Exhaustion yields
+    the unconsumed frame for the next transaction.
     ``bytes_read`` counts both reads and the bounded header. Idle polls read none.
     """
     _validate_binding(binding)
@@ -689,7 +885,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
     now, next_cursor = _now(), deepcopy(cursor)
     result = {"schema_version": 1, "source_generation": binding["generation"], "events": [], "cursor": next_cursor,
               "gaps": [], "diagnostics": [], "bytes_read": 0, "source_bytes_read": 0, "frame_revalidation_bytes": 0,
-              "record_readback_bytes": 0,
+              "record_readback_bytes": 0, "stream_readback_bytes": 0,
               "consumed_range": None}
     size, ranges = cursor["offset"], []
     try:
@@ -719,8 +915,10 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
             if not next_cursor["oversized"] and len(pending) + len(part) > limits.payload_bytes:
                 validator = _StreamJSON(depth=limits.depth)
                 validator.feed(pending)
+                next_cursor["span_commitment"] = _span_accumulate(None, pending)
                 next_cursor.update(oversized=True, pending="")
             if next_cursor["oversized"]:
+                next_cursor["span_commitment"] = _span_accumulate(next_cursor.get("span_commitment"), part)
                 validator.feed(part[:-1] if complete else part)
                 next_cursor["validator"] = validator.s
             else:
@@ -761,6 +959,24 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
                     if frame[overlap - start:] != raw[overlap - cursor["offset"]:position]:
                         raise SourceError("readback frame changed after the current page read")
                     ranges.append([start, start + length])
+                elif (valid and not ignored and MAX_RECORD_READBACK_BYTES < length <= MAX_STREAM_SPAN_BYTES
+                      and binding["producer"]["client"] == "codex"
+                      and validator.s["projection"].get("payload.item.type") == "CommandExecution"):
+                    if result["stream_readback_bytes"] + length > MAX_STREAM_SPAN_BYTES:
+                        next_cursor = checkpoint; result["cursor"] = next_cursor; break
+                    try:
+                        row, candidates, digest = _stream_command(binding, start, length, depth=limits.depth,
+                            expected=next_cursor.get("span_commitment"), overlap=(cursor["offset"], raw), accounting=result)
+                        sequence_gap = _dialect_sequence_gaps(next_cursor, row, binding["producer"], start)
+                        events = _events(row, binding, start, length, digest, next_cursor["ordinal"],
+                            run_id=run_id,task_id=task_id,attempt_id=attempt_id,now=now,candidates=candidates)
+                        if len(result["events"])+len(events)>limits.events: raise SourceError("semantic event bound")
+                        result["events"].extend(events);gap=sequence_gap;ranges.append([start,start+length])
+                    except (ValueError,TypeError,KeyError) as exc:
+                        gap={"code":"unobservable_record","offset":start,"length":length,"sha256":None,
+                             "detail":str(exc),"obligation":"source owner reconciliation required"}
+                    result["stream_readback_bytes"] += length
+                    result["frame_revalidation_bytes"] += length
                 elif not ignored:
                     gap = {"code": "oversized_record", "offset": start, "length": length,
                            "sha256": None, "json_valid": valid, "detail": validator.s["error"],
@@ -803,7 +1019,7 @@ def read_page(binding: SourceBinding, cursor: Cursor, *, run_id=None, task_id=No
             if next_cursor["first_gap"] is None:
                 next_cursor["trusted_through"] = next_cursor["offset"]
             next_cursor.update(frame_start=next_cursor["offset"], ordinal=next_cursor["ordinal"] + 1,
-                               pending="", oversized=False, validator=None)
+                               pending="", oversized=False, validator=None, span_commitment=None)
         consumed = next_cursor["offset"] - cursor["offset"]
         if consumed:
             result["consumed_range"] = {"offset": cursor["offset"], "length": consumed, "sha256": _sha(raw[:consumed])}
@@ -864,6 +1080,8 @@ def _usage(projection, event):
         "baseline": None, "latest": None, "known_delta": {}, "unknown_measurements": 0,
         "reconciliation_required": False, "responses": {}, "response_usage_sum": {}, "last_locator": None,
         "scope_nonoverlap": "UNKNOWN", "billing_cost": None, "complete": False})
+    if data.get("context_token_estimate") and data.get("totals") is not None:
+        lane["unknown_measurements"] += 1
     measurement = data.get("measurement_id")
     if measurement is not None:
         identity = _digest(measurement)
@@ -1018,17 +1236,23 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
             result["bytes_read"] += 2 * binding["header_length"]
             parsed = {}
             for (start, length), digest in refs.items():
-                raw = _stable_read(stream, binding["path"], start, length,
-                                   (binding["device"], binding["inode"]), info.st_size)
-                result["bytes_read"] += 2 * length
-                if _sha(raw) != digest or not raw.endswith(b"\n"):
-                    raise SourceError("source_bytes_changed")
-                parsed[(start, length)] = _bounded_record(raw, binding["producer"])
+                if length > MAX_RECORD_READBACK_BYTES:
+                    row, candidates, current_digest = _stream_command(binding,start,length,accounting=result)
+                    if current_digest != digest: raise SourceError("source_bytes_changed")
+                    parsed[(start,length)] = (row,candidates)
+                else:
+                    raw = _stable_read(stream, binding["path"], start, length,
+                                       (binding["device"], binding["inode"]), info.st_size)
+                    result["bytes_read"] += 2 * length
+                    if _sha(raw) != digest or not raw.endswith(b"\n"):
+                        raise SourceError("source_bytes_changed")
+                    parsed[(start, length)] = (_bounded_record(raw, binding["producer"]),None)
                 result["current_verified_ranges"].append([start, start + length])
             for event in events:
                 ref = event["native"]
-                candidates = _events(parsed[(ref["offset"], ref["length"])], binding, ref["offset"], ref["length"],
-                                     ref["sha256"], ref["ordinal"])
+                row, facts = parsed[(ref["offset"],ref["length"])]
+                candidates = _events(row, binding, ref["offset"], ref["length"],
+                                     ref["sha256"], ref["ordinal"],candidates=facts)
                 actual = next((value for value in candidates if value["event_id"] == event["event_id"]), None)
                 if actual is None or _event_material(actual) != _event_material(event):
                     raise SourceError("normalized observation differs from current source")
@@ -1048,14 +1272,37 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                     raise SourceError("requested interval does not cover selected evidence")
                 if start:
                     stream.seek(start - 1)
-                    if stream.read(1) != b"\n":
+                    boundary = stream.read(1)
+                    result["bytes_read"] += len(boundary)
+                    if boundary != b"\n":
                         raise SourceError("interval does not begin at frame boundary")
-                raw = _stable_read(stream, binding["path"], start, end - start,
-                                   (binding["device"], binding["inode"]), info.st_size)
-                result["bytes_read"] += 2 * len(raw)
-                if raw and not raw.endswith(b"\n"):
-                    raise SourceError("interval ends in a partial frame")
-                offset = start
+                # Yield endpoints from one bounded chunk rather than collecting
+                # all frames or allocating the entire interval. The caller's
+                # existing 16 MiB wire envelope bounds total framing work.
+                def spans():
+                    frame_start=start
+                    pending=bytearray()
+                    for scan in range(start,end,STREAM_CHUNK_BYTES):
+                        chunk=_stable_read(stream,binding["path"],scan,min(STREAM_CHUNK_BYTES,end-scan),
+                                           (binding["device"],binding["inode"]),info.st_size)
+                        result["bytes_read"] += 2*len(chunk)
+                        pos=0
+                        while pos<len(chunk):
+                            newline=chunk.find(b"\n",pos)
+                            stop=len(chunk) if newline<0 else newline+1
+                            if pending is not None:
+                                if len(pending)+stop-pos<=MAX_RECORD_READBACK_BYTES:
+                                    pending.extend(chunk[pos:stop])
+                                else:
+                                    pending=None
+                            if newline<0: break
+                            finish=scan+stop
+                            # The chunk's two current reads already authenticate
+                            # these bytes. Retain at most one bounded frame;
+                            # larger command spans use their separate validator.
+                            yield frame_start,finish-frame_start,None if pending is None else bytes(pending)
+                            frame_start=finish;pos=stop;pending=bytearray()
+                    if frame_start!=end: raise SourceError("interval ends in a partial frame")
                 interval_events = []
                 if prior_sequence is not None and (type(prior_sequence) is not int or prior_sequence < 0):
                     raise SourceError("invalid prior interval sequence")
@@ -1065,19 +1312,30 @@ def revalidate_observations(binding, events, *, projection=None, required_interv
                     raise SourceError("invalid prior dialect sequence lanes")
                 sequence_cursor = {"last_sequence": prior_sequence, "transport_state": None,
                                    "dialect_sequences": deepcopy(prior_sequences or {})}
-                for ordinal, line in enumerate(raw.splitlines(keepends=True)):
-                    row = _bounded_record(line, binding["producer"])
+                for ordinal, (offset,length,line) in enumerate(spans()):
+                    if length>MAX_RECORD_READBACK_BYTES:
+                        row,facts,digest=_stream_command(binding,offset,length,accounting=result)
+                    else:
+                        if line is None: raise SourceError("bounded interval frame unavailable")
+                        row=_bounded_record(line,binding["producer"]);facts=None;digest=_sha(line)
                     gap = _dialect_sequence_gaps(sequence_cursor, row, binding["producer"], offset)
                     if start == 0: _transport_transition(sequence_cursor, row, binding["producer"])
                     if gap is not None:
                         result["diagnostics"].append(gap)
                         raise SourceError("current interval contains a native sequence gap")
-                    if (offset, len(line)) in refs and _sha(line) != refs[(offset, len(line))]:
+                    if (offset, length) in refs and digest != refs[(offset, length)]:
                         raise SourceError("source_bytes_changed")
-                    interval_events.extend(_events(row, binding, offset, len(line), _sha(line), ordinal))
+                    interval_events.extend(_events(row,binding,offset,length,digest,ordinal,candidates=facts))
                     if len(interval_events) > Limits().events:
                         raise SourceError("interval semantic count exceeds bound")
-                    offset += len(line)
+                # Chunk-local repeat reads cannot prevent a writer changing
+                # an earlier chunk while later chunks are assembled. Reject
+                # any whole-interval snapshot change before exposing facts.
+                snapshot = lambda value: (value.st_dev, value.st_ino, value.st_size,
+                                          value.st_mtime_ns, value.st_ctime_ns)
+                if (snapshot(os.fstat(stream.fileno())) != snapshot(info)
+                        or snapshot(Path(binding["path"]).lstat()) != snapshot(info)):
+                    raise SourceError("source changed during interval scan")
                 result["interval_events"] = interval_events
                 interval_projection = reduce_observations(empty_projection(), {
                     "events": interval_events, "gaps": [], "diagnostics": [], "coverage": {}, "source_generation": binding["generation"]})
@@ -1151,7 +1409,7 @@ def revalidate_muse_page(binding, message, connection_binding, locators, *, max_
             if total > max_bytes: raise SourceError("page source ranges exceed bounded current read; paginate")
             verdict = revalidate_observations(binding, [], required_interval=interval, max_bytes=max_bytes)
             if verdict["status"] != "current": raise SourceError("page source range is not current and complete")
-            bytes_read += verdict["bytes_read"] + int(interval[0] > 0)
+            bytes_read += verdict["bytes_read"]
             by_interval[interval] = verdict
         for endpoint, locator in zip(("first", "last"), bounds):
             key = locator["offset"], locator["length"], locator["sha256"]

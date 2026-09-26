@@ -16,9 +16,9 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v6"
+ADAPTER_VERSION = "codex-dialect-v8"
 SUPPORTED_SCHEMAS = (
-    "session_meta", "turn_context", "compacted", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
+    "session_meta", "turn_context", "compacted", "world_state", "event_msg.thread_settings_applied", "inter_agent_communication_metadata", "token_usage_record", "event_msg.token_count",
     "event_msg.task_started", "event_msg.task_complete", "event_msg.turn_aborted",
     "event_msg.user_message", "event_msg.agent_message", "event_msg.agent_reasoning",
     "event_msg.item_completed",
@@ -201,7 +201,8 @@ def supports_record_readback(projected, producer):
     Compaction's embedded usage supplies the native identities at that boundary.
     """
     _producer(producer)
-    if projected.get("type") == "compacted":
+    if (projected.get("type") in {"compacted", "world_state"}
+            or (projected.get("type"), projected.get("payload.type")) == ("event_msg", "thread_settings_applied")):
         return all(projected.get(key, expected) == expected for key, expected in (
             ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
             ("payload.thread_id", producer["thread_id"]),
@@ -210,7 +211,7 @@ def supports_record_readback(projected, producer):
         and projected.get("payload.type") == "item_completed"
         and projected.get("payload.thread_id") == producer["thread_id"]
         and projected.get("payload.item.type") in ("CommandExecution", "FileChange", "Reasoning",
-            "AgentMessage", "SubAgentActivity", "ContextCompaction")
+            "AgentMessage", "SubAgentActivity", "ContextCompaction", "McpToolCall")
         and all(projected.get(key, expected) == expected for key, expected in (
             ("thread_id", producer["thread_id"]), ("session_id", producer["root_session_id"]),
             ("payload.session_id", producer["root_session_id"]))))
@@ -248,20 +249,54 @@ def _completed_item(value, producer):
         status = ("failed" if native_status == "failed" or code not in (None, 0)
                   else "observed" if native_status == "completed" and code == 0 else "unknown")
     elif kind == "FileChange":
-        # Qualified from the actual rollout's add/content change envelope.
-        # Other change grammars remain explicit gaps until independently read.
+        # These are digest-only native item observations, not portable writes.
+        # Qualified add/content and update/diff envelopes retain exact fields.
+        _closed(value, {"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"})
+        _closed(item, {"type", "id", "changes", "status", "stdout", "stderr"})
         changes = _object(item.get("changes"), "item changes")
         if not changes:
             raise DialectError("empty item changes")
         for path, change in changes.items():
             _text(path, "change path")
-            if (not isinstance(change, dict) or set(change) != {"type", "content"}
-                    or change.get("type") != "add" or not isinstance(change.get("content"), str)):
+            _object(change, "file change")
+            if change.get("type") == "add":
+                if set(change) != {"type", "content"} or not isinstance(change["content"], str):
+                    raise DialectError("unsupported FileChange add grammar")
+            elif change.get("type") == "update":
+                if (set(change) != {"type", "unified_diff", "move_path"}
+                        or not isinstance(change["unified_diff"], str)
+                        or (change["move_path"] is not None and not isinstance(change["move_path"], str))):
+                    raise DialectError("unsupported FileChange update grammar")
+            else:
                 raise DialectError("unsupported FileChange change grammar")
         native_status = _text(item.get("status"), "item status")
         if any(not isinstance(item.get(field), str) for field in ("stdout", "stderr")):
             raise DialectError("invalid item output")
         status = "failed" if native_status == "failed" else "observed" if native_status == "completed" else "unknown"
+    elif kind == "McpToolCall":
+        _closed(value, {"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"})
+        _closed(item, {"type", "id", "server", "tool", "arguments", "pluginId", "status", "result", "duration"})
+        for key in ("server", "tool", "pluginId", "status"):
+            _text(item[key], key)
+        # MCP arguments are opaque tool-defined JSON. Validate the bounded
+        # object, then digest it; never interpret instructions or invoke it.
+        _object(item["arguments"], "MCP arguments")
+        result = item["result"]
+        _closed(result, {"content", "isError"}); _flag(result["isError"])
+        if not isinstance(result["content"], list):
+            raise DialectError("unsupported MCP result content")
+        for content in result["content"]:
+            _closed(content, {"type", "text"})
+            if content["type"] != "text":
+                raise DialectError("unsupported MCP result content type")
+            _body(content["text"])
+        _closed(item["duration"], {"secs", "nanos"})
+        _integer(item["duration"]["secs"], "MCP duration seconds")
+        nanos = _integer(item["duration"]["nanos"], "MCP duration nanoseconds")
+        if nanos >= 1000000000:
+            raise DialectError("invalid MCP duration nanoseconds")
+        status = ("failed" if item["status"] == "failed" or result["isError"]
+                  else "observed" if item["status"] == "completed" else "unknown")
     elif kind == "Reasoning":
         for field in ("summary_text", "raw_content"):
             if not isinstance(item.get(field), list) or any(not isinstance(x, str) for x in item[field]):
@@ -432,6 +467,138 @@ def _compacted(row, producer):
             "grants_authority": False, "portable_completion": False, "recovery_proven": False}
 
 
+def _closed(value, required):
+    _object(value, "native context object")
+    if set(value) != set(required):
+        raise DialectError("unsupported native context fields")
+
+
+def _body(value):
+    if not isinstance(value, str):
+        raise DialectError("native context body must be text")
+
+
+def _flag(value):
+    if type(value) is not bool:
+        raise DialectError("native context flag must be boolean")
+
+
+def _string_fields(value, fields):
+    _closed(value, fields)
+    for key in fields:
+        _body(value[key])
+
+
+def _context_envelope(row):
+    if (not {"type", "payload", "timestamp", "ordinal"} <= row.keys()
+            or set(row) - {"type", "payload", "timestamp", "ordinal", "thread_id", "session_id"}):
+        raise DialectError("unsupported native context envelope")
+    stamp = row["timestamp"]
+    if (not isinstance(stamp, str) or len(stamp) > 64
+            or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})", stamp)):
+        raise DialectError("invalid native context timestamp")
+    if not stamp.endswith("Z") and (int(stamp[-5:-3]) > 23 or int(stamp[-2:]) > 59):
+        raise DialectError("invalid native context timezone")
+    try:
+        datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise DialectError("invalid native context timestamp") from exc
+
+
+def _world_state(value):
+    """Qualify the observed full snapshot; instructions remain inert content."""
+    _closed(value, {"full", "state"})
+    if value["full"] is not True:
+        raise DialectError("incremental world-state schema is unqualified")
+    state = value["state"]
+    flags = {"apps_instructions", "environments_instructions", "git_attribution", "plugins_instructions"}
+    bodies = {"context_window_guidance", "model", "multi_agent_usage_hint"}
+    _closed(state, flags | bodies | {"agents_md", "collaboration_mode", "environments", "host_skills",
+            "managed_developer_instructions", "multi_agent_mode", "orchestrator_skills", "permissions",
+            "persistent_mode", "realtime", "skills"})
+    for key in flags: _flag(state[key])
+    for key in bodies: _body(state[key])
+    _string_fields(state["agents_md"], {"directory", "text"})
+    _string_fields(state["collaboration_mode"], {"mode", "model", "instructions"})
+    _string_fields(state["multi_agent_mode"], {"mode", "usage_hint_hash"})
+    _closed(state["managed_developer_instructions"], set())
+    _closed(state["persistent_mode"], set())
+    for name, keys in (("orchestrator_skills", {"includeInstructions", "enabled"}),
+                       ("realtime", {"active"}), ("skills", {"includeInstructions"})):
+        _closed(state[name], keys)
+        for key in keys: _flag(state[name][key])
+    _closed(state["host_skills"], {"body", "includeInstructions"})
+    _body(state["host_skills"]["body"]); _flag(state["host_skills"]["includeInstructions"])
+    env = state["environments"]
+    _closed(env, {"environments", "current_date", "timezone", "filesystem", "subagents"})
+    for key in ("current_date", "timezone", "filesystem", "subagents"): _body(env[key])
+    _object(env["environments"], "environment map")
+    for name, entry in env["environments"].items():
+        _text(name, "environment identity")
+        _string_fields(entry, {"cwd", "shell", "status"})
+    permissions = state["permissions"]
+    _closed(permissions, {"instructions", "approved_command_prefixes"})
+    _body(permissions["instructions"])
+    prefixes = permissions["approved_command_prefixes"]
+    if (not isinstance(prefixes, list) or any(not isinstance(prefix, list) or not prefix
+            or any(not isinstance(part, str) for part in prefix) for prefix in prefixes)):
+        raise DialectError("unsupported command-prefix observation")
+
+
+def _thread_settings(value, producer):
+    """Validate a reported configuration, never configure the current owner."""
+    _closed(value, {"type", "thread_id", "thread_settings"})
+    if value["thread_id"] != producer["thread_id"]:
+        raise DialectError("thread settings producer mismatch")
+    settings = value["thread_settings"]
+    strings = {"model", "model_provider_id", "service_tier", "approval_policy", "approvals_reviewer",
+               "cwd", "reasoning_effort", "reasoning_summary", "personality"}
+    _closed(settings, strings | {"permission_profile", "active_permission_profile", "runtime_workspace_roots",
+                                 "collaboration_mode", "disabled_plugin_ids"})
+    for key in strings: _body(settings[key])
+    for key in ("runtime_workspace_roots", "disabled_plugin_ids"):
+        if not isinstance(settings[key], list) or any(not isinstance(x, str) for x in settings[key]):
+            raise DialectError("unsupported thread settings list")
+    _string_fields(settings["active_permission_profile"], {"id"})
+    mode = settings["collaboration_mode"]
+    _closed(mode, {"mode", "settings"}); _body(mode["mode"])
+    _string_fields(mode["settings"], {"model", "reasoning_effort", "developer_instructions"})
+    profile = settings["permission_profile"]
+    _closed(profile, {"type", "file_system", "network"}); _body(profile["network"])
+    if profile["type"] != "managed":
+        raise DialectError("unsupported reported permission profile")
+    fs = profile["file_system"]
+    _closed(fs, {"type", "entries"})
+    if fs["type"] != "restricted" or not isinstance(fs["entries"], list):
+        raise DialectError("unsupported reported filesystem profile")
+    for entry in fs["entries"]:
+        _object(entry, "reported filesystem entry")
+        _closed(entry, {"path", "access"} | ({"missing_path_behavior"} if "missing_path_behavior" in entry else set()))
+        _body(entry["access"])
+        if "missing_path_behavior" in entry: _body(entry["missing_path_behavior"])
+        path = _object(entry["path"], "reported permission path")
+        if path.get("type") == "path":
+            _closed(path, {"type", "path"}); _body(path["path"])
+        elif path.get("type") == "special":
+            _closed(path, {"type", "value"}); _string_fields(path["value"], {"kind"})
+        else:
+            raise DialectError("unsupported reported permission path type")
+
+
+def _context_observation(row, producer):
+    _context_envelope(row)
+    value = row["payload"]
+    if row["type"] == "world_state":
+        _world_state(value)
+        native_type = "world_state"
+    else:
+        _thread_settings(value, producer)
+        native_type = "thread_settings_applied"
+    return {"native_type": native_type, "context_digest": _digest(value),
+            "effects_replayed": False, "settings_applied": False, "usage_counted": False,
+            "grants_authority": False, "portable_completion": False, "recovery_proven": False}
+
+
 def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     _bounded(row); _object(row, "record"); _producer(producer)
     if "ordinal" in row: _integer(row["ordinal"], "record ordinal")
@@ -476,6 +643,10 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
         return fact("communication.observation", "observed", {
             "trigger_turn": value["trigger_turn"], "portable_completion": False,
             "grants_authority": False, "proves_wake": False})
+    if outer == "world_state":
+        return fact("context.world_state", "observed", _context_observation(row, producer))
+    if outer == "event_msg" and subtype == "thread_settings_applied":
+        return fact("context.settings", "observed", _context_observation(row, producer))
     if outer == "compacted":
         return fact("context.compaction", "observed", _compacted(row, producer))
     if outer == "token_usage_record":
@@ -490,9 +661,24 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
         info = value.get("info")
         if info is not None:
             _object(info, "token_count info")
+        last = info.get("last_token_usage") if info else None
+        # openai/codex dfdb40cd0b72dfba3293db5c7c441232e8ef1a60:
+        # core/src/session/mod.rs::recompute_token_usage writes an active-context
+        # estimate into this exact six-field last snapshot, with no measured
+        # breakdown. It is not additive response usage and its zeros are not free
+        # work. All other counter shapes still use strict arithmetic validation.
+        context_estimate = (isinstance(last, dict) and set(last) == set(COUNTERS)
+            and all(type(last[k]) is int and last[k] == 0 for k in COUNTERS if k != "total_tokens")
+            and type(last["total_tokens"]) is int and 0 < last["total_tokens"] <= 2**63 - 1)
         data = _usage(producer, grammar="codex.token_count",
                       totals=_counts(info.get("total_token_usage")) if info else None,
-                      last=_counts(info.get("last_token_usage")) if info else None)
+                      last=None if context_estimate else _counts(last))
+        if context_estimate:
+            data["context_token_estimate"] = {"total_tokens": last["total_tokens"],
+                "breakdown_status": "not_reported", "measurement_kind": "active_context_estimate",
+                "producer_snapshot": deepcopy(last), "snapshot_digest": _digest(last),
+                "financially_countable": False, "causal_compaction_proven": False}
+            data["missingness"].append("context_estimate_not_response_usage")
         data["model_context_window"] = info.get("model_context_window") if info else None
         return fact("usage.snapshot", "observed" if data["totals"] is not None else "unknown", data)
     if outer == "response_item":
@@ -515,6 +701,11 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
                         "observed", {"content": value.get("content"), "role": role, "grants_authority": False})
     if outer == "event_msg":
         if subtype == "item_completed":
+            if isinstance(value.get("item"), dict) and value["item"].get("type") == "McpToolCall":
+                _context_envelope(row)
+            if isinstance(value.get("item"), dict) and value["item"].get("type") == "FileChange":
+                if set(row) - {"type", "payload", "timestamp", "ordinal", "thread_id", "session_id"}:
+                    raise DialectError("unsupported FileChange record fields")
             status, data = _completed_item(value, producer)
             return fact("item.observation", status, data)
         if subtype == "user_message":

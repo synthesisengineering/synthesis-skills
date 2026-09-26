@@ -9,6 +9,7 @@ remain shared.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import fnmatch
@@ -71,9 +72,9 @@ class RecoveryReport:
         return asdict(self)
 
 
-def _run(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _run(repo: Path, *args: str, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, input=input_text
     )
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "git command failed"
@@ -370,6 +371,62 @@ def _tree_at(repo: Path, ref: str, relative: str) -> str | None:
     return value if result.returncode == 0 and value else None
 
 
+
+def _trees_at(repo: Path, heads: Iterable[str], relative: str) -> dict[str, str | None]:
+    """Resolve immutable object expressions in finite batches, never a cache.
+
+    Git owns path/ref semantics. A newline-bearing path uses the original
+    one-query owner instead of being interpreted as another batch request.
+    Selection, replacement refs and history boundaries are rechecked by caller.
+    """
+    heads = sorted(set(heads))
+    if any(not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", head) for head in heads):
+        raise ProjectStateError("batch requires pinned commit identities")
+    if "\n" in relative or "\r" in relative:
+        return {head: _tree_at(repo, head, relative) for head in heads}
+    result: dict[str, str | None] = {}
+    for offset in range(0, len(heads), 256):
+        batch = heads[offset:offset + 256]
+        queries = [f"{head}:{relative}" for head in batch]
+        response = _run(repo, "cat-file", "--batch-check=%(objectname)",
+                        input_text="\n".join(queries) + "\n")
+        lines = response.stdout.splitlines()
+        if len(lines) != len(queries):
+            raise ProjectStateError("incomplete Git object batch")
+        for head, query, value in zip(batch, queries, lines):
+            if value == query + " missing":
+                result[head] = None
+            elif re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", value):
+                result[head] = value
+            else:
+                raise ProjectStateError("invalid Git object batch response")
+    return result
+
+
+
+def _project_metadata_at(
+    repo: Path, trees: dict[str, str | None], relative: str
+) -> dict[str, tuple[str | None, str | None, str]]:
+    """Read each pinned head's exact path history with at most two Git children.
+
+    Each query retains Git's existing branch/path ordering. All children join
+    before mutable worktree inspection or selection; the caller still rechecks
+    refs, replacement mappings and history boundaries before accepting results.
+    """
+    def read(head: str) -> tuple[str, tuple[str | None, str | None, str]]:
+        result = _run(repo, "log", "-1", "--format=%H%x00%cI", head,
+                      "--", relative, check=False)
+        changed, _, timestamp = result.stdout.strip().partition("\0")
+        return head, (
+            changed if result.returncode == 0 and changed else None,
+            trees[head],
+            timestamp if result.returncode == 0 else "",
+        )
+
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="project-history") as pool:
+        return dict(pool.map(read, sorted(trees)))
+
+
 def _timestamp(repo: Path, ref: str) -> str:
     result = _run(repo, "show", "-s", "--format=%cI", ref, check=False)
     return result.stdout.strip() if result.returncode == 0 else ""
@@ -581,6 +638,7 @@ def resolve_project(
     except (OSError, ProjectStateError) as exc:
         return RecoveryReport(project_id, "UNKNOWN", None, None, None, [], [str(exc)], {"continuity": "UNKNOWN"})
     relative = str((index_path.parent / project_id).resolve().relative_to(repo))
+    canonical_project_prefix = str((repo / relative).resolve())
 
     if fetch:
         fetched = _run(repo, "fetch", "--all", "--prune", check=False)
@@ -593,21 +651,17 @@ def resolve_project(
     worktree_records = _worktrees(repo)
     ref_snapshot = _project_refs(repo)
     history_frontier = _project_history_frontier(repo)
+    tree_by_commit = _trees_at(repo,
+        [head for _path, head, _branch in worktree_records] +
+        [head for ref, head in ref_snapshot.items()
+         if not ref.endswith("/HEAD") and ref.startswith(("refs/heads/", "refs/remotes/"))],
+        relative)
     # Aliases of one immutable Git object share metadata only inside this call.
     # Physical worktrees, dirty hashes, manifests and claims are still read fresh.
-    metadata_by_commit: dict[str, tuple[str | None, str | None, str]] = {}
+    metadata_by_commit = _project_metadata_at(repo, tree_by_commit, relative)
     ancestry: dict[tuple[str, str], bool] = {}
 
     def project_metadata(repository_head: str) -> tuple[str | None, str | None, str]:
-        if repository_head not in metadata_by_commit:
-            result = _run(repo, "log", "-1", "--format=%H%x00%cI", repository_head,
-                          "--", relative, check=False)
-            head, _, timestamp = result.stdout.strip().partition("\0")
-            metadata_by_commit[repository_head] = (
-                head if result.returncode == 0 and head else None,
-                _tree_at(repo, repository_head, relative),
-                timestamp if result.returncode == 0 else "",
-            )
         return metadata_by_commit[repository_head]
 
     def is_ancestor(older: str, newer: str) -> bool:
@@ -679,7 +733,7 @@ def resolve_project(
         and (
             project_id in json.dumps(payload, sort_keys=True)
             or any(
-                str(Path(path).resolve()).startswith(str((repo / relative).resolve()))
+                str(Path(path).resolve()).startswith(canonical_project_prefix)
                 for path in payload.get("paths", [])
                 if isinstance(path, str)
             )
@@ -690,7 +744,7 @@ def resolve_project(
         paths = [str(value) for value in payload.get("paths", []) if isinstance(value, str)]
         if (
             project_id in material
-            or any(str(Path(path).resolve()).startswith(str((repo / relative).resolve())) for path in paths)
+            or any(str(Path(path).resolve()).startswith(canonical_project_prefix) for path in paths)
             or str(payload.get("session_id")) in related_sessions
         ):
             candidates.append(_candidate_from_metadata(str(payload["_kind"]), payload, fallback))
@@ -790,7 +844,8 @@ def resolve_project(
     # moving inventory before reporting success or attempting an optional owner
     # fast-forward. This also prevents cached alias metadata masking a ref race.
     if (_worktrees(repo) != worktree_records or _project_refs(repo) != ref_snapshot
-            or _project_history_frontier(repo) != history_frontier):
+            or _project_history_frontier(repo) != history_frontier
+            or str((repo / relative).resolve()) != canonical_project_prefix):
         issues.append("Git project selection changed during resolution; retry a fresh read")
         status = "UNKNOWN"
         selected = None

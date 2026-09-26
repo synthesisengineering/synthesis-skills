@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.5] - 2026-09-25
+
+Validate command frames through bounded streaming, including current-byte and
+whole-wire integrity checks. Recognize the evidenced context-only estimate
+shape without settling unknown costs or weakening measured-counter arithmetic.
+
+Batch immutable project-tree reads and run exact per-head history queries with
+two joined workers, preserving fresh physical scans, causal selection and the
+Console's existing read limits. Validate qualified native context/settings and
+file/MCP item records as inert digest observations. Reported settings do not
+grant authority, replay effects or settle usage; contradictory counters and
+records beyond the semantic envelope remain explicit gaps.
+
 ## [4.149.4] - 2026-09-25
 
 Read native Codex compaction records as bounded, non-authoritative context observations. Preserve original usage accounting and reject unknown schemas. Correct streaming JSON key accounting to charge live container state while retaining duplicate-key and memory limits.
