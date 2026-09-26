@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.9** adds bounded authenticated journal storage for large
+native-history recovery while preserving prior event bytes, ownership and costs.
+Required autopilot checks cover the entire collected suite in bounded groups.
+Release checks reject changed source, inherited test selection and stale bytecode.
+
 Release **4.149.8** repairs desktop CLI discovery across verification, dispatch
 and onboarding, with bounded local probes and authoritative explicit overrides.
 
@@ -1414,3 +1419,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Support posture: [SUPPORT.md](SUPPORT.md
 ## Author
 
 [Rajiv Pant](https://rajiv.com) — technology executive, AI practitioner, and creator of synthesis coding.
+
+Large autopilot journals use authenticated content blocks with finite storage budgets. Recovery retains earlier event bytes, ownership and cost history; incomplete or corrupted records never become completion evidence.

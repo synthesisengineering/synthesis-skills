@@ -568,11 +568,14 @@ def current_events(context, event_ids, *, required_interval=None) -> CurrentEven
         revision = index["revision"]
         if revision not in cached:
             home = run_state._home(context["project"], context["state"]["run_id"])
-            consumed_bytes += (home / "events" / f"{revision:012d}.json").stat().st_size
-            if len(cached) >= MAX_CONSUMPTION_BATCHES or consumed_bytes > MAX_CONSUMPTION_BYTES:
-                raise ValueError("selected journal consumption exceeds its bound; paginate exact event IDs")
-            event = _journal_event(context["project"], context["state"]["run_id"], revision)
-            cached[revision] = event["state"]["extensions"]["native_observations"]["latest_batch"]
+            if len(cached) >= MAX_CONSUMPTION_BATCHES:
+                raise ValueError("selected journal consumption exceeds its batch bound; paginate exact event IDs")
+            import journal_storage
+            batch, charged = journal_storage.component(home / "events" / f"{revision:012d}.json",
+                ("state", "extensions", "native_observations", "latest_batch"),
+                max_bytes=MAX_CONSUMPTION_BYTES - consumed_bytes)
+            consumed_bytes += charged
+            cached[revision] = batch
         batch = cached[revision]
         if native._digest(batch) != index["batch_digest"]:
             raise ValueError("indexed native batch differs from its committed event")

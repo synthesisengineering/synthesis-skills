@@ -234,6 +234,7 @@ def test_required_checks_execute_release_wiring_tests() -> None:
         "-m",
         "pytest",
         "skills/synthesis-skills-manager/scripts/test_release.py",
+        "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
         "-q",
     ]
 
@@ -472,7 +473,7 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     assert "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
-        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py -q"
+        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q"
         in workflow
     )
     assert (

@@ -6,6 +6,9 @@ owners described here, retaining exact request prefixes across interruption.
 The lower-level interface remains useful for specialized observations, effects
 and explicit recovery; it does not bypass current workflow constraints.
 
+Large retained histories use the same owner through [bounded journal storage](journal-storage.md).
+Storage representation does not change command, custody or approval semantics.
+
 The agent prepares these inputs after registry-first project recovery and exact
 PM ownership. A user asks for the outcome; JSON authoring is the agent's work.
 Use the installed verified skill root. Examples below use the shell variables
@@ -202,3 +205,43 @@ and enters recovery. Old `goals_met` and old verification receipts do not
 become current acceptance. The original remains intact. A changed original
 must be reviewed; an old import digest cannot conceal its new obligations.
 See [clients and recovery](clients-and-recovery.md) for the legacy owner index.
+
+### Required citations and durable closure
+
+A controlling plan or a required Markdown packet can declare retained evidence
+with `Required acceptance evidence: [report](resources/report.md)` or a heading
+named `Required acceptance evidence` followed by its citation list. Markdown
+strong markers (`**` or `__`) around the label and optional closing heading
+hashes preserve the same obligation. The same
+contract accepts `Required recovery inputs`, `Required artifacts`, and
+`Required scripts`. A declaration is an evidence obligation, never an approval
+or permission grant. Ordinary links, historical discussion outside those
+sections, fenced examples, and HTML comments do not create obligations.
+
+Completed closure and the completion report check these declarations against
+the existing artifact register. Every cited target must be a current,
+digest-verified durable project artifact. Markdown packets recursively apply
+the same declaration contract. An actual retained bundle or manifest is cited
+at its durable registered path; its existence does not validate a different
+scratch-only path or certify the bundle's semantic completeness. Keep the
+existing domain verification for those contents.
+
+Supported citations are inline Markdown links, reference links with explicit
+definitions, absolute or document-relative paths, and local `file:` URLs.
+Spaces may be percent-encoded or enclosed in angle brackets. Missing files,
+changed bytes, symlinks, unsupported declarations, unresolved references,
+remote-only URLs, and targets outside the project yield `UNKNOWN` and refuse
+completed closure. Conflicting reference definitions are checked only when a
+required citation uses them; unrelated historical definitions create no
+obligation. Incomplete and cancelled closure remain available and keep
+unfinished obligations honest. Promote required scratch evidence into the
+project, register its bytes, and update the controlling citation before
+verifying completion.
+
+One observation reads at most 64 plan/packet documents, 4 MiB of their total
+text, and 1,024 explicit citations. These are traversal and parser limits, not
+provider or user spending limits. Repeated packet references are visited once;
+cycles cannot create an unbounded traversal. Exceeding a limit refuses
+completion without advancing the run. Large retained evidence files and
+bundles use their ordinary artifact verification; these limits apply to the
+Markdown documents that declare their relationships.

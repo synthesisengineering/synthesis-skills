@@ -54,7 +54,10 @@ import native_opencode
 ADAPTER_VERSION = "native-observations-v4"
 ADAPTER_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 MAX_INDEX_ENTRIES = 10000
-MAX_PROJECTION_BYTES = 2 * 1024 * 1024
+# The admitted journal persists lossless digest-addressed snapshot blocks.
+# Projection is allocated half of the bounded logical snapshot capacity.
+from journal_storage import MAX_LOGICAL_BYTES
+MAX_PROJECTION_BYTES = MAX_LOGICAL_BYTES // 2
 MAX_HEADER_BYTES = 1024 * 1024
 MAX_VALIDATOR_BYTES = 64 * 1024
 MAX_RECORD_READBACK_BYTES = 1024 * 1024
@@ -1263,7 +1266,7 @@ def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
                 raise SourceError("same source event has conflicting normalized bytes")
             continue
         if len(result["events"]) >= MAX_INDEX_ENTRIES:
-            raise SourceError("observation projection capacity reached; journal owner compaction required")
+            raise SourceError("observation retention capacity reached; owner-linked bounded continuation required")
         result["events"][ident] = fingerprint
         semantic = event["semantic_key"]
         if semantic:
@@ -1298,7 +1301,7 @@ def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
     result["coverage"][batch["source_generation"]] = deepcopy(batch["coverage"])
     if (len(result["events"]) + len(result["gaps"]) + len(result["diagnostics"]) > MAX_INDEX_ENTRIES
             or len(_canonical(result)) > MAX_PROJECTION_BYTES):
-        raise SourceError("observation projection capacity reached; journal owner compaction required")
+        raise SourceError("observation retention capacity reached; owner-linked bounded continuation required")
     return result
 
 

@@ -241,3 +241,14 @@ action owner. A lost response may follow a committed write; read the target by
 the original operation identity before retrying. Observation must bind this
 attempt, target and payload. Local state alone cannot make an arbitrary remote
 effect exactly once. Reversing an action requires its own action authority.
+
+The search reservation adapter enforces `SYNTHESIS_SEARCH_BUDGET_PER_AGENT`
+when it is configured, before making any shared-ledger reservation. Each
+requested per-agent allocation must be at or below that positive integer cap;
+a present but empty, malformed, zero or negative setting refuses admission.
+An absent setting leaves the explicit per-agent allocation governed by the
+shared run ledger. The arithmetic `check` command still requires a configured
+cap because it has no explicit per-agent allocation. Neither a large global
+ledger ceiling nor a model-token allowance overrides this separate search
+policy. Accepted reservations still consume the shared fan-out total and use
+its existing atomic revision, nesting, settlement and unknown-cost rules.

@@ -63,6 +63,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
+from release_check_groups import bounded_run, source_digest
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-agent-conformance" / "scripts"))
 sys.path.insert(0, str(SCRIPT_DIR.parents[1] / "synthesis-onboarding" / "scripts"))
@@ -138,14 +140,17 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("pytest.conformance", ["python3", "-m", "pytest", "skills/synthesis-agent-conformance/scripts/", "-q"]),
     ("pytest.coordination", ["python3", "-m", "pytest", "skills/synthesis-project-management/scripts/", "-q"]),
     ("pytest.checkpoint", ["python3", "-m", "pytest", "skills/synthesis-checkpoint/scripts/", "-q"]),
-    ("pytest.autopilot", ["python3", "-m", "pytest", "skills/synthesis-autopilot/scripts/", "-q"]),
+    ("pytest.autopilot.state", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "state"]),
+    ("pytest.autopilot.native", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "native"]),
+    ("pytest.autopilot.evaluation", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "evaluation"]),
+    ("pytest.autopilot.core", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "core"]),
     ("pytest.model-tiers", ["python3", "-m", "pytest", "skills/synthesis-model-tiers/scripts/", "-q"]),
     ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.context-lifecycle-integrity", ["python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/", "skills/synthesis-implementation-integrity/scripts/", "-q"]),
     ("pytest.onboarding", ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"]),
     ("onboarding.catalog-scaffolds", ["python3", "skills/synthesis-onboarding/scripts/check_scaffolds.py", "."]),
     ("onboarding.capabilities", ["python3", "skills/synthesis-onboarding/scripts/check_capabilities.py", "."]),
-    ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "-q"]),
+    ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "skills/synthesis-skills-manager/scripts/test_release_check_groups.py", "-q"]),
     ("pytest.guardrails", ["python3", "-m", "pytest", "skills/synthesis-agent-guardrails/tests/", "-q"]),
     ("meeting-transcripts.completeness", ["python3", "skills/synthesis-meeting-transcripts/test_verify_transcripts.py"]),
     ("meeting-transcripts.primary", ["python3", "skills/synthesis-meeting-transcripts/test_transcript_primary.py"]),
@@ -2982,11 +2987,24 @@ def publish(
 def run_required_checks(
     repo: Path, result: Result, dry_run: bool
 ) -> AcceptanceAuthority | None:
+    try:
+        pinned_source = source_digest(repo) if not dry_run and REQUIRED_CHECKS else None
+    except (OSError, ValueError) as error:
+        result.add("checks.source", False, str(error))
+        return None
     for name, command in REQUIRED_CHECKS:
         if dry_run:
             result.add(f"checks.{name}", True, "dry-run")
             continue
-        completed = run(command, cwd=repo)
+        try:
+            if source_digest(repo) != pinned_source:
+                raise ValueError("source changed between required checks")
+            completed = bounded_run(command, cwd=repo)
+            if source_digest(repo) != pinned_source:
+                raise ValueError("source changed during required check")
+        except (OSError, ValueError) as error:
+            result.add(f"checks.{name}", False, str(error))
+            return None
         passed = completed.returncode == 0
         tail = (completed.stdout or completed.stderr).strip().splitlines()
         result.add(

@@ -66,6 +66,15 @@ def reserve_searches(*, project, run_id, actor, runtime_root, expected_revision,
                      reservation_id, agents, per_agent, parent_id=None):
     if type(agents) is not int or type(per_agent) is not int or not 1 <= agents <= 256 or per_agent <= 0:
         raise ValueError("agents and per-agent allocation must be positive bounded integers")
+    # The shared ledger ceiling and the per-agent policy are independent.
+    # An absent environment policy leaves the explicit allocation governed by
+    # the ledger. A configured policy must be valid and may never be exceeded.
+    if ENV_VAR in os.environ:
+        cap, problem = read_cap()
+        if cap is None:
+            raise ValueError("configured per-agent search cap is invalid: " + problem)
+        if per_agent > cap:
+            raise ValueError(f"per-agent search allocation {per_agent} exceeds configured cap {cap}")
     result = _command(project, run_id, actor, runtime_root, expected_revision, command_id,
         "workflow.reserve", {"reservation_id": reservation_id, "amounts": {"searches": agents * per_agent},
                              "category": "work", "parent_id": parent_id})

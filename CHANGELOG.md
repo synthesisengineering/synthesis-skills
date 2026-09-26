@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.9] - 2026-09-26
+
+Required autopilot checks now cover the entire collected suite in bounded groups.
+Release checks reject changed source, inherited test selection and stale bytecode.
+
+Serialize snapshot publication and readers with bounded descriptor locks; preserve foreign staging files and enforce transient capacity. Require explicitly declared plan evidence at completion, enforce per-agent search ceilings in the shared ledger, and finish only the authenticated caller’s claims after verified worktree retirement.
+
+Store large run snapshots as bounded, authenticated content blocks so native
+history recovery can continue without rewriting prior events or replaying effects.
+Retain finite logical and physical storage limits, event-chain authentication,
+compare-and-swap ownership, interrupted-write recovery and durable directory
+barriers. Checkpoint and prepared-launch attribution verify the actual committed
+storage form, including historical inline events. Equal decoded values remain
+independent objects, and partial or corrupted evidence still refuses acceptance.
+
 ## [4.149.8] - 2026-09-26
 
 Find the current desktop Codex CLI even when an older PATH launcher remains
