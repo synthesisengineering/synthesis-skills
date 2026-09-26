@@ -7,7 +7,6 @@ blocks remain inert and count against the run's storage budget.
 """
 from __future__ import annotations
 
-from copy import deepcopy
 import errno
 import fcntl
 import hashlib
@@ -319,18 +318,21 @@ def decode(path, descriptor):
             raw = _read_at(block_fd, digest + '.json', MAX_BLOCK_BYTES)
             if _hash(raw) != digest:
                 raise ValueError('snapshot block digest mismatch')
-            cache[digest] = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
-        node = cache[digest]
+            cache[digest] = raw
+        # Cache authenticated bytes only within this read. Parsing each reference
+        # creates independent JSON objects without Python-level graph copying.
+        node = json.loads(cache[digest], parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
         if not isinstance(node, list) or len(node) != 2:
             raise ValueError('invalid snapshot block shape')
         kind, body = node
         if kind == 'leaf':
-            if len(canonical(body)) > LEAF_BYTES:
+            leaf_bytes = len(canonical(body))
+            if leaf_bytes > LEAF_BYTES:
                 raise ValueError('snapshot leaf exceeds byte bound')
-            expanded_bytes += len(canonical(body))
+            expanded_bytes += leaf_bytes
             if expanded_bytes > MAX_LOGICAL_BYTES:
                 raise ValueError('snapshot expanded content exceeds its byte bound')
-            result = deepcopy(body)
+            result = body
         elif kind == 'object' and isinstance(body, list):
             result = {}
             for pair in body:
@@ -412,15 +414,16 @@ def component(path, keys, *, max_bytes):
             used += len(raw)
             if used > max_bytes or _hash(raw) != digest:
                 raise ValueError('selected snapshot block exceeds bound or fails digest')
-            cache[digest] = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
-        block = cache[digest]
+            cache[digest] = raw
+        # Never share mutable decoded leaves, including repeated references.
+        block = json.loads(cache[digest], parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
         if not isinstance(block, list) or len(block) != 2:
             raise ValueError('invalid selected snapshot block')
         kind, body = block
         active.add(digest)
         try:
             if kind == 'leaf':
-                result = deepcopy(body)
+                result = body
                 for key in remaining:
                     if not isinstance(result, dict) or key not in result:
                         return missing

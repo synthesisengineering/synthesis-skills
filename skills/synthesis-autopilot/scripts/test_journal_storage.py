@@ -5,8 +5,15 @@ import json
 from pathlib import Path
 
 import pytest
-from test_run_state import engine, world, create, command
-from test_observation_bridge import bridge, enroll, observe, append, pair
+import test_run_state as run_fixtures
+from test_run_state import create, command
+import test_observation_bridge as observation_fixtures
+from test_observation_bridge import enroll, observe, append, pair
+
+# Pytest discovers these imported fixtures by their public fixture names.
+engine = run_fixtures.engine
+world = run_fixtures.world
+bridge = observation_fixtures.bridge
 
 
 def test_native_history_crosses_snapshot_limit_and_recovers_exactly(engine, bridge, world):
@@ -360,10 +367,8 @@ def test_retry_flushes_prior_unconfirmed_directory_entries(tmp_path, monkeypatch
 
 # Publication and capacity races reproduced from full-CI failure.
 """Causal journal-store concurrency fixtures; finite joins, real inode operations."""
-import hashlib,json,os,stat,threading,time
+import stat,threading,time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-import pytest
 import journal_storage as store
 
 
@@ -579,3 +584,34 @@ def test_substituted_stage_cannot_be_published_or_deleted_as_owned(tmp_path,monk
     directory=home/'state-blocks/v1'
     assert (directory/'retained-owned-stage').read_bytes()==raw
     assert (directory/names[0]).read_bytes()==b'foreign replacement'
+
+
+@pytest.mark.parametrize('mode', ['full', 'component'])
+def test_json_leaf_reconstruction_avoids_python_graph_clone_and_keeps_independence(tmp_path, monkeypatch, mode):
+    """Real duplicate leaves must be fresh JSON objects without Python graph walks."""
+    value = {'left': {'items': [{'id': n, 'flags': [True, None, 'λ']} for n in range(150)]},
+             'right': {'items': [{'id': n, 'flags': [True, None, 'λ']} for n in range(150)]},
+             'padding': 'x' * (2 * 1024 * 1024)}
+    path, descriptor, _ = encoded(tmp_path, value)
+    def unexpected_clone(*args, **kwargs):
+        raise AssertionError('JSON snapshot unnecessarily traversed the Python deepcopy graph')
+    monkeypatch.setattr(storage, 'deepcopy', unexpected_clone, raising=False)
+    if mode == 'full':
+        decoded = storage.decode(path, descriptor)
+    else:
+        decoded, _ = storage.component(path, (), max_bytes=8 * 1024 * 1024)
+    assert decoded == value
+    decoded['left']['items'][0]['flags'].append('mutated')
+    assert decoded['right'] == value['right']
+    again = storage.decode(path, descriptor)
+    assert again == value
+
+
+def test_second_decode_never_reuses_a_previously_verified_leaf(tmp_path):
+    path, descriptor, value = encoded(tmp_path, independent_value())
+    assert storage.decode(path, descriptor) == value
+    directory = path.parent / 'state-blocks/v1'
+    leaf = next(p for p in directory.iterdir() if json.loads(p.read_bytes())[0] == 'leaf')
+    leaf.write_bytes(b'["leaf", "tampered"]\n')
+    with pytest.raises(ValueError, match='digest'):
+        storage.decode(path, descriptor)
