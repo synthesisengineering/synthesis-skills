@@ -18,6 +18,13 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.5** reduces project-reader metadata work while retaining current
+file and history checks. Native context and item observations gain strict
+schema validation without applying reported settings or replaying actions.
+Command-frame streaming retains finite memory and wire limits. Active-context
+estimates remain distinct from measured usage and financial reconciliation.
+
+
 Release **4.149.4** also restores bounded Codex compaction observation without replaying retained history or adding historical usage to measured cost. It refreshes the model-role catalog with public verification
 sources and native API mappings. Explicit model and effort choices remain in
 control; availability is verified separately for the actual client and account.

@@ -108,7 +108,7 @@ def test_large_readback_page_budget_yields_without_sequence_gap(tmp_path):
 
 @pytest.mark.parametrize("fault", ["over-envelope", "foreign", "future", "duplicate", "malformed"])
 def test_large_readback_keeps_unsupported_or_invalid_records_as_gaps(tmp_path, fault):
-    row = completed_item(1100000 if fault == "over-envelope" else 305000)
+    row = completed_item(no.MAX_STREAM_SPAN_BYTES + 1 if fault == "over-envelope" else 305000)
     if fault == "foreign": row["payload"]["thread_id"] = "foreign"
     if fault == "future": row["payload"]["item"]["type"] = "FutureItem"
     raw = wire(row)
