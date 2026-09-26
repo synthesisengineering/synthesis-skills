@@ -17,9 +17,8 @@ Three guarantees:
    minutes; what is never legitimate is producing nothing while consuming no CPU. Stall is
    defined as "output file unchanged for --stall-seconds", which distinguishes a slow model
    from a blocked process.
-3. **The binary is located, not assumed.** It is not on PATH in a normal shell; it lives under
-   ~/.codex/plugins/. An agent that shells out to `codex` gets "command not found" and may
-   wrongly conclude the capability does not exist. It does.
+3. **The binary is located, not assumed.** Lifecycle verification and dispatch share
+   bounded discovery of PATH and desktop-app installations, respecting explicit overrides.
 
     python3 codex_dispatch.py --prompt-file brief.md --out review.txt
     python3 codex_dispatch.py --prompt "one-line question" --stall-seconds 300
@@ -35,30 +34,16 @@ import subprocess
 import sys
 import time
 
-CANDIDATES = [
-    pathlib.Path.home() / ".codex/plugins/.plugin-appserver/codex",
-    pathlib.Path("/usr/local/bin/codex"),
-    pathlib.Path("/opt/homebrew/bin/codex"),
-]
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"))
+from client_binaries import resolve_client_binary
 STALL_SECONDS = 420          # no new output for this long, with the file non-growing = hung
 POLL_SECONDS = 10
 HANG_MARKER = "Reading additional input from stdin"
 
 
 def find_binary() -> pathlib.Path | None:
-    which = shutil.which("codex")
-    if which:
-        return pathlib.Path(which)
-    for c in CANDIDATES:
-        if c.is_file() and os.access(c, os.X_OK):
-            return c
-    # Last resort: a bounded search of the codex plugin tree.
-    root = pathlib.Path.home() / ".codex"
-    if root.is_dir():
-        for p in root.glob("plugins/**/codex"):
-            if p.is_file() and os.access(p, os.X_OK):
-                return p
-    return None
+    binary = resolve_client_binary("codex")
+    return pathlib.Path(binary) if binary else None
 
 
 def doctor() -> int:

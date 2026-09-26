@@ -36,6 +36,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"))
+from client_binaries import WELL_KNOWN_LOCATIONS, resolve_client_binary
+
 from reload_guidance import recovery_instruction
 
 from enrollment import (EnrollmentJournal, regular_tree, move_verified, engine_lock, engine_state_root,
@@ -94,7 +97,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.8.3"
+ENGINE_VERSION = "2.8.4"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -895,27 +898,12 @@ def paths_digest(paths):
 # Client + plugin handling
 # ---------------------------------------------------------------------------
 
-CLIENT_WELL_KNOWN = {
-    "claude": [HOME / ".local/bin/claude", Path("/usr/local/bin/claude"),
-               Path("/opt/homebrew/bin/claude")],
-    "codex": [HOME / ".local/bin/codex",
-              Path("/Applications/ChatGPT.app/Contents/Resources/codex"),
-              Path("/usr/local/bin/codex"), Path("/opt/homebrew/bin/codex")],
-}
+CLIENT_WELL_KNOWN = {name: [Path(value).expanduser() for value in values]
+                     for name, values in WELL_KNOWN_LOCATIONS.items()}
 
 
 def resolve_client(name):
-    env_key = "SYNTHESIS_%s_BIN" % name.upper()
-    if env_key in os.environ:
-        value = os.environ[env_key].strip()
-        return value or None  # set-but-empty means "treat as absent"
-    found = shutil.which(name)
-    if found:
-        return found
-    for candidate in CLIENT_WELL_KNOWN.get(name, []):
-        if candidate.exists():
-            return str(candidate)
-    return None
+    return resolve_client_binary(name, locations=CLIENT_WELL_KNOWN.get(name, ()))
 
 
 def plugin_record(client, binary):

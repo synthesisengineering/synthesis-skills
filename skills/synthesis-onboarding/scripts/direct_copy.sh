@@ -76,6 +76,14 @@ safe_directory_path "$USER_HOME"
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd || true)
 SCRIPT_ROOT=$(CDPATH= cd "$SCRIPT_DIR/../../.." 2>/dev/null && pwd || true)
 SCRIPT_SKILLS_DIR="${SCRIPT_ROOT}/skills"
+command -v python3 >/dev/null 2>&1 || {
+    echo "ERROR: Python 3 is required to verify native client discovery before installation." >&2
+    exit 1
+}
+[ -f "$SCRIPT_ROOT/skills/synthesis-agent-conformance/scripts/client_binaries.py" ] || {
+    echo "ERROR: packaged native client discovery helper is missing." >&2
+    exit 1
+}
 SOURCE_MODE="remote"
 if [ -n "${SYNTHESIS_SKILLS_SOURCE_DIR:-}" ]; then
     safe_directory_path "$SYNTHESIS_SKILLS_SOURCE_DIR"
@@ -166,27 +174,7 @@ resolve_claude_bin() {
 }
 
 resolve_codex_bin() {
-    if [ "${SYNTHESIS_CODEX_BIN+set}" = "set" ]; then
-        if [ -n "$SYNTHESIS_CODEX_BIN" ] && [ -x "$SYNTHESIS_CODEX_BIN" ]; then
-            printf '%s\n' "$SYNTHESIS_CODEX_BIN"
-        fi
-        return 0
-    fi
-    if command -v codex >/dev/null 2>&1; then
-        command -v codex
-        return 0
-    fi
-    for CLIENT_BIN_CANDIDATE in \
-        "$HOME/.local/bin/codex" \
-        /opt/homebrew/bin/codex \
-        /usr/local/bin/codex \
-        "/Applications/ChatGPT.app/Contents/Resources/codex"; do
-        if [ -x "$CLIENT_BIN_CANDIDATE" ]; then
-            printf '%s\n' "$CLIENT_BIN_CANDIDATE"
-            return 0
-        fi
-    done
-    return 0
+    python3 "$SCRIPT_ROOT/skills/synthesis-agent-conformance/scripts/client_binaries.py" codex
 }
 
 claude_plugin_installed() {

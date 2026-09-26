@@ -436,6 +436,9 @@ def copy_boundary(tmp_path, monkeypatch):
     scripts = source / "skills/synthesis-onboarding/scripts"
     scripts.mkdir(parents=True)
     shutil.copy2(Path(__file__).with_name("direct_copy.sh"), scripts / "direct_copy.sh")
+    discovery = source / "skills/synthesis-agent-conformance/scripts"
+    discovery.mkdir(parents=True)
+    shutil.copy2(Path(__file__).resolve().parents[2] / "synthesis-agent-conformance/scripts/client_binaries.py", discovery / "client_binaries.py")
     skill = source / "skills/synthesis-fixture"
     skill.mkdir()
     (skill / "SKILL.md").write_text("# Reviewed fixture\n")

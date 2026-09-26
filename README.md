@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.149.8** repairs desktop CLI discovery across verification, dispatch
+and onboarding, with bounded local probes and authoritative explicit overrides.
+
 Release **4.149.7** recognizes additional native observation records and reads
 long run journals through complete, time-bounded validation. Unknown records,
 changed history and failed verification remain explicit.

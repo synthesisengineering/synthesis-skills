@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.149.8] - 2026-09-26
+
+Find the current desktop Codex CLI even when an older PATH launcher remains
+executable but no longer works. Local version probes close stdin, discard output
+and bound process cleanup. Explicit client selection remains authoritative.
+Conformance, dispatch and onboarding use the same discovery implementation;
+installed-release fixtures include its runtime dependency.
+
 ## [4.149.7] - 2026-09-26
 
 Validate native search, sleep and date-change records as inert observations,

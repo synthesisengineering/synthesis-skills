@@ -64,6 +64,9 @@ def _installed_release_copy(destination: Path) -> Path:
     ignore = shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.pyc")
     for relative in (".claude-plugin", ".codex-plugin", "skills/synthesis-onboarding"):
         shutil.copytree(REPO_ROOT / relative, destination / relative, ignore=ignore)
+    relative = "skills/synthesis-agent-conformance/scripts/client_binaries.py"
+    (destination / relative).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(REPO_ROOT / relative, destination / relative)
     for relative in ("onboard.sh", "install.sh"):
         shutil.copy2(REPO_ROOT / relative, destination / relative)
     return destination

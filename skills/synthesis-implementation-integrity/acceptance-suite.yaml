@@ -1,183 +1,392 @@
 schema: 2
-suite: native-observer-4-149-7
+suite: client-discovery-4-149-8
 membership: closed
-production_entry_point: Native Codex observation owner and shared operator journal
-  reader
+production_entry_point: Shared CLI discovery consumed by conformance, dispatch and
+  onboarding
 enforcing_boundary: Fresh transaction-bound acceptance before gated release
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
 change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Actual installed history recovery, native execution and restart
-  survival require separate acceptance. Time checks are cooperative between bounded
-  events and are not preemptive process limits.
+unverified_remainder: CLI discovery and local version probes do not establish authentication,
+  live skill loading, native execution or restart survival. Installed consumer acceptance
+  is separate.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 - path: .codex-plugin/plugin.json
   cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 - path: .muse-plugin/plugin.json
   cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 - path: CHANGELOG.md
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 - path: README.md
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
-- path: skills/synthesis-autopilot/SKILL.md
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-agent-conformance/SKILL.md
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
-- path: skills/synthesis-autopilot/scripts/native_codex.py
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-agent-conformance/scripts/client_binaries.py
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
-- path: skills/synthesis-autopilot/scripts/operator_status.py
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-agent-conformance/scripts/test_client_binaries.py
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
-- path: skills/synthesis-autopilot/scripts/test_native_large_context.py
-  cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
-  - release-metadata
-- path: skills/synthesis-autopilot/scripts/test_native_observer_integration.py
-  cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
-  - release-metadata
-- path: skills/synthesis-autopilot/scripts/test_operator_status.py
-  cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
-  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - native-extension
-  - native-negative
-  - sleep-negative
-  - date-patch
-  - patch-negative
-  - date-negative
-  - journal-complete
-  - journal-corrupt
-  - generation
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
   - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/SKILL.md
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/direct_copy.sh
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/onboard.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/test_client_discovery.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/test_independent_review.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-onboarding/scripts/test_native_failure_boundary.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-project-management/SKILL.md
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-project-management/scripts/codex_dispatch.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
+- path: skills/synthesis-project-management/scripts/test_codex_dispatch.py
+  cases:
+  - stale-launcher
+  - probe-timeout
+  - probe-cleanup
+  - override
+  - dispatch
+  - onboarding
+  - direct-copy
+  - installed-layout
+  - release-metadata
+  - relative_explicit_override_runs_selected_file
+  - unconfirmed_cleanup_stops_entire_discovery
+  - unconfirmed_wait_stops_before_next_candidate
+  - onboard-version-parity
+  - copy-retained-client
 cases:
-- id: native-extension
+- id: stale-launcher
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extension_is_inert_observation
-  motivating_defect: Native extension observations convey no authority.
-- id: native-negative
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_failed_path_launcher_falls_back_to_working_bundle
+  motivating_defect: An executable stale launcher must not hide a usable CLI.
+- id: probe-timeout
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extension_refuses_ambiguous_schema
-  motivating_defect: Foreign and malformed records remain gaps.
-- id: sleep-negative
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_hung_candidate_is_bounded_and_its_child_is_reaped
+  motivating_defect: Hung local probes and their process groups are bounded.
+- id: probe-cleanup
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_sleep_duration_refuses_invalid
-  motivating_defect: Bound and type-check sleep declarations.
-- id: date-patch
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_unconfirmed_probe_cleanup_cannot_report_success
+  motivating_defect: Unconfirmed cleanup cannot establish a healthy candidate.
+- id: override
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_date_patch_is_inert_observation
-  motivating_defect: Qualified date patch remains inert.
-- id: patch-negative
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_explicit_broken_override_never_selects_another_install
+  motivating_defect: A discovered alternative cannot override an explicit selection.
+- id: dispatch
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_extra_patch_refuses
-  motivating_defect: Other incremental state remains unknown.
-- id: date-negative
+  fixture: ../synthesis-project-management/scripts/test_codex_dispatch.py::test_dispatch_discovery_honors_explicit_absence
+  motivating_defect: Dispatch honors explicit absence through canonical discovery.
+- id: onboarding
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_invalid_date_refuses
-  motivating_defect: Calendar values must be valid.
-- id: journal-complete
+  fixture: ../synthesis-onboarding/scripts/test_client_discovery.py::test_onboard_skips_failed_path_launcher
+  motivating_defect: The actual onboarding resolver rejects stale PATH launchers.
+- id: direct-copy
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_large_valid_journal
-  motivating_defect: Verify complete chains beyond the old aggregate cap.
-- id: journal-corrupt
+  fixture: ../synthesis-onboarding/scripts/test_client_discovery.py::test_direct_copy_discovery_uses_packaged_resolver
+  motivating_defect: The direct-copy consumer uses the same runtime dependency.
+- id: installed-layout
   control_class: acceptance-test
   expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_large_corrupt_early_event_refuses
-  motivating_defect: Early corruption refuses acceptance.
-- id: generation
-  control_class: acceptance-test
-  expected_status: pass
-  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_current_decoder_requires_explicit_prior_generation_reconciliation
-  motivating_defect: Prior v8/v9/v10 evidence needs explicit new-generation reconciliation.
+  fixture: ../synthesis-onboarding/scripts/test_independent_review.py::test_engine_materializes_organization_instructions_from_an_installed_release
+  motivating_defect: Installed release dependencies support actual organization setup.
 - id: release-metadata
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_deduplicated_archive_release_contract_is_public_and_coherent
-  motivating_defect: Version manifests and archived source agree.
+  motivating_defect: Release metadata and archive contract agree.
+- id: relative_explicit_override_runs_selected_file
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_relative_explicit_override_runs_selected_file
+  motivating_defect: relative explicit override runs selected file
+- id: unconfirmed_cleanup_stops_entire_discovery
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_unconfirmed_cleanup_stops_entire_discovery
+  motivating_defect: unconfirmed cleanup stops entire discovery
+- id: unconfirmed_wait_stops_before_next_candidate
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_client_binaries.py::test_unconfirmed_wait_stops_before_next_candidate
+  motivating_defect: unconfirmed wait stops before next candidate
+- id: onboard-version-parity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
+  motivating_defect: Both runtime entry points and the skill must declare the same
+    onboarding version.
+- id: copy-retained-client
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_native_failure_boundary.py::test_copy_preserves_unselected_native_client_copies
+  motivating_defect: A complete direct-copy fixture preserves an unselected native
+    client.
