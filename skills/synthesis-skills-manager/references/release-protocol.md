@@ -31,8 +31,27 @@ The sequence, each stage gating the next:
   digest, and changed-path digest. The boundary recomputes those fields and
   rechecks the clean worktree before it can authorize publication. The
   accepted-state object survives the check phase and expires when any binding
-  changes. CI invokes the same consumer with the pull request base supplied by
-  its event record.
+  changes. The release owner reads every configured push URL's published
+  `stable` and immutable version tag, verifies their source manifests and
+  ancestry, and requires agreement on the prior published release. Local tags,
+  branch parents and the acceptance manifest cannot choose that authority.
+  A current-version publication racing CI is valid only at the exact candidate
+  HEAD; its prior published release remains the baseline. Missing publication
+  history (including initial bootstrap), inconsistent targets, unavailable
+  objects or reused version tags refuse. Bootstrap authority must be established
+  separately; an event base does not manufacture a previous release.
+  CI supplies `SYNTHESIS_ACCEPTANCE_CHANGE_BASE` as the exact event/PR review
+  base. It binds a separate review slice inside the whole release ancestry and
+  retains every slice path. A correction restoring an unreleased path to
+  published state carries an exact base/HEAD tree-entry equality proof
+  (including absent/absent); it never invents an unchanged manifest surface.
+  Each boundary read uses the existing finite process owner, with a 120-second
+  total deadline, 30-second command bound, 16 targets and 4096 advertised refs. The slice, target identities and immutable
+  prior tag are re-read after acceptance and before each remote publication.
+  Successfully publishing this exact candidate to one target does not invalidate
+  the next target's prior-release binding. The acceptance manifest must be
+  regenerated for the whole published-release-to-HEAD universe and executed
+  afresh; a corrective PR cannot reuse an earlier receipt.
 - **Publish** revalidates the accepted state immediately before every remote
   mutation and atomically pushes the immutable accepted commit SHA to three
   lifecycle refs: `refs/heads/main` (edge), `refs/heads/stable` (default), and

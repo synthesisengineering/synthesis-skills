@@ -30,8 +30,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import release  # noqa: E402
 
 
-def write_manifests(repo: Path, claude: str | None, codex: str | None, muse: str | None) -> None:
-    for directory, version in ((".claude-plugin", claude), (".codex-plugin", codex), (".muse-plugin", muse)):
+def write_manifests(
+    repo: Path, claude: str | None, codex: str | None, muse: str | None
+) -> None:
+    for directory, version in (
+        (".claude-plugin", claude),
+        (".codex-plugin", codex),
+        (".muse-plugin", muse),
+    ):
         target = repo / directory
         target.mkdir(parents=True, exist_ok=True)
         payload = {"name": release.PLUGIN_NAME}
@@ -44,7 +50,8 @@ def write_manifests(repo: Path, claude: str | None, codex: str | None, muse: str
 def repo(tmp_path: Path) -> Path:
     write_manifests(tmp_path, "9.9.9", "9.9.9", "9.9.9")
     (tmp_path / "CHANGELOG.md").write_text(
-        "# Changelog\n\n## [9.9.9] - 2026-01-01\n\n### Added\n\n- thing\n", encoding="utf-8"
+        "# Changelog\n\n## [9.9.9] - 2026-01-01\n\n### Added\n\n- thing\n",
+        encoding="utf-8",
     )
     return tmp_path
 
@@ -55,11 +62,13 @@ def no_real_cache_settle_delay(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def hermetic_release_train(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def hermetic_release_train(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep the suite off the developer's real coordination board and
     session identity; train tests point at their own fixtures."""
+    # Hosted acceptance has a real repository's event base. Synthetic Git
+    # repositories must bind their own ancestry; boundary tests set that base
+    # explicitly when testing an event. This does not alter the outer runner.
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
     monkeypatch.setenv(
         "SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "absent-board.md")
     )
@@ -67,13 +76,21 @@ def hermetic_release_train(
     monkeypatch.setenv(
         "SYNTHESIS_ACTIVE_PROJECT_FILE", str(tmp_path / "absent-pointer.json")
     )
-    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json"))
+    monkeypatch.setenv(
+        "MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json")
+    )
     monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "message-guard"))
     home = tmp_path / "lifecycle-home"
     monkeypatch.setenv("SYNTHESIS_HOME", str(home))
-    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "cache-recovery")
-    for name, relative in {"XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
-                           "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share"}.items():
+    monkeypatch.setattr(
+        release, "codex_cache_archive", lambda: tmp_path / "cache-recovery"
+    )
+    for name, relative in {
+        "XDG_CONFIG_HOME": ".config",
+        "XDG_STATE_HOME": ".local/state",
+        "XDG_CACHE_HOME": ".cache",
+        "XDG_DATA_HOME": ".local/share",
+    }.items():
         monkeypatch.setenv(name, str(home / relative))
 
 
@@ -92,7 +109,9 @@ def test_source_version_fails_closed_when_manifests_disagree(repo: Path) -> None
     assert "9.9.8" in detail
 
 
-def test_source_version_fails_closed_when_a_manifest_lacks_a_version(repo: Path) -> None:
+def test_source_version_fails_closed_when_a_manifest_lacks_a_version(
+    repo: Path,
+) -> None:
     write_manifests(repo, "9.9.9", None, "9.9.9")
     version, _ = release.source_version(repo)
     assert version is None
@@ -103,7 +122,9 @@ def test_changelog_top_version_parsed(repo: Path) -> None:
 
 
 def test_changelog_mismatch_is_reported(repo: Path) -> None:
-    (repo / "CHANGELOG.md").write_text("# Changelog\n\n## [1.0.0] - 2026-01-01\n", encoding="utf-8")
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [1.0.0] - 2026-01-01\n", encoding="utf-8"
+    )
     result = release.Result()
     release.preflight(repo, result, install_only=False)
     names = {s.name: s.ok for s in result.steps}
@@ -118,7 +139,9 @@ def test_missing_changelog_returns_none(tmp_path: Path) -> None:
 
 
 def test_first_json_skips_leading_noise() -> None:
-    assert json.loads(release._first_json('warn: x\n{"installed": []}\n')) == {"installed": []}
+    assert json.loads(release._first_json('warn: x\n{"installed": []}\n')) == {
+        "installed": []
+    }
 
 
 def test_first_json_handles_nested_arrays() -> None:
@@ -146,7 +169,9 @@ def test_stable_path_points_at_the_verified_install_root(tmp_path, monkeypatch) 
     first = _install_root(tmp_path, "4.82.0")
     first_source = tmp_path / "source-first"
     _seed_content(first_source, first)
-    assert release.refresh_stable_path("4.82.0", release.Result(), False, target=first, repo=first_source)
+    assert release.refresh_stable_path(
+        "4.82.0", release.Result(), False, target=first, repo=first_source
+    )
     link = release.stable_path()
     assert link.is_symlink()
     assert Path(os.path.realpath(link)) == first.resolve()
@@ -154,12 +179,16 @@ def test_stable_path_points_at_the_verified_install_root(tmp_path, monkeypatch) 
     second = _install_root(tmp_path, "4.83.0")
     second_source = tmp_path / "source-second"
     _seed_content(second_source, second)
-    assert release.refresh_stable_path("4.83.0", release.Result(), False, target=second, repo=second_source)
+    assert release.refresh_stable_path(
+        "4.83.0", release.Result(), False, target=second, repo=second_source
+    )
     assert Path(os.path.realpath(link)) == second.resolve()
     assert not link.with_name(link.name + ".tmp").exists()
 
 
-def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypatch) -> None:
+def test_stable_path_refuses_an_unverified_or_mismatched_root(
+    tmp_path, monkeypatch
+) -> None:
     monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
     bare = tmp_path / "cache" / "4.82.0"
     bare.mkdir(parents=True)
@@ -168,12 +197,16 @@ def test_stable_path_refuses_an_unverified_or_mismatched_root(tmp_path, monkeypa
     assert not release.stable_path().exists()
 
     other = _install_root(tmp_path, "4.81.0")
-    assert not release.refresh_stable_path("4.82.0", release.Result(), False, target=other)
+    assert not release.refresh_stable_path(
+        "4.82.0", release.Result(), False, target=other
+    )
     assert not release.stable_path().exists()
 
 
 @pytest.mark.parametrize("mutation", ["before", "at-publication"])
-def test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer(tmp_path, monkeypatch, mutation):
+def test_stable_consumer_revalidates_full_inventory_and_preserves_previous_pointer(
+    tmp_path, monkeypatch, mutation
+):
     monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "plugins")
     prior = _install_root(tmp_path, "4.82.0")
     root = _install_root(tmp_path, "4.83.0")
@@ -182,25 +215,33 @@ def test_stable_consumer_revalidates_full_inventory_and_preserves_previous_point
     link = release.stable_path()
     link.parent.mkdir(parents=True)
     link.symlink_to(prior)
+
     def corrupt():
         (root / "unapproved-hook.py").write_text("Unexpected loadable content.\n")
+
     real_replace = release.os.replace
+
     def replace(src, dst):
         real_replace(src, dst)
         if Path(dst) == link and link.resolve() == root:
             corrupt()
+
     if mutation == "before":
         corrupt()
     else:
         monkeypatch.setattr(release.os, "replace", replace)
-    assert not release.refresh_stable_path("4.83.0", release.Result(), False, target=root, repo=source)
+    assert not release.refresh_stable_path(
+        "4.83.0", release.Result(), False, target=root, repo=source
+    )
     assert link.resolve() == prior
 
 
 def test_stable_path_doc_states_the_two_caller_rule() -> None:
     """Instruction files pin the installed pointer; hooks resolve from source.
     A rule nobody wrote down gets re-decided per session."""
-    text = (Path(__file__).resolve().parents[1] / "SKILL.md").read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parents[1] / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert "## The stable path" in text
     assert "Two kinds of caller, two paths" in text
     assert "parity.stable-path" in text
@@ -238,6 +279,7 @@ def test_required_checks_execute_release_wiring_tests() -> None:
         "skills/synthesis-skills-manager/scripts/test_release.py",
         "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
         "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
+        "skills/synthesis-skills-manager/scripts/test_muse_command_contract.py",
         "-q",
     ]
 
@@ -300,7 +342,9 @@ def train_board(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
     board = tmp_path / "board.md"
     board.write_text(
         "# Coordination\n\nSchema: v4\n\n## Active sessions\n\n"
-        + header + body + "\n## Messages\n\n---\n\n## Protocol\n",
+        + header
+        + body
+        + "\n## Messages\n\n---\n\n## Protocol\n",
         encoding="utf-8",
     )
     return board
@@ -329,9 +373,7 @@ def test_train_not_adopted_without_a_board(
 def test_train_held_by_this_session_passes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    board = train_board(
-        tmp_path, [(TRAIN_UUID, release.TRAIN_RESOURCE, "active")]
-    )
+    board = train_board(tmp_path, [(TRAIN_UUID, release.TRAIN_RESOURCE, "active")])
     step = run_train_check(monkeypatch, board, TRAIN_UUID)
     assert step.ok and "held by this session" in step.detail
 
@@ -339,9 +381,7 @@ def test_train_held_by_this_session_passes(
 def test_train_held_by_peer_refuses(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    board = train_board(
-        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")]
-    )
+    board = train_board(tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")])
     step = run_train_check(monkeypatch, board, TRAIN_UUID)
     assert not step.ok and "not this session" in step.detail
 
@@ -357,9 +397,7 @@ def test_train_unheld_refuses_with_claim_guidance(
 def test_train_released_holder_does_not_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    board = train_board(
-        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "released")]
-    )
+    board = train_board(tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "released")])
     step = run_train_check(monkeypatch, board, TRAIN_UUID)
     assert not step.ok and "claim it before" in step.detail
 
@@ -367,9 +405,7 @@ def test_train_released_holder_does_not_count(
 def test_train_held_without_local_identity_refuses(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    board = train_board(
-        tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")]
-    )
+    board = train_board(tmp_path, [(OTHER_UUID, release.TRAIN_RESOURCE, "active")])
     step = run_train_check(monkeypatch, board, None)
     assert not step.ok and "no session identity" in step.detail
 
@@ -415,12 +451,13 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
         for step in workflow["jobs"]["conformance"]["steps"]
         if "run" in step
         and "pip install" not in step["run"]
-        and step.get("name") != "Install OS isolation for executable consumer acceptance"
+        and step.get("name")
+        != "Install OS isolation for executable consumer acceptance"
         and "--acceptance-only" not in step["run"]
         and "GITHUB_ENV" not in step["run"]
     ]
     normalized_ci = [
-        "python3 " + command[len("python "):]
+        "python3 " + command[len("python ") :]
         if command.startswith("python ")
         else command
         for command in ci_steps
@@ -442,8 +479,8 @@ def test_acceptance_base_resolves_to_previous_release_tag() -> None:
     """2026-09-22: CI graded every push slice against the transaction manifest
     because the base was the push base, so Validate stayed red on release
     commits whose local gate was green. Pushes now resolve the base to the
-    previous release tag (PRs keep their base); the acceptance step consumes
-    the resolved base from the environment instead of an inline binding."""
+    published release; PRs retain an independently checked review slice.
+    The consumer, not shell workflow logic, selects the release boundary."""
     repository = Path(__file__).resolve().parents[3]
     workflow = yaml.safe_load(
         (repository / ".github" / "workflows" / "validate.yml").read_text(
@@ -454,9 +491,12 @@ def test_acceptance_base_resolves_to_previous_release_tag() -> None:
     resolve = next(
         step for step in steps if step.get("name") == "Resolve acceptance change base"
     )
-    assert "github.event.pull_request.base.sha" in resolve["run"]
-    assert "git describe --tags" in resolve["run"]
-    assert "git rev-list -n 1" in resolve["run"]
+    assert (
+        "github.event.pull_request.base.sha"
+        in resolve["env"]["SYNTHESIS_EVENT_REVIEW_BASE"]
+    )
+    assert "git describe" not in resolve["run"]
+    assert "SYNTHESIS_EVENT_REVIEW_BASE" in resolve["run"]
     assert "GITHUB_ENV" in resolve["run"]
     accept = next(
         step
@@ -473,20 +513,21 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     )
 
     assert "python skills/synthesis-onboarding/scripts/check_scaffolds.py ." in workflow
-    assert "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
+    assert (
+        "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
+    )
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
-        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q"
+        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q"
         in workflow
     )
-    assert (
-        "python -m pytest skills/synthesis-agent-guardrails/tests/ -q"
-        in workflow
-    )
+    assert "python -m pytest skills/synthesis-agent-guardrails/tests/ -q" in workflow
 
 
 @pytest.mark.parametrize("activation_ok", [True, False])
-def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, monkeypatch, activation_ok):
+def test_release_establishes_required_launcher_before_exposing_new_hooks(
+    repo, monkeypatch, activation_ok
+):
     ready = False
     observations = []
     monkeypatch.setattr(release, "preflight", lambda *args: "9.9.9")
@@ -502,22 +543,45 @@ def test_release_establishes_required_launcher_before_exposing_new_hooks(repo, m
 
     monkeypatch.setattr(release, "activate_published_cli", activate)
     monkeypatch.setattr(release, "refresh_client", refresh)
-    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        release, "install_codex_cache_guardian", lambda *args, **kwargs: True
+    )
     monkeypatch.setattr(release, "deep_verify", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "refresh_stable_path", lambda *args, **kwargs: True)
     monkeypatch.setattr(release, "sync_commit_gate", lambda *args, **kwargs: True)
-    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *args, **kwargs: True)
-    assert release.main(["--repo-root", str(repo), "--install-only"]) == (0 if activation_ok else 1)
-    assert observations == ([("claude", True), ("codex", True), ("muse", True)] if activation_ok else [])
+    monkeypatch.setattr(
+        release, "reconcile_published_lifecycle", lambda *args, **kwargs: True
+    )
+    assert release.main(["--repo-root", str(repo), "--install-only"]) == (
+        0 if activation_ok else 1
+    )
+    assert observations == (
+        [("claude", True), ("codex", True), ("muse", True)] if activation_ok else []
+    )
 
 
-def test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled(repo, monkeypatch, capsys):
+def test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled(
+    repo, monkeypatch, capsys
+):
     order = []
     monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
-    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian",
-                 "deep_verify", "refresh_stable_path", "sync_commit_gate"):
-        monkeypatch.setattr(release, name, lambda *a, _name=name, **k: order.append(_name) or True)
-    monkeypatch.setattr(release, "reconcile_published_lifecycle", lambda *a, **k: order.append("lifecycle") or False, raising=False)
+    for name in (
+        "activate_published_cli",
+        "refresh_client",
+        "install_codex_cache_guardian",
+        "deep_verify",
+        "refresh_stable_path",
+        "sync_commit_gate",
+    ):
+        monkeypatch.setattr(
+            release, name, lambda *a, _name=name, **k: order.append(_name) or True
+        )
+    monkeypatch.setattr(
+        release,
+        "reconcile_published_lifecycle",
+        lambda *a, **k: order.append("lifecycle") or False,
+        raising=False,
+    )
     assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
     assert order[-1] == "lifecycle"
     output = capsys.readouterr().out
@@ -526,8 +590,11 @@ def test_release_refuses_completion_when_lifecycle_transaction_is_not_reconciled
 
 @pytest.mark.parametrize("selected", [None, ["claude"], ["codex"], ["claude", "codex"]])
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_release_native_effects_honor_saved_client_selection(repo, monkeypatch, selected, dry_run):
+def test_release_native_effects_honor_saved_client_selection(
+    repo, monkeypatch, selected, dry_run
+):
     import system_contract as contract
+
     state = contract.SystemState()
     if selected is not None:
         desired = contract.default_desired_state("skills-only", selected, "stable")
@@ -536,17 +603,37 @@ def test_release_native_effects_honor_saved_client_selection(repo, monkeypatch, 
     expected = selected if selected is not None else ["claude", "codex", "muse"]
     calls = {name: [] for name in ("refresh", "verify", "guardian", "stable")}
     monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
-    for name in ("activate_published_cli", "sync_commit_gate", "reconcile_published_lifecycle"):
+    for name in (
+        "activate_published_cli",
+        "sync_commit_gate",
+        "reconcile_published_lifecycle",
+    ):
         monkeypatch.setattr(release, name, lambda *a, **kw: True)
-    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: calls["refresh"].append(client) or True)
+    monkeypatch.setattr(
+        release,
+        "refresh_client",
+        lambda client, *a, **kw: calls["refresh"].append(client) or True,
+    )
+
     def verify(client, version, result, **kwargs):
         calls["verify"].append(client)
         result.verified_roots[client] = release.installed_root(client, version)
         return True
+
     monkeypatch.setattr(release, "deep_verify", verify)
-    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *a, **kw: calls["guardian"].append(True) or True)
-    monkeypatch.setattr(release, "refresh_stable_path", lambda *a, **kw: calls["stable"].append(kw.get("target")) or True)
-    command = ["--repo-root", str(repo), "--install-only"] + (["--dry-run"] if dry_run else [])
+    monkeypatch.setattr(
+        release,
+        "install_codex_cache_guardian",
+        lambda *a, **kw: calls["guardian"].append(True) or True,
+    )
+    monkeypatch.setattr(
+        release,
+        "refresh_stable_path",
+        lambda *a, **kw: calls["stable"].append(kw.get("target")) or True,
+    )
+    command = ["--repo-root", str(repo), "--install-only"] + (
+        ["--dry-run"] if dry_run else []
+    )
     assert release.main(command) == 0
     assert calls["refresh"] == expected
     assert calls["verify"] == ([] if dry_run else expected)
@@ -557,9 +644,12 @@ def test_release_native_effects_honor_saved_client_selection(repo, monkeypatch, 
 
 
 @pytest.mark.parametrize("changed_at", ["activation", "before-native-lock"])
-def test_release_binds_original_selection_before_native_mutation(repo, monkeypatch, capsys, changed_at):
+def test_release_binds_original_selection_before_native_mutation(
+    repo, monkeypatch, capsys, changed_at
+):
     import contextlib
     import system_contract as contract
+
     state = contract.SystemState()
     original = contract.default_desired_state("skills-only", ["codex"], "stable")
     changed = contract.default_desired_state("skills-only", ["claude"], "stable")
@@ -567,23 +657,37 @@ def test_release_binds_original_selection_before_native_mutation(repo, monkeypat
     monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
     native_calls = []
     activated = False
+
     def activate(*a, **kw):
         nonlocal activated
         activated = True
         if changed_at == "activation":
             state.run_transaction("setup", changed, lambda _tx: {})
         return True
+
     real_lock = contract.SystemState.locked
+
     @contextlib.contextmanager
     def locked(instance):
         with real_lock(instance):
             if activated and changed_at == "before-native-lock":
                 contract.atomic_write_json(state.desired_path, changed)
             yield
+
     monkeypatch.setattr(contract.SystemState, "locked", locked)
     monkeypatch.setattr(release, "activate_published_cli", activate)
-    monkeypatch.setattr(release, "refresh_client", lambda client, *a, **kw: native_calls.append(client) or True)
-    for name in ("deep_verify", "install_codex_cache_guardian", "sync_commit_gate", "refresh_stable_path", "reconcile_published_lifecycle"):
+    monkeypatch.setattr(
+        release,
+        "refresh_client",
+        lambda client, *a, **kw: native_calls.append(client) or True,
+    )
+    for name in (
+        "deep_verify",
+        "install_codex_cache_guardian",
+        "sync_commit_gate",
+        "refresh_stable_path",
+        "reconcile_published_lifecycle",
+    ):
         monkeypatch.setattr(release, name, lambda *a, **kw: True)
     assert release.main(["--repo-root", str(repo), "--install-only"]) == 1
     assert native_calls == []
@@ -591,15 +695,30 @@ def test_release_binds_original_selection_before_native_mutation(repo, monkeypat
     assert "RELEASED" not in capsys.readouterr().out
 
 
-def test_release_stable_consumer_uses_actual_verified_client_root(tmp_path, monkeypatch):
+def test_release_stable_consumer_uses_actual_verified_client_root(
+    tmp_path, monkeypatch
+):
     import system_contract as contract
     from test_system_contract import release_repo
+
     state = contract.SystemState()
-    state.run_transaction("setup", contract.default_desired_state("skills-only", ["codex"], "stable"), lambda _tx: {})
+    state.run_transaction(
+        "setup",
+        contract.default_desired_state("skills-only", ["codex"], "stable"),
+        lambda _tx: {},
+    )
     source = release_repo(tmp_path / "source", "9.9.9")
-    generation, _descriptor = release.materialize_release(source, tmp_path / "generations", channel="stable", ref="stable",
-        source_url="https://example.test/synthesis-skills.git")
-    conventional, loaded = tmp_path.resolve() / "conventional", tmp_path.resolve() / "reported"
+    generation, _descriptor = release.materialize_release(
+        source,
+        tmp_path / "generations",
+        channel="stable",
+        ref="stable",
+        source_url="https://example.test/synthesis-skills.git",
+    )
+    conventional, loaded = (
+        tmp_path.resolve() / "conventional",
+        tmp_path.resolve() / "reported",
+    )
     shutil.copytree(generation, conventional)
     shutil.copytree(generation, loaded)
     conventional.chmod(0o755)
@@ -607,48 +726,98 @@ def test_release_stable_consumer_uses_actual_verified_client_root(tmp_path, monk
     monkeypatch.setattr(release, "STABLE_ROOT", tmp_path / "stable")
     monkeypatch.setattr(release, "preflight", lambda *a: "9.9.9")
     monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
-    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(loaded)))
-    for name in ("activate_published_cli", "refresh_client", "install_codex_cache_guardian", "sync_commit_gate", "reconcile_published_lifecycle"):
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda *a: ("9.9.9", str(loaded))
+    )
+    for name in (
+        "activate_published_cli",
+        "refresh_client",
+        "install_codex_cache_guardian",
+        "sync_commit_gate",
+        "reconcile_published_lifecycle",
+    ):
         monkeypatch.setattr(release, name, lambda *a, **kw: True)
     assert release.main(["--repo-root", str(source), "--install-only"]) == 0
     assert release.stable_path().resolve() == loaded
     assert release.content_digest_report(source, release.stable_path().resolve())[0]
 
 
-def test_release_reconciliation_keeps_original_publisher_selection_binding(repo, monkeypatch):
+def test_release_reconciliation_keeps_original_publisher_selection_binding(
+    repo, monkeypatch
+):
     import system_contract as contract
+
     state = contract.SystemState()
     original = contract.default_desired_state("skills-only", ["codex"], "stable")
     changed = contract.default_desired_state("skills-only", ["claude"], "stable")
     state.run_transaction("setup", changed, lambda _tx: {})
     before = state.observation_path.read_bytes(), state.desired_path.read_bytes()
-    monkeypatch.setattr(release, "run", lambda *a, **kw: pytest.fail("repair ran with a recaptured selection"))
-    assert not release.reconcile_published_lifecycle(repo, "9.9.9", release.Result(), False,
-        expected_desired_digest=contract.json_digest(original))
-    assert (state.observation_path.read_bytes(), state.desired_path.read_bytes()) == before
+    monkeypatch.setattr(
+        release,
+        "run",
+        lambda *a, **kw: pytest.fail("repair ran with a recaptured selection"),
+    )
+    assert not release.reconcile_published_lifecycle(
+        repo,
+        "9.9.9",
+        release.Result(),
+        False,
+        expected_desired_digest=contract.json_digest(original),
+    )
+    assert (
+        state.observation_path.read_bytes(),
+        state.desired_path.read_bytes(),
+    ) == before
 
 
-@pytest.mark.parametrize("selection", ["missing", "disabled", "modular", "other-pin", "selected"])
-def test_release_selection_preserves_explicit_profile_and_policy(tmp_path, monkeypatch, selection):
+@pytest.mark.parametrize(
+    "selection", ["missing", "disabled", "modular", "other-pin", "selected"]
+)
+def test_release_selection_preserves_explicit_profile_and_policy(
+    tmp_path, monkeypatch, selection
+):
     import system_contract as contract
+
     state = contract.SystemState()
     if selection != "missing":
-        desired = contract.default_desired_state("skills-only", ["codex"], "stable",
+        desired = contract.default_desired_state(
+            "skills-only",
+            ["codex"],
+            "stable",
             version_pin="8.0.0" if selection == "other-pin" else None,
-            enabled=selection != "disabled")
+            enabled=selection != "disabled",
+        )
         if selection == "modular":
-            desired = contract.default_desired_state("modular", ["codex"], "stable",
-                modular={"roots": ["synthesis-autopilot"], "stage_core": True})
+            desired = contract.default_desired_state(
+                "modular",
+                ["codex"],
+                "stable",
+                modular={"roots": ["synthesis-autopilot"], "stage_core": True},
+            )
         state.run_transaction("setup", desired, lambda _tx: {})
     before = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
     result = release.Result()
-    assert release.lifecycle_release_selection("9.9.9", result) == (selection in {"missing", "selected"})
+    assert release.lifecycle_release_selection("9.9.9", result) == (
+        selection in {"missing", "selected"}
+    )
     after = {str(p): p.read_bytes() for p in state.home.rglob("*") if p.is_file()}
     assert after == before
 
 
-@pytest.mark.parametrize("failure", [None, "engine", "doctor", "same-version-corruption", "unapproved-extra", "no-transaction"])
-def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        "engine",
+        "doctor",
+        "same-version-corruption",
+        "unapproved-extra",
+        "no-transaction",
+    ],
+)
+def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_engine_checks(
+    tmp_path, monkeypatch, failure
+):
     import contextlib
     import io
     import synthesis_cli as cli
@@ -661,8 +830,13 @@ def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_e
     desired = contract.default_desired_state("skills-only", ["codex"], "stable")
     state.run_transaction("setup", desired, lambda _tx: {})
     old = state.read_observation()["transactions"][0]
-    generation, descriptor = materialize_release(source, state.cache_dir / "releases",
-        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
+    generation, descriptor = materialize_release(
+        source,
+        state.cache_dir / "releases",
+        channel="stable",
+        ref="stable",
+        source_url="https://example.test/synthesis-skills.git",
+    )
     pointer = state.state_dir / "active-release.json"
     contract.activate_cli(generation, descriptor, state.launcher_path, pointer)
     monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
@@ -681,11 +855,20 @@ def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_e
         target.write_text("Additional loadable synthetic skill outside the release.\n")
     monkeypatch.setattr(cli, "_release_native_root", lambda *_a: native)
     engine_calls = []
+
     def engine(args):
         engine_calls.append(args[0])
-        return {"engine": "fixture", "counts": {"ok": 1}, "steps": [],
-                "exit": 1 if args[0] == failure or (failure == "engine" and args[0] == "repair") else 0}
+        return {
+            "engine": "fixture",
+            "counts": {"ok": 1},
+            "steps": [],
+            "exit": 1
+            if args[0] == failure or (failure == "engine" and args[0] == "repair")
+            else 0,
+        }
+
     real_run = release.run
+
     def run(command, *args, **kwargs):
         if command[0] != str(state.launcher_path):
             return real_run(command, *args, **kwargs)
@@ -694,9 +877,14 @@ def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_e
         output, error = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
             code = cli.main(command[1:], state=state, engine_runner=engine)
-        return subprocess.CompletedProcess(command, code, output.getvalue(), error.getvalue())
+        return subprocess.CompletedProcess(
+            command, code, output.getvalue(), error.getvalue()
+        )
+
     monkeypatch.setattr(release, "run", run)
-    assert release.reconcile_published_lifecycle(source, "9.9.9", release.Result(), False) == (failure is None)
+    assert release.reconcile_published_lifecycle(
+        source, "9.9.9", release.Result(), False
+    ) == (failure is None)
     assert state.read_desired() == desired
     observation = state.read_observation()
     assert observation["transactions"][0] == old
@@ -704,7 +892,10 @@ def test_release_commits_real_lifecycle_generation_only_after_exact_native_and_e
         latest = observation["transactions"][-1]
         assert observation["generation"] == 2 and latest["state"] == "committed"
         assert latest["release"]["content_digest"] == descriptor["content_digest"]
-        assert latest["installed"]["native_plugins"]["codex"]["content_digest"] == descriptor["content_digest"]
+        assert (
+            latest["installed"]["native_plugins"]["codex"]["content_digest"]
+            == descriptor["content_digest"]
+        )
         assert latest["live-loaded"]["status"] == "restart-required"
         assert engine_calls == ["repair", "doctor"]
     else:
@@ -720,11 +911,25 @@ def test_publisher_activates_cli_through_public_release_verifier(
     cli.parent.mkdir(parents=True)
     cli.write_text("print('fixture')\n", encoding="utf-8")
     assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "user.email", "fixture@example.test"], cwd=repo
+        ).returncode
+        == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "core.hooksPath", "/dev/null"], cwd=repo
+        ).returncode
+        == 0
+    )
     assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
-    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    )
     version = release.source_version(repo)[0]
     assert version
     assert release.run(["git", "tag", "v%s" % version], cwd=repo).returncode == 0
@@ -733,8 +938,10 @@ def test_publisher_activates_cli_through_public_release_verifier(
     test_home = tmp_path.parent / (tmp_path.name + "-home")
     monkeypatch.setenv("SYNTHESIS_HOME", str(test_home))
     for name, relative in {
-        "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
-        "XDG_CACHE_HOME": ".cache", "XDG_DATA_HOME": ".local/share",
+        "XDG_CONFIG_HOME": ".config",
+        "XDG_STATE_HOME": ".local/state",
+        "XDG_CACHE_HOME": ".cache",
+        "XDG_DATA_HOME": ".local/share",
     }.items():
         monkeypatch.setenv(name, str(test_home / relative))
     result = release.Result()
@@ -754,11 +961,25 @@ def test_cli_activation_refuses_to_manufacture_a_missing_release_tag(
     cli.parent.mkdir(parents=True)
     cli.write_text("print('fixture')\n", encoding="utf-8")
     assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "user.email", "fixture@example.test"], cwd=repo
+        ).returncode
+        == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "core.hooksPath", "/dev/null"], cwd=repo
+        ).returncode
+        == 0
+    )
     assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
-    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    )
     version = release.source_version(repo)[0]
     assert version
     monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "home"))
@@ -774,11 +995,25 @@ def test_install_only_preflight_rejects_dirty_or_untagged_source(
     repo: Path,
 ) -> None:
     assert release.run(["git", "init", "-q", "-b", "main"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "user.email", "fixture@example.test"], cwd=repo).returncode == 0
-    assert release.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "config", "user.name", "Fixture"], cwd=repo).returncode == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "user.email", "fixture@example.test"], cwd=repo
+        ).returncode
+        == 0
+    )
+    assert (
+        release.run(
+            ["git", "config", "core.hooksPath", "/dev/null"], cwd=repo
+        ).returncode
+        == 0
+    )
     assert release.run(["git", "add", "-A"], cwd=repo).returncode == 0
-    assert release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    assert (
+        release.run(["git", "commit", "-q", "-m", "fixture"], cwd=repo).returncode == 0
+    )
     result = release.Result()
     assert release.preflight(repo, result, install_only=True) == "9.9.9"
     checks = {step.name: step.ok for step in result.steps}
@@ -878,10 +1113,12 @@ def test_repository_ci_executes_r5_integrity_suite() -> None:
     )
     assert (
         "python -m pytest skills/synthesis-context-lifecycle/scripts/ "
-        "skills/synthesis-implementation-integrity/scripts/ -q"
+        "skills/synthesis-implementation-integrity/scripts/ -q" in workflow
+    )
+    assert (
+        "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only"
         in workflow
     )
-    assert "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only" in workflow
 
 
 def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
@@ -891,8 +1128,10 @@ def test_repository_ci_uses_receipt_consumer_with_authoritative_base() -> None:
     )
     assert "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=" in workflow
     assert "github.event.pull_request.base.sha" in workflow
-    assert "git describe --tags" in workflow
-    assert "github.event.before }}" in workflow  # pre-first-release fallback only
+    assert "git describe --tags" not in workflow
+    assert (
+        "github.event.before }}" in workflow
+    )  # exact event slice, never release authority
 
 
 def test_repository_ci_fetches_authoritative_base_history() -> None:
@@ -920,14 +1159,11 @@ def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:
         ("user.email", "squash@example.invalid"),
         ("core.hooksPath", "/dev/null"),
     ):
-        subprocess.run(
-            ["git", "-C", str(repository), "config", key, value], check=True
-        )
+        subprocess.run(["git", "-C", str(repository), "config", key, value], check=True)
+    write_manifests(repository, "2.0.0", "2.0.0", "2.0.0")
     (repository / "bump.txt").write_text("base\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "commit", "-qm", "base"], check=True
-    )
+    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "base"], check=True)
     base = subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"],
         check=True,
@@ -942,7 +1178,7 @@ def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:
     return repository, base
 
 
-def test_acceptance_change_base_uses_parent_for_squash_commit_on_main(
+def test_acceptance_change_base_refuses_unpublished_squash_commit_on_main(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository, base = squash_release_repo(tmp_path)
@@ -950,8 +1186,8 @@ def test_acceptance_change_base_uses_parent_for_squash_commit_on_main(
 
     resolved, detail = release.acceptance_change_base(repository)
 
-    assert resolved == base
-    assert "single-parent" in detail
+    assert resolved is None
+    assert "publication" in detail
 
 
 def test_acceptance_change_base_keeps_merge_base_for_feature_branches(
@@ -976,7 +1212,7 @@ def test_acceptance_change_base_keeps_merge_base_for_feature_branches(
     assert resolved is None
 
 
-def test_acceptance_change_base_uses_first_parent_for_merge_commit(
+def test_acceptance_change_base_refuses_unpublished_merge_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository, _ = squash_release_repo(tmp_path)
@@ -992,58 +1228,36 @@ def test_acceptance_change_base_uses_first_parent_for_merge_commit(
     )
     (repository / "side.txt").write_text("side\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "side"], check=True)
+    subprocess.run(["git", "-C", str(repository), "checkout", "-q", "main"], check=True)
     subprocess.run(
-        ["git", "-C", str(repository), "commit", "-qm", "side"], check=True
-    )
-    subprocess.run(
-        ["git", "-C", str(repository), "checkout", "-q", "main"], check=True
-    )
-    subprocess.run(
-        ["git", "-C", str(repository), "merge", "--quiet", "--no-ff",
-         "--no-edit", "feature/y"],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "merge",
+            "--quiet",
+            "--no-ff",
+            "--no-edit",
+            "feature/y",
+        ],
         check=True,
     )
 
     resolved, detail = release.acceptance_change_base(repository)
 
-    assert resolved == pre_merge
-    assert detail == "merge first parent"
+    assert pre_merge
+    assert resolved is None
+    assert "publication" in detail
 
 
 # AGENT HEURISTIC: these fixtures preserve the direct reviewer's concrete D4
 # counterexample. A receipt that expires before publish is not release authority.
 def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:
-    repository = tmp_path / "repository"
-    repository.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main", str(repository)], check=True)
-    for key, value in (
-        ("user.name", "Release Fixture"),
-        ("user.email", "release@example.invalid"),
-        ("core.hooksPath", "/dev/null"),
-    ):
-        subprocess.run(
-            ["git", "-C", str(repository), "config", key, value], check=True
-        )
-    manifest = repository / release.ACCEPTANCE_MANIFEST
-    manifest.parent.mkdir(parents=True)
-    manifest.write_text("fixture manifest\n", encoding="utf-8")
-    changed = repository / "production.py"
-    changed.write_text("BASE = True\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "commit", "-qm", "base"], check=True
-    )
-    base = subprocess.run(
-        ["git", "-C", str(repository), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    changed.write_text("ACCEPTED = True\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "commit", "-qm", "accepted"], check=True
-    )
+    repository, git, base, _, _ = boundary_fixture(tmp_path)
+    (repository / "production.py").write_text("ACCEPTED = True\n")
+    git("add", "-A")
+    git("commit", "-qm", "accepted production")
     expected, detail = release.acceptance_expectation(
         repository, base, "fixture-transaction"
     )
@@ -1058,10 +1272,11 @@ def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:
         "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
         "cases": [{"id": "fixture", "matched": True}],
     }
-    authority = release.AcceptanceAuthority(
-        change_base=base, expected=expected, receipt=receipt
+    boundary, detail = release.acceptance_boundary(repository)
+    assert boundary is not None, detail
+    return repository, release.AcceptanceAuthority(
+        change_base=base, expected=expected, receipt=receipt, boundary=boundary
     )
-    return repository, authority
 
 
 def test_publish_refuses_when_receipt_bound_head_changes(tmp_path: Path) -> None:
@@ -1073,7 +1288,7 @@ def test_publish_refuses_when_receipt_bound_head_changes(tmp_path: Path) -> None
     )
 
     result = release.Result()
-    assert release.publish(repository, result, True, authority, "9.9.9") is False
+    assert release.publish(repository, result, True, authority, "2.0.0") is False
     assert any(
         step.name == "publish.acceptance" and not step.ok for step in result.steps
     )
@@ -1083,15 +1298,9 @@ def test_publish_dry_run_names_exact_receipt_bound_channel_and_pin_refs(
     tmp_path: Path,
 ) -> None:
     repository, authority = accepted_publish_fixture(tmp_path)
-    bare = tmp_path / "origin.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "remote", "add", "origin", str(bare)],
-        check=True,
-    )
 
     result = release.Result()
-    assert release.publish(repository, result, True, authority, "9.9.9") is True
+    assert release.publish(repository, result, True, authority, "2.0.0") is True
     detail = next(
         step.detail for step in result.steps if step.name == "publish.push.origin"
     )
@@ -1099,24 +1308,19 @@ def test_publish_dry_run_names_exact_receipt_bound_channel_and_pin_refs(
     assert "atomic" in detail
     assert f"{accepted}:refs/heads/main" in detail
     assert f"{accepted}:refs/heads/stable" in detail
-    assert f"{accepted}:refs/tags/v9.9.9" in detail
+    assert f"{accepted}:refs/tags/v2.0.0" in detail
 
 
 def test_publish_atomically_creates_edge_stable_and_version_pin_refs(
     tmp_path: Path,
 ) -> None:
     repository, authority = accepted_publish_fixture(tmp_path)
-    bare = tmp_path / "origin.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
-    subprocess.run(
-        ["git", "-C", str(repository), "remote", "add", "origin", str(bare)],
-        check=True,
-    )
+    bare = tmp_path / "published.git"
 
     result = release.Result()
-    assert release.publish(repository, result, False, authority, "9.9.9") is True
+    assert release.publish(repository, result, False, authority, "2.0.0") is True
     accepted = authority.expected["change_head"]
-    for ref in ("refs/heads/main", "refs/heads/stable", "refs/tags/v9.9.9"):
+    for ref in ("refs/heads/main", "refs/heads/stable", "refs/tags/v2.0.0"):
         actual = subprocess.run(
             ["git", "-C", str(bare), "rev-parse", ref],
             check=True,
@@ -1242,7 +1446,12 @@ def test_cache_guardian_lock_release_contract_is_public_and_coherent() -> None:
     assert "watcher and explicit one-shot mode stay nonblocking" in manager
     assert "bounded failure" in readme
     assert "## [4.91.4]" in changelog
-    assert commands and all(command.startswith('"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public ') for command in commands)
+    assert commands and all(
+        command.startswith(
+            '"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis" exec-public '
+        )
+        for command in commands
+    )
 
 
 def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> None:
@@ -1255,9 +1464,9 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
     org_manifest = (
         repository / "skills/synthesis-onboarding/references/org-manifest.md"
     ).read_text(encoding="utf-8")
-    manager = (
-        repository / "skills/synthesis-skills-manager/SKILL.md"
-    ).read_text(encoding="utf-8")
+    manager = (repository / "skills/synthesis-skills-manager/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     versions = {
         json.loads((repository / path).read_text(encoding="utf-8"))["version"]
         for path in release.MANIFESTS
@@ -1280,15 +1489,14 @@ def test_whole_system_onboarding_release_contract_is_public_and_coherent() -> No
 
 def test_quick_answers_skill_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
-    skill = (
-        repository / "skills/synthesis-quick-answers/SKILL.md"
-    ).read_text(encoding="utf-8")
+    skill = (repository / "skills/synthesis-quick-answers/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     readme = (repository / "README.md").read_text(encoding="utf-8")
     changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
     components = json.loads(
         (
-            repository
-            / "skills/synthesis-onboarding/references/components.json"
+            repository / "skills/synthesis-onboarding/references/components.json"
         ).read_text(encoding="utf-8")
     )
 
@@ -1305,12 +1513,12 @@ def test_quick_answers_skill_release_contract_is_public_and_coherent() -> None:
 
 def test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent() -> None:
     repository = Path(__file__).resolve().parents[3]
-    skill = (
-        repository / "skills/synthesis-quick-answers/SKILL.md"
-    ).read_text(encoding="utf-8")
-    onboard = (
-        repository / "skills/synthesis-onboarding/scripts/onboard.py"
-    ).read_text(encoding="utf-8")
+    skill = (repository / "skills/synthesis-quick-answers/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    onboard = (repository / "skills/synthesis-onboarding/scripts/onboard.py").read_text(
+        encoding="utf-8"
+    )
     changelog = (repository / "CHANGELOG.md").read_text(encoding="utf-8")
 
     assert "## [4.87.0]" in changelog
@@ -1332,7 +1540,9 @@ def test_quick_answers_self_bootstrap_release_contract_is_public_and_coherent() 
     for client in ("claude", "codex"):
         guidance = recovery_instruction([client], initial=True)
         assert "reopen the existing" in guidance
-        assert "If same-session recovery is unsupported or those checks fail" in guidance
+        assert (
+            "If same-session recovery is unsupported or those checks fail" in guidance
+        )
         assert "start a new conversation" in guidance
         assert "If there is no existing conversation" in guidance
 
@@ -1344,9 +1554,7 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
     received: list[object] = []
 
     monkeypatch.setattr(release, "preflight", lambda *_args: "9.9.9")
-    monkeypatch.setattr(
-        release, "run_required_checks", lambda *_args: authority
-    )
+    monkeypatch.setattr(release, "run_required_checks", lambda *_args: authority)
 
     def publish(
         candidate: Path,
@@ -1360,7 +1568,9 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
 
     monkeypatch.setattr(release, "publish", publish)
     monkeypatch.setattr(release, "refresh_client", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        release, "install_codex_cache_guardian", lambda *_args, **_kwargs: True
+    )
 
     assert release.main(["--repo-root", str(repo), "--dry-run"]) == 0
     assert received == [(authority, "9.9.9")]
@@ -1369,7 +1579,9 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
 # --- client reporting, fail-closed -----------------------------------------
 
 
-def test_client_version_none_when_binary_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_version_none_when_binary_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("SYNTHESIS_CLAUDE_BIN", "")
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: None)
     assert release.client_reported_version("claude") == (None, None)
@@ -1391,7 +1603,9 @@ def test_deep_verify_fails_when_cli_reports_but_disk_is_stale(
     monkeypatch.setattr(
         release, "client_reported_version", lambda client: ("4.30.1", str(stale_root))
     )
-    monkeypatch.setattr(release, "installed_root", lambda client, version: tmp_path / "absent")
+    monkeypatch.setattr(
+        release, "installed_root", lambda client, version: tmp_path / "absent"
+    )
     result = release.Result()
     assert release.deep_verify("codex", "4.30.1", result) is False
     names = {s.name: s.ok for s in result.steps}
@@ -1411,10 +1625,12 @@ def _seed_content(source: Path, installed: Path, drift: bool = False) -> None:
         (base / "skills" / "demo" / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "skills" / "demo" / "SKILL.md").write_text("# demo\n", encoding="utf-8")
         (base / "skills" / "demo" / "scripts" / "tool.py").write_text(
-            "print('v2')\n", encoding="utf-8")
+            "print('v2')\n", encoding="utf-8"
+        )
     if drift:
         (installed / "skills" / "demo" / "scripts" / "tool.py").write_text(
-            "print('v1-stale')\n", encoding="utf-8")
+            "print('v1-stale')\n", encoding="utf-8"
+        )
 
 
 def test_deep_verify_passes_when_report_disk_and_content_agree(
@@ -1427,7 +1643,9 @@ def test_deep_verify_passes_when_report_disk_and_content_agree(
         json.dumps({"version": "4.30.1"}), encoding="utf-8"
     )
     _seed_content(source, root)
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(root))
+    )
     monkeypatch.setattr(release, "installed_root", lambda client, version: root)
     result = release.Result()
     assert release.deep_verify("codex", "4.30.1", result, repo=source) is True
@@ -1445,7 +1663,9 @@ def test_deep_verify_fails_on_content_drift_despite_version_parity(
         json.dumps({"version": "4.30.1"}), encoding="utf-8"
     )
     _seed_content(source, root, drift=True)
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(root))
+    )
     monkeypatch.setattr(release, "installed_root", lambda client, version: root)
     result = release.Result()
     assert release.deep_verify("codex", "4.30.1", result, repo=source) is False
@@ -1455,9 +1675,15 @@ def test_deep_verify_fails_on_content_drift_despite_version_parity(
 
 
 @pytest.mark.parametrize("client", ["claude", "codex", "muse"])
-@pytest.mark.parametrize("drift", ["extra-skill", "extra-directory", "hook-bytes", "loaded-root"])
-def test_deep_verify_checks_complete_reported_native_inventory(tmp_path, monkeypatch, client, drift):
-    source, conventional, loaded = (tmp_path / name for name in ("source", "conventional", "loaded"))
+@pytest.mark.parametrize(
+    "drift", ["extra-skill", "extra-directory", "hook-bytes", "loaded-root"]
+)
+def test_deep_verify_checks_complete_reported_native_inventory(
+    tmp_path, monkeypatch, client, drift
+):
+    source, conventional, loaded = (
+        tmp_path / name for name in ("source", "conventional", "loaded")
+    )
     source.mkdir()
     write_manifests(source, "9.9.9", "9.9.9", "9.9.9")
     (source / "skills/demo").mkdir(parents=True)
@@ -1475,16 +1701,26 @@ def test_deep_verify_checks_complete_reported_native_inventory(tmp_path, monkeyp
     else:
         (target / "hooks/hooks.json").write_text('{"hooks":{"extra":[]}}\n')
     monkeypatch.setattr(release, "installed_root", lambda *a: conventional)
-    monkeypatch.setattr(release, "client_reported_version", lambda *a: ("9.9.9", str(target)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda *a: ("9.9.9", str(target))
+    )
     assert not release.deep_verify(client, "9.9.9", release.Result(), repo=source)
 
 
-def test_native_inventory_uses_git_release_membership_not_checkout_build_noise(tmp_path):
+def test_native_inventory_uses_git_release_membership_not_checkout_build_noise(
+    tmp_path,
+):
     from bootstrap import materialize_release
     from test_system_contract import release_repo
+
     source = release_repo(tmp_path / "source")
-    generation, _descriptor = materialize_release(source, tmp_path / "releases", channel="stable", ref="stable",
-        source_url="https://example.test/synthesis-skills.git")
+    generation, _descriptor = materialize_release(
+        source,
+        tmp_path / "releases",
+        channel="stable",
+        ref="stable",
+        source_url="https://example.test/synthesis-skills.git",
+    )
     native = tmp_path.resolve() / "native"
     shutil.copytree(generation, native)
     cache = source / ".pytest_cache"
@@ -1505,7 +1741,9 @@ def test_deep_verify_fails_closed_without_source_repo(
     (root / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"version": "4.30.1"}), encoding="utf-8"
     )
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(root))
+    )
     monkeypatch.setattr(release, "installed_root", lambda client, version: root)
     result = release.Result()
     assert release.deep_verify("codex", "4.30.1", result) is False
@@ -1515,7 +1753,9 @@ def test_deep_verify_fails_when_client_silent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(release, "client_reported_version", lambda client: (None, None))
-    monkeypatch.setattr(release, "installed_root", lambda client, version: tmp_path / "nope")
+    monkeypatch.setattr(
+        release, "installed_root", lambda client, version: tmp_path / "nope"
+    )
     result = release.Result()
     assert release.deep_verify("claude", "4.30.1", result) is False
 
@@ -1682,9 +1922,7 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     cache_parent = tmp_path / "codex-cache"
     partial = cache_parent / "4.74.0"
     partial.mkdir(parents=True)
-    (partial / ".codex-marketplace-install.json").write_text(
-        "{}\n", encoding="utf-8"
-    )
+    (partial / ".codex-marketplace-install.json").write_text("{}\n", encoding="utf-8")
     (partial / "unowned-cache-file").write_text("discard\n", encoding="utf-8")
     newest = cache_parent / "4.75.0"
     newest.mkdir(parents=True)
@@ -1698,22 +1936,24 @@ def test_tag_backed_snapshot_repairs_partial_and_missing_historical_roots(
     assert snapshot is not None
     assert snapshot.versions == ("4.74.0", "4.74.1", "4.75.0")
     assert (snapshot.backup / "4.74.0" / ".codex-plugin/plugin.json").is_file()
-    assert (
-        snapshot.backup / "4.74.0" / ".codex-marketplace-install.json"
-    ).is_file()
+    assert (snapshot.backup / "4.74.0" / ".codex-marketplace-install.json").is_file()
     assert not (snapshot.backup / "4.74.0" / "unowned-cache-file").exists()
-    assert (
-        snapshot.backup / "4.74.1" / "skills/example/SKILL.md"
-    ).read_text(encoding="utf-8") == "version: 4.74.1\nmiddle\n"
+    assert (snapshot.backup / "4.74.1" / "skills/example/SKILL.md").read_text(
+        encoding="utf-8"
+    ) == "version: 4.74.1\nmiddle\n"
     materialized = tmp_path / "materialized"
     release.RecoveryStore.read(recovery).materialize("4.74.1", materialized)
-    assert release._tree_digest(snapshot.backup / "4.74.1") == release._tree_digest(materialized)
+    assert release._tree_digest(snapshot.backup / "4.74.1") == release._tree_digest(
+        materialized
+    )
     assert next(
         step for step in result.steps if step.name == "install.codex.cache-archive"
     ).ok
 
 
-def test_repeated_archive_admission_preserves_root_identity_across_umask(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_repeated_archive_admission_preserves_root_identity_across_umask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     commit_release(source, "4.74.0", "old")
@@ -1740,32 +1980,73 @@ def test_repeated_archive_admission_preserves_root_identity_across_umask(tmp_pat
             release._remove_transition_backup(snapshot.backup)
 
 
-def _native_codex_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                          versions=("4.74.0", "4.75.0"), *, take_snapshot=True):
+def _native_codex_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    versions=("4.74.0", "4.75.0"),
+    *,
+    take_snapshot=True,
+):
     source = tmp_path / "publisher"
     source.mkdir()
     (source / "install.sh").write_text("#!/bin/sh\nexit 0\n")
     (source / "install.sh").chmod(0o755)
     commit_release(source, "4.74.0", "historical")
     commit_release(source, "4.75.0", "current")
-    subprocess.run(["git", "-C", str(source), "config", "tar.umask", "0002"], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "config", "tar.umask", "0002"], check=True
+    )
     parent = tmp_path / "codex-cache"
     parent.mkdir()
     for version in versions:
         root = parent / version
-        subprocess.run(["git", "clone", "--no-local", "--branch", "v" + version,
-                        str(source), str(root)], check=True, capture_output=True, umask=0o022)
-        subprocess.run(["git", "-C", str(root), "config", "remote.origin.url",
-                        "https://github.com/synthesisengineering/synthesis-skills.git"],
-                       check=True, capture_output=True)
-        head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
-        (root / ".codex-marketplace-install.json").write_text(json.dumps({
-            "source_type": "git", "source": "https://github.com/synthesisengineering/synthesis-skills.git",
-            "ref_name": "stable", "sparse_paths": [], "revision": head,
-        }))
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--no-local",
+                "--branch",
+                "v" + version,
+                str(source),
+                str(root),
+            ],
+            check=True,
+            capture_output=True,
+            umask=0o022,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "config",
+                "remote.origin.url",
+                "https://github.com/synthesisengineering/synthesis-skills.git",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        head = subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+        ).strip()
+        (root / ".codex-marketplace-install.json").write_text(
+            json.dumps(
+                {
+                    "source_type": "git",
+                    "source": "https://github.com/synthesisengineering/synthesis-skills.git",
+                    "ref_name": "stable",
+                    "sparse_paths": [],
+                    "revision": head,
+                }
+            )
+        )
     monkeypatch.setattr(release, "plugin_cache_parent", lambda _client: parent)
     monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "archive")
-    snapshot = release.snapshot_codex_caches(release.Result(), repo=source) if take_snapshot else None
+    snapshot = (
+        release.snapshot_codex_caches(release.Result(), repo=source)
+        if take_snapshot
+        else None
+    )
     assert snapshot is not None or not take_snapshot
     return source, parent, snapshot
 
@@ -1774,19 +2055,30 @@ def _all_cache_bytes(root: Path):
     result = {}
     for path in (root, *root.rglob("*")):
         mode = path.lstat().st_mode
-        value = os.readlink(path) if stat.S_ISLNK(mode) else path.read_bytes() if stat.S_ISREG(mode) else None
+        value = (
+            os.readlink(path)
+            if stat.S_ISLNK(mode)
+            else path.read_bytes()
+            if stat.S_ISREG(mode)
+            else None
+        )
         result[str(path.relative_to(root))] = (mode, value)
     return result
 
 
 def test_codex_native_current_mode_difference_preserves_real_git_checkout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     before = _all_cache_bytes(current)
     identity = current.stat().st_ino
-    assert release._tree_digest(current) != release._tree_digest(snapshot.backup / "4.75.0")
+    assert release._tree_digest(current) != release._tree_digest(
+        snapshot.backup / "4.75.0"
+    )
     result = release.Result()
     assert release.restore_codex_caches(snapshot, result), result.steps
     assert current.stat().st_ino == identity
@@ -1795,7 +2087,8 @@ def test_codex_native_current_mode_difference_preserves_real_git_checkout(
 
 
 def test_codex_native_historical_repair_retains_verified_git_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
     historical = parent / "4.74.0"
@@ -1806,16 +2099,35 @@ def test_codex_native_historical_repair_retains_verified_git_recovery(
     recoveries = list(parent.glob(".release-displaced-4.74.0-*"))
     assert len(recoveries) == 1
     assert _all_cache_bytes(recoveries[0]) == before
-    assert (historical / "skills/example/SKILL.md").read_text() == "version: 4.74.0\nhistorical\n"
+    assert (
+        historical / "skills/example/SKILL.md"
+    ).read_text() == "version: 4.74.0\nhistorical\n"
     assert any(str(recoveries[0]) in step.detail for step in result.steps)
 
 
-@pytest.mark.parametrize("change", ["content", "executable", "extra", "nested-git", "git-file",
-                                  "git-link", "alternates", "commondir", "config-redirect", "foreign-head"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "content",
+        "executable",
+        "extra",
+        "nested-git",
+        "git-file",
+        "git-link",
+        "alternates",
+        "commondir",
+        "config-redirect",
+        "foreign-head",
+    ],
+)
 def test_codex_native_current_refuses_drift_without_mutating_tree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     external = tmp_path / "external"
     external.mkdir()
@@ -1831,17 +2143,28 @@ def test_codex_native_current_refuses_drift_without_mutating_tree(
     elif change in {"git-file", "git-link"}:
         (current / ".git").rename(external / "metadata")
         if change == "git-file":
-            (current / ".git").write_text("gitdir: " + str(external / "metadata") + "\n")
+            (current / ".git").write_text(
+                "gitdir: " + str(external / "metadata") + "\n"
+            )
         else:
-            (current / ".git").symlink_to(external / "metadata", target_is_directory=True)
+            (current / ".git").symlink_to(
+                external / "metadata", target_is_directory=True
+            )
     elif change == "alternates":
         (current / ".git/objects/info/alternates").write_text(str(external) + "\n")
     elif change == "commondir":
         (current / ".git/commondir").write_text(str(external) + "\n")
     elif change == "config-redirect":
-        subprocess.run(["git", "-C", str(current), "config", "core.worktree", str(external)], check=True)
+        subprocess.run(
+            ["git", "-C", str(current), "config", "core.worktree", str(external)],
+            check=True,
+        )
     else:
-        subprocess.run(["git", "-C", str(current), "checkout", "--detach", "v4.74.0"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(current), "checkout", "--detach", "v4.74.0"],
+            check=True,
+            capture_output=True,
+        )
     before, foreign_before = _all_cache_bytes(current), _all_cache_bytes(external)
     result = release.Result()
     assert not release.restore_codex_caches(snapshot, result)
@@ -1852,32 +2175,44 @@ def test_codex_native_current_refuses_drift_without_mutating_tree(
 
 
 def test_codex_native_current_needs_no_client_marker_or_particular_origin(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
     current = parent / "4.75.0"
     (current / ".codex-marketplace-install.json").unlink()
-    subprocess.run(["git", "-C", str(current), "config", "remote.origin.url", str(source)], check=True)
+    subprocess.run(
+        ["git", "-C", str(current), "config", "remote.origin.url", str(source)],
+        check=True,
+    )
     before = _all_cache_bytes(current)
     assert release.restore_codex_caches(snapshot, release.Result())
     assert _all_cache_bytes(current) == before
 
 
 def test_codex_native_identity_never_executes_partial_clone_helper(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     commit = snapshot.native_sources["4.75.0"][0]
     marker = tmp_path / "remote-helper-executed"
     (current / ".git/objects").rename(current / ".git/preserved-objects")
     (current / ".git/objects").mkdir()
     for key, value in {
-        "core.repositoryformatversion": "1", "extensions.partialclone": "origin",
-        "remote.origin.promisor": "true", "remote.origin.partialclonefilter": "blob:none",
-        "protocol.ext.allow": "always", "remote.origin.url": "ext::/usr/bin/touch " + str(marker),
+        "core.repositoryformatversion": "1",
+        "extensions.partialclone": "origin",
+        "remote.origin.promisor": "true",
+        "remote.origin.partialclonefilter": "blob:none",
+        "protocol.ext.allow": "always",
+        "remote.origin.url": "ext::/usr/bin/touch " + str(marker),
     }.items():
-        subprocess.run(["git", "-C", str(current), "config", "--local", key, value], check=True)
+        subprocess.run(
+            ["git", "-C", str(current), "config", "--local", key, value], check=True
+        )
     before = _all_cache_bytes(current)
     with pytest.raises(OSError):
         release._codex_native_git_identity(current, commit)
@@ -1885,11 +2220,17 @@ def test_codex_native_identity_never_executes_partial_clone_helper(
     assert _all_cache_bytes(current) == before
 
 
-@pytest.mark.parametrize("kind", ["include", "partial-race", "include-race", "hooks-and-monitor"])
+@pytest.mark.parametrize(
+    "kind", ["include", "partial-race", "include-race", "hooks-and-monitor"]
+)
 def test_codex_native_identity_does_not_load_checkout_execution_configuration(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     commit = snapshot.native_sources["4.75.0"][0]
     marker = tmp_path / "execution-marker"
@@ -1904,27 +2245,45 @@ def test_codex_native_identity_does_not_load_checkout_execution_configuration(
         if kind == "partial-race":
             (current / ".git/objects").rename(current / ".git/preserved-objects")
             (current / ".git/objects").mkdir()
-            config.write_text(config.read_text() + "\n[extensions]\npartialClone=origin\n"
-                              "[remote \"origin\"]\npromisor=true\nurl=ext::/usr/bin/touch " + str(marker)
-                              + "\n[protocol \"ext\"]\nallow=always\n")
+            config.write_text(
+                config.read_text() + "\n[extensions]\npartialClone=origin\n"
+                '[remote "origin"]\npromisor=true\nurl=ext::/usr/bin/touch '
+                + str(marker)
+                + '\n[protocol "ext"]\nallow=always\n'
+            )
         else:
-            config.write_text(config.read_text() + "\n[include]\npath=" + str(included) + "\n")
+            config.write_text(
+                config.read_text() + "\n[include]\npath=" + str(included) + "\n"
+            )
 
     actual_run = subprocess.run
     observed = []
+
     def inspect_run(arguments, **kwargs):
         output = actual_run(arguments, **kwargs)
         if arguments[0] == "git":
             observed.append((arguments, kwargs))
-            if kind.endswith("-race") and "config" in arguments and "--file" in arguments:
+            if (
+                kind.endswith("-race")
+                and "config" in arguments
+                and "--file" in arguments
+            ):
                 change_config()
         return output
 
     if kind == "include":
         change_config()
     elif kind == "hooks-and-monitor":
-        config.write_text(config.read_text() + "\n[core]\nfsmonitor=" + str(hook)
-                          + "\nhooksPath=" + str(tmp_path) + "\n[pager]\nconfig=" + str(hook) + "\n")
+        config.write_text(
+            config.read_text()
+            + "\n[core]\nfsmonitor="
+            + str(hook)
+            + "\nhooksPath="
+            + str(tmp_path)
+            + "\n[pager]\nconfig="
+            + str(hook)
+            + "\n"
+        )
         (tmp_path / "reference-transaction").write_bytes(hook.read_bytes())
         (tmp_path / "reference-transaction").chmod(0o755)
     before = _all_cache_bytes(current)
@@ -1945,7 +2304,8 @@ def test_codex_native_identity_does_not_load_checkout_execution_configuration(
 
 
 def test_codex_native_tracked_relative_link_obeys_release_inventory_contract(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
     # Establish the actual source contract, rather than assuming Git's ability
@@ -1954,10 +2314,16 @@ def test_codex_native_tracked_relative_link_obeys_release_inventory_contract(
     subprocess.run(["git", "-C", str(source), "add", "relative-link"], check=True)
     with pytest.raises(release.ContractError, match="symbolic link"):
         release.canonical_tree_digest(source)
-    files = set(subprocess.check_output(["git", "-C", str(source), "ls-files"], text=True).splitlines())
+    files = set(
+        subprocess.check_output(
+            ["git", "-C", str(source), "ls-files"], text=True
+        ).splitlines()
+    )
     with pytest.raises(release.ContractError, match="link|type"):
         digest = release.canonical_tracked_tree_digest(source, files)
-        release.verify_native_release_inventory(source, source, digest, source_files=files)
+        release.verify_native_release_inventory(
+            source, source, digest, source_files=files
+        )
     current = parent / "4.75.0"
     (current / "relative-link").symlink_to("install.sh")
     before = _all_cache_bytes(current)
@@ -1967,9 +2333,13 @@ def test_codex_native_tracked_relative_link_obeys_release_inventory_contract(
 
 @pytest.mark.parametrize("kind", ["missing", "content-change"])
 def test_codex_current_without_git_metadata_is_verified_without_repair(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     retained = tmp_path / "native-original"
     current.rename(retained)
@@ -1988,14 +2358,19 @@ def test_codex_current_without_git_metadata_is_verified_without_repair(
 
 
 def test_codex_current_materialized_root_requires_immutable_source_binding(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     current.rename(tmp_path / "retained-native")
     shutil.copytree(snapshot.backup / "4.75.0", current)
     before = _all_cache_bytes(current)
-    unbound = release.CodexCacheSnapshot(snapshot.backup, snapshot.versions, client_owned_version="4.75.0")
+    unbound = release.CodexCacheSnapshot(
+        snapshot.backup, snapshot.versions, client_owned_version="4.75.0"
+    )
     result = release.Result()
     assert not release.restore_codex_caches(unbound, result)
     assert "immutable source binding" in result.steps[-1].detail
@@ -2003,13 +2378,17 @@ def test_codex_current_materialized_root_requires_immutable_source_binding(
 
 
 def test_codex_native_repair_repeats_without_more_displacement(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
     retained = set()
     assert release._restore_codex_caches_once(snapshot, retained) == (set(), {"4.74.0"})
     assert len(retained) == 1
-    before = {path: _all_cache_bytes(path) for path in [parent / "4.74.0", parent / "4.75.0", *retained]}
+    before = {
+        path: _all_cache_bytes(path)
+        for path in [parent / "4.74.0", parent / "4.75.0", *retained]
+    }
     assert release._restore_codex_caches_once(snapshot, retained) == (set(), set())
     assert {path: _all_cache_bytes(path) for path in before} == before
     assert set(parent.glob(".release-displaced-*")) == retained
@@ -2017,16 +2396,26 @@ def test_codex_native_repair_repeats_without_more_displacement(
 
 @pytest.mark.parametrize("after_rename", [1, 2])
 def test_codex_native_repair_process_death_preserves_recovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, after_rename: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    after_rename: int,
 ) -> None:
     _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
     before = _all_cache_bytes(parent / "4.74.0")
     input_path = tmp_path / "snapshot.json"
-    input_path.write_text(json.dumps({
-        "backup": str(snapshot.backup), "versions": snapshot.versions,
-        "client_owned_version": snapshot.client_owned_version,
-        "native_sources": {version: [head, sorted(files)] for version, (head, files) in snapshot.native_sources.items()},
-    }))
+    input_path.write_text(
+        json.dumps(
+            {
+                "backup": str(snapshot.backup),
+                "versions": snapshot.versions,
+                "client_owned_version": snapshot.client_owned_version,
+                "native_sources": {
+                    version: [head, sorted(files)]
+                    for version, (head, files) in snapshot.native_sources.items()
+                },
+            }
+        )
+    )
     script = """
 import json, os, sys
 from pathlib import Path
@@ -2047,8 +2436,21 @@ def crash(source, destination):
 release.os.rename = crash
 release._restore_codex_caches_once(snapshot)
 """
-    proc = subprocess.run([sys.executable, "-B", "-c", script, str(Path(release.__file__).parent),
-                           str(parent), str(input_path), str(after_rename)], capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            script,
+            str(Path(release.__file__).parent),
+            str(parent),
+            str(input_path),
+            str(after_rename),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert proc.returncode == 77, proc.stdout + proc.stderr
     recoveries = list(parent.glob(".release-displaced-4.74.0-*"))
     assert len(recoveries) == 1 and _all_cache_bytes(recoveries[0]) == before
@@ -2066,7 +2468,9 @@ release._restore_codex_caches_once(snapshot)
 
 @pytest.mark.parametrize("change", ["nested-git", "git-link"])
 def test_codex_native_repair_rechecks_ownership_after_copy(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
 ) -> None:
     _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch)
     historical = parent / "4.74.0"
@@ -2085,15 +2489,24 @@ def test_codex_native_repair_rechecks_ownership_after_copy(
 
     monkeypatch.setattr(release.shutil, "copytree", copy_and_change)
     assert not release.restore_codex_caches(snapshot, release.Result())
-    assert (historical / "skills/example/SKILL.md").read_text() == "version: 4.74.0\nhistorical\n"
+    assert (
+        historical / "skills/example/SKILL.md"
+    ).read_text() == "version: 4.74.0\nhistorical\n"
     assert not list(parent.glob(".release-displaced-*"))
-    assert (historical / "foreign/.git").is_dir() if change == "nested-git" else (historical / ".git").is_symlink()
+    assert (
+        (historical / "foreign/.git").is_dir()
+        if change == "nested-git"
+        else (historical / ".git").is_symlink()
+    )
 
 
 def test_codex_native_current_rechecks_identity_after_verification(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     retained = tmp_path / "retained-current"
     before = _all_cache_bytes(current)
@@ -2106,17 +2519,26 @@ def test_codex_native_current_rechecks_identity_after_verification(
         (current / "foreign").write_text("intruding tree")
         return value
 
-    monkeypatch.setattr(release, "verify_native_release_inventory", replace_after_verification)
+    monkeypatch.setattr(
+        release, "verify_native_release_inventory", replace_after_verification
+    )
     assert not release.restore_codex_caches(snapshot, release.Result())
     assert (current / "foreign").read_text() == "intruding tree"
     assert _all_cache_bytes(retained) == before
 
 
-@pytest.mark.parametrize("boundary", ["parent-link", "repository-parent", "workspace-parent", "cwd", "traversal"])
+@pytest.mark.parametrize(
+    "boundary",
+    ["parent-link", "repository-parent", "workspace-parent", "cwd", "traversal"],
+)
 def test_codex_native_restore_refuses_unowned_boundaries(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
 ) -> None:
-    _source, parent, snapshot = _native_codex_fixture(tmp_path, monkeypatch, ("4.75.0",))
+    _source, parent, snapshot = _native_codex_fixture(
+        tmp_path, monkeypatch, ("4.75.0",)
+    )
     current = parent / "4.75.0"
     before = _all_cache_bytes(current)
     if boundary == "parent-link":
@@ -2144,7 +2566,9 @@ def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
     source.mkdir()
     commit_release(source, "4.74.0", "tagged")
     codex_cache = tmp_path / "codex-cache"
-    release._export_release_tag(source, "4.74.0", codex_cache / "4.74.0", current_version="4.74.0")
+    release._export_release_tag(
+        source, "4.74.0", codex_cache / "4.74.0", current_version="4.74.0"
+    )
     claude_cache = tmp_path / "claude-cache"
     peer = claude_cache / "4.73.0"
     seed_complete_cache_root(peer, "4.73.0")
@@ -2165,7 +2589,9 @@ def test_snapshot_imports_complete_untagged_peer_root_missing_from_codex(
     assert snapshot is not None
     assert snapshot.versions == ("4.73.0", "4.74.0")
     recovered = snapshot.backup / "4.73.0"
-    assert (recovered / "skills/synthesis-autopilot/scripts/autopilot_gate.py").is_file()
+    assert (
+        recovered / "skills/synthesis-autopilot/scripts/autopilot_gate.py"
+    ).is_file()
     assert not (recovered / ".in_use").exists()
     assert release.restore_codex_caches(snapshot, result)
     assert (
@@ -2191,9 +2617,7 @@ def test_snapshot_rejects_incomplete_untagged_peer_root(
         "plugin_cache_parent",
         lambda client: claude_cache if client == "claude" else codex_cache,
     )
-    monkeypatch.setattr(
-        release, "codex_cache_archive", lambda: tmp_path / "recovery"
-    )
+    monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "recovery")
 
     result = release.Result()
     assert release.snapshot_codex_caches(result, repo=source) is None
@@ -2265,7 +2689,9 @@ def _replacement_native_cli(tmp_path, monkeypatch):
     home = tmp_path / "isolated-home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
-    source, parent, _initial = _native_codex_fixture(tmp_path, monkeypatch, take_snapshot=False)
+    source, parent, _initial = _native_codex_fixture(
+        tmp_path, monkeypatch, take_snapshot=False
+    )
     retained = parent / (".release-displaced-4.74.0-" + "a" * 32)
     (parent / "4.74.0").rename(retained)
     (retained / "local-note").write_bytes(b"native local bytes\x00\xff")
@@ -2274,7 +2700,11 @@ def _replacement_native_cli(tmp_path, monkeypatch):
     expected = _all_cache_bytes(retained)
     cli = tmp_path / "synthetic-codex"
     log = tmp_path / "cli.jsonl"
-    cli.write_text("#!" + sys.executable + "\n" + f'''
+    cli.write_text(
+        "#!"
+        + sys.executable
+        + "\n"
+        + f"""
 import json, os, pathlib, shutil, subprocess, sys
 parent = pathlib.Path({str(parent)!r})
 source = pathlib.Path({str(source)!r})
@@ -2287,29 +2717,46 @@ if sys.argv[1:3] == ['plugin', 'add']:
     subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, 'clone', '--no-local',
                     '--branch', 'v4.75.0', str(source), str(parent / '4.75.0')],
                    check=True, capture_output=True)
-''')
+"""
+    )
     cli.chmod(0o755)
     monkeypatch.setattr(release, "resolve_client_binary", lambda _client: str(cli))
-    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        release, "install_codex_cache_guardian", lambda *args, **kwargs: True
+    )
     return source, parent, retained, expected, log
 
 
 def _retained_bundles(tmp_path):
-    return sorted(bundle for bundle in (tmp_path / "archive-native-retained").glob("retained-*")
-                  if (bundle / "intent.json").is_file()
-                  and json.loads((bundle / "intent.json").read_text())["tree"].startswith(".release-displaced-"))
+    return sorted(
+        bundle
+        for bundle in (tmp_path / "archive-native-retained").glob("retained-*")
+        if (bundle / "intent.json").is_file()
+        and json.loads((bundle / "intent.json").read_text())["tree"].startswith(
+            ".release-displaced-"
+        )
+    )
 
 
-def test_native_parent_replacement_preserves_exact_git_local_bytes_modes_and_repeated_run(tmp_path, monkeypatch):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_parent_replacement_preserves_exact_git_local_bytes_modes_and_repeated_run(
+    tmp_path, monkeypatch
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     current_before = _all_cache_bytes(parent / "4.75.0")
     result = release.Result()
     assert release.refresh_client("codex", result, False, repo=source), result.steps
-    current_copies = list((tmp_path / "archive-native-retained").glob("retained-*/4.75.0"))
-    assert len(current_copies) == 1 and _all_cache_bytes(current_copies[0]) == current_before
+    current_copies = list(
+        (tmp_path / "archive-native-retained").glob("retained-*/4.75.0")
+    )
+    assert (
+        len(current_copies) == 1
+        and _all_cache_bytes(current_copies[0]) == current_before
+    )
     assert len(log.read_text().splitlines()) == 2
     assert not retained.exists()
-    bundle, = _retained_bundles(tmp_path)
+    (bundle,) = _retained_bundles(tmp_path)
     copy = bundle / retained.name
     assert _all_cache_bytes(copy) == expected
     record = json.loads((bundle / "manifest.json").read_text())
@@ -2329,8 +2776,12 @@ def test_native_parent_replacement_preserves_exact_git_local_bytes_modes_and_rep
     assert release.RecoveryStore.read(archive).versions == archive_before
 
 
-def test_native_refresh_waits_real_required_quiet_window_after_initial_recovery(tmp_path, monkeypatch):
-    source, _parent, _retained, _expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_refresh_waits_real_required_quiet_window_after_initial_recovery(
+    tmp_path, monkeypatch
+):
+    source, _parent, _retained, _expected, _log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 10.0)
     monkeypatch.setattr(release, "CODEX_CACHE_POLL_SECONDS", 1.0)
     started = time.monotonic()
@@ -2341,26 +2792,43 @@ def test_native_refresh_waits_real_required_quiet_window_after_initial_recovery(
 
 
 @pytest.mark.parametrize("churn", [False, True])
-def test_initial_restore_cost_is_separate_from_bounded_genuine_churn(tmp_path, monkeypatch, churn):
-    source, parent, retained, expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_initial_restore_cost_is_separate_from_bounded_genuine_churn(
+    tmp_path, monkeypatch, churn
+):
+    source, parent, retained, expected, _log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     monkeypatch.setattr(release, "CODEX_CACHE_QUIET_SECONDS", 10.0)
     monkeypatch.setattr(release, "CODEX_CACHE_POLL_SECONDS", 1.0)
     clock, passes, slept = [0.0], [], []
-    original_once, original_restore = release._restore_codex_caches_once, release.restore_codex_caches
+    original_once, original_restore = (
+        release._restore_codex_caches_once,
+        release.restore_codex_caches,
+    )
+
     def once(*args, **kwargs):
         observed = original_once(*args, **kwargs)
         passes.append(observed)
         if len(passes) == 1:
-            clock[0] += 61.0  # Declared I/O latency; no Git/copy/hash operation is mocked.
+            clock[0] += (
+                61.0  # Declared I/O latency; no Git/copy/hash operation is mocked.
+            )
         return observed
+
     def sleep(seconds):
         clock[0] += seconds
         slept.append(seconds)
         if churn:
             shutil.rmtree(parent / "4.74.0")
+
     monkeypatch.setattr(release, "_restore_codex_caches_once", once)
-    monkeypatch.setattr(release, "restore_codex_caches", lambda snapshot, result:
-                        original_restore(snapshot, result, clock=lambda: clock[0], sleeper=sleep))
+    monkeypatch.setattr(
+        release,
+        "restore_codex_caches",
+        lambda snapshot, result: original_restore(
+            snapshot, result, clock=lambda: clock[0], sleeper=sleep
+        ),
+    )
     result = release.Result()
     assert release.refresh_client("codex", result, False, repo=source) == (not churn)
     assert passes[0] == ({"4.74.0"}, set())
@@ -2370,19 +2838,39 @@ def test_initial_restore_cost_is_separate_from_bounded_genuine_churn(tmp_path, m
         assert "quiet window" in result.steps[-1].detail
     else:
         assert clock[0] == 71.0
-    bundle, = _retained_bundles(tmp_path)
+    (bundle,) = _retained_bundles(tmp_path)
     assert _all_cache_bytes(bundle / retained.name) == expected
 
 
-@pytest.mark.parametrize("damage", ["foreign-git", "nested-git", "metadata-link", "external-payload-link",
-                                    "root-link", "root-file", "malformed-name", "store-link", "store-inside-cache"])
-def test_retained_native_ownership_and_path_refusal_precedes_every_cli_command(tmp_path, monkeypatch, damage):
-    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "foreign-git",
+        "nested-git",
+        "metadata-link",
+        "external-payload-link",
+        "root-link",
+        "root-file",
+        "malformed-name",
+        "store-link",
+        "store-inside-cache",
+    ],
+)
+def test_retained_native_ownership_and_path_refusal_precedes_every_cli_command(
+    tmp_path, monkeypatch, damage
+):
+    source, parent, retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     sentinel = tmp_path / "external"
     sentinel.mkdir()
     (sentinel / "private").write_text("foreign sentinel")
     if damage == "foreign-git":
-        subprocess.run(["git", "-C", str(retained), "checkout", "--detach", "v4.75.0"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(retained), "checkout", "--detach", "v4.75.0"],
+            check=True,
+            capture_output=True,
+        )
     elif damage == "nested-git":
         (retained / "nested/.git").mkdir(parents=True)
     elif damage == "metadata-link":
@@ -2399,7 +2887,9 @@ def test_retained_native_ownership_and_path_refusal_precedes_every_cli_command(t
     elif damage == "malformed-name":
         retained.rename(parent / ".release-displaced-unrecognized")
     elif damage == "store-link":
-        (tmp_path / "archive-native-retained").symlink_to(sentinel, target_is_directory=True)
+        (tmp_path / "archive-native-retained").symlink_to(
+            sentinel, target_is_directory=True
+        )
     else:
         monkeypatch.setattr(release, "codex_cache_archive", lambda: parent / "archive")
     before = _all_cache_bytes(parent)
@@ -2410,14 +2900,30 @@ def test_retained_native_ownership_and_path_refusal_precedes_every_cli_command(t
     assert (sentinel / "private").read_text() == "foreign sentinel"
 
 
-@pytest.mark.parametrize("damage", ["copy-bytes", "copy-mode", "manifest", "missing-intent", "missing-copy", "copy-link", "bundle-identity"])
-def test_native_recovery_corruption_after_cli_cannot_report_preservation(tmp_path, monkeypatch, damage):
-    source, _parent, retained, _expected, _log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "copy-bytes",
+        "copy-mode",
+        "manifest",
+        "missing-intent",
+        "missing-copy",
+        "copy-link",
+        "bundle-identity",
+    ],
+)
+def test_native_recovery_corruption_after_cli_cannot_report_preservation(
+    tmp_path, monkeypatch, damage
+):
+    source, _parent, retained, _expected, _log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release.run
+
     def mutate_after_native(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "add"]:
-            bundle, = _retained_bundles(tmp_path)
+            (bundle,) = _retained_bundles(tmp_path)
             tree = bundle / retained.name
             if damage == "copy-bytes":
                 (tree / "local-note").write_bytes(b"corrupt")
@@ -2431,11 +2937,14 @@ def test_native_recovery_corruption_after_cli_cannot_report_preservation(tmp_pat
                 tree.rename(tmp_path / "retained-outside-bundle")
             elif damage == "copy-link":
                 tree.rename(tmp_path / "retained-outside-bundle")
-                tree.symlink_to(tmp_path / "retained-outside-bundle", target_is_directory=True)
+                tree.symlink_to(
+                    tmp_path / "retained-outside-bundle", target_is_directory=True
+                )
             else:
                 bundle.rename(tmp_path / "original-bundle")
                 shutil.copytree(tmp_path / "original-bundle", bundle, symlinks=True)
         return result
+
     monkeypatch.setattr(release, "run", mutate_after_native)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
@@ -2443,62 +2952,94 @@ def test_native_recovery_corruption_after_cli_cannot_report_preservation(tmp_pat
     assert "recovery copy kept" in result.steps[-1].detail
 
 
-def test_native_preservation_copy_interruption_retains_original_and_partial_then_retries(tmp_path, monkeypatch):
-    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_preservation_copy_interruption_retains_original_and_partial_then_retries(
+    tmp_path, monkeypatch
+):
+    source, _parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release.shutil.copytree
+
     def interrupted_copy(src, dst, *args, **kwargs):
         copied = original(src, dst, *args, **kwargs)
-        if Path(dst).name == retained.name and Path(dst).parent.name.startswith("retained-"):
+        if Path(dst).name == retained.name and Path(dst).parent.name.startswith(
+            "retained-"
+        ):
             raise KeyboardInterrupt("fixture interruption after native copy")
         return copied
+
     with monkeypatch.context() as interrupted:
         interrupted.setattr(release.shutil, "copytree", interrupted_copy)
         with pytest.raises(KeyboardInterrupt, match="fixture interruption"):
             release.refresh_client("codex", release.Result(), False, repo=source)
     assert not log.exists()
     assert _all_cache_bytes(retained) == expected
-    incomplete, = _retained_bundles(tmp_path)
-    assert (incomplete / "intent.json").is_file() and not (incomplete / "manifest.json").exists()
+    (incomplete,) = _retained_bundles(tmp_path)
+    assert (incomplete / "intent.json").is_file() and not (
+        incomplete / "manifest.json"
+    ).exists()
     assert release.refresh_client("codex", release.Result(), False, repo=source)
     assert incomplete in _retained_bundles(tmp_path)
-    completed = [bundle for bundle in _retained_bundles(tmp_path) if (bundle / "manifest.json").is_file()]
+    completed = [
+        bundle
+        for bundle in _retained_bundles(tmp_path)
+        if (bundle / "manifest.json").is_file()
+    ]
     assert len(completed) == 1
     assert _all_cache_bytes(completed[0] / retained.name) == expected
     assert release.refresh_client("codex", release.Result(), False, repo=source)
     assert incomplete.is_dir() and len(_retained_bundles(tmp_path)) == 2
 
 
-def test_native_source_identity_change_after_snapshot_refuses_cli_and_keeps_both_copies(tmp_path, monkeypatch):
-    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_source_identity_change_after_snapshot_refuses_cli_and_keeps_both_copies(
+    tmp_path, monkeypatch
+):
+    source, _parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release._preserve_native_recovery
+
     def replaced_after_preservation(root, commit):
         record = original(root, commit)
         if root == retained:
             root.rename(tmp_path / "original-source")
             shutil.copytree(tmp_path / "original-source", root, symlinks=True)
         return record
-    monkeypatch.setattr(release, "_preserve_native_recovery", replaced_after_preservation)
+
+    monkeypatch.setattr(
+        release, "_preserve_native_recovery", replaced_after_preservation
+    )
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
     assert not log.exists()
     assert _all_cache_bytes(retained) == expected
     assert _all_cache_bytes(tmp_path / "original-source") == expected
-    bundle, = _retained_bundles(tmp_path)
+    (bundle,) = _retained_bundles(tmp_path)
     assert _all_cache_bytes(bundle / retained.name) == expected
 
 
-def test_native_copy_type_change_to_fifo_refuses_without_blocking_or_running_cli(tmp_path, monkeypatch):
-    source, _parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_copy_type_change_to_fifo_refuses_without_blocking_or_running_cli(
+    tmp_path, monkeypatch
+):
+    source, _parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release._native_recovery_inventory
     changed = []
+
     def replace_after_inventory(root):
         result = original(root)
-        if root.name == retained.name and root.parent.name.startswith("retained-") and not changed:
+        if (
+            root.name == retained.name
+            and root.parent.name.startswith("retained-")
+            and not changed
+        ):
             target = root / "local-note"
             target.unlink()
             os.mkfifo(target)
             changed.append(target)
         return result
+
     monkeypatch.setattr(release, "_native_recovery_inventory", replace_after_inventory)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
@@ -2508,11 +3049,15 @@ def test_native_copy_type_change_to_fifo_refuses_without_blocking_or_running_cli
 
 
 @pytest.mark.parametrize("phase", ["copy", "after-native"])
-def test_hard_process_interruption_preserves_native_recovery_and_restarts(tmp_path, monkeypatch, phase):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_hard_process_interruption_preserves_native_recovery_and_restarts(
+    tmp_path, monkeypatch, phase
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     cli = tmp_path / "synthetic-codex"
     script = tmp_path / "crash-copy.py"
-    script.write_text('''
+    script.write_text("""
 import os, pathlib, sys
 sys.path.insert(0, sys.argv[1])
 import release
@@ -2537,12 +3082,24 @@ def crash_after_native(command, cwd=None, timeout=900):
     return result
 release.run = crash_after_native
 release.refresh_client('codex', release.Result(), False, repo=source)
-''')
-    process = subprocess.run([sys.executable, str(script), str(Path(release.__file__).parent),
-                              str(source), str(parent), str(tmp_path / "archive"), str(cli), phase],
-                             capture_output=True, text=True, timeout=30)
+""")
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(Path(release.__file__).parent),
+            str(source),
+            str(parent),
+            str(tmp_path / "archive"),
+            str(cli),
+            phase,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert process.returncode == 77, process.stdout + process.stderr
-    incomplete, = _retained_bundles(tmp_path)
+    (incomplete,) = _retained_bundles(tmp_path)
     assert (incomplete / "intent.json").is_file()
     if phase == "copy":
         assert not log.exists() and _all_cache_bytes(retained) == expected
@@ -2553,17 +3110,36 @@ release.refresh_client('codex', release.Result(), False, repo=source)
     assert _all_cache_bytes(incomplete / retained.name) == expected
     assert release.refresh_client("codex", release.Result(), False, repo=source)
     assert incomplete.is_dir()
-    completed = [bundle for bundle in _retained_bundles(tmp_path) if (bundle / "manifest.json").is_file()]
-    assert len(completed) == 1 and _all_cache_bytes(completed[0] / retained.name) == expected
+    completed = [
+        bundle
+        for bundle in _retained_bundles(tmp_path)
+        if (bundle / "manifest.json").is_file()
+    ]
+    assert (
+        len(completed) == 1
+        and _all_cache_bytes(completed[0] / retained.name) == expected
+    )
 
 
-@pytest.mark.parametrize("missing", ["intent", "manifest", "tree", "bundle", "store", "catalog"])
-def test_restart_refuses_missing_native_recovery_artifacts_before_another_cli(tmp_path, monkeypatch, missing):
-    source, _parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "missing", ["intent", "manifest", "tree", "bundle", "store", "catalog"]
+)
+def test_restart_refuses_missing_native_recovery_artifacts_before_another_cli(
+    tmp_path, monkeypatch, missing
+):
+    source, _parent, retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     assert release.refresh_client("codex", release.Result(), False, repo=source)
-    bundle, = _retained_bundles(tmp_path)
-    target = {"intent": bundle / "intent.json", "manifest": bundle / "manifest.json", "tree": bundle / retained.name,
-              "bundle": bundle, "store": bundle.parent, "catalog": tmp_path / "archive-native-retained.json"}[missing]
+    (bundle,) = _retained_bundles(tmp_path)
+    target = {
+        "intent": bundle / "intent.json",
+        "manifest": bundle / "manifest.json",
+        "tree": bundle / retained.name,
+        "bundle": bundle,
+        "store": bundle.parent,
+        "catalog": tmp_path / "archive-native-retained.json",
+    }[missing]
     target.rename(tmp_path / "removed-artifact")
     calls = log.read_bytes()
     result = release.Result()
@@ -2572,14 +3148,20 @@ def test_restart_refuses_missing_native_recovery_artifacts_before_another_cli(tm
     assert result.steps[-1].name == "install.codex.cache-snapshot"
 
 
-def test_interrupted_copy_without_original_or_ready_recovery_refuses_restart(tmp_path, monkeypatch):
-    source, _parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_interrupted_copy_without_original_or_ready_recovery_refuses_restart(
+    tmp_path, monkeypatch
+):
+    source, _parent, retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release.shutil.copytree
+
     def interrupted_copy(src, dst, *args, **kwargs):
         value = original(src, dst, *args, **kwargs)
         if Path(dst).parent.name.startswith("retained-"):
             raise KeyboardInterrupt("fixture interruption")
         return value
+
     with monkeypatch.context() as interrupted:
         interrupted.setattr(release.shutil, "copytree", interrupted_copy)
         with pytest.raises(KeyboardInterrupt):
@@ -2591,21 +3173,41 @@ def test_interrupted_copy_without_original_or_ready_recovery_refuses_restart(tmp
     assert "no exact original or complete recovery" in result.steps[-1].detail
 
 
-@pytest.mark.parametrize("boundary", ["plan", "store-mkdir", "bundle-mkdir", "intent", "copy", "ready", "verified"])
-def test_native_preservation_publication_crashes_recover_from_exact_original(tmp_path, monkeypatch, boundary):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "boundary",
+    ["plan", "store-mkdir", "bundle-mkdir", "intent", "copy", "ready", "verified"],
+)
+def test_native_preservation_publication_crashes_recover_from_exact_original(
+    tmp_path, monkeypatch, boundary
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     calls = []
+
     def crash(point):
         if point == boundary and not calls:
             calls.append(point)
             raise KeyboardInterrupt("fixture publication boundary " + point)
-    publish, write = release._publish_native_recovery_catalog, release._write_native_recovery_record
+
+    publish, write = (
+        release._publish_native_recovery_catalog,
+        release._write_native_recovery_record,
+    )
     mkdir, copytree = Path.mkdir, release.shutil.copytree
+
     def publish_then_crash(store, records, previous):
         value = publish(store, records, previous)
-        if any(entry["intent"]["source"] == str(retained) for entry in records.values()):
-            crash("verified" if any(entry["state"] == "VERIFIED" for entry in records.values()) else "plan")
+        if any(
+            entry["intent"]["source"] == str(retained) for entry in records.values()
+        ):
+            crash(
+                "verified"
+                if any(entry["state"] == "VERIFIED" for entry in records.values())
+                else "plan"
+            )
         return value
+
     def mkdir_then_crash(path, *args, **kwargs):
         value = mkdir(path, *args, **kwargs)
         if path.name == "archive-native-retained":
@@ -2613,18 +3215,23 @@ def test_native_preservation_publication_crashes_recover_from_exact_original(tmp
         if path.name.startswith("retained-"):
             crash("bundle-mkdir")
         return value
+
     def write_then_crash(path, value):
         digest = write(path, value)
         if path.name in {"intent.json", "manifest.json"}:
             crash("intent" if path.name == "intent.json" else "ready")
         return digest
+
     def copy_then_crash(src, dst, *args, **kwargs):
         value = copytree(src, dst, *args, **kwargs)
         if Path(dst).parent.name.startswith("retained-"):
             crash("copy")
         return value
+
     with monkeypatch.context() as interrupted:
-        interrupted.setattr(release, "_publish_native_recovery_catalog", publish_then_crash)
+        interrupted.setattr(
+            release, "_publish_native_recovery_catalog", publish_then_crash
+        )
         interrupted.setattr(release, "_write_native_recovery_record", write_then_crash)
         interrupted.setattr(Path, "mkdir", mkdir_then_crash)
         interrupted.setattr(release.shutil, "copytree", copy_then_crash)
@@ -2638,8 +3245,11 @@ def test_native_preservation_publication_crashes_recover_from_exact_original(tmp
     result = release.Result()
     assert release.refresh_client("codex", result, False, repo=source), result.steps
     assert not retained.exists()
-    verified = [bundle / retained.name for bundle in _retained_bundles(tmp_path)
-                if (bundle / "manifest.json").is_file()]
+    verified = [
+        bundle / retained.name
+        for bundle in _retained_bundles(tmp_path)
+        if (bundle / "manifest.json").is_file()
+    ]
     assert verified and all(_all_cache_bytes(tree) == expected for tree in verified)
     # Restart again after the native source has gone: completed recovery covers
     # the original durable plan; no incomplete attempts or plans are deleted.
@@ -2648,11 +3258,21 @@ def test_native_preservation_publication_crashes_recover_from_exact_original(tmp
     assert all(_all_cache_bytes(tree) == expected for tree in verified)
 
 
-@pytest.mark.parametrize("name", [".release-stage-4.74.0-" + "b" * 32,
-                                  ".release-repair-4.74.0-" + "b" * 32,
-                                  ".release-displaced-unrecognized", ".release-private-recovery"])
-def test_unknown_or_interrupted_transition_root_blocks_native_parent_replacement(tmp_path, monkeypatch, name):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "name",
+    [
+        ".release-stage-4.74.0-" + "b" * 32,
+        ".release-repair-4.74.0-" + "b" * 32,
+        ".release-displaced-unrecognized",
+        ".release-private-recovery",
+    ],
+)
+def test_unknown_or_interrupted_transition_root_blocks_native_parent_replacement(
+    tmp_path, monkeypatch, name
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     root = parent / name
     root.mkdir()
     (root / "private-evidence").write_bytes(b"do not discard interruption evidence")
@@ -2664,9 +3284,14 @@ def test_unknown_or_interrupted_transition_root_blocks_native_parent_replacement
     assert _all_cache_bytes(retained) == expected
 
 
-def test_transition_root_appearing_after_snapshot_blocks_first_native_command(tmp_path, monkeypatch):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_transition_root_appearing_after_snapshot_blocks_first_native_command(
+    tmp_path, monkeypatch
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release.snapshot_codex_caches
+
     def inject(*args, **kwargs):
         snapshot = original(*args, **kwargs)
         assert snapshot is not None
@@ -2674,15 +3299,30 @@ def test_transition_root_appearing_after_snapshot_blocks_first_native_command(tm
         root.mkdir()
         (root / "evidence").write_text("interrupted")
         return snapshot
+
     monkeypatch.setattr(release, "snapshot_codex_caches", inject)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
     assert not log.exists() and _all_cache_bytes(retained) == expected
 
 
-@pytest.mark.parametrize("damage", ["state-type", "records-type", "intent-type", "manifest-digest", "duplicate-key", "unknown-bundle"])
-def test_malformed_native_catalog_refuses_before_any_further_cli(tmp_path, monkeypatch, damage):
-    source, _parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "state-type",
+        "records-type",
+        "intent-type",
+        "manifest-digest",
+        "duplicate-key",
+        "unknown-bundle",
+    ],
+)
+def test_malformed_native_catalog_refuses_before_any_further_cli(
+    tmp_path, monkeypatch, damage
+):
+    source, _parent, _retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     assert release.refresh_client("codex", release.Result(), False, repo=source)
     catalog = tmp_path / "archive-native-retained.json"
     data = json.loads(catalog.read_text())
@@ -2709,8 +3349,12 @@ def test_malformed_native_catalog_refuses_before_any_further_cli(tmp_path, monke
 
 
 @pytest.mark.parametrize("existing_target", [False, True])
-def test_marketplace_created_current_generation_is_preserved_before_add(tmp_path, monkeypatch, existing_target):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_marketplace_created_current_generation_is_preserved_before_add(
+    tmp_path, monkeypatch, existing_target
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     target = parent / "4.75.0"
     if not existing_target:
         target.rename(tmp_path / "prior-target-fixture")
@@ -2718,7 +3362,7 @@ def test_marketplace_created_current_generation_is_preserved_before_add(tmp_path
     original_script = cli.read_text()
     boundary = "if sys.argv[1:3] == ['plugin', 'add']:"
     appeared = tmp_path / "marketplace-generation"
-    replacement = f'''if sys.argv[1:3] == ['plugin', 'marketplace']:
+    replacement = f"""if sys.argv[1:3] == ['plugin', 'marketplace']:
     shutil.rmtree(parent)
     parent.mkdir()
     subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, 'clone', '--no-local',
@@ -2726,35 +3370,49 @@ def test_marketplace_created_current_generation_is_preserved_before_add(tmp_path
                    check=True, capture_output=True)
     (parent / '4.75.0' / 'between-native-commands').write_bytes(b'new native generation retained evidence')
     shutil.copytree(parent / '4.75.0', pathlib.Path({str(appeared)!r}), symlinks=True)
-'''
+"""
     cli.write_text(original_script.replace(boundary, replacement + boundary))
     result = release.Result()
     assert release.refresh_client("codex", result, False, repo=source), result.steps
     assert len(log.read_text().splitlines()) == 2
     bundles = tmp_path / "archive-native-retained"
-    assert any(_all_cache_bytes(copy) == _all_cache_bytes(appeared)
-               for copy in bundles.glob("retained-*/4.75.0"))
-    assert any(_all_cache_bytes(copy) == expected
-               for copy in bundles.glob("retained-*/" + retained.name))
+    assert any(
+        _all_cache_bytes(copy) == _all_cache_bytes(appeared)
+        for copy in bundles.glob("retained-*/4.75.0")
+    )
+    assert any(
+        _all_cache_bytes(copy) == expected
+        for copy in bundles.glob("retained-*/" + retained.name)
+    )
     assert not (target / "between-native-commands").exists()
     assert (parent / "4.74.0/skills/example/SKILL.md").is_file()
 
 
-@pytest.mark.parametrize("damage", ["wrong-commit", "root-link", "nested-repository", "external-link"])
-def test_marketplace_current_generation_refuses_unproven_ownership(tmp_path, monkeypatch, damage):
-    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+@pytest.mark.parametrize(
+    "damage", ["wrong-commit", "root-link", "nested-repository", "external-link"]
+)
+def test_marketplace_current_generation_refuses_unproven_ownership(
+    tmp_path, monkeypatch, damage
+):
+    source, parent, _retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     target = parent / "4.75.0"
     external = tmp_path / "foreign"
     external.mkdir()
     (external / "sentinel").write_text("unrelated work")
     original = release.run
     captured = []
+
     def native_transition(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "marketplace"]:
             if damage == "wrong-commit":
-                subprocess.run(["git", "-C", str(target), "checkout", "--detach", "v4.74.0"],
-                               check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "-C", str(target), "checkout", "--detach", "v4.74.0"],
+                    check=True,
+                    capture_output=True,
+                )
             elif damage == "root-link":
                 target.rename(tmp_path / "original-current")
                 target.symlink_to(external, target_is_directory=True)
@@ -2764,6 +3422,7 @@ def test_marketplace_current_generation_refuses_unproven_ownership(tmp_path, mon
                 (target / "outside").symlink_to(external / "sentinel")
             captured.append(_all_cache_bytes(target))
         return result
+
     monkeypatch.setattr(release, "run", native_transition)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
@@ -2774,12 +3433,17 @@ def test_marketplace_current_generation_refuses_unproven_ownership(tmp_path, mon
 
 @pytest.mark.parametrize("phase", ["before", "between"])
 @pytest.mark.parametrize("kind", ["plain", "git", "file", "symlink", "plain-version"])
-def test_unknown_cache_child_refuses_native_mutation(tmp_path, monkeypatch, phase, kind):
-    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_unknown_cache_child_refuses_native_mutation(
+    tmp_path, monkeypatch, phase, kind
+):
+    source, parent, _retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     unknown = parent / ("9.99.99" if kind == "plain-version" else "foreign")
     sentinel = tmp_path / "outside-sentinel"
     sentinel.write_bytes(b"unrelated retained bytes")
     captured = []
+
     def create():
         if kind == "file":
             unknown.write_bytes(b"unrecognized file")
@@ -2787,18 +3451,24 @@ def test_unknown_cache_child_refuses_native_mutation(tmp_path, monkeypatch, phas
             unknown.symlink_to(sentinel)
         else:
             if kind == "git":
-                subprocess.run(["git", "clone", "--no-local", str(source), str(unknown)],
-                               check=True, capture_output=True)
+                subprocess.run(
+                    ["git", "clone", "--no-local", str(source), str(unknown)],
+                    check=True,
+                    capture_output=True,
+                )
             else:
                 unknown.mkdir()
             (unknown / "local-evidence").write_bytes(b"unrecognized directory work")
             captured.append(_all_cache_bytes(unknown))
+
     original = release.run
+
     def transition(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "marketplace"]:
             create()
         return result
+
     if phase == "before":
         create()
     else:
@@ -2810,31 +3480,43 @@ def test_unknown_cache_child_refuses_native_mutation(tmp_path, monkeypatch, phas
     if kind == "file":
         assert unknown.read_bytes() == b"unrecognized file"
     elif kind == "symlink":
-        assert unknown.is_symlink() and unknown.read_bytes() == b"unrelated retained bytes"
+        assert (
+            unknown.is_symlink() and unknown.read_bytes() == b"unrelated retained bytes"
+        )
     else:
         assert _all_cache_bytes(unknown) == captured[0]
     assert sentinel.read_bytes() == b"unrelated retained bytes"
 
 
-def test_unqualified_plain_current_generation_without_prior_root_refuses_add(tmp_path, monkeypatch):
-    source, parent, _retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_unqualified_plain_current_generation_without_prior_root_refuses_add(
+    tmp_path, monkeypatch
+):
+    source, parent, _retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     target = parent / "4.75.0"
     if target.exists():
         target.rename(tmp_path / "initial-current")
     original = release.run
+
     def transition(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "marketplace"]:
             if target.exists():
                 target.rename(tmp_path / "marketplace-current")
             target.mkdir()
-            (target / "unqualified-evidence").write_bytes(b"not an admitted Git generation")
+            (target / "unqualified-evidence").write_bytes(
+                b"not an admitted Git generation"
+            )
         return result
+
     monkeypatch.setattr(release, "run", transition)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
     assert len(log.read_text().splitlines()) == 1
-    assert (target / "unqualified-evidence").read_bytes() == b"not an admitted Git generation"
+    assert (
+        target / "unqualified-evidence"
+    ).read_bytes() == b"not an admitted Git generation"
 
 
 def test_unpinned_snapshot_cannot_admit_new_native_generation(tmp_path, monkeypatch):
@@ -2846,18 +3528,26 @@ def test_unpinned_snapshot_cannot_admit_new_native_generation(tmp_path, monkeypa
     assert _all_cache_bytes(parent) == before
 
 
-def test_changed_materialized_history_refuses_add_and_preserves_changed_bytes(tmp_path, monkeypatch):
-    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_changed_materialized_history_refuses_add_and_preserves_changed_bytes(
+    tmp_path, monkeypatch
+):
+    source, parent, retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     historical = parent / "4.74.0"
     # The CLI fixture retains its old Git root under a displaced name. A real
     # materialized historical root must also exist before the snapshot.
-    shutil.copytree(retained, historical, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    shutil.copytree(
+        retained, historical, symlinks=True, ignore=shutil.ignore_patterns(".git")
+    )
     original = release.run
+
     def transition(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "marketplace"]:
             (historical / "changed-work").write_bytes(b"new materialized evidence")
         return result
+
     monkeypatch.setattr(release, "run", transition)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
@@ -2865,9 +3555,22 @@ def test_changed_materialized_history_refuses_add_and_preserves_changed_bytes(tm
     assert (historical / "changed-work").read_bytes() == b"new materialized evidence"
 
 
-@pytest.mark.parametrize("fault", ["copy", "seal", "changed-source", "changed-seal",
-                                  "changed-intent", "changed-copy", "replaced-copy", "after-promotion"])
-def test_materialized_preservation_failure_prevents_repair(tmp_path, monkeypatch, fault):
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "copy",
+        "seal",
+        "changed-source",
+        "changed-seal",
+        "changed-intent",
+        "changed-copy",
+        "replaced-copy",
+        "after-promotion",
+    ],
+)
+def test_materialized_preservation_failure_prevents_repair(
+    tmp_path, monkeypatch, fault
+):
     parent = tmp_path / "cache"
     source = parent / "4.74.0"
     source.mkdir(parents=True)
@@ -2877,8 +3580,15 @@ def test_materialized_preservation_failure_prevents_repair(tmp_path, monkeypatch
     (backup / "4.74.0/work").write_bytes(b"old version")
     snapshot = release.CodexCacheSnapshot(backup, ("4.74.0",))
     monkeypatch.setattr(release, "plugin_cache_parent", lambda client: parent)
-    original_copy, original_write = release.shutil.copytree, release._write_native_recovery_record
-    original_preserve, original_rename = release._preserve_materialized_recovery, release.os.rename
+    original_copy, original_write = (
+        release.shutil.copytree,
+        release._write_native_recovery_record,
+    )
+    original_preserve, original_rename = (
+        release._preserve_materialized_recovery,
+        release.os.rename,
+    )
+
     def copy(src, dst, *args, **kwargs):
         result = original_copy(src, dst, *args, **kwargs)
         if Path(dst).parent.name.startswith("retained-"):
@@ -2887,11 +3597,14 @@ def test_materialized_preservation_failure_prevents_repair(tmp_path, monkeypatch
             if fault == "changed-source":
                 (source / "work").write_bytes(b"concurrent retained evidence")
         return result
+
     def write(path, data):
         if fault == "seal" and path.name == "manifest.json":
             raise OSError("synthetic interrupted seal")
         return original_write(path, data)
+
     preserved = []
+
     def preserve(path):
         record = original_preserve(path)
         preserved.append(record)
@@ -2905,28 +3618,43 @@ def test_materialized_preservation_failure_prevents_repair(tmp_path, monkeypatch
             record.tree.rename(tmp_path / "first-copy")
             original_copy(tmp_path / "first-copy", record.tree, symlinks=True)
         return record
+
     def rename(src, dst):
         result = original_rename(src, dst)
-        if fault == "after-promotion" and Path(src).name.startswith(".release-repair-") and Path(dst) == source:
+        if (
+            fault == "after-promotion"
+            and Path(src).name.startswith(".release-repair-")
+            and Path(dst) == source
+        ):
             (preserved[-1].tree / "work").write_bytes(b"changed after promotion")
         return result
+
     monkeypatch.setattr(release.shutil, "copytree", copy)
     monkeypatch.setattr(release, "_write_native_recovery_record", write)
     monkeypatch.setattr(release, "_preserve_materialized_recovery", preserve)
     monkeypatch.setattr(release.os, "rename", rename)
     assert not release.restore_codex_caches(snapshot, release.Result())
     if fault == "after-promotion":
-        displaced, = parent.glob(".release-displaced-4.74.0-*")
+        (displaced,) = parent.glob(".release-displaced-4.74.0-*")
         assert (displaced / "work").read_bytes() == b"new evidence"
     else:
-        assert (source / "work").read_bytes() == (b"concurrent retained evidence" if fault == "changed-source" else b"new evidence")
+        assert (source / "work").read_bytes() == (
+            b"concurrent retained evidence"
+            if fault == "changed-source"
+            else b"new evidence"
+        )
     assert backup.is_dir()
 
 
 @pytest.mark.parametrize("failure", ["timeout", "os-error"])
-def test_native_command_interruption_attempts_verified_history_restoration(tmp_path, monkeypatch, failure):
-    source, parent, retained, expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_native_command_interruption_attempts_verified_history_restoration(
+    tmp_path, monkeypatch, failure
+):
+    source, parent, retained, expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     original = release.run
+
     def interrupted(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "add"]:
@@ -2934,31 +3662,49 @@ def test_native_command_interruption_attempts_verified_history_restoration(tmp_p
                 raise subprocess.TimeoutExpired(command, timeout)
             raise OSError("synthetic native result transport interruption")
         return result
+
     monkeypatch.setattr(release, "run", interrupted)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
     assert len(log.read_text().splitlines()) == 2
     assert (parent / "4.74.0/skills/example/SKILL.md").is_file()
-    assert any(step.name == "install.codex.cache-restore" and step.ok for step in result.steps)
-    assert any(_all_cache_bytes(copy) == expected for copy in
-               (tmp_path / "archive-native-retained").glob("retained-*/" + retained.name))
+    assert any(
+        step.name == "install.codex.cache-restore" and step.ok for step in result.steps
+    )
+    assert any(
+        _all_cache_bytes(copy) == expected
+        for copy in (tmp_path / "archive-native-retained").glob(
+            "retained-*/" + retained.name
+        )
+    )
 
 
-def test_new_native_recovery_between_commands_blocks_destructive_add(tmp_path, monkeypatch):
-    source, parent, retained, _expected, log = _replacement_native_cli(tmp_path, monkeypatch)
+def test_new_native_recovery_between_commands_blocks_destructive_add(
+    tmp_path, monkeypatch
+):
+    source, parent, retained, _expected, log = _replacement_native_cli(
+        tmp_path, monkeypatch
+    )
     appeared = parent / (".release-displaced-4.74.0-" + "b" * 32)
     original = release.run
+
     def add_recovery_after_marketplace(command, cwd=None, timeout=900):
         result = original(command, cwd=cwd, timeout=timeout)
         if command[1:3] == ["plugin", "marketplace"]:
             shutil.copytree(retained, appeared, symlinks=True)
-            (appeared / "new-private-evidence").write_bytes(b"appeared between actual native commands")
+            (appeared / "new-private-evidence").write_bytes(
+                b"appeared between actual native commands"
+            )
         return result
+
     monkeypatch.setattr(release, "run", add_recovery_after_marketplace)
     result = release.Result()
     assert not release.refresh_client("codex", result, False, repo=source)
     assert len(log.read_text().splitlines()) == 1
-    assert (appeared / "new-private-evidence").read_bytes() == b"appeared between actual native commands"
+    assert (
+        appeared / "new-private-evidence"
+    ).read_bytes() == b"appeared between actual native commands"
+
 
 def test_tag_backed_snapshot_refuses_archive_budget_overflow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2995,7 +3741,9 @@ def test_codex_refresh_upgrades_marketplace_before_installing(
     assert upgrade_index < add_index
 
 
-def test_claude_refresh_updates_marketplace_then_plugin(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_claude_refresh_updates_marketplace_then_plugin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/claude")
     result = release.Result()
     assert release.refresh_client("claude", result, dry_run=True) is True
@@ -3028,7 +3776,9 @@ def test_codex_cache_transition_lock_refuses_a_second_writer(
 
 
 @pytest.mark.parametrize("failure", [None, "prepare", "budget"])
-def test_database_guardian_cutover_gates_destructive_native_refresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None) -> None:
+def test_database_guardian_cutover_gates_destructive_native_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None
+) -> None:
     source = tmp_path / "source"
     source.mkdir()
     commit_release(source, "4.74.0", "old")
@@ -3047,28 +3797,43 @@ def test_database_guardian_cutover_gates_destructive_native_refresh(tmp_path: Pa
         monkeypatch.setattr(release, "CODEX_CACHE_ARCHIVE_BUDGET_BYTES", 1)
     calls = []
     original_run = release.run
+
     def runner(command, cwd=None, timeout=900):
         if command[0] == "/fixture/codex" or "--prepare" in command:
             calls.append(command)
             if "--prepare" not in command:
                 assert calls[0][-1] == "--prepare"
-                assert set(release.RecoveryStore.read(archive).versions) == {"4.74.0", "4.75.0"}
-            return subprocess.CompletedProcess(command, 1 if failure == "prepare" else 0, "ready", "")
+                assert set(release.RecoveryStore.read(archive).versions) == {
+                    "4.74.0",
+                    "4.75.0",
+                }
+            return subprocess.CompletedProcess(
+                command, 1 if failure == "prepare" else 0, "ready", ""
+            )
         return original_run(command, cwd=cwd, timeout=timeout)
+
     monkeypatch.setattr(release, "run", runner)
     result = release.Result()
-    assert release.refresh_client("codex", result, False, repo=source) == (failure is None)
+    assert release.refresh_client("codex", result, False, repo=source) == (
+        failure is None
+    )
     assert calls[0][-1] == "--prepare"
     assert len(calls) == (3 if failure is None else 1)
     if failure is not None:
         assert not (archive / "recovery.sqlite3").exists()
 
 
-def test_contending_publisher_cannot_prepare_or_restart_guardian(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_contending_publisher_cannot_prepare_or_restart_guardian(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "archive")
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fixture/codex")
     calls = []
-    monkeypatch.setattr(release, "install_codex_cache_guardian", lambda *args, **kwargs: calls.append("prepare"))
+    monkeypatch.setattr(
+        release,
+        "install_codex_cache_guardian",
+        lambda *args, **kwargs: calls.append("prepare"),
+    )
     first = release._acquire_codex_cache_lock()
     try:
         result = release.Result()
@@ -3097,9 +3862,7 @@ def test_guardian_install_uses_source_checkout_and_surfaces_receipt(
     result = release.Result()
 
     assert release.install_codex_cache_guardian(tmp_path, result, False)
-    assert calls == [
-        ([sys.executable, str(source), "--install"], tmp_path, 120)
-    ]
+    assert calls == [([sys.executable, str(source), "--install"], tmp_path, 120)]
     step = next(
         step for step in result.steps if step.name == "install.codex.cache-guardian"
     )
@@ -3152,7 +3915,9 @@ def test_commit_gate_sync_reports_installer_failure(
     installer.write_text("#!/bin/bash\nexit 1\n", encoding="utf-8")
 
     def fake_run(command, cwd=None, timeout=900):
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr="doctor failed")
+        return subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="doctor failed"
+        )
 
     monkeypatch.setattr(release, "run", fake_run)
     result = release.Result()
@@ -3170,7 +3935,9 @@ def test_commit_gate_sync_dry_run_records_without_running(
     installer.parent.mkdir(parents=True)
     installer.write_text("#!/bin/bash\n", encoding="utf-8")
     monkeypatch.setattr(
-        release, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not run"))
+        release,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not run")),
     )
     result = release.Result()
 
@@ -3198,7 +3965,9 @@ def test_codex_refresh_restores_real_version_root_deleted_by_client(
     monkeypatch.setattr(release, "run", run)
     result = release.Result()
     assert release.refresh_client("codex", result, dry_run=False) is True
-    assert (old_root / "hooks" / "hooks.json").read_text(encoding="utf-8") == "old hook bytes\n"
+    assert (old_root / "hooks" / "hooks.json").read_text(
+        encoding="utf-8"
+    ) == "old hook bytes\n"
     steps = {step.name: step for step in result.steps}
     assert steps["install.codex.cache-snapshot"].ok is True
     assert "1 complete version" in steps["install.codex.cache-snapshot"].detail
@@ -3206,7 +3975,9 @@ def test_codex_refresh_restores_real_version_root_deleted_by_client(
     assert "restored 1" in steps["install.codex.cache-restore"].detail
 
 
-def test_preexisting_version_symlink_refuses_refresh_without_removing_it(tmp_path, monkeypatch):
+def test_preexisting_version_symlink_refuses_refresh_without_removing_it(
+    tmp_path, monkeypatch
+):
     parent = tmp_path / "cache"
     real = parent / "4.74.0"
     real.mkdir(parents=True)
@@ -3247,7 +4018,11 @@ def test_codex_refresh_repairs_if_existing_preserved_root_changes(
     )
     assert restore.ok is True
     assert "repaired 1" in restore.detail
-    retained = list((tmp_path / "cache-recovery-materialized-retained").glob("retained-*/4.74.0/hooks/hooks.json"))
+    retained = list(
+        (tmp_path / "cache-recovery-materialized-retained").glob(
+            "retained-*/4.74.0/hooks/hooks.json"
+        )
+    )
     assert len(retained) == 1 and retained[0].read_text() == "modified\n"
 
 
@@ -3307,7 +4082,11 @@ def test_codex_refresh_atomically_replaces_unowned_extra(
     )
     assert restore.ok is True
     assert not (old_root / "unexpected").exists()
-    retained = list((tmp_path / "cache-recovery-materialized-retained").glob("retained-*/4.74.0/unexpected"))
+    retained = list(
+        (tmp_path / "cache-recovery-materialized-retained").glob(
+            "retained-*/4.74.0/unexpected"
+        )
+    )
     assert len(retained) == 1 and retained[0].read_text() == "late\n"
 
 
@@ -3392,7 +4171,9 @@ def test_codex_refresh_does_not_run_when_cache_snapshot_fails(
 def test_main_refuses_a_plugin_cache_as_repo_root(tmp_path: Path) -> None:
     cache = tmp_path / "plugins" / "cache" / "x"
     (cache / ".claude-plugin").mkdir(parents=True)
-    (cache / ".claude-plugin" / "plugin.json").write_text('{"version": "1"}', encoding="utf-8")
+    (cache / ".claude-plugin" / "plugin.json").write_text(
+        '{"version": "1"}', encoding="utf-8"
+    )
     assert release.main(["--repo-root", str(cache), "--check-only"]) == 2
 
 
@@ -3445,8 +4226,12 @@ def test_acceptance_expectation_covers_both_rename_paths_and_literal_names(tmp_p
     target = " renamed\nsource.py "
     (repository / "production.py").rename(repository / target)
     subprocess.run(["git", "-C", str(repository), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "fixture rename"], check=True)
-    expected, detail = release.acceptance_expectation(repository, base, "fixture-rename")
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-qm", "fixture rename"], check=True
+    )
+    expected, detail = release.acceptance_expectation(
+        repository, base, "fixture-rename"
+    )
     assert expected is not None, detail
     assert expected["changed_paths"] == sorted(["production.py", target])
 
@@ -3516,13 +4301,24 @@ def _write_muse_bundle(
             script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             if hook == "ok":
                 script.chmod(script.stat().st_mode | 0o111)
-        hooks = [{"id": "demo", "event": "SessionStart", "command": ["sh", "hooks/muse/demo.sh"]}]
+        hooks = [
+            {
+                "id": "demo",
+                "event": "SessionStart",
+                "command": ["sh", "hooks/muse/demo.sh"],
+            }
+        ]
     (manifest_dir / "plugin.json").write_text(
-        json.dumps({
-            "name": name,
-            "version": version,
-            "capabilities": {"skills": [{"id": "demo", "path": skill_rel}], "hooks": hooks},
-        }),
+        json.dumps(
+            {
+                "name": name,
+                "version": version,
+                "capabilities": {
+                    "skills": [{"id": "demo", "path": skill_rel}],
+                    "hooks": hooks,
+                },
+            }
+        ),
         encoding="utf-8",
     )
     return root
@@ -3536,7 +4332,12 @@ def _muse_list_payload(
     plugin_id: str = "synthesis-skills",
     source_path: str | None = "/recorded/bundle",
 ) -> str:
-    record: dict = {"id": plugin_id, "version": version, "enabled": enabled, "cache_path": cache_path}
+    record: dict = {
+        "id": plugin_id,
+        "version": version,
+        "enabled": enabled,
+        "cache_path": cache_path,
+    }
     if source_path is not None:
         record["source"] = {"path": source_path}
     return json.dumps({"plugins": [{"record": record}]})
@@ -3550,8 +4351,12 @@ def muse_repo(tmp_path: Path) -> Path:
     _write_muse_bundle(source, "9.9.9")
     subprocess.run(["git", "init", "-q", str(source)], check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=source, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=source, check=True)
-    subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"], cwd=source, check=True
+    )
+    subprocess.run(
+        ["git", "config", "core.hooksPath", "/dev/null"], cwd=source, check=True
+    )
     subprocess.run(["git", "add", "."], cwd=source, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "fixture"], cwd=source, check=True)
     return source
@@ -3564,8 +4369,11 @@ def test_muse_owned_refresh_rejects_foreign_tree_without_touching_bytes(
     bundles = tmp_path / "bundles"
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
     staged = _write_muse_bundle(bundles / "v9.9.9", "9.9.9")
-    foreign = (bundles / "nested" / "v9.9.8" if foreign_kind == "nested"
-               else tmp_path / "foreign")
+    foreign = (
+        bundles / "nested" / "v9.9.8"
+        if foreign_kind == "nested"
+        else tmp_path / "foreign"
+    )
     foreign.mkdir(parents=True)
     (foreign / "retained-work").write_bytes(b"retained work\x00\xff")
     if foreign_kind == "repository":
@@ -3575,8 +4383,11 @@ def test_muse_owned_refresh_rejects_foreign_tree_without_touching_bytes(
 
     result = release.Result()
     assert not release._sync_muse_recorded_source(
-        foreign, foreign if foreign_kind == "same-path" else staged,
-        "9.9.9", result, False,
+        foreign,
+        foreign if foreign_kind == "same-path" else staged,
+        "9.9.9",
+        result,
+        False,
     )
     assert release._tree_digest(foreign) == before
     if foreign_kind == "repository":
@@ -3602,7 +4413,11 @@ def test_muse_owned_refresh_preserves_old_tree_when_copy_fails(
 
     monkeypatch.setattr(release.shutil, "copytree", fail_copy)
     assert not release._sync_muse_recorded_source(
-        recorded, staged, "9.9.9", release.Result(), False,
+        recorded,
+        staged,
+        "9.9.9",
+        release.Result(),
+        False,
     )
     assert release._tree_digest(recorded) == before
 
@@ -3630,7 +4445,11 @@ def test_muse_owned_refresh_restores_old_tree_on_interruption(
     monkeypatch.setattr(release.os, "rename", interrupt_rename)
     with pytest.raises(KeyboardInterrupt):
         release._sync_muse_recorded_source(
-            recorded, staged, "9.9.9", release.Result(), False,
+            recorded,
+            staged,
+            "9.9.9",
+            release.Result(),
+            False,
         )
     assert release._tree_digest(recorded) == before
 
@@ -3667,13 +4486,22 @@ def test_muse_owned_materialize_keeps_previous_bundle_on_export_failure(
         raise OSError("injected archive failure")
 
     monkeypatch.setattr(release, "_export_release_tag", fail_export)
-    assert release._materialize_muse_bundle(
-        tmp_path / "source", "9.9.9", release.Result(), False,
-    ) is None
+    assert (
+        release._materialize_muse_bundle(
+            tmp_path / "source",
+            "9.9.9",
+            release.Result(),
+            False,
+        )
+        is None
+    )
     assert release._tree_digest(recorded) == before
 
 
-@pytest.mark.parametrize("redirect", ["root", "ancestor", "recorded", "staged", "broken", "nested-link", "nested-loop"])
+@pytest.mark.parametrize(
+    "redirect",
+    ["root", "ancestor", "recorded", "staged", "broken", "nested-link", "nested-loop"],
+)
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_muse_owned_refresh_rejects_redirects_without_modifying_targets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, redirect: str, dry_run: bool
@@ -3711,13 +4539,20 @@ def test_muse_owned_refresh_rejects_redirects_without_modifying_targets(
         before = release._tree_digest(recorded)
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
     assert not release._sync_muse_recorded_source(
-        recorded, staged, "9.9.9", release.Result(), dry_run,
+        recorded,
+        staged,
+        "9.9.9",
+        release.Result(),
+        dry_run,
     )
     assert (foreign / "sentinel").read_bytes() == b"foreign retained work"
     assert release._tree_digest(original / "bundles" / "v4.103.0") == before
 
 
-@pytest.mark.parametrize("protected", ["home", "cwd", "source", "repo", "workspace", "root", "relative", "traversal"])
+@pytest.mark.parametrize(
+    "protected",
+    ["home", "cwd", "source", "repo", "workspace", "root", "relative", "traversal"],
+)
 def test_muse_owned_materialize_refuses_protected_boundaries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, protected: str
 ) -> None:
@@ -3754,7 +4589,9 @@ def test_muse_owned_materialize_refuses_protected_boundaries(
         assert (destination / ".git").read_text() == "gitdir: retained elsewhere\n"
 
 
-@pytest.mark.parametrize("kind", ["plain", "file", "symlink", "repository", "nested-repository"])
+@pytest.mark.parametrize(
+    "kind", ["plain", "file", "symlink", "repository", "nested-repository"]
+)
 def test_muse_owned_materialize_preserves_unowned_existing_version(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
@@ -3777,19 +4614,27 @@ def test_muse_owned_materialize_preserves_unowned_existing_version(
             marker.mkdir(parents=True)
             (marker / "config").write_bytes(b"retained repository")
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", bundles)
-    assert release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False) is None
+    assert (
+        release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False)
+        is None
+    )
     assert (foreign / "sentinel").read_bytes() == b"retained foreign data"
     if kind == "file":
         assert destination.read_bytes() == b"retained file"
     elif kind == "symlink":
         assert destination.is_symlink()
     else:
-        assert (destination / "sentinel").read_bytes() == b"retained owned-location data"
+        assert (
+            destination / "sentinel"
+        ).read_bytes() == b"retained owned-location data"
         if kind in {"repository", "nested-repository"}:
             assert (marker / "config").read_bytes() == b"retained repository"
 
 
-@pytest.mark.parametrize("failure", ["copy-corruption", "promote-failure", "installed-corruption", "rollback-failure"])
+@pytest.mark.parametrize(
+    "failure",
+    ["copy-corruption", "promote-failure", "installed-corruption", "rollback-failure"],
+)
 def test_muse_owned_refresh_retains_previous_tree_across_failed_transitions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
@@ -3806,7 +4651,9 @@ def test_muse_owned_refresh_retains_previous_tree_across_failed_transitions(
     def copy_corrupt(source, destination, *args, **kwargs):
         returned = original_copy(source, destination, *args, **kwargs)
         if Path(source) == staged:
-            (Path(destination) / "skills/demo/SKILL.md").write_bytes(b"corrupt staged bytes")
+            (Path(destination) / "skills/demo/SKILL.md").write_bytes(
+                b"corrupt staged bytes"
+            )
         return returned
 
     def fail_rename(source, destination):
@@ -3818,14 +4665,18 @@ def test_muse_owned_refresh_retains_previous_tree_across_failed_transitions(
             raise OSError("injected rollback failure")
         original_rename(source, destination)
         if failure == "installed-corruption" and calls == 2:
-            (Path(destination) / "skills/demo/SKILL.md").write_bytes(b"corrupt installed bytes")
+            (Path(destination) / "skills/demo/SKILL.md").write_bytes(
+                b"corrupt installed bytes"
+            )
 
     if failure == "copy-corruption":
         monkeypatch.setattr(release.shutil, "copytree", copy_corrupt)
     else:
         monkeypatch.setattr(release.os, "rename", fail_rename)
     result = release.Result()
-    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+    assert not release._sync_muse_recorded_source(
+        recorded, staged, "9.9.9", result, False
+    )
     if failure == "rollback-failure":
         backups = list(bundles.glob(".release-displaced-v4.103.0-*"))
         assert len(backups) == 1 and release._tree_digest(backups[0]) == before
@@ -3864,8 +4715,18 @@ release._sync_muse_recorded_source(
     release.MUSE_BUNDLE_ROOT / 'v9.9.9', '9.9.9', release.Result(), False)
 """
     process = subprocess.run(
-        [sys.executable, "-B", "-c", script, str(Path(release.__file__).parent), str(bundles), str(after_rename)],
-        capture_output=True, text=True, timeout=20,
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            script,
+            str(Path(release.__file__).parent),
+            str(bundles),
+            str(after_rename),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
     )
     assert process.returncode == 77, process.stderr
     backups = list(bundles.glob(".release-displaced-v4.103.0-*"))
@@ -3873,11 +4734,15 @@ release._sync_muse_recorded_source(
     result = release.Result()
     if after_rename == 1:
         assert not recorded.exists()
-        assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+        assert not release._sync_muse_recorded_source(
+            recorded, staged, "9.9.9", result, False
+        )
         assert "retained recovery tree" in result.steps[-1].detail
     else:
         assert release._tree_digest(recorded) == release._tree_digest(staged)
-        assert release._sync_muse_recorded_source(recorded, staged, "9.9.9", result, False)
+        assert release._sync_muse_recorded_source(
+            recorded, staged, "9.9.9", result, False
+        )
         assert release._tree_digest(backups[0]) == before
 
 
@@ -3897,7 +4762,9 @@ def test_muse_owned_materialize_verifies_export_before_displacing_old_tree(
         if failure == "interruption":
             raise KeyboardInterrupt("injected interrupted export")
         if failure == "wrong-bytes":
-            (destination / "skills/demo/SKILL.md").write_bytes(b"plausible but incorrect export")
+            (destination / "skills/demo/SKILL.md").write_bytes(
+                b"plausible but incorrect export"
+            )
         else:
             (destination / "hooks/muse/demo.sh").unlink()
         return exported
@@ -3905,9 +4772,16 @@ def test_muse_owned_materialize_verifies_export_before_displacing_old_tree(
     monkeypatch.setattr(release, "_export_release_tag", corrupted_export)
     if failure == "interruption":
         with pytest.raises(KeyboardInterrupt):
-            release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False)
+            release._materialize_muse_bundle(
+                muse_repo, "9.9.9", release.Result(), False
+            )
     else:
-        assert release._materialize_muse_bundle(muse_repo, "9.9.9", release.Result(), False) is None
+        assert (
+            release._materialize_muse_bundle(
+                muse_repo, "9.9.9", release.Result(), False
+            )
+            is None
+        )
     assert release._tree_digest(previous) == before
     assert not list(bundles.glob(".release-displaced-*"))
 
@@ -3935,13 +4809,17 @@ def test_muse_owned_refresh_rechecks_ancestor_after_copy(
         return returned
 
     monkeypatch.setattr(release.shutil, "copytree", redirect_parent)
-    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+    assert not release._sync_muse_recorded_source(
+        recorded, staged, "9.9.9", release.Result(), False
+    )
     assert release._tree_digest(moved / recorded.name) == before
     assert list(foreign.iterdir()) == [foreign / "sentinel"]
     assert (foreign / "sentinel").read_bytes() == b"foreign tree"
 
 
-@pytest.mark.parametrize("intrusion", ["parent-redirect", "new-destination", "replacement-destination"])
+@pytest.mark.parametrize(
+    "intrusion", ["parent-redirect", "new-destination", "replacement-destination"]
+)
 def test_muse_owned_refresh_preserves_intruding_tree_between_renames(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, intrusion: str
 ) -> None:
@@ -3974,7 +4852,9 @@ def test_muse_owned_refresh_preserves_intruding_tree_between_renames(
             original_rename(foreign_recorded, recorded)
 
     monkeypatch.setattr(release.os, "rename", intrude_after_rename)
-    assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+    assert not release._sync_muse_recorded_source(
+        recorded, staged, "9.9.9", release.Result(), False
+    )
     preserved_parent = moved if intrusion == "parent-redirect" else bundles
     recovery = list(preserved_parent.glob(".release-displaced-v4.103.0-*"))
     assert len(recovery) == 1 and release._tree_digest(recovery[0]) == before
@@ -3990,14 +4870,22 @@ def test_muse_owned_refresh_refuses_concurrent_writer(
     recorded = _write_muse_bundle(bundles / "v4.103.0", "9.9.8")
     before = release._tree_digest(recorded)
     with (bundles / ".release.lock").open("w") as handle:
-        release.fcntl.flock(handle.fileno(), release.fcntl.LOCK_EX | release.fcntl.LOCK_NB)
-        assert not release._sync_muse_recorded_source(recorded, staged, "9.9.9", release.Result(), False)
+        release.fcntl.flock(
+            handle.fileno(), release.fcntl.LOCK_EX | release.fcntl.LOCK_NB
+        )
+        assert not release._sync_muse_recorded_source(
+            recorded, staged, "9.9.9", release.Result(), False
+        )
     assert release._tree_digest(recorded) == before
     assert not list(bundles.glob(".release-displaced-*"))
 
 
-@pytest.mark.parametrize("kind", ["absolute-skill", "traversing-skill", "absolute-hook", "escaping-link"])
-def test_muse_owned_bundle_completeness_rejects_capability_escape(tmp_path: Path, kind: str) -> None:
+@pytest.mark.parametrize(
+    "kind", ["absolute-skill", "traversing-skill", "absolute-hook", "escaping-link"]
+)
+def test_muse_owned_bundle_completeness_rejects_capability_escape(
+    tmp_path: Path, kind: str
+) -> None:
     root = _write_muse_bundle(tmp_path / "bundle", "9.9.9")
     external = tmp_path / "external"
     external.write_text("#!/bin/sh\nexit 0\n")
@@ -4011,7 +4899,9 @@ def test_muse_owned_bundle_completeness_rejects_capability_escape(tmp_path: Path
         link.symlink_to(external)
         manifest["capabilities"]["skills"][0]["path"] = link.name
     else:
-        manifest["capabilities"]["skills"][0]["path"] = str(external) if kind == "absolute-skill" else "../external"
+        manifest["capabilities"]["skills"][0]["path"] = (
+            str(external) if kind == "absolute-skill" else "../external"
+        )
     manifest_path.write_text(json.dumps(manifest))
     assert release._muse_bundle_completeness(root, "9.9.9")[0] is False
     assert external.read_text() == "#!/bin/sh\nexit 0\n"
@@ -4031,6 +4921,8 @@ def test_muse_owned_native_update_observes_verified_source_and_retained_old_work
         "import json, sys\nfrom pathlib import Path\n"
         f"recorded = Path({str(recorded)!r})\n"
         f"with Path({str(calls)!r}).open('a') as handle: handle.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:] == ['--help']:\n print('Usage: muse [COMMAND]\\nCommands:\\n  plugins');raise SystemExit(0)\n"
+        "if sys.argv[1:] == ['plugins','--help']:\n print('Usage: muse plugins [COMMAND]\\nCommands:\\n  list\\n  install\\n  update');raise SystemExit(0)\n"
         "if sys.argv[1:3] == ['plugins', 'list']:\n"
         f"    print({_muse_list_payload(source_path=str(recorded), version='9.9.8')!r})\n"
         "elif sys.argv[1:3] == ['plugins', 'update']:\n"
@@ -4047,7 +4939,10 @@ def test_muse_owned_native_update_observes_verified_source_and_retained_old_work
     source_git = (muse_repo / ".git" / "HEAD").read_bytes()
     assert release.refresh_client("muse", release.Result(), False, repo=muse_repo)
     assert [json.loads(line)[:2] for line in calls.read_text().splitlines()] == [
-        ["plugins", "list"], ["plugins", "update"],
+        ["--help"],
+        ["plugins", "--help"],
+        ["plugins", "list"],
+        ["plugins", "update"],
     ]
     assert release.content_digest_report(muse_repo, recorded)[0]
     assert (muse_repo / ".git" / "HEAD").read_bytes() == source_git
@@ -4079,11 +4974,23 @@ def test_cache_transition_cleanup_refuses_unsafe_target(
 
 
 def _fake_muse_binary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0,
+    *, install_only_failure: bool = False,
 ) -> Path:
     script = tmp_path / "bin" / "muse"
     script.parent.mkdir(parents=True, exist_ok=True)
-    script.write_text(f"#!/bin/sh\necho '{payload}'\nexit {exit_code}\n", encoding="utf-8")
+    # A supported hypothetical native grammar is explicit in these installer
+    # fixtures; this is not a claim about the currently installed Muse build.
+    body = "{\"plugins\":[]}" if payload == "{}" else payload
+    script.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "a=sys.argv[1:]\n"
+        "if a == ['--help']:\n print('Usage: muse [COMMAND]\\nCommands:\\n  plugins');raise SystemExit(0)\n"
+        "if a == ['plugins','--help']:\n print('Usage: muse plugins [COMMAND]\\nCommands:\\n  list\\n  install\\n  update');raise SystemExit(0)\n"
+        f"if a[:2] == ['plugins','list'] and {install_only_failure!r}:\n print('{{\"plugins\":[]}}');raise SystemExit(0)\n"
+        f"print({body!r})\nraise SystemExit({exit_code})\n",
+        encoding="utf-8",
+    )
     script.chmod(script.stat().st_mode | 0o111)
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(script))
     return script
@@ -4124,7 +5031,9 @@ def test_muse_reported_version_ignores_disabled_record(
 def test_muse_reported_version_ignores_foreign_plugin_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(plugin_id="other-plugin"))
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(plugin_id="other-plugin")
+    )
     assert release.client_reported_version("muse") == (None, None)
 
 
@@ -4146,16 +5055,22 @@ def test_muse_refresh_dry_run_syncs_then_updates_when_recorded(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     recorded = tmp_path / "bundles" / "v9.9.8"
-    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded))
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
     result = release.Result()
     assert release.refresh_client("muse", result, dry_run=True, repo=repo) is True
     names = [s.name for s in result.steps]
     assert names.index("install.muse.bundle") < names.index("install.muse.sync")
     assert names.index("install.muse.sync") < names.index("install.muse.update")
-    bundle_detail = next(s.detail for s in result.steps if s.name == "install.muse.bundle")
+    bundle_detail = next(
+        s.detail for s in result.steps if s.name == "install.muse.bundle"
+    )
     assert "v9.9.9" in bundle_detail
-    update_detail = next(s.detail for s in result.steps if s.name == "install.muse.update")
+    update_detail = next(
+        s.detail for s in result.steps if s.name == "install.muse.update"
+    )
     assert "plugins update" in update_detail
     assert not (tmp_path / "bundles").exists()
     assert not recorded.exists()
@@ -4174,14 +5089,18 @@ def test_muse_refresh_dry_run_installs_fresh_when_no_record(
     assert not (tmp_path / "bundles").exists()
 
 
-def test_muse_refresh_fails_closed_without_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_muse_refresh_fails_closed_without_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: None)
     result = release.Result()
     assert release.refresh_client("muse", result, dry_run=True) is False
     assert result.failed
 
 
-def test_muse_refresh_fails_closed_without_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_muse_refresh_fails_closed_without_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: "/fake/muse")
     result = release.Result()
     assert release.refresh_client("muse", result, dry_run=True) is False
@@ -4250,7 +5169,9 @@ def test_muse_refresh_replaces_complete_bundle_on_content_drift(
     skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text("# demo revised\n", encoding="utf-8")
     subprocess.run(["git", "add", "."], cwd=muse_repo, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "fixture update"], cwd=muse_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "fixture update"], cwd=muse_repo, check=True
+    )
 
     result = release.Result()
     assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is True
@@ -4277,11 +5198,13 @@ def test_muse_refresh_replaces_incomplete_bundle(
 def test_muse_refresh_fails_closed_when_install_command_fails(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1)
+    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True)
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    assert (
+        release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    )
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.bundle"] is True
     assert names["install.muse.install"] is False
@@ -4296,13 +5219,19 @@ def test_muse_bundle_completeness_rejects_structural_gaps(tmp_path: Path) -> Non
     bad_name = _write_muse_bundle(tmp_path / "bad-name", "9.9.9", name="other")
     ok, _ = release._muse_bundle_completeness(bad_name, "9.9.9")
     assert ok is False
-    missing_skill = _write_muse_bundle(tmp_path / "missing-skill", "9.9.9", skill_ok=False)
+    missing_skill = _write_muse_bundle(
+        tmp_path / "missing-skill", "9.9.9", skill_ok=False
+    )
     ok, detail = release._muse_bundle_completeness(missing_skill, "9.9.9")
     assert ok is False and "skills/demo/SKILL.md" in detail
-    missing_hook = _write_muse_bundle(tmp_path / "missing-hook", "9.9.9", hook="missing")
+    missing_hook = _write_muse_bundle(
+        tmp_path / "missing-hook", "9.9.9", hook="missing"
+    )
     ok, _ = release._muse_bundle_completeness(missing_hook, "9.9.9")
     assert ok is False
-    dark_hook = _write_muse_bundle(tmp_path / "dark-hook", "9.9.9", hook="non-executable")
+    dark_hook = _write_muse_bundle(
+        tmp_path / "dark-hook", "9.9.9", hook="non-executable"
+    )
     ok, _ = release._muse_bundle_completeness(dark_hook, "9.9.9")
     assert ok is False
     good = _write_muse_bundle(tmp_path / "good", "9.9.9")
@@ -4320,7 +5249,9 @@ def test_muse_deep_verify_passes_when_report_disk_and_content_agree(
         json.dumps({"version": "4.30.1"}), encoding="utf-8"
     )
     _seed_content(source, root)
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(root))
+    )
     monkeypatch.setattr(release, "installed_root", lambda client, version: root)
     result = release.Result()
     assert release.deep_verify("muse", "4.30.1", result, repo=source) is True
@@ -4335,8 +5266,12 @@ def test_muse_deep_verify_reads_the_muse_manifest(
     (root / ".codex-plugin" / "plugin.json").write_text(
         json.dumps({"version": "4.30.1"}), encoding="utf-8"
     )
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(root)))
-    monkeypatch.setattr(release, "installed_root", lambda client, version: tmp_path / "absent")
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(root))
+    )
+    monkeypatch.setattr(
+        release, "installed_root", lambda client, version: tmp_path / "absent"
+    )
     result = release.Result()
     assert release.deep_verify("muse", "4.30.1", result) is False
     names = {s.name: s.ok for s in result.steps}
@@ -4351,7 +5286,9 @@ def test_muse_refresh_syncs_recorded_source_then_updates(
     stage syncs the staged export into the recorded path and updates."""
     recorded = tmp_path / "bundles" / "v4.103.0"
     _write_muse_bundle(recorded, "9.9.8")
-    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded))
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
@@ -4385,11 +5322,15 @@ def test_muse_refresh_refuses_symlinked_recorded_source(
     target.mkdir()
     recorded = tmp_path / "recorded"
     recorded.symlink_to(target)
-    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded)))
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(source_path=str(recorded))
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    assert (
+        release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    )
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.sync"] is False
     assert target.is_dir() and recorded.is_symlink()
@@ -4398,11 +5339,15 @@ def test_muse_refresh_refuses_symlinked_recorded_source(
 def test_muse_refresh_refuses_relative_recorded_source(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, _muse_list_payload(source_path="relative/bundle"))
+    _fake_muse_binary(
+        tmp_path, monkeypatch, _muse_list_payload(source_path="relative/bundle")
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    assert (
+        release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    )
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.record"] is False
 
@@ -4410,11 +5355,18 @@ def test_muse_refresh_refuses_relative_recorded_source(
 def test_muse_refresh_fails_closed_when_record_is_unreadable(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(tmp_path / "missing" / "muse"))
+    monkeypatch.setattr(release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"})
+    monkeypatch.setattr(
+        release,
+        "resolve_client_binary",
+        lambda name: str(tmp_path / "missing" / "muse"),
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
-    assert release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    assert (
+        release.refresh_client("muse", result, dry_run=False, repo=muse_repo) is False
+    )
     names = {s.name: s.ok for s in result.steps}
     assert names["install.muse.record"] is False
 
@@ -4434,7 +5386,9 @@ def test_muse_deep_verify_checks_loaded_bytes_not_the_bundle(
         )
     _seed_content(source, bundle)
     _seed_content(source, loaded, drift=True)
-    monkeypatch.setattr(release, "client_reported_version", lambda client: ("4.30.1", str(loaded)))
+    monkeypatch.setattr(
+        release, "client_reported_version", lambda client: ("4.30.1", str(loaded))
+    )
     monkeypatch.setattr(release, "installed_root", lambda client, version: bundle)
     result = release.Result()
     assert release.deep_verify("muse", "4.30.1", result, repo=source) is False
@@ -4448,7 +5402,12 @@ def test_runner_failure_detail_names_unmatched_cases():
     receipt = {
         "ok": False,
         "cases": [
-            {"id": "release-version-metadata", "matched": True, "stderr": "", "stdout": ""},
+            {
+                "id": "release-version-metadata",
+                "matched": True,
+                "stderr": "",
+                "stdout": "",
+            },
             {
                 "id": "entrypoint-hooks-declared",
                 "matched": False,
@@ -4465,12 +5424,234 @@ def test_runner_failure_detail_names_unmatched_cases():
 
 
 def test_runner_failure_detail_reports_receipt_errors():
-    detail = release._runner_failure_detail(json.dumps({"errors": ["no manifest", "bad base"]}))
+    detail = release._runner_failure_detail(
+        json.dumps({"errors": ["no manifest", "bad base"]})
+    )
     assert detail == "no manifest; bad base"
 
 
 def test_runner_failure_detail_falls_back_past_bare_braces():
-    assert release._runner_failure_detail('{\n  boom\n}') == "boom"
+    assert release._runner_failure_detail("{\n  boom\n}") == "boom"
     assert release._runner_failure_detail("") == "acceptance runner failed"
     assert release._runner_failure_detail("{}\n}") == "acceptance runner failed"
     assert release._runner_failure_detail('{"ok": false}') == "acceptance runner failed"
+
+
+# Actual repository controls for multi-PR, one-release acceptance.
+def boundary_fixture(tmp_path):
+    repository = tmp_path / "boundary"
+    repository.mkdir()
+
+    def git(*args):
+        done = subprocess.run(
+            ["git", "-C", str(repository), *args],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    for key, value in (
+        ("user.name", "Boundary Fixture"),
+        ("user.email", "boundary@example.invalid"),
+        ("core.hooksPath", "/dev/null"),
+    ):
+        git("config", key, value)
+    write_manifests(repository, "1.0.0", "1.0.0", "1.0.0")
+    (repository / "original.py").write_text("value = 1\n")
+    git("add", "-A")
+    git("commit", "-qm", "initial release")
+    base = git("rev-parse", "HEAD")
+    git("tag", "v1.0.0")
+    remote = tmp_path / "published.git"
+    subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+    git("remote", "add", "origin", str(remote))
+    git(
+        "push",
+        "-q",
+        "origin",
+        "HEAD:refs/heads/main",
+        "HEAD:refs/heads/stable",
+        "refs/tags/v1.0.0",
+    )
+    write_manifests(repository, "2.0.0", "2.0.0", "2.0.0")
+    (repository / "feature.py").write_text("value = 2\n")
+    manifest = repository / release.ACCEPTANCE_MANIFEST
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("fixture\n")
+    git("add", "-A")
+    git("commit", "-qm", "pending feature")
+    pr_base = git("rev-parse", "HEAD")
+    (repository / "correction.py").write_text("value = 3\n")
+    git("add", "-A")
+    git("commit", "-qm", "corrective pull request")
+    return repository, git, base, pr_base, remote
+
+
+def test_release_boundary_corrective_pr_uses_published_release(tmp_path, monkeypatch):
+    repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
+    selected, detail = release.acceptance_change_base(repo)
+    assert selected == base, detail
+
+
+def test_release_boundary_unpublished_local_tag_cannot_shrink_universe(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
+    git("tag", "v1.5.0", pr_base)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    assert release.acceptance_change_base(repo)[0] == base
+
+
+def test_release_boundary_tag_race_uses_previous_publication(tmp_path, monkeypatch):
+    repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
+    git("tag", "v2.0.0")
+    git("push", "-q", "origin", "HEAD:refs/heads/stable", "refs/tags/v2.0.0")
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    assert release.acceptance_change_base(repo)[0] == base
+
+
+def test_release_boundary_first_release_without_published_authority_refuses(
+    tmp_path, monkeypatch
+):
+    repo, git, _, pr_base, _ = boundary_fixture(tmp_path)
+    git("remote", "remove", "origin")
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
+    selected, detail = release.acceptance_change_base(repo)
+    assert selected is None and "publication" in detail
+
+
+def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
+    runner = repo / release.ACCEPTANCE_RUNNER
+    runner.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        Path(__file__).resolve().parents[3] / release.ACCEPTANCE_RUNNER, runner
+    )
+    fixture = repo / "skills/synthesis-implementation-integrity/test_synthetic.py"
+    fixture.write_text("def test_value():\n    assert 2 + 2 == 4\n")
+    manifest = repo / release.ACCEPTANCE_MANIFEST
+    git("add", "-A")
+    paths = sorted(git("diff", "--cached", "--name-only", base).splitlines())
+    document = {
+        "schema": 2,
+        "suite": "synthetic-release",
+        "change_base_policy": "boundary-supplied-git-diff",
+        "membership": "closed",
+        "production_entry_point": "original.py",
+        "enforcing_boundary": "release publication",
+        "receipt_consumer": release.ACCEPTANCE_CONSUMER_ID,
+        "expected_status": "pass",
+        "metadata_class": "acceptance-test",
+        "unverified_remainder": "Native operation is not exercised",
+        "changed_surfaces": [
+            {"path": name, "cases": ["arithmetic-control"]} for name in paths
+        ],
+        "cases": [
+            {
+                "id": "arithmetic-control",
+                "fixture": "test_synthetic.py::test_value",
+                "control_class": "acceptance-test",
+                "motivating_defect": "multi-pr-one-release",
+            }
+        ],
+    }
+    manifest.write_text(yaml.safe_dump(document))
+    git("add", "-A")
+    git("commit", "-qm", "closed evidence")
+    accepted = release.consume_acceptance(repo, release.Result(), False)
+    assert accepted is not None
+    assert accepted.expected["change_base"] == base
+    assert "feature.py" in accepted.expected["changed_paths"]
+    assert accepted.boundary["review_base"] == pr_base
+    assert "feature.py" not in accepted.boundary["review_paths"]
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    # A changed manifest cannot reuse a receipt, even before a new commit.
+    manifest.write_text(manifest.read_text() + "# changed\n")
+    assert not release.revalidate_acceptance_authority(repo, accepted)[0]
+
+
+def test_release_boundary_proves_slice_reversion_outside_net_release(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
+    (repo / "feature.py").unlink()
+    git("add", "-A")
+    git("commit", "-qm", "reverted pending feature")
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
+    result, detail = release.acceptance_boundary(repo)
+    assert result is not None, detail
+    assert result["unchanged_review_paths"] == [
+        {"path": "feature.py", "tree_entry": ""}
+    ]
+
+
+def test_release_boundary_remote_retarget_expires_authority(tmp_path, monkeypatch):
+    repo, authority = accepted_publish_fixture(tmp_path)
+    assert release.revalidate_acceptance_authority(repo, authority)[0]
+    other = tmp_path / "other.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(tmp_path / "published.git"), str(other)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "set-url", "origin", str(other)], check=True
+    )
+    assert not release.revalidate_acceptance_authority(repo, authority)[0]
+
+
+def test_release_boundary_prior_tag_retarget_refuses(tmp_path, monkeypatch):
+    repo, git, base, pr_base, remote = boundary_fixture(tmp_path)
+    git("push", "-q", "origin", pr_base + ":refs/heads/pending")
+    subprocess.run(
+        ["git", "--git-dir", str(remote), "update-ref", "refs/tags/v1.0.0", pr_base],
+        check=True,
+    )
+    result, detail = release.acceptance_boundary(repo)
+    assert result is None and "immutable version tag" in detail
+
+
+def test_release_boundary_two_real_publication_targets_allow_only_same_accepted_head(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, remote = boundary_fixture(tmp_path)
+    other = tmp_path / "second.git"
+    subprocess.run(
+        ["git", "clone", "--bare", str(remote), str(other)],
+        check=True,
+        capture_output=True,
+    )
+    git("remote", "add", "second", str(other))
+    expected, detail = release.acceptance_expectation(
+        repo, base, "synthetic-transaction"
+    )
+    boundary, detail = release.acceptance_boundary(repo)
+    assert boundary is not None, detail
+    receipt = {
+        **expected,
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": release.ACCEPTANCE_CONSUMER_ID,
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+        "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
+        "cases": [{"id": "fixture", "matched": True}],
+    }
+    authority = release.AcceptanceAuthority(base, expected, receipt, boundary)
+    assert release.publish(repo, release.Result(), False, authority, "2.0.0")
+    for bare in (remote, other):
+        result = subprocess.check_output(
+            ["git", "--git-dir", str(bare), "rev-parse", "refs/heads/stable"], text=True
+        ).strip()
+        assert result == expected["change_head"]
+
+
+def test_publish_version_must_equal_accepted_boundary(tmp_path):
+    repo, authority = accepted_publish_fixture(tmp_path)
+    assert not release.publish(repo, release.Result(), True, authority, "3.0.0")

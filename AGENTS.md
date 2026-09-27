@@ -72,7 +72,7 @@ python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthe
 python3 -m pytest skills/synthesis-onboarding/scripts/ -q
 python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
 python3 skills/synthesis-onboarding/scripts/check_capabilities.py .
-python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q
+python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q
 python3 -m pytest skills/synthesis-agent-guardrails/tests/ -q
 python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
 python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py

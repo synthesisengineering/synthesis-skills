@@ -16,6 +16,10 @@ Harden raw-byte Git scanning, claim serialization, native process cleanup and
 runtime dependency verification without relaxing protective checks. Failed release
 checks retain their bounded diagnostic output instead of only a summary line.
 
+Verify explicit Muse plugin command support and complete, unambiguous installation
+inventory before staging. Unknown records and duplicate identities fail closed;
+current native lifecycle support remains a separate observation.
+
 This release also carries the previously integrated large-journal recovery and
 bounded exhaustive CI changes described in the 4.149.9 source candidate below.
 
