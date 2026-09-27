@@ -65,6 +65,10 @@ def no_real_cache_settle_delay(monkeypatch: pytest.MonkeyPatch) -> None:
 def hermetic_release_train(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep the suite off the developer's real coordination board and
     session identity; train tests point at their own fixtures."""
+    # Hosted acceptance has a real repository's event base. Synthetic Git
+    # repositories must bind their own ancestry; boundary tests set that base
+    # explicitly when testing an event. This does not alter the outer runner.
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
     monkeypatch.setenv(
         "SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "absent-board.md")
     )
