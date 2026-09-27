@@ -361,17 +361,25 @@ def test_release_owner_refuses_changed_source_before_acceptance(tmp_path, monkey
     assert not result.steps[-1].ok and "source changed" in result.steps[-1].detail
 
 
-def test_failed_required_check_preserves_diagnostic_output(tmp_path, monkeypatch, capsys):
+def test_failed_required_check_preserves_diagnostic_output(
+    tmp_path, monkeypatch, capsys
+):
     import release
 
     (tmp_path / "source").write_text("unchanged")
     monkeypatch.setattr(release, "REQUIRED_CHECKS", (("fixture", ["fixture"]),))
     stdout = "FAILED fixture::meaningful_case\ncausal detail\n1 failed, 1473 passed\n"
     stderr = "separate diagnostic\n"
-    monkeypatch.setattr(release, "bounded_run", lambda *a, **k:
-                        subprocess.CompletedProcess([], 1, stdout, stderr))
-    monkeypatch.setattr(release, "consume_acceptance", lambda *a:
-                        pytest.fail("failed checks consumed acceptance"))
+    monkeypatch.setattr(
+        release,
+        "bounded_run",
+        lambda *a, **k: subprocess.CompletedProcess([], 1, stdout, stderr),
+    )
+    monkeypatch.setattr(
+        release,
+        "consume_acceptance",
+        lambda *a: pytest.fail("failed checks consumed acceptance"),
+    )
     result = release.Result()
     assert release.run_required_checks(tmp_path, result, False) is None
     captured = capsys.readouterr().out
@@ -653,7 +661,8 @@ def test_failed_required_check_preserves_output_before_changed_source_refusal(
 
     monkeypatch.setattr(release, "bounded_run", failed_mutation)
     monkeypatch.setattr(
-        release, "consume_acceptance",
+        release,
+        "consume_acceptance",
         lambda *args: pytest.fail("changed source consumed acceptance"),
     )
     result = release.Result()
@@ -662,3 +671,174 @@ def test_failed_required_check_preserves_output_before_changed_source_refusal(
     assert "FIRST exact failing case" in captured and "separate diagnostic" in captured
     assert len(result.steps) == 1 and not result.steps[0].ok
     assert result.steps[0].detail == "source changed during required check"
+
+
+def test_required_check_retains_canonical_private_custody(tmp_path, monkeypatch):
+    temp = tmp_path / "temporary"
+    temp.mkdir()
+    alias = tmp_path / "aliased-temp"
+    alias.symlink_to(temp, target_is_directory=True)
+    monkeypatch.setattr(groups.tempfile, "tempdir", str(alias))
+    monkeypatch.setenv("TMPDIR", str(alias))
+    program = "import os,json,tempfile;from pathlib import Path;p=Path(tempfile.gettempdir());q=p/'retained-evidence';q.write_text('evidence');print(json.dumps({'temp':str(p),'cache':os.environ['PYTHONPYCACHEPREFIX'],'evidence':str(q)}))"
+    result = groups.bounded_run([sys.executable, "-c", program], tmp_path, 5)
+    assert result.returncode == 0, result.stdout
+    row = json.loads(result.stdout)
+    assert Path(row["temp"]) == Path(row["temp"]).resolve()
+    assert Path(row["evidence"]).read_text() == "evidence"
+    custody = Path(row["cache"]).parent
+    assert custody.is_dir(), "check owner deleted its retained custody"
+    assert json.loads((custody / "result.json").read_text())["returncode"] == 0
+
+
+def test_required_pytest_has_exclusive_retained_basetemp(tmp_path):
+    test = tmp_path / "test_evidence.py"
+    test.write_text(
+        "def test_capture(tmp_path):\n (tmp_path/'marker').write_text('retained')\n print('CAPTURE='+str(tmp_path))\n"
+    )
+    paths = []
+    for _ in range(2):
+        result = groups.bounded_run(
+            [sys.executable, "-m", "pytest", str(test), "-q", "-s"], tmp_path, 10
+        )
+        assert result.returncode == 0, result.stdout
+        line = next(x for x in result.stdout.splitlines() if x.startswith("CAPTURE="))
+        path = Path(line.split("=", 1)[1])
+        paths.append(path)
+        assert "pytest-of-" not in str(path)
+        assert (path / "marker").read_text() == "retained"
+    assert paths[0] != paths[1]
+    assert all((p / "marker").is_file() for p in paths)
+
+
+def test_nested_group_retains_inventory_and_fixtures(tmp_path):
+    root = synthetic_root(tmp_path)
+    (root / groups.AP / "test_brand_new_surface.py").write_text(
+        "def test_one(tmp_path):\n (tmp_path/'evidence').write_text('kept')\n"
+    )
+    code, payload = groups.run_group(root, "core")
+    assert code == 0, payload
+    custody = Path(payload["fixture_custody"])
+    assert custody.is_dir()
+    assert (custody / "inventory.json").is_file()
+    assert list(custody.rglob("evidence"))
+
+
+def test_actual_decision_filing_uses_canonical_temporary_boundary(
+    tmp_path, monkeypatch
+):
+    root = Path(__file__).resolve().parents[3]
+    temp = tmp_path / "temporary"
+    temp.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(temp, target_is_directory=True)
+    monkeypatch.setattr(groups.tempfile, "tempdir", str(alias))
+    monkeypatch.setenv("TMPDIR", str(alias))
+    target = root / "skills/synthesis-decision-packet/scripts/test_build_packet.py"
+    result = groups.bounded_run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(target) + "::test_file_into_writes_dated_spec_and_page",
+            "-q",
+        ],
+        root,
+        15,
+    )
+    assert result.returncode == 0, result.stdout
+
+
+def test_owned_pytest_cannot_remove_supplied_existing_directory(tmp_path):
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "sentinel").write_text("keep")
+    test = tmp_path / "test_one.py"
+    test.write_text("def test_one(): assert True\n")
+    result = groups.bounded_run(
+        [sys.executable, "-m", "pytest", str(test), "-q", "--basetemp", str(foreign)],
+        tmp_path,
+        5,
+    )
+    assert result.returncode == 0, result.stdout
+    assert (foreign / "sentinel").read_text() == "keep"
+    assert result.args[-2] == "--basetemp" and Path(result.args[-1]).parent == Path(
+        result.fixture_custody
+    )
+
+
+def test_owned_receipt_cannot_follow_replaced_custody(tmp_path):
+    outside = tmp_path / "foreign"
+    outside.mkdir()
+    (outside / "sentinel").write_text("keep")
+    program = (
+        "import os;from pathlib import Path;p=Path(os.environ['TMPDIR']).parent;p.rename(p.with_name(p.name+'-retained'));p.symlink_to("
+        + repr(str(outside))
+        + ",target_is_directory=True)"
+    )
+    result = groups.bounded_run([sys.executable, "-c", program], tmp_path, 5)
+    assert result.returncode != 0 and "custody" in result.stdout
+    assert sorted(p.name for p in outside.iterdir()) == ["sentinel"]
+
+
+def test_release_invocation_retains_separate_check_custody(tmp_path, monkeypatch):
+    import release
+
+    monkeypatch.setattr(
+        release,
+        "REQUIRED_CHECKS",
+        tuple((str(i), [sys.executable, "-c", 'print("checked")']) for i in range(2)),
+    )
+    monkeypatch.setattr(release, "consume_acceptance", lambda *a: "synthetic accepted")
+    calls = []
+    real = release.bounded_run
+
+    def record(*a, **kw):
+        outcome = real(*a, **kw)
+        calls.append(outcome)
+        return outcome
+
+    monkeypatch.setattr(release, "bounded_run", record)
+    assert (
+        release.run_required_checks(tmp_path, release.Result(), False)
+        == "synthetic accepted"
+    )
+    roots = [Path(x.fixture_custody) for x in calls]
+    assert (
+        len(roots) == 2 and roots[0] != roots[1] and roots[0].parent == roots[1].parent
+    )
+    assert all((p / "result.json").is_file() for p in roots)
+
+
+@pytest.mark.parametrize("code", [0, 7])
+def test_check_result_and_original_output_survive_exit(tmp_path, code):
+    result = groups.bounded_run(
+        [sys.executable, "-c", f"print('original evidence');raise SystemExit({code})"],
+        tmp_path,
+        5,
+    )
+    assert result.returncode == code
+    root = Path(result.fixture_custody)
+    assert (root / "output.log").read_text() == "original evidence\n"
+    receipt = json.loads((root / "result.json").read_text())
+    assert receipt["returncode"] == code
+    assert receipt["executed_command"] == result.args
+
+
+def test_pytest_nested_owned_process_retains_distinct_custody(tmp_path):
+    program = """import sys,json
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+import release_check_groups as g
+r=g.bounded_run([sys.executable,'-c',"print('nested')"],Path.cwd(),5)
+print(json.dumps({'path':r.fixture_custody,'code':r.returncode}))
+"""
+    result = groups.bounded_run(
+        [sys.executable, "-c", program, str(Path(groups.__file__).parent)], tmp_path, 10
+    )
+    assert result.returncode == 0, result.stdout
+    row = json.loads(result.stdout)
+    nested = Path(row["path"])
+    outer = Path(result.fixture_custody)
+    assert nested != outer and outer in nested.parents
+    assert (nested / "result.json").is_file() and (outer / "result.json").is_file()

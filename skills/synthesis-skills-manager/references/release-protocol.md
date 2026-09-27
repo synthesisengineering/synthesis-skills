@@ -168,3 +168,26 @@ it is not an OS isolation replacement and does not claim custody over processes
 that deliberately escape their session. Executable consumer isolation stays
 mandatory. Reports include each selected test phase and durations so slow groups
 can be diagnosed without raising timeouts or dropping coverage.
+
+
+## Required-check fixture custody
+
+The ordinary release owner creates a fresh canonical private custody directory
+for every required-check invocation. Its existing bounded process owner gives
+each check its own retained temporary root, pytest basetemp, bytecode-cache
+namespace, exact command/result receipt and bounded output log. Nested grouped
+checks retain their collection inventory and child custody beneath that owner.
+The release log prints these locations on success and failure. No release result
+implicitly deletes them; evidence reconciliation is a separate owner action.
+
+The owner canonicalizes only its temporary scratch base, including platform
+aliases such as macOS `/var`; production inputs retain their existing no-follow
+checks. A supplied pytest basetemp is recorded but replaced with a freshly owned
+one, so pytest initialization cannot erase an existing or foreign directory.
+Test selection, source checks, failure status, process/output/time bounds, native
+sandbox requirements and acceptance/publication gates remain unchanged.
+
+This retains the release owner's fixture trees and reports. A test that
+intentionally removes its own fixture content has exercised that deletion; the
+owner does not claim those deleted bytes survive. Missing historical fixture
+bytes cannot be reconstructed by a later successful run.

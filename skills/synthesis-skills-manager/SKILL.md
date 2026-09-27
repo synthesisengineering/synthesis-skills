@@ -5,12 +5,16 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.9"
+  version: "2.8.10"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.8.10** retains canonical private fixture custody for every release
+check, including nested checks, with bounded output and exact command receipts.
+Production path protections and the full required test catalog remain enforced.
 
 **Version 2.8.9** refuses ambiguous Muse installation inventories and unsupported
 plugin command grammar before staging. Native hook support remains separately

@@ -63,7 +63,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
-from release_check_groups import bounded_run, source_digest
+from release_check_groups import bounded_run, fixture_root, source_digest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(
@@ -4236,7 +4236,12 @@ def publish(
 def run_required_checks(
     repo: Path, result: Result, dry_run: bool
 ) -> AcceptanceAuthority | None:
+    check_env = None
     try:
+        if not dry_run and REQUIRED_CHECKS:
+            invocation = fixture_root("synthesis-release-invocation-")
+            check_env = dict(os.environ, TMPDIR=str(invocation))
+            print(f"Required-check invocation custody: {invocation}", flush=True)
         pinned_source = source_digest(repo) if not dry_run and REQUIRED_CHECKS else None
     except (OSError, ValueError) as error:
         result.add("checks.source", False, str(error))
@@ -4248,7 +4253,10 @@ def run_required_checks(
         try:
             if source_digest(repo) != pinned_source:
                 raise ValueError("source changed between required checks")
-            completed = bounded_run(command, cwd=repo)
+            completed = bounded_run(command, cwd=repo, env=check_env)
+            custody = getattr(completed, "fixture_custody", None)
+            if custody:
+                print(f"Required-check custody ({name}): {custody}", flush=True)
             if completed.returncode != 0:
                 # bounded_run already limits output bytes and owns process cleanup.
                 # Retain its actual failure evidence in the publisher's captured

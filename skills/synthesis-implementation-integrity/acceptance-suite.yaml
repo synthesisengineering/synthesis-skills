@@ -356,25 +356,6 @@ changed_surfaces:
   - inherited-recovery-076
 - path: AGENTS.md
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -402,27 +383,29 @@ changed_surfaces:
   - muse-ci-membership-01
   - muse-ci-membership-02
   - muse-ci-membership-03
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: CHANGELOG.md
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
+  - fixture-custody-1c87a46f5f7b
+  - fixture-custody-31eca9496bc0
   - inherited-journal-01
   - inherited-journal-02
   - inherited-journal-03
@@ -532,27 +515,29 @@ changed_surfaces:
   - muse-inventory-07
   - muse-inventory-08
   - muse-inventory-09
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: README.md
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
+  - fixture-custody-1c87a46f5f7b
+  - fixture-custody-31eca9496bc0
   - inherited-journal-01
   - inherited-journal-02
   - inherited-journal-03
@@ -662,6 +647,25 @@ changed_surfaces:
   - muse-inventory-07
   - muse-inventory-08
   - muse-inventory-09
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: skills/synthesis-agent-conformance/SKILL.md
   cases:
   - conformance-01
@@ -2254,6 +2258,7 @@ changed_surfaces:
   - acquisition-03
 - path: skills/synthesis-daily-rituals/scripts/test_ritual_custody.py
   cases:
+  - fixture-custody-2f7bbabc9bd1
   - ritual-04
   - ritual-05
   - ritual-06
@@ -2323,6 +2328,10 @@ changed_surfaces:
 - path: skills/synthesis-decision-packet/scripts/test_browser_packet.py
   cases:
   - packet-03
+- path: skills/synthesis-decision-packet/scripts/test_build_packet.py
+  cases:
+  - fixture-custody-4320cb36ac6c
+  - fixture-custody-e02360a103df
 - path: skills/synthesis-decision-packet/scripts/test_packet_causal.py
   cases:
   - packet-01
@@ -2469,31 +2478,17 @@ changed_surfaces:
   - record-transaction-06
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
-  - record-transaction-01
-  - record-transaction-02
-  - record-transaction-03
-  - record-transaction-04
-  - record-transaction-05
-  - record-transaction-06
+  - fixture-custody-1c87a46f5f7b
+  - fixture-custody-2f7bbabc9bd1
+  - fixture-custody-31eca9496bc0
+  - fixture-custody-4320cb36ac6c
+  - fixture-custody-66adca0339fd
+  - fixture-custody-68afe2e0310f
+  - fixture-custody-8a3081a53550
+  - fixture-custody-b30028264c4b
+  - fixture-custody-bccd653b8823
+  - fixture-custody-e02360a103df
+  - fixture-custody-ffe9bb26d6fe
   - inherited-journal-01
   - inherited-journal-02
   - inherited-journal-03
@@ -2594,6 +2589,31 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - record-transaction-01
+  - record-transaction-02
+  - record-transaction-03
+  - record-transaction-04
+  - record-transaction-05
+  - record-transaction-06
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: skills/synthesis-implementation-integrity/references/verification-custody.md
   cases:
   - release-01
@@ -4425,25 +4445,8 @@ changed_surfaces:
   - publication-07
 - path: skills/synthesis-skills-manager/SKILL.md
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
+  - fixture-custody-1c87a46f5f7b
+  - fixture-custody-31eca9496bc0
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4477,27 +4480,29 @@ changed_surfaces:
   - muse-inventory-07
   - muse-inventory-08
   - muse-inventory-09
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: skills/synthesis-skills-manager/references/release-protocol.md
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
+  - fixture-custody-1c87a46f5f7b
+  - fixture-custody-31eca9496bc0
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4522,27 +4527,28 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: skills/synthesis-skills-manager/scripts/release.py
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
-  - release-15
-  - release-16
-  - release-17
-  - release-18
-  - release-19
+  - fixture-custody-1c87a46f5f7b
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4567,20 +4573,18 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
-  - muse-inventory-01
-  - muse-inventory-02
-  - muse-inventory-03
-  - muse-inventory-04
-  - muse-inventory-05
-  - muse-inventory-06
-  - muse-inventory-07
-  - muse-inventory-08
-  - muse-inventory-09
   - muse-ci-membership-01
   - muse-ci-membership-02
   - muse-ci-membership-03
-- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
-  cases:
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
   - release-01
   - release-02
   - release-03
@@ -4600,6 +4604,15 @@ changed_surfaces:
   - release-17
   - release-18
   - release-19
+- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
+  cases:
+  - fixture-custody-31eca9496bc0
+  - fixture-custody-66adca0339fd
+  - fixture-custody-68afe2e0310f
+  - fixture-custody-8a3081a53550
+  - fixture-custody-b30028264c4b
+  - fixture-custody-bccd653b8823
+  - fixture-custody-ffe9bb26d6fe
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4624,6 +4637,25 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-15
+  - release-16
+  - release-17
+  - release-18
+  - release-19
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - release-15
@@ -4693,9 +4725,8 @@ changed_surfaces:
   - muse-ci-membership-03
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
-  - release-16
-  - release-17
-  - release-18
+  - fixture-custody-8a3081a53550
+  - fixture-custody-b30028264c4b
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4720,6 +4751,9 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - release-16
+  - release-17
+  - release-18
 - path: skills/synthesis-slack-sync/SKILL.md
   cases:
   - acquisition-01
@@ -6076,3 +6110,71 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
   motivating_defect: New native inventory regressions must be included in both complete
     CI and production release gates.
+- id: fixture-custody-2f7bbabc9bd1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_custody.py::test_detached_history_parent_refuses_without_recreating_or_redirecting
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: detached history parent refuses without recreating
+    or redirecting'
+- id: fixture-custody-4320cb36ac6c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-decision-packet/scripts/test_build_packet.py::test_file_into_writes_dated_spec_and_page
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: file into writes dated spec and page'
+- id: fixture-custody-e02360a103df
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_decision_filing_uses_canonical_temporary_boundary
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: actual decision filing uses canonical temporary
+    boundary'
+- id: fixture-custody-1c87a46f5f7b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_release_invocation_retains_separate_check_custody
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: release invocation retains separate check custody'
+- id: fixture-custody-31eca9496bc0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_nested_group_retains_inventory_and_fixtures
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: nested group retains inventory and fixtures'
+- id: fixture-custody-b30028264c4b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_required_check_retains_canonical_private_custody
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: required check retains canonical private custody'
+- id: fixture-custody-68afe2e0310f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_required_pytest_has_exclusive_retained_basetemp
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: required pytest has exclusive retained basetemp'
+- id: fixture-custody-8a3081a53550
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_owned_receipt_cannot_follow_replaced_custody
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: owned receipt cannot follow replaced custody'
+- id: fixture-custody-ffe9bb26d6fe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_owned_pytest_cannot_remove_supplied_existing_directory
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: owned pytest cannot remove supplied existing directory'
+- id: fixture-custody-66adca0339fd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_check_result_and_original_output_survive_exit
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: check result and original output survive exit'
+- id: fixture-custody-bccd653b8823
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_pytest_nested_owned_process_retains_distinct_custody
+  motivating_defect: 'Ordinary release validation must preserve isolated evidence
+    and production path protection: pytest nested owned process retains distinct custody'

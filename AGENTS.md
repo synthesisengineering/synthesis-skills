@@ -95,6 +95,12 @@ The executable autopilot consumers require OS isolation: native macOS sandbox
 or bubblewrap on Linux. CI installs bubblewrap explicitly. Missing isolation is
 a test failure; do not skip or execute the consumers without it.
 
+Ordinary release checks retain a canonical private fixture directory per invocation
+and check, including nested grouped owners. The release log prints those paths;
+keep them until evidence has been verified and explicitly reconciled. Pytest
+basetemps are newly owned per check, never reused or automatically pruned.
+Production path-alias restrictions remain unchanged.
+
 Complete-page decision-packet acceptance requires Chromium on PATH or the
 `SYNTHESIS_TEST_CHROMIUM` executable path. CI binds its available browser before
 running acceptance. A missing browser fails the required checks; HTML parsing

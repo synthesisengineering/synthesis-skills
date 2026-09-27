@@ -362,7 +362,10 @@ def test_reader_contract_satisfied_raises_no_reader_findings():
 
 
 def test_strict_reader_flag_refuses_an_alien_packet(tmp_path=None):
-    import tempfile, subprocess, json as _json, pathlib as _pl
+    import tempfile
+    import subprocess
+    import json as _json
+    import pathlib as _pl
     with tempfile.TemporaryDirectory() as td:
         sp = _pl.Path(td) / "s.json"
         sp.write_text(_json.dumps(spec()))
@@ -644,7 +647,7 @@ def compliant_spec():
 
 def test_file_into_writes_dated_spec_and_page():
     with tempfile.TemporaryDirectory() as td:
-        td = pathlib.Path(td)
+        td = pathlib.Path(td).resolve()  # fixture spelling; production rejects aliases
         sp = td / "s.json"
         s = compliant_spec()
         sp.write_text(json.dumps(s), encoding="utf-8")

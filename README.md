@@ -24,6 +24,10 @@ message guards, exact session coordination and installed runtime verification.
 
 Muse refresh now verifies command support and unambiguous installation inventory
 before staging; unsupported native integration is reported without replacement.
+Release validation now retains canonical private temporary files, test inventories
+and command receipts after success or failure, without relaxing production path
+protections or allowing pytest to remove a supplied existing directory.
+
 
 
 Release **4.149.9** adds bounded authenticated journal storage for large

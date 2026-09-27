@@ -20,6 +20,10 @@ Verify explicit Muse plugin command support and complete, unambiguous installati
 inventory before staging. Unknown records and duplicate identities fail closed;
 current native lifecycle support remains a separate observation.
 
+Release validation now retains canonical private temporary files, test inventories
+and command receipts after success or failure, without relaxing production path
+protections or allowing pytest to remove a supplied existing directory.
+
 This release also carries the previously integrated large-journal recovery and
 bounded exhaustive CI changes described in the 4.149.9 source candidate below.
 
