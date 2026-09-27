@@ -31,9 +31,10 @@ from test_runtime_payload import LEGACY_NUDGE
 ROOT = Path(__file__).resolve().parents[3]
 GIT_PAYLOADS = {
     **{"skills/synthesis-git-hooks/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
-       for name in ("pre-commit", "commit-msg", "_load_config.py")},
+       for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")},
     **{"skills/synthesis-project-management/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
-       for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py")},
+       for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
+    "skills/synthesis-agent-conformance/scripts/live_receipt.py": (".synthesis/git-hooks/live_receipt.py", 0o755),
     "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
         (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
 }
@@ -41,7 +42,7 @@ STALE_RELATIVE = "skills/synthesis-project-management/scripts/peer_addressing.py
 MESSAGE_RELATIVE = "skills/synthesis-message-guard/scripts/message_guard.py"
 DAY_END_RELATIVES = {
     name: "skills/synthesis-daily-rituals/scripts/" + name
-    for name in ("day-end", "day-end-nudge.sh", "ritual_state.py")
+    for name in ("day-end", "day-end-nudge.sh", "ritual_state.py", "ritual_workers.py", "credential_paths.py")
 }
 
 
@@ -294,19 +295,31 @@ def hook_config(event, command):
     return {"hooks": {event: [{"matcher": ".*", "hooks": [{"type": "command", "command": command}]}]}}
 
 
-def test_independently_wired_message_guard_updates_and_runs_real_doctor(machine):
+@pytest.mark.parametrize("configured", [True, False])
+def test_independently_wired_message_guard_updates_and_runs_real_doctor(machine, configured):
     target = machine.home / ".synthesis/message-guard/message_guard.py"
     write(target, (machine.old / MESSAGE_RELATIVE).read_bytes(), 0o755)
     patterns = machine.home / ".synthesis/message-guard/patterns.json"
-    write(patterns, (ROOT / "skills/synthesis-message-guard/patterns.example.json").read_bytes())
+    config = json.loads((ROOT / "skills/synthesis-message-guard/patterns.example.json").read_bytes())
+    if configured:
+        config["message_capabilities"] = [{"tool_names": ["mcp__fixture__send_message"], "channel": "human-text"}]
+    write(patterns, json.dumps(config))
     protected = [patterns]
-    for client, name in (("claude", "settings.json"), ("codex", "hooks.json")):
-        path = machine.home / ("." + client) / name
+    # Cover every client inspected by the real shared-runtime doctor. Host
+    # PATH may include Muse even though this fixture has an isolated HOME.
+    for relative in (".claude/settings.json", ".codex/hooks.json", ".config/muse/settings.json"):
+        path = machine.home / relative
         write(path, json.dumps(hook_config("PreToolUse", "python3 " + shlex.quote(str(target)) + " --gate")))
         protected.append(path)
     before = files_snapshot(protected)
     assert onboard.runtime_components(onboard.Receipts(), machine.desired) == {"git-hooks", "message-guard"}
-    assert synthesis_cli.main(["update", "--json"], state=machine.state) == 0
+    result = synthesis_cli.main(["update", "--json"], state=machine.state)
+    if not configured:
+        assert result != 0
+        assert target.read_bytes() == (machine.old / MESSAGE_RELATIVE).read_bytes()
+        assert files_snapshot(protected) == before
+        return
+    assert result == 0
     assert target.read_bytes() == (machine.current / MESSAGE_RELATIVE).read_bytes()
     assert files_snapshot(protected) == before
     assert onboard._protective_doctors({"git-hooks", "message-guard"})[0] is True
@@ -427,7 +440,7 @@ def historical_day_end(machine, monkeypatch):
         write(runtime / name, (root / DAY_END_RELATIVES[name]).read_bytes(), 0o755)
     assert hashlib.sha256((runtime / "day-end-nudge.sh").read_bytes()).hexdigest() == (
         "833cdc1330de9ce120a93969ee822a240c170fc702e8208c09f4d9218c18de9a")
-    for name in ("day-end-nudge.sh", "ritual_state.py"):
+    for name in ("day-end-nudge.sh", "ritual_state.py", "ritual_workers.py", "credential_paths.py"):
         write(root / DAY_END_RELATIVES[name], (ROOT / DAY_END_RELATIVES[name]).read_bytes(), 0o755)
     for client in ("claude", "codex"):
         write(root / ("." + client + "-plugin/plugin.json"),
@@ -474,7 +487,7 @@ def assert_day_end_closure(case):
         env={**os.environ, "RITUAL_STATE_DIR": str(case.machine.home / ".synthesis/rituals")})
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["open_workdays"] == []
-    assert len(onboard.Receipts().data["runtime_payloads"]["files"]) == 3
+    assert len(onboard.Receipts().data["runtime_payloads"]["files"]) == len(DAY_END_RELATIVES)
 
 
 def readonly_tree_snapshot(root):

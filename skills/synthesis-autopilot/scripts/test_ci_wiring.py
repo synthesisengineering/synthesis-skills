@@ -1,5 +1,11 @@
 """The full autopilot suite is enforced by local and hosted release contracts."""
 from pathlib import Path
+import importlib.util
+import json
+import sys
+from types import SimpleNamespace
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -15,16 +21,6 @@ def test_all_release_contracts_run_the_whole_autopilot_suite():
         assert 'python ' + command in (ROOT / '.github/workflows/validate.yml').read_text()
         assert commands['pytest.autopilot.' + group] == ['python3', *command.split()]
 
-
-
-"""Candidate additions for synthesis-autopilot/scripts/test_ci_wiring.py."""
-import importlib.util
-import json
-from pathlib import Path
-import sys
-from types import SimpleNamespace
-
-import pytest
 
 
 @pytest.fixture
@@ -45,7 +41,8 @@ def test_ci_sandbox_preflight_is_required_before_consumer_tests():
     steps = job['steps']
     setup = next(step for step in steps if step.get('name') == 'Install OS isolation for executable consumer acceptance')
     assert setup['run'].splitlines() == [
-        'sudo apt-get update && sudo apt-get install -y bubblewrap',
+        'sudo apt-get update && sudo apt-get install -y bubblewrap zsh',
+        '/bin/zsh --version',
         'python .github/scripts/check-ci-sandbox.py',
         'synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"',
         'test -n "$synthesis_ci_chromium"',

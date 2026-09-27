@@ -75,7 +75,7 @@ DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 # board turns check-staged into a fail-closed commit boundary. The source files
 # remain canonical in synthesis-project-management; source_engine_path maps the
 # dependency instead of duplicating it in this skill.
-CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py")
+CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")
 COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "claim_scope.py",
@@ -92,6 +92,10 @@ COORDINATION_ENGINE_FILES = (
     "fleet_handoff.py",
     "fleet_logical.py",
     "fleet_subscriptions.py",
+    "coordination_process.py",
+    "coordination_lock.py",
+    "project_recipient.py",
+    "live_receipt.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
@@ -961,7 +965,7 @@ def _grep_validates(pattern: str, executable: Optional[str] = None) -> Optional[
     """Return an error string if `grep -E` rejects the pattern, else None."""
     try:
         proc = subprocess.run(
-            ["grep", "-E", pattern],
+            ["grep", "-E", "-e", pattern],
             input="",
             capture_output=True,
             text=True,
@@ -987,7 +991,7 @@ def source_engine_path(path: Path, name: str) -> Path:
         return local
     return (
         path.parents[1]
-        / "synthesis-project-management"
+        / ("synthesis-agent-conformance" if name == "live_receipt.py" else "synthesis-project-management")
         / "scripts"
         / name
     )

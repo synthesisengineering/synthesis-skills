@@ -79,7 +79,14 @@ DRIVER = """<script>
   }
   var result = {errors: packetErrors, snapshots: snapshots,
     spec: JSON.parse(document.getElementById('spec').textContent),
-    injectedScriptRan: window.packetFixtureRan === true};
+    injectedScriptRan: window.packetFixtureRan === true,
+    prior: rows().map(function (r) {
+      var p = r.querySelector('.prior-position');
+      return p ? {statement: p.querySelector('.prior-statement').textContent,
+        source: p.querySelector('.prior-source').textContent,
+        text: p.textContent,
+        beforeContext: !!(p.compareDocumentPosition(r.querySelector('.rtext')) & Node.DOCUMENT_POSITION_FOLLOWING)} : null;
+    })};
   var out = document.createElement('pre');
   out.id = 'packet-browser-result'; out.textContent = JSON.stringify(result);
   document.body.appendChild(out);
@@ -89,6 +96,12 @@ DRIVER = """<script>
 
 CASES = [
     pytest.param({}, id="ordinary-control"),
+    pytest.param({"prior_position": {
+        "statement": "Exact prior position.\n</script><script>window.packetFixtureRan=true</script>",
+        "source_ref": "fixture.txt:3",
+        "evidence_for": [{"statement": "Synthetic support", "source_ref": "for.txt:1"}],
+        "evidence_against": [{"statement": "Synthetic contrary result", "source_ref": "against.txt:2"}]}},
+        id="exact-prior-position"),
     pytest.param({"id": "__proto__"}, id="prototype-id"),
     pytest.param({"id": "constructor"}, id="constructor-id"),
     pytest.param({"id": "Q\f0"}, id="formfeed-id"),
@@ -125,6 +138,14 @@ def test_generated_page_dom_and_record_agree(tmp_path, chromium, change):
     (tmp_path / "observed.json").write_text(json.dumps(observed, indent=2), encoding="utf-8")
     assert observed["errors"] == []
     assert not observed["injectedScriptRan"]
+    if "prior_position" in change:
+        prior = change["prior_position"]
+        assert observed["prior"][0]["statement"] == prior["statement"]
+        assert observed["prior"][0]["source"] == "Source: " + prior["source_ref"]
+        assert observed["prior"][0]["beforeContext"] is True
+        assert "Synthetic support" in observed["prior"][0]["text"]
+        assert "Synthetic contrary result" in observed["prior"][0]["text"]
+        assert rr.parse_summary(observed["snapshots"][0]["summary"], current)["rulings"][0]["prior_position"] == prior
     assert observed["spec"] == {"storage_key": bp.slugify(current["title"]), "filters": [], **current}
     snapshots = observed["snapshots"]
     assert len(snapshots) == 6

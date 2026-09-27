@@ -110,6 +110,11 @@ def _home_path_tokens(line: str, home: str) -> list[str]:
             index = line.find(prefix, start)
             if index < 0:
                 break
+            # A nested /home/ or /Users/ component is not a new absolute
+            # path. Keep the full actual home token and refuse real roots.
+            if index and line[index - 1] not in " \t\"':=([{,":
+                start = index + len(prefix)
+                continue
             end = index + len(prefix)
             while end < len(line) and line[end] not in "\"'\n":
                 end += 1

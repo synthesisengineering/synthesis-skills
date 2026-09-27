@@ -18,10 +18,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install pytest pyyaml jsonschema
+      - run: python -m pip install pytest pyyaml jsonschema httpx
       - name: Install OS isolation for executable consumer acceptance
         run: |
-          sudo apt-get update && sudo apt-get install -y bubblewrap
+          sudo apt-get update && sudo apt-get install -y bubblewrap zsh
+          /bin/zsh --version
           python .github/scripts/check-ci-sandbox.py
           synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
           test -n "$synthesis_ci_chromium"
@@ -36,6 +37,7 @@ jobs:
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
+      - run: python -m pytest skills/synthesis-meeting-prep/scripts/ -q
       - run: python -m pytest skills/synthesis-model-tiers/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
@@ -79,12 +81,13 @@ jobs:
       - run: python -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python skills/synthesis-onboarding/scripts/check_capabilities.py .
-      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q
+      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q
       - run: python -m pytest skills/synthesis-agent-guardrails/tests/ -q
       # Standalone runner, not pytest: the file must stay executable from inside a
       # deployed skill directory, where pytest is not guaranteed to be installed.
       - run: python skills/synthesis-meeting-transcripts/test_verify_transcripts.py
       - run: python skills/synthesis-meeting-transcripts/test_transcript_primary.py
+      - run: python -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py -q
       - run: sh -n install.sh onboard.sh tests/test_installer.sh
       - run: ./tests/test_installer.sh
       - run: python -m compileall -q skills

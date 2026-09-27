@@ -1,4 +1,5 @@
 """Installed execution uses one verified release and one recorded interpreter."""
+
 import hashlib
 import json
 import os
@@ -23,28 +24,43 @@ def active(tmp_path, monkeypatch):
     root = tmp_path / "generation"
     target = root / "skills" / SCRIPT
     target.parent.mkdir(parents=True)
-    target.write_text("import sys\nsys.stdout.buffer.write(sys.stdin.buffer.read())\nsys.exit(int(sys.argv[1]) if len(sys.argv) > 1 else 0)\n")
+    target.write_text(
+        "import sys\nsys.stdout.buffer.write(sys.stdin.buffer.read())\nsys.exit(int(sys.argv[1]) if len(sys.argv) > 1 else 0)\n"
+    )
     for client in ("claude", "codex"):
         manifest = root / ("." + client + "-plugin") / "plugin.json"
         manifest.parent.mkdir()
-        manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}))
+        manifest.write_text(
+            json.dumps({"name": "synthesis-skills", "version": "9.8.7"})
+        )
     pointer = tmp_path / "state" / "active-release.json"
     pointer.parent.mkdir()
     pointer.with_name(pointer.name + ".lock").touch()
     data = {
-        "schema_version": 1, "version": "9.8.7", "channel": "stable", "ref": "stable",
-        "commit": "1" * 40, "tree": "2" * 40,
+        "schema_version": 1,
+        "version": "9.8.7",
+        "channel": "stable",
+        "ref": "stable",
+        "commit": "1" * 40,
+        "tree": "2" * 40,
         "content_digest": system_contract.canonical_tree_digest(root),
-        "digest_algorithm": "sha256-tree-v1", "tree_policy": "regular-files-and-directories-no-links-v1",
-        "source_url": "https://example.test/skills.git", "resolved_at": "2026-01-01T00:00:00Z",
-        "release_root": str(root), "interpreter": runtime.interpreter_pin(),
+        "digest_algorithm": "sha256-tree-v1",
+        "tree_policy": "regular-files-and-directories-no-links-v1",
+        "source_url": "https://example.test/skills.git",
+        "resolved_at": "2026-01-01T00:00:00Z",
+        "release_root": str(root),
+        "interpreter": runtime.interpreter_pin(),
     }
     launcher = pointer.parent.parent / "bin/synthesis"
     launcher.parent.mkdir()
     content = system_contract.launcher_bytes(pointer, data["interpreter"])
     launcher.write_bytes(content)
     launcher.chmod(0o755)
-    data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
+    data["launcher"] = {
+        "path": str(launcher),
+        "runtime_schema": 1,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
     pointer.write_text(json.dumps(data))
     return pointer, root, data
 
@@ -60,18 +76,27 @@ def test_setup_records_current_absolute_interpreter_identity():
     assert Path(pin["executable"]).is_absolute()
     assert Path(pin["resolved_executable"]) == Path(pin["executable"]).resolve()
     assert pin["version"] == ".".join(str(v) for v in sys.version_info[:3])
-    assert pin["sha256"] == hashlib.sha256(Path(pin["resolved_executable"]).read_bytes()).hexdigest()
+    assert (
+        pin["sha256"]
+        == hashlib.sha256(Path(pin["resolved_executable"]).read_bytes()).hexdigest()
+    )
     assert runtime.verify_interpreter(pin) == pin["executable"]
 
 
 def test_macos_pin_uses_prescribed_framework_and_refuses_other_version(monkeypatch):
     monkeypatch.setattr(runtime.sys, "platform", "darwin")
-    assert runtime.selected_interpreter() == "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+    assert (
+        runtime.selected_interpreter()
+        == "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
+    )
     with pytest.raises(runtime.RuntimeContractError, match="3.12.3"):
         runtime.validate_python_version("3.14.0", platform="darwin")
 
 
-@pytest.mark.parametrize("field,value", [("sha256", "0" * 64), ("version", "3.14.0"), ("executable", "python3")])
+@pytest.mark.parametrize(
+    "field,value",
+    [("sha256", "0" * 64), ("version", "3.14.0"), ("executable", "python3")],
+)
 def test_interpreter_drift_or_unpinned_path_refuses(active, field, value):
     pointer, _, data = active
     replace(pointer, data, interpreter={**data["interpreter"], field: value})
@@ -82,7 +107,12 @@ def test_interpreter_drift_or_unpinned_path_refuses(active, field, value):
 def test_active_release_is_verified_and_uses_current_pinned_executable(active):
     pointer, root, _ = active
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, SCRIPT, ["--example"]) == [sys.executable, "-B", str(root / "skills" / SCRIPT), "--example"]
+    assert runtime.command(verified, SCRIPT, ["--example"]) == [
+        sys.executable,
+        "-B",
+        str(root / "skills" / SCRIPT),
+        "--example",
+    ]
 
 
 def test_tree_hash_contract_matches_the_existing_release_format(active):
@@ -90,7 +120,17 @@ def test_tree_hash_contract_matches_the_existing_release_format(active):
     assert runtime.tree_digest(root) == data["content_digest"]
 
 
-@pytest.mark.parametrize("change", ["missing", "invalid-json", "wrong-root", "tree-drift", "symlink-root", "symlink-file"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing",
+        "invalid-json",
+        "wrong-root",
+        "tree-drift",
+        "symlink-root",
+        "symlink-file",
+    ],
+)
 def test_unverified_release_never_becomes_an_execution_root(active, tmp_path, change):
     pointer, root, data = active
     if change == "missing":
@@ -113,7 +153,15 @@ def test_unverified_release_never_becomes_an_execution_root(active, tmp_path, ch
         runtime.verified_release(pointer)
 
 
-@pytest.mark.parametrize("script", ["../outside.py", "/tmp/outside.py", "synthesis-repo-guard/../repo_sync_check.py", "unknown/script.py"])
+@pytest.mark.parametrize(
+    "script",
+    [
+        "../outside.py",
+        "/tmp/outside.py",
+        "synthesis-repo-guard/../repo_sync_check.py",
+        "unknown/script.py",
+    ],
+)
 def test_only_declared_contained_public_entrypoints_are_executable(active, script):
     pointer, _, _ = active
     verified = runtime.verified_release(pointer)
@@ -145,16 +193,23 @@ def test_hostile_path_cannot_choose_child_interpreter(active, tmp_path, monkeypa
     fake.write_text("#!/bin/sh\nprintf hijacked\nexit 0\n")
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", str(hostile))
-    result = runtime.execute(runtime.verified_release(pointer), SCRIPT, [], b"expected", timeout=2)
+    result = runtime.execute(
+        runtime.verified_release(pointer), SCRIPT, [], b"expected", timeout=2
+    )
     assert result.stdout == b"expected"
 
 
 def test_child_timeout_and_start_failure_are_not_normalized(active, monkeypatch):
     pointer, _, _ = active
     verified = runtime.verified_release(pointer)
-    for error in (subprocess.TimeoutExpired(["fixture"], 0.01), OSError("injected start failure")):
+    for error in (
+        subprocess.TimeoutExpired(["fixture"], 0.01),
+        OSError("injected start failure"),
+    ):
+
         def fail(*args, **kwargs):
             raise error
+
         monkeypatch.setattr(runtime.subprocess, "run", fail)
         with pytest.raises(runtime.RuntimeContractError):
             runtime.execute(verified, SCRIPT, [], b"", timeout=0.01)
@@ -167,29 +222,65 @@ def managed_fixture(active):
     content = system_contract.launcher_bytes(pointer, data["interpreter"])
     launcher.write_bytes(content)
     launcher.chmod(0o755)
-    data = replace(pointer, data, launcher={"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()})
+    data = replace(
+        pointer,
+        data,
+        launcher={
+            "path": str(launcher),
+            "runtime_schema": 1,
+            "sha256": hashlib.sha256(content).hexdigest(),
+        },
+    )
     return launcher, data
 
 
 def test_managed_public_cli_preserves_bytes_and_explicit_attention_adapter(active):
     launcher, _ = managed_fixture(active)
-    result = subprocess.run([str(launcher), "exec-public", "--success-exit-code", "1", SCRIPT, "--", "1"], input=b"\x00exact\xff", capture_output=True)
+    result = subprocess.run(
+        [str(launcher), "exec-public", "--success-exit-code", "1", SCRIPT, "--", "1"],
+        input=b"\x00exact\xff",
+        capture_output=True,
+    )
     assert result.returncode == 0, result.stderr
     assert result.stdout == b"\x00exact\xff"
-    unadapted = subprocess.run([str(launcher), "exec-public", SCRIPT, "--", "1"], input=b"payload", capture_output=True)
+    unadapted = subprocess.run(
+        [str(launcher), "exec-public", SCRIPT, "--", "1"],
+        input=b"payload",
+        capture_output=True,
+    )
     assert unadapted.returncode == 1 and unadapted.stdout == b"payload"
 
 
 def test_managed_public_cli_cannot_normalize_runtime_failure(active):
     pointer, root, data = active
     (root / "skills" / SCRIPT).write_text("import time\ntime.sleep(1)\n")
-    data = replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    data = replace(
+        pointer, data, content_digest=system_contract.canonical_tree_digest(root)
+    )
     launcher, _ = managed_fixture((pointer, root, data))
-    result = subprocess.run([str(launcher), "exec-public", "--timeout-seconds", "0.01", "--success-exit-code", "1", SCRIPT], input=b"", capture_output=True)
+    result = subprocess.run(
+        [
+            str(launcher),
+            "exec-public",
+            "--timeout-seconds",
+            "0.01",
+            "--success-exit-code",
+            "1",
+            SCRIPT,
+        ],
+        input=b"",
+        capture_output=True,
+    )
     assert result.returncode == 2
-    assert any(reason in result.stderr for reason in
-               (b"failed to start or finish", b"exceeded its total deadline"))
-    forbidden = subprocess.run([str(launcher), "exec-public", "--success-exit-code", "2", SCRIPT], input=b"", capture_output=True)
+    assert any(
+        reason in result.stderr
+        for reason in (b"failed to start or finish", b"exceeded its total deadline")
+    )
+    forbidden = subprocess.run(
+        [str(launcher), "exec-public", "--success-exit-code", "2", SCRIPT],
+        input=b"",
+        capture_output=True,
+    )
     assert forbidden.returncode == 2 and b"invalid choice" in forbidden.stderr
 
 
@@ -198,7 +289,12 @@ def test_public_cli_reads_payload_from_held_open_harness_socket(active):
     reader, writer = socket.socketpair()
     try:
         writer.sendall(b"socket payload")
-        result = subprocess.run([str(launcher), "exec-public", "--stdin-wait-seconds", "0.01", SCRIPT], stdin=reader, capture_output=True, timeout=2)
+        result = subprocess.run(
+            [str(launcher), "exec-public", "--stdin-wait-seconds", "0.01", SCRIPT],
+            stdin=reader,
+            capture_output=True,
+            timeout=2,
+        )
         assert result.returncode == 0, result.stderr
         assert result.stdout == b"socket payload"
     finally:
@@ -209,16 +305,38 @@ def test_public_cli_reads_payload_from_held_open_harness_socket(active):
 def test_doctor_checks_launcher_and_guardian_against_setup_pin(active, tmp_path):
     launcher, data = managed_fixture(active)
     assert runtime.runtime_health(data, home=tmp_path)["status"] == "verified"
-    plist = tmp_path / "Library/LaunchAgents/org.synthesisengineering.synthesis-skills-cache-guardian.plist"
+    plist = (
+        tmp_path
+        / "Library/LaunchAgents/org.synthesisengineering.synthesis-skills-cache-guardian.plist"
+    )
     plist.parent.mkdir(parents=True)
-    plist.write_bytes(plistlib.dumps({"ProgramArguments": [data["interpreter"]["executable"], "-B", "/fixture/guardian.py", "--watch"]}))
+    plist.write_bytes(
+        plistlib.dumps(
+            {
+                "ProgramArguments": [
+                    data["interpreter"]["executable"],
+                    "-B",
+                    "/fixture/guardian.py",
+                    "--watch",
+                ]
+            }
+        )
+    )
     assert runtime.runtime_health(data, home=tmp_path)["guardian_declarations"] == 1
-    plist.write_bytes(plistlib.dumps({"ProgramArguments": ["python3", "/fixture/guardian.py", "--watch"]}))
+    plist.write_bytes(
+        plistlib.dumps(
+            {"ProgramArguments": ["python3", "/fixture/guardian.py", "--watch"]}
+        )
+    )
     with pytest.raises(runtime.RuntimeContractError, match="guardian service"):
         runtime.runtime_health(data, home=tmp_path)
     alias = tmp_path / "python3-alias"
     alias.symlink_to(data["interpreter"]["executable"])
-    plist.write_bytes(plistlib.dumps({"ProgramArguments": [str(alias), "-B", "/fixture/guardian.py", "--watch"]}))
+    plist.write_bytes(
+        plistlib.dumps(
+            {"ProgramArguments": [str(alias), "-B", "/fixture/guardian.py", "--watch"]}
+        )
+    )
     assert runtime.runtime_health(data, home=tmp_path)["guardian_declarations"] == 1
     plist.unlink()
     launcher.write_bytes(launcher.read_bytes() + b"\n# unreceipted edit\n")
@@ -230,11 +348,15 @@ def write_receipt(pointer, root, data):
     blob = pointer.read_bytes()
     meta = pointer.lstat()
     receipt = runtime.build_activation_receipt(
-        release_root=root, descriptor_bytes=blob, descriptor_meta=meta,
+        release_root=root,
+        descriptor_bytes=blob,
+        descriptor_meta=meta,
         launcher_sha256=data["launcher"]["sha256"],
         interpreter_sha256=data["interpreter"]["sha256"],
         generation=data.get("generation", data.get("version")),
-        content_digest=data["content_digest"], projection=data.get("projection"))
+        content_digest=data["content_digest"],
+        projection=data.get("projection"),
+    )
     runtime.activation_receipt_path(pointer).write_text(json.dumps(receipt))
     return receipt
 
@@ -242,8 +364,11 @@ def write_receipt(pointer, root, data):
 def test_receipt_fast_path_skips_the_tree_digest(active, monkeypatch):
     pointer, root, data = active
     write_receipt(pointer, root, data)
-    monkeypatch.setattr(runtime, "tree_digest",
-                        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")))
+    monkeypatch.setattr(
+        runtime,
+        "tree_digest",
+        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")),
+    )
     checked = runtime.verified_release(pointer)
     assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
     argv = runtime.command(checked, SCRIPT, [])
@@ -261,6 +386,7 @@ def test_stat_walk_catches_a_modified_helper(active):
 
 def test_same_size_mtime_swap_passes_fast_but_fails_full(active):
     import os
+
     pointer, root, data = active
     write_receipt(pointer, root, data)
     target = root / "skills" / SCRIPT
@@ -279,12 +405,16 @@ def test_same_size_mtime_swap_passes_fast_but_fails_full(active):
 
 def test_swapped_descriptor_refuses_next_call(active):
     import os
+
     pointer, root, data = active
     receipt = write_receipt(pointer, root, data)
     replace(pointer, data, resolved_at="2026-06-06T06:06:06Z")
     # Filesystems may coalesce immediate rewrites into one timestamp tick.
     # Exercise metadata refusal deterministically before the byte-drift case.
-    os.utime(pointer, ns=(pointer.stat().st_atime_ns, receipt["descriptor_mtime_ns"] + 1_000_000_000))
+    os.utime(
+        pointer,
+        ns=(pointer.stat().st_atime_ns, receipt["descriptor_mtime_ns"] + 1_000_000_000),
+    )
     with pytest.raises(runtime.RuntimeContractError, match="replaced since activation"):
         runtime.verified_release(pointer)
     receipt = json.loads(runtime.activation_receipt_path(pointer).read_text())
@@ -306,6 +436,7 @@ def test_missing_receipt_keeps_the_legacy_full_digest(active):
 
 def test_entrypoint_swap_refuses_on_the_public_route(active):
     import os
+
     pointer, root, data = active
     write_receipt(pointer, root, data)
     target = root / "skills" / SCRIPT
@@ -320,14 +451,27 @@ def test_entrypoint_swap_refuses_on_the_public_route(active):
 
 def test_modular_projection_pays_one_stat_walk(active, monkeypatch):
     pointer, root, data = active
-    inventory = {rel: {"sha256": "0" * 64, "mode": fields[1]}
-                 for rel, fields in runtime.stat_walk(root).items()}
-    data = replace(pointer, data, projection={
-        "schema_version": 1, "kind": "modular",
-        "content_digest": data["content_digest"],
-        "source_content_digest": data["content_digest"],
-        "selection": {"roots": ["a"], "skills": ["a"], "support_skills": [], "stage_core": False},
-        "files": inventory})
+    inventory = {
+        rel: {"sha256": "0" * 64, "mode": fields[1]}
+        for rel, fields in runtime.stat_walk(root).items()
+    }
+    data = replace(
+        pointer,
+        data,
+        projection={
+            "schema_version": 1,
+            "kind": "modular",
+            "content_digest": data["content_digest"],
+            "source_content_digest": data["content_digest"],
+            "selection": {
+                "roots": ["a"],
+                "skills": ["a"],
+                "support_skills": [],
+                "stage_core": False,
+            },
+            "files": inventory,
+        },
+    )
     write_receipt(pointer, root, data)
     walks = []
     real_walk = runtime.stat_walk
@@ -337,8 +481,11 @@ def test_modular_projection_pays_one_stat_walk(active, monkeypatch):
         return real_walk(root)
 
     monkeypatch.setattr(runtime, "stat_walk", counting_walk)
-    monkeypatch.setattr(runtime, "tree_digest",
-                        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")))
+    monkeypatch.setattr(
+        runtime,
+        "tree_digest",
+        lambda root: (_ for _ in ()).throw(AssertionError("full digest ran")),
+    )
     checked = runtime.verified_release(pointer)
     assert checked["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
     assert len(walks) == 1
@@ -368,7 +515,9 @@ HOOKS = (
 
 
 @pytest.mark.parametrize("guard", GUARDS)
-def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch, guard):
+def test_declared_guard_entrypoint_executes_from_the_verified_release(
+    tmp_path, monkeypatch, guard
+):
     assert guard in runtime.PUBLIC_ENTRYPOINTS
     monkeypatch.delenv("SYNTHESIS_PUBLIC_SKILLS_SOURCE", raising=False)
     root = tmp_path / "generation"
@@ -378,34 +527,54 @@ def test_declared_guard_entrypoint_executes_from_the_verified_release(tmp_path, 
     for client in ("claude", "codex"):
         manifest = root / ("." + client + "-plugin") / "plugin.json"
         manifest.parent.mkdir()
-        manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}))
+        manifest.write_text(
+            json.dumps({"name": "synthesis-skills", "version": "9.8.7"})
+        )
     pointer = tmp_path / "state" / "active-release.json"
     pointer.parent.mkdir()
     pointer.with_name(pointer.name + ".lock").touch()
     data = {
-        "schema_version": 1, "version": "9.8.7", "channel": "stable", "ref": "stable",
-        "commit": "1" * 40, "tree": "2" * 40,
+        "schema_version": 1,
+        "version": "9.8.7",
+        "channel": "stable",
+        "ref": "stable",
+        "commit": "1" * 40,
+        "tree": "2" * 40,
         "content_digest": system_contract.canonical_tree_digest(root),
-        "digest_algorithm": "sha256-tree-v1", "tree_policy": "regular-files-and-directories-no-links-v1",
-        "source_url": "https://example.test/skills.git", "resolved_at": "2026-01-01T00:00:00Z",
-        "release_root": str(root), "interpreter": runtime.interpreter_pin(),
+        "digest_algorithm": "sha256-tree-v1",
+        "tree_policy": "regular-files-and-directories-no-links-v1",
+        "source_url": "https://example.test/skills.git",
+        "resolved_at": "2026-01-01T00:00:00Z",
+        "release_root": str(root),
+        "interpreter": runtime.interpreter_pin(),
     }
     launcher = pointer.parent.parent / "bin/synthesis"
     launcher.parent.mkdir()
     content = system_contract.launcher_bytes(pointer, data["interpreter"])
     launcher.write_bytes(content)
     launcher.chmod(0o755)
-    data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
+    data["launcher"] = {
+        "path": str(launcher),
+        "runtime_schema": 1,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
     pointer.write_text(json.dumps(data))
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, guard, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
+    assert runtime.command(verified, guard, ["--doctor"]) == [
+        sys.executable,
+        "-B",
+        str(target),
+        "--doctor",
+    ]
     result = runtime.execute(verified, guard, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"guard-ok\n"
 
 
 @pytest.mark.parametrize("hook", HOOKS)
-def test_declared_hook_entrypoint_executes_from_the_verified_release(tmp_path, monkeypatch, hook):
+def test_declared_hook_entrypoint_executes_from_the_verified_release(
+    tmp_path, monkeypatch, hook
+):
     assert hook in runtime.PUBLIC_ENTRYPOINTS
     assert hook in runtime.RECEIPT_ENTRYPOINTS
     monkeypatch.delenv("SYNTHESIS_PUBLIC_SKILLS_SOURCE", raising=False)
@@ -416,39 +585,64 @@ def test_declared_hook_entrypoint_executes_from_the_verified_release(tmp_path, m
     for client in ("claude", "codex"):
         manifest = root / ("." + client + "-plugin") / "plugin.json"
         manifest.parent.mkdir()
-        manifest.write_text(json.dumps({"name": "synthesis-skills", "version": "9.8.7"}))
+        manifest.write_text(
+            json.dumps({"name": "synthesis-skills", "version": "9.8.7"})
+        )
     pointer = tmp_path / "state" / "active-release.json"
     pointer.parent.mkdir()
     pointer.with_name(pointer.name + ".lock").touch()
     data = {
-        "schema_version": 1, "version": "9.8.7", "channel": "stable", "ref": "stable",
-        "commit": "1" * 40, "tree": "2" * 40,
+        "schema_version": 1,
+        "version": "9.8.7",
+        "channel": "stable",
+        "ref": "stable",
+        "commit": "1" * 40,
+        "tree": "2" * 40,
         "content_digest": system_contract.canonical_tree_digest(root),
-        "digest_algorithm": "sha256-tree-v1", "tree_policy": "regular-files-and-directories-no-links-v1",
-        "source_url": "https://example.test/skills.git", "resolved_at": "2026-01-01T00:00:00Z",
-        "release_root": str(root), "interpreter": runtime.interpreter_pin(),
+        "digest_algorithm": "sha256-tree-v1",
+        "tree_policy": "regular-files-and-directories-no-links-v1",
+        "source_url": "https://example.test/skills.git",
+        "resolved_at": "2026-01-01T00:00:00Z",
+        "release_root": str(root),
+        "interpreter": runtime.interpreter_pin(),
     }
     launcher = pointer.parent.parent / "bin/synthesis"
     launcher.parent.mkdir()
     content = system_contract.launcher_bytes(pointer, data["interpreter"])
     launcher.write_bytes(content)
     launcher.chmod(0o755)
-    data["launcher"] = {"path": str(launcher), "runtime_schema": 1, "sha256": hashlib.sha256(content).hexdigest()}
+    data["launcher"] = {
+        "path": str(launcher),
+        "runtime_schema": 1,
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
     pointer.write_text(json.dumps(data))
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, hook, ["--doctor"]) == [sys.executable, "-B", str(target), "--doctor"]
+    assert runtime.command(verified, hook, ["--doctor"]) == [
+        sys.executable,
+        "-B",
+        str(target),
+        "--doctor",
+    ]
     result = runtime.execute(verified, hook, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"hook-ok\n"
+
+
 @pytest.mark.parametrize("relative_root", [False, True])
-def test_stat_inventory_preserves_nested_names_and_exact_metadata(tmp_path, monkeypatch, relative_root):
+def test_stat_inventory_preserves_nested_names_and_exact_metadata(
+    tmp_path, monkeypatch, relative_root
+):
     root = tmp_path / "release tree"
     root.mkdir()
     (root / ".git").mkdir()
     (root / ".git/ignored").write_text("outside release inventory")
     expected = {}
-    for name, mode in [("top.py", 0o640), ("nested/.git/retained", 0o600),
-                       ("nested/space [x]/café.py", 0o755)]:
+    for name, mode in [
+        ("top.py", 0o640),
+        ("nested/.git/retained", 0o600),
+        ("nested/space [x]/café.py", 0o755),
+    ]:
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(name)
@@ -471,6 +665,7 @@ def test_stat_inventory_refuses_nested_link_or_special_object(tmp_path, object_k
     target = nested / "untrusted"
     if object_kind == "fifo":
         import os
+
         os.mkfifo(target)
     else:
         outside = tmp_path / "outside"
@@ -481,3 +676,258 @@ def test_stat_inventory_refuses_nested_link_or_special_object(tmp_path, object_k
         target.symlink_to(outside, target_is_directory=object_kind == "directory-link")
     with pytest.raises(runtime.RuntimeContractError, match="link or special"):
         runtime.stat_walk(root)
+
+
+RITUAL_HELPERS = (
+    "portfolio_review",
+    "decay_sweep",
+    "pr_queue_scan",
+    "sync_watermark",
+    "gchat_preflight",
+)
+
+
+@pytest.mark.parametrize("name", RITUAL_HELPERS)
+def test_real_ritual_helper_uses_verified_owner_and_help_only(active, name):
+    """Actual shipped source and owned dependency, no provider or workspace read."""
+    pointer, root, data = active
+    repository = Path(__file__).resolve().parents[3]
+    script = f"synthesis-daily-rituals/scripts/{name}.py"
+    for relative in (script, *runtime.ENTRYPOINT_DEPENDENCIES.get(script, ())):
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((repository / "skills" / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    result = runtime.execute(verified, script, ["--help"], b"", timeout=5)
+    assert result.returncode == 0, result.stderr
+    assert b"usage:" in result.stdout.lower()
+
+
+@pytest.mark.parametrize("change", ["missing", "link", "same-stat-tamper"])
+def test_ritual_owned_dependency_refuses_before_execution(active, change, monkeypatch):
+    pointer, root, data = active
+    script = "synthesis-daily-rituals/scripts/pr_queue_scan.py"
+    dependency = runtime.ENTRYPOINT_DEPENDENCIES[script][0]
+    for relative in (script, dependency):
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("pass\n")
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    monkeypatch.setattr(
+        runtime,
+        "_load_activation_receipt",
+        lambda p: {
+            "entrypoints": {
+                relative: runtime.file_digest(root / "skills" / relative)
+                for relative in (script, dependency)
+            }
+        },
+    )
+    hashes = {
+        relative: runtime.file_digest(root / "skills" / relative)
+        for relative in (script, dependency)
+    }
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda p: {"entrypoints": hashes}
+    )
+    helper = root / "skills" / dependency
+    if change == "missing":
+        helper.unlink()
+    elif change == "link":
+        helper.unlink()
+        helper.symlink_to(root / "skills" / script)
+    else:
+        before = helper.stat()
+        helper.write_text("fail\n")
+        os.utime(helper, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.command(verified, script, ["--help"])
+
+
+def test_added_callable_surface_is_exactly_the_five_owned_ritual_helpers():
+    declared = {
+        Path(path).stem
+        for path in runtime.PUBLIC_ENTRYPOINTS
+        if path.startswith("synthesis-daily-rituals/")
+    }
+    assert declared == set(RITUAL_HELPERS) | {"ritual_state"}
+    assert (
+        "synthesis-daily-rituals/scripts/ritual_workers.py"
+        not in runtime.PUBLIC_ENTRYPOINTS
+    )
+    assert (
+        "synthesis-daily-rituals/scripts/credential_paths.py"
+        not in runtime.PUBLIC_ENTRYPOINTS
+    )
+
+
+def test_modular_pr_scan_without_optional_bitbucket_helper_retains_github_availability(
+    active, monkeypatch
+):
+    pointer, root, data = active
+    script = "synthesis-daily-rituals/scripts/pr_queue_scan.py"
+    target = root / "skills" / script
+    target.parent.mkdir(parents=True)
+    target.write_bytes(
+        (Path(__file__).resolve().parents[3] / "skills" / script).read_bytes()
+    )
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {script: runtime.file_digest(target)}
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda p: {"entrypoints": hashes}
+    )
+    result = runtime.execute(verified, script, ["--help"], b"", timeout=5)
+    assert result.returncode == 0, result.stderr
+
+
+TRANSACTION_HELPER = "synthesis-context-lifecycle/scripts/record_transaction.py"
+TRANSACTION_CONSUMERS = (
+    "synthesis-context-lifecycle/scripts/context_doctor.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-agent-conformance/scripts/conformance.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+    "synthesis-repo-guard/checkpoint_sync.py",
+    "synthesis-autopilot/scripts/autopilot_gate.py",
+)
+
+
+@pytest.mark.parametrize(
+    "helper_name",
+    [
+        TRANSACTION_HELPER,
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+    ],
+)
+@pytest.mark.parametrize("script", TRANSACTION_CONSUMERS)
+@pytest.mark.parametrize("damage", ["missing", "link", "same-stat-tamper"])
+def test_transaction_dependency_is_verified_before_managed_execution(
+    active, monkeypatch, script, damage, helper_name
+):
+    pointer, root, data = active
+    target = root / "skills" / script
+    helper = root / "skills" / helper_name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("pass\n")
+    dependency_names = runtime.ENTRYPOINT_DEPENDENCIES[script]
+    for name in dependency_names:
+        dependency = root / "skills" / name
+        dependency.parent.mkdir(parents=True, exist_ok=True)
+        dependency.write_text("pass\n")
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {
+        name: runtime.file_digest(root / "skills" / name)
+        for name in (script, *dependency_names)
+    }
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda p: {"entrypoints": hashes}
+    )
+    assert runtime.command(verified, script, ["--help"])
+    if damage == "missing":
+        helper.unlink()
+    elif damage == "link":
+        helper.unlink()
+        helper.symlink_to(target)
+    else:
+        before = helper.stat()
+        helper.write_text("fail\n")
+        os.utime(helper, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.command(verified, script, ["--help"])
+
+
+@pytest.mark.parametrize("script", TRANSACTION_CONSUMERS)
+def test_real_managed_transaction_consumer_help_uses_complete_release(active, script):
+    import shutil
+
+    pointer, root, data = active
+    repository = Path(__file__).resolve().parents[3]
+    shutil.copytree(
+        repository / "skills",
+        root / "skills",
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".ruff_cache"),
+    )
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    result = runtime.execute(
+        runtime.verified_release(pointer), script, ["--help"], b"", timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+    expected = b"native stop entry point" if script.endswith("/autopilot_gate.py") else b"usage:"
+    assert expected in result.stdout.lower()
+
+
+def test_acquisition_dependency_closure_runs_real_installed_owner(active, tmp_path, monkeypatch):
+    """No provider or global write: exact real selected-release source, synthetic refusal."""
+    pointer, root, data = active
+    repository = Path(__file__).resolve().parents[3]
+    script = 'synthesis-daily-rituals/scripts/sync_watermark.py'
+    for relative in (script, *runtime.ENTRYPOINT_DEPENDENCIES[script]):
+        target = root / 'skills' / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((repository / 'skills' / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path / 'synthetic-state'))
+    result = runtime.execute(runtime.verified_release(pointer), script,
+                             ['advance', '--workspace', 'fixture', '--surface', 'meetings',
+                              '--through', '2026-09-25T00:00:00+00:00'], b'', timeout=10)
+    assert result.returncode == 2
+    assert b'acquisition evidence' in result.stderr
+    assert not (tmp_path / 'synthetic-state/sync-watermarks/fixture.json').exists()
+
+
+
+@pytest.mark.parametrize('relative', [
+    'synthesis-daily-rituals/scripts/acquisition_evidence.py',
+    'synthesis-daily-rituals/scripts/ritual_workers.py',
+    'synthesis-meeting-transcripts/verify_transcripts.py',
+])
+def test_acquisition_owned_dependency_cannot_be_missing(active, relative):
+    pointer, root, data = active
+    script = 'synthesis-daily-rituals/scripts/sync_watermark.py'
+    for path in (script, *runtime.ENTRYPOINT_DEPENDENCIES[script]):
+        if path == relative:
+            continue
+        target = root / 'skills' / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('raise AssertionError("must never execute")\n')
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.execute(runtime.verified_release(pointer), script, ['--help'], b'', timeout=5)
+
+
+@pytest.mark.parametrize("script", TRANSACTION_CONSUMERS)
+@pytest.mark.parametrize("damage", ["missing", "link", "same-stat-tamper"])
+def test_publication_proof_dependency_verified_before_consumer(active, monkeypatch, script, damage):
+    pointer, root, data = active
+    dep = "synthesis-repo-guard/publication_receipt.py"
+    names = tuple(dict.fromkeys((script, *runtime.ENTRYPOINT_DEPENDENCIES[script], dep)))
+    for name in names:
+        target = root / "skills" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("pass\n")
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
+    monkeypatch.setattr(runtime, "_load_activation_receipt", lambda _p: {"entrypoints": hashes})
+    helper = root / "skills" / dep
+    if damage == "missing":
+        helper.unlink()
+    elif damage == "link":
+        helper.unlink()
+        helper.symlink_to(root / "skills" / script)
+    else:
+        before = helper.stat()
+        helper.write_text("fail\n")
+        os.utime(helper, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.command(verified, script, ["--help"])

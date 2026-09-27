@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,24 +53,32 @@ def _siblings(page: Path, suffix: str) -> list[Path]:
 def verify_packet(page: Path) -> list[OutputFinding]:
     """Verify one packet page. Any filed date matches for siblings."""
     try:
-        text = page.read_text(encoding="utf-8")
-    except (OSError, ValueError):
-        return [OutputFinding(page, "warning",
+        text = _succession_owner().rt._snapshot(page)[0].decode("utf-8")
+    except (OSError, ValueError, RuntimeError):
+        return [OutputFinding(page, "defect",
                               f"{page.name} is unreadable; provenance unverifiable",
                               "restore the file or remove it if it is debris")]
+    if "synthesis-packet-retired" in text:
+        try:
+            module = _succession_owner()
+            project = page.parent.parent.parent
+            candidates = [p for p in module.records(project)
+                          if module.rt._read_json(p)[0].get("request", {}).get("inventory", {}).get("path")
+                          == str(page.relative_to(project))]
+            if len(candidates) != 1:
+                raise ValueError("retired interface needs one exact succession record")
+            module.validate_record(project, candidates[0])
+            return []
+        except (OSError, ValueError, RuntimeError) as exc:
+            return [OutputFinding(page, "defect", str(exc), "preserve all custody and recover through context_edit")]
     marker = MARKER_RE.search(text)
     if marker is None:
-        if _siblings(page, "rulings"):
-            return [OutputFinding(page, "warning",
-                                  f"{page.name} predates provenance markers but its rulings are filed; "
-                                  "closed record, exempt",
-                                  "leave it; build new packets with build_packet.py")]
         return [OutputFinding(page, "defect",
                               f"{page.name} is not generator output (no provenance marker) — "
                               "hand-authored packets skip note boxes, impact blocks, persistence, "
                               "and reader checks",
                               "rebuild it with build_packet.py --strict-reader --file-into, "
-                              "or remove it if superseded")]
+                              "or retire it through context_edit with exact custody and surviving obligations")]
     embedded = EMBEDDED_SPEC_RE.search(text)
     if embedded is None:
         return [OutputFinding(page, "defect",
@@ -88,11 +97,36 @@ def verify_packet(page: Path) -> list[OutputFinding]:
     return []
 
 
+def _succession_owner():
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import record_succession
+    return record_succession
+
+
 def scan_project(project_path: Path) -> list[OutputFinding]:
     findings: list[OutputFinding] = []
-    for page in sorted(project_path.glob(PACKET_GLOB)):
-        if page.is_file():
-            findings.extend(verify_packet(page))
+    try:
+        owner = _succession_owner()
+        with owner.rt.managed(project_path):
+            deadline = time.monotonic() + owner.SCAN_SECONDS
+            for page in owner.packet_pages(project_path):
+                if time.monotonic() > deadline:
+                    raise ValueError("packet scan time bound exceeded")
+                findings.extend(verify_packet(page))
+            for record in owner.records(project_path):
+                if time.monotonic() > deadline:
+                    raise ValueError("succession scan time bound exceeded")
+                try:
+                    result = owner.validate_record(project_path, record)
+                    if result['current_destinations'] == 'changed-requires-review':
+                        findings.append(OutputFinding(record, "warning", "succession destinations changed; historical custody verifies but current readiness needs review", "inspect surviving obligations; do not infer completion"))
+                except (OSError, ValueError, RuntimeError) as exc:
+                    findings.append(OutputFinding(record, "defect", str(exc),
+                        "preserve custody; recover the transaction or reconcile exact source changes"))
+    except (OSError, ValueError, RuntimeError) as exc:
+        findings.append(OutputFinding(project_path, "defect", str(exc), "restore the managed record boundary"))
     return findings
 
 

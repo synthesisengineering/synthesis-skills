@@ -361,6 +361,25 @@ def test_release_owner_refuses_changed_source_before_acceptance(tmp_path, monkey
     assert not result.steps[-1].ok and "source changed" in result.steps[-1].detail
 
 
+def test_failed_required_check_preserves_diagnostic_output(tmp_path, monkeypatch, capsys):
+    import release
+
+    (tmp_path / "source").write_text("unchanged")
+    monkeypatch.setattr(release, "REQUIRED_CHECKS", (("fixture", ["fixture"]),))
+    stdout = "FAILED fixture::meaningful_case\ncausal detail\n1 failed, 1473 passed\n"
+    stderr = "separate diagnostic\n"
+    monkeypatch.setattr(release, "bounded_run", lambda *a, **k:
+                        subprocess.CompletedProcess([], 1, stdout, stderr))
+    monkeypatch.setattr(release, "consume_acceptance", lambda *a:
+                        pytest.fail("failed checks consumed acceptance"))
+    result = release.Result()
+    assert release.run_required_checks(tmp_path, result, False) is None
+    captured = capsys.readouterr().out
+    assert stdout in captured and stderr in captured
+    assert result.steps[-1].ok is False
+    assert result.steps[-1].detail == "1 failed, 1473 passed"
+
+
 def test_interruption_returns_failure_and_restores_signal_handlers(tmp_path):
     old = signal.getsignal(signal.SIGTERM)
     script = (
@@ -615,3 +634,31 @@ def test_host_inapplicability_never_excuses_invalid_remaining_phases(
             ),
         )
     assert finish(p).exitstatus == 1
+
+
+def test_failed_required_check_preserves_output_before_changed_source_refusal(
+    tmp_path, monkeypatch, capsys
+):
+    import release
+
+    source = tmp_path / "source"
+    source.write_text("original")
+    monkeypatch.setattr(release, "REQUIRED_CHECKS", (("fixture", ["fixture"]),))
+
+    def failed_mutation(*args, **kwargs):
+        source.write_text("changed")
+        return subprocess.CompletedProcess(
+            [], 7, "FIRST exact failing case\nsummary\n", "separate diagnostic\n"
+        )
+
+    monkeypatch.setattr(release, "bounded_run", failed_mutation)
+    monkeypatch.setattr(
+        release, "consume_acceptance",
+        lambda *args: pytest.fail("changed source consumed acceptance"),
+    )
+    result = release.Result()
+    assert release.run_required_checks(tmp_path, result, False) is None
+    captured = capsys.readouterr().out
+    assert "FIRST exact failing case" in captured and "separate diagnostic" in captured
+    assert len(result.steps) == 1 and not result.steps[0].ok
+    assert result.steps[0].detail == "source changed during required check"

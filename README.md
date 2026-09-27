@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.150.0** adds recoverable project transactions, explicit obligation
+succession and source-bound ritual/acquisition reports. It strengthens Git and
+message guards, exact session coordination and installed runtime verification.
+
+
 Release **4.149.9** adds bounded authenticated journal storage for large
 native-history recovery while preserving prior event bytes, ownership and costs.
 Required autopilot checks cover the entire collected suite in bounded groups.

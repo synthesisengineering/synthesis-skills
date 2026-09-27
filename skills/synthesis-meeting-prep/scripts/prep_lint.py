@@ -57,7 +57,11 @@ ANNOUNCING_RES = (
     re.compile(r"\bwhat follows is\b", re.IGNORECASE),
 )
 SELF_RESTATE_RES = (
-    re.compile(r",\s*not\s+\w+", re.IGNORECASE),
+    re.compile(
+        r"\b(?:is|are|was|were)\s+(?:an?\s+)?[\w -]{1,70}"
+        r"\b(?:question|problem|issue|challenge|matter|decision)\s*,\s*not\s+"
+        r"(?:an?\s+)?[\w -]{1,70}\b(?:one|question|problem|issue|challenge|matter|decision)\b",
+        re.IGNORECASE),
     re.compile(r"\brather than\b.*\b(instead|merely|just)\b", re.IGNORECASE),
 )
 FLOURISH_RES = (
@@ -123,7 +127,7 @@ def check_footer(text: str, sections: list[tuple[int, str, list[str]]]) -> list[
             footer_index = len(sections) - 1
     if footer_index is None:
         # A footer is required only when the draft contains avoid-language.
-        if AVOID_RE.search("\n".join(l for _, _, b in sections for l in b)):
+        if AVOID_RE.search("\n".join(line for _, _, body in sections for line in body)):
             findings.append(Finding(1, "R1", "avoid-language present but no don't-raise footer section"))
         return findings
     if footer_index != len(sections) - 1:
@@ -208,8 +212,53 @@ def check_precision(lines: list[str]) -> list[Finding]:
 
 
 def check_basis(text: str) -> list[Finding]:
-    if BASIS_RE.search(text):
-        return []
+    # Ignore fenced examples: only the actual pack can state its basis.
+    visible = []
+    fence = None
+    comment = False
+    for line in text.splitlines():
+        if fence is not None:
+            marker = re.match(r"^\s{0,3}(`{3,}|~{3,})\s*$", line)
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+                fence = None
+            visible.append("")
+            continue
+        # HTML comments cannot supply visible evidence. An opener inside a
+        # fenced example is ignored above, so it cannot hide later real prose.
+        parts = []
+        while line:
+            if comment:
+                end = line.find("-->")
+                if end < 0:
+                    line = ""
+                else:
+                    comment = False
+                    line = line[end + 3:]
+            else:
+                begin = line.find("<!--")
+                if begin < 0:
+                    parts.append(line)
+                    line = ""
+                else:
+                    parts.append(line[:begin])
+                    comment = True
+                    line = line[begin + 4:]
+        line = "".join(parts)
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if marker:
+            fence = marker[1]
+            visible.append("")
+        else:
+            visible.append(line)
+    for index, line in enumerate(visible):
+        if re.match(r"^basis\s*:\s*\S", line, re.I):
+            return []
+        if re.fullmatch(r"#{1,6}\s+Basis\s*:?\s*(?:#+\s*)?", line, re.I):
+            for body in visible[index + 1:]:
+                if re.match(r"^#{1,6}\s", body):
+                    break
+                if body.strip() and not body.lstrip().startswith((">", "<!--")):
+                    return []
     return [Finding(1, "R10", "missing basis statement (sources read + newest source date)")]
 
 

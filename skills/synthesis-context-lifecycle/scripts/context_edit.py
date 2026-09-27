@@ -50,12 +50,16 @@ Python
 
     replace_once(path, anchor="**Phase:** old", replacement="**Phase:** new")
 
-Exit codes: 0 changed, 1 refused (nothing written), 2 usage error.
+Exit codes: 0 changed or valid dry-run, 1 refusal/I/O/verification failure,
+2 usage error. Preflight failures write nothing; post-write failures require
+re-reading the target before retrying.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import stat
 import os
 import re
 import sys
@@ -64,9 +68,11 @@ from pathlib import Path
 
 import context_currency
 
+import record_transaction
+
 
 class ContextEditError(Exception):
-    """A durable-context edit was refused. Nothing was written."""
+    """Preflight refusal or post-write verification failure; inspect the phase."""
 
 
 def _coherence_gate(
@@ -103,13 +109,13 @@ def _coherence_gate(
     # transition while a two-call update is in flight, and the doctor's
     # read-time field check catches a Phase left behind. A symmetric refusal
     # would deadlock every legitimate two-call header update.
-    leading = [(f, p, l) for f, p, l in after if p > l]
-    trailing = [(f, p, l) for f, p, l in after if l > p]
+    leading = [(family, phase, last) for family, phase, last in after if phase > last]
+    trailing = [(family, phase, last) for family, phase, last in after if last > phase]
     notes: list[str] = []
     if trailing:
         notes.append(
             "note: Last session now leads Phase ("
-            + "; ".join(f"{f} {l} vs {p}" for f, p, l in trailing)
+            + "; ".join(f"{family} {last} vs {phase}" for family, phase, last in trailing)
             + ") — finish by updating Phase"
         )
     if leading:
@@ -288,8 +294,16 @@ def _atomic_write(path: Path, text: str) -> None:
         with handle as stream:
             stream.write(text)
             stream.flush()
+            os.fchmod(stream.fileno(), stat.S_IMODE(path.stat().st_mode))
             os.fsync(stream.fileno())
         os.replace(handle.name, path)
+        # Rename visibility is atomic; directory fsync is the distinct
+        # durability boundary. Failure here means inspect the committed file.
+        directory_fd = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     except BaseException:
         Path(handle.name).unlink(missing_ok=True)
         raise
@@ -419,7 +433,8 @@ def _check_table_edit(original: str, anchor: str, replacement: str, offsets: lis
     edits = [(offset, offset + len(anchor)) for offset in offsets]
     for start, end in _table_regions(original):
         affected = [(a, b) for a, b in edits if a < end and b > start]
-        if not affected or any(a <= start and b >= end for a, b in affected):
+        content_end = end - (2 if original[:end].endswith("\r\n") else 1 if original[:end].endswith("\n") else 0)
+        if not affected or any(a <= start and b >= content_end for a, b in affected):
             continue
         if any(a < start or b > end for a, b in affected):
             raise ContextEditError("edit crosses a Markdown table boundary; include the complete table in the anchor")
@@ -496,6 +511,7 @@ def _check_budget(text: str, max_lines: int | None, path: Path) -> int:
     return lines
 
 
+@record_transaction.guarded("path", exclusive=True)
 def replace_once(
     path: Path,
     anchor: str,
@@ -668,6 +684,122 @@ def delete_line(
     )
 
 
+
+def _edit_in_memory(text: str, edit: dict) -> str:
+    """Resolve one batch operation against the staged result, without writes."""
+    if not isinstance(edit, dict) or not isinstance(edit.get("op"), str):
+        raise ContextEditError("each edit must be an object with an op")
+    op = edit["op"]
+    fields = {
+        "replace": {"op", "anchor", "replacement", "count"},
+        "set-field": {"op", "field", "value"},
+        "insert-before": {"op", "anchor", "text"},
+        "delete-line": {"op", "anchor"},
+    }
+    if op not in fields or set(edit) - fields[op]:
+        raise ContextEditError("unknown operation or fields in batch edit")
+    for name in fields[op] - {"op", "count"}:
+        if not isinstance(edit.get(name), str):
+            raise ContextEditError(f"{op} requires string {name}")
+    if op == "set-field":
+        if not edit["field"] or any(c in edit["field"] + edit["value"] for c in "\r\n"):
+            raise ContextEditError("set-field requires one field and one line of text")
+        matches = re.findall(FIELD.format(name=re.escape(edit["field"])), text, re.MULTILINE)
+        if len(matches) != 1:
+            raise ContextEditError(f"header field requires one match; found {len(matches)}")
+        return apply_replacement(text, matches[0], f"**{edit['field']}:** {edit['value']}")
+    anchor = edit["anchor"]
+    if op == "delete-line":
+        if not anchor or "\n" in anchor or "\r" in anchor:
+            raise ContextEditError("delete-line requires a whole line without its ending")
+        matches, cursor = [], 0
+        for line in text.splitlines(keepends=True):
+            if line.removesuffix("\r\n").removesuffix("\n") == anchor:
+                matches.append((cursor, line))
+            cursor += len(line)
+        if len(matches) != 1:
+            raise ContextEditError(f"delete-line requires one exact whole-line match; found {len(matches)}")
+        offset, full = matches[0]
+        return apply_replacement(text, full, "", _line_offset=offset)
+    if op == "insert-before":
+        _check_line_insert(text, anchor, edit["text"])
+        return apply_replacement(text, anchor, edit["text"] + anchor)
+    count = edit.get("count", 1)
+    if type(count) is not int or count < 1:
+        raise ContextEditError("count must be a positive integer")
+    return apply_replacement(text, anchor, edit["replacement"], count=count)
+
+
+@record_transaction.guarded("path", exclusive=True)
+def apply_edits(
+    path: Path, edits: list[dict], *, max_lines: int | None = None,
+    dry_run: bool = False, allow_header_lag: bool = False,
+    allow_stale_body: bool = False, state_reviewed: bool = False,
+) -> dict:
+    """Preflight an ordered single-file batch, then atomically replace once.
+
+    Every operation resolves against the preceding staged result. Structural
+    edit checks apply to each operation; budget and currency apply once to the
+    final result. Coordination ownership is still required: the final snapshot
+    comparison detects intervening writes, but is not a filesystem CAS against
+    uncooperative concurrent writers. No multi-file transaction is implied.
+    """
+    path = Path(path)
+    original = _read(path)
+    if not isinstance(edits, list) or not 1 <= len(edits) <= 1000:
+        raise ContextEditError("edits must be a nonempty list of at most 1000 operations")
+    edited = original
+    for number, edit in enumerate(edits, 1):
+        try:
+            edited = _edit_in_memory(edited, edit)
+        except ContextEditError as exc:
+            raise ContextEditError(f"edit {number}: {exc}") from exc
+    if edited == original:
+        raise ContextEditError("batch leaves file byte-identical")
+    lines = _check_budget(edited, max_lines, path)
+    note = _coherence_gate(path, original, edited, allow_header_lag, allow_stale_body, state_reviewed)
+    if _read(path) != original:
+        raise ContextEditError("input changed during batch preflight; re-read before retrying")
+    if not dry_run:
+        _atomic_write(path, edited)
+        if _read(path) != edited:
+            raise ContextEditError("post-write verification failed: batch result differs on disk")
+    return {"path": str(path), "changed": not dry_run, "dry_run": dry_run,
+            "replacements": len(edits), "lines": lines, "note": note}
+
+
+def apply_transaction(project: Path, files: list[dict], *, board: Path,
+                      native_payload: dict, dry_run: bool = False) -> dict:
+    """One recoverable multi-file project edit with fresh exact PM authority."""
+    return record_transaction.apply(project, files, board=board,
+                                    native_payload=native_payload, dry_run=dry_run)
+
+
+def recover_transaction(project: Path, *, board: Path, native_payload: dict) -> dict:
+    return record_transaction.recover(project, board=board, native_payload=native_payload)
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContextEditError(f"duplicate JSON field: {key}")
+        result[key] = value
+    return result
+
+
+def _operand(args: argparse.Namespace, name: str) -> str:
+    source = getattr(args, name + "_file", None)
+    return _read(source) if source is not None else _value(getattr(args, name))
+
+
+def _operand_flags(parser: argparse.ArgumentParser, name: str) -> None:
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--" + name)
+    group.add_argument("--" + name + "-file", type=Path,
+                       help="read exact UTF-8 text from a regular file")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -696,8 +828,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     replace = sub.add_parser("replace", parents=[common])
-    replace.add_argument("--anchor", required=True)
-    replace.add_argument("--replacement", required=True)
+    _operand_flags(replace, "anchor")
+    _operand_flags(replace, "replacement")
     replace.add_argument("--count", type=int, default=1)
 
     field = sub.add_parser("set-field", parents=[common])
@@ -705,20 +837,69 @@ def main(argv: list[str] | None = None) -> int:
     field.add_argument("--value", required=True)
 
     insert = sub.add_parser("insert-before", parents=[common])
-    insert.add_argument("--anchor", required=True)
-    insert.add_argument("--text", required=True)
+    _operand_flags(insert, "anchor")
+    _operand_flags(insert, "text")
 
     delete = sub.add_parser("delete-line", parents=[common])
-    delete.add_argument("--anchor", required=True)
+    _operand_flags(delete, "anchor")
 
+    batch = sub.add_parser("apply", parents=[common])
+    batch.add_argument("--edits", required=True, type=Path, help="JSON array of ordered single-file edits")
+
+    for command in ("apply-transaction", "recover-transaction"):
+        transaction = sub.add_parser(command)
+        transaction.add_argument("--project", type=Path, required=True)
+        transaction.add_argument("--board", type=Path, required=True)
+        transaction.add_argument("--native-payload", type=Path, required=True,
+                                 help="native event evidence; PM verifies its transcript/seat binding")
+        if command == "apply-transaction":
+            transaction.add_argument("--files", type=Path, required=True,
+                                     help="JSON array of project-relative file/edit objects")
+            transaction.add_argument("--dry-run", action="store_true")
+    for command in ("review-succession", "apply-succession"):
+        succession = sub.add_parser(command)
+        succession.add_argument("--project", type=Path, required=True)
+        succession.add_argument("--request", type=Path, required=True)
+        if command == "apply-succession":
+            succession.add_argument("--board", type=Path, required=True)
+            succession.add_argument("--native-payload", type=Path, required=True)
+            succession.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if sum(getattr(args, name, None) == "-" for name in ("anchor", "replacement", "text", "value")) > 1:
+        parser.error("stdin may supply only one operand; use the file flags for other operands")
 
     try:
-        if args.command == "insert-before":
+        if args.command in {"review-succession", "apply-succession"}:
+            import record_succession
+            request = record_transaction.read_request(args.request)
+            if args.command == "review-succession":
+                result = record_succession.review(args.project, request)
+            else:
+                payload = record_transaction.read_request(args.native_payload)
+                result = record_succession.apply(args.project, request, board=args.board,
+                                                 native_payload=payload, dry_run=args.dry_run)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.command in {"apply-transaction", "recover-transaction"}:
+            payload = record_transaction.read_request(args.native_payload)
+            if args.command == "apply-transaction":
+                files = record_transaction.read_request(args.files)
+                result = apply_transaction(args.project, files, board=args.board,
+                                           native_payload=payload, dry_run=args.dry_run)
+            else:
+                result = recover_transaction(args.project, board=args.board, native_payload=payload)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.command == "apply":
+            edits = json.loads(_read(args.edits), object_pairs_hook=_unique_object)
+            result = apply_edits(args.file, edits, max_lines=args.max_lines, dry_run=args.dry_run,
+                                 allow_header_lag=args.allow_header_lag,
+                                 allow_stale_body=args.allow_stale_body, state_reviewed=args.state_reviewed)
+        elif args.command == "insert-before":
             result = insert_before(
                 args.file,
-                anchor=_value(args.anchor),
-                text=_value(args.text),
+                anchor=_operand(args, "anchor"),
+                text=_operand(args, "text"),
                 max_lines=args.max_lines,
                 dry_run=args.dry_run,
                 allow_header_lag=args.allow_header_lag,
@@ -727,15 +908,15 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "delete-line":
             result = delete_line(
-                args.file, anchor=_value(args.anchor), max_lines=args.max_lines,
+                args.file, anchor=_operand(args, "anchor"), max_lines=args.max_lines,
                 dry_run=args.dry_run, allow_header_lag=args.allow_header_lag,
                 allow_stale_body=args.allow_stale_body, state_reviewed=args.state_reviewed,
             )
         elif args.command == "replace":
             result = replace_once(
                 args.file,
-                anchor=_value(args.anchor),
-                replacement=_value(args.replacement),
+                anchor=_operand(args, "anchor"),
+                replacement=_operand(args, "replacement"),
                 count=args.count,
                 max_lines=args.max_lines,
                 dry_run=args.dry_run,
@@ -754,7 +935,7 @@ def main(argv: list[str] | None = None) -> int:
                 allow_stale_body=args.allow_stale_body,
                 state_reviewed=args.state_reviewed,
             )
-    except ContextEditError as exc:
+    except (ContextEditError, record_transaction.RecordTransactionError, OSError, ValueError) as exc:
         print(f"context-edit refused: {exc}", file=sys.stderr)
         return 1
 

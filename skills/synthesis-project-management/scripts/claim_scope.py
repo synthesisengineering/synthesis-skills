@@ -23,6 +23,50 @@ class ClaimIdentityError(ValueError):
     """A possible logical metadata conflict lacks unambiguous Git identity."""
 
 
+class RegistryAddition(ClaimIdentityError):
+    """Only new worktree registrations appeared; existing identities are intact."""
+
+
+def _registry_addition(before, after):
+    """A retry is justified only by additions, never replacement or removal.
+
+    Common-dir identity and configuration stay exact. Existing registration
+    entries retain descriptor identity, times and bytes. The containing registry
+    may acquire children; its device/inode/mode must stay unchanged if it existed.
+    A fresh complete observation still has to verify every compared claim.
+    """
+    if before[:3] != after[:3]:
+        return False
+    old_dir, new_dir = before[3], after[3]
+    if (new_dir is None or not stat.S_ISDIR(new_dir[2])
+            or (old_dir is not None and old_dir[:3] != new_dir[:3])):
+        return False
+    old, new = dict((entry[0], entry[1:]) for entry in before[4]), dict((entry[0], entry[1:]) for entry in after[4])
+    added = new.keys() - old.keys()
+    if not added or any(new.get(name) != value for name, value in old.items()):
+        return False
+    # An arbitrary new child or alias is not evidence of native registration.
+    # A fresh complete Git observation remains mandatory after this classification.
+    for name in added:
+        directory, gitdir, commondir, config = new[name]
+        if directory is None or not stat.S_ISDIR(directory[2]):
+            return False
+        for marker in (gitdir, commondir):
+            if marker is None or not stat.S_ISREG(marker[2]) or not marker[5]:
+                return False
+        if config is not None and not stat.S_ISREG(config[2]):
+            return False
+    return True
+
+
+def _observation_addition(before, after):
+    if before[:3] != after[:3] or len(before) != 5 or len(after) != 5:
+        return False
+    return (before[1] == "ok" and before[3][1] == after[3][1]
+            and _registry_addition(before[3][0], after[3][0])
+            and set(before[4]) <= set(after[4]))
+
+
 class _NoVerifiedCheckout(ClaimIdentityError):
     """Git ran but could not identify a checkout at this path."""
 
@@ -212,8 +256,10 @@ class _RegistryPhase:
 
     def finish(self):
         for common, before in self.before.items():
-            if self.read(common) != before:
-                raise ClaimIdentityError("claim identity snapshot registry changed during observation phase")
+            after = self.read(common)
+            if after != before:
+                error = RegistryAddition if _registry_addition(before, after) else ClaimIdentityError
+                raise error("claim identity snapshot registry changed during observation phase")
 
 
 def _relative_path(pattern, root):
@@ -470,7 +516,8 @@ class ClaimScopeResolver:
             current, current_negative = observe_phase(targets, {key: item[0] for key, item in negative.items()})
             for key, (target, observed) in observations.items():
                 if current[key][1] != observed:
-                    raise ClaimIdentityError(
+                    error = RegistryAddition if _observation_addition(observed, current[key][1]) else ClaimIdentityError
+                    raise error(
                         "claim identity snapshot changed or became unreadable: "
                         f"claim {claimants.get(key, target)} ({target}); "
                         "re-run when git-quiet"
@@ -644,6 +691,23 @@ class ClaimScopeResolver:
 
     def conflicts(self, left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
         raw_left, raw_right = self._lexical(plain, left), self._lexical(plain, right)
+        # Creation-only reservations name an absent physical subtree. They
+        # participate in collision detection but are never file-edit authority
+        # or an assertion of registered Git identity.
+        if raw_left.startswith("create:") or raw_right.startswith("create:"):
+            def target(raw, workspaces):
+                if raw.startswith("create:"):
+                    value = raw[len("create:"):]
+                    path = Path(value)
+                    if not path.is_absolute() or ".." in path.parts or any(c in value for c in "*?["):
+                        raise ClaimIdentityError("invalid creation reservation path")
+                    return os.path.realpath(value)
+                return self._physical(raw, workspaces)
+            a, b = target(raw_left, left_workspaces), target(raw_right, right_workspaces)
+            if Path(a).is_absolute() == Path(b).is_absolute():
+                return _patterns_intersect(_parts(a), _parts(b))
+            absolute, relative = (_parts(a), _parts(b)) if Path(a).is_absolute() else (_parts(b), _parts(a))
+            return _mixed_paths_intersect(absolute, relative)
         virtual_left = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_left) is not None
         virtual_right = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_right) is not None
         if virtual_left or virtual_right:
@@ -722,3 +786,30 @@ def project_claim_overlap(project: Path, claim: str, workspaces=()) -> bool:
     if project.parent.name == "projects":
         targets.append(str(project.parent / "index.yaml"))
     return any(resolver.conflicts(target, claim, right_workspaces=workspaces) for target in targets)
+
+
+def project_claim_overlaps(project: Path, claims: list[tuple[str, tuple[str, ...]]]) -> list[bool]:
+    """Observe a complete broad repair classification before exposing any row.
+
+    Registry churn invalidates provisional results. Reobserve the whole set
+    once; persistent disagreement and genuine conflicts keep their refusals.
+    This API confers neither edit permission nor native identity.
+    """
+    project = Path(project).expanduser()
+    if not project.is_absolute():
+        raise ClaimIdentityError("project repair scope requires an absolute path")
+    targets = [(str(project / "**"), ())]
+    if project.parent.name == "projects":
+        targets.append((str(project.parent / "index.yaml"), ()))
+    observations = targets + [(claim, tuple(workspaces)) for claim, workspaces in claims]
+    for attempt in range(2):
+        resolver = ClaimScopeResolver()
+        try:
+            with resolver.snapshot(observations):
+                result = [any(resolver.conflicts(target, claim, right_workspaces=workspaces)
+                              for target, _ in targets) for claim, workspaces in claims]
+            return result
+        except RegistryAddition:
+            if attempt:
+                raise
+    raise AssertionError("unreachable snapshot state")

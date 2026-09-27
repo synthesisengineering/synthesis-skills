@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -53,7 +54,7 @@ def write_hooks(path: Path, matcher: str, command: str) -> None:
 def test_hook_config_accepts_claude_and_codex_shape(tmp_path: Path) -> None:
     for filename in ("settings.json", "hooks.json"):
         path = tmp_path / filename
-        write_hooks(path, MATCHER, "python3 message_guard.py --gate")
+        write_hooks(path, MATCHER, shlex.join([sys.executable, str(MODULE_PATH), "--gate"]))
         assert MODULE.hook_config_covers(path, SAMPLE_TOOLS)
 
 
@@ -62,7 +63,7 @@ def test_hook_config_rejects_partial_matcher(tmp_path: Path) -> None:
     write_hooks(
         path,
         "mcp__.*__slack_send_message$",
-        "python3 message_guard.py --gate",
+        shlex.join([sys.executable, str(MODULE_PATH), "--gate"]),
     )
     assert not MODULE.hook_config_covers(path, SAMPLE_TOOLS)
 

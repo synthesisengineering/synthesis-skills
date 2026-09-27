@@ -24,9 +24,15 @@ def normalized(text: str) -> str:
 
 
 def test_scripts_tier_contract_is_owned_by_context_lifecycle() -> None:
-    contract = normalized(
-        section(skill("synthesis-context-lifecycle"), "Executable Working State — resources/scripts/")
-    )
+    heading = "Executable Working State — resources/scripts/"
+    entry = normalized(section(skill("synthesis-context-lifecycle"), heading))
+    reference = "references/durable-record-operations.md"
+    assert (
+        "Read and apply this section's complete "
+        f"[operating protocol]({reference}) before acting."
+    ) in entry
+    owner = REPO_ROOT / "skills/synthesis-context-lifecycle"
+    contract = normalized(section((owner / reference).read_text(encoding="utf-8"), heading))
 
     assert "If a script produces a number or conclusion cited in a durable record" in contract
     assert "preserve the script and every required input before recording the result" in contract

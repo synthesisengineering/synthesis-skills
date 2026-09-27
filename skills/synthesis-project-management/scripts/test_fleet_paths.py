@@ -1,7 +1,9 @@
 """Fleet ~-normalization: expansion, account-routing, and the doctor gate."""
+
 from __future__ import annotations
 
 import json
+import importlib
 import sys
 from pathlib import Path
 
@@ -11,7 +13,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import fleet_paths as FP
+FP = importlib.import_module("fleet_paths")
 
 HOME = str(Path.home())
 
@@ -25,13 +27,17 @@ def test_expand_home_covers_tilde_and_dollar_home():
 
 def test_is_unexpanded_home_path_flags_literal_home_absolutes():
     assert FP.is_unexpanded_home_path(f"{HOME}/workspaces/work")
-    assert FP.is_unexpanded_home_path("/Users/rajiv/.synthesis/coordination/active-sessions.md")
+    assert FP.is_unexpanded_home_path(
+        "/Users/rajiv/.synthesis/coordination/active-sessions.md"
+    )
     assert FP.is_unexpanded_home_path("/Users/other/x")
     assert FP.is_unexpanded_home_path("/home/other/x")
 
 
 def test_is_unexpanded_home_path_passes_portable_values():
-    assert not FP.is_unexpanded_home_path("~/.synthesis/coordination/active-sessions.md")
+    assert not FP.is_unexpanded_home_path(
+        "~/.synthesis/coordination/active-sessions.md"
+    )
     assert not FP.is_unexpanded_home_path("~/workspaces/work")
     assert not FP.is_unexpanded_home_path("$HOME/workspaces/work")
     assert not FP.is_unexpanded_home_path("${HOME}/workspaces/work")
@@ -191,9 +197,7 @@ def test_doctor_gate_reports_line_numbers(tmp_path):
         f'secondary: "{HOME}/second.md"\n',
     )
     hits = FP.check_synced_root(tmp_path)
-    assert [(hit.line, hit.value) for hit in hits] == [
-        (3, f"{HOME}/second.md")
-    ]
+    assert [(hit.line, hit.value) for hit in hits] == [(3, f"{HOME}/second.md")]
     assert str(hits[0]).startswith(f"{path}:3:")
 
 
@@ -206,7 +210,9 @@ def test_fleet_doctor_command_fails_and_passes(tmp_path, capsys):
         "git-hook-config.yaml",
         f'config_version: 2\ncoordination_board: "{HOME}/board.md"\n',
     )
-    shell = type("Args", (), {"board": failing / "board.md", "synthesis_root": failing})()
+    shell = type(
+        "Args", (), {"board": failing / "board.md", "synthesis_root": failing}
+    )()
     assert ENGINE.command_fleet_doctor(shell) == 1
     err = capsys.readouterr().err
     assert "FAIL fleet-paths" in err
@@ -217,6 +223,40 @@ def test_fleet_doctor_command_fails_and_passes(tmp_path, capsys):
         "git-hook-config.yaml",
         'config_version: 2\ncoordination_board: "~/.synthesis/board.md"\n',
     )
-    shell = type("Args", (), {"board": passing / "board.md", "synthesis_root": passing})()
+    shell = type(
+        "Args", (), {"board": passing / "board.md", "synthesis_root": passing}
+    )()
     assert ENGINE.command_fleet_doctor(shell) == 0
     assert "PASS fleet-paths" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "home", ["/private/cache/home/operator", "/srv/Users/operator"]
+)
+def test_doctor_reports_exact_nonstandard_home_once(tmp_path, monkeypatch, home):
+    monkeypatch.setenv("HOME", home)
+    path = tmp_path / "git-hook-config.yaml"
+    path.write_text(f'path: "{home}/records.md"\n')
+    assert [hit.value for hit in FP.check_synced_root(tmp_path)] == [
+        home + "/records.md"
+    ]
+
+
+@pytest.mark.parametrize(
+    "outside", ["/cache/home/operator/report.md", "/cache/Users/operator/report.md"]
+)
+def test_embedded_home_root_is_not_absolute_home_token(tmp_path, monkeypatch, outside):
+    monkeypatch.setenv("HOME", "/elsewhere/operator")
+    path = tmp_path / "git-hook-config.yaml"
+    path.write_text(f'path: "{outside}"\n')
+    assert FP.check_synced_root(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "actual", ["/home/operator/report.md", "/Users/operator/report.md"]
+)
+def test_real_absolute_home_token_still_refused(tmp_path, monkeypatch, actual):
+    monkeypatch.setenv("HOME", "/elsewhere/operator")
+    path = tmp_path / "git-hook-config.yaml"
+    path.write_text(f'path: "{actual}"\n')
+    assert [hit.value for hit in FP.check_synced_root(tmp_path)] == [actual]

@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.150.0] - 2026-09-26
+
+Add recoverable multi-file project transactions and explicit decision/obligation
+succession. Preserve original records, unanswered decisions and exact authority;
+concurrent sessions cannot silently replace one another's work.
+
+Make acquisition and ritual reports bind their actual source, cutoff and complete
+worker outcomes. Standardize guarded email construction and onboarding wiring.
+Harden raw-byte Git scanning, claim serialization, native process cleanup and
+runtime dependency verification without relaxing protective checks. Failed release
+checks retain their bounded diagnostic output instead of only a summary line.
+
+This release also carries the previously integrated large-journal recovery and
+bounded exhaustive CI changes described in the 4.149.9 source candidate below.
+
 ## [4.149.9] - 2026-09-26
 
 Required autopilot checks now cover the entire collected suite in bounded groups.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 import shutil
 import shlex
 import subprocess
@@ -103,8 +105,6 @@ def test_genuinely_new_sensitive_line_still_blocks(tmp_path: Path) -> None:
     assert "SENSITIVE PATTERN DETECTED" in completed.stdout
 
 
-import importlib.util
-import sys
 
 SIDECAR_PATH = SCRIPT_DIR / "_load_config.py"
 SPEC = importlib.util.spec_from_file_location("load_config", SIDECAR_PATH)
@@ -1041,6 +1041,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "pre-commit",
         "commit-msg",
         "_load_config.py",
+        "_scan_staged.py",
         "coordination.py",
         "claim_scope.py",
         "native_git.py",
@@ -1056,6 +1057,10 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "fleet_handoff.py",
         "fleet_logical.py",
         "fleet_subscriptions.py",
+        "coordination_process.py",
+        "coordination_lock.py",
+        "project_recipient.py",
+        "live_receipt.py",
         "source-path",
     }
     assert (

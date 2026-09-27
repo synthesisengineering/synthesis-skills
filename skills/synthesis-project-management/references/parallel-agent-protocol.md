@@ -21,9 +21,10 @@ machine:
    canonical context, contributor for a bounded slice. A migrated letter is a
    legacy alias, not a claim. Claim the smallest coherent area needed for the
    current task, following the scope rules below.
-3. **Isolate.** Create worktrees only after the claim, always naming the
-   repository explicitly (a `cd`-dependent worktree command in the wrong
-   directory creates a worktree of the wrong repository).
+3. **Isolate.** For an absent checkout, use `scripts/create_worktree.py` under
+   the exact native seat. Its authenticated creation-only reservation precedes
+   Git effects; after creation, claim the exact edit paths before writing.
+   Name the repository and target explicitly (see "Absent checkout creation").
 4. **Work.** Heartbeat and review claim scope at checkpoints and task/phase
    changes. Expand before additional writes; narrow completed areas promptly.
    Keep the plan current at phase boundaries — it survives a crash (see "Digests").
@@ -365,7 +366,10 @@ contributor re-tests against the current head.
 
 ## Shared repositories
 
-Independent root sessions never share a worktree, index, or branch. A safe
+Independent implementation sessions use isolated worktrees by default. Sharing
+one checkout is also supported when every claimed area is disjoint. Those seats
+must sequence branch/index operations and commit only their own exact paths;
+disjoint file ownership does not provide a private Git index. A typical isolated
 shape is:
 
 ```text
@@ -376,6 +380,62 @@ repository
 
 Non-overlapping file claims are still required. Worktree isolation prevents git
 index and branch collisions; resource claims prevent semantic collisions.
+
+### Absent checkout creation
+
+A future path is not a registered Git checkout. Do not claim an absent native
+workspace, claim a whole repository to get past discovery, or create a branch
+first and retroactively claim it. With an already authenticated active seat,
+`scripts/create_worktree.py --board <board> --session <exact-id> --repository
+<existing-root> --target <absent-absolute-path> --branch <new-branch> --ref
+<commit-ish>` publishes `create:<target>` through the existing board owner before
+creating anything. The target's parent must already exist. The helper checks
+symlink-free descriptor ancestry, existing physical claims and other creation
+reservations, and serializes local creators. Every creation/claim-effect local
+board lock has a five-second acquisition ceiling. A configured remote lease is fenced
+through its owner; unavailable ownership refuses before the effect.
+
+A creation reservation reserves only that checkout creation. It grants no source
+edit or staged-commit authority. Success releases only that reservation; the
+original workspace and edit-claim sets stay exact. Adding a workspace would give
+existing relative claims a new physical meaning. The result is
+`created-awaiting-workspace-and-edit-claim`: explicitly register that workspace
+and acquire its required narrow edit claims next.
+Failure or interruption retains the reservation and partial tree, including a
+successfully created tree whose reservation release failed. Inspect those exact
+objects under the native owner before recovery or explicit narrowing; never
+retry Git creation against a partial target or erase the retained tree. Neither
+selectors, legacy aliases nor a copied environment label authenticate ownership.
+
+### Claim-dependent effects
+
+A refused claim terminates the dependent operation. `coordination.py claim`
+already exits nonzero on refusal; never ignore that exit, queue the effect in
+parallel, or treat a serialized retry as proof of the original cause. For an
+explicit dependent command, place `--then-cwd <absolute-directory>
+--then-timeout <seconds> --then <executable> <arguments...>` last in the claim
+invocation. This owner runs the exact argv only after successful claim and seat
+persistence plus a fresh native ownership check. The default ceiling is 60
+seconds, configurable through 900; captured output is capped at one MiB. Child
+failure, output overflow, interruption and timeout remain failures; the owner
+terminates its process group and retains the claim and partial work.
+
+This sequencing is not a sandbox, extra write permission or protection against a
+program deliberately escaping its process group. Commands still require their
+normal authorization, narrowly claimed paths, native hook checks and configured
+OS boundaries. Keep larger workflows in their existing execution owners.
+
+### Bounded passive resnapshot
+
+Passive path and broad project-repair readers may repeat their complete snapshot
+once when positively verified new registrations appeared in a worktree registry.
+The common directory, configuration and all old registry entries must retain
+identity; no provisional verdict escapes. Removed/replaced registrations, changed
+physical paths or configuration, unreadable state and continued disagreement
+refuse. The second observation still enforces overlaps. This does not authorize
+writes, extend the caller's existing time budget or weaken mutating admissions.
+The broad reader uses `claim_scope.project_claim_overlaps` for the whole row set;
+per-row calls cannot establish a shared observation boundary.
 
 ## Pauses, crashes, and stale sessions
 

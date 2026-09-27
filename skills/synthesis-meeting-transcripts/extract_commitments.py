@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_transcripts
 
-SCRIPT_VERSION = "0.11.0"
+SCRIPT_VERSION = "0.12.0"
 
 _TS_IN_BRACKET = re.compile(r"\[\s*(\d{1,2}:\d{2}(?::\d{2})?)")
 
@@ -88,10 +88,13 @@ def _dialogue_lines(text: str) -> list[tuple[str | None, str, str]]:
             continue
         match = verify_transcripts.SPEAKER_RE.match(raw_line)
         if not match:
+            if line.startswith("#") or line == "---":
+                pending = None
             continue
         bracket = _TS_IN_BRACKET.search(line)
         timestamp = bracket.group(1) if bracket else pending
-        pending = None
+        # A Gemini timestamp starts a dialogue block, not only one speaker.
+        # Keep it until a new timestamp or section boundary; do not invent times.
         speaker = match.group(0).strip()
         speaker = re.sub(r"^\*{0,2}\[.*?\]\s*", "", speaker)
         speaker = speaker.strip("*").rstrip(":").strip().rstrip("*").strip()

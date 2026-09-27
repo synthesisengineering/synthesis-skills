@@ -5,127 +5,12 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.11.0"
+  version: "0.12.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
-## v0.11.0 — Confirmed commitments carry their owning workspace
-
-v0.11.0 (2026-09-20) wires §3 ownership into filing: new Step 4.8 stamps
-each principal-confirmed commitment `owner:`/`owner_rule:` via
-`extract_commitments.py --stamp`, routed by the daily-rituals ownership
-rules. Other seats record nothing — not even a pointer.
-
-## v0.10.0 — Saved transcripts get read for obligations
-
-v0.10.0 (2026-09-18) closes the §5b gap: verification proved fidelity
-while nothing asked whether anything was owed — Rajiv's "Oh of course"
-to Paul Smurl's celebration of life sat in a filed transcript no one
-read for obligations. New Step 4.7 runs `extract_commitments.py` over
-the saved
-file and presents every timestamped candidate for principal
-confirmation in the same turn. Candidates only; nothing auto-creates.
-
-## v0.9.0 — The declared set gets an execution path
-
-v0.9.0 (2026-08-29) closes the gap an external adversarial review found in
-v0.8.0: the policy said "declared means fetched" while the operative protocol
-only resolved one user-named meeting. Step 0 now defines the declared-window
-sweep — enumerate the declared set for the window, fetch every member, and
-account for every member in the report with unclosed gaps recorded
-machine-readably. Frontmatter version also catches up; v0.8.0 shipped with
-stale skill metadata.
-
-## v0.8.0 — Declared means fetched: no judgment gate before fetching
-
-v0.8.0 (2026-08-27) removes agent judgment from the decision of *which* declared
-transcripts to fetch.
-
-**The defect.** The sweep enumerated documents and recorded their ids, but
-fetching was gated on the agent deciding what looked worth fetching. That
-judgment deprioritised several meetings as routine standups. One held a live
-action item for the principal; another carried a launch date contradicting the
-one recorded everywhere else, so the corpus held two incompatible dates and
-nothing surfaced the conflict.
-
-**The rule.** If a transcript is declared in scope for the window, it is
-fetched. The agent does not get a vote on which declared items are interesting.
-Relevance is judged *after* fetching, when the content is visible — never
-before, from a title.
-
-**Why this shape is already settled here.** The workspace retired this exact
-failure once before, when "sync when active" gating was removed from the repo
-list after a repository drifted for six weeks behind a judgment that it looked
-inactive. Titles and activity heuristics are not evidence about content. A
-declared set exists precisely so that no per-item judgment stands between the
-list and the fetch; re-introducing one at a lower level rebuilds the failure the
-declared set was meant to prevent.
-
-A run that cannot fetch a declared item records it as an unclosed gap rather
-than silently omitting it.
-
-## v0.7.0 — Source grade is now executable
-
-The standing kernel rule already says that a verbatim transcript is the only
-primary source for attribution-bearing meeting claims. v0.7.0 adds the missing
-mechanical boundary: `transcript_primary.py` rejects a structured summary even
-when its filename or heading says “primary transcript,” classifies artifacts
-from complete raw provider-message records that pair an identifier with
-bounded message content, and requires an exact record-bound message location
-before issuing an attribution receipt. Loose or conflicting identifiers fail
-closed.
-
-Both executable components now report the same 0.7.0 version as this skill's
-metadata. The acceptance suite executes that parity instead of leaving the
-existing “must match” banner as an unchecked claim.
-
-The motivating fixture preserves the structure, not the private content, of a
-real 128-line summarizer that had been labelled a primary transcript. Its
-summary bullets and inline times cannot establish raw-message provenance. The
-positive fixture uses synthetic `message_ts`, `thread_ts`, and Slack permalink
-records. Classification is explicitly diagnostic. Only
-`authorize-attribution` is an enforced gate, and its receipt binds the input
-hash and the exact permalink or `message_ts`; a thread id alone is not
-quote-granular. Every result names the unverified remainder.
-
-## v0.6.1 — The heartbeat distinguishes absence from invisibility
-
-v0.6.1 makes the doctor classify restricted LaunchAgent visibility as
-unverifiable, separates curl transport failure from HTTP status, and prevents a
-double-`000` response from being accepted as health.
-
-## v0.6.0 — The optional auto-start service gets a heartbeat
-
-v0.6.0 (2026-08-12) adds `optional-workspace-mcp/doctor.sh`. The bundle shipped an
-installer for a supervised background service and no way to ask whether that service
-was still alive — the one fail-open control in a stack whose other guards all ship a
-health check.
-
-The failure it exists to catch: `install-autostart.sh` records an **absolute** path to
-`start.sh` into the launchd/systemd unit at install time. Move the checkout, rename a
-parent directory, or restructure the repo, and the unit still points at the old path.
-launchd exits `78` (`EX_CONFIG`), `KeepAlive` retries every 30 seconds indefinitely, and
-the log fills with thousands of identical lines. Nothing surfaces. The only symptom is
-that the MCP tools are quietly absent — and since the natural reading of "my tools are
-missing" is a client problem, the investigation starts in the wrong place. Restarting
-the client cannot help: the client never owned the process.
-
-Observed 2026-08-12 against a checkout that had gained a `skills/` directory level. The
-unit had been failing for an unknown period.
-
-`doctor.sh` checks the unit exists, that its recorded start-script path still exists and
-is executable, that the supervisor has it loaded and with what exit status (`78` gets a
-targeted hint), that the client secret is present, that the port is listening, and that
-the endpoint answers. Exit codes follow the guard contract — `0` healthy, `1` defects,
-`2` a check could not run, because a check that cannot run must never be reported as a
-check that passed. It also flags the case where the unit runs a *different* checkout
-than the one you are editing.
-
-The remedy is always to re-run `install-autostart.sh`, never to hand-edit the unit: the
-installer derives the path from its own location and is correct by construction. The
-defect was never in the generator — only in the absence of anything that noticed the
-generated artifact had gone stale.
+The earlier release notes and rationale are retained in [references/earlier-version-history.md](references/earlier-version-history.md). Before a declared-window sweep, read the mandatory [acquisition evidence contract](../synthesis-daily-rituals/references/acquisition-evidence.md). Unknown authentication, tab enumeration, or archive coverage is a visible gap, never a no-source attestation.
 
 ## v0.5.3 — A clean audit no longer looks like a broken one
 
@@ -337,6 +222,10 @@ If the config file is missing, the skill should warn and ask the user to create 
 
 ### Step 0: Declared-window sweep (v0.9.0 — how "declared means fetched" executes)
 
+The agent does not get a vote on which declared items are interesting. Relevance is judged after fetching, never before. Every declared item is fetched or retained as an unclosed gap.
+
+Probe recorder identity at day-start using the owner's declared read-only adapter; HTTP health alone is not sign-in. Inventory every declared recorder source and account for the exact window, following all pages and retaining raw tool-call references and a same-source positive control. `inventory_documents` in the optional fetch owner provides a bounded adapter seam; never filter by meeting title or perceived relevance. Compare provider/source IDs against exact saved archive headers with `sync_watermark.py acquisition-check`; retain per-source gap decisions. Advance only with the verified acquisition evidence file; unknown enumeration or a missing archive keeps the watermark unchanged.
+
 The single-meeting path below serves an explicit user request. A ritual sync
 (Day-Start 3c, Day-End Step 1) runs this sweep instead, because the policy
 above has to have an execution path or it is prose:
@@ -387,7 +276,7 @@ Use the available Drive file-read tool to fetch the full content. Gemini notes d
 1. **Notes** — summary, next steps, paraphrased details with timestamps
 2. **Transcript** — word-for-word transcription with speaker attribution
 
-A well-behaved Drive file-read tool returns both tabs in a single fetch (verified: workspace-mcp's `get_drive_file_content` does this). If the tool only returns the first tab, note the limitation and fetch the second tab explicitly via the Docs API tabs feature if available.
+Unwrap every JSON-RPC/MCP tool-result envelope with the optional client's `call_tool_text` before reading text. An outer or nested tool error is unknown coverage. Select the transcript by the provider's stable tab ID through `document_tabs.select_tabs`, never by title, order, or a regular expression over flattened text. Missing tab inventory, incomplete tab inventory, missing content, absent declared tab, and empty returned tab have distinct reasons. Only a complete tab inventory establishes `transcript-tab-absent`; neither an error nor a flattened summary authorizes a no-source marker. Preserve every returned notes/transcript byte and the provider's tab IDs. Connector adapters must actually expose these capabilities; capability absence is a surfaced readiness gap.
 
 ### ⚠️ DO NOT extract content from the Gemini email summary
 
@@ -406,6 +295,8 @@ Write to `{transcripts_repo}/{transcripts_path}/meetings/{meeting-slug}-{date}.m
 
 **Source:** Gemini meeting notes + full transcript
 **Google Doc:** {doc URL}
+**Source ID:** {provider}:{source document ID}
+**Transcript tab ID:** {stable provider tab ID, when present}
 **Fetched via:** {tool used} ({google_account}) — {fetch date}
 **Meeting start:** {time if known} | **Duration:** {duration if known}
 
@@ -426,11 +317,10 @@ Before declaring the meeting fetched, **verify the saved file contains BOTH the 
 
 ```bash
 python3 <synthesis-meeting-transcripts-root>/verify_transcripts.py \
-    {transcripts_repo}/{transcripts_path}/meetings/ \
-    --only-incomplete
+    --file {exact-newly-saved-file} --json
 ```
 
-The script counts timestamp markers (`00:01:31`-style) in each meeting file. A real Gemini transcript has ~5–50 timestamps; a summary-only save has 0–2. If the just-saved file shows `INCOMPLETE`, re-fetch the Drive doc and re-save — your earlier extraction missed the Transcript tab.
+Pass every newly saved file with repeatable `--file`, or use `--saved-manifest` containing the exact absolute paths and SHA-256 digests produced by this save. A directory scan is a separate corpus diagnostic and cannot substitute for exact-set verification. Missing, changed, aliased, unreadable, or duplicate paths refuse verification. The script counts timestamp markers (`00:01:31`-style) in each meeting file. A real Gemini transcript has ~5–50 timestamps; a summary-only save has 0–2. If the just-saved file shows `INCOMPLETE`, re-fetch the Drive doc and re-save — your earlier extraction missed the Transcript tab.
 
 **Reading the summary line.** `--only-incomplete` narrows the listed rows, never the counts: the `Total:` line always describes the whole audited corpus and appends `(listing filtered to incomplete only)`. So a clean run reports the real corpus size with `0 incomplete` — an empty listing under a real total is the all-clear, not a failed invocation. A wrong path is a distinct outcome: `ERROR: not a directory` (or `no .md files found`) on stderr, exit code 2. In `--json`, `total_files` is the corpus and `listed_count` is the rows.
 
@@ -442,13 +332,7 @@ The script counts timestamp markers (`00:01:31`-style) in each meeting file. A r
 
 **This step is not optional.** Saving a meeting transcript without the verbatim section is the failure mode that prompted this verification step — a class of error where an agent silently substitutes a summary for the actual substance the protocol requires.
 
-If the verifier is missing or unrunnable in the current environment, you MUST manually grep the saved file for ≥5 timestamp markers before declaring done:
-
-```bash
-grep -cE '^\*?\*?[0-9]+:[0-9]+(:[0-9]+)?\*?\*?' <saved-file>
-```
-
-If count < 5, you have not saved the full transcript. Re-fetch the Drive doc.
+If the verifier is missing or unrunnable, report verification unavailable and preserve the saved bytes and gap. A grep threshold cannot establish an exact saved-file receipt or authorize the watermark.
 
 **When the source Doc legitimately has no transcript section** (Google Meet was recorded but transcription was not enabled — common for casual 1:1s, training sessions, and meetings hosted by people who don't run Gemini): add the literal marker `<!-- VERIFIER: no-source-transcript -->` somewhere in the local file. The verifier will accept it as `OK (no-source-transcript)` rather than `INCOMPLETE`. Include a one-line human explanation alongside the marker so future readers know why the file has no transcript section.
 
@@ -498,7 +382,7 @@ python3 <synthesis-meeting-transcripts-root>/extract_commitments.py \
     {saved-file} [--speaker "{principal}"]
 ```
 
-It flags first-person commitment shapes (`I'll`, `I will`, `of course`,
+A Gemini timestamp carries across its entire dialogue block until the next timestamp or section boundary; missing times remain null. It flags first-person commitment shapes (`I'll`, `I will`, `of course`,
 `let me`, `send me`, `I promise`, `by <date>`) with timestamps and
 speakers. Present every candidate for the principal to confirm **in the
 same turn as the filing** — timestamp, speaker, quote. The scanner never

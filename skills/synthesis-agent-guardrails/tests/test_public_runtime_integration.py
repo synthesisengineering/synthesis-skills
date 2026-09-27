@@ -46,6 +46,13 @@ def public_installation(tmp_path, monkeypatch):
             generation / "skills" / skill,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
         )
+    # Copy the real registered closure, including cross-skill dependencies.
+    # Existing fixture members and all production refusal checks remain intact.
+    for relative in sorted({path for paths in release_runtime.ENTRYPOINT_DEPENDENCIES.values() for path in paths}):
+        target = generation / "skills" / relative
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPOSITORY / "skills" / relative, target)
     for client in ("claude", "codex", "muse"):
         manifest = generation / ("." + client + "-plugin") / "plugin.json"
         manifest.parent.mkdir(parents=True)

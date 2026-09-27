@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.18.12"
+  version: "2.19.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -197,11 +197,10 @@ Complete task → Update CONTEXT.md → local receipt → Next task
 
 ### Session Start
 
-1. **Read the coordination board** — If
-   `~/.synthesis/coordination/active-sessions.md` exists, read it before any
-   write and register or refresh this session's project, worktree, branch,
-   context role, and claims
+1. **Read the coordination board** — If `~/.synthesis/coordination/active-sessions.md` exists, read it before any write and register or refresh this session's project, worktree, branch, context role, and claims
 2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index with `--no-fetch --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0`; use only its causally selected state. A failed or conflicting selection stops dependent project reads/writes, including build and migration.
+An unfinished context-editor record transaction blocks selection and managed verification. Reconcile its retained intent through the existing context editor under fresh exact authority before treating any partial record set as current. A journal is evidence, never permission to claim or overwrite files.
+
 3. **Read the selected state** — Read `CURRENT_STATE.json` when present, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate the available hashes and semantics. Absence of structured state does not authorize a migration.
 4. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
 5. **Search lessons/** — Search for relevant past experiences.
@@ -214,6 +213,7 @@ Complete task → Update CONTEXT.md → local receipt → Next task
 3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
 4. **Refresh adopted structured state** — For a project already using `CURRENT_STATE.json`, regenerate it and its compiled block after each meaningful source phase.
    Prose-only projects retain their context protocol; checkpoint commands report non-applicability only after verifying state was never adopted.
+   For adopted v2 format projects, after the final session entry run `scripts/project_format.py refresh <project-dir>` under the records claim to refresh `sessions/INDEX.md` and unverified resume candidates. Review candidates without treating them as verified obligations. This owner leaves `CURRENT_STATE.json` to `project_state.py`; see [project formats](references/project-formats.md) for interruption recovery.
 5. **Verify local continuity** — Confirm this native session's attributed state is readable and its local handoff is ready.
    Structured projects additionally require their session- and claim-bound Stop receipt. `NOT_APPLICABLE` does not certify pending edits.
    Do not create a commit or network push solely because the user is switching clients on this machine.
@@ -302,9 +302,9 @@ Rules:
    creating a branch or editing; exact files suit independent edits, directories
    suit coordinated multi-file work. Expand an accepted claim before extra writes;
    do not reserve speculative future work. Name the synthesis project across repos.
-   See [claim scope over the task lifecycle](references/parallel-agent-protocol.md#claim-scope-over-the-task-lifecycle).
+   For absent checkouts use `scripts/create_worktree.py`; claim-dependent `--then` effects and bounded resnapshot follow [the coordination protocol](references/parallel-agent-protocol.md#absent-checkout-creation).
 3. **Do not write through overlap.** If a claim conflicts, stop writes in that
-   area and use the message log or the user to sequence work.
+   area and all dependent effects; use the message log or the user to sequence work.
 4. **Share checkouts only with disjoint areas.** Same worktree/branch is allowed
    when claimed areas are disjoint (banner names who is there); same-file work
    needs isolated worktrees, and sharing seats commit only their own paths.

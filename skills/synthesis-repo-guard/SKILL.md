@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.3"
+  version: "2.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -368,3 +368,16 @@ checkpoint_sync.py [--config C] [--repo PATH] [--hook] [--now]
 - **2.1.0 (2026-08-14):** separates local and remote readiness. Stop records atomic client-session receipts without Git or network mutation; interruption leaves a recoverable manifest; explicit remote handoff batches exact private-context paths only after source paths are upstream-current. Adds worktree identity, first-branch publication, generic commit messages, staged-index isolation, and integration fixtures.
 - **2.0.0 (2026-07-08):** three-layer redesign. Generic-only audio/banner (confidentiality rule), `~/.synthesis/quiet-audio` mute flag, report files + history, remediation hints, new `checkpoint_sync.py` (event-driven auto-commit/push: runtime remote guard, quiescence, shared throttle, ff-only push, distinct author, stale-lock detection), synthesis-console integration contract, scheduled-mutation explicitly disallowed. Origin: 2026-07-08 design review (lesson: alert-channel confidentiality + event-driven checkpoints).
 - **1.1.0:** detector + count-only audio alerts.
+
+### Exact publication feedback
+
+The remote flush owner records an exact-session publication receipt only after
+remote verification and a check that the attributed paths equal the published
+commit. The receipt binds the original manifest bytes, native session, exact
+path set, file bytes/modes, commit, upstream and remote identity. Stop consumes
+that receipt offline with a two-second total bound. `VERIFIED_REMOTE_READY`
+means the prior owner verification still matches current local evidence;
+`live_remote_rechecked: false` makes the observation boundary explicit. It
+never grants new publication authority. Missing, foreign, stale, corrupt,
+over-budget or later-attributed evidence produces `UNKNOWN`, not “unpublished.”
+The legacy global last-handoff file is not publication proof.

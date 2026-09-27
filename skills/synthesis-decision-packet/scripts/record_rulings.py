@@ -368,7 +368,9 @@ def parse_summary(text: str, spec: dict | None = None) -> dict:
                         "took_recommendation": choice == rec if choice is not None and rec is not None else None,
                         "accepted_in_bulk": saved["bulk"],
                         "recommended_label": labels.get(rec) if choice is not None else None,
-                        "note": saved["note"] or None})
+                        "note": saved["note"] or None,
+                        **({"prior_position": json.loads(json.dumps(row["prior_position"]))}
+                           if "prior_position" in row else {})})
     return {"packet": spec["title"], "decided": sum(r["choice_value"] is not None for r in rulings),
             "total": len(rulings), "rulings": rulings, "schema_version": 2,
             "binding": {"status": "spec-bound", "spec_sha256": binding["spec_sha256"]}}
@@ -456,6 +458,8 @@ def main() -> int:
                                     "owner": "existing action owner must verify trusted authority and exact operation"}}
         payload = (json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
         if args.file_into:
+            from build_packet import assert_active_spec
+            assert_active_spec(args.file_into, spec_digest(spec), spec)
             stem = f"{record['ruled_on']}-{slugify(record['packet'])}"
             dest = args.file_into / f"{stem}-rulings.json"
             if dest.is_symlink():

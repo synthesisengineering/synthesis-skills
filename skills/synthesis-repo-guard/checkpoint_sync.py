@@ -61,6 +61,10 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+# The retirement reconciler can be staged alone and run after source removal.
+# Its read-only retirement paths must not import the publication-only helper.
+publication_receipt = None
+
 # SYNTHESIS_HOME overrides the state root (tests, sandboxes). Default ~/.synthesis
 SYNTHESIS_HOME = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
 CONFIG_PATH = SYNTHESIS_HOME / "checkpoint-sync.yaml"
@@ -157,7 +161,6 @@ def configured_repos(cfg: dict) -> list[Path]:
     for pattern in cfg.get("repo_globs", []):
         pattern = os.path.expanduser(str(pattern))
         # Glob over the filesystem: expand each path segment via Path.glob
-        base = Path("/")
         try:
             import glob as _glob
             for hit in sorted(_glob.glob(pattern)):
@@ -807,6 +810,29 @@ def release_manifest_locks(locks: list[object]) -> None:
         lock.close()
 
 
+def validate_retirement_claims_runtime(value: dict | None) -> dict | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"schema_version", "sha256", "board", "session_uuid", "native"}:
+        raise ValueError("invalid retirement claims runtime descriptor")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1 or not isinstance(value["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"]):
+        raise ValueError("invalid retirement claims runtime digest")
+    for name in ("board", "session_uuid"):
+        if not isinstance(value[name], str) or not value[name] or len(value[name]) > 2048 or "\x00" in value[name]:
+            raise ValueError("invalid retirement claims identity")
+    board = Path(value["board"])
+    if not board.is_absolute() or ".." in board.parts:
+        raise ValueError("invalid retirement claims board")
+    native = value["native"]
+    if not isinstance(native, dict) or set(native) != {"client", "harness_session_id", "host_session_id", "primary_ref"}:
+        raise ValueError("invalid retirement native identity")
+    if any(not isinstance(item, str) or len(item) > 2048 or "\x00" in item for item in native.values()):
+        raise ValueError("invalid retirement native identity value")
+    if not any(native.values()):
+        raise ValueError("retirement claims runtime lacks native identity")
+    return json.loads(json.dumps(value))
+
+
 def prepare_retirement_intent(
     worktree: Path,
     repository: Path,
@@ -819,7 +845,9 @@ def prepare_retirement_intent(
     dry_run: bool,
     session_id: str | None = None,
     recovery_evidence: dict | None = None,
+    claims_runtime: dict | None = None,
 ) -> tuple[dict, Path | None, list[Path]]:
+    claims_runtime = validate_retirement_claims_runtime(claims_runtime)
     worktree, repository = validate_retirement_target(
         worktree, repository, expect_active=expect_active
     )
@@ -840,6 +868,10 @@ def prepare_retirement_intent(
         )
         if dry_run:
             return result, None, touched
+        if intent.exists():
+            prior = load_retirement_intent(intent)
+            if prior.get("claims_runtime") != claims_runtime:
+                raise ValueError("prepared retirement has a different retained claim owner/runtime")
         prepared_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         reconciler_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         atomic_json(
@@ -861,6 +893,7 @@ def prepare_retirement_intent(
                 "paths_preflight": sum(len(plan[2]) for plan in plans),
                 "session_id": session_id,
                 "recovery_evidence": recovery_evidence,
+                "claims_runtime": claims_runtime,
             },
         )
         return result, intent, touched
@@ -2253,6 +2286,9 @@ def _flush_pending_manifests_unlocked(
     assertion: str | None = None,
 ) -> tuple[list[dict], list[Path]]:
     """Publish the supplied pending manifests and retire their published entries."""
+    global publication_receipt
+    if not dry_run:
+        import publication_receipt
     loaded: list[tuple[Path, dict]] = []
     errors: list[dict] = []
     drop_results: list[dict] = []
@@ -2355,6 +2391,25 @@ def _flush_pending_manifests_unlocked(
         )
         if not dry_run:
             for manifest, data, entries in membership:
+                # Exact-session proof is produced by the same remote-verifying
+                # owner under its lifecycle + manifest lock, before retirement.
+                # A diagnostic proof failure neither grants publication nor
+                # weakens the original flush/retirement verdict.
+                try:
+                    if drop_stranded or any(item.get("alert") for item in results):
+                        raise publication_receipt.ProofError("remote verification is incomplete or uses an operator assertion")
+                    raw, _identity = publication_receipt._read(
+                        manifest, publication_receipt.MAX_MANIFEST,
+                        time.monotonic() + 10)
+                    if publication_receipt._json(raw) != data:
+                        raise publication_receipt.ProofError("manifest changed before publication proof")
+                    proof = publication_receipt.build(manifest, raw, results)
+                    atomic_json(STATE_DIR / "publication" / manifest.name, proof)
+                except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+                    if not drop_stranded and not any(item.get("alert") for item in results):
+                        results.append({"repo": str(manifest), "name": "publication-proof",
+                                        "action": "publication-unknown", "alert": None,
+                                        "detail": str(exc)})
                 results.extend(
                     retire_published_entries(
                         manifest, data, entries, root_of, context_results, source_results
@@ -2688,7 +2743,8 @@ def record_prepared_native_launch(*, project: Path, run_id: str, permit_id: str,
         end = time.monotonic() + 10
         while not acquired:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB); acquired = True
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
             except BlockingIOError:
                 if time.monotonic() >= end:
                     raise ValueError("attribution lifecycle lock timeout")
@@ -2840,6 +2896,7 @@ def main() -> int:
         default=None,
         help="Complete or resume reconciliation from a durable retirement intent",
     )
+    ap.add_argument("--retirement-claims-runtime", default=None, help="Exact retained coordinator and native owner descriptor (JSON)")
     ap.add_argument(
         "--retirement-repository",
         type=Path,
@@ -2976,6 +3033,7 @@ def main() -> int:
                     args.retirement_remote,
                     args.retirement_base,
                     branch=args.retirement_branch,
+                    claims_runtime=(json.loads(args.retirement_claims_runtime) if args.retirement_claims_runtime else None),
                     expect_active=True,
                     dry_run=args.dry_run,
                 )

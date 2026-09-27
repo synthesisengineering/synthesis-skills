@@ -84,13 +84,15 @@ except ImportError:  # pragma: no cover - resolved at runtime in the repo
             return None
         return shutil.which(name)
 
-from bootstrap import materialize_release
-from cache_guardian import GuardianError as CacheGuardianError
-from cache_guardian import _tree_digest as _guardian_tree_digest
-from cache_guardian import RecoveryStore, persist_archive
-from system_contract import (ContractError, SystemState, activate_cli, atomic_write_json,
+from bootstrap import materialize_release  # noqa: E402 - sibling paths are registered above
+from cache_guardian import GuardianError as CacheGuardianError  # noqa: E402 - sibling paths are registered above
+from cache_guardian import _tree_digest as _guardian_tree_digest  # noqa: E402 - sibling paths are registered above
+from cache_guardian import RecoveryStore, persist_archive  # noqa: E402 - sibling paths are registered above
+from system_contract import (  # noqa: E402 - sibling paths are registered above
+                             ContractError, SystemState, activate_cli, atomic_write_json,
                              canonical_tracked_tree_digest, canonical_tree_digest,
                              descriptor_fields, json_digest, validate_release_descriptor,
+                             message_guard_activation_preflight,
                              verify_materialized_release, verify_native_release_inventory)
 
 
@@ -144,16 +146,18 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
     ("pytest.autopilot.native", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "native"]),
     ("pytest.autopilot.evaluation", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "evaluation"]),
     ("pytest.autopilot.core", ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "core"]),
+    ("pytest.meeting-prep", ["python3", "-m", "pytest", "skills/synthesis-meeting-prep/scripts/", "-q"]),
     ("pytest.model-tiers", ["python3", "-m", "pytest", "skills/synthesis-model-tiers/scripts/", "-q"]),
     ("pytest.promotion-gate", ["python3", "-m", "pytest", "skills/synthesis-promotion-gate/scripts/", "-q"]),
     ("pytest.context-lifecycle-integrity", ["python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/", "skills/synthesis-implementation-integrity/scripts/", "-q"]),
     ("pytest.onboarding", ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"]),
     ("onboarding.catalog-scaffolds", ["python3", "skills/synthesis-onboarding/scripts/check_scaffolds.py", "."]),
     ("onboarding.capabilities", ["python3", "skills/synthesis-onboarding/scripts/check_capabilities.py", "."]),
-    ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "skills/synthesis-skills-manager/scripts/test_release_check_groups.py", "-q"]),
+    ("pytest.release", ["python3", "-m", "pytest", "skills/synthesis-skills-manager/scripts/test_release.py", "skills/synthesis-skills-manager/scripts/test_release_check_groups.py", "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py", "-q"]),
     ("pytest.guardrails", ["python3", "-m", "pytest", "skills/synthesis-agent-guardrails/tests/", "-q"]),
     ("meeting-transcripts.completeness", ["python3", "skills/synthesis-meeting-transcripts/test_verify_transcripts.py"]),
     ("meeting-transcripts.primary", ["python3", "skills/synthesis-meeting-transcripts/test_transcript_primary.py"]),
+    ("pytest.meeting-acquisition", ["python3", "-m", "pytest", "skills/synthesis-meeting-transcripts/test_acquisition_tools.py", "skills/synthesis-meeting-transcripts/test_extract_commitments.py", "skills/synthesis-meeting-transcripts/test_version_parity.py", "-q"]),
     ("pytest.rituals-guard-hooks", ["python3", "-m", "pytest", "skills/synthesis-daily-rituals/scripts/", "skills/synthesis-bitbucket/scripts/", "skills/synthesis-message-guard/scripts/", "skills/synthesis-git-hooks/scripts/", "skills/synthesis-slack-sync/scripts/", "skills/synthesis-chief-of-staff/scripts/", "skills/synthesis-repo-guard/", "skills/synthesis-decision-packet/scripts/", "-q"]),
     ("pytest.kb-edit-okf", ["python3", "-m", "pytest", "skills/synthesis-kb-edit/scripts/", "skills/synthesis-okf/scripts/", "-q"]),
     ("compileall", ["python3", "-m", "compileall", "-q", "skills"]),
@@ -345,9 +349,9 @@ def validate_acceptance_receipt(
 ) -> tuple[bool, str]:
     if not isinstance(receipt, dict):
         return False, "runner output is not a JSON object"
-    for field, expected_value in expected.items():
-        if receipt.get(field) != expected_value:
-            return False, f"receipt {field} does not match the release transaction"
+    for receipt_field, expected_value in expected.items():
+        if receipt.get(receipt_field) != expected_value:
+            return False, f"receipt {receipt_field} does not match the release transaction"
     fixed = {
         "receipt_schema": "acceptance-run-receipt-v1",
         "receipt_consumer": ACCEPTANCE_CONSUMER_ID,
@@ -355,9 +359,9 @@ def validate_acceptance_receipt(
         "issues_authority_receipt": False,
         "ok": True,
     }
-    for field, expected_value in fixed.items():
-        if receipt.get(field) != expected_value:
-            return False, f"receipt {field} is invalid"
+    for receipt_field, expected_value in fixed.items():
+        if receipt.get(receipt_field) != expected_value:
+            return False, f"receipt {receipt_field} is invalid"
     coverage = receipt.get("coverage")
     if not isinstance(coverage, dict):
         return False, "receipt coverage is missing"
@@ -2876,6 +2880,12 @@ def train_check(result: Result) -> bool:
 
 def preflight(repo: Path, result: Result, install_only: bool) -> str | None:
     """Validate the release is coherent before anything is published."""
+    try:
+        migration = message_guard_activation_preflight(repo)
+        result.add("preflight.message-guard-migration", True, migration["status"])
+    except ContractError as exc:
+        result.add("preflight.message-guard-migration", False, str(exc))
+        return None
     version, detail = source_version(repo)
     if not result.add("preflight.manifests-agree", version is not None, detail):
         return None
@@ -3000,6 +3010,15 @@ def run_required_checks(
             if source_digest(repo) != pinned_source:
                 raise ValueError("source changed between required checks")
             completed = bounded_run(command, cwd=repo)
+            if completed.returncode != 0:
+                # bounded_run already limits output bytes and owns process cleanup.
+                # Retain its actual failure evidence in the publisher's captured
+                # stream; the last summary line alone loses the failing case/cause.
+                print(f"BEGIN required-check diagnostics: {name}", flush=True)
+                for output in (completed.stdout, completed.stderr):
+                    if output:
+                        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+                print(f"END required-check diagnostics: {name}", flush=True)
             if source_digest(repo) != pinned_source:
                 raise ValueError("source changed during required check")
         except (OSError, ValueError) as error:

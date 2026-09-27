@@ -401,6 +401,23 @@ def validate(spec: dict) -> list[str]:
             problems.append(
                 f"rows[{i}] ({rid}) recommendation {rec!r} is not one of its options {sorted(v for v in values if v)}"
             )
+        if "prior_position" in r:
+            prior = r["prior_position"]
+            fields = {"statement", "source_ref", "evidence_for", "evidence_against"}
+            valid = isinstance(prior, dict) and set(prior) == fields
+            if valid:
+                valid = all(isinstance(prior[key], str) and prior[key].strip()
+                            for key in ("statement", "source_ref"))
+                for key in ("evidence_for", "evidence_against"):
+                    entries = prior[key]
+                    valid = valid and isinstance(entries, list)
+                    if isinstance(entries, list):
+                        valid = valid and all(
+                            isinstance(entry, dict) and set(entry) == {"statement", "source_ref"}
+                            and all(isinstance(entry[field], str) and entry[field].strip()
+                                    for field in ("statement", "source_ref")) for entry in entries)
+            if not valid:
+                problems.append(f"rows[{i}] ({rid}) prior_position requires exact statement/source_ref and sourced evidence_for/evidence_against lists")
         dis = r.get("disagreement")
         if dis is not None:
             if (not isinstance(dis, dict) or
@@ -825,6 +842,21 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 
     var head = '<div class="rid">' + esc(row.id) + "</div>" +
                '<div class="rlabel">' + esc(row.label) + "</div>";
+    if (row.prior_position) {
+      var p = row.prior_position;
+      head += '<section class="prior-position" aria-label="Prior principal position">' +
+        '<b>Prior principal position</b><p class="prior-statement" style="white-space:pre-wrap">' +
+        esc(p.statement) + '</p><p class="prior-source" style="white-space:pre-wrap">Source: ' + esc(p.source_ref) + '</p>';
+      [["Evidence supporting it", p.evidence_for], ["Evidence against it", p.evidence_against]].forEach(function (part) {
+        head += '<b>' + part[0] + '</b><ul>';
+        if (!part[1].length) head += '<li>No evidence recorded in this packet; coverage is unknown.</li>';
+        part[1].forEach(function (entry) {
+          head += '<li style="white-space:pre-wrap">' + esc(entry.statement) + '<br>Source: ' + esc(entry.source_ref) + '</li>';
+        });
+        head += '</ul>';
+      });
+      head += '</section>';
+    }
     if (row.context)   head += '<p class="rtext">' + esc(row.context) + "</p>";
     if ((row.tags || []).length) {
       head += '<div class="chips">' + row.tags.map(function (t) {
@@ -1114,8 +1146,19 @@ def build(spec: dict) -> str:
     return head + sep + marker + tail
 
 
+def assert_active_spec(directory: pathlib.Path, digest: str, spec: dict | None = None) -> None:
+    """Filing a retired exact spec is refused; parsing history remains read-only."""
+    lifecycle = pathlib.Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle/scripts"
+    if str(lifecycle) not in sys.path:
+        sys.path.insert(0, str(lifecycle))
+    import record_succession
+    record_succession.assert_active_spec(directory, digest,
+        record_succession.canonical_digest(record_succession.runtime_spec(spec)) if spec is not None else None)
+
+
 def file_packet(spec: dict, page: str, directory: pathlib.Path, date: str) -> tuple[pathlib.Path, pathlib.Path]:
     """File canonical spec bytes and page, preserving every previous version."""
+    assert_active_spec(directory, spec_digest(spec), spec)
     stem = f"{date}-{slugify(spec['title'])}"
     spec_bytes, page_bytes = canonical_spec_bytes(spec), page.encode("utf-8")
     spec_copy, page_copy = directory / f"{stem}-spec.json", directory / f"{stem}.html"

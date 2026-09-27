@@ -5,14 +5,14 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.6.0"
+  version: "1.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Decision Packet
 
-**Version 1.5.0** (2026-09-20)
+**Version 1.7.0** (2026-09-26)
 
 When N unresolved decisions belong to the principal, collecting them one at a time
 scales poorly. The measurement that produced this skill is blunt: **26 rounds of per-item
@@ -87,6 +87,24 @@ Requirements, not suggestions. Each is why it worked.
    readable by one client in one conversation; the project directory is readable by every agent
    working the project, ChatGPT Codex included, and by the next session after this one is gone.
    `build_packet.py --file-into` files the first two; `record_rulings.py` files the third.
+
+## Prior positions and contrary evidence
+
+Before recommending a change, read the principal's exact prior statements in the
+current task and selected durable record. A selected button never replaces an
+accompanying note. If an earlier position applies, each row must include
+`prior_position` with `statement` (exact words), `source_ref` (the actual evidence
+location), and `evidence_for` / `evidence_against` lists. Each evidence entry has
+`statement` and `source_ref`. Preserve original whitespace and wording; label an
+inference in the evidence statement instead of attributing it to the principal.
+An empty list means no evidence was recorded in this packet, not that none exists.
+
+The packet displays this block before context and recommendations and includes it
+in the spec-bound recorded ruling. A recommendation may disagree with the prior
+position when the evidence supports doing so; show the conflict. No prior
+position preselects a button or grants fresh execution authority. The new choice,
+free-text note and exact prior evidence remain separately recoverable. If the
+source is unavailable, report that missing input instead of inventing a position.
 
 ## Content requirements, which matter as much as the mechanics
 
@@ -324,3 +342,12 @@ regression-tested in `scripts/test_build_packet.py`.
 - `synthesis-thinking-framework` — for deciding *what* to recommend before you build the packet.
 - `synthesis-anti-shortcuts` — a packet whose rows hedge instead of recommending is the
   asking-as-shortcut costume in a new medium.
+
+## Retiring historical interfaces
+
+Read [artifact succession](../synthesis-context-lifecycle/references/artifact-succession.md)
+before retiring a packet or reconciling transferred decisions. `context_edit.py`
+owns exact-byte custody and the existing multi-file transaction; the packet owner
+refuses filing a retired exact spec or equivalent payload as a new live interface.
+A rulings filename does not establish closure. Preserve actual answers and every
+unanswered or unverified obligation; archive and transfer grant no new authority.

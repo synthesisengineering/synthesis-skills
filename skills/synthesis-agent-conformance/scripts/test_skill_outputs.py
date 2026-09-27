@@ -3,7 +3,6 @@ import hashlib
 import sys
 from pathlib import Path
 
-import pytest
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -44,10 +43,10 @@ def test_unmarked_live_page_is_a_defect(tmp_path):
     assert "build_packet.py" in found.remedy
 
 
-def test_unmarked_ruled_page_is_a_warning(tmp_path):
+def test_ruling_file_presence_does_not_establish_legacy_retirement(tmp_path):
     page = _page(tmp_path, "2026-09-20-x-packet.html", marker=False, rulings_file=True)
     (found,) = so.verify_packet(page)
-    assert found.severity == "warning"
+    assert found.severity == "defect"
 
 
 def test_tampered_page_is_a_defect(tmp_path):

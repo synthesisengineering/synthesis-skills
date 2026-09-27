@@ -61,6 +61,7 @@ from system_contract import (
     instruction_output_state,
     json_digest,
     materialize_instruction_pair,
+    message_guard_activation_preflight,
     personal_instruction_source_path,
     public_source_identity,
     validate_additive_organization,
@@ -71,11 +72,8 @@ from system_contract import (
     verify_instruction_source_receipt,
 )
 from whole_system import (
-    CAPTURE_TEMPLATE_REL,
-    CHIEF_TEMPLATE_REL,
     KERNEL_HARD_LIMIT,
     KERNEL_WARN_RATIO,
-    MESSAGE_TEMPLATE_REL,
     build_capture_config,
     build_chief_preferences,
     build_message_guard_config,
@@ -89,7 +87,6 @@ from whole_system import (
     merge_message_guard_hook,
     profile_choices,
     render_kernel_source,
-    rendered_kernel,
     validate_answers,
     validate_capture_config,
     validate_chief_preferences,
@@ -97,7 +94,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.8.4"
+ENGINE_VERSION = "2.9.0"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -778,7 +775,7 @@ def _kernel_sync_entry(data):
     return None
 
 
-def ensure_message_guard_hook(report, receipts, path, engine_path, dry_run):
+def ensure_message_guard_hook(report, receipts, path, engine_path, dry_run, tool_names=(), preserve_existing=False):
     """Narrow JSON merge with receipt-aware conffile semantics."""
     path = Path(path)
     if path.exists():
@@ -791,7 +788,17 @@ def ensure_message_guard_hook(report, receipts, path, engine_path, dry_run):
     else:
         existing = {}
     current_entry = _message_guard_entry(existing)
-    merged, changed = merge_message_guard_hook(existing, engine_path)
+    merged, changed = merge_message_guard_hook(existing, engine_path, tool_names)
+    if current_entry is not None and preserve_existing:
+        try:
+            matcher = re.compile(current_entry.get("matcher", ""))
+            if not current_entry.get("matcher") or not all(matcher.search(name) for name in tool_names):
+                raise ValueError("existing hook does not cover the exact declared transports")
+        except (TypeError, ValueError, re.error) as exc:
+            return report.add("hooks-gates", ERROR, "message wiring requires its owner", hint=str(exc))
+        # Source/config migration grants no authority to narrow another guard's
+        # observation scope. Keep the exact bytes and existing receipt custody.
+        return report.add("hooks-gates", OK, "%s existing message wiring preserved" % path)
     if not changed:
         entry = _message_guard_entry(merged)
         receipts.data["managed_json_entries"][str(path)] = sha256_text(
@@ -2734,12 +2741,140 @@ def collect_init_inputs(args, manifest, catalog):
     return profile, answers, choices
 
 
+def message_configuration_check(config, *, state=None, mode="--configuration-preflight"):
+    """Call the actual standalone owner before any guard activation."""
+    engine = source_root() / "skills/synthesis-message-guard/scripts/message_guard.py"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("MESSAGE_GUARD_")}
+    if state is not None:
+        env.update(MESSAGE_GUARD_CONFIG=str(state / "patterns.json"),
+                   MESSAGE_GUARD_STATE_DIR=str(state))
+    proc = subprocess.run([sys.executable, "-I", "-B", str(engine), mode],
+                          input=json.dumps(config), text=True, capture_output=True,
+                          timeout=10, env=env)
+    try:
+        result = json.loads(proc.stdout)
+    except ValueError as exc:
+        raise ValueError("message configuration owner returned invalid evidence") from exc
+    if proc.returncode != 0 or not result.get("read_only") or result.get("message_authority_granted") is not False:
+        raise ValueError(result.get("error") or str(result.get("policy_gaps")) or "configuration refused")
+    return result
+
+
+def fresh_message_selection(answers):
+    config = build_message_guard_config(source_root(), answers)
+    result = message_configuration_check(config)
+    selection = answers["message_guard"]
+    if selection.get("reviewed_configuration_sha256") != result.get("configuration_sha256"):
+        raise ValueError("owner review does not bind the effective configuration; use message-guard-plan")
+    review = selection.get("owner_review")
+    if (not isinstance(review, dict) or set(review) != {"source", "reviewed_at"}
+            or not isinstance(review.get("source"), str) or not review["source"].strip()
+            or len(review["source"]) > 4096 or not isinstance(review.get("reviewed_at"), str)):
+        raise ValueError("an attributed message configuration owner review is required")
+    timestamp = datetime.fromisoformat(review["reviewed_at"].replace("Z", "+00:00"))
+    if timestamp.tzinfo is None or timestamp > datetime.now(timezone.utc):
+        raise ValueError("message configuration owner review time must be aware and not future")
+    return config, review
+
+
+def create_guard_input(path, content):
+    """Exclusive durable bootstrap write through an identity-checked directory."""
+    raw = content.encode("utf-8")
+    if len(raw) > 1024 * 1024:
+        raise ValueError("message guard bootstrap input exceeds 1 MiB")
+    if path.parent.resolve() != path.parent:
+        raise ValueError("message guard state has an aliased ancestor")
+    expected_parent = path.parent.stat()
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    descriptor = None
+    try:
+        current_parent = os.fstat(parent)
+        if (current_parent.st_dev, current_parent.st_ino) != (expected_parent.st_dev, expected_parent.st_ino):
+            raise ValueError("message guard parent changed before creation")
+        descriptor = os.open(path.name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=parent)
+        offset = 0
+        while offset < len(raw):
+            written = os.write(descriptor, raw[offset:])
+            if written <= 0:
+                raise OSError("message guard bootstrap write made no progress")
+            offset += written
+        os.fsync(descriptor)
+        os.fsync(parent)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        readback = bytearray()
+        while len(readback) <= len(raw):
+            part = os.read(descriptor, min(65536, len(raw) + 1 - len(readback)))
+            if not part:
+                break
+            readback.extend(part)
+        final = os.fstat(descriptor)
+        named = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+        named_parent = path.parent.stat()
+        if (bytes(readback) != raw or final.st_nlink != 1
+                or (final.st_dev, final.st_ino, final.st_mode, final.st_size)
+                != (named.st_dev, named.st_ino, named.st_mode, named.st_size)
+                or final.st_mode & 0o077
+                or (named_parent.st_dev, named_parent.st_ino)
+                != (current_parent.st_dev, current_parent.st_ino)
+                or path.parent.resolve() != path.parent):
+            raise ValueError("message guard bootstrap custody changed")
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent)
+
+
 def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
     synthesis_root = HOME / ".synthesis"
     workspace = answers["workspace"]
     personal_repo = WORKSPACES_ROOT / workspace / ("ai-knowledge-%s" % workspace)
+    message_dir = synthesis_root / "message-guard"
+    existing_message_policy = os.path.lexists(message_dir / "patterns.json")
+    if existing_message_policy:
+        try:
+            message_guard_activation_preflight(
+                source_root(), configuration_path=message_dir / "patterns.json",
+                state_directory=message_dir,
+            )
+        except ContractError as exc:
+            report.add("hooks-gates", ERROR,
+                       "message guard migration requires its configuration owner",
+                       hint=str(exc))
+            return
+    try:
+        if existing_message_policy:
+            message_config = json.loads((message_dir / "patterns.json").read_text())
+        else:
+            message_config, review = fresh_message_selection(answers)
+            if message_dir.resolve() != message_dir or (message_dir.exists() and any(message_dir.iterdir())):
+                raise ValueError("retained message state requires its owner; fresh setup cannot adopt it")
+            for client in clients_wanted:
+                hook_path = HOME / (".claude/settings.json" if client == "claude" else ".codex/hooks.json")
+                if os.path.lexists(hook_path):
+                    if hook_path.is_symlink() or hook_path.resolve() != hook_path:
+                        raise ValueError("aliased client hooks require their owner")
+                    hooks = json.loads(hook_path.read_text(encoding="utf-8"))
+                    if _message_guard_entry(hooks) is not None:
+                        raise ValueError("existing message hooks require their configuration owner")
+            if not dry_run:
+                message_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+                create_guard_input(message_dir / "patterns.json", dump_json(message_config))
+                plan = message_configuration_check({}, state=message_dir, mode="--migration-plan")
+                record = plan["required_record"]
+                if record["pending_dispositions"]:
+                    raise ValueError("fresh setup discovered retained pending custody")
+                record["owner_review"] = review
+                create_guard_input(message_dir / "engine-migration.json", dump_json(record))
+                message_guard_activation_preflight(source_root(),
+                    configuration_path=message_dir / "patterns.json", state_directory=message_dir)
+                receipts.record_file(message_dir / "patterns.json", dump_json(message_config), "personal-policy")
+                receipts.record_file(message_dir / "engine-migration.json", dump_json(record), "personal-policy")
+    except (ContractError, OSError, ValueError, TypeError, KeyError, subprocess.TimeoutExpired) as exc:
+        report.add("personal-policy", ERROR, "message guard NOT_CONFIGURED or needs owner input",
+                   hint=str(exc))
+        return
     policy = build_personal_policy(source_root(), answers)
-    message_config = build_message_guard_config(source_root(), answers)
     chief_config = build_chief_preferences(source_root(), answers)
     capture_config = build_capture_config(source_root(), answers, personal_repo)
 
@@ -2767,15 +2902,10 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
         "personal-policy",
         dry_run,
     )
-    message_dir = synthesis_root / "message-guard"
-    ensure_file(
-        report,
-        receipts,
-        message_dir / "patterns.json",
-        dump_json(message_config),
-        "personal-policy",
-        dry_run,
-    )
+    if existing_message_policy:
+        # An explicitly reviewed transport/policy mapping is owner-managed;
+        # regenerating the generic template would invalidate that review.
+        report.add("personal-policy", OK, "existing owner message policy preserved")
     engine_source = (
         source_root()
         / "skills"
@@ -2792,8 +2922,17 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
     ensure_file(
         report, receipts, engine_target, engine_content, "hooks-gates", dry_run
     )
-    if not dry_run and engine_target.exists():
+    if not dry_run and (engine_target.is_symlink() or not engine_target.is_file() or engine_target.stat().st_nlink != 1 or engine_target.read_text(encoding="utf-8") != engine_content):
+        report.add("hooks-gates", ERROR, "message guard engine was not installed; hooks unchanged")
+        return
+    if not dry_run:
         engine_target.chmod(0o755)
+        try:
+            message_guard_activation_preflight(source_root(),
+                configuration_path=message_dir / "patterns.json", state_directory=message_dir)
+        except ContractError as exc:
+            report.add("hooks-gates", ERROR, "message guard activation inputs changed", hint=str(exc))
+            return
     for client in clients_wanted:
         if client == "claude":
             hook_path = HOME / ".claude" / "settings.json"
@@ -2803,7 +2942,9 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
                 report, receipts, HOME / ".codex" / "config.toml", dry_run
             )
         ensure_message_guard_hook(
-            report, receipts, hook_path, engine_target, dry_run
+            report, receipts, hook_path, engine_target, dry_run,
+            tool_names=[name for row in message_config["message_capabilities"] for name in row.get("tool_names", [])],
+            preserve_existing=existing_message_policy,
         )
 
 
@@ -3243,7 +3384,7 @@ def _day_end_service_wired():
 
 def _hooks_probe(clients_wanted):
     engine = HOME / ".synthesis" / "git-hooks"
-    required = [engine / "pre-commit", engine / "commit-msg", engine / "_load_config.py"]
+    required = [engine / name for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")]
     missing = [str(path) for path in required if not path.is_file()]
     rc, out, _ = git(["config", "--global", "--get", "core.hooksPath"])
     if rc != 0 or Path(out.strip()) != engine:
@@ -3358,7 +3499,8 @@ def runtime_components(receipts, desired_state=None):
     released bytes or a matching ownership receipt authorize reconciliation.
     """
     layers = ((desired_state or {}).get("layers") or {})
-    selected = lambda name: layers.get(name, receipts.layer_choice(name)) == "selected"
+    def selected(name):
+        return layers.get(name, receipts.layer_choice(name)) == "selected"
     components = set()
     if selected("runtime-engines") or selected("hooks-gates") or selected("coordination"):
         components.add("git-hooks")
@@ -3520,6 +3662,10 @@ def _coordination_probe():
         root / "fleet_handoff.py",
         root / "fleet_logical.py",
         root / "fleet_subscriptions.py",
+        root / "coordination_process.py",
+        root / "coordination_lock.py",
+        root / "project_recipient.py",
+        root / "live_receipt.py",
     ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"
@@ -3573,9 +3719,10 @@ def _personal_policy_probe():
         capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
         validate_personal_policy(policy)
         validate_message_guard(message)
+        message_configuration_check(message, mode="--policy-preflight")
         validate_chief_preferences(chief)
         validate_capture_config(capture)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, ContractError, subprocess.TimeoutExpired) as exc:
         return False, "personal policy validation failed: %s" % exc
     return True, "personal profile and all hard-stop consumer configs validate"
 
@@ -4345,6 +4492,7 @@ def personal_configuration_from_answers(answers):
         "personal_remote_patterns": normalized.get("personal_remote_patterns") or [],
         "confidential_terms": normalized.get("confidential_terms") or [],
         "inbox_cleanup": bool(normalized.get("inbox_cleanup")),
+        "message_guard": normalized.get("message_guard"),
     }
 
 
@@ -4373,7 +4521,7 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="onboard.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", nargs="?", default="install",
-                        choices=["install", "enroll", "update", "repair", "init", "kernel", "doctor", "init-workspace", "uninstall", "uninstall-doctor"])
+                        choices=["message-guard-plan", "install", "enroll", "update", "repair", "init", "kernel", "doctor", "init-workspace", "uninstall", "uninstall-doctor"])
     parser.add_argument("--manifest", type=Path, help="org onboarding manifest (.agents/onboarding.yaml)")
     parser.add_argument("--clients",
                         help="comma-separated clients to target (default: manifest or claude,codex)")
@@ -4428,6 +4576,18 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    if args.command == "message-guard-plan":
+        try:
+            answers = validate_answers(load_answers(args.answers), require_workspace=False)
+            config = build_message_guard_config(source_root(), answers)
+            result = message_configuration_check(config)
+            result["effective_configuration"] = config
+            result["required_input"] = "message_guard.reviewed_configuration_sha256 and attributed owner_review"
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (OSError, ValueError, TypeError, subprocess.TimeoutExpired) as exc:
+            print(json.dumps({"status": "NOT_CONFIGURED", "error": str(exc)}))
+            return 2
     if args.dry_run:
         return _main_unlocked(argv)
     with engine_lock(STATE_DIR, read_only=args.command in {"doctor", "uninstall-doctor"}):

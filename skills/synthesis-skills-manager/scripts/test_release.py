@@ -67,6 +67,8 @@ def hermetic_release_train(
     monkeypatch.setenv(
         "SYNTHESIS_ACTIVE_PROJECT_FILE", str(tmp_path / "absent-pointer.json")
     )
+    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json"))
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "message-guard"))
     home = tmp_path / "lifecycle-home"
     monkeypatch.setenv("SYNTHESIS_HOME", str(home))
     monkeypatch.setattr(release, "codex_cache_archive", lambda: tmp_path / "cache-recovery")
@@ -235,6 +237,7 @@ def test_required_checks_execute_release_wiring_tests() -> None:
         "pytest",
         "skills/synthesis-skills-manager/scripts/test_release.py",
         "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
+        "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
         "-q",
     ]
 
@@ -473,7 +476,7 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     assert "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
-        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q"
+        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q"
         in workflow
     )
     assert (

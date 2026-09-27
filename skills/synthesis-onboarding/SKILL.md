@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.4"
+  version: "2.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -32,6 +32,8 @@ Explicit commands remain for automation and the manual path:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only
 ```
+
+Full correspondence setup also requires explicit, reviewed transport declarations. Follow [the correspondence setup owner](references/message-guard-onboarding.md) before selecting the full profile. Missing declarations leave that layer NOT_CONFIGURED and install no fresh message guard hook; skills-only and modular selections retain their own scope.
 
 After bootstrap, use the installed public command:
 
@@ -437,3 +439,7 @@ materializes the published descriptor through the bootstrap verifier, refreshes
 the saved client selection (Claude, Codex and Muse on an unconfigured maintainer
 machine), and verifies the complete installed inventory. Release claims remain
 serialized by `release-train:synthesis-skills`.
+
+## macOS protected-file diagnostics
+
+When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.

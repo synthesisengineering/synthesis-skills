@@ -7,8 +7,8 @@ import sys
 
 SCRIPTS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
-import build_packet as bp
-import record_rulings as rr
+import build_packet as bp  # noqa: E402
+import record_rulings as rr  # noqa: E402
 
 
 def spec():
@@ -85,3 +85,35 @@ def test_pasted_record_never_claims_authenticated_authority(tmp_path):
     data = json.loads(filed[0].read_text())
     assert data.get('authorization', {}).get('granted') is False
     assert data.get('authorization', {}).get('authentication') == 'unverified'
+
+
+
+def prior():
+    return {"statement": "I prefer the synthetic hold.\nKeep the exact wording.",
+            "source_ref": "fixture-evidence/position.txt:3",
+            "evidence_for": [{"statement": "A retained synthetic constraint.", "source_ref": "fixture-evidence/for.txt:2"}],
+            "evidence_against": [{"statement": "A contrary synthetic result.", "source_ref": "fixture-evidence/against.txt:7"}]}
+
+
+def test_prior_position_requires_exact_evidence_and_survives_recording():
+    current = spec()
+    current["rows"][0]["prior_position"] = prior()
+    assert not [p for p in bp.validate(current) if not p.startswith(("NOTE:", "READER:"))]
+    summary = rr.compose_summary(current, {})
+    record = rr.parse_summary(summary, current)
+    assert record["rulings"][0]["prior_position"] == prior()
+    assert record["rulings"][0]["choice_value"] is None
+    assert record["decided"] == 0
+    changed = copy.deepcopy(current)
+    changed["rows"][0]["prior_position"]["statement"] += " Changed."
+    try:
+        rr.parse_summary(summary, changed)
+    except rr.SummaryError:
+        pass
+    else:
+        raise AssertionError("changed principal evidence reused an old response")
+    for broken in ({}, {"statement": "invented"}, {**prior(), "evidence_for": ["unsourced"]},
+                   {**prior(), "source_ref": " "}, {**prior(), "evidence_against": None}):
+        candidate = spec()
+        candidate["rows"][0]["prior_position"] = broken
+        assert any("prior_position" in p for p in bp.validate(candidate))

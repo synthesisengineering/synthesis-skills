@@ -458,7 +458,7 @@ def all_seats(
             raise ValueError(f"invalid coordination seat filename: {path}")
         try:
             seat = _read_seat_path(path, expected_uuid=path.stem if strict else None, strict=strict)
-        except ValueError as exc:
+        except ValueError:
             # A strict directory read contains exactly one kind of failure:
             # a stale pre-migration seat (schema 1, otherwise well formed)
             # left behind by a released session. It is skipped and named,
@@ -641,6 +641,7 @@ def delivery_lanes(
     target_machine: str,
     seat: Seat | None,
     local_machine: str | None = None,
+    local_hostname: str | None = None,
     registry: Path | None = None,
     alive=process_alive,
 ) -> dict[str, dict]:
@@ -654,11 +655,26 @@ def delivery_lanes(
 
     On v5 boards ``target_machine``/``local_machine`` are fleet machine-ids;
     on legacy rows they are hostnames. Either way the same-machine gate is
-    an exact string match, and a foreign seat never reaches the pid check
+    an exact string match. An explicitly supplied observed local hostname also
+    admits legacy rows only when their seat agrees; labels are never aliases.
+    A foreign seat never reaches the pid check
     (FLEET-AC-01): the harness lane's ``alive`` probe runs only when the
     gate passes."""
     machine = local_machine or socket.gethostname()
     same_machine = bool(target_machine) and target_machine == machine
+    # A legacy board stores the actual hostname, not an enrolled fleet UUID.
+    # Only the caller's observed hostname is eligible; display labels never
+    # establish locality, and a contradictory fleet seat keeps every direct
+    # lane closed before consulting local process IDs.
+    if not same_machine and local_hostname and target_machine == local_hostname:
+        same_machine = seat is None or (
+            seat.machine == (local_hostname if seat.schema == 1 else machine)
+        )
+    if seat is not None and same_machine:
+        expected = {machine}
+        if seat.schema == 1 and local_hostname:
+            expected.add(local_hostname)
+        same_machine = seat.machine in expected
     lanes: dict[str, dict] = {"bus": {"to": compact_id}}
     if same_machine and client_ref.startswith("ccd:"):
         lanes["ccd"] = {"session_id": client_ref[len("ccd:"):]}

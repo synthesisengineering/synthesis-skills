@@ -355,10 +355,12 @@ def test_diagnostic_cli_ignores_write_permitting_environment_and_lifecycle_shape
 ) -> None:
     fixture = inbox_project
     valid_pointer(fixture)
-    # Copy the three dependency trees without bytecode, so missing cache files
+    # Copy the complete dependency trees without bytecode, so missing cache files
     # positively expose import writes instead of relying on a pre-warmed tree.
     runtime = fixture.root / "runtime"
-    for skill in ("synthesis-agent-conformance", "synthesis-project-management", "synthesis-onboarding"):
+    for skill in ("synthesis-agent-conformance", "synthesis-project-management",
+                  "synthesis-onboarding", "synthesis-context-lifecycle",
+                  "synthesis-repo-guard", "synthesis-decision-packet"):
         shutil.copytree(
             SCRIPTS.parents[1] / skill, runtime / "skills" / skill,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),

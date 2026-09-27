@@ -50,9 +50,9 @@ def at(hour: int, minute: int = 0, day: int = 28) -> datetime:
 
 
 def test_window_starts_at_the_last_written_moment(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", "2026-08-27T09:15", now=at(9, 20, day=27), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-27T09:15", now=at(9, 20, day=27), home=tmp_path)
 
-    got = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+    got = MODULE.window(WS, "chat-fixture", now=NOW, home=tmp_path)
 
     assert got["from"] == "2026-08-27T09:15:00-04:00"
     assert got["from_epoch"] == int(datetime(2026, 8, 27, 9, 15, tzinfo=TZ).timestamp())
@@ -64,9 +64,9 @@ def test_window_starts_at_the_last_written_moment(tmp_path: Path) -> None:
 def test_a_skipped_run_leaves_a_gap_the_next_run_must_cover(tmp_path: Path) -> None:
     """The verbatim v1 failure: written through 8/20, nothing since, and the
     next window must reach back to 8/20 rather than starting near today."""
-    MODULE.advance(WS, "slack", "2026-08-20T12:00", now=at(12, day=20), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-20T12:00", now=at(12, day=20), home=tmp_path)
 
-    got = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+    got = MODULE.window(WS, "chat-fixture", now=NOW, home=tmp_path)
 
     assert got["from"] == "2026-08-20T12:00:00-04:00"
     assert got["span"] == "8d"
@@ -96,16 +96,16 @@ def test_a_schema_one_date_reads_as_complete_through_end_of_that_day(tmp_path: P
     complete past the time it was written."""
     path = _schema_one_store(tmp_path, {
         "yesterday": {"through": "2026-08-27", "updated_at": "2026-08-28T09:12:00"},
-        "slack": {"through": "2026-08-27", "updated_at": "2026-08-27T16:00:00"},
+        "chat-fixture": {"through": "2026-08-27", "updated_at": "2026-08-27T16:00:00"},
     })
 
     assert MODULE.window(WS, "yesterday", now=NOW, home=tmp_path)["from"] == "2026-08-28T00:00:00-04:00"
-    assert MODULE.window(WS, "slack", now=NOW, home=tmp_path)["from"] == "2026-08-27T16:00:00-04:00"
+    assert MODULE.window(WS, "chat-fixture", now=NOW, home=tmp_path)["from"] == "2026-08-27T16:00:00-04:00"
 
     MODULE.advance(WS, "docs", "now", now=NOW, home=tmp_path)
     stored = json.loads(path.read_text(encoding="utf-8"))
     assert stored["schema"] == 2
-    assert stored["surfaces"]["slack"]["migrated_from"] == "2026-08-27"
+    assert stored["surfaces"]["chat-fixture"]["migrated_from"] == "2026-08-27"
     assert stored["deferrals"]["email"]["deferred_at"] == "2026-08-28T00:00:00-04:00"
 
 
@@ -126,9 +126,9 @@ def test_a_schema_one_date_never_migrates_into_the_future(tmp_path: Path) -> Non
 
 
 def test_watermark_never_moves_backwards(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", "2026-08-26T10:00", now=NOW, home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-26T10:00", now=NOW, home=tmp_path)
 
-    result = MODULE.advance(WS, "slack", "2026-08-22T10:00", now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", "2026-08-22T10:00", now=NOW, home=tmp_path)
 
     assert result["moved"] is False
     assert result["entries"][0]["through"] == "2026-08-26T10:00:00-04:00"
@@ -136,20 +136,20 @@ def test_watermark_never_moves_backwards(tmp_path: Path) -> None:
 
 def test_future_watermark_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="future"):
-        MODULE.advance(WS, "slack", "2026-08-28T13:00", now=NOW, home=tmp_path)
+        MODULE.advance(WS, "chat-fixture", "2026-08-28T13:00", now=NOW, home=tmp_path)
 
 
 def test_a_bare_date_means_end_of_day_so_today_is_refused_mid_day(tmp_path: Path) -> None:
     """A mid-day run cannot stamp 'today' — it must record when it read."""
     with pytest.raises(ValueError, match="END of that day"):
-        MODULE.advance(WS, "slack", "2026-08-28", now=NOW, home=tmp_path)
+        MODULE.advance(WS, "chat-fixture", "2026-08-28", now=NOW, home=tmp_path)
 
-    result = MODULE.advance(WS, "slack", "2026-08-27", now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", "2026-08-27", now=NOW, home=tmp_path)
     assert result["through"] == "2026-08-28T00:00:00-04:00"
 
 
 def test_now_is_an_accepted_moment(tmp_path: Path) -> None:
-    result = MODULE.advance(WS, "slack", "now", now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", "now", now=NOW, home=tmp_path)
     assert result["through"] == "2026-08-28T12:00:00-04:00"
 
 
@@ -164,18 +164,18 @@ def test_epoch_seconds_are_an_accepted_moment_and_stored_canonically(tmp_path: P
     `advance --through 1789397434` refused it as 'not a timestamp', so the
     natural pipeline failed on every Slack target. An epoch is accepted and
     normalized to the store's ISO-8601 form — the store never holds an epoch."""
-    result = MODULE.advance(WS, "slack", str(EPOCH_0915), now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", str(EPOCH_0915), now=NOW, home=tmp_path)
 
     assert result["moved"] is True
     assert result["through"] == MORNING
     stored = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
-    assert stored["surfaces"]["slack"]["through"] == MORNING
+    assert stored["surfaces"]["chat-fixture"]["through"] == MORNING
 
 
 def test_slack_ts_with_a_fractional_part_is_floored_to_the_second(tmp_path: Path) -> None:
     """Slack's `ts` is epoch seconds with six fractional digits. The fraction
     is dropped, never rounded up: a watermark claims at most what was read."""
-    result = MODULE.advance(WS, "slack", f"{EPOCH_0915}.999999", now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", f"{EPOCH_0915}.999999", now=NOW, home=tmp_path)
 
     assert result["through"] == MORNING
 
@@ -183,14 +183,14 @@ def test_slack_ts_with_a_fractional_part_is_floored_to_the_second(tmp_path: Path
 def test_window_latest_round_trips_into_advance(tmp_path: Path) -> None:
     """window's `to_epoch` is advance's `--through`, and the store lands on
     window's `to`: the two ends of the pipeline are pinned to agree."""
-    MODULE.advance(WS, "slack", "2026-08-27T09:15", now=at(9, 20, day=27), home=tmp_path)
-    before = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-27T09:15", now=at(9, 20, day=27), home=tmp_path)
+    before = MODULE.window(WS, "chat-fixture", now=NOW, home=tmp_path)
 
-    result = MODULE.advance(WS, "slack", str(before["to_epoch"]), now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", str(before["to_epoch"]), now=NOW, home=tmp_path)
 
     assert result["moved"] is True
     assert result["through"] == before["to"] == "2026-08-28T12:00:00-04:00"
-    after = MODULE.window(WS, "slack", now=NOW, home=tmp_path)
+    after = MODULE.window(WS, "chat-fixture", now=NOW, home=tmp_path)
     assert after["from"] == before["to"]
     assert after["from_epoch"] == before["to_epoch"]
 
@@ -199,7 +199,7 @@ def test_a_future_epoch_is_refused_without_the_bare_date_hint(tmp_path: Path) ->
     """A ten-digit epoch is ten characters long, exactly like YYYY-MM-DD; the
     end-of-day hint belongs to a bare date and must not attach to an epoch."""
     with pytest.raises(ValueError, match="future") as caught:
-        MODULE.advance(WS, "slack", str(EPOCH_1300), now=NOW, home=tmp_path)
+        MODULE.advance(WS, "chat-fixture", str(EPOCH_1300), now=NOW, home=tmp_path)
 
     assert "END of that day" not in str(caught.value)
 
@@ -245,7 +245,7 @@ def test_a_leading_zero_is_not_a_ten_digit_epoch() -> None:
 
 
 def test_cli_advance_refuses_a_leading_zero_epoch_naming_the_accepted_form(tmp_path: Path) -> None:
-    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture",
                    "--through", "0999999999")
 
     assert done.returncode == 2
@@ -293,7 +293,7 @@ def test_future_refusal_renders_both_moments_to_the_second(tmp_path: Path) -> No
     message contradicts itself."""
     one_second_ahead = MODULE.stamp(NOW + timedelta(seconds=1))
     with pytest.raises(ValueError, match="future") as caught:
-        MODULE.advance(WS, "slack", one_second_ahead, now=NOW, home=tmp_path)
+        MODULE.advance(WS, "chat-fixture", one_second_ahead, now=NOW, home=tmp_path)
 
     times = re.findall(RENDERED_TIME, str(caught.value))
     assert len(times) == 2, str(caught.value)
@@ -304,9 +304,9 @@ def test_future_refusal_renders_both_moments_to_the_second(tmp_path: Path) -> No
 def test_backwards_refusal_renders_both_moments_to_the_second(tmp_path: Path) -> None:
     """The same two-moment shape: a value one second behind the recorded
     watermark is refused, and the detail must show two different times."""
-    MODULE.advance(WS, "slack", "2026-08-28T10:00:00", now=NOW, home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-28T10:00:00", now=NOW, home=tmp_path)
 
-    result = MODULE.advance(WS, "slack", "2026-08-28T09:59:59", now=NOW, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", "2026-08-28T09:59:59", now=NOW, home=tmp_path)
 
     assert result["moved"] is False
     times = re.findall(RENDERED_TIME, result["entries"][0]["detail"])
@@ -320,38 +320,38 @@ def test_backwards_refusal_renders_both_moments_to_the_second(tmp_path: Path) ->
 
 def test_status_blocks_on_a_read_older_than_the_run(tmp_path: Path) -> None:
     """The v2 defect itself: a 09:15 read is not current at an 11:39 run."""
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
     MODULE.begin(WS, "mid-day", now=RUN_START, home=tmp_path)
 
-    result = MODULE.status(WS, ["slack"], now=NOW, home=tmp_path)
+    result = MODULE.status(WS, ["chat-fixture"], now=NOW, home=tmp_path)
 
     assert result["bound_source"] == "run"
-    assert result["blocking"] == ["slack"]
+    assert result["blocking"] == ["chat-fixture"]
     assert result["surfaces"][0]["state"] == "stale"
 
 
 def test_status_is_clear_once_the_surface_is_re_read_in_this_run(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, now=at(11, 46), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, now=at(11, 46), home=tmp_path)
 
-    assert MODULE.status(WS, ["slack"], now=NOW, home=tmp_path)["blocking"] == []
+    assert MODULE.status(WS, ["chat-fixture"], now=NOW, home=tmp_path)["blocking"] == []
 
 
 def test_status_max_age_is_an_alternative_bound(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
 
-    loose = MODULE.status(WS, ["slack"], max_age=timedelta(hours=4), now=NOW, home=tmp_path)
-    tight = MODULE.status(WS, ["slack"], max_age=timedelta(hours=2), now=NOW, home=tmp_path)
+    loose = MODULE.status(WS, ["chat-fixture"], max_age=timedelta(hours=4), now=NOW, home=tmp_path)
+    tight = MODULE.status(WS, ["chat-fixture"], max_age=timedelta(hours=2), now=NOW, home=tmp_path)
 
     assert loose["blocking"] == []
-    assert tight["blocking"] == ["slack"]
+    assert tight["blocking"] == ["chat-fixture"]
 
 
 def test_status_needs_a_freshness_bound(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
     with pytest.raises(ValueError, match="freshness bound"):
-        MODULE.status(WS, ["slack"], now=NOW, home=tmp_path)
+        MODULE.status(WS, ["chat-fixture"], now=NOW, home=tmp_path)
 
 
 # --- declared read targets block individually ---------------------------------------
@@ -360,11 +360,11 @@ def test_status_needs_a_freshness_bound(tmp_path: Path) -> None:
 def test_declared_targets_block_individually(tmp_path: Path) -> None:
     """'20 of 60 targets read' becomes a list of keys, not a sentence."""
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, targets=["C1", "D2"], now=at(11, 46), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, targets=["C1", "D2"], now=at(11, 46), home=tmp_path)
 
-    result = MODULE.status(WS, targets={"slack": ["C1", "D2", "D3"]}, now=NOW, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D2", "D3"]}, now=NOW, home=tmp_path)
 
-    assert result["blocking"] == ["slack:D3"]
+    assert result["blocking"] == ["chat-fixture:D3"]
     surface = result["surfaces"][0]
     assert surface["blocking"] is True
     assert [t["state"] for t in surface["targets"]] == ["current", "current", "missing"]
@@ -372,22 +372,22 @@ def test_declared_targets_block_individually(tmp_path: Path) -> None:
 
 def test_a_target_read_before_the_run_is_stale(tmp_path: Path) -> None:
     """The DM read at 09:15 and not again: exactly the 17:51 failure."""
-    MODULE.advance(WS, "slack", MORNING, targets=["D3"], now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, targets=["D3"], now=at(9, 16), home=tmp_path)
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
 
-    result = MODULE.status(WS, targets={"slack": ["C1", "D3"]}, now=NOW, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D3"]}, now=NOW, home=tmp_path)
 
-    assert result["blocking"] == ["slack:D3"]
+    assert result["blocking"] == ["chat-fixture:D3"]
     assert result["surfaces"][0]["targets"][1]["state"] == "stale"
 
 
 def test_all_targets_current_makes_the_surface_current(tmp_path: Path) -> None:
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
-    MODULE.advance(WS, "slack", "2026-08-28T11:50", targets=["D2"], now=at(11, 51), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", "2026-08-28T11:50", targets=["D2"], now=at(11, 51), home=tmp_path)
 
-    result = MODULE.status(WS, targets={"slack": ["C1", "D2"]}, now=NOW, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D2"]}, now=NOW, home=tmp_path)
 
     assert result["blocking"] == []
     assert result["surfaces"][0]["state"] == "current"
@@ -395,9 +395,9 @@ def test_all_targets_current_makes_the_surface_current(tmp_path: Path) -> None:
 
 
 def test_target_window_falls_back_to_the_surface_watermark(tmp_path: Path) -> None:
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
 
-    got = MODULE.window(WS, "slack", target="D2", now=NOW, home=tmp_path)
+    got = MODULE.window(WS, "chat-fixture", target="D2", now=NOW, home=tmp_path)
 
     assert got["from"] == MORNING
     assert "surface watermark" in got["source"]
@@ -436,41 +436,41 @@ def test_cli_surface_level_flag_is_required_once_targets_exist(tmp_path: Path) -
 
 def test_deferral_requires_a_reason(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        MODULE.defer(WS, "slack", "   ", now=NOW, home=tmp_path)
+        MODULE.defer(WS, "chat-fixture", "   ", now=NOW, home=tmp_path)
 
 
 def test_explicit_deferral_unblocks_for_one_day_only(tmp_path: Path) -> None:
     """A deferral silences a gap for a day, never indefinitely — an indefinite
     silence is how a recorded gap becomes furniture."""
-    MODULE.advance(WS, "slack", MORNING, now=at(9, 16), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", MORNING, now=at(9, 16), home=tmp_path)
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.defer(WS, "slack", "Slack API outage", now=NOW, home=tmp_path)
+    MODULE.defer(WS, "chat-fixture", "Slack API outage", now=NOW, home=tmp_path)
 
-    same_day = MODULE.status(WS, ["slack"], now=NOW, home=tmp_path)
-    later = MODULE.status(WS, ["slack"], now=NOW + timedelta(days=2), home=tmp_path)
+    same_day = MODULE.status(WS, ["chat-fixture"], now=NOW, home=tmp_path)
+    later = MODULE.status(WS, ["chat-fixture"], now=NOW + timedelta(days=2), home=tmp_path)
 
     assert same_day["blocking"] == []
     assert same_day["surfaces"][0]["state"] == "deferred"
-    assert later["blocking"] == ["slack"]
+    assert later["blocking"] == ["chat-fixture"]
     assert later["surfaces"][0]["stale_deferral"] is True
 
 
 def test_a_target_deferral_silences_only_that_target(tmp_path: Path) -> None:
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
-    MODULE.defer(WS, "slack", "member left the workspace", target="D2", now=NOW, home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)
+    MODULE.defer(WS, "chat-fixture", "member left the workspace", target="D2", now=NOW, home=tmp_path)
 
-    result = MODULE.status(WS, targets={"slack": ["C1", "D2", "D3"]}, now=NOW, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D2", "D3"]}, now=NOW, home=tmp_path)
 
-    assert result["blocking"] == ["slack:D3"]
+    assert result["blocking"] == ["chat-fixture:D3"]
 
 
 def test_a_successful_write_spends_the_deferral(tmp_path: Path) -> None:
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.defer(WS, "slack", "outage", now=at(11, 40), home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, now=at(11, 46), home=tmp_path)
+    MODULE.defer(WS, "chat-fixture", "outage", now=at(11, 40), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, now=at(11, 46), home=tmp_path)
 
-    row = MODULE.status(WS, ["slack"], now=NOW, home=tmp_path)["surfaces"][0]
+    row = MODULE.status(WS, ["chat-fixture"], now=NOW, home=tmp_path)["surfaces"][0]
     assert row["state"] == "current" and row["deferral_reason"] is None
 
 
@@ -478,17 +478,17 @@ def test_surfaces_are_tracked_independently(tmp_path: Path) -> None:
     """One surface closing must not vouch for another — the completeness claim
     that hid the original gap."""
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
-    MODULE.advance(WS, "slack", IN_RUN, now=at(11, 46), home=tmp_path)
+    MODULE.advance(WS, "chat-fixture", IN_RUN, now=at(11, 46), home=tmp_path)
     MODULE.advance(WS, "email", MORNING, now=at(9, 16), home=tmp_path)
 
-    assert MODULE.status(WS, ["slack", "email"], now=NOW, home=tmp_path)["blocking"] == ["email"]
+    assert MODULE.status(WS, ["chat-fixture", "email"], now=NOW, home=tmp_path)["blocking"] == ["email"]
 
 
 def test_store_is_scoped_per_workspace(tmp_path: Path) -> None:
     """Engagement workspaces must not read each other's sync state."""
-    MODULE.advance("alpha", "slack", "now", now=NOW, home=tmp_path)
+    MODULE.advance("alpha", "chat-fixture", "now", now=NOW, home=tmp_path)
 
-    assert MODULE.window("beta", "slack", now=NOW, home=tmp_path)["bootstrap"]
+    assert MODULE.window("beta", "chat-fixture", now=NOW, home=tmp_path)["bootstrap"]
 
 
 def test_duration_parsing() -> None:
@@ -512,23 +512,23 @@ def test_cli_begin_then_status_since_run_lists_exactly_what_was_skipped(tmp_path
     """The property that makes this load-bearing: a ritual step can fail on it,
     and the failure names the keys the run did not re-read."""
     assert run_cli(tmp_path, "begin", "--workspace", WS, "--label", "mid-day").returncode == 0
-    assert run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+    assert run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture",
                    "--target", "C1", "--through", "now").returncode == 0
 
-    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
-                   "--target", "slack:C1", "--target", "slack:D2", "--since", "run", "--json")
+    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "chat-fixture",
+                   "--target", "chat-fixture:C1", "--target", "chat-fixture:D2", "--since", "run", "--json")
 
     assert done.returncode == 1
     payload = json.loads(done.stdout)
-    assert payload["blocking"] == ["slack:D2"]
+    assert payload["blocking"] == ["chat-fixture:D2"]
     assert payload["bound_source"] == "run"
 
 
 def test_cli_targets_from_file(tmp_path: Path) -> None:
     declared = tmp_path / "targets.json"
-    declared.write_text(json.dumps({"slack": ["C1", "D2"]}), encoding="utf-8")
+    declared.write_text(json.dumps({"chat-fixture": ["C1", "D2"]}), encoding="utf-8")
     run_cli(tmp_path, "begin", "--workspace", WS)
-    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture",
             "--target", "C1", "--target", "D2", "--through", "now")
 
     done = run_cli(tmp_path, "status", "--workspace", WS, "--targets-from", str(declared),
@@ -540,9 +540,9 @@ def test_cli_targets_from_file(tmp_path: Path) -> None:
 
 def test_cli_window_prints_the_epoch_bounds_a_read_call_takes(tmp_path: Path) -> None:
     """A window parameter is a claim about time: computed and echoed, never typed."""
-    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack", "--through", "now")
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture", "--through", "now")
 
-    done = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "slack")
+    done = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "chat-fixture")
 
     assert done.returncode == 0
     assert "→" in done.stdout
@@ -554,43 +554,43 @@ def test_cli_window_latest_round_trips_into_advance(tmp_path: Path) -> None:
     and `advance --through 1789397434` was refused as not a timestamp. The
     printed value is the accepted input, and the store lands on that second
     in its canonical ISO-8601-with-offset form."""
-    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture",
             "--target", "C1", "--through", "2026-08-27T09:15")
-    shown = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "slack", "--target", "C1")
+    shown = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "chat-fixture", "--target", "C1")
     assert shown.returncode == 0, shown.stderr
     latest = re.search(r"latest=(\d{10})\b", shown.stdout)
     assert latest, shown.stdout
 
-    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack",
+    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture",
                    "--target", "C1", "--through", latest.group(1))
 
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout)["moved"] is True
     stored = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
-    through = stored["surfaces"]["slack"]["targets"]["C1"]["through"]
+    through = stored["surfaces"]["chat-fixture"]["targets"]["C1"]["through"]
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}", through), through
     assert int(datetime.fromisoformat(through).timestamp()) == int(latest.group(1))
-    again = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "slack", "--target", "C1")
+    again = run_cli(tmp_path, "window", "--workspace", WS, "--surface", "chat-fixture", "--target", "C1")
     assert f"oldest={latest.group(1)} " in again.stdout
 
 
 def test_cli_status_since_accepts_epoch_seconds(tmp_path: Path) -> None:
     """`--since` shares the parser with `--through`: an epoch, with or without
     Slack's fraction, is a freshness bound."""
-    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack", "--through", "now")
+    run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "chat-fixture", "--through", "now")
     written = json.loads(MODULE.store_path(WS, tmp_path).read_text(encoding="utf-8"))
-    at_write = int(datetime.fromisoformat(written["surfaces"]["slack"]["through"]).timestamp())
+    at_write = int(datetime.fromisoformat(written["surfaces"]["chat-fixture"]["through"]).timestamp())
 
-    clear = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
+    clear = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "chat-fixture",
                     "--since", str(at_write - 3600), "--json")
-    stale = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
+    stale = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "chat-fixture",
                     "--since", f"{at_write + 3600}.250000", "--json")
 
     assert clear.returncode == 0, clear.stderr
     assert json.loads(clear.stdout)["blocking"] == []
     assert int(datetime.fromisoformat(json.loads(clear.stdout)["since"]).timestamp()) == at_write - 3600
     assert stale.returncode == 1, stale.stderr
-    assert json.loads(stale.stdout)["blocking"] == ["slack"]
+    assert json.loads(stale.stdout)["blocking"] == ["chat-fixture"]
 
 
 def test_cli_help_names_the_epoch_form_on_every_moment_argument(tmp_path: Path) -> None:
@@ -620,15 +620,15 @@ def test_cli_status_refuses_an_empty_surface_set(tmp_path: Path) -> None:
 def test_cli_status_blocks_a_declared_surface_never_written(tmp_path: Path) -> None:
     """The bootstrap bypass itself: no advance() has ever run, and the
     declared surface must still block rather than vanish."""
-    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack",
+    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "chat-fixture",
                    "--max-age", "1d", "--json")
 
     assert done.returncode == 1
-    assert json.loads(done.stdout)["blocking"] == ["slack"]
+    assert json.loads(done.stdout)["blocking"] == ["chat-fixture"]
 
 
 def test_cli_since_run_without_begin_is_an_error(tmp_path: Path) -> None:
-    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "slack", "--since", "run")
+    done = run_cli(tmp_path, "status", "--workspace", WS, "--surface", "chat-fixture", "--since", "run")
 
     assert done.returncode == 2
     assert "begin" in done.stderr
@@ -743,3 +743,16 @@ def test_slack_sync_bans_deriving_read_ids_in_the_sweep() -> None:
     assert "For each channel in the config" not in text
     assert "For each DM channel in the config" not in text
     assert "RESOLVED_CONVERSATION_ID" in text
+
+
+
+def test_json_window_has_exact_epoch_bounds(tmp_path):
+    from datetime import datetime, timezone
+    import sync_watermark as wm
+    moment = datetime(2026, 9, 22, 14, 30, tzinfo=timezone.utc)
+    fresh = wm.window("synthetic", "email", now=moment, home=tmp_path)
+    assert fresh["oldest"] is None and fresh["latest"] == fresh["to_epoch"]
+    wm.advance("synthetic", "email", "2026-09-22T12:00:00+00:00", now=moment, home=tmp_path)
+    current = wm.window("synthetic", "email", now=moment, home=tmp_path)
+    assert current["oldest"] == current["from_epoch"] == 1790078400
+    assert current["latest"] == current["to_epoch"] == int(moment.timestamp())

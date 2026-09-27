@@ -6,6 +6,23 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.42.0 — Verified ritual evidence and acquisition custody
+
+v2.42.0 (2026-09-26): worker completion consumes the declared workspace's
+artifact, complete coverage and actual outcome before appending a durable
+receipt. Bounded writer locking, exact readback and failure retention protect
+interrupted or concurrent records. Migration markers cannot open or close a
+workday. Lesson candidates retain local custody and explicit acceptance.
+
+The verified public launcher now registers the ritual helper entry points and
+their required dependencies. Credential-path coverage reports tracked names
+without reading secret contents. Acquisition watermarks require source-bound
+coverage evidence and positive controls; unread or failed surfaces remain
+visible. See [ritual evidence](ritual-evidence.md) and
+[acquisition evidence](acquisition-evidence.md) for the complete contracts.
+Existing owner authority, workspace separation and historical records remain
+explicit; these checks do not fabricate work or native acceptance.
+
 ## v2.41.0 — Concurrent-seats mode; PENDING parity under live claims
 
 v2.41.0 (2026-09-23): the ritual stops fighting live seats (ITEM23,

@@ -201,8 +201,11 @@ def test_stop_feedback_is_bounded_without_accepting_failed_checkpoint(
     output = json.loads(captured.out)
     assert code == 0
     report = json.loads(output["systemMessage"].removeprefix("PROJECT_CHECKPOINT_JSON: "))
-    assert report == {"status": "UNKNOWN", "issues": ["fixture checkpoint is unresolved"],
-                      "checkpoint_accepted": False}
+    assert {k: v for k, v in report.items() if k != "publication"} == {
+        "status": "UNKNOWN", "issues": ["fixture checkpoint is unresolved"],
+        "checkpoint_accepted": False}
+    assert report["publication"]["status"] == "UNKNOWN"
+    assert report["publication"]["owner"] == "checkpoint_sync.py --flush-session"
     # An unreserved first Stop cannot request another turn either.
     assert output["continue"] is False
     assert "unresolved" in output["stopReason"]
@@ -1858,20 +1861,31 @@ def test_native_identity_contract_muse_supplied_path_never_falls_back(native_ide
     session, roots, paths = native_identity_contract
     path = paths["muse"]
     supplied = str(path)
-    if damage == "relative": supplied = "session.jsonl"
-    elif damage == "nonstring": supplied = {"path": str(path)}
+    if damage == "relative":
+        supplied = "session.jsonl"
+    elif damage == "nonstring":
+        supplied = {"path": str(path)}
     elif damage == "foreign":
         foreign = roots["muse"].parent / "foreign.jsonl"
-        foreign.write_bytes(path.read_bytes()); supplied = str(foreign)
-    elif damage == "missing": supplied = str(path.parent / "missing.jsonl")
+        foreign.write_bytes(path.read_bytes())
+        supplied = str(foreign)
+    elif damage == "missing":
+        supplied = str(path.parent / "missing.jsonl")
     elif damage == "symlink":
-        saved = path.with_suffix(".retained"); path.rename(saved); path.symlink_to(saved)
+        saved = path.with_suffix(".retained")
+        path.rename(saved)
+        path.symlink_to(saved)
     elif damage == "parent-symlink":
-        parent = path.parent; saved = parent.with_name("retained"); parent.rename(saved); parent.symlink_to(saved)
-    elif damage == "header": path.write_text(json.dumps({"stream": {"id": "01990000-0000-7000-8000-000000000222"}}) + "\n")
+        parent = path.parent
+        saved = parent.with_name("retained")
+        parent.rename(saved)
+        parent.symlink_to(saved)
+    elif damage == "header":
+        path.write_text(json.dumps({"stream": {"id": "01990000-0000-7000-8000-000000000222"}}) + "\n")
     else:
         duplicate = roots["muse"] / "2026/09/24" / session / "session.jsonl"
-        duplicate.parent.mkdir(parents=True); duplicate.write_bytes(path.read_bytes())
+        duplicate.parent.mkdir(parents=True)
+        duplicate.write_bytes(path.read_bytes())
     with pytest.raises(state.ProjectStateError):
         state.observer_native_identity({"session_id": session, "transcript_path": supplied})
 

@@ -71,16 +71,19 @@ workspace-private repo by construction; the desk reads across repos on the same 
 contract_version: 1
 workspace: <workspace-id>            # matches the registry key
 seat: <project-id>                   # the operations seat that ran the worker
-run_type: day-end                    # day-start | midday | day-end
+run_type: day-end                    # day-start | midday | day-end | weekly-review
 date: 2026-08-17
 started: 2026-08-17T20:05:00-04:00
 finished: 2026-08-17T20:31:00-04:00
 agent: "<client> (<model>) session <board-session-id>"
+session: <actual-session-identity>    # same identity passed to the recorder
+outcome: clean                      # clean/completed/success or partial/failed/skipped/blocked
 coverage:                            # one row per surface in the workspace's DECLARED set
   - surface: slack                   # slack | gchat | email | transcripts | docs | repos | calendar | ...
     status: synced                   # synced | partial | skipped | failed
     detail: "<window, counts, or reason — one line>"
 gaps: []                             # human-readable omissions; [] only when NONE
+lesson_candidates: []                # or {id, pointer} entries to real workspace-local files
 ---
 ```
 
@@ -100,13 +103,28 @@ Every section present in every artifact; write "none" rather than omitting a sec
 absent section is indistinguishable from an unswept one).
 
 ```markdown
-## Decisions needed        # items only the principal can decide, one line + pointer each
-## Calendar & conflicts    # entries this workspace contributes to tomorrow's shared view
-## On your behalf          # sends/drafts/replies staged or completed, with ledger refs
-## Waiting on others       # open items with owners, oldest first
-## Brief                   # everything else worth the desk's attention, one line each
-## Backlog deltas          # additions/completions to carry into the converged plan
+## Decisions needed
+none
+## Calendar & conflicts
+none
+## On your behalf
+none
+## Waiting on others
+none
+## Brief
+none
+## Backlog deltas
+none
+## Lesson candidates
+none
 ```
+
+Decisions name principal-only decisions; Calendar contributes workspace conflicts;
+On your behalf carries staged/completed correspondence with ledger references;
+Waiting names open owners; Brief names remaining relevant items; Backlog carries
+plan additions/completions; Lesson candidates routes local candidate pointers for
+keep/drop review. Replace `none` only with actual observed work or candidate facts.
+
 
 One line per item, each with a pointer (file path, thread id, ledger row) into the
 workspace's own records. Detail stays workspace-side; the artifact is a summary the desk
@@ -140,6 +158,8 @@ workers:
     status: active                   # active | on-demand | dormant
     artifact_dir: <that workspace's ritual-workers/, `~`-rooted; expanded at load>
     seat: <project-id>
+    workspace_root: <this workspace root, `~`-rooted>
+    surfaces: [<complete actual declared surface set>]
 ```
 
 `active` workers appear in every coverage line. `on-demand` workers appear only on days
@@ -161,7 +181,7 @@ person-side repository defeats that with every day it accretes.
 
 - **The worker artifact doubles as the workspace's plan fragment.** Its body sections
   (Decisions needed, Calendar & conflicts, On your behalf, Waiting on others, Brief,
-  Backlog deltas) are exactly the plan-facing content for that workspace, already stored in
+  Backlog deltas, Lesson candidates) are exactly the plan-facing content for that workspace, already stored in
   the workspace-private repository. No second file, no copy.
 - **The person-side daily plan is a SHELL**, holding only person-scoped and structural
   content: the coverage line; the day's timeline (the principal's time is person-scoped
@@ -221,3 +241,12 @@ person-side repository defeats that with every day it accretes.
   desk reports as *not covered*. Both outcomes are visible; neither is silent.
 - Desk runs with zero fresh artifacts → the brief still publishes, with a coverage line
   saying exactly that. A thin honest brief beats a rich stale one.
+
+## Executable evidence contract
+
+The mandatory [ritual evidence reference](ritual-evidence.md) defines the enforced
+workspace root, full surface declaration, session/outcome binding, local lesson
+candidate pointers, final Lesson candidates section, and bounded artifact checks.
+Read it before any worker completion. The recorder verifies the actual artifact;
+its digest receipt is file evidence, not a native identity attestation. Missing
+artifacts and readiness gaps never justify backfill or a false clean record.

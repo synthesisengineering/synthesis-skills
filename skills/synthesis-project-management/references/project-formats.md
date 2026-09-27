@@ -44,6 +44,35 @@ operational state second).
   live and archived periods. Default retention is 365 days — a
   year of live history unless the principal says otherwise.
 
+## Explicit closeout refresh
+
+Run `project_format.py refresh --check <dir>` to preview and
+`project_format.py refresh <dir>` to apply. It refreshes the generated index and
+resume candidates using the existing schema. Indexes recognize all six ATX
+heading levels, skip fenced examples, and distinguish dated entries from
+interior undated headings. Long indexes state the full entry count and the
+number omitted from the compact listing.
+
+Migration and refresh seed unchecked `CONTEXT.md` tasks alongside markers in
+the newest session log. Candidates carry relative source path, line and source
+digest, remain `unverified`, and are never automatically treated as completed.
+Repeated task wording keeps distinct source occurrences. Candidate IDs survive
+line shifts; source hashes and line numbers describe the original observation,
+not a claim that unchanged wording has been reverified.
+Refresh preserves curated goal/status/brief, reviewed loops, additional state
+fields, and candidates whose source disappears. It adds only new candidate IDs.
+Human or authenticated session reconciliation still owns verification and closure.
+
+A second unchanged refresh preserves bytes and modification times. All inputs
+preflight before output writes; each output replacement is atomic, but the
+index and resume state are **not** a multi-file filesystem transaction. If the
+process stops between them, rerun refresh under the same normal project-records
+ownership to converge. The command refuses malformed state, symlink targets and
+an index owned by another writer. Duplicate JSON keys are refused, including in
+curated nested fields. File mode and contents are synced before each rename,
+then the parent directory is synced; a post-rename error requires inspecting the
+outputs before retry. It never edits `CURRENT_STATE.json`.
+
 ## Rules for every version, present and future
 
 - New versions are strictly additive. Old readers keep working.
