@@ -254,6 +254,9 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-ci-membership-01
+  - muse-ci-membership-02
+  - muse-ci-membership-03
 - path: .muse-plugin/plugin.json
   cases:
   - release-01
@@ -396,6 +399,9 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-ci-membership-01
+  - muse-ci-membership-02
+  - muse-ci-membership-03
 - path: CHANGELOG.md
   cases:
   - release-01
@@ -517,6 +523,15 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
 - path: README.md
   cases:
   - release-01
@@ -638,6 +653,15 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
 - path: skills/synthesis-agent-conformance/SKILL.md
   cases:
   - conformance-01
@@ -3107,6 +3131,8 @@ changed_surfaces:
   - record-transaction-04
   - record-transaction-05
   - record-transaction-06
+  - ci-fixture-isolation-01
+  - ci-fixture-isolation-02
 - path: skills/synthesis-onboarding/scripts/test_existing_message_migration.py
   cases:
   - onboarding-01
@@ -4442,6 +4468,15 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
 - path: skills/synthesis-skills-manager/references/release-protocol.md
   cases:
   - release-01
@@ -4532,6 +4567,18 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
+  - muse-ci-membership-01
+  - muse-ci-membership-02
+  - muse-ci-membership-03
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases:
   - release-01
@@ -4580,6 +4627,17 @@ changed_surfaces:
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - release-15
+- path: skills/synthesis-skills-manager/scripts/test_muse_command_contract.py
+  cases:
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
 - path: skills/synthesis-skills-manager/scripts/test_release.py
   cases:
   - release-01
@@ -4621,6 +4679,18 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-inventory-01
+  - muse-inventory-02
+  - muse-inventory-03
+  - muse-inventory-04
+  - muse-inventory-05
+  - muse-inventory-06
+  - muse-inventory-07
+  - muse-inventory-08
+  - muse-inventory-09
+  - muse-ci-membership-01
+  - muse-ci-membership-02
+  - muse-ci-membership-03
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - release-16
@@ -5922,3 +5992,87 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_common_owner_uses_fresh_cache_each_time_and_preserves_dependency_env
   motivating_defect: common owner uses fresh cache each time and preserves dependency
     env
+- id: ci-fixture-isolation-01
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_ci_runtime.py::test_base_resolution_steps_back_when_tag_raced_ci
+  motivating_defect: Synthetic release history must remain independent of the outer
+    hosted review base.
+- id: ci-fixture-isolation-02
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_ci_runtime.py::test_base_resolution_uses_tag_when_head_is_untagged
+  motivating_defect: Synthetic release history must remain independent of the outer
+    hosted review base.
+- id: muse-inventory-01
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_top_level_help_is_not_plugin_support
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-02
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_plugin_help_requires_all_actual_verbs
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-03
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_unsupported_muse_refuses_before_staging
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-04
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_unavailable_install_inventory_refuses_before_staging
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-05
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_ambiguous_inventory_never_stages_or_reports_version
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-06
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_complete_inventory_can_establish_absence
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-07
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_disabled_record_is_present_and_retains_exact_source
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-08
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_inventory_bounds_refuse
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-inventory-09
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_muse_command_contract.py::test_ambiguous_plugin_grammar_never_stages
+  motivating_defect: Unknown native grammar or ambiguous inventory must refuse before
+    staging or version acceptance.
+- id: muse-ci-membership-01
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_release_wiring_tests
+  motivating_defect: New native inventory regressions must be included in both complete
+    CI and production release gates.
+- id: muse-ci-membership-02
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_repository_ci_executes_release_wiring_tests
+  motivating_defect: New native inventory regressions must be included in both complete
+    CI and production release gates.
+- id: muse-ci-membership-03
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: New native inventory regressions must be included in both complete
+    CI and production release gates.

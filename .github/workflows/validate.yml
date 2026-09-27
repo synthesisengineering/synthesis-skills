@@ -56,7 +56,7 @@ jobs:
       - run: python -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python skills/synthesis-onboarding/scripts/check_capabilities.py .
-      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q
+      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q
       - run: python -m pytest skills/synthesis-agent-guardrails/tests/ -q
       # Standalone runner, not pytest: the file must stay executable from inside a
       # deployed skill directory, where pytest is not guaranteed to be installed.

@@ -273,6 +273,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "skills/synthesis-skills-manager/scripts/test_release.py",
             "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
             "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
+            "skills/synthesis-skills-manager/scripts/test_muse_command_contract.py",
             "-q",
         ],
     ),
@@ -937,9 +938,14 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
     if not binary:
         return None, None
     if client == "muse":
-        command = [binary, "plugins", "list", "--json"]
-    else:
-        command = [binary, "plugin", "list", "--json"]
+        try:
+            record = _muse_install_record(binary)
+        except (OSError, subprocess.SubprocessError):
+            return None, None
+        if record is None or not record.get("enabled", True):
+            return None, None
+        return record.get("version") or None, record.get("cache_path")
+    command = [binary, "plugin", "list", "--json"]
     result = run(command, timeout=180)
     if result.returncode != 0:
         return None, None
@@ -957,11 +963,6 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
             ):
                 return str(item.get("version") or "") or None, item.get("installPath")
         return None, None
-    if client == "muse":
-        record = _muse_record_from_list(data)
-        if record is None or not record.get("enabled", True):
-            return None, None
-        return str(record.get("version") or "") or None, record.get("cache_path")
     installed = data.get("installed", []) if isinstance(data, dict) else []
     for item in installed:
         if not isinstance(item, dict):
@@ -970,6 +971,44 @@ def client_reported_version(client: str) -> tuple[str | None, str | None]:
             source = item.get("source") or {}
             return str(item.get("version") or "") or None, source.get("path")
     return None, None
+
+
+def muse_plugin_capability(binary: str) -> dict:
+    """Read the actual command grammar; help fallbacks do not prove support.
+
+    This probes no account, plugin mutation, native session or model. Even a
+    supported plugin command does not establish callback loading or trust.
+    """
+    result = {"status": "UNAVAILABLE", "native_hooks": "UNVERIFIED",
+              "execution_protocol": "NOT_ASSESSED", "reason": "command contract unavailable"}
+    def commands(raw):
+        if not isinstance(raw, str) or len(raw.encode("utf-8")) > 128 * 1024:
+            raise ValueError("native help exceeds its bounded grammar")
+        # Accept command tokens only inside a literal Commands section, never
+        # an example, arbitrary prose, or successful top-level fallback.
+        matches = list(re.finditer(r"(?m)^Commands:[ \t]*$", raw))
+        match = matches[0] if len(matches) == 1 else None
+        if not match:
+            return set()
+        section = raw[match.end():]
+        section = re.split(r"(?m)^\S[^\n]*:\s*$", section, maxsplit=1)[0]
+        return set(re.findall(r"(?m)^  ([a-z][a-z0-9-]*)(?:\s|$)", section))
+    try:
+        top = bounded_run([binary, "--help"], cwd=SCRIPT_DIR, timeout=10)
+        if top.returncode or "plugins" not in commands(top.stdout):
+            result["reason"] = "installed Muse command grammar does not expose plugins"
+            return result
+        plugin = bounded_run([binary, "plugins", "--help"], cwd=SCRIPT_DIR, timeout=10)
+        if (plugin.returncode or plugin.stdout.strip() == top.stdout.strip()
+                or not {"list", "install", "update"} <= commands(plugin.stdout)
+                or len(re.findall(r"(?m)^Usage:", plugin.stdout)) != 1
+                or not re.search(r"(?m)^Usage:[ \t]+muse[ \t]+plugins(?:[ \t]+[^\n]*)?$", plugin.stdout)):
+            result["reason"] = "Muse plugin subcommand grammar is absent or a top-level fallback"
+            return result
+        result.update(status="AVAILABLE", reason="explicit plugin command grammar observed; native hook acceptance still unverified")
+    except (OSError, subprocess.SubprocessError, UnicodeError, ValueError) as exc:
+        result["reason"] = "Muse capability observation failed: " + str(exc)[:300]
+    return result
 
 
 def _muse_install_record(binary: str) -> dict | None:
@@ -981,26 +1020,82 @@ def _muse_install_record(binary: str) -> dict | None:
     missing record is installed fresh. Existence — not enabled state —
     decides, because a disabled record still blocks a fresh install.
     """
-    result = run([binary, "plugins", "list", "--json"], timeout=180)
+    result = bounded_run([binary, "plugins", "list", "--json"], cwd=SCRIPT_DIR, timeout=30)
     if result.returncode != 0:
-        return None
+        raise OSError("Muse install inventory command failed")
     try:
-        data = json.loads(_first_json(result.stdout + "\n" + result.stderr))
-    except (ValueError, TypeError):
-        return None
-    return _muse_record_from_list(data)
+        data = _muse_inventory_json(result.stdout)
+        return _muse_record_from_list(data)
+    except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+        raise OSError("Muse install inventory is unavailable or ambiguous: " + str(exc)) from exc
+
+
+def _muse_inventory_json(raw: str) -> dict:
+    """Only one complete bounded stdout document can establish absence.
+
+    Diagnostic stderr and JSON extracted from mixed output are not inventory.
+    Duplicate keys (at any depth) and nonfinite values are never last-wins.
+    """
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 1024 * 1024:
+        raise ValueError("inventory exceeds its byte bound")
+
+    def unique(pairs):
+        parsed = {}
+        for key, value in pairs:
+            if key in parsed:
+                raise ValueError("duplicate inventory key")
+            parsed[key] = value
+        return parsed
+
+    def nonfinite(_):
+        raise ValueError("nonfinite inventory value")
+
+    def finite_float(text):
+        value = float(text)
+        if value in (float("inf"), float("-inf")):
+            raise ValueError("nonfinite inventory value")
+        return value
+
+    return json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite,
+                      parse_float=finite_float)
 
 
 def _muse_record_from_list(data: object) -> dict | None:
-    """Extract this plugin's install record from a parsed list document."""
-    items = data.get("plugins", []) if isinstance(data, dict) else []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        record = item.get("record") or {}
-        if isinstance(record, dict) and record.get("id") == PLUGIN_NAME:
-            return record
-    return None
+    """Validate the complete inventory before extracting an owned record.
+
+    Unknown rows cannot be ignored: they might represent this installation.
+    Only an explicit empty list or a complete foreign inventory proves absence.
+    """
+    if (not isinstance(data, dict) or not isinstance(data.get("plugins"), list)
+            or len(data["plugins"]) > 4096):
+        raise ValueError("incomplete inventory or unknown schema")
+    seen, own = set(), None
+    for item in data["plugins"]:
+        if not isinstance(item, dict) or not isinstance(item.get("record"), dict):
+            raise ValueError("inventory row lacks a complete record")
+        record = item["record"]
+        ident = record.get("id")
+        if (not isinstance(ident, str) or not ident or len(ident) > 256
+                or any(ord(c) < 33 or ord(c) == 127 for c in ident)):
+            raise ValueError("invalid plugin identity")
+        if ident in seen:
+            raise ValueError("duplicate plugin identity")
+        seen.add(ident)
+        if "enabled" in record and type(record["enabled"]) is not bool:
+            raise ValueError("invalid enabled state")
+        for field_name in ("version", "cache_path"):
+            if field_name in record and (not isinstance(record[field_name], str)
+                                    or len(record[field_name]) > 4096
+                                    or "\x00" in record[field_name]):
+                raise ValueError("invalid plugin " + field_name)
+        if ident == PLUGIN_NAME:
+            source = record.get("source")
+            path = source.get("path") if isinstance(source, dict) else None
+            if (not isinstance(path, str) or not path or len(path) > 4096
+                    or "\x00" in path or not Path(path).is_absolute()):
+                raise ValueError("installed plugin has no unambiguous absolute source")
+            own = record
+    return own
 
 
 def _first_json(text: str) -> str:
@@ -3436,17 +3531,20 @@ def refresh_client(
             return result.add(
                 "install.muse", False, f"source manifests disagree: {detail}"
             )
-        bundle = _materialize_muse_bundle(repo, version, result, dry_run)
-        if bundle is None:
-            return False
+        capability = muse_plugin_capability(binary)
+        if capability["status"] != "AVAILABLE":
+            return result.add("install.muse.capability", False, capability["reason"])
         try:
             record = _muse_install_record(binary)
         except (OSError, subprocess.TimeoutExpired) as exc:
             return result.add(
                 "install.muse.record", False, f"could not read install record: {exc}"
             )
-        source_path = ((record.get("source") or {}) if record else {}).get("path")
-        if record is None or not source_path:
+        bundle = _materialize_muse_bundle(repo, version, result, dry_run)
+        if bundle is None:
+            return False
+        source_path = record["source"]["path"] if record is not None else None
+        if record is None:
             commands = [[binary, "plugins", "install", str(bundle), "--json"]]
         else:
             recorded = Path(str(source_path))

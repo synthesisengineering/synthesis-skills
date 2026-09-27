@@ -10,6 +10,13 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / ".github/scripts/install-ci-python.sh"
 
 
+@pytest.fixture(autouse=True)
+def isolate_fixture_review_base(monkeypatch):
+    # These temporary repositories have their own published history. The outer
+    # CI event base belongs to the real checkout, not to any synthetic fixture.
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+
+
 def test_mac_ci_installs_framework_before_dependencies_and_uses_python3():
     workflow = yaml.safe_load((ROOT / ".github/workflows/validate.yml").read_text())
     steps = workflow["jobs"]["onboarding-portability"]["steps"]

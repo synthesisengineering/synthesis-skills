@@ -279,6 +279,7 @@ def test_required_checks_execute_release_wiring_tests() -> None:
         "skills/synthesis-skills-manager/scripts/test_release.py",
         "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
         "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
+        "skills/synthesis-skills-manager/scripts/test_muse_command_contract.py",
         "-q",
     ]
 
@@ -517,7 +518,7 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
     )
     assert "ubuntu-latest, macos-latest" in workflow
     assert (
-        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q"
+        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q"
         in workflow
     )
     assert "python -m pytest skills/synthesis-agent-guardrails/tests/ -q" in workflow
@@ -4920,6 +4921,8 @@ def test_muse_owned_native_update_observes_verified_source_and_retained_old_work
         "import json, sys\nfrom pathlib import Path\n"
         f"recorded = Path({str(recorded)!r})\n"
         f"with Path({str(calls)!r}).open('a') as handle: handle.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:] == ['--help']:\n print('Usage: muse [COMMAND]\\nCommands:\\n  plugins');raise SystemExit(0)\n"
+        "if sys.argv[1:] == ['plugins','--help']:\n print('Usage: muse plugins [COMMAND]\\nCommands:\\n  list\\n  install\\n  update');raise SystemExit(0)\n"
         "if sys.argv[1:3] == ['plugins', 'list']:\n"
         f"    print({_muse_list_payload(source_path=str(recorded), version='9.9.8')!r})\n"
         "elif sys.argv[1:3] == ['plugins', 'update']:\n"
@@ -4936,6 +4939,8 @@ def test_muse_owned_native_update_observes_verified_source_and_retained_old_work
     source_git = (muse_repo / ".git" / "HEAD").read_bytes()
     assert release.refresh_client("muse", release.Result(), False, repo=muse_repo)
     assert [json.loads(line)[:2] for line in calls.read_text().splitlines()] == [
+        ["--help"],
+        ["plugins", "--help"],
         ["plugins", "list"],
         ["plugins", "update"],
     ]
@@ -4969,12 +4974,22 @@ def test_cache_transition_cleanup_refuses_unsafe_target(
 
 
 def _fake_muse_binary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0,
+    *, install_only_failure: bool = False,
 ) -> Path:
     script = tmp_path / "bin" / "muse"
     script.parent.mkdir(parents=True, exist_ok=True)
+    # A supported hypothetical native grammar is explicit in these installer
+    # fixtures; this is not a claim about the currently installed Muse build.
+    body = "{\"plugins\":[]}" if payload == "{}" else payload
     script.write_text(
-        f"#!/bin/sh\necho '{payload}'\nexit {exit_code}\n", encoding="utf-8"
+        f"#!{sys.executable}\nimport sys\n"
+        "a=sys.argv[1:]\n"
+        "if a == ['--help']:\n print('Usage: muse [COMMAND]\\nCommands:\\n  plugins');raise SystemExit(0)\n"
+        "if a == ['plugins','--help']:\n print('Usage: muse plugins [COMMAND]\\nCommands:\\n  list\\n  install\\n  update');raise SystemExit(0)\n"
+        f"if a[:2] == ['plugins','list'] and {install_only_failure!r}:\n print('{{\"plugins\":[]}}');raise SystemExit(0)\n"
+        f"print({body!r})\nraise SystemExit({exit_code})\n",
+        encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | 0o111)
     monkeypatch.setattr(release, "resolve_client_binary", lambda name: str(script))
@@ -5183,7 +5198,7 @@ def test_muse_refresh_replaces_incomplete_bundle(
 def test_muse_refresh_fails_closed_when_install_command_fails(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1)
+    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True)
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
@@ -5340,6 +5355,7 @@ def test_muse_refresh_refuses_relative_recorded_source(
 def test_muse_refresh_fails_closed_when_record_is_unreadable(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"})
     monkeypatch.setattr(
         release,
         "resolve_client_binary",

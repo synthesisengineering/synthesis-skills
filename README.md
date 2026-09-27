@@ -22,6 +22,9 @@ Release **4.150.0** adds recoverable project transactions, explicit obligation
 succession and source-bound ritual/acquisition reports. It strengthens Git and
 message guards, exact session coordination and installed runtime verification.
 
+Muse refresh now verifies command support and unambiguous installation inventory
+before staging; unsupported native integration is reported without replacement.
+
 
 Release **4.149.9** adds bounded authenticated journal storage for large
 native-history recovery while preserving prior event bytes, ownership and costs.

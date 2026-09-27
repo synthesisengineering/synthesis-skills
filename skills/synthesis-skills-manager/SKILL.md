@@ -5,12 +5,16 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.8"
+  version: "2.8.9"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.8.9** refuses ambiguous Muse installation inventories and unsupported
+plugin command grammar before staging. Native hook support remains separately
+verified; complete inventory controls run in local and hosted release checks.
 **Version 2.8.7** runs complete autopilot coverage in bounded disjoint groups,
 binds checked source identity and isolates required-check environments and caches.
 
@@ -41,7 +45,7 @@ Git-backed displacements remain available with an explicit recovery disposition;
 unsafe source, Git and path boundaries fail before replacement.
 
 **Version 2.8.2** binds installed lifecycle reconciliation to the exact verified
-release and existing desired state. Muse refresh admits only owned bundle roots,
+release and existing desired state. Muse refresh first verifies the installed CLI exposes explicit plugin commands and a readable installation inventory. A top-level help fallback, missing plugin grammar, or unreadable inventory refuses before staging. Inventory absence requires one complete bounded JSON document with unique keys and plugin identities; unknown rows and missing or ambiguous installed sources refuse before staging. Version readback uses the same inventory owner; staged manifests do not prove native hook support. Muse refresh admits only owned bundle roots,
 verifies staged content before replacement and retains displaced bytes for
 recovery. A missing source with a retained interrupted transition remains blocked
 until its recovery is resolved; an arbitrary recorded path is never erased.
