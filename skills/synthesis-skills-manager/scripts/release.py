@@ -749,7 +749,8 @@ def _runner_failure_detail(output: str) -> str:
     The runner prints a JSON receipt whose last line is always `}`, so
     reporting the raw tail renders every runner failure as
     `FAIL checks.acceptance.r5: }`. Parse the receipt and name the
-    unmatched cases plus the first error line instead.
+    unmatched cases plus their complete captured stdout/stderr instead. The
+    pytest final summary alone does not preserve the causal exception.
     """
     try:
         receipt = json.loads(output)
@@ -772,7 +773,16 @@ def _runner_failure_detail(output: str) -> str:
             (bad[0].get("stderr") or bad[0].get("stdout") or "").strip().splitlines()
         )
         err = first[-1].strip() if first else "no runner output"
-        return f"{len(bad)} case(s) unmatched: {names}; first error: {err}"
+        details = [f"{len(bad)} case(s) unmatched: {names}; first error: {err}"]
+        for case in bad:
+            for stream in ("stdout", "stderr"):
+                captured = case.get(stream)
+                if isinstance(captured, str) and captured:
+                    details.append(
+                        f"--- unmatched case {case.get('id', '?')} {stream} ---\n"
+                        + captured
+                    )
+        return "\n".join(details)
     errors = receipt.get("errors")
     if errors:
         return "; ".join(str(error) for error in errors[:3])
@@ -815,11 +825,10 @@ def consume_acceptance(
     ]
     completed = run(command, cwd=repo)
     if completed.returncode != 0:
-        result.add(
-            "checks.acceptance.r5",
-            False,
-            _runner_failure_detail(completed.stdout or completed.stderr),
-        )
+        detail = _runner_failure_detail(completed.stdout or completed.stderr)
+        if completed.stdout and completed.stderr:
+            detail += "\n--- acceptance runner stderr ---\n" + completed.stderr
+        result.add("checks.acceptance.r5", False, detail)
         return None
     try:
         receipt = json.loads(completed.stdout)
@@ -979,8 +988,13 @@ def muse_plugin_capability(binary: str) -> dict:
     This probes no account, plugin mutation, native session or model. Even a
     supported plugin command does not establish callback loading or trust.
     """
-    result = {"status": "UNAVAILABLE", "native_hooks": "UNVERIFIED",
-              "execution_protocol": "NOT_ASSESSED", "reason": "command contract unavailable"}
+    result = {
+        "status": "UNAVAILABLE",
+        "native_hooks": "UNVERIFIED",
+        "execution_protocol": "NOT_ASSESSED",
+        "reason": "command contract unavailable",
+    }
+
     def commands(raw):
         if not isinstance(raw, str) or len(raw.encode("utf-8")) > 128 * 1024:
             raise ValueError("native help exceeds its bounded grammar")
@@ -990,22 +1004,33 @@ def muse_plugin_capability(binary: str) -> dict:
         match = matches[0] if len(matches) == 1 else None
         if not match:
             return set()
-        section = raw[match.end():]
+        section = raw[match.end() :]
         section = re.split(r"(?m)^\S[^\n]*:\s*$", section, maxsplit=1)[0]
         return set(re.findall(r"(?m)^  ([a-z][a-z0-9-]*)(?:\s|$)", section))
+
     try:
         top = bounded_run([binary, "--help"], cwd=SCRIPT_DIR, timeout=10)
         if top.returncode or "plugins" not in commands(top.stdout):
             result["reason"] = "installed Muse command grammar does not expose plugins"
             return result
         plugin = bounded_run([binary, "plugins", "--help"], cwd=SCRIPT_DIR, timeout=10)
-        if (plugin.returncode or plugin.stdout.strip() == top.stdout.strip()
-                or not {"list", "install", "update"} <= commands(plugin.stdout)
-                or len(re.findall(r"(?m)^Usage:", plugin.stdout)) != 1
-                or not re.search(r"(?m)^Usage:[ \t]+muse[ \t]+plugins(?:[ \t]+[^\n]*)?$", plugin.stdout)):
-            result["reason"] = "Muse plugin subcommand grammar is absent or a top-level fallback"
+        if (
+            plugin.returncode
+            or plugin.stdout.strip() == top.stdout.strip()
+            or not {"list", "install", "update"} <= commands(plugin.stdout)
+            or len(re.findall(r"(?m)^Usage:", plugin.stdout)) != 1
+            or not re.search(
+                r"(?m)^Usage:[ \t]+muse[ \t]+plugins(?:[ \t]+[^\n]*)?$", plugin.stdout
+            )
+        ):
+            result["reason"] = (
+                "Muse plugin subcommand grammar is absent or a top-level fallback"
+            )
             return result
-        result.update(status="AVAILABLE", reason="explicit plugin command grammar observed; native hook acceptance still unverified")
+        result.update(
+            status="AVAILABLE",
+            reason="explicit plugin command grammar observed; native hook acceptance still unverified",
+        )
     except (OSError, subprocess.SubprocessError, UnicodeError, ValueError) as exc:
         result["reason"] = "Muse capability observation failed: " + str(exc)[:300]
     return result
@@ -1020,14 +1045,18 @@ def _muse_install_record(binary: str) -> dict | None:
     missing record is installed fresh. Existence — not enabled state —
     decides, because a disabled record still blocks a fresh install.
     """
-    result = bounded_run([binary, "plugins", "list", "--json"], cwd=SCRIPT_DIR, timeout=30)
+    result = bounded_run(
+        [binary, "plugins", "list", "--json"], cwd=SCRIPT_DIR, timeout=30
+    )
     if result.returncode != 0:
         raise OSError("Muse install inventory command failed")
     try:
         data = _muse_inventory_json(result.stdout)
         return _muse_record_from_list(data)
     except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
-        raise OSError("Muse install inventory is unavailable or ambiguous: " + str(exc)) from exc
+        raise OSError(
+            "Muse install inventory is unavailable or ambiguous: " + str(exc)
+        ) from exc
 
 
 def _muse_inventory_json(raw: str) -> dict:
@@ -1056,8 +1085,12 @@ def _muse_inventory_json(raw: str) -> dict:
             raise ValueError("nonfinite inventory value")
         return value
 
-    return json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite,
-                      parse_float=finite_float)
+    return json.loads(
+        raw,
+        object_pairs_hook=unique,
+        parse_constant=nonfinite,
+        parse_float=finite_float,
+    )
 
 
 def _muse_record_from_list(data: object) -> dict | None:
@@ -1066,8 +1099,11 @@ def _muse_record_from_list(data: object) -> dict | None:
     Unknown rows cannot be ignored: they might represent this installation.
     Only an explicit empty list or a complete foreign inventory proves absence.
     """
-    if (not isinstance(data, dict) or not isinstance(data.get("plugins"), list)
-            or len(data["plugins"]) > 4096):
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("plugins"), list)
+        or len(data["plugins"]) > 4096
+    ):
         raise ValueError("incomplete inventory or unknown schema")
     seen, own = set(), None
     for item in data["plugins"]:
@@ -1075,8 +1111,12 @@ def _muse_record_from_list(data: object) -> dict | None:
             raise ValueError("inventory row lacks a complete record")
         record = item["record"]
         ident = record.get("id")
-        if (not isinstance(ident, str) or not ident or len(ident) > 256
-                or any(ord(c) < 33 or ord(c) == 127 for c in ident)):
+        if (
+            not isinstance(ident, str)
+            or not ident
+            or len(ident) > 256
+            or any(ord(c) < 33 or ord(c) == 127 for c in ident)
+        ):
             raise ValueError("invalid plugin identity")
         if ident in seen:
             raise ValueError("duplicate plugin identity")
@@ -1084,15 +1124,22 @@ def _muse_record_from_list(data: object) -> dict | None:
         if "enabled" in record and type(record["enabled"]) is not bool:
             raise ValueError("invalid enabled state")
         for field_name in ("version", "cache_path"):
-            if field_name in record and (not isinstance(record[field_name], str)
-                                    or len(record[field_name]) > 4096
-                                    or "\x00" in record[field_name]):
+            if field_name in record and (
+                not isinstance(record[field_name], str)
+                or len(record[field_name]) > 4096
+                or "\x00" in record[field_name]
+            ):
                 raise ValueError("invalid plugin " + field_name)
         if ident == PLUGIN_NAME:
             source = record.get("source")
             path = source.get("path") if isinstance(source, dict) else None
-            if (not isinstance(path, str) or not path or len(path) > 4096
-                    or "\x00" in path or not Path(path).is_absolute()):
+            if (
+                not isinstance(path, str)
+                or not path
+                or len(path) > 4096
+                or "\x00" in path
+                or not Path(path).is_absolute()
+            ):
                 raise ValueError("installed plugin has no unambiguous absolute source")
             own = record
     return own

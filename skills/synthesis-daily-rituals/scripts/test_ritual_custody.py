@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 import json
 import os
+import fcntl
+import errno
 import subprocess
 import pytest
 
@@ -279,3 +281,103 @@ def test_detached_history_parent_refuses_without_recreating_or_redirecting(
         )
     assert len(observed) == 1  # APFS may retain directory nlink after removal.
     assert not state.exists()
+
+
+def test_history_creation_holds_parent_lock(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    real = ritual_state.os.open
+    observed = []
+
+    def checked(path, *args, **kwargs):
+        if path == "history.jsonl":
+            probe = real(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            blocked = False
+            try:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    blocked = True
+            finally:
+                os.close(probe)
+            observed.append(blocked)
+            assert blocked, "history creation/open escaped parent serialization"
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(ritual_state.os, "open", checked)
+    ritual_state.append_record(
+        {"date": "2026-09-27", "direction": "day-end", "workspace": "fixture"}
+    )
+    assert observed == [True]
+    assert json.loads((state / "history.jsonl").read_bytes())["workspace"] == "fixture"
+
+
+def test_busy_parent_expires_before_history_creation(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    real = ritual_state.fcntl.flock
+    clock = [0.0]
+    blocked = []
+
+    def held(fd, flags):
+        if flags & fcntl.LOCK_EX and os.fstat(fd).st_ino == state.stat().st_ino:
+            blocked.append(fd)
+            clock[0] += 6
+            raise BlockingIOError(errno.EAGAIN, "synthetic held parent")
+        return real(fd, flags)
+
+    monkeypatch.setattr(ritual_state.fcntl, "flock", held)
+    monkeypatch.setattr(ritual_state.time, "monotonic", lambda: clock[0])
+    with pytest.raises(OSError, match="bounded append lock expired"):
+        ritual_state.append_record(
+            {"date": "2026-09-27", "direction": "day-end", "workspace": "fixture"}
+        )
+    assert blocked and not (state / "history.jsonl").exists()
+
+
+def test_file_lock_remains_held_through_write_and_readback(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    write = ritual_state.os.write
+    seen = []
+
+    def checked(fd, data):
+        probe = os.open(state / "history.jsonl", os.O_RDWR | os.O_NOFOLLOW)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+        seen.append(True)
+        return write(fd, data)
+
+    monkeypatch.setattr(ritual_state.os, "write", checked)
+    ritual_state.append_record(
+        {"date": "2026-09-27", "direction": "day-end", "workspace": "fixture"}
+    )
+    assert seen == [True]
+
+
+def test_parent_lock_cannot_admit_creation_after_deadline(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    state.mkdir()
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    real = ritual_state.fcntl.flock
+    clock = [0.0]
+
+    def advanced(fd, flags):
+        value = real(fd, flags)
+        if flags & fcntl.LOCK_EX and os.fstat(fd).st_ino == state.stat().st_ino:
+            clock[0] = 6.0
+        return value
+
+    monkeypatch.setattr(ritual_state.fcntl, "flock", advanced)
+    monkeypatch.setattr(ritual_state.time, "monotonic", lambda: clock[0])
+    with pytest.raises(OSError, match="bounded append lock expired"):
+        ritual_state.append_record(
+            {"date": "2026-09-27", "direction": "day-end", "workspace": "fixture"}
+        )
+    assert not (state / "history.jsonl").exists()

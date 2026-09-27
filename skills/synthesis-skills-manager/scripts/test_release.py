@@ -4974,14 +4974,18 @@ def test_cache_transition_cleanup_refuses_unsafe_target(
 
 
 def _fake_muse_binary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0,
-    *, install_only_failure: bool = False,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: str,
+    exit_code: int = 0,
+    *,
+    install_only_failure: bool = False,
 ) -> Path:
     script = tmp_path / "bin" / "muse"
     script.parent.mkdir(parents=True, exist_ok=True)
     # A supported hypothetical native grammar is explicit in these installer
     # fixtures; this is not a claim about the currently installed Muse build.
-    body = "{\"plugins\":[]}" if payload == "{}" else payload
+    body = '{"plugins":[]}' if payload == "{}" else payload
     script.write_text(
         f"#!{sys.executable}\nimport sys\n"
         "a=sys.argv[1:]\n"
@@ -5198,7 +5202,9 @@ def test_muse_refresh_replaces_incomplete_bundle(
 def test_muse_refresh_fails_closed_when_install_command_fails(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True)
+    _fake_muse_binary(
+        tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
@@ -5355,7 +5361,9 @@ def test_muse_refresh_refuses_relative_recorded_source(
 def test_muse_refresh_fails_closed_when_record_is_unreadable(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"})
+    monkeypatch.setattr(
+        release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"}
+    )
     monkeypatch.setattr(
         release,
         "resolve_client_binary",
@@ -5655,3 +5663,56 @@ def test_release_boundary_two_real_publication_targets_allow_only_same_accepted_
 def test_publish_version_must_equal_accepted_boundary(tmp_path):
     repo, authority = accepted_publish_fixture(tmp_path)
     assert not release.publish(repo, release.Result(), True, authority, "3.0.0")
+
+
+def _diagnostic_failure_receipt():
+    return {
+        "cases": [
+            {
+                "id": "ritual-05",
+                "matched": False,
+                "stdout": "Traceback (most recent call last):\n  append_record\nFileNotFoundError: history.jsonl\n1 failed in 0.13s\n",
+                "stderr": "secondary stderr detail\n",
+            },
+            {
+                "id": "other-case",
+                "matched": False,
+                "stdout": "AssertionError: second cause\n1 failed\n",
+                "stderr": "",
+            },
+        ]
+    }
+
+
+def test_all_unmatched_outputs_survive_detail():
+    detail = release._runner_failure_detail(json.dumps(_diagnostic_failure_receipt()))
+    assert "FileNotFoundError: history.jsonl" in detail
+    assert "secondary stderr detail" in detail
+    assert "AssertionError: second cause" in detail
+    assert _diagnostic_failure_receipt()["cases"][0]["stdout"] in detail
+
+
+def test_failed_actual_consumer_retains_traceback(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        release, "acceptance_boundary", lambda repo: ({"change_base": "a" * 40}, "")
+    )
+    monkeypatch.setattr(
+        release, "acceptance_expectation", lambda *a: ({"synthetic": "expected"}, "")
+    )
+    monkeypatch.setattr(
+        release,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(
+            a,
+            1,
+            json.dumps(_diagnostic_failure_receipt()),
+            "outer runner stderr detail\n",
+        ),
+    )
+    result = release.Result()
+    assert release.consume_acceptance(tmp_path, result, False) is None
+    assert len(result.failed) == 1
+    out = capsys.readouterr().out
+    assert "FileNotFoundError: history.jsonl" in out
+    assert "secondary stderr detail" in out
+    assert "outer runner stderr detail" in out

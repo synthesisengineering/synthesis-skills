@@ -534,6 +534,12 @@ changed_surfaces:
   - release-17
   - release-18
   - release-19
+  - ritual-repair-04b4432f3085
+  - ritual-repair-265dbc21b279
+  - ritual-repair-5681fd08b437
+  - ritual-repair-7c3bc1518930
+  - ritual-repair-9856fd38a2e4
+  - ritual-repair-a365deb3fc44
 - path: README.md
   cases:
   - fixture-custody-1c87a46f5f7b
@@ -2224,6 +2230,10 @@ changed_surfaces:
   - ritual-08
   - ritual-09
   - ritual-10
+  - ritual-repair-04b4432f3085
+  - ritual-repair-265dbc21b279
+  - ritual-repair-7c3bc1518930
+  - ritual-repair-a365deb3fc44
 - path: skills/synthesis-daily-rituals/scripts/ritual_workers.py
   cases:
   - ritual-01
@@ -2262,6 +2272,10 @@ changed_surfaces:
   - ritual-04
   - ritual-05
   - ritual-06
+  - ritual-repair-04b4432f3085
+  - ritual-repair-265dbc21b279
+  - ritual-repair-7c3bc1518930
+  - ritual-repair-a365deb3fc44
 - path: skills/synthesis-daily-rituals/scripts/test_ritual_evidence.py
   cases:
   - ritual-01
@@ -2614,6 +2628,12 @@ changed_surfaces:
   - release-17
   - release-18
   - release-19
+  - ritual-repair-04b4432f3085
+  - ritual-repair-265dbc21b279
+  - ritual-repair-5681fd08b437
+  - ritual-repair-7c3bc1518930
+  - ritual-repair-9856fd38a2e4
+  - ritual-repair-a365deb3fc44
 - path: skills/synthesis-implementation-integrity/references/verification-custody.md
   cases:
   - release-01
@@ -4604,6 +4624,8 @@ changed_surfaces:
   - release-17
   - release-18
   - release-19
+  - ritual-repair-5681fd08b437
+  - ritual-repair-9856fd38a2e4
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases:
   - fixture-custody-31eca9496bc0
@@ -4672,20 +4694,6 @@ changed_surfaces:
   - muse-inventory-09
 - path: skills/synthesis-skills-manager/scripts/test_release.py
   cases:
-  - release-01
-  - release-02
-  - release-03
-  - release-04
-  - release-05
-  - release-06
-  - release-07
-  - release-08
-  - release-09
-  - release-10
-  - release-11
-  - release-12
-  - release-13
-  - release-14
   - inherited-release-group-01
   - inherited-release-group-02
   - inherited-release-group-03
@@ -4702,7 +4710,6 @@ changed_surfaces:
   - inherited-release-group-14
   - inherited-release-group-15
   - inherited-release-group-16
-  - release-18
   - inherited-release-group-18
   - inherited-release-group-19
   - inherited-release-group-20
@@ -4711,6 +4718,9 @@ changed_surfaces:
   - inherited-release-group-23
   - inherited-release-group-24
   - inherited-release-group-25
+  - muse-ci-membership-01
+  - muse-ci-membership-02
+  - muse-ci-membership-03
   - muse-inventory-01
   - muse-inventory-02
   - muse-inventory-03
@@ -4720,9 +4730,23 @@ changed_surfaces:
   - muse-inventory-07
   - muse-inventory-08
   - muse-inventory-09
-  - muse-ci-membership-01
-  - muse-ci-membership-02
-  - muse-ci-membership-03
+  - release-01
+  - release-02
+  - release-03
+  - release-04
+  - release-05
+  - release-06
+  - release-07
+  - release-08
+  - release-09
+  - release-10
+  - release-11
+  - release-12
+  - release-13
+  - release-14
+  - release-18
+  - ritual-repair-5681fd08b437
+  - ritual-repair-9856fd38a2e4
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - fixture-custody-8a3081a53550
@@ -6178,3 +6202,33 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_pytest_nested_owned_process_retains_distinct_custody
   motivating_defect: 'Ordinary release validation must preserve isolated evidence
     and production path protection: pytest nested owned process retains distinct custody'
+- id: ritual-repair-7c3bc1518930
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_custody.py::test_history_creation_holds_parent_lock
+  motivating_defect: history creation holds parent lock
+- id: ritual-repair-04b4432f3085
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_custody.py::test_busy_parent_expires_before_history_creation
+  motivating_defect: busy parent expires before history creation
+- id: ritual-repair-a365deb3fc44
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_custody.py::test_file_lock_remains_held_through_write_and_readback
+  motivating_defect: file lock remains held through write and readback
+- id: ritual-repair-265dbc21b279
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_ritual_custody.py::test_parent_lock_cannot_admit_creation_after_deadline
+  motivating_defect: parent lock cannot admit creation after deadline
+- id: ritual-repair-5681fd08b437
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_all_unmatched_outputs_survive_detail
+  motivating_defect: all unmatched outputs survive detail
+- id: ritual-repair-9856fd38a2e4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_failed_actual_consumer_retains_traceback
+  motivating_defect: failed actual consumer retains traceback

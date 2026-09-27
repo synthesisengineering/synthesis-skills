@@ -53,8 +53,9 @@ escape hatch nobody can find is not an escape hatch.
 
 APPEND ATOMICITY
 ----------------
-Cooperating writers hold a bounded exclusive file lock across complete writes,
-file fsync, exact readback and parent fsync. PIPE_BUF concerns pipes, not regular
+Cooperating writers serialize creation/open through the held parent descriptor,
+then hold the exclusive history-file lock across complete writes, file fsync,
+exact readback and parent fsync. Both locks share one bounded deadline. PIPE_BUF concerns pipes, not regular
 files. Interrupted tails are preserved and refused; no filesystem all-or-none
 guarantee is asserted. MAX_RECORD_BYTES bounds each structured record.
 """
@@ -199,6 +200,22 @@ def _open_history_parent(parent: Path) -> int:
         raise
 
 
+def _lock_history_descriptor(descriptor: int, deadline: float) -> None:
+    """One shared append budget; parent first, then the history inode."""
+    while True:
+        if time.monotonic() >= deadline:
+            raise OSError("ritual history busy; bounded append lock expired")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if time.monotonic() >= deadline:
+                raise OSError("ritual history busy; bounded append lock expired")
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise OSError("ritual history busy; bounded append lock expired")
+            time.sleep(0.01)
+
+
 def append_record(rec: dict) -> None:
     """Append a bounded record; report success only after complete durable readback."""
     payload = json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n"
@@ -213,23 +230,22 @@ def append_record(rec: dict) -> None:
     parent = _open_history_parent(p.parent)
     fd = None
     locked = False
+    parent_locked = False
+    deadline = time.monotonic() + 5
     try:
+        # The history inode does not exist for the first writer. Its file lock
+        # cannot serialize concurrent creation/open, so use the already verified
+        # parent descriptor before opening it. No retry against a new pathname.
+        _lock_history_descriptor(parent, deadline)
+        parent_locked = True
         fd = os.open(
             p.name,
             os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
             0o644,
             dir_fd=parent,
         )
-        deadline = time.monotonic() + 5
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                locked = True
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise OSError("ritual history busy; bounded append lock expired")
-                time.sleep(0.01)
+        _lock_history_descriptor(fd, deadline)
+        locked = True
         before = os.fstat(fd)
         if (
             not stat.S_ISREG(before.st_mode)
@@ -274,11 +290,19 @@ def append_record(rec: dict) -> None:
             )
         os.fsync(parent)
     finally:
-        if fd is not None:
-            if locked:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            os.close(fd)
-        os.close(parent)
+        try:
+            if fd is not None:
+                try:
+                    if locked:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(fd)
+        finally:
+            try:
+                if parent_locked:
+                    fcntl.flock(parent, fcntl.LOCK_UN)
+            finally:
+                os.close(parent)
 
 
 # ---------------------------------------------------------------- helpers

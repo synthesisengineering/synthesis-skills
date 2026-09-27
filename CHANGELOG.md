@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.150.0] - 2026-09-26
 
+Ritual history creation now serializes cooperating writers under the existing bounded deadline and retains file locking, durable readback and path protections. Failed release acceptance preserves every unmatched case diagnostic.
+
+
 Add recoverable multi-file project transactions and explicit decision/obligation
 succession. Preserve original records, unanswered decisions and exact authority;
 concurrent sessions cannot silently replace one another's work.
