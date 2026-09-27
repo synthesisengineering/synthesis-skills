@@ -251,3 +251,31 @@ def test_missing_parent_under_alias_is_refused_before_directory_creation(
             {"date": "2026-09-26", "direction": "day-end", "workspace": "fixture"}
         )
     assert not (foreign / "new").exists()
+
+
+def test_detached_history_parent_refuses_without_recreating_or_redirecting(
+    tmp_path, monkeypatch
+):
+    """ENOENT is reproducible when another actor removes the held empty parent.
+
+    This establishes the lifecycle mechanism, not who removed an old fixture.
+    The writer must preserve its refusal rather than retry against a new path.
+    """
+    state = tmp_path / "state"
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(state))
+    real = ritual_state._open_history_parent
+    observed = []
+
+    def detached(parent):
+        fd = real(parent)
+        os.rmdir(parent)
+        observed.append(os.fstat(fd).st_nlink)
+        return fd
+
+    monkeypatch.setattr(ritual_state, "_open_history_parent", detached)
+    with pytest.raises(FileNotFoundError, match="history.jsonl"):
+        ritual_state.append_record(
+            {"date": "2026-09-26", "direction": "day-end", "workspace": "fixture"}
+        )
+    assert len(observed) == 1  # APFS may retain directory nlink after removal.
+    assert not state.exists()

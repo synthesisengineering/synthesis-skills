@@ -9,6 +9,7 @@ Reports bind full/selected node IDs, all three execution phases and source bytes
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -192,6 +193,52 @@ class CheckInterrupted(RuntimeError):
     """Do not use InterruptedError: selectors intentionally consumes EINTR."""
 
 
+def fixture_root(prefix: str, environment: dict[str, str] | None = None) -> Path:
+    """Create fresh, canonical, private check custody; never delete it implicitly.
+
+    Only the scratch base is canonicalized (including macOS system aliases).
+    This does not canonicalize any production input or relax its no-follow rules.
+    The caller's temporary-root selection is preserved, with a distinct child
+    for every owner, so pytest never reuses a shared numbered retention root.
+    """
+    env = os.environ if environment is None else environment
+    base = Path(env.get("TMPDIR") or tempfile.gettempdir()).resolve(strict=True)
+    if not base.is_dir():
+        raise ValueError("release fixture base is not a directory")
+    root = Path(tempfile.mkdtemp(prefix=prefix, dir=base))
+    if root.resolve() != root or root.stat().st_uid != os.getuid():
+        raise ValueError("release fixture custody identity is invalid")
+    return root
+
+
+@contextmanager
+def retained_group_fixture():
+    root = fixture_root("synthesis-release-check-")
+    # No TemporaryDirectory finalizer: failure/interruption are evidence too.
+    yield root
+
+
+def fixture_command(command: list[str], root: Path) -> list[str]:
+    """Bind ordinary pytest to this invocation without changing test selection."""
+    if not (len(command) >= 3 and command[1:3] == ["-m", "pytest"]):
+        return list(command)
+    result = []
+    index = 0
+    while index < len(command):
+        word = command[index]
+        if word == "--basetemp":
+            if index + 1 == len(command):
+                raise ValueError("pytest basetemp is missing its value")
+            index += 2
+        elif word.startswith("--basetemp="):
+            index += 1
+        else:
+            result.append(word)
+            index += 1
+    # Only the fresh path below can be pytest's destructive initialization target.
+    return result + ["--basetemp", str(root / "pytest")]
+
+
 def bounded_run(
     command: list[str],
     cwd: Path,
@@ -212,6 +259,8 @@ def bounded_run(
     failure = None
     old = {}
     cache = None
+    executed = list(command)
+    custody_fd = None
 
     def interrupted(signum, _frame):
         raise CheckInterrupted(f"check interrupted by signal {signum}")
@@ -219,19 +268,25 @@ def bounded_run(
     try:
         for sig in (signal.SIGTERM, signal.SIGINT):
             old[sig] = signal.signal(sig, interrupted)
-        cache = tempfile.TemporaryDirectory(prefix="synthesis-check-cache-")
         child_env = dict(os.environ if env is None else env)
+        cache = fixture_root("synthesis-required-check-", child_env)
+        custody_fd = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        (cache / "tmp").mkdir(mode=0o700)
+        executed = fixture_command(command, cache)
         child_env.pop("PYTEST_ADDOPTS", None)
         child_env.pop("PYTEST_PLUGINS", None)
         child_env.update(
             {
                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
                 "PYTHONDONTWRITEBYTECODE": "1",
-                "PYTHONPYCACHEPREFIX": str(Path(cache.name) / "pycache"),
+                "PYTHONPYCACHEPREFIX": str(cache / "pycache"),
+                "TMPDIR": str(cache / "tmp"),
+                "TMP": str(cache / "tmp"),
+                "TEMP": str(cache / "tmp"),
             }
         )
         process = subprocess.Popen(
-            command,
+            executed,
             cwd=cwd,
             env=child_env,
             stdin=subprocess.DEVNULL,
@@ -296,19 +351,70 @@ def bounded_run(
                 failure = f"owned child reap failed: {error}"
             if process.stdout:
                 process.stdout.close()
-        if cache is not None:
-            try:
-                cache.cleanup()
-            except OSError as error:
-                failure = f"owned bytecode-cache cleanup failed: {error}"
         for sig, handler in old.items():
             signal.signal(sig, handler)
     text = bytes(output[:OUTPUT_BYTES]).decode("utf-8", errors="replace")
     if failure:
         text += "\nFAIL " + failure + "\n"
-    return subprocess.CompletedProcess(
-        command, 1 if failure or process is None else process.returncode, text, ""
-    )
+    code = 1 if failure or process is None else process.returncode
+    if cache is not None and custody_fd is not None:
+        try:
+            before = os.fstat(custody_fd)
+            present = cache.lstat()
+            if (
+                cache.resolve() != cache
+                or (before.st_dev, before.st_ino, before.st_mode, before.st_uid)
+                != (present.st_dev, present.st_ino, present.st_mode, present.st_uid)
+                or present.st_mode & 0o022
+            ):
+                raise OSError("required-check custody pathname changed")
+            receipt = {
+                "requested_command": command,
+                "executed_command": executed,
+                "cwd": str(cwd),
+                "returncode": code,
+                "failure": failure,
+                "process_id": None if process is None else process.pid,
+                "seconds": time.monotonic() - started,
+                "fixture_custody": str(cache),
+                "retention": "retained; explicit owner reconciliation required",
+                "process_scope": "owned process group; escaped sessions are not covered",
+            }
+            for name, content in (
+                ("output.log", text),
+                ("result.json", json.dumps(receipt, sort_keys=True)),
+            ):
+                fd = os.open(
+                    name,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600,
+                    dir_fd=custody_fd,
+                )
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(content)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            os.fsync(custody_fd)
+            present = cache.lstat()
+            if (
+                cache.resolve() != cache
+                or (before.st_dev, before.st_ino, before.st_mode, before.st_uid)
+                != (present.st_dev, present.st_ino, present.st_mode, present.st_uid)
+                or present.st_mode & 0o022
+            ):
+                raise OSError("required-check custody pathname changed during receipt")
+        except OSError as error:
+            code = 1
+            text += (
+                "\nFAIL required-check custody could not be retained: "
+                + str(error)
+                + "\n"
+            )
+    if custody_fd is not None:
+        os.close(custody_fd)
+    result = subprocess.CompletedProcess(executed, code, text, "")
+    result.fixture_custody = str(cache) if cache is not None else None
+    return result
 
 
 class InventoryPlugin:
@@ -458,8 +564,7 @@ def pytest_configure(config):
 def run_group(root: Path, group: str) -> tuple[int, dict]:
     deadline = time.monotonic() + CHECK_SECONDS - 5
     before = source_digest(root)
-    with tempfile.TemporaryDirectory(prefix="synthesis-release-check-") as temporary:
-        temp = Path(temporary)
+    with retained_group_fixture() as temp:
         report = temp / "inventory.json"
         env = dict(os.environ)
         # External pytest flags/plugins cannot deselect, repeat or short-circuit a gate.
@@ -472,6 +577,7 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
                 "SYNTHESIS_RELEASE_TEST_GROUP": group,
                 "SYNTHESIS_RELEASE_TEST_REPORT": str(report),
                 "PYTHONPATH": str(Path(__file__).resolve().parent),
+                "TMPDIR": str(temp),
             }
         )
         started = time.monotonic()
@@ -500,9 +606,11 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
         if not report.is_file() or report.stat().st_size > REPORT_BYTES:
             return 1, {
                 "group": group,
+                "fixture_custody": str(temp),
                 "error": "missing or oversized execution inventory",
             }
         payload = json.loads(report.read_text())
+        payload["fixture_custody"] = str(temp)
         # Independently validate plugin output rather than trusting its return code alone.
         groups = partition(payload["inventory"])
         if (
@@ -512,7 +620,11 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
         ):
             return 1, payload
         if before != source_digest(root):
-            return 1, {"group": group, "error": "source changed during required checks"}
+            return 1, {
+                "group": group,
+                "fixture_custody": str(temp),
+                "error": "source changed during required checks",
+            }
         payload.update({"source_sha256": before, "seconds": time.monotonic() - started})
         return completed.returncode, payload
 
