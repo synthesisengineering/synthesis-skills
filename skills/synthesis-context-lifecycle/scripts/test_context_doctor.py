@@ -44,6 +44,9 @@ class Fixture:
     """
 
     def __init__(self, root: Path, with_remote: bool = True):
+        # TemporaryDirectory may use macOS's /var alias. The ordinary fixture
+        # must name its physical root; explicit symlink-refusal cases stay intact.
+        root = root.resolve()
         self.root = root
         self.projects = root / "projects"
         self.projects.mkdir(parents=True)
