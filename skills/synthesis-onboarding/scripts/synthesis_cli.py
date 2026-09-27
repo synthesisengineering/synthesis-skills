@@ -20,11 +20,20 @@ import onboard
 import modular
 import organization
 import release_runtime
-from reload_guidance import RECORDED_SESSION_DETAIL, RECORDED_SESSION_SCOPE, recovery_instruction
-from enrollment import (EnrollmentJournal, recover_enrollments, require_settled_enrollments,
-                        engine_lock, engine_state_root, recover_copy_transactions)
+from reload_guidance import (
+    RECORDED_SESSION_DETAIL,
+    RECORDED_SESSION_SCOPE,
+    recovery_instruction,
+)
+from enrollment import (
+    EnrollmentJournal,
+    recover_enrollments,
+    require_settled_enrollments,
+    engine_lock,
+    engine_state_root,
+    recover_copy_transactions,
+)
 from system_contract import (
-    DESCRIPTOR_FIELDS,
     HEX64_RE,
     descriptor_fields,
     LAUNCHER_MARK,
@@ -47,7 +56,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.8.4"
+ENGINE_VERSION = "2.9.0"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "setup",
@@ -83,7 +92,9 @@ class RebootstrapRequired(RuntimeError):
 
 def _common_output(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="emit structured JSON")
-    parser.add_argument("--verbose", action="store_true", help="show successful child output")
+    parser.add_argument(
+        "--verbose", action="store_true", help="show successful child output"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,13 +104,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_output(parser)
     commands = parser.add_subparsers(dest="command", required=True)
-    execute = commands.add_parser("exec-public", help="execute a declared script from the verified active release")
+    execute = commands.add_parser(
+        "exec-public", help="execute a declared script from the verified active release"
+    )
     execute.add_argument("arguments", nargs=argparse.REMAINDER)
 
-    setup = commands.add_parser("setup", help="converge a full or skills-only installation")
-    setup.add_argument("--profile", choices=["full", "skills-only", "modular"], default="full")
-    setup.add_argument("--skill", action="append", help="modular root skill; repeat to select more")
-    setup.add_argument("--no-dormant-core", action="store_true", help="omit optional broader ecosystem bytes")
+    setup = commands.add_parser(
+        "setup", help="converge a full or skills-only installation"
+    )
+    setup.add_argument(
+        "--profile", choices=["full", "skills-only", "modular"], default="full"
+    )
+    setup.add_argument(
+        "--skill", action="append", help="modular root skill; repeat to select more"
+    )
+    setup.add_argument(
+        "--no-dormant-core",
+        action="store_true",
+        help="omit optional broader ecosystem bytes",
+    )
     setup.add_argument("--clients")
     setup.add_argument("--channel", choices=["stable", "edge"])
     setup.add_argument("--pin", help="exact X.Y.Z release pin")
@@ -125,22 +148,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_output(setup)
 
-    stage = commands.add_parser("stage-core", help="explicitly stage inert ecosystem assets for a standalone tool")
+    stage = commands.add_parser(
+        "stage-core",
+        help="explicitly stage inert ecosystem assets for a standalone tool",
+    )
     stage.add_argument("--for-tool", choices=sorted(modular.TOOLS), required=True)
     stage.add_argument("--no-dormant-core", action="store_true")
     stage.add_argument("--pin", help="exact release pin for source acquisition")
     stage.add_argument("--channel", choices=["stable", "edge"])
     _common_output(stage)
 
-    activate = commands.add_parser("activate", help="activate the broader ecosystem from a saved modular selection")
+    activate = commands.add_parser(
+        "activate", help="activate the broader ecosystem from a saved modular selection"
+    )
     activate.add_argument("--profile", choices=["full", "skills-only"], default="full")
     activate.add_argument("--answers", type=Path)
     activate.add_argument("--no-services", action="store_true")
     _common_output(activate)
-    deactivate = commands.add_parser("deactivate", help="remove owned broader integration and restore saved modular selection")
+    deactivate = commands.add_parser(
+        "deactivate",
+        help="remove owned broader integration and restore saved modular selection",
+    )
     _common_output(deactivate)
 
-    enroll = commands.add_parser("enroll", help="add an organization without reinitializing personal layers")
+    enroll = commands.add_parser(
+        "enroll", help="add an organization without reinitializing personal layers"
+    )
     org_source = enroll.add_mutually_exclusive_group(required=True)
     org_source.add_argument("--org-repo")
     org_source.add_argument("--invite", type=Path)
@@ -169,15 +202,21 @@ def build_parser() -> argparse.ArgumentParser:
     _common_output(doctor)
 
     workspace = commands.add_parser("workspace", help="manage a personal workspace")
-    workspace_commands = workspace.add_subparsers(dest="workspace_command", required=True)
-    ensure = workspace_commands.add_parser("ensure", help="create or repair a tracked workspace")
+    workspace_commands = workspace.add_subparsers(
+        dest="workspace_command", required=True
+    )
+    ensure = workspace_commands.add_parser(
+        "ensure", help="create or repair a tracked workspace"
+    )
     ensure.add_argument("--name", required=True)
     ensure.add_argument("--remote")
     _common_output(ensure)
 
     outcome = commands.add_parser("outcome", help="verify a trusted user outcome")
     outcome_commands = outcome.add_subparsers(dest="outcome_command", required=True)
-    verify = outcome_commands.add_parser("verify", help="run a release-owned outcome verifier")
+    verify = outcome_commands.add_parser(
+        "verify", help="run a release-owned outcome verifier"
+    )
     verify.add_argument("--task", required=True)
     verify.add_argument("--workspace", required=True, type=Path)
     verify.add_argument("--source-class", required=True)
@@ -185,22 +224,44 @@ def build_parser() -> argparse.ArgumentParser:
 
     fleet = commands.add_parser("fleet", help="enroll this Mac in a personal fleet")
     fleet_commands = fleet.add_subparsers(dest="fleet_command", required=True)
-    join = fleet_commands.add_parser("join", help="join this Mac to the fleet in one step")
-    join.add_argument("--kb", help="personal knowledge repo: local path or remote URL (discovered or asked when omitted)")
+    join = fleet_commands.add_parser(
+        "join", help="join this Mac to the fleet in one step"
+    )
+    join.add_argument(
+        "--kb",
+        help="personal knowledge repo: local path or remote URL (discovered or asked when omitted)",
+    )
     join.add_argument("--label", help="machine label (default: this Mac's hostname)")
-    join.add_argument("--role", choices=("primary", "secondary"), help="found as primary or join as secondary (derived from the knowledge repo when omitted)")
-    join.add_argument("--workspace", help="workspace name (derived or asked when omitted)")
+    join.add_argument(
+        "--role",
+        choices=("primary", "secondary"),
+        help="found as primary or join as secondary (derived from the knowledge repo when omitted)",
+    )
+    join.add_argument(
+        "--workspace", help="workspace name (derived or asked when omitted)"
+    )
     _common_output(join)
 
-    onboard_cmd = commands.add_parser("onboard", help="the one smart entry: detect, recommend, ask, and act")
+    onboard_cmd = commands.add_parser(
+        "onboard", help="the one smart entry: detect, recommend, ask, and act"
+    )
     _common_output(onboard_cmd)
 
-    sync_cmd = commands.add_parser("sync", help="bring this enrolled Mac fully current: update, pull repos, heartbeat, verify, repair")
-    sync_cmd.add_argument("--kb", help="personal knowledge repo path (discovered when omitted)")
-    sync_cmd.add_argument("--workspace", help="workspace name (derived from the manifest when omitted)")
+    sync_cmd = commands.add_parser(
+        "sync",
+        help="bring this enrolled Mac fully current: update, pull repos, heartbeat, verify, repair",
+    )
+    sync_cmd.add_argument(
+        "--kb", help="personal knowledge repo path (discovered when omitted)"
+    )
+    sync_cmd.add_argument(
+        "--workspace", help="workspace name (derived from the manifest when omitted)"
+    )
     _common_output(sync_cmd)
 
-    uninstall = commands.add_parser("uninstall", help="archive and remove generated resources")
+    uninstall = commands.add_parser(
+        "uninstall", help="archive and remove generated resources"
+    )
     uninstall.add_argument(
         "--purge",
         action="store_true",
@@ -227,13 +288,21 @@ def _require_expected_release(args: argparse.Namespace) -> dict[str, Any] | None
     if expected is None:
         return None
     if not isinstance(expected, str) or HEX64_RE.fullmatch(expected) is None:
-        raise ContractError("expected release digest must be a lowercase SHA-256 digest")
+        raise ContractError(
+            "expected release digest must be a lowercase SHA-256 digest"
+        )
     active = _active_release()
     if active is None or active.get("content_digest") != expected:
-        raise ContractError("active release differs from the expected release digest; no reconciliation was performed")
-    if (Path(active["release_root"]).resolve() != REPO_ROOT.resolve()
-            or Path(onboard.source_root()).resolve() != REPO_ROOT.resolve()):
-        raise ContractError("release-bound repair must execute from the expected release root")
+        raise ContractError(
+            "active release differs from the expected release digest; no reconciliation was performed"
+        )
+    if (
+        Path(active["release_root"]).resolve() != REPO_ROOT.resolve()
+        or Path(onboard.source_root()).resolve() != REPO_ROOT.resolve()
+    ):
+        raise ContractError(
+            "release-bound repair must execute from the expected release root"
+        )
     verify_materialized_release(Path(active["release_root"]), descriptor_fields(active))
     return active
 
@@ -243,11 +312,17 @@ def _require_expected_desired(args: argparse.Namespace, state: SystemState) -> N
     if expected is None:
         return
     if not getattr(args, "expected_release_digest", None):
-        raise ContractError("expected desired digest requires an expected release digest")
+        raise ContractError(
+            "expected desired digest requires an expected release digest"
+        )
     if not isinstance(expected, str) or HEX64_RE.fullmatch(expected) is None:
-        raise ContractError("expected desired digest must be a lowercase SHA-256 digest")
+        raise ContractError(
+            "expected desired digest must be a lowercase SHA-256 digest"
+        )
     if json_digest(state.read_desired()) != expected:
-        raise ContractError("saved desired selection changed before release reconciliation; preserved")
+        raise ContractError(
+            "saved desired selection changed before release reconciliation; preserved"
+        )
 
 
 def _release_native_root(client: str, version: str, home: Path) -> Path | None:
@@ -257,22 +332,39 @@ def _release_native_root(client: str, version: str, home: Path) -> Path | None:
     try:
         from conformance import _enabled_plugin_root
     except ImportError as exc:
-        raise ContractError("native plugin identity verifier is unavailable: %s" % exc) from exc
+        raise ContractError(
+            "native plugin identity verifier is unavailable: %s" % exc
+        ) from exc
     return _enabled_plugin_root(client, version, home)
 
 
-def _verify_release_native_clients(desired: dict[str, Any], active: dict[str, Any], home: Path) -> dict[str, Any]:
+def _verify_release_native_clients(
+    desired: dict[str, Any], active: dict[str, Any], home: Path
+) -> dict[str, Any]:
     """Release repair reconciles records only after native installation succeeds."""
     source = Path(active["release_root"])
     from system_contract import verify_native_release_inventory
+
     verify_materialized_release(source, descriptor_fields(active))
     verified = {}
     for client in desired["clients"]:
         root = _release_native_root(client, active["version"], home)
-        if root is None or not root.is_absolute() or root.is_symlink() or root.resolve() != root or not root.is_dir():
-            raise ContractError("release-bound repair cannot verify the enabled %s plugin root" % client)
+        if (
+            root is None
+            or not root.is_absolute()
+            or root.is_symlink()
+            or root.resolve() != root
+            or not root.is_dir()
+        ):
+            raise ContractError(
+                "release-bound repair cannot verify the enabled %s plugin root" % client
+            )
         digest = verify_native_release_inventory(root, source, active["content_digest"])
-        verified[client] = {"root": str(root), "version": active["version"], "content_digest": digest}
+        verified[client] = {
+            "root": str(root),
+            "version": active["version"],
+            "content_digest": digest,
+        }
     return verified
 
 
@@ -294,12 +386,18 @@ def _transcript_binder() -> Callable[[Path, str, str], bool]:
     return transcript_binds_session
 
 
-def _promote_live_receipts(state: SystemState) -> tuple[list[dict[str, Any]], str | None]:
+def _promote_live_receipts(
+    state: SystemState,
+) -> tuple[list[dict[str, Any]], str | None]:
     """Attach fresh client SessionStart receipts that bind their transcript now."""
     try:
         rejections: list[dict[str, str]] = []
-        promoted = state.promote_live_receipts(binder=_transcript_binder(), rejections=rejections)
-        note = "; ".join("%s: %s" % (item["client"], item["reason"]) for item in rejections)
+        promoted = state.promote_live_receipts(
+            binder=_transcript_binder(), rejections=rejections
+        )
+        note = "; ".join(
+            "%s: %s" % (item["client"], item["reason"]) for item in rejections
+        )
         return promoted, note or None
     except ContractError as exc:
         return [], str(exc)
@@ -337,10 +435,18 @@ def _launcher_verification_plane(active: dict[str, Any]) -> dict[str, Any]:
     projection = checked.get("projection") or {}
     expected = projection.get("content_digest", checked.get("content_digest"))
     if report["tree_digest"] != expected:
-        return {"status": "drifted", "mode": mode, "files": report["files"],
-                "detail": "full tree digest differs from the recorded digest"}
-    return {"status": "verified", "mode": mode, "files": report["files"],
-            "digest_ms": report["elapsed_ms"]}
+        return {
+            "status": "drifted",
+            "mode": mode,
+            "files": report["files"],
+            "detail": "full tree digest differs from the recorded digest",
+        }
+    return {
+        "status": "verified",
+        "mode": mode,
+        "files": report["files"],
+        "digest_ms": report["elapsed_ms"],
+    }
 
 
 def _current_planes(
@@ -397,17 +503,25 @@ def _current_planes(
     recorded = latest.get("release")
     if not isinstance(recorded, dict):
         resolved_plane = planes["resolved"]
-        recorded = resolved_plane.get("release") if isinstance(resolved_plane, dict) else None
+        recorded = (
+            resolved_plane.get("release") if isinstance(resolved_plane, dict) else None
+        )
         if not isinstance(recorded, dict):
             recorded = None
     if active is not None:
         active_release = descriptor_fields(active)
-        if recorded and recorded.get("content_digest") != active_release.get("content_digest"):
+        if recorded and recorded.get("content_digest") != active_release.get(
+            "content_digest"
+        ):
             planes["resolved"] = {
                 "status": "changed",
                 "release": active_release,
                 "detail": "active release %s differs from generation %s release %s; run synthesis update"
-                % (active_release.get("version"), latest.get("generation"), recorded.get("version")),
+                % (
+                    active_release.get("version"),
+                    latest.get("generation"),
+                    recorded.get("version"),
+                ),
             }
         else:
             planes["resolved"] = {"status": "verified", "release": active_release}
@@ -456,7 +570,10 @@ def _current_planes(
             runtime = release_runtime.runtime_health(active, home=home)
             planes["installed"]["execution_runtime"] = runtime
         except release_runtime.RuntimeContractError as exc:
-            planes["installed"].update(status="defective", execution_runtime={"status": "defective", "detail": str(exc)})
+            planes["installed"].update(
+                status="defective",
+                execution_runtime={"status": "defective", "detail": str(exc)},
+            )
         planes["launcher.verification-mode"] = _launcher_verification_plane(active)
     live = planes["live-loaded"]
     release_version = (recorded or {}).get("version")
@@ -470,7 +587,10 @@ def _current_planes(
         )
     ]
     if live.get("status") in ("missing", None):
-        live = {"status": "restart-required", "detail": "no SessionStart receipt for this generation yet"}
+        live = {
+            "status": "restart-required",
+            "detail": "no SessionStart receipt for this generation yet",
+        }
     live = dict(live)
     live["missing_clients"] = missing
     live["scope"] = RECORDED_SESSION_SCOPE
@@ -483,7 +603,8 @@ def _non_green(planes: dict[str, Any], disabled: bool) -> bool:
     if planes["live-loaded"].get("status") != expected_live:
         return True
     if any(
-        planes[name].get("status") in ("missing", "unverified", "drifted", "changed", "defective")
+        planes[name].get("status")
+        in ("missing", "unverified", "drifted", "changed", "defective")
         for name in ("desired", "resolved", "installed", "source-provenance")
     ):
         return True
@@ -500,7 +621,9 @@ def _next_action(
 ) -> str:
     if disabled:
         if planes["installed"].get("status") == "removed":
-            return "None for the removed installation; run synthesis setup to reinstall."
+            return (
+                "None for the removed installation; run synthesis setup to reinstall."
+            )
         return "Run synthesis uninstall again; removal could not be verified."
     if planes["desired"].get("status") != "verified":
         return "Run synthesis update to reconcile desired state that changed outside a transaction."
@@ -512,7 +635,9 @@ def _next_action(
             "run synthesis update to re-materialize the release."
         )
     if planes["installed"].get("status") == "defective":
-        return "Run synthesis repair; the engine reported: %s" % planes["installed"].get("detail")
+        return "Run synthesis repair; the engine reported: %s" % planes[
+            "installed"
+        ].get("detail")
     live = planes["live-loaded"]
     if live.get("status") != "verified":
         if promotion_note:
@@ -547,13 +672,19 @@ def _plane_summary(name: str, plane: dict[str, Any]) -> str:
     if name == "resolved" and isinstance(plane.get("release"), dict):
         return "%s: %s" % (status, _release_label(plane.get("release")))
     if name == "live-loaded":
-        receipts = plane.get("receipts") if isinstance(plane.get("receipts"), dict) else {}
+        receipts = (
+            plane.get("receipts") if isinstance(plane.get("receipts"), dict) else {}
+        )
         parts = []
         for client, entry in sorted(receipts.items()):
             if isinstance(entry, dict):
                 parts.append(
                     "%s at %s (session %s)"
-                    % (client, entry.get("plugin_version"), str(entry.get("session_id") or "")[:8])
+                    % (
+                        client,
+                        entry.get("plugin_version"),
+                        str(entry.get("session_id") or "")[:8],
+                    )
                 )
         for client in plane.get("missing_clients") or []:
             parts.append("%s missing" % client)
@@ -571,23 +702,36 @@ def _render_doctor(
     release = (latest or {}).get("release") if latest else None
     planes = payload["planes"]
     header = "Synthesis doctor: %s, %s" % (
-        _release_label(release if isinstance(release, dict) else planes["resolved"].get("release")),
-        "generation %s" % latest.get("generation") if latest else "no committed generation",
+        _release_label(
+            release if isinstance(release, dict) else planes["resolved"].get("release")
+        ),
+        "generation %s" % latest.get("generation")
+        if latest
+        else "no committed generation",
     )
     print(header)
-    print("  Policy: %s; profile %s; clients %s" % (
-        _policy_text(desired["release"]["channel"], desired["release"].get("version_pin")),
-        desired.get("profile"),
-        ", ".join(desired.get("clients") or []),
-    ))
+    print(
+        "  Policy: %s; profile %s; clients %s"
+        % (
+            _policy_text(
+                desired["release"]["channel"], desired["release"].get("version_pin")
+            ),
+            desired.get("profile"),
+            ", ".join(desired.get("clients") or []),
+        )
+    )
     for name in TRUTH_PLANES:
         plane = planes[name]
         badge = _PLANE_BADGES.get(str(plane.get("status")), "!!")
         print("  %-2s  %-18s %s" % (badge, name, _plane_summary(name, plane)))
     if payload.get("promoted"):
-        print("  Attached fresh SessionStart evidence for: %s" % ", ".join(
-            "%s (session %s)" % (item["client"], item["session_id"][:8]) for item in payload["promoted"]
-        ))
+        print(
+            "  Attached fresh SessionStart evidence for: %s"
+            % ", ".join(
+                "%s (session %s)" % (item["client"], item["session_id"][:8])
+                for item in payload["promoted"]
+            )
+        )
     print("Next action: %s" % payload.get("next_action"))
 
 
@@ -595,7 +739,9 @@ def _render_status(payload: dict[str, Any]) -> None:
     desired = payload.get("desired")
     observed = payload.get("observed") or {}
     if desired is None:
-        print("Synthesis status: no desired state on this machine; run synthesis setup.")
+        print(
+            "Synthesis status: no desired state on this machine; run synthesis setup."
+        )
         return
     transactions = observed.get("transactions") or []
     committed = [item for item in transactions if item.get("state") == "committed"]
@@ -603,50 +749,88 @@ def _render_status(payload: dict[str, Any]) -> None:
     latest = committed[-1] if committed else None
     release = desired["release"]
     print("Synthesis status")
-    print("  Profile:     %s (clients: %s)%s" % (
-        desired.get("profile"),
-        ", ".join(desired.get("clients") or []),
-        "" if desired.get("enabled", True) else "; disabled by uninstall",
-    ))
-    print("  Policy:      %s" % _policy_text(release["channel"], release.get("version_pin")))
+    print(
+        "  Profile:     %s (clients: %s)%s"
+        % (
+            desired.get("profile"),
+            ", ".join(desired.get("clients") or []),
+            "" if desired.get("enabled", True) else "; disabled by uninstall",
+        )
+    )
+    print(
+        "  Policy:      %s"
+        % _policy_text(release["channel"], release.get("version_pin"))
+    )
     recorded = latest.get("release") if latest else None
     if not isinstance(recorded, dict) and latest:
         resolved = latest.get("resolved")
         recorded = resolved.get("release") if isinstance(resolved, dict) else None
-    print("  Release:     %s" % (_release_label(recorded) if isinstance(recorded, dict) else "unknown (no committed generation)"))
+    print(
+        "  Release:     %s"
+        % (
+            _release_label(recorded)
+            if isinstance(recorded, dict)
+            else "unknown (no committed generation)"
+        )
+    )
     if latest:
-        print("  Generation:  generation %s %s at %s (%s)" % (
-            latest.get("generation"), latest.get("state"), latest.get("finished_at"), latest.get("command"),
-        ))
-    print("  History:     %d committed, %d aborted transaction(s)" % (len(committed), len(aborted)))
+        print(
+            "  Generation:  generation %s %s at %s (%s)"
+            % (
+                latest.get("generation"),
+                latest.get("state"),
+                latest.get("finished_at"),
+                latest.get("command"),
+            )
+        )
+    print(
+        "  History:     %d committed, %d aborted transaction(s)"
+        % (len(committed), len(aborted))
+    )
     print("  Workspace:   %s" % (desired.get("personal_workspace") or "none"))
     live = latest.get("live-loaded") if latest else None
     if isinstance(live, dict):
-        receipts = live.get("receipts") if isinstance(live.get("receipts"), dict) else {}
+        receipts = (
+            live.get("receipts") if isinstance(live.get("receipts"), dict) else {}
+        )
         parts = [
             "%s at %s" % (client, entry.get("plugin_version"))
             for client, entry in sorted(receipts.items())
             if isinstance(entry, dict)
         ]
-        recorded_version = recorded.get("version") if isinstance(recorded, dict) else None
+        recorded_version = (
+            recorded.get("version") if isinstance(recorded, dict) else None
+        )
         for client in desired.get("clients") or []:
             entry = receipts.get(client)
-            if not (isinstance(entry, dict) and entry.get("plugin_version") == recorded_version):
+            if not (
+                isinstance(entry, dict)
+                and entry.get("plugin_version") == recorded_version
+            ):
                 parts.append("%s missing" % client)
-        print("  Live-loaded: %s%s" % (live.get("status"), " — " + "; ".join(parts) if parts else ""))
+        print(
+            "  Live-loaded: %s%s"
+            % (live.get("status"), " — " + "; ".join(parts) if parts else "")
+        )
         if live.get("status") != "not-applicable":
             print("  Live scope:  %s" % RECORDED_SESSION_DETAIL)
     else:
         print("  Live-loaded: unknown")
     outcome = latest.get("outcome-verified") if latest else None
-    print("  Outcome:     %s" % (outcome.get("status") if isinstance(outcome, dict) else "unknown"))
+    print(
+        "  Outcome:     %s"
+        % (outcome.get("status") if isinstance(outcome, dict) else "unknown")
+    )
     if payload.get("promotion_note"):
         print("  Receipt validation: %s" % payload["promotion_note"])
     if payload.get("promoted"):
-        print("  Attached fresh SessionStart evidence for: %s" % ", ".join(
-            item["client"] for item in payload["promoted"]
-        ))
-    print("Next: run synthesis doctor for the verified truth planes and the next action.")
+        print(
+            "  Attached fresh SessionStart evidence for: %s"
+            % ", ".join(item["client"] for item in payload["promoted"])
+        )
+    print(
+        "Next: run synthesis doctor for the verified truth planes and the next action."
+    )
 
 
 def _retained_paths(state: SystemState) -> list[str]:
@@ -701,7 +885,9 @@ def _purge_installation(state: SystemState) -> list[str]:
     """Remove the launcher, caches, state, and configuration after a verified uninstall."""
     desired = state.read_desired()
     if desired is None or desired.get("enabled", True):
-        raise ContractError("purge requires a verified uninstall; desired state is still enabled")
+        raise ContractError(
+            "purge requires a verified uninstall; desired state is still enabled"
+        )
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup = state.synthesis_dir / "onboarding" / "backups" / stamp
     backup.mkdir(parents=True, exist_ok=True)
@@ -712,9 +898,13 @@ def _purge_installation(state: SystemState) -> list[str]:
     launcher = state.launcher_path
     if launcher.exists() or launcher.is_symlink():
         if launcher.is_symlink() or not launcher.is_file():
-            raise ContractError("refusing to remove a launcher that is not a regular file")
+            raise ContractError(
+                "refusing to remove a launcher that is not a regular file"
+            )
         if LAUNCHER_MARK not in launcher.read_text(encoding="utf-8", errors="replace"):
-            raise ContractError("refusing to remove a launcher this engine did not generate")
+            raise ContractError(
+                "refusing to remove a launcher this engine did not generate"
+            )
         launcher.unlink()
         purged.append(str(launcher))
     for target in (state.cache_dir, state.config_dir, state.state_dir):
@@ -772,10 +962,14 @@ def _planes(
             "detail": (
                 "No client load is expected for a disabled installation."
                 if disabled
-                else recovery_instruction(desired.get("clients") or [], initial=command == "setup")
+                else recovery_instruction(
+                    desired.get("clients") or [], initial=command == "setup"
+                )
             ),
         },
-        "outcome-verified": {"status": "not-applicable" if disabled else "not-requested"},
+        "outcome-verified": {
+            "status": "not-applicable" if disabled else "not-requested"
+        },
         **({"release": release} if release else {}),
     }
 
@@ -812,7 +1006,10 @@ def _validate_effective_selection(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError("onboarding engine effective selection must be an object")
     if set(value) != {
-        "profile", "clients", "personal_workspace", "personal_configuration",
+        "profile",
+        "clients",
+        "personal_workspace",
+        "personal_configuration",
         "layers",
     }:
         raise ContractError("onboarding engine effective selection has invalid fields")
@@ -914,9 +1111,15 @@ def _prepare_organization(
     if not organizations:
         return desired, None, None
     if len(organizations) != 1:
-        raise ContractError("one organization repository may be enrolled per setup transaction")
+        raise ContractError(
+            "one organization repository may be enrolled per setup transaction"
+        )
     entry = dict(organizations[0])
-    expected = entry.get("commit") if verify_only or entry.get("commit_policy") == "pinned" else None
+    expected = (
+        entry.get("commit")
+        if verify_only or entry.get("commit_policy") == "pinned"
+        else None
+    )
     root, commit = organization.acquire_repository(
         entry["repository"],
         organization.default_data_root(state.home),
@@ -933,9 +1136,7 @@ def _prepare_organization(
     updated["organizations"] = [entry]
     if not verify_only and entry.get("mode") != "additive":
         ecosystem = manifest.get("ecosystem") or {}
-        updated["clients"] = sorted(
-            set(ecosystem.get("clients", ["claude", "codex"]))
-        )
+        updated["clients"] = sorted(set(ecosystem.get("clients", ["claude", "codex"])))
         updated["release"] = {
             "channel": ecosystem.get("channel", "stable"),
             "version_pin": ecosystem.get("version_pin"),
@@ -947,7 +1148,9 @@ def _prepare_organization(
 @contextlib.contextmanager
 def _proposed_state(state, desired):
     state.state_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="proposed-", dir=state.state_dir) as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="proposed-", dir=state.state_dir
+    ) as directory:
         path = Path(directory) / "desired.json"
         atomic_write_json(path, desired)
         yield path
@@ -957,53 +1160,96 @@ def _enroll(args, argv, state, engine_runner):
     with state.locked(), engine_lock(engine_state_root(state.home)):
         base = state.read_desired()
         if not base or not base["enabled"]:
-            raise ContractError("enrollment requires an existing enabled installation; run synthesis setup")
-        invite = validate_invite(json.loads(args.invite.read_text())) if args.invite else None
+            raise ContractError(
+                "enrollment requires an existing enabled installation; run synthesis setup"
+            )
+        invite = (
+            validate_invite(json.loads(args.invite.read_text()))
+            if args.invite
+            else None
+        )
         repository = invite["repository"] if invite else args.org_repo
         validate_repository_url(repository)
         previous = (base.get("organizations") or [None])[0]
-        if previous and organization.canonical_remote(previous["repository"]) != organization.canonical_remote(repository):
-            raise ContractError("an organization is already enrolled; replacement is not additive")
+        if previous and organization.canonical_remote(
+            previous["repository"]
+        ) != organization.canonical_remote(repository):
+            raise ContractError(
+                "an organization is already enrolled; replacement is not additive"
+            )
         active = _active_release()
         if active and not _active_matches_policy(active, base):
-            raise RebootstrapRequired(base["release"]["channel"], base["release"]["version_pin"])
+            raise RebootstrapRequired(
+                base["release"]["channel"], base["release"]["version_pin"]
+            )
         expected = invite.get("repository_commit") if invite else None
         if previous and previous.get("commit_policy") == "pinned":
             if expected and expected != previous["commit"]:
-                raise ContractError("enrollment cannot replace a pinned organization commit")
+                raise ContractError(
+                    "enrollment cannot replace a pinned organization commit"
+                )
             expected = previous["commit"]
         root, commit = organization.acquire_repository(
-            repository, organization.default_data_root(state.home), expected_commit=expected,
+            repository,
+            organization.default_data_root(state.home),
+            expected_commit=expected,
         )
         manifest_path = root / organization.MANIFEST_RELATIVE
         manifest = onboard.load_manifest(manifest_path)
-        entry = {"repository": repository, "manifest_path": organization.MANIFEST_RELATIVE,
-                 "commit_policy": "pinned" if expected else "floating", "commit": commit,
-                 "mode": "additive", "workspace": manifest["org"]["workspace"]}
-        if previous and previous.get("workspace") and previous["workspace"] != entry["workspace"]:
+        entry = {
+            "repository": repository,
+            "manifest_path": organization.MANIFEST_RELATIVE,
+            "commit_policy": "pinned" if expected else "floating",
+            "commit": commit,
+            "mode": "additive",
+            "workspace": manifest["org"]["workspace"],
+        }
+        if (
+            previous
+            and previous.get("workspace")
+            and previous["workspace"] != entry["workspace"]
+        ):
             raise ContractError("organization workspace changed; refusing replacement")
         _validate_additive_organization(base, manifest, entry)
-        desired = {**base, "organizations": [entry],
-                   "layers": {**base["layers"], "organization": "selected"}}
+        desired = {
+            **base,
+            "organizations": [entry],
+            "layers": {**base["layers"], "organization": "selected"},
+        }
         if args.clear_personal_instruction_source:
             if args.adopt_workspace_instructions:
-                raise ContractError("workspace instruction adoption cannot clear the personal instruction source")
+                raise ContractError(
+                    "workspace instruction adoption cannot clear the personal instruction source"
+                )
             desired["personal_instruction_source"] = None
         elif args.personal_instruction_source:
-            desired["personal_instruction_source"] = describe_personal_instruction_source(args.personal_instruction_source)
+            desired["personal_instruction_source"] = (
+                describe_personal_instruction_source(args.personal_instruction_source)
+            )
         validate_desired_state(desired)
-        workspaces = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces")))
+        workspaces = Path(
+            os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces"))
+        )
         receipts = engine_state_root(state.home) / "receipts.json"
-        pair = [workspaces / entry["workspace"] / name for name in ("AGENTS.md", "CLAUDE.md")]
-        parents = [state.home / (".claude" if c == "claude" else ".agents") / "skills" for c in base["clients"]]
+        pair = [
+            workspaces / entry["workspace"] / name
+            for name in ("AGENTS.md", "CLAUDE.md")
+        ]
+        parents = [
+            state.home / (".claude" if c == "claude" else ".agents") / "skills"
+            for c in base["clients"]
+        ]
         journal = None
 
         def operation(tx):
             nonlocal journal
             journal = EnrollmentJournal.create(
-                state.state_dir / "enrollments", tx["transaction_id"], base,
+                state.state_dir / "enrollments",
+                tx["transaction_id"],
+                base,
                 files=[*pair, receipts, state.invites_path, state.desired_path],
-                skill_parents=parents, proposed=desired,
+                skill_parents=parents,
+                proposed=desired,
             )
             journal.validate_scope(state, desired)
             for path in (state.desired_path, state.invites_path, receipts, *pair):
@@ -1013,7 +1259,9 @@ def _enroll(args, argv, state, engine_runner):
             details = {}
             with _proposed_state(state, desired) as proposed:
                 for command in ("enroll", "doctor"):
-                    engine_args = _engine_args(desired, command, args, desired_state_path=proposed)
+                    engine_args = _engine_args(
+                        desired, command, args, desired_state_path=proposed
+                    )
                     engine_args.extend(["--manifest", str(manifest_path)])
                     if command == "enroll":
                         engine_args.extend(["--enrollment-journal", str(journal.root)])
@@ -1023,8 +1271,15 @@ def _enroll(args, argv, state, engine_runner):
                     if result is not None:
                         details[command] = result
             result = _planes(desired, "enroll")
-            result.update({"_desired": desired, "details": {"engine": details,
-                "enrollment_journal": str(journal.root)}})
+            result.update(
+                {
+                    "_desired": desired,
+                    "details": {
+                        "engine": details,
+                        "enrollment_journal": str(journal.root),
+                    },
+                }
+            )
             return result
 
         def rollback(_error):
@@ -1034,8 +1289,9 @@ def _enroll(args, argv, state, engine_runner):
                 recovered.validate_scope(state, base)
                 recovered.rollback()
 
-        transaction = state.run_transaction("enroll", desired, operation,
-                                            rollback=rollback, already_locked=True)
+        transaction = state.run_transaction(
+            "enroll", desired, operation, rollback=rollback, already_locked=True
+        )
         EnrollmentJournal(journal.root).commit()
         return transaction
 
@@ -1050,7 +1306,10 @@ def _active_matches_policy(active: dict[str, Any], desired: dict[str, Any]) -> b
             and active.get("version") == pin
         )
     expected_ref = "main" if release["channel"] == "edge" else "stable"
-    return active.get("channel") == release["channel"] and active.get("ref") == expected_ref
+    return (
+        active.get("channel") == release["channel"]
+        and active.get("ref") == expected_ref
+    )
 
 
 def _render(payload: dict[str, Any], as_json: bool) -> None:
@@ -1070,7 +1329,9 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
             print("Retained (not removed by uninstall):")
             for path in retained:
                 print("  - %s" % path)
-            print("Run synthesis uninstall --purge to remove them; the launcher goes with them.")
+            print(
+                "Run synthesis uninstall --purge to remove them; the launcher goes with them."
+            )
         if payload.get("purged"):
             print("Purged:")
             for path in payload["purged"]:
@@ -1080,7 +1341,13 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
     elif "modular" in payload and "planes" in payload:
         print("Synthesis modular installation: %s" % payload["status"])
         print("  Selected skills: %s" % ", ".join(payload["modular"]["skills"]))
-        print("  Dormant core: %s (%s optional bytes)" % (payload["modular"]["core_state"], payload["modular"]["optional_core_bytes"]))
+        print(
+            "  Dormant core: %s (%s optional bytes)"
+            % (
+                payload["modular"]["core_state"],
+                payload["modular"]["optional_core_bytes"],
+            )
+        )
         for name in TRUTH_PLANES:
             print("  %s: %s" % (name, _plane_summary(name, payload["planes"][name])))
         print("Next action: %s" % payload["next_action"])
@@ -1088,7 +1355,9 @@ def _render(payload: dict[str, Any], as_json: bool) -> None:
         print(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def _quiet_engine_runner(engine_args: list[str], verbose: bool = False) -> dict[str, Any]:
+def _quiet_engine_runner(
+    engine_args: list[str], verbose: bool = False
+) -> dict[str, Any]:
     stdout = io.StringIO()
     stderr = io.StringIO()
     structured_args = list(engine_args)
@@ -1099,7 +1368,9 @@ def _quiet_engine_runner(engine_args: list[str], verbose: bool = False) -> dict[
     if verbose or code:
         combined = stdout.getvalue() + stderr.getvalue()
         if combined:
-            print(combined, end="" if combined.endswith("\n") else "\n", file=sys.stderr)
+            print(
+                combined, end="" if combined.endswith("\n") else "\n", file=sys.stderr
+            )
     rendered = stdout.getvalue()
     start = rendered.find("{")
     if start < 0:
@@ -1107,7 +1378,9 @@ def _quiet_engine_runner(engine_args: list[str], verbose: bool = False) -> dict[
     try:
         payload = json.loads(rendered[start:])
     except ValueError as exc:
-        raise ContractError("onboarding engine emitted an invalid structured result") from exc
+        raise ContractError(
+            "onboarding engine emitted an invalid structured result"
+        ) from exc
     if not isinstance(payload, dict) or payload.get("exit") != code:
         raise ContractError("onboarding engine result disagrees with its exit status")
     return payload
@@ -1123,12 +1396,18 @@ def _execute_engine(
         return raw, None
     code = raw.get("exit")
     counts = raw.get("counts") or {}
-    if isinstance(code, bool) or not isinstance(code, int) or not isinstance(counts, dict):
+    if (
+        isinstance(code, bool)
+        or not isinstance(code, int)
+        or not isinstance(counts, dict)
+    ):
         raise ContractError("onboarding engine structured result is incomplete")
     safe_counts = {
         key: int(value)
         for key, value in counts.items()
-        if isinstance(key, str) and isinstance(value, int) and not isinstance(value, bool)
+        if isinstance(key, str)
+        and isinstance(value, int)
+        and not isinstance(value, bool)
     }
     effective_selection = raw.get("effective_selection")
     if effective_selection is not None:
@@ -1285,60 +1564,128 @@ def _legacy_plugin_only_desired(state: SystemState) -> dict[str, Any]:
 def _deactivate(state, engine_runner, args):
     with state.locked():
         current = state.read_desired()
-        if not current or current["profile"] == "modular" or not current.get("enabled", True):
+        if (
+            not current
+            or current["profile"] == "modular"
+            or not current.get("enabled", True)
+        ):
             raise ContractError("deactivation requires an active broader profile")
         if not current.get("modular"):
             if not modular.tool_receipts(state):
-                raise ContractError("deactivation requires a saved modular selection or tool staging receipt")
+                raise ContractError(
+                    "deactivation requires a saved modular selection or tool staging receipt"
+                )
             disabled = {**current, "enabled": False}
+
             def remove_tool_activation(tx):
-                code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(current["clients"])])
+                code, details = _execute_engine(
+                    engine_runner,
+                    ["uninstall", "--clients", ",".join(current["clients"])],
+                )
                 if code or not details or details.get("uninstall_verified") is not True:
                     raise ContractError("broader integration removal was not verified")
                 return _planes(disabled, "deactivate", removal_verified=True)
+
             def restore_tool_activation(_error):
-                code, _ = _execute_engine(engine_runner, _engine_args(current, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+                code, _ = _execute_engine(
+                    engine_runner,
+                    _engine_args(
+                        current,
+                        "repair",
+                        argparse.Namespace(answers=None, no_services=True),
+                        desired_state_path=state.desired_path,
+                    ),
+                )
                 if code:
                     raise EngineFailure(code)
-            return state.run_transaction("deactivate", disabled, remove_tool_activation, rollback=restore_tool_activation, already_locked=True)
+
+            return state.run_transaction(
+                "deactivate",
+                disabled,
+                remove_tool_activation,
+                rollback=restore_tool_activation,
+                already_locked=True,
+            )
         saved = modular.receipt(state)
         if not saved or saved["selection"] != current["modular"]:
             raise ContractError("saved modular selection does not match desired state")
         modular.verify_payload(Path(saved["payload"]), saved["inventory"])
-        desired = default_desired_state("modular", current["clients"], current["release"]["channel"],
-                                        current["release"].get("version_pin"), modular=current["modular"])
+        desired = default_desired_state(
+            "modular",
+            current["clients"],
+            current["release"]["channel"],
+            current["release"].get("version_pin"),
+            modular=current["modular"],
+        )
         started = False
+
         def operation(tx):
             nonlocal started
             started = True
-            code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(current["clients"])])
+            code, details = _execute_engine(
+                engine_runner, ["uninstall", "--clients", ",".join(current["clients"])]
+            )
             if code or not details or details.get("uninstall_verified") is not True:
-                raise ContractError("broader integration removal was not verified; preserved files require review")
-            bindings = {str(state.home / (".claude" if client == "claude" else ".agents") / "skills" / name):
-                        str(Path(saved["payload"]) / "skills" / name) for client in desired["clients"] for name in saved["skills"]}
+                raise ContractError(
+                    "broader integration removal was not verified; preserved files require review"
+                )
+            bindings = {
+                str(
+                    state.home
+                    / (".claude" if client == "claude" else ".agents")
+                    / "skills"
+                    / name
+                ): str(Path(saved["payload"]) / "skills" / name)
+                for client in desired["clients"]
+                for name in saved["skills"]
+            }
             restored = {**saved, "bindings": bindings}
             modular.reconcile_bindings(state, restored, tx)
             return modular.planes(desired, restored)
+
         def rollback(_error):
             modular.recover(state, rollback=True)
             if started:
-                code, _ = _execute_engine(engine_runner, _engine_args(current, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+                code, _ = _execute_engine(
+                    engine_runner,
+                    _engine_args(
+                        current,
+                        "repair",
+                        argparse.Namespace(answers=None, no_services=True),
+                        desired_state_path=state.desired_path,
+                    ),
+                )
                 if code:
                     raise EngineFailure(code)
-        result = state.run_transaction("deactivate", desired, operation, rollback=rollback, already_locked=True)
+
+        result = state.run_transaction(
+            "deactivate", desired, operation, rollback=rollback, already_locked=True
+        )
         modular.finish(state)
         return result
 
 
 def _recover_interrupted_modular_engine(state, engine_runner, prior, transaction):
     if not prior or state.read_desired() != prior:
-        raise ContractError("interrupted engine recovery requires unchanged prior desired state")
+        raise ContractError(
+            "interrupted engine recovery requires unchanged prior desired state"
+        )
     if prior["profile"] == "modular":
-        code, details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(prior["clients"])])
+        code, details = _execute_engine(
+            engine_runner, ["uninstall", "--clients", ",".join(prior["clients"])]
+        )
         if code or not details or details.get("uninstall_verified") is not True:
             raise ContractError("interrupted activation removal could not be verified")
     else:
-        code, _ = _execute_engine(engine_runner, _engine_args(prior, "repair", argparse.Namespace(answers=None, no_services=True), desired_state_path=state.desired_path))
+        code, _ = _execute_engine(
+            engine_runner,
+            _engine_args(
+                prior,
+                "repair",
+                argparse.Namespace(answers=None, no_services=True),
+                desired_state_path=state.desired_path,
+            ),
+        )
         if code:
             raise ContractError("interrupted deactivation restoration failed")
 
@@ -1351,7 +1698,9 @@ def main(
 ) -> int:
     actual = sys.argv[1:] if argv is None else argv
     if actual[:1] == ["exec-public"]:
-        return release_runtime.exec_public_main(actual[1:], release_runtime.descriptor_path())
+        return release_runtime.exec_public_main(
+            actual[1:], release_runtime.descriptor_path()
+        )
     args = build_parser().parse_args(argv)
     state = state or SystemState()
     engine_runner = engine_runner or (
@@ -1362,9 +1711,24 @@ def main(
         _require_expected_desired(args, state)
         if getattr(args, "expected_release_digest", None):
             selected = state.read_desired()
-            if not selected or not selected.get("enabled", True) or selected["profile"] == "modular":
-                raise ContractError("release-bound repair requires an enabled full or skills-only desired installation")
-        if args.command in {"setup", "activate", "deactivate", "enroll", "update", "repair", "workspace", "uninstall"}:
+            if (
+                not selected
+                or not selected.get("enabled", True)
+                or selected["profile"] == "modular"
+            ):
+                raise ContractError(
+                    "release-bound repair requires an enabled full or skills-only desired installation"
+                )
+        if args.command in {
+            "setup",
+            "activate",
+            "deactivate",
+            "enroll",
+            "update",
+            "repair",
+            "workspace",
+            "uninstall",
+        }:
             with state.locked(), engine_lock(engine_state_root(state.home)):
                 # An earlier owner may have committed while either lock was
                 # being acquired. Recovery is a mutation, so validate here
@@ -1373,35 +1737,85 @@ def main(
                 _require_expected_desired(args, state)
                 recover_copy_transactions(engine_state_root(state.home), state.home)
                 recover_enrollments(state)
-                modular.recover(state, rollback_engine=lambda prior, tx: _recover_interrupted_modular_engine(state, engine_runner, prior, tx))
+                modular.recover(
+                    state,
+                    rollback_engine=lambda prior,
+                    tx: _recover_interrupted_modular_engine(
+                        state, engine_runner, prior, tx
+                    ),
+                )
                 observation = state.read_observation()
                 for pending in observation["transactions"]:
-                    if pending["state"] == "pending" and (pending.get("recovery") or {}).get("prepared_desired") is not None:
+                    if (
+                        pending["state"] == "pending"
+                        and (pending.get("recovery") or {}).get("prepared_desired")
+                        is not None
+                    ):
                         state.finalize_prepared(pending["transaction_id"])
         if args.command == "stage-core":
             active = _active_release()
             if active and active.get("projection") and not args.no_dormant_core:
-                channel = args.channel or (active["channel"] if active["channel"] in {"stable", "edge"} else "stable")
-                pin = args.pin or (active["version"] if active["channel"] == "pin" else None)
+                channel = args.channel or (
+                    active["channel"]
+                    if active["channel"] in {"stable", "edge"}
+                    else "stable"
+                )
+                pin = args.pin or (
+                    active["version"] if active["channel"] == "pin" else None
+                )
                 return _run_release_bootstrap(argv, active, channel, pin)
-            _render(modular.stage_tool_core(REPO_ROOT, args.for_tool, not args.no_dormant_core, state.home), args.json)
+            _render(
+                modular.stage_tool_core(
+                    REPO_ROOT, args.for_tool, not args.no_dormant_core, state.home
+                ),
+                args.json,
+            )
             return 0
         current = state.read_desired()
         tool_activation = False
         activating = args.command == "activate"
         if activating:
-            tool_activation = bool(modular.tool_receipts(state)) and (not current or not current.get("enabled", True))
-            if not tool_activation and (not current or current["profile"] != "modular" or not current.get("enabled", True)):
-                raise ContractError("activation requires a modular selection or explicit tool staging choice")
+            tool_activation = bool(modular.tool_receipts(state)) and (
+                not current or not current.get("enabled", True)
+            )
+            if not tool_activation and (
+                not current
+                or current["profile"] != "modular"
+                or not current.get("enabled", True)
+            ):
+                raise ContractError(
+                    "activation requires a modular selection or explicit tool staging choice"
+                )
             activation_clients = current["clients"] if current else ["claude", "codex"]
-            activation_policy = current["release"] if current else {"channel": "stable", "version_pin": None}
+            activation_policy = (
+                current["release"]
+                if current
+                else {"channel": "stable", "version_pin": None}
+            )
             active = _active_release()
             if tool_activation and not current and active:
-                activation_policy = {"channel": active["channel"] if active["channel"] in {"stable", "edge"} else "stable",
-                                     "version_pin": active["version"] if active["channel"] == "pin" else None}
+                activation_policy = {
+                    "channel": active["channel"]
+                    if active["channel"] in {"stable", "edge"}
+                    else "stable",
+                    "version_pin": active["version"]
+                    if active["channel"] == "pin"
+                    else None,
+                }
             if active and active.get("projection"):
-                return _run_release_bootstrap(argv, active, activation_policy["channel"], activation_policy.get("version_pin"))
-            options = ["setup", "--profile", args.profile, "--clients", ",".join(activation_clients)]
+                return _run_release_bootstrap(
+                    argv,
+                    active,
+                    activation_policy["channel"],
+                    activation_policy.get("version_pin"),
+                )
+            options = [
+                "setup",
+                "--profile",
+                args.profile,
+                "--clients",
+                ",".join(activation_clients),
+            ]
             options += ["--channel", activation_policy["channel"]]
             if activation_policy.get("version_pin"):
                 options += ["--pin", activation_policy["version_pin"]]
@@ -1419,22 +1833,52 @@ def main(
             _render(transaction, args.json)
             return 0
         if args.command == "setup" and args.profile == "modular":
-            if args.org_repo or args.invite or args.answers or args.personal_instruction_source or args.clear_personal_instruction_source or args.adopt_workspace_instructions:
-                raise ContractError("modular setup accepts skill selection, clients and release policy only")
+            if (
+                args.org_repo
+                or args.invite
+                or args.answers
+                or args.personal_instruction_source
+                or args.clear_personal_instruction_source
+                or args.adopt_workspace_instructions
+            ):
+                raise ContractError(
+                    "modular setup accepts skill selection, clients and release policy only"
+                )
             active = _active_release()
             policy = {"channel": args.channel or "stable", "version_pin": args.pin}
-            if active and (not _active_matches_policy(active, {"release": policy}) or
-                           (not args.no_dormant_core and active.get("projection") and not active["projection"]["selection"]["stage_core"]) or
-                           any(not (REPO_ROOT / "skills" / name / "SKILL.md").is_file() for name in args.skill or [])):
+            if active and (
+                not _active_matches_policy(active, {"release": policy})
+                or (
+                    not args.no_dormant_core
+                    and active.get("projection")
+                    and not active["projection"]["selection"]["stage_core"]
+                )
+                or any(
+                    not (REPO_ROOT / "skills" / name / "SKILL.md").is_file()
+                    for name in args.skill or []
+                )
+            ):
                 if os.environ.get("SYNTHESIS_BOOTSTRAP_RESOLVED") == "1":
-                    raise ContractError("selected release does not contain the requested skill closure")
-                return _run_release_bootstrap(argv, active, policy["channel"], policy["version_pin"])
-            result = modular.setup(state, REPO_ROOT, args.skill or [], _clients(args.clients or "claude,codex"),
-                                   not args.no_dormant_core, policy)
+                    raise ContractError(
+                        "selected release does not contain the requested skill closure"
+                    )
+                return _run_release_bootstrap(
+                    argv, active, policy["channel"], policy["version_pin"]
+                )
+            result = modular.setup(
+                state,
+                REPO_ROOT,
+                args.skill or [],
+                _clients(args.clients or "claude,codex"),
+                not args.no_dormant_core,
+                policy,
+            )
             _render(result, args.json)
             return 0
         if args.command == "setup" and (args.skill or args.no_dormant_core):
-            raise ContractError("--skill and --no-dormant-core require --profile modular")
+            raise ContractError(
+                "--skill and --no-dormant-core require --profile modular"
+            )
         if current and current["profile"] == "modular" and not activating:
             if args.command in {"status", "doctor"}:
                 report = modular.inspect(state)
@@ -1442,31 +1886,49 @@ def main(
                 return 0 if report["status"] == "PASS" else 1
             if args.command in {"update", "repair"}:
                 if not current.get("enabled", True):
-                    raise ContractError("modular selection is disabled; run synthesis setup")
+                    raise ContractError(
+                        "modular selection is disabled; run synthesis setup"
+                    )
                 if args.command == "update":
                     transferred = _bootstrap_update(argv, state)
                     if transferred is not None:
                         return transferred
                 selection = current["modular"]
-                result = modular.setup(state, REPO_ROOT, selection["roots"], current["clients"], selection["stage_core"], current["release"], args.command)
+                result = modular.setup(
+                    state,
+                    REPO_ROOT,
+                    selection["roots"],
+                    current["clients"],
+                    selection["stage_core"],
+                    current["release"],
+                    args.command,
+                )
                 _render(result, args.json)
                 return 0
             if args.command == "uninstall":
                 if args.purge:
-                    raise ContractError("modular uninstall preserves its archive and shared caches; purge is not supported for selected skills")
+                    raise ContractError(
+                        "modular uninstall preserves its archive and shared caches; purge is not supported for selected skills"
+                    )
                 result = modular.disable(state)
                 _render(result, args.json)
                 return 0
             if args.command in {"setup", "enroll", "workspace", "outcome"}:
-                raise ContractError("use synthesis activate before enabling broader ecosystem layers")
+                raise ContractError(
+                    "use synthesis activate before enabling broader ecosystem layers"
+                )
         if args.command == "enroll":
             try:
                 transaction = _enroll(args, argv, state, engine_runner)
             except RebootstrapRequired as exc:
                 active = _active_release()
                 if active is None:
-                    raise ContractError("enrollment cannot transfer to its selected release")
-                return _run_release_bootstrap(argv, active, exc.channel, exc.version_pin)
+                    raise ContractError(
+                        "enrollment cannot transfer to its selected release"
+                    )
+                return _run_release_bootstrap(
+                    argv, active, exc.channel, exc.version_pin
+                )
             _render(transaction, args.json)
             return 0
         if args.command == "update":
@@ -1493,7 +1955,9 @@ def main(
             if repository:
                 validate_repository_url(repository)
                 if args.profile == "skills-only":
-                    raise ContractError("set up skills-only first, then use synthesis enroll to add an organization")
+                    raise ContractError(
+                        "set up skills-only first, then use synthesis enroll to add an organization"
+                    )
             else:
                 # Without an organization the release policy is fully known
                 # here, so a needed transfer to the bootstrap happens before
@@ -1501,7 +1965,10 @@ def main(
                 # failed attempt.
                 active = _active_release()
                 probe = {
-                    "release": {"channel": args.channel or "stable", "version_pin": args.pin}
+                    "release": {
+                        "channel": args.channel or "stable",
+                        "version_pin": args.pin,
+                    }
                 }
                 if active and not _active_matches_policy(active, probe):
                     return _run_release_bootstrap(
@@ -1515,7 +1982,10 @@ def main(
                 raise ContractError(
                     "personal instruction configuration requires an organization and the full profile"
                 )
-            if args.clear_personal_instruction_source and args.adopt_workspace_instructions:
+            if (
+                args.clear_personal_instruction_source
+                and args.adopt_workspace_instructions
+            ):
                 raise ContractError(
                     "workspace instruction adoption cannot clear the personal instruction source"
                 )
@@ -1558,7 +2028,9 @@ def main(
                         {
                             "repository": repository,
                             "manifest_path": organization.MANIFEST_RELATIVE,
-                            "commit_policy": "pinned" if expected_commit else "floating",
+                            "commit_policy": "pinned"
+                            if expected_commit
+                            else "floating",
                             "commit": org_commit,
                         }
                     )
@@ -1568,9 +2040,7 @@ def main(
                 )
                 channel = args.channel or ecosystem.get("channel", "stable")
                 version_pin = (
-                    args.pin
-                    if args.pin is not None
-                    else ecosystem.get("version_pin")
+                    args.pin if args.pin is not None else ecosystem.get("version_pin")
                 )
                 desired = default_desired_state(
                     profile=args.profile,
@@ -1612,9 +2082,7 @@ def main(
                         layers=selection["layers"],
                         organizations=desired["organizations"],
                         personal_workspace=selection["personal_workspace"],
-                        personal_configuration=selection[
-                            "personal_configuration"
-                        ],
+                        personal_configuration=selection["personal_configuration"],
                         personal_instruction_source=desired.get(
                             "personal_instruction_source"
                         ),
@@ -1637,9 +2105,18 @@ def main(
                 if previous_desired is None and not activating:
                     return
                 if activating:
-                    rollback_code, rollback_details = _execute_engine(engine_runner, ["uninstall", "--clients", ",".join(activation_clients)])
-                    if rollback_code or not rollback_details or rollback_details.get("uninstall_verified") is not True:
-                        raise ContractError("activation rollback could not verify removal of broader integration")
+                    rollback_code, rollback_details = _execute_engine(
+                        engine_runner,
+                        ["uninstall", "--clients", ",".join(activation_clients)],
+                    )
+                    if (
+                        rollback_code
+                        or not rollback_details
+                        or rollback_details.get("uninstall_verified") is not True
+                    ):
+                        raise ContractError(
+                            "activation rollback could not verify removal of broader integration"
+                        )
                     modular.restore(state)
                     return
                 if previous_desired.get("enabled", True):
@@ -1669,7 +2146,10 @@ def main(
 
             try:
                 transaction = state.run_transaction(
-                    "activate" if activating else "setup", request, setup_operation, rollback=setup_rollback
+                    "activate" if activating else "setup",
+                    request,
+                    setup_operation,
+                    rollback=setup_rollback,
                 )
             except RebootstrapRequired as exc:
                 active = _active_release()
@@ -1694,7 +2174,9 @@ def main(
                     if desired is None:
                         desired = _legacy_plugin_only_desired(state)
                     if not desired.get("enabled", True):
-                        raise ContractError("the synthesis system is disabled; run synthesis setup")
+                        raise ContractError(
+                            "the synthesis system is disabled; run synthesis setup"
+                        )
                     # Without an organization the release policy is fully
                     # known before any transaction: a needed transfer to the
                     # bootstrap is a control handoff, not a failed attempt.
@@ -1711,9 +2193,13 @@ def main(
                             release_policy["channel"], release_policy.get("version_pin")
                         )
 
-                    def update_operation(_transaction: dict[str, Any]) -> dict[str, Any]:
+                    def update_operation(
+                        _transaction: dict[str, Any],
+                    ) -> dict[str, Any]:
                         resolved, manifest_path, _manifest = _prepare_organization(
-                            state, desired, verify_only=args.command == "repair",
+                            state,
+                            desired,
+                            verify_only=args.command == "repair",
                             restore_commit=args.command == "repair",
                         )
                         active = _active_release()
@@ -1722,38 +2208,69 @@ def main(
                             raise RebootstrapRequired(
                                 release["channel"], release.get("version_pin")
                             )
-                        exact_repair = bool(getattr(args, "expected_release_digest", None))
+                        exact_repair = bool(
+                            getattr(args, "expected_release_digest", None)
+                        )
                         if exact_repair and resolved != desired:
-                            raise ContractError("release-bound repair cannot change the saved desired selection")
+                            raise ContractError(
+                                "release-bound repair cannot change the saved desired selection"
+                            )
                         active_exact = _require_expected_release(args)
                         if exact_repair:
-                            _verify_release_native_clients(resolved, active_exact, state.home)
+                            _verify_release_native_clients(
+                                resolved, active_exact, state.home
+                            )
                         # The engine must see the newly resolved commit,
                         # clients and policy, not the preceding generation.
                         proposed_context = (
-                            _proposed_state(state, resolved) if resolved != desired
-                            else contextlib.nullcontext(None if migrated_legacy else state.desired_path)
+                            _proposed_state(state, resolved)
+                            if resolved != desired
+                            else contextlib.nullcontext(
+                                None if migrated_legacy else state.desired_path
+                            )
                         )
                         with proposed_context as desired_path:
-                            engine_args = _engine_args(resolved, args.command, args, desired_state_path=desired_path)
+                            engine_args = _engine_args(
+                                resolved,
+                                args.command,
+                                args,
+                                desired_state_path=desired_path,
+                            )
                             if exact_repair:
                                 engine_args.append("--no-plugin-cli")
                             if resolved["release"] != desired["release"]:
                                 engine_args.append("--policy-transition")
                             if manifest_path:
                                 engine_args.extend(["--manifest", str(manifest_path)])
-                            code, engine_details = _execute_engine(engine_runner, engine_args)
+                            code, engine_details = _execute_engine(
+                                engine_runner, engine_args
+                            )
                             if code == 0 and exact_repair:
                                 if engine_details is None:
-                                    raise ContractError("release-bound repair requires a structured engine receipt")
+                                    raise ContractError(
+                                        "release-bound repair requires a structured engine receipt"
+                                    )
                                 _require_expected_release(args)
-                                _verify_release_native_clients(resolved, active_exact, state.home)
-                                doctor_args = _engine_args(resolved, "doctor", args, desired_state_path=desired_path)
+                                _verify_release_native_clients(
+                                    resolved, active_exact, state.home
+                                )
+                                doctor_args = _engine_args(
+                                    resolved,
+                                    "doctor",
+                                    args,
+                                    desired_state_path=desired_path,
+                                )
                                 if manifest_path:
-                                    doctor_args.extend(["--manifest", str(manifest_path)])
-                                code, doctor_details = _execute_engine(engine_runner, doctor_args)
+                                    doctor_args.extend(
+                                        ["--manifest", str(manifest_path)]
+                                    )
+                                code, doctor_details = _execute_engine(
+                                    engine_runner, doctor_args
+                                )
                                 if doctor_details is None:
-                                    raise ContractError("release-bound repair requires a structured post-repair doctor receipt")
+                                    raise ContractError(
+                                        "release-bound repair requires a structured post-repair doctor receipt"
+                                    )
                                 engine_details["post_repair_doctor"] = doctor_details
                         if code:
                             raise EngineFailure(code)
@@ -1761,7 +2278,11 @@ def main(
                         _require_expected_desired(args, state)
                         result = _planes(resolved, args.command)
                         if exact_repair:
-                            result["installed"]["native_plugins"] = _verify_release_native_clients(resolved, active_exact, state.home)
+                            result["installed"]["native_plugins"] = (
+                                _verify_release_native_clients(
+                                    resolved, active_exact, state.home
+                                )
+                            )
                         result["_desired"] = resolved
                         if engine_details is not None:
                             result["details"] = {"engine": engine_details}
@@ -1776,13 +2297,15 @@ def main(
             except RebootstrapRequired as exc:
                 active = _active_release()
                 if active is None:
-                    raise ContractError("update cannot transfer to its selected release")
+                    raise ContractError(
+                        "update cannot transfer to its selected release"
+                    )
                 asked_channel = os.environ.get("SYNTHESIS_ONBOARD_CHANNEL")
                 asked_pin = os.environ.get("SYNTHESIS_ONBOARD_VERSION_PIN") or None
-                if (
-                    os.environ.get("SYNTHESIS_BOOTSTRAP_RESOLVED") == "1"
-                    and (asked_channel, asked_pin) == (exc.channel, exc.version_pin)
-                ):
+                if os.environ.get("SYNTHESIS_BOOTSTRAP_RESOLVED") == "1" and (
+                    asked_channel,
+                    asked_pin,
+                ) == (exc.channel, exc.version_pin):
                     # The bootstrap was already asked for exactly this policy
                     # and activated something else: re-running it would loop.
                     raise ContractError(
@@ -1806,7 +2329,9 @@ def main(
                 desired = state.read_desired()
                 if desired is None:
                     detected = [
-                        name for name in ("claude", "codex") if onboard.resolve_client(name)
+                        name
+                        for name in ("claude", "codex")
+                        if onboard.resolve_client(name)
                     ]
                     if not detected:
                         raise ContractError(
@@ -1817,7 +2342,9 @@ def main(
                         "skills-only", detected, "stable", personal_workspace=args.name
                     )
                 if not desired.get("enabled", True):
-                    raise ContractError("the synthesis system is disabled; run synthesis setup")
+                    raise ContractError(
+                        "the synthesis system is disabled; run synthesis setup"
+                    )
                 desired = dict(desired)
                 desired["personal_workspace"] = args.name
                 engine_args = ["init-workspace", "--workspace", args.name]
@@ -1838,7 +2365,10 @@ def main(
             with state.locked():
                 receipt = verify_outcome(
                     args.task,
-                    {"workspace": str(args.workspace), "source_class": args.source_class},
+                    {
+                        "workspace": str(args.workspace),
+                        "source_class": args.source_class,
+                    },
                     REPO_ROOT,
                 )
                 recorded = state.record_outcome(receipt, already_locked=True)
@@ -1869,7 +2399,10 @@ def main(
         if args.command == "status":
             promoted, promotion_note = _promote_live_receipts(state)
             with state.locked():
-                payload = {"desired": state.read_desired(), "observed": state.read_observation()}
+                payload = {
+                    "desired": state.read_desired(),
+                    "observed": state.read_observation(),
+                }
                 # Presentation metadata must not alter hash-bound observations.
                 if payload["desired"] and payload["desired"].get("enabled", True):
                     payload["live_scope"] = {
@@ -1902,7 +2435,8 @@ def main(
                     ]
                     code, engine_details = _execute_engine(engine_runner, engine_args)
                     if not code and not (
-                        engine_details and engine_details.get("uninstall_verified") is True
+                        engine_details
+                        and engine_details.get("uninstall_verified") is True
                     ):
                         code = 1
                 else:
@@ -1921,7 +2455,11 @@ def main(
                 promoted, promotion_note = _promote_live_receipts(state)
             with state.locked():
                 observation = state.read_observation()
-            committed = [item for item in observation["transactions"] if item.get("state") == "committed"]
+            committed = [
+                item
+                for item in observation["transactions"]
+                if item.get("state") == "committed"
+            ]
             latest = committed[-1] if committed else None
             active = None if disabled else _active_release()
             planes = _current_planes(

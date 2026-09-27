@@ -4,6 +4,7 @@ This module has only standard-library dependencies. Setup embeds these exact
 bytes in its pinned Python launcher; private consumers import that receipt-owned
 launcher rather than importing Python from an unverified release or checkout.
 """
+
 import argparse
 import fcntl
 import hashlib
@@ -26,44 +27,68 @@ from urllib.parse import urlsplit
 
 RUNTIME_SCHEMA = 1
 MAC_PYTHON = "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
-PUBLIC_ENTRYPOINTS = frozenset({
-    "synthesis-message-guard/scripts/message_guard.py",
-    "synthesis-repo-guard/checkpoint_sync.py",
-    "synthesis-repo-guard/repo_sync_check.py",
-    "synthesis-agent-conformance/scripts/conformance.py",
-    "synthesis-agent-conformance/scripts/session_context.py",
-    "synthesis-context-lifecycle/scripts/context_doctor.py",
-    "synthesis-daily-rituals/scripts/ritual_state.py",
-    "synthesis-project-management/scripts/board_inbox.py",
-    "synthesis-project-management/scripts/peer_send_gate.py",
-    "synthesis-project-management/scripts/project_state.py",
-    "synthesis-autopilot/scripts/autopilot_gate.py",
-    "synthesis-agent-guardrails/guards/account_routing_guard.py",
-    "synthesis-agent-guardrails/guards/publish_guard.py",
-    "synthesis-agent-guardrails/hooks/claude/bare_filename_detector.py",
-    "synthesis-agent-guardrails/hooks/claude/lazy_shortcut_detector.py",
-    "synthesis-agent-guardrails/hooks/claude/long_session_detector.py",
-    "synthesis-agent-guardrails/hooks/claude/pre_tool_temporal_reminder.py",
-    "synthesis-agent-guardrails/hooks/claude/quote_provenance_checker.py",
-    "synthesis-agent-guardrails/hooks/claude/sub_agent_brief_scanner.py",
-    "synthesis-agent-guardrails/hooks/codex/bare_filename_detector.py",
-    "synthesis-agent-guardrails/hooks/codex/installed_skill_edit_guard.py",
-    "synthesis-agent-guardrails/hooks/codex/lazy_shortcut_detector.py",
-    "synthesis-agent-guardrails/hooks/codex/quote_provenance_checker.py",
-    "synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py",
-    "synthesis-agent-guardrails/hooks/codex/session_end_checkpoint.py",
-    "synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py",
-})
+PUBLIC_ENTRYPOINTS = frozenset(
+    {
+        "synthesis-message-guard/scripts/message_guard.py",
+        "synthesis-repo-guard/checkpoint_sync.py",
+        "synthesis-repo-guard/repo_sync_check.py",
+        "synthesis-agent-conformance/scripts/conformance.py",
+        "synthesis-agent-conformance/scripts/session_context.py",
+        "synthesis-context-lifecycle/scripts/context_doctor.py",
+        "synthesis-daily-rituals/scripts/ritual_state.py",
+        "synthesis-daily-rituals/scripts/portfolio_review.py",
+        "synthesis-daily-rituals/scripts/decay_sweep.py",
+        "synthesis-daily-rituals/scripts/pr_queue_scan.py",
+        "synthesis-daily-rituals/scripts/sync_watermark.py",
+        "synthesis-daily-rituals/scripts/gchat_preflight.py",
+        "synthesis-project-management/scripts/board_inbox.py",
+        "synthesis-project-management/scripts/peer_send_gate.py",
+        "synthesis-project-management/scripts/project_state.py",
+        "synthesis-autopilot/scripts/autopilot_gate.py",
+        "synthesis-agent-guardrails/guards/account_routing_guard.py",
+        "synthesis-agent-guardrails/guards/publish_guard.py",
+        "synthesis-agent-guardrails/hooks/claude/bare_filename_detector.py",
+        "synthesis-agent-guardrails/hooks/claude/lazy_shortcut_detector.py",
+        "synthesis-agent-guardrails/hooks/claude/long_session_detector.py",
+        "synthesis-agent-guardrails/hooks/claude/pre_tool_temporal_reminder.py",
+        "synthesis-agent-guardrails/hooks/claude/quote_provenance_checker.py",
+        "synthesis-agent-guardrails/hooks/claude/sub_agent_brief_scanner.py",
+        "synthesis-agent-guardrails/hooks/codex/bare_filename_detector.py",
+        "synthesis-agent-guardrails/hooks/codex/installed_skill_edit_guard.py",
+        "synthesis-agent-guardrails/hooks/codex/lazy_shortcut_detector.py",
+        "synthesis-agent-guardrails/hooks/codex/quote_provenance_checker.py",
+        "synthesis-agent-guardrails/hooks/codex/repo_guard_stop.py",
+        "synthesis-agent-guardrails/hooks/codex/session_end_checkpoint.py",
+        "synthesis-agent-guardrails/hooks/muse/lazy_shortcut_detector.py",
+    }
+)
 
 # Recognized event identities may override a mislabeled Stop command. An
 # unknown, empty, or malformed identity cannot exonerate a declared Stop.
-NON_STOP_NATIVE_EVENTS = frozenset({
-    "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse",
-    "PermissionRequest", "PostToolUse", "PostToolUseFailure", "Notification",
-    "SubagentStart", "PreCompact", "PostCompact", "TeammateIdle", "TaskCompleted",
-    "ConfigChange", "InstructionsLoaded", "WorktreeCreate", "WorktreeRemove",
-    "StopFailure", "Elicitation", "ElicitationResult",
-})
+NON_STOP_NATIVE_EVENTS = frozenset(
+    {
+        "SessionStart",
+        "SessionEnd",
+        "UserPromptSubmit",
+        "PreToolUse",
+        "PermissionRequest",
+        "PostToolUse",
+        "PostToolUseFailure",
+        "Notification",
+        "SubagentStart",
+        "PreCompact",
+        "PostCompact",
+        "TeammateIdle",
+        "TaskCompleted",
+        "ConfigChange",
+        "InstructionsLoaded",
+        "WorktreeCreate",
+        "WorktreeRemove",
+        "StopFailure",
+        "Elicitation",
+        "ElicitationResult",
+    }
+)
 
 
 class RuntimeContractError(ValueError):
@@ -85,7 +110,9 @@ def file_digest(path):
 def selected_interpreter():
     if os.environ.get("SYNTHESIS_RUNTIME_POLICY") == "packaged-python-v1":
         return str(Path(sys.executable).absolute())
-    return MAC_PYTHON if sys.platform == "darwin" else str(Path(sys.executable).absolute())
+    return (
+        MAC_PYTHON if sys.platform == "darwin" else str(Path(sys.executable).absolute())
+    )
 
 
 def validate_python_version(version, *, platform=None, policy="prescribed-python-v1"):
@@ -94,21 +121,29 @@ def validate_python_version(version, *, platform=None, policy="prescribed-python
         if platform not in {"darwin", "linux"}:
             raise RuntimeContractError("package execution supports macOS and Linux")
         if not re.fullmatch(r"3\.(12|13|14)\.[0-9]+", version):
-            raise RuntimeContractError("package execution requires validated Python 3.12, 3.13 or 3.14")
+            raise RuntimeContractError(
+                "package execution requires validated Python 3.12, 3.13 or 3.14"
+            )
         return
     if policy != "prescribed-python-v1":
         raise RuntimeContractError("unknown interpreter policy")
     if platform == "darwin" and version != "3.12.3":
-        raise RuntimeContractError("macOS execution requires the prescribed python.org 3.12.3 interpreter")
+        raise RuntimeContractError(
+            "macOS execution requires the prescribed python.org 3.12.3 interpreter"
+        )
     if not re.fullmatch(r"3\.12\.[0-9]+", version):
-        raise RuntimeContractError("execution requires the CI-validated Python 3.12 interpreter family")
+        raise RuntimeContractError(
+            "execution requires the CI-validated Python 3.12 interpreter family"
+        )
 
 
 def interpreter_pin(path=None):
     policy = os.environ.get("SYNTHESIS_RUNTIME_POLICY", "prescribed-python-v1")
     path = str(path or selected_interpreter())
     if not Path(path).is_absolute() or any(c.isspace() for c in path):
-        raise RuntimeContractError("interpreter must have an absolute executable path without whitespace")
+        raise RuntimeContractError(
+            "interpreter must have an absolute executable path without whitespace"
+        )
     try:
         resolved = Path(path).resolve(strict=True)
         if not resolved.is_file() or not os.access(resolved, os.X_OK):
@@ -118,18 +153,46 @@ def interpreter_pin(path=None):
                 raise RuntimeContractError("execution requires a final Python release")
             version = ".".join(str(v) for v in sys.version_info[:3])
         else:
-            result = subprocess.run([path, "-I", "-B", "-c", "import sys; print('.'.join(map(str, sys.version_info[:3]))); sys.exit(0 if sys.version_info.releaselevel == 'final' else 1)"],
-                capture_output=True, text=True, check=False, timeout=10)
+            result = subprocess.run(
+                [
+                    path,
+                    "-I",
+                    "-B",
+                    "-c",
+                    "import sys; print('.'.join(map(str, sys.version_info[:3]))); sys.exit(0 if sys.version_info.releaselevel == 'final' else 1)",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
             if result.returncode:
-                raise RuntimeContractError("prescribed interpreter could not report its version")
+                raise RuntimeContractError(
+                    "prescribed interpreter could not report its version"
+                )
             version = result.stdout.strip()
         validate_python_version(version, policy=policy)
-        if policy == "prescribed-python-v1" and sys.platform == "darwin" and path != MAC_PYTHON:
-            raise RuntimeContractError("macOS interpreter must use the prescribed python.org 3.12.3 framework path")
-        return {"schema_version": 1, "policy": policy, "executable": path, "resolved_executable": str(resolved),
-                "version": version, "sha256": file_digest(resolved), "platform": sys.platform}
+        if (
+            policy == "prescribed-python-v1"
+            and sys.platform == "darwin"
+            and path != MAC_PYTHON
+        ):
+            raise RuntimeContractError(
+                "macOS interpreter must use the prescribed python.org 3.12.3 framework path"
+            )
+        return {
+            "schema_version": 1,
+            "policy": policy,
+            "executable": path,
+            "resolved_executable": str(resolved),
+            "version": version,
+            "sha256": file_digest(resolved),
+            "platform": sys.platform,
+        }
     except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeContractError("prescribed interpreter is unavailable: %s" % exc) from exc
+        raise RuntimeContractError(
+            "prescribed interpreter is unavailable: %s" % exc
+        ) from exc
 
 
 def verify_interpreter(pin, *, require_current=True):
@@ -137,11 +200,19 @@ def verify_interpreter(pin, *, require_current=True):
     if not isinstance(pin, dict) or pin.get("schema_version") != 1:
         raise RuntimeContractError("setup has not recorded an interpreter pin")
     path = pin.get("executable")
-    if not isinstance(path, str) or not Path(path).is_absolute() or any(c.isspace() for c in path):
+    if (
+        not isinstance(path, str)
+        or not Path(path).is_absolute()
+        or any(c.isspace() for c in path)
+    ):
         raise RuntimeContractError("interpreter pin is not an absolute executable path")
     try:
         resolved = Path(path).resolve(strict=True)
-        if str(resolved) != pin.get("resolved_executable") or not resolved.is_file() or not os.access(resolved, os.X_OK):
+        if (
+            str(resolved) != pin.get("resolved_executable")
+            or not resolved.is_file()
+            or not os.access(resolved, os.X_OK)
+        ):
             raise RuntimeContractError("pinned interpreter target drifted")
         if file_digest(resolved) != pin.get("sha256"):
             raise RuntimeContractError("pinned interpreter bytes drifted")
@@ -149,23 +220,38 @@ def verify_interpreter(pin, *, require_current=True):
         if require_current and not current:
             raise RuntimeContractError("running interpreter differs from the setup pin")
         version = pin.get("version")
-        if (not isinstance(version, str) or pin.get("platform") != sys.platform
-                or (current and version != ".".join(str(v) for v in sys.version_info[:3]))):
-            raise RuntimeContractError("running interpreter version or platform differs from the setup pin")
+        if (
+            not isinstance(version, str)
+            or pin.get("platform") != sys.platform
+            or (current and version != ".".join(str(v) for v in sys.version_info[:3]))
+        ):
+            raise RuntimeContractError(
+                "running interpreter version or platform differs from the setup pin"
+            )
         policy = pin.get("policy", "prescribed-python-v1")
         validate_python_version(version, policy=policy)
-        if policy == "prescribed-python-v1" and sys.platform == "darwin" and path != MAC_PYTHON:
-            raise RuntimeContractError("macOS execution requires the prescribed python.org 3.12.3 framework path")
+        if (
+            policy == "prescribed-python-v1"
+            and sys.platform == "darwin"
+            and path != MAC_PYTHON
+        ):
+            raise RuntimeContractError(
+                "macOS execution requires the prescribed python.org 3.12.3 framework path"
+            )
         return path
     except OSError as exc:
-        raise RuntimeContractError("pinned interpreter is unavailable: %s" % exc) from exc
+        raise RuntimeContractError(
+            "pinned interpreter is unavailable: %s" % exc
+        ) from exc
 
 
 def tree_digest(root):
     root = Path(root)
     entries = []
     try:
-        for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+        for directory, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=False
+        ):
             current = Path(directory)
             kept = []
             for name in sorted(dirnames + filenames):
@@ -174,8 +260,12 @@ def tree_digest(root):
                 if relative == ".git":
                     continue
                 meta = path.lstat()
-                if stat.S_ISLNK(meta.st_mode) or not (stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)):
-                    raise RuntimeContractError("release tree contains a link or special object")
+                if stat.S_ISLNK(meta.st_mode) or not (
+                    stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)
+                ):
+                    raise RuntimeContractError(
+                        "release tree contains a link or special object"
+                    )
                 if stat.S_ISDIR(meta.st_mode):
                     kept.append(name)
                 entries.append((relative, meta, path))
@@ -186,7 +276,16 @@ def tree_digest(root):
                 digest.update(b"D\0" + relative.encode() + b"\0")
             else:
                 mode = b"755" if meta.st_mode & stat.S_IXUSR else b"644"
-                digest.update(b"F\0" + relative.encode() + b"\0" + mode + b"\0" + str(meta.st_size).encode() + b"\0" + bytes.fromhex(file_digest(path)))
+                digest.update(
+                    b"F\0"
+                    + relative.encode()
+                    + b"\0"
+                    + mode
+                    + b"\0"
+                    + str(meta.st_size).encode()
+                    + b"\0"
+                    + bytes.fromhex(file_digest(path))
+                )
         return digest.hexdigest()
     except OSError as exc:
         raise RuntimeContractError("release tree is unreadable: %s" % exc) from exc
@@ -206,19 +305,46 @@ def verify_projection(root, descriptor):
     projection = descriptor.get("projection")
     if projection is None:
         return descriptor["content_digest"]
-    fields = {"schema_version", "kind", "content_digest", "source_content_digest", "selection", "files"}
-    if not isinstance(projection, dict) or set(projection) != fields or type(projection["schema_version"]) is not int or projection["schema_version"] != 1 or projection["kind"] != "modular":
+    fields = {
+        "schema_version",
+        "kind",
+        "content_digest",
+        "source_content_digest",
+        "selection",
+        "files",
+    }
+    if (
+        not isinstance(projection, dict)
+        or set(projection) != fields
+        or type(projection["schema_version"]) is not int
+        or projection["schema_version"] != 1
+        or projection["kind"] != "modular"
+    ):
         raise RuntimeContractError("release projection shape is invalid")
     if projection["source_content_digest"] != descriptor["content_digest"]:
-        raise RuntimeContractError("projection differs from its verified source binding")
+        raise RuntimeContractError(
+            "projection differs from its verified source binding"
+        )
     if not re.fullmatch(r"[0-9a-f]{64}", str(projection["content_digest"])):
         raise RuntimeContractError("projection digest is invalid")
     selected = projection["selection"]
-    if not isinstance(selected, dict) or set(selected) != {"roots", "skills", "support_skills", "stage_core"} or type(selected["stage_core"]) is not bool:
+    if (
+        not isinstance(selected, dict)
+        or set(selected) != {"roots", "skills", "support_skills", "stage_core"}
+        or type(selected["stage_core"]) is not bool
+    ):
         raise RuntimeContractError("projection selection is invalid")
     for key in ("roots", "skills", "support_skills"):
         values = selected[key]
-        if not isinstance(values, list) or any(not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", value) for value in values) or len(values) != len(set(values)):
+        if (
+            not isinstance(values, list)
+            or any(
+                not isinstance(value, str)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", value)
+                for value in values
+            )
+            or len(values) != len(set(values))
+        ):
             raise RuntimeContractError("projection skill list is invalid")
     if not selected["roots"] or not set(selected["roots"]) <= set(selected["skills"]):
         raise RuntimeContractError("projection omits requested skills")
@@ -231,7 +357,10 @@ def verify_projection(root, descriptor):
         raise RuntimeContractError("projection content digest drifted")
     for path in Path(root).rglob("*"):
         if path.is_file():
-            observed[path.relative_to(root).as_posix()] = {"sha256": file_digest(path), "mode": 0o755 if path.stat().st_mode & stat.S_IXUSR else 0o644}
+            observed[path.relative_to(root).as_posix()] = {
+                "sha256": file_digest(path),
+                "mode": 0o755 if path.stat().st_mode & stat.S_IXUSR else 0o644,
+            }
     if observed != records:
         raise RuntimeContractError("projection file membership or bytes drifted")
     return projection["content_digest"]
@@ -242,9 +371,58 @@ VERIFICATION_MODE_RECEIPT = "activation-receipt-v1"
 VERIFICATION_MODE_FULL = "full-digest-legacy"
 # Entrypoints hashed at activation and re-checked per call, as paths
 # relative to skills/ (the CLI shares the entrypoint layout).
-RECEIPT_ENTRYPOINTS = sorted(PUBLIC_ENTRYPOINTS | {
-    "synthesis-onboarding/scripts/synthesis_cli.py",
-})
+ENTRYPOINT_DEPENDENCIES = {'synthesis-agent-conformance/scripts/conformance.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                                        'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                                        'synthesis-decision-packet/scripts/build_packet.py',
+                                                        'synthesis-decision-packet/scripts/record_rulings.py',
+                                                        'synthesis-repo-guard/publication_receipt.py'),
+ 'synthesis-agent-conformance/scripts/session_context.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                                            'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                                            'synthesis-decision-packet/scripts/build_packet.py',
+                                                            'synthesis-decision-packet/scripts/record_rulings.py',
+                                                            'synthesis-repo-guard/publication_receipt.py'),
+ 'synthesis-autopilot/scripts/autopilot_gate.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                                   'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                                   'synthesis-decision-packet/scripts/build_packet.py',
+                                                   'synthesis-decision-packet/scripts/record_rulings.py',
+                                                   'synthesis-repo-guard/publication_receipt.py'),
+ 'synthesis-context-lifecycle/scripts/context_doctor.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                                           'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                                           'synthesis-decision-packet/scripts/build_packet.py',
+                                                           'synthesis-decision-packet/scripts/record_rulings.py',
+                                                           'synthesis-repo-guard/publication_receipt.py'),
+ 'synthesis-daily-rituals/scripts/pr_queue_scan.py': ('synthesis-bitbucket/scripts/pr_queue.py',),
+ 'synthesis-daily-rituals/scripts/ritual_state.py': ('synthesis-daily-rituals/scripts/credential_paths.py',
+                                                     'synthesis-daily-rituals/scripts/ritual_workers.py'),
+ 'synthesis-daily-rituals/scripts/sync_watermark.py': ('synthesis-daily-rituals/scripts/acquisition_evidence.py',
+                                                       'synthesis-daily-rituals/scripts/ritual_workers.py',
+                                                       'synthesis-meeting-transcripts/verify_transcripts.py'),
+ 'synthesis-project-management/scripts/project_state.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                                           'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                                           'synthesis-decision-packet/scripts/build_packet.py',
+                                                           'synthesis-decision-packet/scripts/record_rulings.py',
+                                                           'synthesis-repo-guard/publication_receipt.py'),
+ 'synthesis-repo-guard/checkpoint_sync.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
+                                             'synthesis-context-lifecycle/scripts/record_transaction.py',
+                                             'synthesis-decision-packet/scripts/build_packet.py',
+                                             'synthesis-decision-packet/scripts/record_rulings.py',
+                                             'synthesis-repo-guard/publication_receipt.py')}
+# Host-specific PR support is optional in a modular release. A dependency
+# present at activation must still verify; absence never means scanned.
+OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
+    {"synthesis-bitbucket/scripts/pr_queue.py"}
+)
+RECEIPT_ENTRYPOINTS = sorted(
+    PUBLIC_ENTRYPOINTS
+    | {
+        dependency
+        for dependencies in ENTRYPOINT_DEPENDENCIES.values()
+        for dependency in dependencies
+    }
+    | {
+        "synthesis-onboarding/scripts/synthesis_cli.py",
+    }
+)
 
 
 def activation_receipt_path(pointer):
@@ -268,29 +446,53 @@ def stat_walk(root):
     prefix_size = len(root) + (not root.endswith(os.sep))
     snapshot = {}
     try:
-        for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
-            relative_directory = "" if directory == root else directory[prefix_size:].replace(os.sep, "/")
+        for directory, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=False
+        ):
+            relative_directory = (
+                ""
+                if directory == root
+                else directory[prefix_size:].replace(os.sep, "/")
+            )
             kept = []
             for name in sorted(dirnames + filenames):
-                relative = relative_directory + "/" + name if relative_directory else name
+                relative = (
+                    relative_directory + "/" + name if relative_directory else name
+                )
                 if relative == ".git":
                     continue
                 meta = os.lstat(os.path.join(directory, name))
-                if stat.S_ISLNK(meta.st_mode) or not (stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)):
-                    raise RuntimeContractError("release tree contains a link or special object")
+                if stat.S_ISLNK(meta.st_mode) or not (
+                    stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)
+                ):
+                    raise RuntimeContractError(
+                        "release tree contains a link or special object"
+                    )
                 if stat.S_ISDIR(meta.st_mode):
                     kept.append(name)
                     continue
-                snapshot[relative] = [meta.st_size, stat.S_IMODE(meta.st_mode), meta.st_mtime_ns]
+                snapshot[relative] = [
+                    meta.st_size,
+                    stat.S_IMODE(meta.st_mode),
+                    meta.st_mtime_ns,
+                ]
             dirnames[:] = kept
         return snapshot
     except OSError as exc:
         raise RuntimeContractError("release tree is unreadable: %s" % exc) from exc
 
 
-def build_activation_receipt(*, release_root, descriptor_bytes, descriptor_meta,
-                             launcher_sha256, interpreter_sha256, generation,
-                             content_digest, projection):
+def build_activation_receipt(
+    *,
+    release_root,
+    descriptor_bytes,
+    descriptor_meta,
+    launcher_sha256,
+    interpreter_sha256,
+    generation,
+    content_digest,
+    projection,
+):
     """Snapshot everything the per-call fast path re-checks.
 
     Called inside the activation lock after the tree was fully verified.
@@ -308,7 +510,9 @@ def build_activation_receipt(*, release_root, descriptor_bytes, descriptor_meta,
     if isinstance(projection, dict):
         records = projection.get("files")
         if not isinstance(records, dict) or not records:
-            raise RuntimeContractError("activation receipt needs a projection file inventory")
+            raise RuntimeContractError(
+                "activation receipt needs a projection file inventory"
+            )
         files = {rel: {"mode": rec["mode"]} for rel, rec in records.items()}
     return {
         "schema_version": VERIFICATION_RECEIPT_SCHEMA,
@@ -335,7 +539,10 @@ def _load_activation_receipt(pointer):
         receipt = json.loads(raw)
     except ValueError:
         return None
-    if not isinstance(receipt, dict) or receipt.get("schema_version") != VERIFICATION_RECEIPT_SCHEMA:
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schema_version") != VERIFICATION_RECEIPT_SCHEMA
+    ):
         return None
     return receipt
 
@@ -356,7 +563,10 @@ def verify_fast(pointer, active):
         blob = pointer.read_bytes()
     except OSError as exc:
         raise RuntimeContractError("active release descriptor is unreadable: %s" % exc)
-    if receipt.get("descriptor_inode") != meta.st_ino or receipt.get("descriptor_mtime_ns") != meta.st_mtime_ns:
+    if (
+        receipt.get("descriptor_inode") != meta.st_ino
+        or receipt.get("descriptor_mtime_ns") != meta.st_mtime_ns
+    ):
         raise RuntimeContractError("active descriptor replaced since activation")
     if hashlib.sha256(blob).hexdigest() != receipt.get("descriptor_sha256"):
         raise RuntimeContractError("active descriptor bytes drifted")
@@ -365,7 +575,10 @@ def verify_fast(pointer, active):
     root = Path(active["release_root"])
     snapshot = stat_walk(root)
     if snapshot != receipt.get("tree_stat"):
-        raise RuntimeContractError("release tree stat drifted since activation: %s" % _first_stat_diff(snapshot, receipt.get("tree_stat") or {}))
+        raise RuntimeContractError(
+            "release tree stat drifted since activation: %s"
+            % _first_stat_diff(snapshot, receipt.get("tree_stat") or {})
+        )
     if receipt.get("projection_files") is not None:
         want = receipt["projection_files"]
         if set(snapshot) != set(want):
@@ -411,7 +624,9 @@ def verify_entrypoint(active, receipt_mode, script):
         raise RuntimeContractError("entrypoint %s has no activation hash" % script)
     target = Path(active["release_root"]) / "skills" / script
     if file_digest(target) != want:
-        raise RuntimeContractError("entrypoint bytes drifted since activation: %s" % script)
+        raise RuntimeContractError(
+            "entrypoint bytes drifted since activation: %s" % script
+        )
 
 
 def full_digest_report(root):
@@ -422,13 +637,18 @@ def full_digest_report(root):
     started = time.monotonic()
     digest = tree_digest(root)
     snapshot = stat_walk(root)
-    return {"tree_digest": digest, "files": len(snapshot),
-            "elapsed_ms": round((time.monotonic() - started) * 1000, 1)}
+    return {
+        "tree_digest": digest,
+        "files": len(snapshot),
+        "elapsed_ms": round((time.monotonic() - started) * 1000, 1),
+    }
 
 
 def verified_release(pointer=None, *, require_current_interpreter=True):
     if os.environ.get("SYNTHESIS_PUBLIC_SKILLS_SOURCE"):
-        raise RuntimeContractError("canonical public source override is forbidden for installed execution")
+        raise RuntimeContractError(
+            "canonical public source override is forbidden for installed execution"
+        )
     pointer = Path(pointer) if pointer is not None else descriptor_path()
     lock = pointer.with_name(pointer.name + ".lock")
     pending = pointer.with_name(pointer.name + ".activation-pending.json")
@@ -440,48 +660,93 @@ def verified_release(pointer=None, *, require_current_interpreter=True):
             # beyond the host hook deadline and restart a failed Stop forever.
             fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
             if pending.exists() or pending.is_symlink():
-                raise RuntimeContractError("unfinished setup activation requires recovery")
-            return _verified_release_unlocked(pointer, require_current_interpreter=require_current_interpreter)
+                raise RuntimeContractError(
+                    "unfinished setup activation requires recovery"
+                )
+            return _verified_release_unlocked(
+                pointer, require_current_interpreter=require_current_interpreter
+            )
     except OSError as exc:
-        raise RuntimeContractError("setup activation cannot be read safely: %s" % exc) from exc
+        raise RuntimeContractError(
+            "setup activation cannot be read safely: %s" % exc
+        ) from exc
 
 
 def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
     try:
         if pointer.is_symlink() or not pointer.is_file():
-            raise RuntimeContractError("active release descriptor must be a regular file established by setup")
+            raise RuntimeContractError(
+                "active release descriptor must be a regular file established by setup"
+            )
         active = json.loads(pointer.read_text())
-        if not isinstance(active, dict) or type(active.get("schema_version")) is not int or active.get("schema_version") != 1:
+        if (
+            not isinstance(active, dict)
+            or type(active.get("schema_version")) is not int
+            or active.get("schema_version") != 1
+        ):
             raise RuntimeContractError("active release descriptor schema is invalid")
         version = active.get("version")
         channel = active.get("channel")
-        if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+        if not isinstance(version, str) or not re.fullmatch(
+            r"[0-9]+\.[0-9]+\.[0-9]+", version
+        ):
             raise RuntimeContractError("active release version is invalid")
         refs = {"stable": "stable", "edge": "main", "pin": "v" + version}
         if channel not in refs or active.get("ref") != refs[channel]:
             raise RuntimeContractError("active release channel/ref binding is invalid")
-        if any(not re.fullmatch(r"[0-9a-f]{40}", str(active.get(field, ""))) for field in ("commit", "tree")):
+        if any(
+            not re.fullmatch(r"[0-9a-f]{40}", str(active.get(field, "")))
+            for field in ("commit", "tree")
+        ):
             raise RuntimeContractError("active release Git provenance is invalid")
         source = urlsplit(str(active.get("source_url", "")))
-        if source.scheme != "https" or not source.hostname or source.username or source.password:
-            raise RuntimeContractError("active release source must be credential-free HTTPS")
-        resolved = datetime.fromisoformat(str(active.get("resolved_at", "")).replace("Z", "+00:00"))
+        if (
+            source.scheme != "https"
+            or not source.hostname
+            or source.username
+            or source.password
+        ):
+            raise RuntimeContractError(
+                "active release source must be credential-free HTTPS"
+            )
+        resolved = datetime.fromisoformat(
+            str(active.get("resolved_at", "")).replace("Z", "+00:00")
+        )
         if resolved.tzinfo is None:
-            raise RuntimeContractError("active release resolution time is not timezone bound")
+            raise RuntimeContractError(
+                "active release resolution time is not timezone bound"
+            )
         root_value = active.get("release_root")
         if not isinstance(root_value, str) or not Path(root_value).is_absolute():
             raise RuntimeContractError("active release root must be absolute")
         root = Path(root_value)
-        if root.is_symlink() or not root.is_dir() or root.resolve() != root or os.path.lexists(root / ".git"):
-            raise RuntimeContractError("active release root must be an immutable materialized generation")
-        if active.get("digest_algorithm") != "sha256-tree-v1" or active.get("tree_policy") != "regular-files-and-directories-no-links-v1":
+        if (
+            root.is_symlink()
+            or not root.is_dir()
+            or root.resolve() != root
+            or os.path.lexists(root / ".git")
+        ):
+            raise RuntimeContractError(
+                "active release root must be an immutable materialized generation"
+            )
+        if (
+            active.get("digest_algorithm") != "sha256-tree-v1"
+            or active.get("tree_policy") != "regular-files-and-directories-no-links-v1"
+        ):
             raise RuntimeContractError("active release digest contract is invalid")
         if not re.fullmatch(r"[0-9a-f]{64}", str(active.get("content_digest", ""))):
             raise RuntimeContractError("active release digest is invalid")
         for client in ("claude", "codex"):
-            manifest = json.loads((root / ("." + client + "-plugin") / "plugin.json").read_text())
-            if manifest.get("version") != active.get("version") or manifest.get("name") != "synthesis-skills":
-                raise RuntimeContractError("active release manifests disagree with the descriptor")
+            manifest = json.loads(
+                (root / ("." + client + "-plugin") / "plugin.json").read_text()
+            )
+            if (
+                manifest.get("version") != active.get("version")
+                or manifest.get("name") != "synthesis-skills"
+            ):
+                raise RuntimeContractError(
+                    "active release manifests disagree with the descriptor"
+                )
         mode = verify_fast(pointer, active)
         if mode is None:
             if tree_digest(root) != verify_projection(root, active):
@@ -489,24 +754,54 @@ def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
             mode = VERIFICATION_MODE_FULL
         active["_verification_mode"] = mode
         active["_verification_pointer"] = os.fspath(pointer)
-        executable = verify_interpreter(active.get("interpreter"), require_current=require_current_interpreter)
+        executable = verify_interpreter(
+            active.get("interpreter"), require_current=require_current_interpreter
+        )
         verified_launcher(active, executable)
         return active
     except (OSError, ValueError, TypeError) as exc:
         if isinstance(exc, RuntimeContractError):
             raise
-        raise RuntimeContractError("active release cannot be verified: %s" % exc) from exc
+        raise RuntimeContractError(
+            "active release cannot be verified: %s" % exc
+        ) from exc
 
 
 def command(active, script, arguments):
     if script not in PUBLIC_ENTRYPOINTS:
-        raise RuntimeContractError("public entrypoint is not declared by the execution contract")
+        raise RuntimeContractError(
+            "public entrypoint is not declared by the execution contract"
+        )
     root = Path(active["release_root"])
     target = root / "skills" / script
-    if not target.is_file() or target.is_symlink() or target.resolve() != target or not target.is_relative_to(root):
-        raise RuntimeContractError("public entrypoint is unavailable or escapes the verified release")
+    if (
+        not target.is_file()
+        or target.is_symlink()
+        or target.resolve() != target
+        or not target.is_relative_to(root)
+    ):
+        raise RuntimeContractError(
+            "public entrypoint is unavailable or escapes the verified release"
+        )
     verify_interpreter(active.get("interpreter"))
     verify_entrypoint(active, active.get("_verification_mode"), script)
+    for dependency in ENTRYPOINT_DEPENDENCIES.get(script, ()):
+        helper = root / "skills" / dependency
+        if dependency in OPTIONAL_ENTRYPOINT_DEPENDENCIES and not os.path.lexists(
+            helper
+        ):
+            if active.get("_verification_mode") == VERIFICATION_MODE_RECEIPT:
+                receipt = _load_activation_receipt(active.get("_verification_pointer"))
+                if receipt is None or dependency in receipt.get("entrypoints", {}):
+                    raise RuntimeContractError(
+                        "optional entrypoint dependency disappeared after activation"
+                    )
+            continue
+        if not helper.is_file() or helper.is_symlink() or helper.resolve() != helper:
+            raise RuntimeContractError(
+                "public entrypoint dependency is unavailable or unsafe"
+            )
+        verify_entrypoint(active, active.get("_verification_mode"), dependency)
     return [sys.executable, "-B", str(target), *arguments]
 
 
@@ -519,12 +814,20 @@ def verified_launcher(active, executable):
         raise RuntimeContractError("recorded launcher path is invalid")
     launcher = Path(path)
     try:
-        if launcher.is_symlink() or not launcher.is_file() or launcher.resolve() != launcher:
+        if (
+            launcher.is_symlink()
+            or not launcher.is_file()
+            or launcher.resolve() != launcher
+        ):
             raise RuntimeContractError("recorded launcher is missing or unsafe")
         content = launcher.read_bytes()
-        if (hashlib.sha256(content).hexdigest() != receipt.get("sha256")
-                or content.splitlines()[0] != ("#!%s -B" % executable).encode()):
-            raise RuntimeContractError("launcher differs from the recorded interpreter or bytes")
+        if (
+            hashlib.sha256(content).hexdigest() != receipt.get("sha256")
+            or content.splitlines()[0] != ("#!%s -B" % executable).encode()
+        ):
+            raise RuntimeContractError(
+                "launcher differs from the recorded interpreter or bytes"
+            )
         return launcher
     except (OSError, ValueError, IndexError) as exc:
         if isinstance(exc, RuntimeContractError):
@@ -545,11 +848,17 @@ def runtime_health(active, *, home=None):
         if plist.exists() or plist.is_symlink():
             if plist.is_symlink() or not plist.is_file():
                 raise RuntimeContractError("guardian launchd declaration is unsafe")
-            declarations.append(plistlib.loads(plist.read_bytes()).get("ProgramArguments"))
+            declarations.append(
+                plistlib.loads(plist.read_bytes()).get("ProgramArguments")
+            )
         if service.exists() or service.is_symlink():
             if service.is_symlink() or not service.is_file():
                 raise RuntimeContractError("guardian systemd declaration is unsafe")
-            commands = [line.removeprefix("ExecStart=") for line in service.read_text().splitlines() if line.startswith("ExecStart=")]
+            commands = [
+                line.removeprefix("ExecStart=")
+                for line in service.read_text().splitlines()
+                if line.startswith("ExecStart=")
+            ]
             if len(commands) != 1:
                 raise RuntimeContractError("guardian systemd command is ambiguous")
             declarations.append(shlex.split(commands[0]))
@@ -560,38 +869,67 @@ def runtime_health(active, *, home=None):
                 or not isinstance(arguments[0], str)
                 or arguments[1] != "-B"
             ):
-                raise RuntimeContractError("guardian service does not use the recorded interpreter")
+                raise RuntimeContractError(
+                    "guardian service does not use the recorded interpreter"
+                )
             try:
                 declared = Path(arguments[0]).expanduser().resolve()
                 expected = Path(executable).expanduser().resolve()
             except (OSError, RuntimeError):
-                raise RuntimeContractError("guardian service does not use the recorded interpreter")
+                raise RuntimeContractError(
+                    "guardian service does not use the recorded interpreter"
+                )
             if declared != expected:
-                raise RuntimeContractError("guardian service does not use the recorded interpreter")
-        return {"status": "verified", "interpreter": executable, "version": active["interpreter"]["version"],
-                "launcher": str(launcher), "guardian_declarations": len(declarations)}
+                raise RuntimeContractError(
+                    "guardian service does not use the recorded interpreter"
+                )
+        return {
+            "status": "verified",
+            "interpreter": executable,
+            "version": active["interpreter"]["version"],
+            "launcher": str(launcher),
+            "guardian_declarations": len(declarations),
+        }
     except (OSError, ValueError, IndexError, AttributeError) as exc:
         if isinstance(exc, RuntimeContractError):
             raise
-        raise RuntimeContractError("installed runtime declaration is invalid: %s" % exc) from exc
+        raise RuntimeContractError(
+            "installed runtime declaration is invalid: %s" % exc
+        ) from exc
 
 
 def execute(active, script, arguments, payload, *, timeout=60):
-    if not isinstance(timeout, (float, int)) or not math.isfinite(timeout) or timeout <= 0:
-        raise RuntimeContractError("public execution timeout must be finite and positive")
+    if (
+        not isinstance(timeout, (float, int))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise RuntimeContractError(
+            "public execution timeout must be finite and positive"
+        )
     try:
-        return subprocess.run(command(active, script, arguments), input=payload, capture_output=True, timeout=timeout, check=False)
+        return subprocess.run(
+            command(active, script, arguments),
+            input=payload,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeContractError("public entrypoint failed to start or finish: %s" % exc) from exc
+        raise RuntimeContractError(
+            "public entrypoint failed to start or finish: %s" % exc
+        ) from exc
 
 
 def valid_stop_payload(payload):
-    return (isinstance(payload, dict)
-            and payload.get("hook_event_name") in ("Stop", "SubagentStop")
-            and isinstance(payload.get("session_id"), str)
-            and 0 < len(payload["session_id"].strip()) <= 256
-            and not any(ord(char) < 32 for char in payload["session_id"])
-            and type(payload.get("stop_hook_active")) is bool)
+    return (
+        isinstance(payload, dict)
+        and payload.get("hook_event_name") in ("Stop", "SubagentStop")
+        and isinstance(payload.get("session_id"), str)
+        and 0 < len(payload["session_id"].strip()) <= 256
+        and not any(ord(char) < 32 for char in payload["session_id"])
+        and type(payload.get("stop_hook_active")) is bool
+    )
 
 
 def stop_failure(payload, reason, system_message=None, *, terminal=False):
@@ -603,7 +941,10 @@ def stop_failure(payload, reason, system_message=None, *, terminal=False):
     """
     # Structured diagnostics already carry their own FAIL/UNKNOWN verdict and
     # have consumers that parse their prefix. Preserve them byte-for-byte.
-    output = {"systemMessage": system_message or (reason if reason.startswith("UNRESOLVED: ") else "UNRESOLVED: " + reason)}
+    output = {
+        "systemMessage": system_message
+        or (reason if reason.startswith("UNRESOLVED: ") else "UNRESOLVED: " + reason)
+    }
     # No current owner reservation exists on this error path.
     output.update({"continue": False, "stopReason": reason})
     return output
@@ -618,10 +959,13 @@ def _policy_reservation(payload, proof, *, consume):
     if helper.is_symlink() or not helper.is_file():
         raise RuntimeContractError("Stop policy owner helper is unavailable")
     import importlib.util
+
     previous = list(sys.path)
     try:
         sys.path.insert(0, str(path))
-        spec = importlib.util.spec_from_file_location("release_stop_policy_owner", helper)
+        spec = importlib.util.spec_from_file_location(
+            "release_stop_policy_owner", helper
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module.validate_stop_reservation(payload, proof, consume=consume)
@@ -633,33 +977,72 @@ def stop_result(payload, result, *, consume_policy=True):
     """Validate Stop wire output before the host can re-enter the model."""
     try:
         output = json.loads(result.stdout) if result.stdout.strip() else {}
-        allowed = {"continue", "stopReason", "systemMessage", "suppressOutput", "decision", "reason", "_synthesis_policy"}
-        if (not isinstance(output, dict) or set(output) - allowed
-                or ("continue" in output and type(output["continue"]) is not bool)
-                or ("suppressOutput" in output and type(output["suppressOutput"]) is not bool)
-                or ("decision" in output and output["decision"] != "block")
-                or (output.get("decision") == "block" and not output.get("reason"))
-                or any(key in output and not isinstance(output[key], str)
-                       for key in ("stopReason", "systemMessage", "reason"))):
+        allowed = {
+            "continue",
+            "stopReason",
+            "systemMessage",
+            "suppressOutput",
+            "decision",
+            "reason",
+            "_synthesis_policy",
+        }
+        if (
+            not isinstance(output, dict)
+            or set(output) - allowed
+            or ("continue" in output and type(output["continue"]) is not bool)
+            or (
+                "suppressOutput" in output
+                and type(output["suppressOutput"]) is not bool
+            )
+            or ("decision" in output and output["decision"] != "block")
+            or (output.get("decision") == "block" and not output.get("reason"))
+            or any(
+                key in output and not isinstance(output[key], str)
+                for key in ("stopReason", "systemMessage", "reason")
+            )
+        ):
             raise ValueError("invalid native Stop result")
     except (ValueError, UnicodeError):
-        return stop_failure(payload, "Stop hook returned invalid output; protection remains unverified.", terminal=True)
+        return stop_failure(
+            payload,
+            "Stop hook returned invalid output; protection remains unverified.",
+            terminal=True,
+        )
     if output.get("continue") is False:
         output.pop("_synthesis_policy", None)
         return output
     proof = output.pop("_synthesis_policy", None)
-    if proof is not None and not result.returncode and output.get("decision") == "block":
+    if (
+        proof is not None
+        and not result.returncode
+        and output.get("decision") == "block"
+    ):
         try:
-            if not valid_stop_payload(payload) or not _policy_reservation(payload, proof, consume=consume_policy):
+            if not valid_stop_payload(payload) or not _policy_reservation(
+                payload, proof, consume=consume_policy
+            ):
                 raise ValueError("Stop reservation was not verified")
         except Exception:
-            return stop_failure(payload, "Stop correction reservation is unavailable, stale or consumed.", terminal=True)
+            return stop_failure(
+                payload,
+                "Stop correction reservation is unavailable, stale or consumed.",
+                terminal=True,
+            )
         if not consume_policy:
             output["_synthesis_policy"] = proof
         return output
     if result.returncode or output.get("decision") == "block":
-        reason = output.get("reason") or result.stderr.decode("utf-8", errors="replace").strip() or "Stop hook failed without a diagnostic."
-        return stop_failure(payload, reason, output.get("systemMessage"), terminal=result.returncode not in {0, 2})
+        reason = (
+            output.get("reason")
+            or result.stderr.decode("utf-8", errors="replace").strip()
+            or "Stop hook failed without a diagnostic."
+        )
+        return stop_failure(
+            payload,
+            reason,
+            output.get("systemMessage"),
+            terminal=result.returncode not in {0, 2},
+        )
     return output
 
 
@@ -669,7 +1052,7 @@ def read_payload(wait_seconds):
         descriptor = stream.fileno()
         if os.isatty(descriptor):
             return b""
-        mode = os.fstat(descriptor).st_mode
+        os.fstat(descriptor)
     except (AttributeError, ValueError, OSError):
         return b""
     chunks = []
@@ -677,7 +1060,9 @@ def read_payload(wait_seconds):
     deadline = time.monotonic() + wait_seconds
     while True:
         try:
-            ready, _, _ = select.select([descriptor], [], [], max(0, deadline - time.monotonic()))
+            ready, _, _ = select.select(
+                [descriptor], [], [], max(0, deadline - time.monotonic())
+            )
             chunk = os.read(descriptor, 65536) if ready else b""
         except (OSError, ValueError):
             break
@@ -702,7 +1087,12 @@ def _invalid_arguments_result(argv):
         if token == "--" or not token.startswith("--"):
             break
         name, equals, value = token.partition("=")
-        if name not in {"--hook-event", "--timeout-seconds", "--stdin-wait-seconds", "--success-exit-code"}:
+        if name not in {
+            "--hook-event",
+            "--timeout-seconds",
+            "--stdin-wait-seconds",
+            "--success-exit-code",
+        }:
             break
         if not equals:
             index += 1
@@ -724,7 +1114,9 @@ def _invalid_arguments_result(argv):
     started = time.monotonic()
 
     def expired(_signum, _frame):
-        raise ExecutionDeadline("invalid launcher arguments exhausted the input deadline")
+        raise ExecutionDeadline(
+            "invalid launcher arguments exhausted the input deadline"
+        )
 
     signal.signal(signal.SIGALRM, expired)
     signal.setitimer(signal.ITIMER_REAL, budget)
@@ -736,8 +1128,11 @@ def _invalid_arguments_result(argv):
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
         if previous_timer[0] > 0:
-            signal.setitimer(signal.ITIMER_REAL,
-                max(0.001, previous_timer[0] - (time.monotonic() - started)), previous_timer[1])
+            signal.setitimer(
+                signal.ITIMER_REAL,
+                max(0.001, previous_timer[0] - (time.monotonic() - started)),
+                previous_timer[1],
+            )
 
     native_event = payload.get("hook_event_name") if isinstance(payload, dict) else None
     if isinstance(native_event, str) and native_event in NON_STOP_NATIVE_EVENTS:
@@ -747,17 +1142,29 @@ def _invalid_arguments_result(argv):
     elif native_event in ("Stop", "SubagentStop"):
         declared_stop = True
     if declared_stop:
-        print(json.dumps(stop_failure(payload,
-            "Synthesis launcher arguments are invalid; protection remains unverified.", terminal=True)))
+        print(
+            json.dumps(
+                stop_failure(
+                    payload,
+                    "Synthesis launcher arguments are invalid; protection remains unverified.",
+                    terminal=True,
+                )
+            )
+        )
         return 0
     return 2
 
 
 def exec_public_main(argv, pointer):
-    parser = argparse.ArgumentParser(prog="synthesis exec-public", description="Execute a declared public script from the verified active release.")
+    parser = argparse.ArgumentParser(
+        prog="synthesis exec-public",
+        description="Execute a declared public script from the verified active release.",
+    )
     parser.add_argument("--timeout-seconds", type=float, default=60)
     parser.add_argument("--stdin-wait-seconds", type=float, default=2)
-    parser.add_argument("--success-exit-code", action="append", type=int, choices=[1], default=[])
+    parser.add_argument(
+        "--success-exit-code", action="append", type=int, choices=[1], default=[]
+    )
     parser.add_argument("--hook-event", choices=["Stop", "SubagentStop"])
     parser.add_argument("script", choices=sorted(PUBLIC_ENTRYPOINTS))
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
@@ -791,24 +1198,46 @@ def exec_public_main(argv, pointer):
             payload = json.loads(raw_payload)
         except (ValueError, UnicodeError):
             payload = None
-        native_event = payload.get("hook_event_name") if isinstance(payload, dict) else None
-        if args.hook_event and isinstance(native_event, str) and native_event in NON_STOP_NATIVE_EVENTS:
+        native_event = (
+            payload.get("hook_event_name") if isinstance(payload, dict) else None
+        )
+        if (
+            args.hook_event
+            and isinstance(native_event, str)
+            and native_event in NON_STOP_NATIVE_EVENTS
+        ):
             # Native event identity wins over a misconfigured command. A Stop
             # terminal envelope is not a valid PreToolUse denial in Codex.
             stop_event = False
-            raise RuntimeContractError("declared hook event conflicts with the native event")
-        if isinstance(payload, dict) and payload.get("hook_event_name") in ("Stop", "SubagentStop"):
+            raise RuntimeContractError(
+                "declared hook event conflicts with the native event"
+            )
+        if isinstance(payload, dict) and payload.get("hook_event_name") in (
+            "Stop",
+            "SubagentStop",
+        ):
             stop_event = True
         if stop_event:
-            if (not valid_stop_payload(payload)
-                    or (args.hook_event and payload["hook_event_name"] != args.hook_event)):
-                print(json.dumps(stop_failure(payload, "Stop hook input is invalid or lacks native identity; protection remains unverified.", terminal=True)))
+            if not valid_stop_payload(payload) or (
+                args.hook_event and payload["hook_event_name"] != args.hook_event
+            ):
+                print(
+                    json.dumps(
+                        stop_failure(
+                            payload,
+                            "Stop hook input is invalid or lacks native identity; protection remains unverified.",
+                            terminal=True,
+                        )
+                    )
+                )
                 return 0
         active = verified_release(pointer)
         os.environ["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(pointer)
         remaining = args.timeout_seconds - (time.monotonic() - started)
         if remaining <= 0:
-            raise ExecutionDeadline("public execution exhausted its total deadline before worker dispatch")
+            raise ExecutionDeadline(
+                "public execution exhausted its total deadline before worker dispatch"
+            )
         result = execute(active, args.script, forwarded, raw_payload, timeout=remaining)
         if stop_event:
             print(json.dumps(stop_result(payload, result)))
@@ -830,8 +1259,11 @@ def exec_public_main(argv, pointer):
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, previous_handler)
             if previous_timer[0] > 0:
-                signal.setitimer(signal.ITIMER_REAL,
-                    max(0.001, previous_timer[0] - (time.monotonic() - started)), previous_timer[1])
+                signal.setitimer(
+                    signal.ITIMER_REAL,
+                    max(0.001, previous_timer[0] - (time.monotonic() - started)),
+                    previous_timer[1],
+                )
 
 
 def launcher_main(pointer, argv):

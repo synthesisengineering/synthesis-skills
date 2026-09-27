@@ -71,6 +71,7 @@ _PROJECT_STATE_SCRIPTS = (
 if str(_PROJECT_STATE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_PROJECT_STATE_SCRIPTS))
 import project_state  # noqa: E402
+import record_transaction  # noqa: E402
 
 _CONFORMANCE_SCRIPTS = (
     Path(__file__).resolve().parents[2]
@@ -871,7 +872,7 @@ def unrouted_intake_findings(project_path: Path) -> list[str]:
     return unrouted
 
 
-def audit_project(
+def _audit_project_unlocked(
     source: Source,
     project_id: str,
     project_path: Path,
@@ -1427,6 +1428,19 @@ def audit_project(
             )
 
     return audit
+
+
+def audit_project(source, project_id, project_path, index_entry, repo_root,
+                  projects_root, readiness="remote"):
+    try:
+        with record_transaction.managed(project_path):
+            return _audit_project_unlocked(source, project_id, project_path, index_entry,
+                                           repo_root, projects_root, readiness)
+    except record_transaction.RecordTransactionError as exc:
+        audit = ProjectAudit(source=source.name, project_id=project_id, path=project_path)
+        audit.add("record-transaction", "defect", str(exc),
+                  "reconcile the retained transaction through context_edit recover-transaction")
+        return audit
 
 
 def durability_findings(

@@ -185,6 +185,15 @@ class Sandbox:
         self.cache = self.root / "cache"
         for path in (self.home, self.remotes, self.cache):
             path.mkdir(parents=True)
+        # The doctor checks every installed native client. Keep an ambient
+        # Muse executable from referring to an unconfigured synthetic HOME;
+        # this preexisting fixture hook is not an onboarding activation claim.
+        if shutil.which("muse") is not None:
+            muse = self.home / ".config" / "muse" / "settings.json"
+            muse.parent.mkdir(parents=True)
+            muse.write_text(json.dumps({"hooks": {"PreToolUse": [
+                whole_system.message_guard_hook(self.home / ".synthesis" / "message-guard" / "message_guard.py")
+            ]}}))
         self.git_env = dict(os.environ)
         self.git_env.update(self.env_overrides())
         self._build_kb_remote()
@@ -399,6 +408,14 @@ class Sandbox:
             "confidential_terms": [],
             "inbox_cleanup": False,
         }
+        data["message_guard"] = {
+            "capabilities": [{"tool_names": ["mcp__fixture__send_message"], "channel": "human-text"}],
+            "owner_review": {"source": "synthetic full-setup fixture transport review", "reviewed_at": "2026-09-25T00:00:00Z"},
+        }
+        candidate = whole_system.build_message_guard_config(REPO_ROOT, whole_system.validate_answers(data, True))
+        import hashlib
+        data["message_guard"]["reviewed_configuration_sha256"] = hashlib.sha256(
+            json.dumps(candidate, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         if git_identity:
             data["git_name"], data["git_email"] = git_identity
         path = self.root / "answers.json"
@@ -1839,3 +1856,28 @@ class PersonalLayersTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class MessageGuardOwnershipReviewTests(unittest.TestCase):
+    def test_foreign_argument_is_not_owner_authority(self):
+        target = Path('/tmp/synthetic-owner/message_guard.py')
+        original = {'hooks': {'PreToolUse': [{'hooks': [{'command': 'foreign-guard --note message_guard.py'}]}]}}
+        with self.assertRaisesRegex(ValueError, 'owner'):
+            whole_system.merge_message_guard_hook(original, target)
+        self.assertEqual(original['hooks']['PreToolUse'][0]['hooks'][0]['command'], 'foreign-guard --note message_guard.py')
+
+    def test_mixed_group_cannot_erase_foreign_protection(self):
+        target = Path('/tmp/synthetic-owner/message_guard.py')
+        owned = whole_system.message_guard_hook(target)
+        owned['hooks'].append({'command': 'foreign-protection'})
+        with self.assertRaisesRegex(ValueError, 'owner'):
+            whole_system.merge_message_guard_hook({'hooks': {'PreToolUse': [owned]}}, target)
+
+    def test_duplicate_owned_hooks_reconcile_without_double_consumption(self):
+        target = Path('/tmp/synthetic-owner/message_guard.py')
+        owner = whole_system.message_guard_hook(target)
+        foreign = {'hooks': [{'command': 'foreign-protection'}]}
+        merged, changed = whole_system.merge_message_guard_hook({'hooks': {'PreToolUse': [owner, foreign, owner]}}, target)
+        self.assertTrue(changed)
+        self.assertEqual(merged['hooks']['PreToolUse'], [owner, foreign])
+        self.assertFalse(whole_system.merge_message_guard_hook(merged, target)[1])

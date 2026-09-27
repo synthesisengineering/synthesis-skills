@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.6.0"
+  version: "2.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,30 @@ The engine is a Bash boundary plus standard-library Python sidecars. The policy
 is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
 adopting synthesis engineering fills in with personal-remote patterns, client
 names, internal URLs, and optionally a coordination-board path.
+
+## Staged bytes and commit-message scanning
+
+The Bash hooks delegate content scanning to the required `_scan_staged.py`
+sidecar. It reads Git's declared hunk lengths and decodes Git-quoted destination
+paths. Added lines that resemble diff headers remain content. Paths and policy
+patterns are passed as arguments and input bytes; neither becomes shell code.
+Tier 0 examines all added lines before any path exclusions or line allowlist.
+Exact copies retain the existing Git copy-detection semantics.
+
+The policy engine still uses the invoking locale and `grep -E`, including its
+Unicode case matching. For invalid UTF-8, the scanner creates a deterministic
+replacement-character view for pattern evaluation and binds every matching line
+back to its original bytes. Invalid-byte lines cannot gain allowlist exemptions;
+invalid-UTF-8 or newline-containing paths cannot gain path exclusions. NUL bytes
+do not turn matches into an uninspectable binary-file summary. The same owner
+scans commit messages when the selected surface requires that control.
+
+A scan has a 60-second deadline. Staged diff acquisition is limited to 256 MiB,
+commit messages to 1 MiB, and displayed evidence to 16 KiB with an explicit
+truncation digest. Missing dependencies, malformed diffs, invalid policies,
+changing or non-regular message files, and exceeded bounds fail closed. These
+limits do not change staged files. Installation, lifecycle reconciliation and
+`--doctor` include the new sidecar in their exact runtime dependency inventory.
 
 ## v2.6.0 — Cached pattern validation
 
@@ -73,8 +97,8 @@ invalid value is a doctor problem, fail closed), else the running script's
 own directory when it is not itself an installed engine copy (repo
 checkouts, worktrees, client plugin caches), else the documented locations
 the ecosystem's own installers create (direct-copy skill installs, the
-shared installer's cached clone). A source must carry all three engine
-files to qualify, and the doctor names the resolved source in its output.
+shared installer's cached clone). A source must carry the complete current engine
+file inventory to qualify, and the doctor names the resolved source in its output.
 The v2.4.0 installer also persists its absolute source directory beside the
 installed engine. Later direct doctor runs use that pointer before documented
 fallback locations; an invalid or missing pointed source is a doctor failure.

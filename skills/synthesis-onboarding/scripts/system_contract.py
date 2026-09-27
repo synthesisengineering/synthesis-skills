@@ -931,6 +931,46 @@ def _write_activation_receipt(
     )
 
 
+def message_guard_activation_preflight(release_root: Path, *, configuration_path: Path | None = None, state_directory: Path | None = None) -> dict:
+    """Refuse engine activation until the existing owner policy is ready.
+
+    This read-only check does not enroll broad native dispatch or grant sends.
+    It runs both at release preflight and under the CLI activation lock.
+    """
+    config = Path(configuration_path if configuration_path is not None else os.environ.get("MESSAGE_GUARD_CONFIG", str(Path.home() / ".synthesis/message-guard/patterns.json"))).absolute()
+    if not os.path.lexists(config):
+        if config.parent.resolve() != config.parent:
+            raise ContractError("message guard migration configuration has an aliased ancestor")
+        return {"status": "NOT_CONFIGURED"}
+    engine = Path(release_root) / "skills/synthesis-message-guard/scripts/message_guard.py"
+    if not engine.is_file() or engine.is_symlink():
+        raise ContractError("message guard migration owner is missing from candidate")
+    before = hashlib.sha256(engine.read_bytes()).hexdigest()
+    env = dict(os.environ)
+    env["MESSAGE_GUARD_CONFIG"] = str(config)
+    if state_directory is not None:
+        env["MESSAGE_GUARD_STATE_DIR"] = str(Path(state_directory).absolute())
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    try:
+        completed = subprocess.run([sys.executable, "-I", "-B", str(engine), "--migration-preflight"],
+                                   env=env, capture_output=True, text=True, timeout=10)
+        if len(completed.stdout) > 1024 * 1024 or len(completed.stderr) > 65536:
+            raise ContractError("message guard migration report exceeds its bound")
+        report = json.loads(completed.stdout)
+        if (completed.returncode or not isinstance(report, dict)
+                or report.get("status") != "READY_FOR_OWNER_ACTIVATION"
+                or report.get("read_only") is not True
+                or report.get("message_authority_granted") is not False
+                or report.get("required_record", {}).get("engine_sha256") != before
+                or hashlib.sha256(engine.read_bytes()).hexdigest() != before):
+            raise ContractError("message guard migration prerequisites are unsatisfied: " +
+                                json.dumps(report, sort_keys=True)[:8192])
+        return report
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        raise ContractError("message guard migration preflight failed: " + str(exc)) from exc
+
+
 def activate_cli(
     release_root: Path,
     descriptor: Any,
@@ -940,6 +980,7 @@ def activate_cli(
     descriptor = _validate_descriptor_shape(descriptor)
     release_root = Path(release_root).resolve()
     verify_materialized_release(release_root, descriptor)
+    message_guard_activation_preflight(release_root)
     if os.path.lexists(release_root / ".git"):
         raise ContractError("execution activation requires a materialized release, not a source checkout")
     cli = release_root / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
@@ -964,6 +1005,7 @@ def activate_cli(
         raise ContractError("activation lock must not be a symbolic link")
     with lock_path.open("a+b") as activation_lock:
         fcntl.flock(activation_lock.fileno(), fcntl.LOCK_EX)
+        message_guard_activation_preflight(release_root)
         _recover_activation(journal, launcher_path, active_descriptor_path)
         current = _activation_regular_bytes(launcher_path)
         previous = _activation_regular_bytes(active_descriptor_path)
@@ -1284,7 +1326,9 @@ def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
         "protected_hours", "personal_remote_patterns", "confidential_terms",
         "inbox_cleanup",
     }
-    _reject_unknown(value, fields, "desired state personal configuration")
+    _reject_unknown(value, fields | {"message_guard"}, "desired state personal configuration")
+    if value.get("message_guard") is not None and not isinstance(value["message_guard"], dict):
+        raise ContractError("desired message_guard selection must be an object or null")
     missing = sorted(fields - set(value))
     if missing:
         raise ContractError(

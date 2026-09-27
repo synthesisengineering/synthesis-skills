@@ -7,6 +7,7 @@ substitutions and shell-interpreter input are executable; quoted arguments and
 literal heredocs to other programs are data. Arbitrary interpreter/script
 semantics are outside this shell-command boundary.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,7 +21,8 @@ ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 STDIN_PATHS = {"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"}
 # Git aliases cannot replace built-in commands. Unknown commands can resolve
 # to persisted aliases or external git-* programs, whose effects are unknown.
-GIT_BUILTINS = set("""
+GIT_BUILTINS = set(
+    """
 add am annotate apply archive bisect blame branch bugreport bundle cat-file
 check-attr check-ignore check-mailmap check-ref-format checkout checkout-index
 cherry cherry-pick clean clone column commit commit-graph commit-tree config count-objects
@@ -37,7 +39,8 @@ show-index show-ref sparse-checkout stage stash status stripspace submodule
 submodule--helper switch symbolic-ref tag unpack-file unpack-objects update-index
 update-ref update-server-info upload-archive upload-pack var verify-commit
 verify-pack verify-tag version whatchanged worktree write-tree
-""".split())
+""".split()
+)
 
 
 def artifact_consumer_position(words: list[str]) -> int | None:
@@ -49,8 +52,11 @@ def artifact_consumer_position(words: list[str]) -> int | None:
         position = 1
         while position < len(words) and words[position].startswith("-"):
             position += 1
-    if (position + 1 < len(words) and words[position].endswith("release-gate.mjs")
-            and words[position + 1].startswith("deploy")):
+    if (
+        position + 1 < len(words)
+        and words[position].endswith("release-gate.mjs")
+        and words[position + 1].startswith("deploy")
+    ):
         return position
     return None
 
@@ -64,15 +70,32 @@ def wrangler_operation(args: list[str]) -> str | None:
         if flag == "--":
             rest.extend(args[index:])
             break
-        if flag in {"--cwd", "--config", "-c", "--env", "-e", "--env-file", "--log-level"}:
+        if flag in {
+            "--cwd",
+            "--config",
+            "-c",
+            "--env",
+            "-e",
+            "--env-file",
+            "--log-level",
+        }:
             index += 1
         elif not flag.startswith("-"):
             rest.append(flag)
-    if rest[:1] == ["deploy"] or rest[:2] in (["versions", "deploy"], ["triggers", "deploy"]):
+    if rest[:1] == ["deploy"] or rest[:2] in (
+        ["versions", "deploy"],
+        ["triggers", "deploy"],
+    ):
         return "worker"
-    if rest[:2] in (["pages", "deploy"], ["pages", "publish"]) or rest[:3] == ["pages", "deployment", "create"]:
+    if rest[:2] in (["pages", "deploy"], ["pages", "publish"]) or rest[:3] == [
+        "pages",
+        "deployment",
+        "create",
+    ]:
         return "pages"
-    if rest[:2] == ["d1", "execute"] and any(a.split("=")[0] == "--remote" for a in args):
+    if rest[:2] == ["d1", "execute"] and any(
+        a.split("=")[0] == "--remote" for a in args
+    ):
         return "database"
     return None
 
@@ -99,10 +122,53 @@ class ShellSyntax(NamedTuple):
     dynamic_indices: list[int]
 
 
+def _ansi_c_word(text: str, start: int) -> tuple[str, int]:
+    """Decode the literal ANSI-C quote subset; never execute its contents.
+
+    Unsupported escapes fail closed rather than guessing shell-specific
+    semantics. NUL cannot be represented safely in shell argument metadata.
+    """
+    value, i = [], start + 2
+    escapes = {
+        "a": "\a",
+        "b": "\b",
+        "e": "\x1b",
+        "E": "\x1b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+        "\\": "\\",
+        "'": "'",
+        '"': '"',
+    }
+    while i < len(text):
+        if text[i] == "'":
+            return "".join(value), i + 1
+        if text[i] != "\\":
+            if text[i] == "\0":
+                raise ValueError("NUL in ANSI-C shell quote")
+            value.append(text[i])
+            i += 1
+            continue
+        if i + 1 >= len(text):
+            raise ValueError("unfinished ANSI-C shell escape")
+        escape = text[i + 1]
+        if escape not in escapes:
+            raise ValueError(f"unsupported ANSI-C shell escape: {escape}")
+        value.append(escapes[escape])
+        i += 2
+    raise ValueError("unterminated ANSI-C shell quote")
+
+
 def _substitution_end(text: str, start: int) -> int:
     depth, quote, i = 1, None, start
     while i < len(text):
         c = text[i]
+        if quote is None and text.startswith("$'", i):
+            _, i = _ansi_c_word(text, i)
+            continue
         if c == "\\" and quote != "'":
             i += 2
             continue
@@ -111,7 +177,11 @@ def _substitution_end(text: str, start: int) -> int:
                 quote = None
         elif c in "'\"`":
             quote = c
-        elif text.startswith("case", i) and (i == start or text[i - 1].isspace()) and text[i + 4:i + 5].isspace():
+        elif (
+            text.startswith("case", i)
+            and (i == start or text[i - 1].isspace())
+            and text[i + 4 : i + 5].isspace()
+        ):
             # A case-pattern ')' is not a substitution boundary. Refuse the
             # grammar we cannot balance rather than dropping executable text.
             raise ValueError("case syntax inside command substitution is not supported")
@@ -125,7 +195,13 @@ def _substitution_end(text: str, start: int) -> int:
     raise ValueError("unterminated shell substitution")
 
 
-def _word(text: str, start: int, nested: list[str], dynamic: list[bool]) -> tuple[str, int, bool]:
+def _word(
+    text: str,
+    start: int,
+    nested: list[str],
+    dynamic: list[bool],
+    literals: dict[str, str] | None = None,
+) -> tuple[str, int, bool]:
     value, i, quoted = [], start, False
     quote = None
     while i < len(text):
@@ -145,6 +221,27 @@ def _word(text: str, start: int, nested: list[str], dynamic: list[bool]) -> tupl
             quoted = True
             i += 2
             continue
+        if quote is None and text.startswith("$'", i):
+            decoded, i = _ansi_c_word(text, i)
+            value.append(decoded)
+            quoted = True
+            continue
+        if quote != "'" and c == "$" and literals:
+            variable = re.match(
+                r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))", text[i:]
+            )
+            if variable:
+                name = variable.group(1) or variable.group(2)
+                literal = literals.get(name)
+                # Unquoted expansion can split/glob; resolve only a single
+                # inert word. Double quotes preserve literal spaces.
+                if literal is not None and (
+                    quote == '"'
+                    or (literal and not re.search(r"[\s*?\[\]{}]", literal))
+                ):
+                    value.append(literal)
+                    i += len(variable.group(0))
+                    continue
         if quote is None and c in "'\"":
             quote, quoted = c, True
             i += 1
@@ -157,8 +254,8 @@ def _word(text: str, start: int, nested: list[str], dynamic: list[bool]) -> tupl
             dynamic.append(True)
         if quote != "'" and text.startswith("$(", i):
             end = _substitution_end(text, i + 2)
-            nested.append(text[i + 2:end])
-            value.append(text[i:end + 1])
+            nested.append(text[i + 2 : end])
+            value.append(text[i : end + 1])
             i = end + 1
             continue
         if quote != "'" and c == "`":
@@ -172,8 +269,8 @@ def _word(text: str, start: int, nested: list[str], dynamic: list[bool]) -> tupl
                     end += 1
             if end >= len(text):
                 raise ValueError("unterminated backtick substitution")
-            nested.append(text[i + 1:end])
-            value.append(text[i:end + 1])
+            nested.append(text[i + 1 : end])
+            value.append(text[i : end + 1])
             i = end + 1
             continue
         value.append(c)
@@ -185,17 +282,71 @@ def _word(text: str, start: int, nested: list[str], dynamic: list[bool]) -> tupl
 
 def unwrap_argv(words: list[str]) -> list[str]:
     args = list(words)
-    while args and (ASSIGNMENT.match(args[0]) or args[0] in {"if", "then", "elif", "do", "!", "{"}):
+    while args and (
+        ASSIGNMENT.match(args[0]) or args[0] in {"if", "then", "elif", "do", "!", "{"}
+    ):
         args.pop(0)
-    while args and Path(args[0]).name in {"env", "command", "builtin", "nohup", "sudo", "time", "nice", "timeout", "stdbuf", "exec", "xargs"}:
+    while args and Path(args[0]).name in {
+        "env",
+        "command",
+        "builtin",
+        "nohup",
+        "sudo",
+        "time",
+        "nice",
+        "timeout",
+        "stdbuf",
+        "exec",
+        "xargs",
+    }:
         wrapper = Path(args.pop(0)).name
         value_flags = {
             "env": {"-u", "--unset", "-C", "--chdir", "--argv0", "-a", "-P"},
-            "sudo": {"-u", "--user", "-g", "--group", "-h", "--host", "-D", "--chdir", "-R", "--chroot", "-p", "--prompt", "-C", "--close-from", "-T", "--command-timeout", "-r", "--role", "-t", "--type", "-U", "--other-user"},
-            "nice": {"-n", "--adjustment"}, "timeout": {"-s", "--signal", "-k", "--kill-after"},
-            "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"}, "exec": {"-a"},
+            "sudo": {
+                "-u",
+                "--user",
+                "-g",
+                "--group",
+                "-h",
+                "--host",
+                "-D",
+                "--chdir",
+                "-R",
+                "--chroot",
+                "-p",
+                "--prompt",
+                "-C",
+                "--close-from",
+                "-T",
+                "--command-timeout",
+                "-r",
+                "--role",
+                "-t",
+                "--type",
+                "-U",
+                "--other-user",
+            },
+            "nice": {"-n", "--adjustment"},
+            "timeout": {"-s", "--signal", "-k", "--kill-after"},
+            "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"},
+            "exec": {"-a"},
             "time": {"-o", "--output", "-f", "--format"},
-            "xargs": {"-n", "--max-args", "-P", "--max-procs", "-I", "--replace", "-L", "--max-lines", "-s", "--max-chars", "-E", "--eof", "-d", "--delimiter"},
+            "xargs": {
+                "-n",
+                "--max-args",
+                "-P",
+                "--max-procs",
+                "-I",
+                "--replace",
+                "-L",
+                "--max-lines",
+                "-s",
+                "--max-chars",
+                "-E",
+                "--eof",
+                "-d",
+                "--delimiter",
+            },
         }.get(wrapper, set())
         while args and (args[0].startswith("-") or ASSIGNMENT.match(args[0])):
             flag = args.pop(0)
@@ -203,8 +354,19 @@ def unwrap_argv(words: list[str]) -> list[str]:
                 break
             if wrapper == "command" and flag in {"-v", "-V"}:
                 return []  # command lookup does not execute its arguments
-            if wrapper == "env" and (flag in {"-S", "--split-string"} or flag.startswith(("--split-string=", "-S"))):
-                value = flag.split("=", 1)[1] if flag.startswith("--split-string=") else flag[2:] if flag.startswith("-S") and len(flag) > 2 else args.pop(0) if args else ""
+            if wrapper == "env" and (
+                flag in {"-S", "--split-string"}
+                or flag.startswith(("--split-string=", "-S"))
+            ):
+                value = (
+                    flag.split("=", 1)[1]
+                    if flag.startswith("--split-string=")
+                    else flag[2:]
+                    if flag.startswith("-S") and len(flag) > 2
+                    else args.pop(0)
+                    if args
+                    else ""
+                )
                 if not value or any(c in value for c in "$`"):
                     raise ValueError("unresolved environment split-string")
                 args[:0] = shlex.split(value)
@@ -222,8 +384,86 @@ def unwrap_argv(words: list[str]) -> list[str]:
     return args
 
 
-def parse_shell(text: str) -> ShellSyntax:
+# The resolver models ordinary scalar assignments only. zsh's tied pairs
+# (PATH/path and peers) invalidate earlier literal values; numeric, option and
+# environment-control parameters also have effects beyond storing a string.
+# Native/inherited shell attributes are not inferred by this syntax parser.
+_SHELL_STATE_PARAMETERS = frozenset(
+    """
+PATH path FPATH fpath CDPATH cdpath MANPATH manpath MAILPATH mailpath
+FIGNORE fignore PSVAR psvar MODULE_PATH module_path
+HOME PWD OLDPWD IFS ENV BASH_ENV SHELLOPTS BASHOPTS GLOBIGNORE
+ZDOTDIR ZSHENV ZSH_VERSION ZSH_PATCHLEVEL ZSH_SUBSHELL ZSH_EVAL_CONTEXT
+RANDOM SRANDOM SECONDS EPOCHSECONDS EPOCHREALTIME LINENO OPTIND OPTARG
+UID EUID GID EGID PPID PID status pipestatus ERRNO TRY_BLOCK_ERROR
+DIRSTACKSIZE dirstack functions dis_functions aliases dis_aliases
+saliases dis_saliases galiases dis_galiases parameters options commands
+history HISTCMD HISTFILE HISTSIZE SAVEHIST LANG LC_ALL LC_CTYPE
+LC_COLLATE LC_MESSAGES LC_NUMERIC LC_TIME POSIXLY_CORRECT
+_ argv ARGC BASH_ARGV BASH_ARGC BASH_REMATCH BASH_LINENO BASH_SOURCE
+BASH_COMMAND BASH_SUBSHELL BASH_VERSINFO BASHPID GROUPS PIPESTATUS
+COLUMNS FUNCNEST HISTCHARS histchars KEYBOARD_HACK LINES NULLCMD
+PROMPT prompt PROMPT2 PROMPT3 PROMPT4 PS1 PS2 PS3 PS4 READNULLCMD
+SHLVL SPROMPT TERM TRY_BLOCK_INTERRUPT TTYIDLE USERNAME WORDCHARS
+zsh_eval_context
+""".split()
+)
+
+
+def parse_shell(text: str, *, resolve_literals: bool = False,
+                literal_prefix_indices: set[int] | None = None) -> ShellSyntax:
     """Parse executable shell structure without evaluating argument or input data."""
+    # Literal assignment resolution is an explicit analysis capability, not
+    # permission to publish. The default publication parser stays structural.
+    # Only a straight-line initial assignment prefix is modeled. Any control
+    # flow, shell state mutation, grouping, or unknown expansion stays unresolved.
+    if literal_prefix_indices is not None:
+        literal_prefix_indices.clear()
+    literals: dict[str, str] = {}
+    assignment_syntax: dict[int, bool] = {}
+    resolve_prefix = resolve_literals
+    if resolve_literals:
+        structural = parse_shell(text)
+        reserved = {
+            "if",
+            "then",
+            "else",
+            "elif",
+            "fi",
+            "for",
+            "while",
+            "until",
+            "do",
+            "done",
+            "case",
+            "esac",
+            "select",
+            "function",
+            "repeat",
+            "foreach",
+            "end",
+            "coproc",
+            "export",
+            "readonly",
+            "declare",
+            "typeset",
+            "unset",
+            "set",
+            "source",
+            ".",
+            "eval",
+        }
+        resolve_prefix = (
+            not structural.grouped
+            and all(s in {"", ";", "\n", "&&"} for s in structural.separators)
+            and not any(words and words[0] in reserved for words in structural.commands)
+            and not any(
+                ASSIGNMENT.match(word)
+                and word.split("=", 1)[0] in _SHELL_STATE_PARAMETERS
+                for words in structural.commands
+                for word in words
+            )
+        )
     commands, nested, words, pending, separators, here_strings = [], [], [], [], [], []
     supplied_input: list[list[str]] = []
     writes: list[list[str]] = []
@@ -232,8 +472,36 @@ def parse_shell(text: str) -> ShellSyntax:
     redirections: list[tuple[list[str], str, str]] = []
     heredocs: list[tuple[list[str], str]] = []
     nested_commands: list[tuple[list[str], str]] = []
+
     def has_command(owner: list[str]) -> bool:
         return bool(owner) or any(owner is command for command, _, _ in redirections)
+
+    def finish_literals(owner: list[str]) -> None:
+        nonlocal resolve_prefix
+        if not resolve_prefix:
+            return
+        pure = (
+            bool(owner)
+            and assignment_syntax.get(id(owner), False)
+            and all(ASSIGNMENT.match(word) for word in owner)
+            and not any(owner is item for item in dynamic_owners)
+            and not any(owner is item for item, _, _ in redirections)
+        )
+        if pure:
+            for word in owner:
+                name, value = word.split("=", 1)
+                # Tilde expansion is shell state, not a literal path.
+                if value.startswith("~"):
+                    resolve_prefix = False
+                    literals.clear()
+                    return
+                literals[name] = value
+            if literal_prefix_indices is not None:
+                literal_prefix_indices.add(len(commands))
+        else:
+            resolve_prefix = False
+            literals.clear()
+
     grouped = False
     last_end, last_quoted = -1, False
     i = 0
@@ -248,6 +516,7 @@ def parse_shell(text: str) -> ShellSyntax:
             continue
         if c == "\n":
             if has_command(words):
+                finish_literals(words)
                 commands.append(words)
                 separators.append("\n")
                 words = []
@@ -281,16 +550,16 @@ def parse_shell(text: str) -> ShellSyntax:
                         elif data.startswith("$(", j):
                             dynamic_owners.append(owner)
                             end = _substitution_end(data, j + 2)
-                            nested.append(data[j + 2:end])
-                            nested_commands.append((owner, data[j + 2:end]))
+                            nested.append(data[j + 2 : end])
+                            nested_commands.append((owner, data[j + 2 : end]))
                             j = end + 1
                         elif data[j] == "`":
                             dynamic_owners.append(owner)
                             end = data.find("`", j + 1)
                             if end < 0:
                                 raise ValueError("unterminated heredoc substitution")
-                            nested.append(data[j + 1:end])
-                            nested_commands.append((owner, data[j + 1:end]))
+                            nested.append(data[j + 1 : end])
+                            nested_commands.append((owner, data[j + 1 : end]))
                             j = end + 1
                         elif data[j] == "$":
                             dynamic.append(True)
@@ -300,10 +569,15 @@ def parse_shell(text: str) -> ShellSyntax:
                             j += 1
             pending = []
             continue
-        if (c in ";&|()" and not text.startswith("&>", i)) or (c in "{}" and (i + 1 == len(text) or text[i + 1].isspace())):
-            operator = text[i:i + 2] if text[i:i + 2] in {"&&", "||", "|&", ";;"} else c
+        if (c in ";&|()" and not text.startswith("&>", i)) or (
+            c in "{}" and (i + 1 == len(text) or text[i + 1].isspace())
+        ):
+            operator = (
+                text[i : i + 2] if text[i : i + 2] in {"&&", "||", "|&", ";;"} else c
+            )
             grouped = grouped or c in "(){}"
             if has_command(words):
+                finish_literals(words)
                 commands.append(words)
                 separators.append(operator)
                 words = []
@@ -322,25 +596,34 @@ def parse_shell(text: str) -> ShellSyntax:
             while i < len(text) and text[i] == c and len(operator) < 3:
                 operator += c
                 i += 1
-            strip_tabs = operator == "<<" and text[i:i + 1] == "-"
+            strip_tabs = operator == "<<" and text[i : i + 1] == "-"
             if strip_tabs:
                 i += 1
             while i < len(text) and text[i] in " \t":
                 i += 1
-            if text[i:i + 1] == "&":
+            if text[i : i + 1] == "&":
                 operator += "&"
                 i += 1
-            if words and words[-1].isdigit() and last_end == operator_start and not last_quoted:
+            if (
+                words
+                and words[-1].isdigit()
+                and last_end == operator_start
+                and not last_quoted
+            ):
                 words.pop()
             nested_start = len(nested)
             dynamic_start = len(dynamic)
-            operand, i, quoted = _word(text, i, nested, dynamic)
+            operand, i, quoted = _word(
+                text, i, nested, dynamic, literals if resolve_prefix else None
+            )
             if len(dynamic) > dynamic_start:
                 dynamic_owners.append(words)
             nested_commands.extend((words, script) for script in nested[nested_start:])
             if not operand:
                 raise ValueError("missing redirection operand")
-            redirections.append((words, ("&" if combined_output else "") + operator, operand))
+            redirections.append(
+                (words, ("&" if combined_output else "") + operator, operand)
+            )
             if operator == "<<":
                 pending.append((operand, not quoted, strip_tabs, words))
             elif operator == "<<<":
@@ -348,7 +631,19 @@ def parse_shell(text: str) -> ShellSyntax:
             continue
         nested_start = len(nested)
         dynamic_start = len(dynamic)
-        word, end, quoted = _word(text, i, nested, dynamic)
+        literal_assignment = bool(re.match(r"[A-Za-z_][A-Za-z0-9_]*=", text[i:]))
+        assignment_syntax[id(words)] = (
+            assignment_syntax.get(id(words), True) and literal_assignment
+        )
+        # Assignment RHS expansion has shell-specific sequential semantics.
+        # Resolve only literal RHS values, never a guessed environment value.
+        word, end, quoted = _word(
+            text,
+            i,
+            nested,
+            dynamic,
+            literals if resolve_prefix and not literal_assignment else None,
+        )
         if len(dynamic) > dynamic_start:
             dynamic_owners.append(words)
         nested_commands.extend((words, script) for script in nested[nested_start:])
@@ -372,23 +667,47 @@ def parse_shell(text: str) -> ShellSyntax:
         argv = unwrap_argv(words)
         if argv:
             executable = Path(argv[0]).name
-            script = " ".join(argv[1:]) if executable == "eval" else _shell_program(argv[1:]) if executable in SHELLS else None
+            script = (
+                " ".join(argv[1:])
+                if executable == "eval"
+                else _shell_program(argv[1:])
+                if executable in SHELLS
+                else None
+            )
             if script is not None:
                 nested.append(script)
                 nested_commands.append((words, script))
-        if argv and _reads_shell_input(argv) and index and separators[index - 1] in {"|", "|&"}:
+        if (
+            argv
+            and _reads_shell_input(argv)
+            and index
+            and separators[index - 1] in {"|", "|&"}
+        ):
             # The preceding process can compute arbitrary shell source. Its
             # quoted argv/heredoc is no longer inert data at this boundary.
-            if _shell_program(argv[1:]) is None and not any(words is owner for owner in supplied_input):
-                raise ValueError("piped shell input is executable and cannot be resolved without execution")
+            if _shell_program(argv[1:]) is None and not any(
+                words is owner for owner in supplied_input
+            ):
+                raise ValueError(
+                    "piped shell input is executable and cannot be resolved without execution"
+                )
     indices = {id(words): i for i, words in enumerate(commands)}
     return ShellSyntax(
-        commands, nested, separators, grouped,
-        [indices[id(owner)] for owner in writes if id(owner) in indices], bool(dynamic),
-        [(indices.get(id(owner), -1), operator, operand) for owner, operator, operand in redirections],
+        commands,
+        nested,
+        separators,
+        grouped,
+        [indices[id(owner)] for owner in writes if id(owner) in indices],
+        bool(dynamic),
+        [
+            (indices.get(id(owner), -1), operator, operand)
+            for owner, operator, operand in redirections
+        ],
         [(indices.get(id(owner), -1), body) for owner, body in heredocs],
         [(indices.get(id(owner), -1), script) for owner, script in nested_commands],
-        sorted({indices[id(owner)] for owner in dynamic_owners if id(owner) in indices}),
+        sorted(
+            {indices[id(owner)] for owner in dynamic_owners if id(owner) in indices}
+        ),
     )
 
 
@@ -398,7 +717,9 @@ def _shell_program(args: list[str]) -> str | None:
         arg = args[index]
         if arg.startswith("--command="):
             return arg.split("=", 1)[1]
-        if arg == "--command" or (arg.startswith("-") and "c" in arg[1:] and not arg.startswith("--")):
+        if arg == "--command" or (
+            arg.startswith("-") and "c" in arg[1:] and not arg.startswith("--")
+        ):
             if index + 1 >= len(args):
                 raise ValueError("shell command argument is absent")
             return args[index + 1]
@@ -421,7 +742,9 @@ def _reads_shell_input(argv: list[str]) -> bool:
     index = 0
     while index < len(args):
         arg = args[index]
-        if arg == "-" or (arg.startswith("-") and not arg.startswith("--") and "s" in arg[1:]):
+        if arg == "-" or (
+            arg.startswith("-") and not arg.startswith("--") and "s" in arg[1:]
+        ):
             return True
         if arg == "--":
             return index + 1 == len(args) or args[index + 1] in STDIN_PATHS
@@ -454,12 +777,21 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
                 i += 1
                 if flag == "--":
                     break
-                if flag in {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env", "--super-prefix"}:
+                if flag in {
+                    "-C",
+                    "-c",
+                    "--git-dir",
+                    "--work-tree",
+                    "--namespace",
+                    "--exec-path",
+                    "--config-env",
+                    "--super-prefix",
+                }:
                     i += 1
             if i < len(rest) and rest[i] == "push":
                 hit = True
             elif i < len(rest) and rest[i] == "for-each-repo":
-                tail = rest[i + 1:]
+                tail = rest[i + 1 :]
                 while tail and tail[0].startswith("-"):
                     flag = tail.pop(0)
                     if flag == "--":
@@ -473,7 +805,7 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
                 if tail:
                     nested.append(shlex.join(["git", *tail]))
             elif i < len(rest) and rest[i] in {"submodule", "submodule--helper"}:
-                tail = rest[i + 1:]
+                tail = rest[i + 1 :]
                 while tail and tail[0] in {"--quiet", "-q", "--"}:
                     tail.pop(0)
                 if tail[:1] == ["foreach"]:
@@ -486,7 +818,11 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
             elif i < len(rest) and rest[i] not in GIT_BUILTINS:
                 raise ValueError("unresolved Git alias or external subcommand")
         else:
-            if executable in {"npm", "pnpm", "yarn"} and rest and rest[0] in {"exec", "dlx"}:
+            if (
+                executable in {"npm", "pnpm", "yarn"}
+                and rest
+                and rest[0] in {"exec", "dlx"}
+            ):
                 rest = rest[1:]
                 executable = "npx"
             if executable in {"npx", "pnpx", "bunx"}:
@@ -502,7 +838,13 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
                             raise ValueError("package-runner command is absent")
                         nested.append(rest.pop(0))
                         break
-                    if option in {"-p", "--package", "--cache", "--userconfig", "--registry"}:
+                    if option in {
+                        "-p",
+                        "--package",
+                        "--cache",
+                        "--userconfig",
+                        "--registry",
+                    }:
                         if not rest:
                             raise ValueError("package-runner option value is absent")
                         rest.pop(0)
@@ -514,7 +856,11 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
             if executable in {"wrangler", "wrangler.js"}:
                 if wrangler_operation(rest):
                     hit = True
-            if executable.endswith("release-gate.mjs") and rest and rest[0].startswith("deploy"):
+            if (
+                executable.endswith("release-gate.mjs")
+                and rest
+                and rest[0].startswith("deploy")
+            ):
                 hit = True
         if hit:
             publication = True
@@ -524,7 +870,10 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
             restricted = restricted or args != words or grouped
             if executable in {"wrangler", "wrangler.js"}:
                 supported = Path(words[0]).name in {"wrangler", "wrangler.js"} or (
-                    len(words) > 1 and Path(words[0]).name in {"npx", "node"} and Path(words[1]).name in {"wrangler", "wrangler.js"})
+                    len(words) > 1
+                    and Path(words[0]).name in {"npx", "node"}
+                    and Path(words[1]).name in {"wrangler", "wrangler.js"}
+                )
                 restricted = restricted or not supported
     for script in nested:
         inner = inspect_command(script, depth=depth + 1)
@@ -534,7 +883,14 @@ def inspect_command(command: str, *, depth: int = 0) -> Inspection:
     # shell state before a later operation. Quoted literal expansion text is
     # not marked dynamic by the lexer and remains data.
     restricted = restricted or publication and (syntax.dynamic or bool(nested))
-    return Inspection(commands, separators, publication, restricted, publication_indices, write_indices)
+    return Inspection(
+        commands,
+        separators,
+        publication,
+        restricted,
+        publication_indices,
+        write_indices,
+    )
 
 
 def may_publish(command: str, *, depth: int = 0) -> bool:

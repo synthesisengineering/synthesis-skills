@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.12.5"
+  version: "1.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -301,3 +301,7 @@ Read [references/instruction-kernel-pattern.md](references/instruction-kernel-pa
 when an always-loaded instruction file approaches its budget or rules migrate
 to skill, hook, or config homes: the thin-kernel structure, the four
 enforcement classes, the not-weakening proof obligation, and the budget gate.
+
+## macOS protected-file diagnostics
+
+When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.

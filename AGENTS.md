@@ -63,6 +63,7 @@ python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group 
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
+python3 -m pytest skills/synthesis-meeting-prep/scripts/ -q
 python3 -m pytest skills/synthesis-model-tiers/scripts/ -q
 python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
 python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
@@ -71,10 +72,11 @@ python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthe
 python3 -m pytest skills/synthesis-onboarding/scripts/ -q
 python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
 python3 skills/synthesis-onboarding/scripts/check_capabilities.py .
-python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py -q
+python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py -q
 python3 -m pytest skills/synthesis-agent-guardrails/tests/ -q
 python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
 python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py
+python3 -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py -q
 sh -n install.sh onboard.sh tests/test_installer.sh
 ./tests/test_installer.sh
 python3 -m compileall -q skills

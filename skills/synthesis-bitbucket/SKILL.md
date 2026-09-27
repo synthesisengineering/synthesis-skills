@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.0"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -47,7 +47,7 @@ The username is the **email of the Atlassian account that owns the token** — n
 
 ⚠️ **Scoped API tokens that authenticate the REST API do not necessarily authenticate the git HTTPS endpoint** — they are separate credential surfaces. For `git push`/`fetch`, use SSH keys; keep `bkt` on the token. Mixing the two surfaces produces "the token works here but not there" mysteries that look like access problems and are not.
 
-## Set the default context
+## Configure connection context and bind each repository
 
 ```bash
 bkt context create <name> --host https://api.bitbucket.org/2.0 \
@@ -57,21 +57,44 @@ bkt context use <name>
 
 **Gotcha:** `bkt context create` requires `--host`, and the host string must exactly match the one shown by `bkt auth status` (for Cloud: `https://api.bitbucket.org/2.0`, not `https://bitbucket.org`). A mismatched host fails with "host not found; run bkt auth login first" even when you are logged in.
 
+## Explicit repository binding
+
+Every supported repository read or write must carry one literal `--repo <slug>`.
+Supply `--workspace <workspace>` for Cloud or `--project <key>` for Data Center
+when selecting that namespace. Never use a mutable active context as repository
+evidence, including for read-only calls, aliases such as `pr ls`, or repeated calls
+in a loop. `bkt pr list --mine` also needs the intended repository when running
+under this repository-scoped policy. Enumerate the authorized repository inventory
+for a portfolio read instead of silently broadening its coverage.
+
+Authentication, connection-context management, help/version and `api /user` GET
+are non-repository operations. The actual `api` command does not support `--repo`:
+use its canonical literal `/repositories/<workspace>/<repo>/...` or Data Center
+`/rest/api/1.0/projects/<key>/repos/<repo>/...` path. An unresolved, redirected or
+traversing path is not a binding. Never add an unsupported flag to manufacture one.
+
+`scripts/repository_binding.py` validates the declared CLI grammar without calling
+the provider or reading global context. The private shared pre-tool owner calls
+this verified public module through its Codex and Claude pre-tool adapters; unknown syntax refuses with
+a diagnostic. A client without an enrolled native pre-tool adapter has skill guidance, not demonstrated mechanical enforcement. Verify adapter capability and native acceptance before claiming parity. The parser result identifies a target only: it grants no send,
+review, merge or publication authority. Refresh its grammar from the reviewed
+CLI's own help when adopting another CLI version, and retain refusal controls.
+
 ## Command catalog
 
 Global flags on any command: `--json` · `--jq '<expr>'` (with `--json`) · `--format json|yaml` · `-c <context>`. Context overrides: `--workspace`, `--repo`.
 
 ### Read (safe, use freely)
 
-- `bkt pr list` — `--state OPEN|MERGED|DECLINED` · `--limit <n>` (0 = all) · `--mine`
-- `bkt pr view <id>` · `bkt pr diff <id> [--stat]` · `bkt pr comments <id> [--state unresolved]` · `bkt pr checks <id> [--wait]`
-- `bkt repo view` · `bkt branch list` · `bkt pipeline list|view`
+- `bkt pr list --repo <repo>` — `--state OPEN|MERGED|DECLINED` · `--limit <n>` (0 = all) · `--mine`
+- `bkt pr view <id> --repo <repo>` · `bkt pr diff <id> [--stat] --repo <repo>` · `bkt pr comments <id> [--state unresolved] --repo <repo>` · `bkt pr checks <id> [--wait] --repo <repo>`
+- `bkt repo view --repo <repo>` · `bkt branch list --repo <repo>` · `bkt pipeline list|view --repo <repo>`
 
 ### Write (consequential — confirm intent before running)
 
-- `bkt pr create --title <t> --description <d> --source <branch> --target <branch> [--reviewer <user|{UUID}>]… [--with-default-reviewers] [--draft]`
-- `bkt pr comment <id> --text <msg> [--parent <comment-id>] [--file <path> --to-line <n>]`
-- `bkt pr edit <id>` · `bkt pr approve <id>` · `bkt pr merge <id> --strategy merge_commit|squash|fast_forward` · `bkt pr decline <id>` · `bkt pr reopen <id>`
+- `bkt pr create --title <t> --description <d> --source <branch> --target <branch> [--reviewer <user|{UUID}>]… [--with-default-reviewers] [--draft] --repo <repo>`
+- `bkt pr comment <id> --text <msg> [--parent <comment-id>] [--file <path> --to-line <n>] --repo <repo>`
+- `bkt pr edit <id> --repo <repo>` · `bkt pr approve <id> --repo <repo>` · `bkt pr merge <id> --strategy merge_commit|squash|fast_forward --repo <repo>` · `bkt pr decline <id> --repo <repo>` · `bkt pr reopen <id> --repo <repo>`
 
 ### Escape hatch
 
@@ -81,13 +104,13 @@ Global flags on any command: `--json` · `--jq '<expr>'` (with `--json`) · `--f
 
 | gh | bkt |
 |---|---|
-| `gh pr list` | `bkt pr list` |
-| `gh pr view N` | `bkt pr view N` |
-| `gh pr diff N` | `bkt pr diff N` |
-| `gh pr create` | `bkt pr create` |
-| `gh pr review --approve` | `bkt pr approve N` |
-| `gh pr merge N` | `bkt pr merge N` |
-| `gh pr comment N -b …` | `bkt pr comment N --text …` |
+| `gh pr list` | `bkt pr list --repo <repo>` |
+| `gh pr view N` | `bkt pr view N --repo <repo>` |
+| `gh pr diff N` | `bkt pr diff N --repo <repo>` |
+| `gh pr create` | `bkt pr create --repo <repo>` |
+| `gh pr review --approve` | `bkt pr approve N --repo <repo>` |
+| `gh pr merge N` | `bkt pr merge N --repo <repo>` |
+| `gh pr comment N -b …` | `bkt pr comment N --text … --repo <repo>` |
 | `gh api …` | `bkt api …` |
 
 Bitbucket Cloud has **no PR labels** and its PR states are `OPEN`, `MERGED`, `DECLINED`, `SUPERSEDED` — port `gh` habits accordingly.

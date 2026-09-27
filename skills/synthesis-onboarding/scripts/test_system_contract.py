@@ -25,7 +25,9 @@ import system_contract  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def isolated_native_roots(monkeypatch):
+def isolated_native_roots(monkeypatch, tmp_path):
+    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json"))
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "message-guard"))
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
 

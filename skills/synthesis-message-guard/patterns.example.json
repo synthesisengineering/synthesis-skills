@@ -32,5 +32,12 @@
   "currency_claim_patterns": [
     "\\b(unanswered|unsent|not (yet )?(replied|responded|answered|sent)|no (reply|response|answer)( yet)?|still (open|waiting|pending|unanswered)|has(n't| not) (replied|responded|answered|sent))\\b"
   ],
-  "currency_claim_max_age_minutes": 30
+  "currency_claim_max_age_minutes": 30,
+  "email_policy": {
+    "default_format": "html",
+    "allow_intra_paragraph_breaks": false
+  },
+  "paragraph_policy": {
+    "allow_intra_paragraph_breaks": false
+  }
 }

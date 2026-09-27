@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.7"
+  version: "2.8.8"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -319,6 +319,8 @@ compares methodology, and resolves conflicts in source. Deterministic installers
 and conformance scripts own copying, manifests, checksums, and health checks.
 
 The `install.sh` scripts in each repo serve as bootstrap/fallback installers for environments without an AI agent. They handle the mechanical parts (copy, provenance, checksums) but cannot do synthesis merge — they overwrite on conflict. Drift detection covers the whole skill directory (scripts, references, data tables — not just SKILL.md); every drifted copy is saved to `${XDG_CACHE_HOME:-~/.cache}/<repo-name>-backups/<UTC-run-stamp>/<target>/<skill>/` before overwrite, and the end-of-run warning names each drifted skill and the backup path. Backups are pruned to the 10 most recent runs.
+
+Before verification, follow [verification custody](../synthesis-implementation-integrity/references/verification-custody.md): use an isolated copy by default; shared-checkout checks must restore only their own authenticated changes, preserving concurrent edits and unresolved evidence.
 
 ## Gated cross-client release
 

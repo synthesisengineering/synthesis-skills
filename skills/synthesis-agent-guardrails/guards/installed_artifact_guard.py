@@ -123,9 +123,9 @@ def shell_write_paths(command: str, cwd: str, *, depth: int = 0,
         return [], ["Installed-artifact guard shell nesting exceeds inspection limit"]
     try:
         parser = verified_shell_parser()
-        syntax = parser.parse_shell(command)
+        syntax = parser.parse_shell(command, resolve_literals=True)
         unwrap_argv = parser.unwrap_argv
-    except (ImportError, OSError, SyntaxError, ValueError, AttributeError) as exc:
+    except (ImportError, OSError, SyntaxError, ValueError, AttributeError, TypeError) as exc:
         return [], [f"Installed-artifact guard could not parse shell command: {exc}"]
     mutators_all_args = {"rm", "mkdir", "rmdir", "touch", "tee"}
     mutators_last_arg = {"cp", "mv", "install", "rsync", "ln"}

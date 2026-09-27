@@ -648,10 +648,13 @@ def test_real_hook_cli_uses_local_lease_and_actionable_failure(observer: SimpleN
     clean = cli(event(observer))
     assert clean.returncode == 0, clean.stderr
     _wire, report = native_output(clean.stdout)
-    assert report == {"status": "NOT_APPLICABLE", "issues": inspect(observer)[1], "checkpoint_accepted": False, "no_receipt_issued": True}
+    assert report["publication"]["status"] == "UNKNOWN"
+    assert {key: value for key, value in report.items() if key != "publication"} == {"status": "NOT_APPLICABLE", "issues": inspect(observer)[1], "checkpoint_accepted": False, "no_receipt_issued": True}
     clean_codex = cli(event(observer, "codex"))
     assert clean_codex.returncode == 0, clean_codex.stderr
-    assert native_output(clean_codex.stdout)[1] == report
+    codex_report = native_output(clean_codex.stdout)[1]
+    assert {k: v for k, v in codex_report.items() if k != "publication"} == {k: v for k, v in report.items() if k != "publication"}
+    assert codex_report["publication"]["status"] == "UNKNOWN"
     (observer.project / "REFERENCE.md").write_text("retained edit\n", encoding="utf-8")
     first = cli(event(observer))
     assert first.returncode == 0
@@ -700,3 +703,37 @@ def test_old_diagnostic_stdout_is_rejected_by_native_codex_schema() -> None:
     old_output = {"status": "NOT_APPLICABLE", "issues": [], "checkpoint_accepted": False, "no_receipt_issued": True}
     with pytest.raises(ValidationError, match="Additional properties are not allowed"):
         Draft7Validator(CODEX_STOP_SCHEMA).validate(old_output)
+
+
+
+@pytest.mark.parametrize("readiness", ["BLOCKED", "UNKNOWN", None, {}, [], "REMOTE_READY"])
+def test_bound_incomplete_receipt_names_readiness_not_identity(tmp_path, readiness):
+    root = tmp_path / "state"
+    manifest = root / "pending" / "synthetic.json"
+    manifest.parent.mkdir(parents=True)
+    raw = b'{"schema_version":2,"remote_paths":[],"paths":["/synthetic/source"]}'
+    manifest.write_bytes(raw)
+    receipt = root / "local-handoff" / manifest.name
+    receipt.parent.mkdir()
+    data = {"schema_version": 1, "session_id": "synthetic", "readiness": readiness,
+            "pending_manifest": str(manifest), "pending_manifest_sha256": hashlib.sha256(raw).hexdigest(),
+            "results": [{"action": "blocked", "alert": "retained path unavailable"}]}
+    receipt.write_text(json.dumps(data))
+    with pytest.raises(state.ProjectStateError, match="readiness") as error:
+        state._observer_completed_local_source({"session_id": "synthetic"}, root, manifest,
+                                              json.loads(raw), state._observer_local_file(manifest))
+    assert "does not bind" not in str(error.value)
+    data["session_id"] = "foreign"
+    receipt.write_text(json.dumps(data))
+    with pytest.raises(state.ProjectStateError, match="does not bind"):
+        state._observer_completed_local_source({"session_id": "synthetic"}, root, manifest,
+                                              json.loads(raw), state._observer_local_file(manifest))
+
+
+
+def test_accepted_checkpoint_does_not_invent_publication(capsys):
+    assert state._emit_checkpoint_hook("PASS", [], {"hook_event_name": "Stop"}) == 0
+    _, report = native_output(capsys.readouterr().out)
+    assert report["checkpoint_accepted"] is True
+    assert report["publication"]["status"] == "UNKNOWN"
+    assert "checkpoint_sync.py --flush-session" in report["publication"]["owner"]

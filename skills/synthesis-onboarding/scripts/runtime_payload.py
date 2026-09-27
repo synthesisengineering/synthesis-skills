@@ -26,28 +26,27 @@ from system_contract import (
 
 
 COMPONENTS = frozenset({"git-hooks", "message-guard", "kernel", "day-end"})
-INTRODUCED_DEPENDENCIES = {
-    "skills/synthesis-project-management/scripts/native_git.py": (
-        "skills/synthesis-project-management/scripts/claim_scope.py",
-        "skills/synthesis-project-management/scripts/coordination.py",
-        "skills/synthesis-git-hooks/scripts/pre-commit",
-    ),
-    "skills/synthesis-project-management/scripts/coordination_archive.py": (
-        "skills/synthesis-project-management/scripts/coordination.py",
-    ),
-    "skills/synthesis-project-management/scripts/board_grammar.py": (
-        "skills/synthesis-project-management/scripts/coordination.py",
-        "skills/synthesis-project-management/scripts/coordination_schema.py",
-    ),
-    "skills/synthesis-project-management/scripts/claim_scope.py": (
-        "skills/synthesis-project-management/scripts/coordination.py",
-        "skills/synthesis-git-hooks/scripts/pre-commit",
-    ),
-    "skills/synthesis-daily-rituals/scripts/ritual_state.py": (
-        "skills/synthesis-daily-rituals/scripts/day-end",
-        "skills/synthesis-daily-rituals/scripts/day-end-nudge.sh",
-    ),
-}
+INTRODUCED_DEPENDENCIES = {'skills/synthesis-git-hooks/scripts/_scan_staged.py': ('skills/synthesis-git-hooks/scripts/pre-commit',
+                                                        'skills/synthesis-git-hooks/scripts/commit-msg',
+                                                        'skills/synthesis-git-hooks/scripts/_load_config.py'),
+ 'skills/synthesis-daily-rituals/scripts/ritual_workers.py': ('skills/synthesis-daily-rituals/scripts/day-end',
+                                                              'skills/synthesis-daily-rituals/scripts/day-end-nudge.sh'),
+ 'skills/synthesis-daily-rituals/scripts/credential_paths.py': ('skills/synthesis-daily-rituals/scripts/day-end',
+                                                                'skills/synthesis-daily-rituals/scripts/day-end-nudge.sh'),
+ 'skills/synthesis-project-management/scripts/native_git.py': ('skills/synthesis-project-management/scripts/claim_scope.py',
+                                                               'skills/synthesis-project-management/scripts/coordination.py',
+                                                               'skills/synthesis-git-hooks/scripts/pre-commit'),
+ 'skills/synthesis-project-management/scripts/coordination_archive.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-project-management/scripts/board_grammar.py': ('skills/synthesis-project-management/scripts/coordination.py',
+                                                                  'skills/synthesis-project-management/scripts/coordination_schema.py'),
+ 'skills/synthesis-project-management/scripts/claim_scope.py': ('skills/synthesis-project-management/scripts/coordination.py',
+                                                                'skills/synthesis-git-hooks/scripts/pre-commit'),
+ 'skills/synthesis-daily-rituals/scripts/ritual_state.py': ('skills/synthesis-daily-rituals/scripts/day-end',
+                                                            'skills/synthesis-daily-rituals/scripts/day-end-nudge.sh'),
+ 'skills/synthesis-project-management/scripts/coordination_lock.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-project-management/scripts/project_recipient.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-agent-conformance/scripts/live_receipt.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-project-management/scripts/coordination_process.py': ('skills/synthesis-project-management/scripts/coordination.py',)}
 
 
 @dataclass(frozen=True)
@@ -111,12 +110,14 @@ def _specs(home, state_dir, components):
         raise ContractError("unsupported runtime component: %s" % ", ".join(sorted(components - COMPONENTS)))
     result = []
     if "git-hooks" in components:
-        for name in ("pre-commit", "commit-msg", "_load_config.py"):
+        for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py"):
             result.append(("git-hooks", "skills/synthesis-git-hooks/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py"):
+        for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py"):
             result.append(("git-hooks", "skills/synthesis-project-management/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
+        result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/live_receipt.py",
+                       home / ".synthesis/git-hooks/live_receipt.py", 0o755))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",
                        home / ".synthesis/references/session-words-v1.txt.zlib.b85", 0o644))
     if "message-guard" in components:
@@ -126,7 +127,7 @@ def _specs(home, state_dir, components):
         for name in ("kernel_sync.py", "whole_system.py"):
             result.append(("kernel", "skills/synthesis-onboarding/scripts/" + name, state_dir / "bin" / name, 0o755))
     if "day-end" in components:
-        for name in ("day-end", "day-end-nudge.sh", "ritual_state.py"):
+        for name in ("day-end", "day-end-nudge.sh", "ritual_state.py", "ritual_workers.py", "credential_paths.py"):
             result.append(("day-end", "skills/synthesis-daily-rituals/scripts/" + name,
                            home / ".synthesis/day-end/bin" / name, 0o755))
     return result

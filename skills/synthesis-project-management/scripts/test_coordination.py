@@ -65,8 +65,17 @@ def claim_args(
     )
 
 
-def narrow_args(board: Path, *, session_id: str, area=None, workspace=None,
-                release=None, release_workspace=None, keep=None, keep_workspace=None):
+def narrow_args(
+    board: Path,
+    *,
+    session_id: str,
+    area=None,
+    workspace=None,
+    release=None,
+    release_workspace=None,
+    keep=None,
+    keep_workspace=None,
+):
     return args(
         board,
         id=session_id,
@@ -85,9 +94,7 @@ def staged_repository(tmp_path: Path) -> Path:
     subprocess.run(
         ["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True
     )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"], cwd=root, check=True
-    )
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"], cwd=root, check=True
     )
@@ -149,14 +156,18 @@ def test_uuidv7_aliases_are_exact_reversible_views_of_random_material() -> None:
 
     first_identity = MODULE.new_identity([])
     assert uuid.UUID(first_identity.session_uuid).version == 7
-    token = MODULE.new_identity.__globals__["alias_token"](
-        first_identity.session_uuid
-    )
+    token = MODULE.new_identity.__globals__["alias_token"](first_identity.session_uuid)
     schema = sys.modules["coordination_schema"]
     assert schema.decode_compact(first_identity.compact_id) == token
     assert schema.decode_speakable(first_identity.speakable_id) == token
-    assert schema.identity_from_uuid(first).compact_id == schema.identity_from_uuid(second).compact_id
-    assert schema.identity_from_uuid(first).speakable_id == schema.identity_from_uuid(second).speakable_id
+    assert (
+        schema.identity_from_uuid(first).compact_id
+        == schema.identity_from_uuid(second).compact_id
+    )
+    assert (
+        schema.identity_from_uuid(first).speakable_id
+        == schema.identity_from_uuid(second).speakable_id
+    )
 
 
 def test_word_alias_v1_is_fixed_and_unambiguous() -> None:
@@ -167,7 +178,9 @@ def test_word_alias_v1_is_fixed_and_unambiguous() -> None:
     assert len({word[:4] for word in words}) == 2048
 
 
-def test_claim_without_human_supplied_id_allocates_all_identities(tmp_path: Path) -> None:
+def test_claim_without_human_supplied_id_allocates_all_identities(
+    tmp_path: Path,
+) -> None:
     board = tmp_path / "active-sessions.md"
     request = claim_args(
         board,
@@ -390,17 +403,21 @@ def test_cross_session_administrative_release_requires_and_records_a_reason(
     assert MODULE.command_claim(claim) == 0
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
-    assert MODULE.command_release(
-        args(board, id="A", administrative=True, reason="")
-    ) == 10
-    assert MODULE.command_release(
-        args(
-            board,
-            id="A",
-            administrative=True,
-            reason="Principal confirmed the abandoned session may be released",
+    assert (
+        MODULE.command_release(args(board, id="A", administrative=True, reason=""))
+        == 10
+    )
+    assert (
+        MODULE.command_release(
+            args(
+                board,
+                id="A",
+                administrative=True,
+                reason="Principal confirmed the abandoned session may be released",
+            )
         )
-    ) == 0
+        == 0
+    )
     text = board.read_text(encoding="utf-8")
     assert "recorded-administrative-release" in text
     [released] = MODULE.rows(text)
@@ -434,26 +451,32 @@ def test_legacy_selector_only_mutations_fail_closed_without_caller_identity(
     assert MODULE.command_heartbeat(args(board, id="A")) == 10
     assert MODULE.command_claim(claim) == 10
     assert MODULE.command_release(args(board, id="A")) == 10
-    assert MODULE.command_release(
-        args(
-            board,
-            id="A",
-            administrative=True,
-            reason="Authorized recovery of an unattributed legacy row",
+    assert (
+        MODULE.command_release(
+            args(
+                board,
+                id="A",
+                administrative=True,
+                reason="Authorized recovery of an unattributed legacy row",
+            )
         )
-    ) == 10
+        == 10
+    )
     [still_active] = MODULE.rows(board.read_text(encoding="utf-8"))
     assert still_active.status == "active"
 
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:admin-thread")
-    assert MODULE.command_release(
-        args(
-            board,
-            id="A",
-            administrative=True,
-            reason="Authorized recovery of an unattributed legacy row",
+    assert (
+        MODULE.command_release(
+            args(
+                board,
+                id="A",
+                administrative=True,
+                reason="Authorized recovery of an unattributed legacy row",
+            )
         )
-    ) == 0
+        == 0
+    )
     text = board.read_text(encoding="utf-8")
     [released] = MODULE.rows(text)
     assert released.status == "released"
@@ -487,9 +510,7 @@ def test_release_leaves_pointer_without_matching_board_lease(
         encoding="utf-8",
     )
 
-    assert MODULE.command_release(
-        args(board, id="A", active_project_file=pointer)
-    ) == 0
+    assert MODULE.command_release(args(board, id="A", active_project_file=pointer)) == 0
 
     assert pointer.exists()
     assert not (tmp_path / "active-project-history").exists()
@@ -513,10 +534,14 @@ def test_matching_session_and_lease_recoverably_archive_pointer(tmp_path: Path) 
 
     assert archived is not None and archived.is_file()
     assert not pointer.exists()
-    assert json.loads(archived.read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
+    assert (
+        json.loads(archived.read_text(encoding="utf-8"))["project"] == "/tmp/project-a"
+    )
 
 
-def test_archive_filename_is_safe_for_separator_bearing_session_id(tmp_path: Path) -> None:
+def test_archive_filename_is_safe_for_separator_bearing_session_id(
+    tmp_path: Path,
+) -> None:
     pointer = tmp_path / "active-project.json"
     lease = "https://example.test/coordination.git"
     session_id = "agent/../../other|session"
@@ -553,7 +578,9 @@ def test_release_refuses_symlinked_active_pointer_archive(tmp_path: Path) -> Non
     assert pointer.is_file()
 
 
-def test_release_rechecks_owner_after_waiting_for_pointer_writer(tmp_path: Path) -> None:
+def test_release_rechecks_owner_after_waiting_for_pointer_writer(
+    tmp_path: Path,
+) -> None:
     pointer = tmp_path / "active-project.json"
     lease = "https://example.test/coordination.git"
     pointer.write_text(
@@ -699,9 +726,7 @@ def test_same_worktree_is_shared_with_loud_notice_for_disjoint_areas(
     assert holder.compact_id in out
 
 
-def test_same_repo_branch_is_shared_across_worktrees(
-    tmp_path: Path, capsys
-) -> None:
+def test_same_repo_branch_is_shared_across_worktrees(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
     first = claim_args(
         board,
@@ -728,15 +753,18 @@ def test_shared_checkout_with_overlapping_areas_is_still_refused(
     tmp_path: Path,
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/shared @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/shared @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     newcomer = claim_args(
         board,
         session_id="B",
@@ -777,9 +805,9 @@ def test_v1_board_migrates_without_losing_messages(tmp_path: Path) -> None:
 def test_status_json_reports_stale_legacy_session(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
     board.write_text(
-        MODULE.template().replace(
-            f"Schema: v{MODULE.SCHEMA_VERSION}", "Schema: v2"
-        ).replace(
+        MODULE.template()
+        .replace(f"Schema: v{MODULE.SCHEMA_VERSION}", "Schema: v2")
+        .replace(
             MODULE.TABLE_HEADER,
             MODULE.table_header(MODULE.V2_COLUMNS)
             + "\n| A | Claude | unknown | unknown | yesterday | yesterday | "
@@ -801,30 +829,36 @@ def test_status_json_reports_stale_legacy_session(tmp_path: Path, capsys) -> Non
 
 def test_doctor_accepts_valid_v3_board(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo-a/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo-a/**",
+            )
         )
-    ) == 0
+        == 0
+    )
 
     assert MODULE.command_doctor(args(board)) == 0
 
 
 def test_doctor_rejects_alias_not_derived_from_uuid(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo-a/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo-a/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     text = board.read_text(encoding="utf-8")
     [session] = MODULE.rows(text)
     replacement = session.compact_id[:-1] + (
@@ -1036,7 +1070,9 @@ def test_lease_compare_and_swap_retries_after_concurrent_advance(
     assert identifiers == {"A", "X"}
 
 
-@pytest.mark.parametrize("serialized", [True, False], ids=["fixed", "old-positive-control"])
+@pytest.mark.parametrize(
+    "serialized", [True, False], ids=["fixed", "old-positive-control"]
+)
 def test_lease_refresh_cannot_restore_claims_after_same_machine_mutation(
     tmp_path: Path, monkeypatch, serialized: bool
 ) -> None:
@@ -1047,10 +1083,18 @@ def test_lease_refresh_cannot_restore_claims_after_same_machine_mutation(
     """
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:refresh-writer")
     [board] = lease_machines(tmp_path, count=1)
-    assert MODULE.command_claim(claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/worktree-a @ feature/a", area="/repos/shared/**",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/worktree-a @ feature/a",
+                area="/repos/shared/**",
+            )
+        )
+        == 0
+    )
     fetched = threading.Event()
     continue_refresh = threading.Event()
     writer_probed = threading.Event()
@@ -1099,10 +1143,18 @@ def test_lease_refresh_cannot_restore_claims_after_same_machine_mutation(
     def writer():
         try:
             assert MODULE.command_release(args(board, id="A")) == 0
-            assert MODULE.command_claim(claim_args(
-                board, session_id="B", project="project-b",
-                workspace="/tmp/worktree-b @ feature/b", area="/repos/shared/**",
-            )) == 0
+            assert (
+                MODULE.command_claim(
+                    claim_args(
+                        board,
+                        session_id="B",
+                        project="project-b",
+                        workspace="/tmp/worktree-b @ feature/b",
+                        area="/repos/shared/**",
+                    )
+                )
+                == 0
+            )
         except BaseException as exc:
             failures.append(exc)
         finally:
@@ -1140,7 +1192,9 @@ def test_lease_refresh_cannot_restore_claims_after_same_machine_mutation(
         assert local == {"A": "active"}, "instrument failed to reproduce the old bug"
 
 
-def test_lease_refresh_without_configuration_preserves_local_board(tmp_path, monkeypatch):
+def test_lease_refresh_without_configuration_preserves_local_board(
+    tmp_path, monkeypatch
+):
     board = tmp_path / "active-sessions.md"
     board.write_text(MODULE.template(), encoding="utf-8")
     before = board.read_bytes()
@@ -1635,9 +1689,7 @@ def test_r4_lease_fence_cannot_resurrect_released_session(
 
     monkeypatch.setattr(MODULE, "lease_fetch", release_after_stale_fetch)
 
-    exit_code = MODULE.command_check_staged(
-        check_staged_args(machine1, root)
-    )
+    exit_code = MODULE.command_check_staged(check_staged_args(machine1, root))
     output = capsys.readouterr().out
     payload = json.loads(output[output.index("{") :])
 
@@ -1787,9 +1839,9 @@ def test_r4_acceptance_manifest_is_closed_and_resolvable() -> None:
         path = (skill_root / relative).resolve()
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith(
-                "test_r4_"
-            ):
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ) and node.name.startswith("test_r4_"):
                 discovered.add(f"{relative}::{node.name}")
 
     assert declared == discovered
@@ -1798,6 +1850,7 @@ def test_r4_acceptance_manifest_is_closed_and_resolvable() -> None:
         "acceptance-test",
         "diagnostic",
     }
+
 
 # --- stale-claim review ---------------------------------------------------
 #
@@ -1811,7 +1864,8 @@ def _stale_board(tmp_path, heartbeat, worktree, status="active"):
     board = tmp_path / "board.md"
     board.write_text(
         "Schema: v3\n## Active sessions\n"
-        + MODULE.table_header(MODULE.V3_COLUMNS) + "\n"
+        + MODULE.table_header(MODULE.V3_COLUMNS)
+        + "\n"
         "| 01a01155-25a0-7c39-9af2-505104044949 | s-aaaa-bbbb-cccc | a-b-c-d-00001 |  | "
         f"Claude Code | {platform.node()} | proj | 2026-08-01T00:00:00+00:00 | {heartbeat} | "
         f"interactive | {worktree} | goal | area/** | owner | {status} |\n"
@@ -1823,7 +1877,9 @@ def _stale_board(tmp_path, heartbeat, worktree, status="active"):
 def _run_stale(board, *args):
     return subprocess.run(
         [sys.executable, str(MODULE_PATH), "--board", str(board), "stale", *args],
-        capture_output=True, text=True)
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_stale_claim_is_surfaced_with_release_command(tmp_path):
@@ -1844,8 +1900,7 @@ def test_stale_review_never_mutates_the_board(tmp_path):
 
 def test_missing_worktree_is_reported_as_likely_gone(tmp_path):
     """A vanished worktree is close to proof; elapsed time alone is not."""
-    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00",
-                         str(tmp_path / "gone"))
+    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path / "gone"))
     r = _run_stale(board, "--threshold", "1")
     assert "LIKELY GONE" in r.stdout
     assert "no longer exists" in r.stdout
@@ -1859,8 +1914,9 @@ def test_present_worktree_is_not_called_gone(tmp_path):
 
 
 def test_released_rows_are_not_surfaced(tmp_path):
-    board = _stale_board(tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path),
-                         status="released")
+    board = _stale_board(
+        tmp_path, "2026-01-01T00:00:00+00:00", str(tmp_path), status="released"
+    )
     r = _run_stale(board, "--threshold", "1")
     assert "s-aaaa-bbbb-cccc" not in r.stdout
 
@@ -1997,9 +2053,7 @@ def test_second_seat_with_same_ref_and_selector_is_refused(tmp_path, monkeypatch
 
 def test_explicit_invalid_client_ref_refuses(tmp_path):
     board = tmp_path / "board.md"
-    request = seatless_claim(
-        board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**"
-    )
+    request = seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
     request.client_ref = "not a scheme ref"
     assert MODULE.command_claim(request) == 10
     assert not board.exists()
@@ -2037,9 +2091,7 @@ def test_v3_board_keeps_schema_until_explicit_migrate(tmp_path, monkeypatch):
     assert f"Schema: v{MODULE.SCHEMA_VERSION}" in migrated
     assert "| client session ref |" in migrated
 
-    request = seatless_claim(
-        board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**"
-    )
+    request = seatless_claim(board, "project-a", "/tmp/wt-a @ feature/a", "repo-a/**")
     request.id = row.compact_id
     assert MODULE.command_claim(request) == 0
     assert "ccd:local_feed-beef" in board.read_text(encoding="utf-8")
@@ -2056,7 +2108,9 @@ def test_resolve_unique_project_target(tmp_path, monkeypatch, capsys):
     )
     assert MODULE.command_resolve(resolve_args(board, "project-a")) == 0
     output = capsys.readouterr().out
-    assert "ccd send_message to session_id local_feed-beef" in output
+    assert "client ref: ccd:local_feed-beef" in output
+    assert "delivery: board message bus; no verified direct lane" in output
+    assert "ccd send_message" not in output  # No live socket registry was provided.
 
 
 def test_resolve_by_bare_local_ref(tmp_path, monkeypatch, capsys):
@@ -2098,10 +2152,7 @@ def test_resolve_ambiguity_refuses_instead_of_broadcasting(tmp_path, capsys):
     assert MODULE.command_resolve(resolve_args(board, "project-a")) == 20
     err = capsys.readouterr().err
     assert "do not broadcast" in err
-    assert (
-        MODULE.command_resolve(resolve_args(board, "project-a", role="owner"))
-        == 0
-    )
+    assert MODULE.command_resolve(resolve_args(board, "project-a", role="owner")) == 0
 
 
 def test_resolve_unknown_target_points_to_board_bus(tmp_path, capsys):
@@ -2130,15 +2181,11 @@ def test_message_to_registered_project_renders_sessions_address(tmp_path):
     assert MODULE.command_message(message) == 0
     text = board.read_text(encoding="utf-8")
     assert "→ project-a sessions," in text
-    suffixed = args(
-        board, sender="ops", to="project-a sessions", text="Second note."
-    )
+    suffixed = args(board, sender="ops", to="project-a sessions", text="Second note.")
     assert MODULE.command_message(suffixed) == 0
 
 
-def test_status_json_reports_client_ref_and_board_schema(
-    tmp_path, monkeypatch, capsys
-):
+def test_status_json_reports_client_ref_and_board_schema(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_feed-beef")
     board = tmp_path / "board.md"
     assert (
@@ -2148,9 +2195,7 @@ def test_status_json_reports_client_ref_and_board_schema(
         == 0
     )
     capsys.readouterr()
-    status = args(
-        board, json=True, strict=False, stale_after_minutes=240
-    )
+    status = args(board, json=True, strict=False, stale_after_minutes=240)
     assert MODULE.command_status(status) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["board_schema"] == MODULE.SCHEMA_VERSION
@@ -2364,7 +2409,9 @@ def test_replace_table_collapses_padding_and_stays_fixed(tmp_path):
 
 def test_engine_remedy_names_the_newest_cached_engine(tmp_path):
     cache = tmp_path / "plugins" / "synthesis-skills"
-    relative = Path("skills") / "synthesis-project-management" / "scripts" / "coordination.py"
+    relative = (
+        Path("skills") / "synthesis-project-management" / "scripts" / "coordination.py"
+    )
     for version in ("4.74.1", "4.78.0", "4.9.0"):
         script = cache / version / relative
         script.parent.mkdir(parents=True)
@@ -2404,7 +2451,9 @@ def test_cli_presents_a_refusal_as_one_error_line(tmp_path):
     board = _claimed_board(tmp_path, schema=MODULE.SCHEMA_VERSION + 1)
     done = subprocess.run(
         [sys.executable, str(MODULE_PATH), "--board", str(board), "status"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert done.returncode == 1
     assert done.stderr.startswith("error: board declares schema v")
@@ -2419,22 +2468,53 @@ def test_every_command_notes_a_newer_installed_engine(tmp_path):
     relative = Path("skills") / "synthesis-project-management" / "scripts"
     older = cache / "4.80.0" / relative
     older.mkdir(parents=True)
-    for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_subscriptions.py"):
+    for name in (
+        "coordination.py",
+        "claim_scope.py",
+        "native_git.py",
+        "coordination_schema.py",
+        "board_grammar.py",
+        "coordination_archive.py",
+        "pointer_lock.py",
+        "peer_addressing.py",
+        "fleet_identity.py",
+        "fleet_paths.py",
+        "fleet_subscriptions.py",
+    ):
         (older / name).write_bytes((MODULE_PATH.parent / name).read_bytes())
     newer = cache / "4.81.0" / relative
     newer.mkdir(parents=True)
     (newer / "coordination.py").write_text("#\n", encoding="utf-8")
 
     done = subprocess.run(
-        [sys.executable, str(older / "coordination.py"), "--board", str(tmp_path / "board.md"), "doctor"],
-        capture_output=True, text=True, check=False,
+        [
+            sys.executable,
+            str(older / "coordination.py"),
+            "--board",
+            str(tmp_path / "board.md"),
+            "doctor",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    assert "note: this coordination engine is 4.80.0 but 4.81.0 is installed" in done.stderr
+    assert (
+        "note: this coordination engine is 4.80.0 but 4.81.0 is installed"
+        in done.stderr
+    )
     assert str(newer / "coordination.py") in done.stderr
 
     current = subprocess.run(
-        [sys.executable, str(MODULE_PATH), "--board", str(tmp_path / "board.md"), "doctor"],
-        capture_output=True, text=True, check=False,
+        [
+            sys.executable,
+            str(MODULE_PATH),
+            "--board",
+            str(tmp_path / "board.md"),
+            "doctor",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert "note: this coordination engine" not in current.stderr
 
@@ -2448,18 +2528,50 @@ def report_index(tmp_path, text):
     return index
 
 
-def test_project_report_message_reaches_successor_inbox_without_claim_mutation(tmp_path, capsys):
-    index = report_index(tmp_path, "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\n- id: new-project\n  status: active\n")
+def test_project_report_message_reaches_successor_inbox_without_claim_mutation(
+    tmp_path, capsys
+):
+    index = report_index(
+        tmp_path,
+        "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\n- id: new-project\n  status: active\n",
+    )
     board = tmp_path / "board.md"
-    assert MODULE.command_claim(seatless_claim(board, "new-project", "/tmp/report-fixture @ topic", "repo/**")) == 0
+    assert (
+        MODULE.command_claim(
+            seatless_claim(
+                board, "new-project", "/tmp/report-fixture @ topic", "repo/**"
+            )
+        )
+        == 0
+    )
     row = MODULE.rows(board.read_text())[0]
     claims = row.cells()
-    done = subprocess.run([sys.executable, str(MODULE_PATH), "--board", str(board), "message", "--from", "fixture-sender",
-        "--to", "old-project sessions", "--project-index", str(index), "--text", "Fixture diagnostic"], text=True, capture_output=True)
+    done = subprocess.run(
+        [
+            sys.executable,
+            str(MODULE_PATH),
+            "--board",
+            str(board),
+            "message",
+            "--from",
+            "fixture-sender",
+            "--to",
+            "old-project sessions",
+            "--project-index",
+            str(index),
+            "--text",
+            "Fixture diagnostic",
+        ],
+        text=True,
+        capture_output=True,
+    )
     assert done.returncode == 0, done.stderr
     assert MODULE.rows(board.read_text())[0].cells() == claims
     capsys.readouterr()
-    assert MODULE.command_inbox(args(board, id=row.compact_id, json=True, mark_read=False)) == 0
+    assert (
+        MODULE.command_inbox(args(board, id=row.compact_id, json=True, mark_read=False))
+        == 0
+    )
     inbox = json.loads(capsys.readouterr().out)
     assert len(inbox["unread"]) == 1
     assert inbox["unread"][0]["to"] == "new-project sessions"
@@ -2469,7 +2581,9 @@ def test_project_report_message_reaches_successor_inbox_without_claim_mutation(t
 @pytest.mark.parametrize("selector_kind", ["compact", "native"])
 def test_report_exact_session_recipient_is_never_redirected(tmp_path, selector_kind):
     board = tmp_path / "board.md"
-    claim = seatless_claim(board, "old-project", "/tmp/report-fixture @ topic", "repo/**")
+    claim = seatless_claim(
+        board, "old-project", "/tmp/report-fixture @ topic", "repo/**"
+    )
     claim.client_ref = "codex:01990000-0000-7000-8000-000000000002"
     assert MODULE.command_claim(claim) == 0
     row = MODULE.rows(board.read_text())[0]
@@ -2479,15 +2593,18 @@ def test_report_exact_session_recipient_is_never_redirected(tmp_path, selector_k
     assert route is None
 
 
-@pytest.mark.parametrize("text", [
-    "projects:\n- id: old-project\n  status: archived\n  related: [new-project]\n- id: new-project\n  status: active\n",
-    "projects:\n- id: old-project\n  status: archived\n  description: |\n    superseded_by: new-project\n- id: new-project\n  status: active\n",
-    "projects:\n- id: old-project\n  status: archived\n  description: 'historical text\n    superseded_by: new-project\n    continued'\n- id: new-project\n  status: active\n",
-    "projects:\n- id: old-project\n  status: archived\n  superseded_by:\n  - new-project\n- id: new-project\n  status: active\n",
-    "projects:\n- id: old-project\n  status: active\n  status: archived\n",
-    "projects:\n- id: old-project\n  <<: {status: active}\n",
-    "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\nprojects:\n- id: new-project\n  status: active\n",
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "projects:\n- id: old-project\n  status: archived\n  related: [new-project]\n- id: new-project\n  status: active\n",
+        "projects:\n- id: old-project\n  status: archived\n  description: |\n    superseded_by: new-project\n- id: new-project\n  status: active\n",
+        "projects:\n- id: old-project\n  status: archived\n  description: 'historical text\n    superseded_by: new-project\n    continued'\n- id: new-project\n  status: active\n",
+        "projects:\n- id: old-project\n  status: archived\n  superseded_by:\n  - new-project\n- id: new-project\n  status: active\n",
+        "projects:\n- id: old-project\n  status: active\n  status: archived\n",
+        "projects:\n- id: old-project\n  <<: {status: active}\n",
+        "projects:\n- id: old-project\n  status: archived\n  superseded_by: new-project\nprojects:\n- id: new-project\n  status: active\n",
+    ],
+)
 def test_report_route_needs_unambiguous_structural_relationship(tmp_path, text):
     index = report_index(tmp_path, text)
     with pytest.raises(ValueError, match="recipient"):
@@ -2495,12 +2612,16 @@ def test_report_route_needs_unambiguous_structural_relationship(tmp_path, text):
 
 
 @pytest.mark.parametrize("layout", ["bare", "wrapped", "indented"])
-def test_report_registry_supports_project_block_layouts_without_prose_inference(tmp_path, layout):
+def test_report_registry_supports_project_block_layouts_without_prose_inference(
+    tmp_path, layout
+):
     text = "- id: 'old.project' # archive\n  status: archived\n  name: 'Earlier\n    display name'\n  tags:\n  - irrelevant\n  superseded_by: \"new.project\"\n- id: new.project\n  status: paused\n"
     if layout == "wrapped":
         text = "initiatives:\n- id: old.project\n  status: active\nprojects:\n" + text
     elif layout == "indented":
-        text = "projects:\n" + "\n".join("  " + line for line in text.splitlines()) + "\n"
+        text = (
+            "projects:\n" + "\n".join("  " + line for line in text.splitlines()) + "\n"
+        )
     index = report_index(tmp_path, text)
     label, route = MODULE.report_recipient([], "old.project sessions", index)
     assert label == "new.project sessions"
@@ -2511,7 +2632,14 @@ def test_invalid_explicit_report_registry_cannot_use_free_address(tmp_path, caps
     board = tmp_path / "board.md"
     board.write_text(MODULE.template())
     before = board.read_bytes()
-    message = args(board, sender="fixture", to="old-project", text="Fixture report", free_address=True, project_index=tmp_path / "missing.yaml")
+    message = args(
+        board,
+        sender="fixture",
+        to="old-project",
+        text="Fixture report",
+        free_address=True,
+        project_index=tmp_path / "missing.yaml",
+    )
     assert MODULE.command_message(message) == 10
     assert board.read_bytes() == before
     assert "recipient" in capsys.readouterr().err
@@ -2520,8 +2648,14 @@ def test_invalid_explicit_report_registry_cannot_use_free_address(tmp_path, caps
 @pytest.fixture
 def metadata_worktrees(tmp_path):
     root = staged_repository(tmp_path)
-    for name in ("projects/index.yaml", "projects/item/CONTEXT.md", "projects/item/REFERENCE.md",
-                 "projects/item/CURRENT_STATE.json", "projects/item/resources/a.md", "src/main.py"):
+    for name in (
+        "projects/index.yaml",
+        "projects/item/CONTEXT.md",
+        "projects/item/REFERENCE.md",
+        "projects/item/CURRENT_STATE.json",
+        "projects/item/resources/a.md",
+        "src/main.py",
+    ):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("Fixture\n")
@@ -2534,41 +2668,65 @@ def metadata_worktrees(tmp_path):
 
 def scope_module():
     import claim_scope
+
     return claim_scope
 
 
-def test_logical_metadata_claim_is_refused_before_board_admission(metadata_worktrees, tmp_path):
+def test_logical_metadata_claim_is_refused_before_board_admission(
+    metadata_worktrees, tmp_path
+):
     root, sibling = metadata_worktrees
     board = tmp_path / "board.md"
-    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area=f"{root}/projects/index.yaml")
-    second = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=f"{sibling}/projects/index.yaml")
+    first = claim_args(
+        board,
+        session_id="A",
+        project="first",
+        workspace=f"{root} @ main",
+        area=f"{root}/projects/index.yaml",
+    )
+    second = claim_args(
+        board,
+        session_id="B",
+        project="second",
+        workspace=f"{sibling} @ sibling",
+        area=f"{sibling}/projects/index.yaml",
+    )
     assert MODULE.command_claim(first) == 0
     before = board.read_bytes()
     assert MODULE.command_claim(second) == 10
     assert board.read_bytes() == before
 
 
-@pytest.mark.parametrize("left,right,expected", [
-    ("projects/index.yaml", "projects/index.yaml", True),
-    ("projects/item/CONTEXT.md", "projects/item/CONTEXT.md", True),
-    ("projects/item/CURRENT_STATE.json", "projects/item/CURRENT_STATE.json", True),
-    ("projects/item/CONTEXT.md", "projects/item/REFERENCE.md", False),
-    ("projects/item/resources/a.md", "projects/item/resources/b.md", False),
-    ("projects/item/**", "projects/item/REFERENCE.md", True),
-    ("projects/**", "projects/index.yaml", True),
-    ("**", "projects/index.yaml", True),
-    ("projects/*/CONTEXT.md", "projects/item/REFERENCE.md", False),
-    ("projects/*/CONTEXT.md", "projects/item/CONTEXT.md", True),
-    ("projects/item/resources/*.md", "projects/item/resources/*.py", False),
-    ("projects/item/resources/[ab].md", "projects/item/resources/[bc].md", True),
-    ("projects/item/resources/[ab].md", "projects/item/resources/[cd].md", False),
-    ("projects/item/resources/*.md", "projects/item/resources/nested/a.md", False),
-    ("projects/item/resources/**/*.md", "projects/item/resources/nested/a.md", True),
-    ("projects/item", "projects/item-other/CONTEXT.md", False),
-    ("src/main.py", "src/main.py", False),
-    ("src/**", "src/**", False),
-])
-def test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work(metadata_worktrees, left, right, expected):
+@pytest.mark.parametrize(
+    "left,right,expected",
+    [
+        ("projects/index.yaml", "projects/index.yaml", True),
+        ("projects/item/CONTEXT.md", "projects/item/CONTEXT.md", True),
+        ("projects/item/CURRENT_STATE.json", "projects/item/CURRENT_STATE.json", True),
+        ("projects/item/CONTEXT.md", "projects/item/REFERENCE.md", False),
+        ("projects/item/resources/a.md", "projects/item/resources/b.md", False),
+        ("projects/item/**", "projects/item/REFERENCE.md", True),
+        ("projects/**", "projects/index.yaml", True),
+        ("**", "projects/index.yaml", True),
+        ("projects/*/CONTEXT.md", "projects/item/REFERENCE.md", False),
+        ("projects/*/CONTEXT.md", "projects/item/CONTEXT.md", True),
+        ("projects/item/resources/*.md", "projects/item/resources/*.py", False),
+        ("projects/item/resources/[ab].md", "projects/item/resources/[bc].md", True),
+        ("projects/item/resources/[ab].md", "projects/item/resources/[cd].md", False),
+        ("projects/item/resources/*.md", "projects/item/resources/nested/a.md", False),
+        (
+            "projects/item/resources/**/*.md",
+            "projects/item/resources/nested/a.md",
+            True,
+        ),
+        ("projects/item", "projects/item-other/CONTEXT.md", False),
+        ("src/main.py", "src/main.py", False),
+        ("src/**", "src/**", False),
+    ],
+)
+def test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work(
+    metadata_worktrees, left, right, expected
+):
     root, sibling = metadata_worktrees
     scope = scope_module()
     left, right = str(root / left), str(sibling / right)
@@ -2576,18 +2734,30 @@ def test_shared_claim_scope_is_symmetric_and_preserves_disjoint_work(metadata_wo
     assert scope.claim_conflicts(right, left) is expected
 
 
-def test_metadata_relative_and_symlink_spellings_use_verified_checkout(metadata_worktrees, tmp_path):
+def test_metadata_relative_and_symlink_spellings_use_verified_checkout(
+    metadata_worktrees, tmp_path
+):
     root, sibling = metadata_worktrees
     scope = scope_module()
     alias = tmp_path / "alias"
     alias.symlink_to(sibling, target_is_directory=True)
-    assert scope.claim_conflicts("projects/index.yaml", str(alias / "projects/index.yaml"), left_workspaces=[f"{root} @ main"])
-    assert scope.claim_conflicts(f"{root.name}/projects/index.yaml", "projects/index.yaml",
-        left_workspaces=[f"{root} @ main"], right_workspaces=[f"{alias} @ sibling"])
+    assert scope.claim_conflicts(
+        "projects/index.yaml",
+        str(alias / "projects/index.yaml"),
+        left_workspaces=[f"{root} @ main"],
+    )
+    assert scope.claim_conflicts(
+        f"{root.name}/projects/index.yaml",
+        "projects/index.yaml",
+        left_workspaces=[f"{root} @ main"],
+        right_workspaces=[f"{alias} @ sibling"],
+    )
 
 
 @pytest.mark.parametrize("kind", ["missing", "ambiguous", "forged"])
-def test_metadata_identity_failure_cannot_be_treated_as_disjoint(metadata_worktrees, tmp_path, kind):
+def test_metadata_identity_failure_cannot_be_treated_as_disjoint(
+    metadata_worktrees, tmp_path, kind
+):
     root, sibling = metadata_worktrees
     scope = scope_module()
     claim = str(tmp_path / "missing/projects/index.yaml")
@@ -2601,24 +2771,49 @@ def test_metadata_identity_failure_cannot_be_treated_as_disjoint(metadata_worktr
         (fake / ".git").write_text(f"gitdir: {root / '.git'}\n")
         claim = str(fake / "projects/index.yaml")
     with pytest.raises(scope.ClaimIdentityError):
-        scope.claim_conflicts(str(root / "projects/index.yaml"), claim, right_workspaces=workspaces)
+        scope.claim_conflicts(
+            str(root / "projects/index.yaml"), claim, right_workspaces=workspaces
+        )
 
 
-def test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims(metadata_worktrees):
+def test_possible_repair_scope_is_explicitly_broader_than_exact_resource_claims(
+    metadata_worktrees,
+):
     root, sibling = metadata_worktrees
     scope = scope_module()
-    assert not scope.claim_conflicts(str(root / "projects/item/resources/a.md"), str(sibling / "projects/item/resources/b.md"))
-    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/item/resources/b.md"))
-    assert scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/index.yaml"))
-    assert not scope.project_claim_overlap(root / "projects/item", str(sibling / "projects/another/CONTEXT.md"))
+    assert not scope.claim_conflicts(
+        str(root / "projects/item/resources/a.md"),
+        str(sibling / "projects/item/resources/b.md"),
+    )
+    assert scope.project_claim_overlap(
+        root / "projects/item", str(sibling / "projects/item/resources/b.md")
+    )
+    assert scope.project_claim_overlap(
+        root / "projects/item", str(sibling / "projects/index.yaml")
+    )
+    assert not scope.project_claim_overlap(
+        root / "projects/item", str(sibling / "projects/another/CONTEXT.md")
+    )
 
 
 def test_shared_scope_preserves_physical_synthetic_paths_and_row_delimiters(tmp_path):
     scope = scope_module()
-    assert scope.claim_conflicts(str(tmp_path / "projects/item/**"), str(tmp_path / "projects/item/CONTEXT.md"))
-    assert not scope.claim_conflicts(str(tmp_path / "projects/first/CONTEXT.md"), str(tmp_path / "projects/second/CONTEXT.md"))
-    assert not scope.claim_conflicts("/missing/branch-a/src/**", "/missing/branch-b/src/**")
-    assert scope.split_values("`one`; **two**<br>three, four") == ["one", "two", "three", "four"]
+    assert scope.claim_conflicts(
+        str(tmp_path / "projects/item/**"), str(tmp_path / "projects/item/CONTEXT.md")
+    )
+    assert not scope.claim_conflicts(
+        str(tmp_path / "projects/first/CONTEXT.md"),
+        str(tmp_path / "projects/second/CONTEXT.md"),
+    )
+    assert not scope.claim_conflicts(
+        "/missing/branch-a/src/**", "/missing/branch-b/src/**"
+    )
+    assert scope.split_values("`one`; **two**<br>three, four") == [
+        "one",
+        "two",
+        "three",
+        "four",
+    ]
 
 
 def test_relative_source_scope_does_not_inherit_the_invoking_checkout():
@@ -2628,10 +2823,18 @@ def test_relative_source_scope_does_not_inherit_the_invoking_checkout():
 
 
 @pytest.mark.parametrize("register_sibling", [False, True])
-def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_worktrees, tmp_path, capsys, register_sibling):
+def test_logical_metadata_conflict_never_authorizes_sibling_checkout(
+    metadata_worktrees, tmp_path, capsys, register_sibling
+):
     root, sibling = metadata_worktrees
     board = tmp_path / "board.md"
-    request = claim_args(board, session_id="A", project="item", workspace=f"{root} @ main", area=f"{root}/projects/item/CONTEXT.md")
+    request = claim_args(
+        board,
+        session_id="A",
+        project="item",
+        workspace=f"{root} @ main",
+        area=f"{root}/projects/item/CONTEXT.md",
+    )
     if register_sibling:
         request.workspace.append(f"{sibling} @ sibling")
     assert MODULE.command_claim(request) == 0
@@ -2640,17 +2843,36 @@ def test_logical_metadata_conflict_never_authorizes_sibling_checkout(metadata_wo
     capsys.readouterr()
     assert MODULE.command_check_staged(check_staged_args(board, sibling)) == 10
     result = json.loads(capsys.readouterr().out)
-    assert result["enforcement_outcome"] == ("refused-outside-claim" if register_sibling else "refused-unregistered-worktree")
+    assert result["enforcement_outcome"] == (
+        "refused-outside-claim" if register_sibling else "refused-unregistered-worktree"
+    )
     assert not result["issues_authority_receipt"]
 
 
-@pytest.mark.parametrize("second,expected", [("metadata", 0), ("release-train:other", 0), ("release-train:fixture", 10)])
-def test_virtual_resources_never_use_filesystem_identity(metadata_worktrees, tmp_path, second, expected):
+@pytest.mark.parametrize(
+    "second,expected",
+    [("metadata", 0), ("release-train:other", 0), ("release-train:fixture", 10)],
+)
+def test_virtual_resources_never_use_filesystem_identity(
+    metadata_worktrees, tmp_path, second, expected
+):
     root, sibling = metadata_worktrees
     board = tmp_path / "board.md"
-    first = claim_args(board, session_id="A", project="first", workspace=f"{root} @ main", area="release-train:fixture")
+    first = claim_args(
+        board,
+        session_id="A",
+        project="first",
+        workspace=f"{root} @ main",
+        area="release-train:fixture",
+    )
     area = str(sibling / "projects/index.yaml") if second == "metadata" else second
-    later = claim_args(board, session_id="B", project="second", workspace=f"{sibling} @ sibling", area=area)
+    later = claim_args(
+        board,
+        session_id="B",
+        project="second",
+        workspace=f"{sibling} @ sibling",
+        area=area,
+    )
     assert MODULE.command_claim(first) == 0
     assert MODULE.command_claim(later) == expected
     scope = scope_module()
@@ -2660,12 +2882,18 @@ def test_virtual_resources_never_use_filesystem_identity(metadata_worktrees, tmp
 
 def test_public_overlap_api_uses_shared_logical_metadata_policy(metadata_worktrees):
     root, sibling = metadata_worktrees
-    assert MODULE.overlaps(str(root / "projects/index.yaml"), str(sibling / "projects/index.yaml"))
+    assert MODULE.overlaps(
+        str(root / "projects/index.yaml"), str(sibling / "projects/index.yaml")
+    )
     assert not MODULE.overlaps(str(root / "src/main.py"), str(sibling / "src/main.py"))
 
 
-@pytest.mark.parametrize("pattern", ["**", "pr?jects/index.yaml", "projects/index.yaml"])
-def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path, pattern):
+@pytest.mark.parametrize(
+    "pattern", ["**", "pr?jects/index.yaml", "projects/index.yaml"]
+)
+def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(
+    tmp_path, pattern
+):
     parent = tmp_path / "projects" / "container"
     parent.mkdir(parents=True)
     root = staged_repository(parent)
@@ -2683,7 +2911,9 @@ def test_metadata_namespace_is_relative_to_git_root_not_ancestor_names(tmp_path,
 
 @pytest.mark.parametrize("name", ["git-hooks", "agent-control"])
 @pytest.mark.parametrize("recursive", [False, True])
-def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata_worktrees, tmp_path, name, recursive):
+def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(
+    metadata_worktrees, tmp_path, name, recursive
+):
     root, _ = metadata_worktrees
     runtime = tmp_path / "home/.synthesis" / name
     runtime.mkdir(parents=True)
@@ -2694,18 +2924,45 @@ def test_existing_nonrepo_runtime_scope_can_be_admitted_beside_metadata(metadata
     assert not scope.claim_conflicts(metadata, str(runtime))
     assert not scope.claim_conflicts(str(runtime), metadata)
     board = tmp_path / "board.md"
-    assert MODULE.command_claim(claim_args(board, session_id="A", project="first",
-        workspace=f"{root} @ main", area=metadata)) == 0
-    assert MODULE.command_claim(claim_args(board, session_id="B", project="runtime",
-        workspace=f"{tmp_path / 'home'} @ runtime", area=str(runtime))) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="first",
+                workspace=f"{root} @ main",
+                area=metadata,
+            )
+        )
+        == 0
+    )
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="runtime",
+                workspace=f"{tmp_path / 'home'} @ runtime",
+                area=str(runtime),
+            )
+        )
+        == 0
+    )
 
 
 @pytest.mark.parametrize("recursive", [False, True])
-def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_worktrees, tmp_path, recursive):
+def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(
+    metadata_worktrees, tmp_path, recursive
+):
     root, _ = metadata_worktrees
     ancestor = tmp_path / "installation-container"
     ancestor.mkdir()
-    assert git(root, "worktree", "add", "-b", "nested", str(ancestor / "linked")).returncode == 0
+    assert (
+        git(
+            root, "worktree", "add", "-b", "nested", str(ancestor / "linked")
+        ).returncode
+        == 0
+    )
     if recursive:
         ancestor /= "**"
     scope = scope_module()
@@ -2714,8 +2971,13 @@ def test_nonrepo_ancestor_containing_linked_checkout_still_conflicts(metadata_wo
     assert scope.claim_conflicts(str(ancestor), metadata)
 
 
-@pytest.mark.parametrize("relative", [".gitconfig", ".codex/config.toml", ".synthesis/references/session-words.txt"])
-def test_existing_nonrepo_runtime_files_are_disjoint_from_metadata(metadata_worktrees, tmp_path, relative):
+@pytest.mark.parametrize(
+    "relative",
+    [".gitconfig", ".codex/config.toml", ".synthesis/references/session-words.txt"],
+)
+def test_existing_nonrepo_runtime_files_are_disjoint_from_metadata(
+    metadata_worktrees, tmp_path, relative
+):
     root, _ = metadata_worktrees
     runtime = tmp_path / "home" / relative
     runtime.parent.mkdir(parents=True, exist_ok=True)
@@ -2726,7 +2988,9 @@ def test_existing_nonrepo_runtime_files_are_disjoint_from_metadata(metadata_work
 
 
 @pytest.mark.parametrize("form", ["missing", "metadata", "glob", "broken-git"])
-def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(metadata_worktrees, tmp_path, form):
+def test_nonrepo_scope_exception_never_hides_unresolved_metadata_identity(
+    metadata_worktrees, tmp_path, form
+):
     root, _ = metadata_worktrees
     area = tmp_path / "ordinary"
     area.mkdir()
@@ -2820,15 +3084,18 @@ def test_claim_through_stale_area_overlap_is_granted_with_downgrade_record(
     tmp_path: Path, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
@@ -2850,15 +3117,18 @@ def test_claim_through_stale_area_overlap_is_granted_with_downgrade_record(
 
 def test_fresh_area_overlap_is_still_refused(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     newcomer = claim_args(
         board,
         session_id="B",
@@ -2869,21 +3139,22 @@ def test_fresh_area_overlap_is_still_refused(tmp_path: Path) -> None:
     assert MODULE.command_claim(newcomer) == 10
 
 
-def test_workspace_sharing_needs_no_downgrade_notice(
-    tmp_path: Path, capsys
-) -> None:
+def test_workspace_sharing_needs_no_downgrade_notice(tmp_path: Path, capsys) -> None:
     # Defect 2 dissolved the workspace lock, so sharing is legal on its own:
     # it earns a sharing banner, never a DOWNGRADE NOTICE (disjoint areas).
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/shared @ feature/a",
-            area="repo/backend/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/shared @ feature/a",
+                area="repo/backend/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
     capsys.readouterr()
@@ -2904,15 +3175,18 @@ def test_duplicate_owner_is_still_refused_when_existing_owner_is_stale(
     tmp_path: Path,
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="shared-project",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/a/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="shared-project",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/a/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
     newcomer = claim_args(
@@ -2927,15 +3201,18 @@ def test_duplicate_owner_is_still_refused_when_existing_owner_is_stale(
 
 def test_undated_heartbeat_keeps_blocking(tmp_path: Path) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, "not-a-date")
     newcomer = claim_args(
@@ -2953,27 +3230,33 @@ def test_revival_heartbeat_is_refused_when_claim_was_granted_through(
 ) -> None:
     board = tmp_path / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-b")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="B",
-            project="project-b",
-            workspace="/tmp/repo-b @ feature/b",
-            area="repo/shared/file.md",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="project-b",
+                workspace="/tmp/repo-b @ feature/b",
+                area="repo/shared/file.md",
+            )
         )
-    ) == 0
+        == 0
+    )
     capsys.readouterr()
 
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
@@ -2997,15 +3280,18 @@ def test_revival_heartbeat_is_accepted_without_collision(
 ) -> None:
     board = tmp_path / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:revival-a")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
@@ -3023,23 +3309,24 @@ def test_revival_heartbeat_is_accepted_without_collision(
 def test_downgrade_boundary_follows_the_two_day_threshold(
     tmp_path: Path,
 ) -> None:
-    just_old = (
-        datetime.now(timezone.utc) - timedelta(days=2, seconds=60)
-    ).isoformat()
+    just_old = (datetime.now(timezone.utc) - timedelta(days=2, seconds=60)).isoformat()
     just_fresh = (
         datetime.now(timezone.utc) - timedelta(days=2) + timedelta(seconds=60)
     ).isoformat()
     for heartbeat, expected in ((just_old, 0), (just_fresh, 10)):
         board = tmp_path / f"active-{expected}.md"
-        assert MODULE.command_claim(
-            claim_args(
-                board,
-                session_id="A",
-                project="project-a",
-                workspace="/tmp/repo-a @ feature/a",
-                area="repo/shared/**",
+        assert (
+            MODULE.command_claim(
+                claim_args(
+                    board,
+                    session_id="A",
+                    project="project-a",
+                    workspace="/tmp/repo-a @ feature/a",
+                    area="repo/shared/**",
+                )
             )
-        ) == 0
+            == 0
+        )
         [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
         age_session_heartbeat(board, holder.compact_id, heartbeat)
         newcomer = claim_args(
@@ -3054,15 +3341,18 @@ def test_downgrade_boundary_follows_the_two_day_threshold(
 
 def test_stale_marks_advisory_rows(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
@@ -3089,16 +3379,19 @@ def test_empty_seat_falls_back_to_matching_board_ref(
     # not block the proof the row carries. Exotic-scheme --client-ref still
     # mints such a seat (muse:/codex: refs populate it since the spike).
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        _claim_with_client_ref(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
-            client_ref="custom:holder",
+    assert (
+        MODULE.command_claim(
+            _claim_with_client_ref(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+                client_ref="custom:holder",
+            )
         )
-    ) == 0
+        == 0
+    )
     [row] = MODULE.rows(board.read_text(encoding="utf-8"))
     assert row.client_ref == "custom:holder"
     seat = MODULE.read_seat(board, row.session_uuid)
@@ -3113,16 +3406,19 @@ def test_empty_seat_still_refuses_wrong_and_missing_refs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        _claim_with_client_ref(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
-            client_ref="custom:holder",
+    assert (
+        MODULE.command_claim(
+            _claim_with_client_ref(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+                client_ref="custom:holder",
+            )
         )
-    ) == 0
+        == 0
+    )
 
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "custom:intruder")
     assert MODULE.command_heartbeat(args(board, id="A")) == 10
@@ -3135,15 +3431,18 @@ def test_identityless_caller_gets_export_hint(
 ) -> None:
     board = tmp_path / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF", raising=False)
 
     assert MODULE.command_heartbeat(args(board, id="A")) == 10
@@ -3155,15 +3454,18 @@ def test_mismatched_identity_keeps_generic_refusal(
 ) -> None:
     board = tmp_path / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:intruder")
 
     assert MODULE.command_heartbeat(args(board, id="A")) == 10
@@ -3204,15 +3506,18 @@ def test_duplicate_owner_refusal_annotates_both_sessions(
     tmp_path: Path, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="shared-project",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/a/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="shared-project",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/a/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     capsys.readouterr()
     newcomer = claim_args(
         board,
@@ -3230,22 +3535,42 @@ def test_annotation_degrades_to_bare_id_without_project_or_agent(
     tmp_path: Path,
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [row] = MODULE.rows(board.read_text(encoding="utf-8"))
     assert MODULE._tag(row) == f"{row.compact_id} (project-a · A)"
-    assert MODULE._tag(MODULE.Session(
-        session_uuid="", compact_id="s-x", speakable_id="", legacy_id="",
-        agent="", machine="", project="", started="", heartbeat="", mode="",
-        workspaces=[], goal="", claims=[], context_role="", status="active",
-    )) == "s-x"
+    assert (
+        MODULE._tag(
+            MODULE.Session(
+                session_uuid="",
+                compact_id="s-x",
+                speakable_id="",
+                legacy_id="",
+                agent="",
+                machine="",
+                project="",
+                started="",
+                heartbeat="",
+                mode="",
+                workspaces=[],
+                goal="",
+                claims=[],
+                context_role="",
+                status="active",
+            )
+        )
+        == "s-x"
+    )
 
 
 # --- merge by default, narrow verb (ruling B) --------------------------------
@@ -3256,18 +3581,26 @@ def _claims_of(board: Path):
     return row
 
 
-def test_reclaim_merges_areas_by_default(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reclaim_merges_areas_by_default(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Ruling B: a re-claim grows the held set; omission never shrinks it."""
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     second = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/b.md",
     )
     capsys.readouterr()
     assert MODULE.command_claim(second) == 0
@@ -3277,17 +3610,25 @@ def test_reclaim_merges_areas_by_default(tmp_path: Path, capsys, monkeypatch: py
     assert "merge added 1 new area(s)" in out
 
 
-def test_reclaim_merges_workspaces_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reclaim_merges_workspaces_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     second = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-b @ feature/b", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-b @ feature/b",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(second) == 0
     row = _claims_of(board)
@@ -3295,60 +3636,97 @@ def test_reclaim_merges_workspaces_by_default(tmp_path: Path, monkeypatch: pytes
     assert row.workspaces == ["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"]
 
 
-def test_reclaim_dedupes_and_keeps_first_seen_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reclaim_dedupes_and_keeps_first_seen_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    MODULE.command_claim(args(
-        board, id=row.compact_id, agent="A", machine="machine-A",
-        project="project-a", mode="autonomous", goal="goal-A",
-        workspace=["/tmp/repo-a @ feature/a"],
-        area=["scope/a.md", "scope/b.md", "scope/a.md"],
-        context_role="owner",
-    ))
+    MODULE.command_claim(
+        args(
+            board,
+            id=row.compact_id,
+            agent="A",
+            machine="machine-A",
+            project="project-a",
+            mode="autonomous",
+            goal="goal-A",
+            workspace=["/tmp/repo-a @ feature/a"],
+            area=["scope/a.md", "scope/b.md", "scope/a.md"],
+            context_role="owner",
+        )
+    )
     assert _claims_of(board).claims == ["scope/a.md", "scope/b.md"]
 
 
-def test_reclaim_identical_scope_reports_heartbeat(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reclaim_identical_scope_reports_heartbeat(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     capsys.readouterr()
-    assert MODULE.command_claim(claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="scope/a.md",
+            )
+        )
+        == 0
+    )
     assert "already held exactly this scope" in capsys.readouterr().out
     assert _claims_of(board).claims == ["scope/a.md"]
 
 
-def test_claim_replace_resets_scope_and_names_drops(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_claim_replace_resets_scope_and_names_drops(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     second = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/b.md",
     )
     assert MODULE.command_claim(second) == 0
     assert _claims_of(board).claims == ["scope/a.md", "scope/b.md"]
     capsys.readouterr()
     reset = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/c.md", replace=True,
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/c.md",
+        replace=True,
     )
     assert MODULE.command_claim(reset) == 0
     out = capsys.readouterr().out
@@ -3357,27 +3735,46 @@ def test_claim_replace_resets_scope_and_names_drops(tmp_path: Path, capsys, monk
     assert "scope/a.md" in out and "scope/b.md" in out
 
 
-def test_narrow_releases_named_areas_and_reports(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_narrow_releases_named_areas_and_reports(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    MODULE.command_claim(args(
-        board, id=row.compact_id, agent="A", machine="machine-A",
-        project="project-a", mode="autonomous", goal="goal-A",
-        workspace=["/tmp/repo-a @ feature/a"],
-        area=["scope/b.md", "scope/c.md"],
-        context_role="owner",
-    ))
+    MODULE.command_claim(
+        args(
+            board,
+            id=row.compact_id,
+            agent="A",
+            machine="machine-A",
+            project="project-a",
+            mode="autonomous",
+            goal="goal-A",
+            workspace=["/tmp/repo-a @ feature/a"],
+            area=["scope/b.md", "scope/c.md"],
+            context_role="owner",
+        )
+    )
     assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
     capsys.readouterr()
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id, area=["scope/b.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                area=["scope/b.md"],
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
     assert "Released 1 area(s): scope/b.md" in out
@@ -3398,28 +3795,55 @@ def _ticking_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(MODULE, "timestamp", _next)
 
 
-def test_narrow_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_narrow_updates_seat_with_row_heartbeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """BUG-1/F1: narrow must not diverge the seat from the board row."""
     board = tmp_path / "coordination" / "active-sessions.md"
     _ticking_clock(monkeypatch)
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
-    assert MODULE.command_claim(claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="scope/a.md",
+            )
+        )
+        == 0
+    )
     row = _claims_of(board)
-    assert MODULE.command_claim(args(
-        board, id=row.compact_id, agent="A", machine="machine-A",
-        project="project-a", mode="autonomous", goal="goal-A",
-        workspace=["/tmp/repo-a @ feature/a"],
-        area=["scope/b.md"],
-        context_role="owner",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            args(
+                board,
+                id=row.compact_id,
+                agent="A",
+                machine="machine-A",
+                project="project-a",
+                mode="autonomous",
+                goal="goal-A",
+                workspace=["/tmp/repo-a @ feature/a"],
+                area=["scope/b.md"],
+                context_role="owner",
+            )
+        )
+        == 0
+    )
     before = MODULE.read_seat(board, _claims_of(board).session_uuid)
     assert before is not None
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id, release=["scope/b.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                release=["scope/b.md"],
+            )
+        )
+        == 0
+    )
     after_row = _claims_of(board)
     after_seat = MODULE.read_seat(board, after_row.session_uuid)
     assert after_row.claims == ["scope/a.md"]
@@ -3428,41 +3852,71 @@ def test_narrow_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pyt
     assert after_seat.last_heartbeat != before.last_heartbeat
 
 
-def test_narrow_releases_named_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_narrow_releases_named_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    MODULE.command_claim(args(
-        board, id=row.compact_id, agent="A", machine="machine-A",
-        project="project-a", mode="autonomous", goal="goal-A",
-        workspace=["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"],
-        area=["scope/a.md"],
-        context_role="owner",
-    ))
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id,
-        workspace=["/tmp/repo-a @ feature/a"],
-    )) == 0
+    MODULE.command_claim(
+        args(
+            board,
+            id=row.compact_id,
+            agent="A",
+            machine="machine-A",
+            project="project-a",
+            mode="autonomous",
+            goal="goal-A",
+            workspace=["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"],
+            area=["scope/a.md"],
+            context_role="owner",
+        )
+    )
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                workspace=["/tmp/repo-a @ feature/a"],
+            )
+        )
+        == 0
+    )
     assert _claims_of(board).workspaces == ["/tmp/repo-b @ feature/b"]
 
 
-def test_narrow_refuses_unheld_target_and_changes_nothing(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_narrow_refuses_unheld_target_and_changes_nothing(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id, area=["scope/typo.md"],
-    )) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                area=["scope/typo.md"],
+            )
+        )
+        == 10
+    )
     assert _claims_of(board).claims == ["scope/a.md"]
     assert "scope/typo.md" in capsys.readouterr().err
 
@@ -3470,27 +3924,34 @@ def test_narrow_refuses_unheld_target_and_changes_nothing(tmp_path: Path, capsys
 def test_narrow_refuses_without_target(tmp_path: Path) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    assert MODULE.command_narrow(
-        narrow_args(board, session_id=row.compact_id)
-    ) == 10
+    assert MODULE.command_narrow(narrow_args(board, session_id=row.compact_id)) == 10
     assert _claims_of(board).claims == ["scope/a.md"]
 
 
 def test_narrow_refuses_unknown_session(tmp_path: Path) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
-    assert MODULE.command_narrow(
-        narrow_args(board, session_id="s-nonexistent", area=["scope/a.md"])
-    ) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(board, session_id="s-nonexistent", area=["scope/a.md"])
+        )
+        == 10
+    )
 
 
 def test_narrow_refuses_foreign_row(
@@ -3501,38 +3962,68 @@ def test_narrow_refuses_foreign_row(
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-a")
     monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local-shared")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/worktree-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/worktree-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     [before] = MODULE.rows(board.read_text(encoding="utf-8"))
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-b")
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=before.compact_id, area=["scope/a.md"],
-    )) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=before.compact_id,
+                area=["scope/a.md"],
+            )
+        )
+        == 10
+    )
     [after] = MODULE.rows(board.read_text(encoding="utf-8"))
     assert after.claims == before.claims
 
 
-def test_narrow_to_empty_is_allowed_and_recoverable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_narrow_to_empty_is_allowed_and_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A parked seat keeps identity and heartbeat; merge re-adds trivially."""
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id, area=["scope/a.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                area=["scope/a.md"],
+            )
+        )
+        == 0
+    )
     assert _claims_of(board).claims == []
-    assert MODULE.command_claim(claim_args(
-        board, session_id=row.compact_id, project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/b.md",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id=row.compact_id,
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="scope/b.md",
+            )
+        )
+        == 0
+    )
     assert _claims_of(board).claims == ["scope/b.md"]
 
 
@@ -3540,18 +4031,28 @@ def _three_area_row(board: Path, monkeypatch: pytest.MonkeyPatch):
     """Claim one row holding scope/{a,b,c}.md; return its compact id."""
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
-    MODULE.command_claim(args(
-        board, id=row.compact_id, agent="A", machine="machine-A",
-        project="project-a", mode="autonomous", goal="goal-A",
-        workspace=["/tmp/repo-a @ feature/a"],
-        area=["scope/a.md", "scope/b.md", "scope/c.md"],
-        context_role="owner",
-    ))
+    MODULE.command_claim(
+        args(
+            board,
+            id=row.compact_id,
+            agent="A",
+            machine="machine-A",
+            project="project-a",
+            mode="autonomous",
+            goal="goal-A",
+            workspace=["/tmp/repo-a @ feature/a"],
+            area=["scope/a.md", "scope/b.md", "scope/c.md"],
+            context_role="owner",
+        )
+    )
     assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
     return row.compact_id
 
@@ -3562,9 +4063,16 @@ def test_narrow_release_spelling_releases_without_banner(
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
     capsys.readouterr()
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id, release=["scope/b.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                release=["scope/b.md"],
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
     assert "Released 1 area(s): scope/b.md" in out
@@ -3578,9 +4086,16 @@ def test_narrow_area_alias_names_the_release_sense(
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
     capsys.readouterr()
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id, area=["scope/b.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                area=["scope/b.md"],
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert _claims_of(board).claims == ["scope/a.md", "scope/c.md"]
     assert "name what to RELEASE" in out
@@ -3593,9 +4108,16 @@ def test_narrow_keep_releases_the_complement(
     """BUG-2: the reporter's repro — name what to keep, shed the rest."""
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id, keep=["scope/a.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                keep=["scope/a.md"],
+            )
+        )
+        == 0
+    )
     assert _claims_of(board).claims == ["scope/a.md"]
 
 
@@ -3604,13 +4126,28 @@ def test_narrow_keep_refuses_unheld_target_and_mixed_forms(
 ) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id, keep=["scope/typo.md"],
-    )) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                keep=["scope/typo.md"],
+            )
+        )
+        == 10
+    )
     assert "does not hold" in capsys.readouterr().err
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id, release=["scope/b.md"], keep=["scope/a.md"],
-    )) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                release=["scope/b.md"],
+                keep=["scope/a.md"],
+            )
+        )
+        == 10
+    )
     assert "not both" in capsys.readouterr().err
     assert _claims_of(board).claims == ["scope/a.md", "scope/b.md", "scope/c.md"]
 
@@ -3620,10 +4157,16 @@ def test_narrow_keep_covering_everything_is_refused(
 ) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id,
-        keep=["scope/a.md", "scope/b.md", "scope/c.md"],
-    )) == 10
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                keep=["scope/a.md", "scope/b.md", "scope/c.md"],
+            )
+        )
+        == 10
+    )
     assert "nothing to release" in capsys.readouterr().err
 
 
@@ -3633,10 +4176,16 @@ def test_narrow_to_zero_areas_warns_loudly_first(
     board = tmp_path / "coordination" / "active-sessions.md"
     compact_id = _three_area_row(board, monkeypatch)
     capsys.readouterr()
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=compact_id,
-        release=["scope/a.md", "scope/b.md", "scope/c.md"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=compact_id,
+                release=["scope/a.md", "scope/b.md", "scope/c.md"],
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert _claims_of(board).claims == []
     assert out.startswith("WARNING: this narrow leaves the seat with no areas.")
@@ -3648,16 +4197,25 @@ def test_narrow_releasing_every_workspace_warns_loudly(
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:owner-a")
     first = claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/repo-a @ feature/a", area="scope/a.md",
+        board,
+        session_id="A",
+        project="project-a",
+        workspace="/tmp/repo-a @ feature/a",
+        area="scope/a.md",
     )
     assert MODULE.command_claim(first) == 0
     row = _claims_of(board)
     capsys.readouterr()
-    assert MODULE.command_narrow(narrow_args(
-        board, session_id=row.compact_id,
-        release_workspace=["/tmp/repo-a @ feature/a"],
-    )) == 0
+    assert (
+        MODULE.command_narrow(
+            narrow_args(
+                board,
+                session_id=row.compact_id,
+                release_workspace=["/tmp/repo-a @ feature/a"],
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert _claims_of(board).workspaces == []
     assert "WARNING: this narrow releases every workspace." in out
@@ -3667,10 +4225,18 @@ def test_passive_cache_hit_skips_fetch_and_dies_on_mutation(tmp_path, monkeypatc
     """A fresh stamp serves the passive observer without fetch; any mutation kills it."""
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:cache-observer")
     [board] = lease_machines(tmp_path, count=1)
-    assert MODULE.command_claim(claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/worktree-a @ feature/a", area="/repos/shared/**",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/worktree-a @ feature/a",
+                area="/repos/shared/**",
+            )
+        )
+        == 0
+    )
     fetches = []
     original_fetch = MODULE.lease_fetch
 
@@ -3693,7 +4259,9 @@ def test_passive_cache_hit_skips_fetch_and_dies_on_mutation(tmp_path, monkeypatc
     assert len(fetches) == 1, "post-mutation refresh must re-fetch"
 
 
-@pytest.mark.parametrize("serialized", [True, False], ids=["fixed", "old-positive-control"])
+@pytest.mark.parametrize(
+    "serialized", [True, False], ids=["fixed", "old-positive-control"]
+)
 def test_cached_refresh_cannot_resurrect_stale_board(
     tmp_path: Path, monkeypatch, serialized: bool
 ) -> None:
@@ -3704,10 +4272,18 @@ def test_cached_refresh_cannot_resurrect_stale_board(
     """
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:cache-writer")
     [board] = lease_machines(tmp_path, count=1)
-    assert MODULE.command_claim(claim_args(
-        board, session_id="A", project="project-a",
-        workspace="/tmp/worktree-a @ feature/a", area="/repos/shared/**",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/worktree-a @ feature/a",
+                area="/repos/shared/**",
+            )
+        )
+        == 0
+    )
     MODULE._invalidate_lease_stamp(board)
     fetched = threading.Event()
     continue_refresh = threading.Event()
@@ -3758,10 +4334,18 @@ def test_cached_refresh_cannot_resurrect_stale_board(
     def writer():
         try:
             assert MODULE.command_release(args(board, id="A")) == 0
-            assert MODULE.command_claim(claim_args(
-                board, session_id="B", project="project-b",
-                workspace="/tmp/worktree-b @ feature/b", area="/repos/shared/**",
-            )) == 0
+            assert (
+                MODULE.command_claim(
+                    claim_args(
+                        board,
+                        session_id="B",
+                        project="project-b",
+                        workspace="/tmp/worktree-b @ feature/b",
+                        area="/repos/shared/**",
+                    )
+                )
+                == 0
+            )
         except BaseException as exc:
             failures.append(exc)
         finally:
@@ -3826,7 +4410,10 @@ def succeed_args(
 
 def _park_row(board: Path, compact_id: str) -> None:
     text = board.read_text(encoding="utf-8")
-    board.write_text(MODULE.park_session(text, compact_id, basis="operator", actor="fixture"), encoding="utf-8")
+    board.write_text(
+        MODULE.park_session(text, compact_id, basis="operator", actor="fixture"),
+        encoding="utf-8",
+    )
 
 
 def test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest(
@@ -3837,33 +4424,77 @@ def test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest(
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-parked")
-    assert MODULE.command_claim(
-        claim_args(board, session_id="A", project="project-a",
-                   workspace="/tmp/repo-a @ feature/a", area="release-train:x")
-    ) == 0
-    assert MODULE.command_claim(
-        claim_args(board, session_id="A", project="project-a",
-                   workspace="/tmp/repo-a @ feature/a", area="repo/shared/kept.md")
-    ) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="release-train:x",
+            )
+        )
+        == 0
+    )
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/kept.md",
+            )
+        )
+        == 0
+    )
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
-    assert MODULE.command_claim(
-        claim_args(board, session_id="B", project="project-b",
-                   workspace="/tmp/repo-b @ feature/b", area="repo/other/held.md")
-    ) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="project-b",
+                workspace="/tmp/repo-b @ feature/b",
+                area="repo/other/held.md",
+            )
+        )
+        == 0
+    )
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     holder = next(s for s in sessions if s.legacy_id == "A")
     heir = next(s for s in sessions if s.legacy_id == "B")
     # A fresh, unparked row refuses even with --only.
-    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])) == 10
+    assert (
+        MODULE.command_succeed(
+            succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])
+        )
+        == 10
+    )
     assert "is live" in capsys.readouterr().err
     _park_row(board, holder.compact_id)
     # An area the row does not hold refuses with nothing changed.
-    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["repo/nope.md"])) == 10
+    assert (
+        MODULE.command_succeed(
+            succeed_args(board, from_id="A", session_id="B", only=["repo/nope.md"])
+        )
+        == 10
+    )
     assert "does not hold" in capsys.readouterr().err
     # --only without --session refuses.
-    assert MODULE.command_succeed(succeed_args(board, from_id="A", only=["release-train:x"])) == 10
+    assert (
+        MODULE.command_succeed(
+            succeed_args(board, from_id="A", only=["release-train:x"])
+        )
+        == 10
+    )
     assert "pass --session" in capsys.readouterr().err
-    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])) == 0
+    assert (
+        MODULE.command_succeed(
+            succeed_args(board, from_id="A", session_id="B", only=["release-train:x"])
+        )
+        == 0
+    )
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     parked = next(s for s in sessions if s.compact_id == holder.compact_id)
     grown = next(s for s in sessions if s.compact_id == heir.compact_id)
@@ -3883,26 +4514,49 @@ def test_succeed_only_moves_named_areas_from_a_parked_row_and_keeps_the_rest(
     assert MODULE.validate_sessions(sessions) == []
 
 
-def test_succeed_takes_a_parked_row_in_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_succeed_takes_a_parked_row_in_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-parked")
-    assert MODULE.command_claim(
-        claim_args(board, session_id="A", project="project-a",
-                   workspace="/tmp/repo-a @ feature/a", area="repo/shared/dead.md")
-    ) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/dead.md",
+            )
+        )
+        == 0
+    )
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
-    assert MODULE.command_claim(
-        claim_args(board, session_id="B", project="project-b",
-                   workspace="/tmp/repo-b @ feature/b", area="repo/other/held.md")
-    ) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="project-b",
+                workspace="/tmp/repo-b @ feature/b",
+                area="repo/other/held.md",
+            )
+        )
+        == 0
+    )
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     holder = next(s for s in sessions if s.legacy_id == "A")
     _park_row(board, holder.compact_id)
     assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B")) == 0
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
-    assert next(s for s in sessions if s.compact_id == holder.compact_id).status == "released"
-    assert "repo/shared/dead.md" in next(s for s in sessions if s.legacy_id == "B").claims
+    assert (
+        next(s for s in sessions if s.compact_id == holder.compact_id).status
+        == "released"
+    )
+    assert (
+        "repo/shared/dead.md" in next(s for s in sessions if s.legacy_id == "B").claims
+    )
 
 
 def test_succeed_allocates_successor_holding_dead_seat_scope(
@@ -3911,22 +4565,30 @@ def test_succeed_allocates_successor_holding_dead_seat_scope(
     board = tmp_path / "active-sessions.md"
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
     assert MODULE.read_seat(board, holder.session_uuid) is not None
 
-    assert MODULE.command_succeed(
-        succeed_args(board, from_id=holder.compact_id, client_ref="codex:successor-b")
-    ) == 0
+    assert (
+        MODULE.command_succeed(
+            succeed_args(
+                board, from_id=holder.compact_id, client_ref="codex:successor-b"
+            )
+        )
+        == 0
+    )
     out = capsys.readouterr().out
     assert "succeed" in out.lower() or "SUCCESSION" in out
     assert holder.compact_id in out
@@ -3964,33 +4626,37 @@ def test_succeed_merges_dead_areas_into_owned_row(
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/dead.md",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/dead.md",
+            )
         )
-    ) == 0
+        == 0
+    )
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-heir")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="B",
-            project="project-b",
-            workspace="/tmp/repo-b @ feature/b",
-            area="repo/other/held.md",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="project-b",
+                workspace="/tmp/repo-b @ feature/b",
+                area="repo/other/held.md",
+            )
         )
-    ) == 0
+        == 0
+    )
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     holder = next(s for s in sessions if s.legacy_id == "A")
     heir = next(s for s in sessions if s.legacy_id == "B")
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
-    assert MODULE.command_succeed(
-        succeed_args(board, from_id="A", session_id="B")
-    ) == 0
+    assert MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B")) == 0
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     dead = next(s for s in sessions if s.compact_id == holder.compact_id)
     assert dead.status == "released"
@@ -4012,15 +4678,18 @@ def test_succeed_refuses_live_seat_and_duplicate_live_owners_still_refuse(
     tmp_path: Path, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="shared-project",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/a/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="shared-project",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/a/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
 
     assert MODULE.command_succeed(succeed_args(board, from_id="A")) == 10
@@ -4044,15 +4713,18 @@ def test_succeed_refuses_live_seat_and_duplicate_live_owners_still_refuse(
 
 def test_succeed_refuses_undated_heartbeat(tmp_path: Path, capsys) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, "not-a-date")
 
@@ -4068,26 +4740,32 @@ def test_succeed_refuses_when_scope_collides_with_third_live_seat(
     tmp_path: Path, capsys
 ) -> None:
     board = tmp_path / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="C",
-            project="project-c",
-            workspace="/tmp/repo-c @ feature/c",
-            area="repo/shared/file.md",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="C",
+                project="project-c",
+                workspace="/tmp/repo-c @ feature/c",
+                area="repo/shared/file.md",
+            )
         )
-    ) == 0
+        == 0
+    )
     capsys.readouterr()
 
     assert MODULE.command_succeed(succeed_args(board, from_id="A")) == 10
@@ -4105,34 +4783,40 @@ def test_succeed_refuses_unowned_successor_row(
     board = tmp_path / "coordination" / "active-sessions.md"
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-dead")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-other")
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="B",
-            project="project-b",
-            workspace="/tmp/repo-b @ feature/b",
-            area="repo/other/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="B",
+                project="project-b",
+                workspace="/tmp/repo-b @ feature/b",
+                area="repo/other/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = [
         s for s in MODULE.rows(board.read_text(encoding="utf-8")) if s.legacy_id == "A"
     ]
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "harness-intruder")
-    assert MODULE.command_succeed(
-        succeed_args(board, from_id="A", session_id="B")
-    ) == 10
+    assert (
+        MODULE.command_succeed(succeed_args(board, from_id="A", session_id="B")) == 10
+    )
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     assert sorted(s.status for s in sessions) == ["active", "active"]
     assert "SUCCESSION NOTICE" not in board.read_text(encoding="utf-8")
@@ -4140,15 +4824,18 @@ def test_succeed_refuses_unowned_successor_row(
 
 def test_concurrent_succeed_has_single_winner(tmp_path: Path) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
-    assert MODULE.command_claim(
-        claim_args(
-            board,
-            session_id="A",
-            project="project-a",
-            workspace="/tmp/repo-a @ feature/a",
-            area="repo/shared/**",
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="A",
+                project="project-a",
+                workspace="/tmp/repo-a @ feature/a",
+                area="repo/shared/**",
+            )
         )
-    ) == 0
+        == 0
+    )
     [holder] = MODULE.rows(board.read_text(encoding="utf-8"))
     age_session_heartbeat(board, holder.compact_id, DOWNGRADE_STALE_HEARTBEAT)
 
@@ -4183,11 +4870,7 @@ def test_concurrent_succeed_has_single_winner(tmp_path: Path) -> None:
     sessions = MODULE.rows(board.read_text(encoding="utf-8"))
     dead = next(s for s in sessions if s.compact_id == holder.compact_id)
     assert dead.status == "released"
-    holders = [
-        s
-        for s in sessions
-        if MODULE.active(s) and "repo/shared/**" in s.claims
-    ]
+    holders = [s for s in sessions if MODULE.active(s) and "repo/shared/**" in s.claims]
     assert len(holders) == 1
     assert board.read_text(encoding="utf-8").count("SUCCESSION NOTICE") == 1
     assert MODULE.validate_sessions(sessions) == []
@@ -4196,6 +4879,7 @@ def test_concurrent_succeed_has_single_winner(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 # S13 layers 2-3: release requests, the honor pass, idle-holder escalation.
 # --------------------------------------------------------------------------
+
 
 def _row_by_project(board: Path, project: str):
     for row in MODULE.rows(board.read_text(encoding="utf-8")):
@@ -4207,25 +4891,48 @@ def _row_by_project(board: Path, project: str):
 def _claim_holder_requester(board, root, monkeypatch):
     """Holder owns root/claimed/**; requester owns an unrelated area."""
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
-    assert MODULE.command_claim(claim_args(
-        board, session_id="H", project="project-h",
-        workspace=f"{root} @ main", area=f"{root}/claimed/**",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="H",
+                project="project-h",
+                workspace=f"{root} @ main",
+                area=f"{root}/claimed/**",
+            )
+        )
+        == 0
+    )
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
-    assert MODULE.command_claim(claim_args(
-        board, session_id="Q", project="project-q",
-        workspace="/tmp/repo-q @ main", area="elsewhere/**",
-    )) == 0
+    assert (
+        MODULE.command_claim(
+            claim_args(
+                board,
+                session_id="Q",
+                project="project-q",
+                workspace="/tmp/repo-q @ main",
+                area="elsewhere/**",
+            )
+        )
+        == 0
+    )
     return _row_by_project(board, "project-h"), _row_by_project(board, "project-q")
 
 
 def _request(board, holder_compact: str, area: str, reason: str = "need it") -> int:
-    return MODULE.command_request_narrow(args(
-        board, holder=holder_compact, area=[area], reason=reason,
-    ))
+    return MODULE.command_request_narrow(
+        args(
+            board,
+            holder=holder_compact,
+            area=[area],
+            reason=reason,
+        )
+    )
 
 
-def test_request_narrow_posts_an_open_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_request_narrow_posts_an_open_request(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4241,7 +4948,9 @@ def test_request_narrow_posts_an_open_request(tmp_path: Path, capsys, monkeypatc
     assert _row_by_project(board, "project-h").claims == [f"{root}/claimed/**"]
 
 
-def test_request_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_request_narrow_refusals(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4265,7 +4974,9 @@ def test_request_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest.Mon
     assert requester.compact_id  # bound for readability
 
 
-def test_honor_narrows_clean_areas_and_replies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_honor_narrows_clean_areas_and_replies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4276,11 +4987,15 @@ def test_honor_narrows_clean_areas_and_replies(tmp_path: Path, monkeypatch: pyte
     outcomes = MODULE.honor_open_requests(board, holder.session_uuid, root)
     assert outcomes == [f"honored {req.id}: narrowed {area}"]
     assert _row_by_project(board, "project-h").claims == []
-    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "narrowed"}
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {
+        req.id: "narrowed"
+    }
     assert MODULE.open_release_requests(board.read_text(encoding="utf-8")) == []
 
 
-def test_honor_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_honor_updates_seat_with_row_heartbeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """BUG-1/F1: the honor pass must not diverge the seat from the row."""
     board = tmp_path / "coordination" / "active-sessions.md"
     _ticking_clock(monkeypatch)
@@ -4300,7 +5015,9 @@ def test_honor_updates_seat_with_row_heartbeat(tmp_path: Path, monkeypatch: pyte
     assert seat.last_heartbeat != before.last_heartbeat
 
 
-def test_honor_holds_dirty_areas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_honor_holds_dirty_areas(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4313,10 +5030,14 @@ def test_honor_holds_dirty_areas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     outcomes = MODULE.honor_open_requests(board, holder.session_uuid, root)
     assert outcomes == [f"held {req.id}: 1 dirty path(s)"]
     assert _row_by_project(board, "project-h").claims == [area]
-    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {req.id: "held"}
+    assert MODULE.parse_release_replies(board.read_text(encoding="utf-8")) == {
+        req.id: "held"
+    }
 
 
-def test_honor_defers_an_unverifiable_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_honor_defers_an_unverifiable_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4337,7 +5058,9 @@ def test_honor_defers_an_unverifiable_checkout(tmp_path: Path, monkeypatch: pyte
     assert len(MODULE.open_release_requests(board.read_text(encoding="utf-8"))) == 1
 
 
-def test_honor_refuses_a_foreign_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_honor_refuses_a_foreign_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4356,8 +5079,14 @@ def test_hook_honor_does_not_borrow_ambient_owner_identity(tmp_path, monkeypatch
     assert _request(board, holder.compact_id, area) == 0
     before = board.read_bytes()
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
-    foreign = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="foreign", explicit_ref="codex:foreign")
-    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=foreign)
+    foreign = MODULE.SelfIdentity(
+        client=MODULE.CLIENT_CODEX,
+        harness_session_id="foreign",
+        explicit_ref="codex:foreign",
+    )
+    result = MODULE.honor_open_requests(
+        board, holder.session_uuid, root, caller_identity=foreign
+    )
     assert result == ["honor pass refused: hook identity does not own this row"]
     assert board.read_bytes() == before
 
@@ -4365,27 +5094,36 @@ def test_hook_honor_does_not_borrow_ambient_owner_identity(tmp_path, monkeypatch
 def test_hook_honor_rechecks_native_owner_at_commit_boundary(tmp_path, monkeypatch):
     import json
     from peer_addressing import seat_path
+
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
     area = f"{root}/claimed/**"
     assert _request(board, holder.compact_id, area) == 0
     before = board.read_bytes()
-    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="holder-seat", explicit_ref="codex:holder-seat")
+    native = MODULE.SelfIdentity(
+        client=MODULE.CLIENT_CODEX,
+        harness_session_id="holder-seat",
+        explicit_ref="codex:holder-seat",
+    )
     original = MODULE.locked_update
 
     def replace_seat_then_lock(path, operation):
         seat = seat_path(path, holder.session_uuid)
         value = json.loads(seat.read_text())
-        value['harness_session_id'] = 'replacement-owner'
+        value["harness_session_id"] = "replacement-owner"
         seat.write_text(json.dumps(value))
         return original(path, operation)
 
-    monkeypatch.setattr(MODULE, 'locked_update', replace_seat_then_lock)
-    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
-    assert result == ["honor pass failed to record: hook identity no longer owns this row"]
+    monkeypatch.setattr(MODULE, "locked_update", replace_seat_then_lock)
+    result = MODULE.honor_open_requests(
+        board, holder.session_uuid, root, caller_identity=native
+    )
+    assert result == [
+        "honor pass failed to record: hook identity no longer owns this row"
+    ]
     assert board.read_bytes() == before
-    assert _row_by_project(board, 'project-h').claims == [area]
+    assert _row_by_project(board, "project-h").claims == [area]
 
 
 def test_hook_honor_uses_hook_identity_for_seat_heartbeat(tmp_path, monkeypatch):
@@ -4394,35 +5132,56 @@ def test_hook_honor_uses_hook_identity_for_seat_heartbeat(tmp_path, monkeypatch)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
     area = f"{root}/claimed/**"
     assert _request(board, holder.compact_id, area) == 0
-    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id="holder-seat", explicit_ref="codex:holder-seat")
+    native = MODULE.SelfIdentity(
+        client=MODULE.CLIENT_CODEX,
+        harness_session_id="holder-seat",
+        explicit_ref="codex:holder-seat",
+    )
     # The ambient process still names requester-seat. It must never overwrite
     # the hook holder's sidecar after a valid narrowing.
-    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
-    assert len(result) == 1 and result[0].startswith('honored ')
+    result = MODULE.honor_open_requests(
+        board, holder.session_uuid, root, caller_identity=native
+    )
+    assert len(result) == 1 and result[0].startswith("honored ")
     seat = MODULE.read_seat(board, holder.session_uuid)
-    assert seat.harness_session_id == 'holder-seat'
-    assert seat.last_heartbeat == _row_by_project(board, 'project-h').heartbeat
+    assert seat.harness_session_id == "holder-seat"
+    assert seat.last_heartbeat == _row_by_project(board, "project-h").heartbeat
 
 
 def test_hook_honor_preserves_owner_changed_after_board_commit(tmp_path, monkeypatch):
-    board = tmp_path / 'coordination/active-sessions.md'
+    board = tmp_path / "coordination/active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
-    assert _request(board, holder.compact_id, f'{root}/claimed/**') == 0
-    native = MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX, harness_session_id='holder-seat', explicit_ref='codex:holder-seat')
+    assert _request(board, holder.compact_id, f"{root}/claimed/**") == 0
+    native = MODULE.SelfIdentity(
+        client=MODULE.CLIENT_CODEX,
+        harness_session_id="holder-seat",
+        explicit_ref="codex:holder-seat",
+    )
     original = MODULE.locked_update
+
     def replace_after_commit(path, operation):
         original(path, operation)
         seat = MODULE.read_seat(path, holder.session_uuid)
-        MODULE.write_seat(path, session_uuid=seat.session_uuid, compact_id=seat.compact_id,
-                          machine=seat.machine, identity=MODULE.SelfIdentity(client=MODULE.CLIENT_CODEX,
-                              harness_session_id='replacement-owner'), status='released')
-    monkeypatch.setattr(MODULE, 'locked_update', replace_after_commit)
-    result = MODULE.honor_open_requests(board, holder.session_uuid, root, caller_identity=native)
+        MODULE.write_seat(
+            path,
+            session_uuid=seat.session_uuid,
+            compact_id=seat.compact_id,
+            machine=seat.machine,
+            identity=MODULE.SelfIdentity(
+                client=MODULE.CLIENT_CODEX, harness_session_id="replacement-owner"
+            ),
+            status="released",
+        )
+
+    monkeypatch.setattr(MODULE, "locked_update", replace_after_commit)
+    result = MODULE.honor_open_requests(
+        board, holder.session_uuid, root, caller_identity=native
+    )
     seat = MODULE.read_seat(board, holder.session_uuid)
-    assert seat.harness_session_id == 'replacement-owner'
-    assert seat.status == 'released'
-    assert any('preserved a concurrent seat change' in line for line in result)
+    assert seat.harness_session_id == "replacement-owner"
+    assert seat.status == "released"
+    assert any("preserved a concurrent seat change" in line for line in result)
 
 
 def test_working_state_counts_unpushed_commits(tmp_path: Path) -> None:
@@ -4448,17 +5207,23 @@ def test_working_state_counts_unpushed_commits(tmp_path: Path) -> None:
 
 
 def _age_request(board: Path, holder_compact: str, minutes: int) -> None:
-    old = (datetime.now().astimezone() - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    old = (datetime.now().astimezone() - timedelta(minutes=minutes)).isoformat(
+        timespec="seconds"
+    )
     text = board.read_text(encoding="utf-8")
     aged, count = re.subn(
         r"(### → %s, from \S+ — )\S+" % re.escape(holder_compact),
-        r"\g<1>" + old, text, count=1,
+        r"\g<1>" + old,
+        text,
+        count=1,
     )
     assert count == 1
     board.write_text(aged, encoding="utf-8")
 
 
-def _quiet_codex_transcript(monkeypatch: pytest.MonkeyPatch, home: Path, native: str, *, minutes_ago: int) -> Path:
+def _quiet_codex_transcript(
+    monkeypatch: pytest.MonkeyPatch, home: Path, native: str, *, minutes_ago: int
+) -> Path:
     sessions = home / "sessions"
     sessions.mkdir(parents=True)
     log = sessions / f"thread-{native}.jsonl"
@@ -4480,7 +5245,9 @@ def _idle_holder_setup(tmp_path, monkeypatch):
     [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
     _age_request(board, holder.compact_id, 20)
     [req] = MODULE.open_release_requests(board.read_text(encoding="utf-8"))
-    _quiet_codex_transcript(monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=30)
+    _quiet_codex_transcript(
+        monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=30
+    )
     monkeypatch.setattr(
         MODULE, "local_machine_identity", lambda: (holder.machine, holder.machine)
     )
@@ -4489,13 +5256,22 @@ def _idle_holder_setup(tmp_path, monkeypatch):
 
 
 def _admin_narrow(board, holder_compact: str, request_id: str) -> int:
-    return MODULE.command_narrow(args(
-        board, id=holder_compact, area=[], workspace=[],
-        administrative=True, basis="idle-holder", reason=request_id,
-    ))
+    return MODULE.command_narrow(
+        args(
+            board,
+            id=holder_compact,
+            area=[],
+            workspace=[],
+            administrative=True,
+            basis="idle-holder",
+            reason=request_id,
+        )
+    )
 
 
-def test_idle_holder_narrow_escalates_an_old_quiet_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_idle_holder_narrow_escalates_an_old_quiet_request(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board, holder, req, area = _idle_holder_setup(tmp_path, monkeypatch)
     capsys.readouterr()
     assert _admin_narrow(board, holder.compact_id, req.id) == 0
@@ -4506,7 +5282,9 @@ def test_idle_holder_narrow_escalates_an_old_quiet_request(tmp_path: Path, capsy
     assert "recorded-administrative-narrow" in board.read_text(encoding="utf-8")
 
 
-def test_idle_holder_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_idle_holder_narrow_refusals(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board = tmp_path / "coordination" / "active-sessions.md"
     root = staged_repository(tmp_path)
     holder, _requester = _claim_holder_requester(board, root, monkeypatch)
@@ -4523,7 +5301,9 @@ def test_idle_holder_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:requester-seat")
     # Active holder: the harness log grew after the request.
     _age_request(board, holder.compact_id, 20)
-    _quiet_codex_transcript(monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=0)
+    _quiet_codex_transcript(
+        monkeypatch, tmp_path / "codex-home", "holder-seat", minutes_ago=0
+    )
     monkeypatch.setattr(
         MODULE, "local_machine_identity", lambda: (holder.machine, holder.machine)
     )
@@ -4544,7 +5324,9 @@ def test_idle_holder_narrow_refusals(tmp_path: Path, capsys, monkeypatch: pytest
     assert _row_by_project(board, "project-h").claims == [area]
 
 
-def test_idle_holder_narrow_refuses_an_answered_request(tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_idle_holder_narrow_refuses_an_answered_request(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
     board, holder, req, _area = _idle_holder_setup(tmp_path, monkeypatch)
     # The holder answers first; escalation of a closed request refuses.
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:holder-seat")
@@ -4557,11 +5339,20 @@ def test_idle_holder_narrow_refuses_an_answered_request(tmp_path: Path, capsys, 
 def _unverifiable_session(compact, claims, workspaces=()):
     return MODULE.Session(
         session_uuid=f"00000000-0000-0000-0000-{compact.replace('s-', '').replace('-', '')[:12]:0<12}",
-        compact_id=compact, speakable_id="", legacy_id="",
-        agent="test-harness", machine="test-machine", project="test-project",
-        started="2026-09-22T00:00:00Z", heartbeat="2026-09-22T00:00:00Z",
-        mode="autonomous", workspaces=list(workspaces), goal="test",
-        claims=list(claims), context_role="owner", status="active",
+        compact_id=compact,
+        speakable_id="",
+        legacy_id="",
+        agent="test-harness",
+        machine="test-machine",
+        project="test-project",
+        started="2026-09-22T00:00:00Z",
+        heartbeat="2026-09-22T00:00:00Z",
+        mode="autonomous",
+        workspaces=list(workspaces),
+        goal="test",
+        claims=list(claims),
+        context_role="owner",
+        status="active",
     )
 
 
@@ -4570,6 +5361,7 @@ class _UnverifiableScopes:
 
     def __init__(self, stale_claim):
         import claim_scope
+
         self._claim_scope = claim_scope
         self._stale = stale_claim
 
@@ -4593,19 +5385,42 @@ def test_unverifiable_scope_attributes_to_owner_once() -> None:
     """Intake 33: a stale checkout in one row reports once, naming the owner
     and the exact narrow command — not once per peer pair."""
     import claim_scope
+
     left = _unverifiable_session("s-aaaa-1111-2222", ["/repo/.worktrees/gone/file.md"])
     right = _unverifiable_session("s-bbbb-3333-4444", ["/repo/live/file.md"])
     scopes = _UnverifiableScopes("/repo/.worktrees/gone/file.md")
     problems: list[str] = []
     seen: set[tuple[str, str]] = set()
-    exc = claim_scope.NoVerifiedCheckout("metadata claim has no verified Git checkout: x")
-    assert MODULE._report_unverifiable_owner(
-        problems, seen, scopes, left, left.claims[0], right, right.claims[0], exc,
-    ) is True
+    exc = claim_scope.NoVerifiedCheckout(
+        "metadata claim has no verified Git checkout: x"
+    )
+    assert (
+        MODULE._report_unverifiable_owner(
+            problems,
+            seen,
+            scopes,
+            left,
+            left.claims[0],
+            right,
+            right.claims[0],
+            exc,
+        )
+        is True
+    )
     # A second pair involving the same stale row adds nothing.
-    assert MODULE._report_unverifiable_owner(
-        problems, seen, scopes, left, left.claims[0], right, right.claims[0], exc,
-    ) is True
+    assert (
+        MODULE._report_unverifiable_owner(
+            problems,
+            seen,
+            scopes,
+            left,
+            left.claims[0],
+            right,
+            right.claims[0],
+            exc,
+        )
+        is True
+    )
     assert len(problems) == 1
     [problem] = problems
     assert "s-aaaa-1111-2222" in problem
@@ -4619,29 +5434,71 @@ def test_unverifiable_scope_attributes_to_owner_once() -> None:
 def test_unverifiable_scope_keeps_pair_report_for_transients() -> None:
     """Identity races that reproduce on neither side keep pair-level reporting."""
     import claim_scope
+
     left = _unverifiable_session("s-aaaa-1111-2222", ["/repo/a.md"])
     right = _unverifiable_session("s-bbbb-3333-4444", ["/repo/b.md"])
     scopes = _UnverifiableScopes("/repo/elsewhere.md")
     problems: list[str] = []
-    exc = claim_scope.NoVerifiedCheckout("metadata claim has no verified Git checkout: x")
-    assert MODULE._report_unverifiable_owner(
-        problems, set(), scopes, left, left.claims[0], right, right.claims[0], exc,
-    ) is False
+    exc = claim_scope.NoVerifiedCheckout(
+        "metadata claim has no verified Git checkout: x"
+    )
+    assert (
+        MODULE._report_unverifiable_owner(
+            problems,
+            set(),
+            scopes,
+            left,
+            left.claims[0],
+            right,
+            right.claims[0],
+            exc,
+        )
+        is False
+    )
     assert problems == []
     other = claim_scope.ClaimIdentityError("worktree identity changed during discovery")
-    assert MODULE._report_unverifiable_owner(
-        problems, set(), scopes, left, left.claims[0], right, right.claims[0], other,
-    ) is False
+    assert (
+        MODULE._report_unverifiable_owner(
+            problems,
+            set(),
+            scopes,
+            left,
+            left.claims[0],
+            right,
+            right.claims[0],
+            other,
+        )
+        is False
+    )
     assert problems == []
 
 
-def test_single_active_seat_validates_identity_and_role_without_pair_identity_probes(monkeypatch):
-    session = MODULE.Session(session_uuid="", compact_id="", speakable_id="", legacy_id="single",
-        agent="Fixture", machine="fixture", project="fixture", started="2026-01-01T00:00:00Z",
-        heartbeat="2026-01-01T00:00:00Z", mode="active", workspaces=[], goal="fixture",
-        claims=["/fixture/project/CONTEXT.md"], context_role="contributor", status="active")
+def test_single_active_seat_validates_identity_and_role_without_pair_identity_probes(
+    monkeypatch,
+):
+    session = MODULE.Session(
+        session_uuid="",
+        compact_id="",
+        speakable_id="",
+        legacy_id="single",
+        agent="Fixture",
+        machine="fixture",
+        project="fixture",
+        started="2026-01-01T00:00:00Z",
+        heartbeat="2026-01-01T00:00:00Z",
+        mode="active",
+        workspaces=[],
+        goal="fixture",
+        claims=["/fixture/project/CONTEXT.md"],
+        context_role="contributor",
+        status="active",
+    )
+
     def unexpected(*args, **kwargs):
-        raise AssertionError("no pair exists to require a native claim identity snapshot")
+        raise AssertionError(
+            "no pair exists to require a native claim identity snapshot"
+        )
+
     monkeypatch.setattr(MODULE.claim_scope.ClaimScopeResolver, "snapshot", unexpected)
     problems = MODULE.validate_sessions([session])
     assert any("contributor but claims context" in problem for problem in problems)
@@ -4649,15 +5506,22 @@ def test_single_active_seat_validates_identity_and_role_without_pair_identity_pr
     assert MODULE.validate_sessions([session]) == []
 
 
-def test_repository_state_observes_committed_root_and_branch_in_one_native_call(tmp_path, monkeypatch):
+def test_repository_state_observes_committed_root_and_branch_in_one_native_call(
+    tmp_path, monkeypatch
+):
     root = staged_repository(tmp_path)
-    assert MODULE._repository_state(root) == (root.resolve(), "main")  # Unborn branch remains valid.
+    assert MODULE._repository_state(root) == (
+        root.resolve(),
+        "main",
+    )  # Unborn branch remains valid.
     assert git(root, "commit", "--allow-empty", "-m", "Fixture").returncode == 0
     calls = []
     original = MODULE._git_bytes
+
     def observed(*args):
         calls.append(args)
         return original(*args)
+
     monkeypatch.setattr(MODULE, "_git_bytes", observed)
     assert MODULE._repository_state(root) == (root.resolve(), "main")
     assert len(calls) == 1
@@ -4669,15 +5533,33 @@ def test_repository_state_observes_committed_root_and_branch_in_one_native_call(
 
 
 def test_advisory_age_is_evaluated_once_per_row_in_each_board_validation(monkeypatch):
-    sessions = [MODULE.Session(session_uuid="", compact_id="", speakable_id="", legacy_id=f"seat-{number}",
-        agent="Fixture", machine="fixture", project=f"project-{number}", started="2026-01-01T00:00:00Z",
-        heartbeat="2026-01-01T00:00:00Z", mode="active", workspaces=[], goal="fixture",
-        claims=[], context_role="none", status="active") for number in range(7)]
+    sessions = [
+        MODULE.Session(
+            session_uuid="",
+            compact_id="",
+            speakable_id="",
+            legacy_id=f"seat-{number}",
+            agent="Fixture",
+            machine="fixture",
+            project=f"project-{number}",
+            started="2026-01-01T00:00:00Z",
+            heartbeat="2026-01-01T00:00:00Z",
+            mode="active",
+            workspaces=[],
+            goal="fixture",
+            claims=[],
+            context_role="none",
+            status="active",
+        )
+        for number in range(7)
+    ]
     observed = []
     original = MODULE.downgraded
+
     def counted(session):
         observed.append(session.legacy_id)
         return original(session)
+
     monkeypatch.setattr(MODULE, "downgraded", counted)
     for _ in range(2):
         observed.clear()
@@ -4688,38 +5570,54 @@ def test_advisory_age_is_evaluated_once_per_row_in_each_board_validation(monkeyp
 def test_lease_repository_init_obeys_existing_git_deadline(tmp_path, monkeypatch):
     import os
     import time
-    bin_dir = tmp_path / 'bin'; bin_dir.mkdir()
-    started_marker = tmp_path / 'started'
-    fake_git = bin_dir / 'git'
-    fake_git.write_text('#!' + sys.executable + '\nfrom pathlib import Path\nimport time\n'
-                        + 'Path(' + repr(str(started_marker)) + ').write_text("started")\n'
-                        + 'time.sleep(2)\n')
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    started_marker = tmp_path / "started"
+    fake_git = bin_dir / "git"
+    fake_git.write_text(
+        "#!"
+        + sys.executable
+        + "\nfrom pathlib import Path\nimport time\n"
+        + "Path("
+        + repr(str(started_marker))
+        + ').write_text("started")\n'
+        + "time.sleep(2)\n"
+    )
     fake_git.chmod(0o755)
-    monkeypatch.setenv('PATH', str(bin_dir) + os.pathsep + os.environ.get('PATH', ''))
-    monkeypatch.setattr(MODULE, 'LEASE_GIT_TIMEOUT', .2)
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setattr(MODULE, "LEASE_GIT_TIMEOUT", 0.2)
     calls = []
     real_run = MODULE.subprocess.run
+
     def observed_run(*args, **kwargs):
         calls.append((args, kwargs))
         return real_run(*args, **kwargs)
-    monkeypatch.setattr(MODULE.subprocess, 'run', observed_run)
+
+    monkeypatch.setattr(MODULE.subprocess, "run", observed_run)
     started = time.monotonic()
-    with pytest.raises(RuntimeError, match='initialization timed out'):
-        MODULE.lease_repository({'repository': tmp_path / 'lease.git'})
+    with pytest.raises(RuntimeError, match="initialization timed out"):
+        MODULE.lease_repository({"repository": tmp_path / "lease.git"})
     # The deadline also covers interpreter startup. On a loaded host the child
     # can be killed before its first instruction; the caller must still refuse.
     assert len(calls) == 1
-    assert calls[0][0][0] == ['git', 'init', '--bare', '--quiet', str(tmp_path / 'lease.git')]
-    assert calls[0][1]['timeout'] == .2
+    assert calls[0][0][0] == [
+        "git",
+        "init",
+        "--bare",
+        "--quiet",
+        str(tmp_path / "lease.git"),
+    ]
+    assert calls[0][1]["timeout"] == 0.2
     if started_marker.exists():
-        assert started_marker.read_text() == 'started'
+        assert started_marker.read_text() == "started"
     assert time.monotonic() - started < 1.5
 
 
 def test_lease_repository_init_still_creates_real_bare_repository(tmp_path):
-    repository = tmp_path / 'lease.git'
-    assert MODULE.lease_repository({'repository': repository}) == repository
-    assert (repository / 'HEAD').is_file()
+    repository = tmp_path / "lease.git"
+    assert MODULE.lease_repository({"repository": repository}) == repository
+    assert (repository / "HEAD").is_file()
 
 
 def lease_fetch_fixture(tmp_path):
@@ -4734,24 +5632,36 @@ def lease_fetch_fixture(tmp_path):
 
 
 def lease_fixture_commit(repository, content):
-    blob = MODULE.git_lease(repository, "hash-object", "-w", "--stdin", input_text=content)
+    blob = MODULE.git_lease(
+        repository, "hash-object", "-w", "--stdin", input_text=content
+    )
     assert blob.returncode == 0
-    tree = MODULE.git_lease(repository, "mktree", input_text=f"100644 blob {blob.stdout.strip()}\tactive-sessions.md\n")
+    tree = MODULE.git_lease(
+        repository,
+        "mktree",
+        input_text=f"100644 blob {blob.stdout.strip()}\tactive-sessions.md\n",
+    )
     assert tree.returncode == 0
-    committed = MODULE.git_lease(repository, "commit-tree", tree.stdout.strip(), "-m", "Fixture board")
+    committed = MODULE.git_lease(
+        repository, "commit-tree", tree.stdout.strip(), "-m", "Fixture board"
+    )
     assert committed.returncode == 0
     return committed.stdout.strip()
 
 
 @pytest.mark.parametrize("force_update", [False, True])
-def test_lease_fetch_success_uses_one_remote_call_and_exact_tip(tmp_path, monkeypatch, force_update):
+def test_lease_fetch_success_uses_one_remote_call_and_exact_tip(
+    tmp_path, monkeypatch, force_update
+):
     board, config, expected_tip, expected_content = lease_fetch_fixture(tmp_path)
     original = MODULE.git_lease
     if force_update:
         expected_content += "\nFixture replacement board.\n"
         remote = Path(config["remote"])
         expected_tip = lease_fixture_commit(remote, expected_content)
-        assert original(remote, "update-ref", config["ref"], expected_tip).returncode == 0
+        assert (
+            original(remote, "update-ref", config["ref"], expected_tip).returncode == 0
+        )
     calls = []
 
     def observed(repository, *arguments, **kwargs):
@@ -4761,17 +5671,29 @@ def test_lease_fetch_success_uses_one_remote_call_and_exact_tip(tmp_path, monkey
     monkeypatch.setattr(MODULE, "git_lease", observed)
     assert MODULE.lease_fetch(config) == (expected_tip, expected_content)
     assert [call[0] for call in calls if call[0] in {"fetch", "ls-remote"}] == ["fetch"]
-    assert ("fetch", "--quiet", config["remote"], f"+{config['ref']}:refs/lease/current") in calls
+    assert (
+        "fetch",
+        "--quiet",
+        config["remote"],
+        f"+{config['ref']}:refs/lease/current",
+    ) in calls
     assert ("ls-tree", "--name-only", expected_tip) in calls
     assert ("show", f"{expected_tip}:{board.name}") in calls
 
 
 @pytest.mark.parametrize("previously_published", [False, True])
-def test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootstrap(tmp_path, monkeypatch, previously_published):
+def test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootstrap(
+    tmp_path, monkeypatch, previously_published
+):
     original = MODULE.git_lease
     if previously_published:
         board, config, stale_tip, _ = lease_fetch_fixture(tmp_path)
-        assert original(Path(config["remote"]), "update-ref", "-d", config["ref"]).returncode == 0
+        assert (
+            original(
+                Path(config["remote"]), "update-ref", "-d", config["ref"]
+            ).returncode
+            == 0
+        )
     else:
         [board] = lease_machines(tmp_path, count=1)
         config = MODULE.lease_configuration(board)
@@ -4788,16 +5710,29 @@ def test_lease_fetch_verified_absence_never_reads_stale_tip_or_authorizes_bootst
     assert MODULE.lease_fetch(config) == ("", None)
     assert calls == ["fetch", "ls-remote"]
     if stale_tip:
-        assert original(config["repository"], "rev-parse", "refs/lease/current").stdout.strip() == stale_tip
-    monkeypatch.setattr(MODULE, "lease_publish", lambda *a, **k: pytest.fail("absence must not authorize a fence"))
+        assert (
+            original(
+                config["repository"], "rev-parse", "refs/lease/current"
+            ).stdout.strip()
+            == stale_tip
+        )
+    monkeypatch.setattr(
+        MODULE,
+        "lease_publish",
+        lambda *a, **k: pytest.fail("absence must not authorize a fence"),
+    )
     with pytest.raises(RuntimeError, match="cannot bootstrap"):
         MODULE._check_staged_board_snapshot(board)
     assert board.read_bytes() == before
 
 
-def test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race(tmp_path, monkeypatch):
+def test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race(
+    tmp_path, monkeypatch
+):
     board, config, tip, content = lease_fetch_fixture(tmp_path)
-    competing = lease_fixture_commit(config["repository"], content + "\nDifferent board.\n")
+    competing = lease_fixture_commit(
+        config["repository"], content + "\nDifferent board.\n"
+    )
     original = MODULE.git_lease
     raced, calls = [], []
 
@@ -4806,7 +5741,12 @@ def test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race(tmp
         result = original(repository, *arguments, **kwargs)
         if arguments[0] == "rev-parse" and not raced:
             assert result.stdout.strip() == tip
-            assert original(repository, "update-ref", "refs/lease/current", competing).returncode == 0
+            assert (
+                original(
+                    repository, "update-ref", "refs/lease/current", competing
+                ).returncode
+                == 0
+            )
             raced.append(True)
         return result
 
@@ -4817,9 +5757,17 @@ def test_lease_fetch_captured_tip_and_board_stay_bound_during_local_ref_race(tmp
     assert ("show", f"{tip}:{board.name}") in calls
 
 
-@pytest.mark.parametrize("listing", ["empty", "appeared", "authentication", "transport"])
-def test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip(tmp_path, monkeypatch, listing):
-    config = {"repository": tmp_path / "retained-cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+@pytest.mark.parametrize(
+    "listing", ["empty", "appeared", "authentication", "transport"]
+)
+def test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip(
+    tmp_path, monkeypatch, listing
+):
+    config = {
+        "repository": tmp_path / "retained-cache",
+        "remote": "fixture-remote",
+        "ref": MODULE.LEASE_DEFAULT_REF,
+    }
     calls = []
     monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
 
@@ -4832,7 +5780,9 @@ def test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip(tmp
             if listing == "empty":
                 return subprocess.CompletedProcess(arguments, 0, "", "")
             if listing == "appeared":
-                return subprocess.CompletedProcess(arguments, 0, "a" * 40 + "\t" + config["ref"] + "\n", "")
+                return subprocess.CompletedProcess(
+                    arguments, 0, "a" * 40 + "\t" + config["ref"] + "\n", ""
+                )
             return subprocess.CompletedProcess(arguments, 128, "", listing + " failure")
         pytest.fail("failed fetch must never inspect a retained local tip")
 
@@ -4847,7 +5797,11 @@ def test_lease_fetch_failure_requires_fresh_absence_and_never_uses_local_tip(tmp
 
 @pytest.mark.parametrize("failure", ["timed out", "requires git on PATH"])
 def test_lease_fetch_transport_exception_is_not_retried(tmp_path, monkeypatch, failure):
-    config = {"repository": tmp_path / "cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+    config = {
+        "repository": tmp_path / "cache",
+        "remote": "fixture-remote",
+        "ref": MODULE.LEASE_DEFAULT_REF,
+    }
     calls = []
     monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
 
@@ -4862,24 +5816,39 @@ def test_lease_fetch_transport_exception_is_not_retried(tmp_path, monkeypatch, f
 
 
 def lease_result_fixture(tmp_path, monkeypatch, tip="a" * 40, failure=None):
-    config = {"repository": tmp_path / "cache", "remote": "fixture-remote", "ref": MODULE.LEASE_DEFAULT_REF}
+    config = {
+        "repository": tmp_path / "cache",
+        "remote": "fixture-remote",
+        "ref": MODULE.LEASE_DEFAULT_REF,
+    }
     calls = []
     monkeypatch.setattr(MODULE, "lease_repository", lambda config: config["repository"])
 
     def git_result(repository, *arguments, **kwargs):
         calls.append(arguments)
         command = arguments[0]
-        output = {"fetch": "", "ls-remote": "a" * 40 + "\t" + config["ref"],
-                  "rev-parse": tip, "ls-tree": "active-sessions.md\n", "show": "fixture board"}[command]
-        return subprocess.CompletedProcess(arguments, 1 if command == failure else 0, output,
-                                           "fixture command failure" if command == failure else "")
+        output = {
+            "fetch": "",
+            "ls-remote": "a" * 40 + "\t" + config["ref"],
+            "rev-parse": tip,
+            "ls-tree": "active-sessions.md\n",
+            "show": "fixture board",
+        }[command]
+        return subprocess.CompletedProcess(
+            arguments,
+            1 if command == failure else 0,
+            output,
+            "fixture command failure" if command == failure else "",
+        )
 
     monkeypatch.setattr(MODULE, "git_lease", git_result)
     return config, calls
 
 
 @pytest.mark.parametrize("width", [40, 64])
-def test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads(tmp_path, monkeypatch, width):
+def test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads(
+    tmp_path, monkeypatch, width
+):
     tip = "a" * width
     config, calls = lease_result_fixture(tmp_path, monkeypatch, tip + "\n")
     assert MODULE.lease_fetch(config) == (tip, "fixture board")
@@ -4887,9 +5856,24 @@ def test_lease_fetch_accepts_typed_object_ids_and_uses_immutable_reads(tmp_path,
     assert ("show", f"{tip}:active-sessions.md") in calls
 
 
-@pytest.mark.parametrize("tip", [None, True, 42, "", "a" * 39, "a" * 41, "a" * 63,
-                                  "a" * 65, "g" * 40, "a" * 40 + "\n" + "b" * 40])
-def test_lease_fetch_rejects_invalid_tip_before_reading_tree(tmp_path, monkeypatch, tip):
+@pytest.mark.parametrize(
+    "tip",
+    [
+        None,
+        True,
+        42,
+        "",
+        "a" * 39,
+        "a" * 41,
+        "a" * 63,
+        "a" * 65,
+        "g" * 40,
+        "a" * 40 + "\n" + "b" * 40,
+    ],
+)
+def test_lease_fetch_rejects_invalid_tip_before_reading_tree(
+    tmp_path, monkeypatch, tip
+):
     config, calls = lease_result_fixture(tmp_path, monkeypatch, tip)
     with pytest.raises(RuntimeError):
         MODULE.lease_fetch(config)
@@ -4897,7 +5881,9 @@ def test_lease_fetch_rejects_invalid_tip_before_reading_tree(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("failure", ["rev-parse", "ls-tree", "show"])
-def test_lease_fetch_rejects_failed_local_commands_with_plausible_stdout(tmp_path, monkeypatch, failure):
+def test_lease_fetch_rejects_failed_local_commands_with_plausible_stdout(
+    tmp_path, monkeypatch, failure
+):
     config, calls = lease_result_fixture(tmp_path, monkeypatch, failure=failure)
     with pytest.raises(RuntimeError):
         MODULE.lease_fetch(config)

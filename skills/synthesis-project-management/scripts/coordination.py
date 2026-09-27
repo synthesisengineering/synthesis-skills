@@ -31,17 +31,17 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from board_grammar import (
+from board_grammar import (  # noqa: E402 — standalone script binds its sibling owner first
     board_schema,
     ensure_writable_schema,
-    parse_cells,
+    parse_cells as parse_cells,  # public archive-owner import
     parse_table_rows,
 )
-from pointer_lock import locked_pointer
-import claim_scope
-import fleet_identity
-import fleet_subscriptions
-from peer_addressing import (
+from pointer_lock import locked_pointer  # noqa: E402
+import claim_scope  # noqa: E402
+import fleet_identity  # noqa: E402
+import fleet_subscriptions  # noqa: E402
+from peer_addressing import (  # noqa: E402
     CLIENT_CODEX,
     CLIENT_MUSE,
     DURABLE_RECIPIENT_SUFFIX,
@@ -67,7 +67,7 @@ from peer_addressing import (
     write_receipt,
     write_seat,
 )
-from coordination_schema import (
+from coordination_schema import (  # noqa: E402
     SCHEMA_VERSION,
     V1_COLUMNS,
     V2_COLUMNS,
@@ -77,7 +77,7 @@ from coordination_schema import (
     SessionIdentity,
     column_count_error,
     display_id,
-    engine_remedy,
+    engine_remedy as engine_remedy,  # public diagnostic import
     newer_installed_engine,
     identity_lookup_keys,
     new_identity,
@@ -465,7 +465,7 @@ def _workspace_registered(session: Session, repository: Path, branch: str) -> bo
 
 def _absolute_claim_pattern(claim: str, repository: Path) -> str | None:
     raw = plain(claim)
-    if not raw:
+    if not raw or raw.startswith("create:"):
         return None
     expanded = os.path.expanduser(raw)
     candidate = Path(expanded)
@@ -1944,11 +1944,24 @@ def _board_scoped_fleet_dir(board: Path):
         del os.environ[fleet_identity.FLEET_DIR_ENV]
 
 
-def locked_update(board: Path, operation, *, require_fence: bool = False) -> None:
+@contextlib.contextmanager
+def _board_lock(path: Path, timeout: float | None = None):
+    """Reuse the authority lock owner for finite effect-bearing operations."""
+    if timeout is not None:
+        from coordination_lock import bounded_lock
+        with bounded_lock(path, timeout=timeout):
+            yield
+    else:
+        with path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            yield
+
+
+def locked_update(board: Path, operation, *, require_fence: bool = False,
+                  lock_timeout: float | None = None) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
-    with lock_path.open("a+", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    with _board_lock(lock_path, lock_timeout):
         config = lease_configuration(board)
         with _board_scoped_fleet_dir(board):
             if config is not None:
@@ -1968,7 +1981,7 @@ def locked_update(board: Path, operation, *, require_fence: bool = False) -> Non
             write_board(board, operation(content))
 
 
-def _check_staged_board_snapshot(board: Path) -> str | None:
+def _check_staged_board_snapshot(board: Path, *, lock_timeout: float | None = None) -> str | None:
     """Return one lock/CAS-fenced authority snapshot for check-staged.
 
     AGENT HEURISTIC: a read followed by an unlocked mirror write can restore
@@ -1980,8 +1993,7 @@ def _check_staged_board_snapshot(board: Path) -> str | None:
     """
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
-    with lock_path.open("a+", encoding="utf-8") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    with _board_lock(lock_path, lock_timeout):
         config = lease_configuration(board)
         if config is not None:
             lease_update(board, config, lambda content: content, require_fence=True)
@@ -2015,7 +2027,7 @@ def _validate_with_snapshot(
         return _validate_sessions(sessions, scopes, notices=notices)
 
 
-def validate_passive_paths(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
+def _validate_passive_paths_once(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
     """Validate only the current lifecycle's paths, without conferring writes.
 
     Global doctor and every mutating admission still use validate_sessions.
@@ -2036,19 +2048,31 @@ def validate_passive_paths(sessions: list[Session], owner: Session, paths: list[
     live = [peer for peer in sessions if peer is not owner and active(peer)]
     targets = [(str(path), tuple(owner.workspaces)) for path in paths]
     claims = targets + [(claim, tuple(peer.workspaces)) for peer in live for claim in peer.claims]
-    try:
-        with scopes.snapshot(claims, focus=targets) as candidates:
-            scoped_owner = replace(owner, claims=[str(path) for path in paths])
-            for peer in live:
-                relevant = [claim for claim in peer.claims if (claim, tuple(peer.workspaces)) in candidates]
-                context_peer = peer.project == owner.project and peer.context_role == "owner"
-                if relevant or context_peer:
-                    # Reuse exact role, identity, advisory/parked and overlap
-                    # policy. Only unrelated peer-to-peer pairs are absent.
-                    problems.extend(_validate_sessions([scoped_owner, replace(peer, claims=relevant)], scopes))
-    except claim_scope.ClaimIdentityError as exc:
-        problems.append(f"unverifiable passive claim identity snapshot: {exc}")
+    with scopes.snapshot(claims, focus=targets) as candidates:
+        scoped_owner = replace(owner, claims=[str(path) for path in paths])
+        for peer in live:
+            relevant = [claim for claim in peer.claims if (claim, tuple(peer.workspaces)) in candidates]
+            context_peer = peer.project == owner.project and peer.context_role == "owner"
+            if relevant or context_peer:
+                # Reuse exact role, identity, advisory/parked and overlap
+                # policy. Only unrelated peer-to-peer pairs are absent.
+                problems.extend(_validate_sessions([scoped_owner, replace(peer, claims=relevant)], scopes))
     return list(dict.fromkeys(problems))
+
+
+def validate_passive_paths(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
+    """One fresh resnapshot after an unstable provisional observation.
+
+    No verdict or effect escapes a failed attempt. A stable overlap fails
+    immediately; continued disagreement fails after exactly two observations.
+    """
+    for attempt in range(2):
+        try:
+            return _validate_passive_paths_once(sessions, owner, paths)
+        except claim_scope.RegistryAddition as exc:
+            if attempt:
+                return [f"unverifiable passive claim identity snapshot: {exc}"]
+    raise AssertionError("unreachable snapshot state")
 
 
 def validate_sessions(
@@ -2759,6 +2783,22 @@ def succession_notice_block(
 
 
 def command_claim(args) -> int:
+    dependent = getattr(args, "then", None)
+    if dependent is not None:
+        if (not isinstance(dependent, list) or not dependent
+                or any(not isinstance(item, str) or not item or "\0" in item for item in dependent)):
+            print("coordination claim refused: --then requires explicit nonempty argv", file=sys.stderr)
+            return 10
+        directory = getattr(args, "then_cwd", None)
+        timeout = getattr(args, "then_timeout", 60)
+        if (directory is None or not Path(directory).is_absolute() or not Path(directory).is_dir()
+                or isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or not 0 < timeout <= 900):
+            print("coordination claim refused: --then requires an existing absolute --then-cwd and a finite timeout at most 900 seconds", file=sys.stderr)
+            return 10
+    if any(plain(area).startswith("create:") for area in args.area):
+        print("coordination claim refused: creation-only reservations require create_worktree.py", file=sys.stderr)
+        return 10
     requested = [sanitize(area) for area in args.area]
     workspaces = [sanitize(workspace) for workspace in args.workspace]
     if args.context_role == "contributor":
@@ -3004,8 +3044,11 @@ def command_claim(args) -> int:
         return updated
 
     try:
-        locked_update(args.board, operation)
-    except RuntimeError as exc:
+        if dependent is None:
+            locked_update(args.board, operation)
+        else:
+            locked_update(args.board, operation, lock_timeout=5)
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"coordination claim refused: {exc}", file=sys.stderr)
         return 10
     identity = claimed["identity"]
@@ -3116,7 +3159,30 @@ def command_claim(args) -> int:
             )
         else:
             print(f"Registered client session ref {requested_ref}.")
+    effect = getattr(args, "then", None)
+    if effect:
+        from coordination_process import run as run_effect
+        try:
+            content = _check_staged_board_snapshot(args.board, lock_timeout=5)
+            own = find_session(rows(content or "", strict=True), identity.session_uuid)
+            if (own is None or not active(own) or not _caller_owns_session(args.board, own)
+                    or not set(claimed["areas"]).issubset(own.claims)):
+                raise ValueError("successful claim no longer binds the exact native owner and scope")
+            # This is sequencing, not extra permission: OS/harness guards keep
+            # governing the explicitly supplied command. Never shell-expand it.
+            result = run_effect(list(effect), cwd=args.then_cwd,
+                                timeout=getattr(args, "then_timeout", 60))
+            if result.stdout:
+                print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+            if result.returncode:
+                print("dependent coordination effect FAILED; claim and partial work retained", file=sys.stderr)
+            return result.returncode if result.returncode >= 0 else 10
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f"dependent coordination effect REFUSED: {exc}; claim retained", file=sys.stderr)
+            return 10
     return 0
+
+
 
 
 def command_succeed(args) -> int:
@@ -4674,7 +4740,7 @@ def command_resolve(args) -> int:
             "heartbeat": session.heartbeat,
             "stale": stale(session, args.stale_after_minutes),
             "client_ref": session.client_ref,
-            "delivery": delivery_lane(session),
+            "delivery": "board message bus; select one target to verify direct lanes",
         }
         for session in matches
     ]
@@ -4692,7 +4758,16 @@ def command_resolve(args) -> int:
             local_machine=(
                 getattr(args, "local_machine", None) or local_machine_identity()[0]
             ),
+            local_hostname=(platform.node() if not getattr(args, "local_machine", None) else None),
             registry=getattr(args, "registry", None),
+        )
+        direct = sorted(name for name in lanes if name != "bus")
+        entries[0]["delivery"] = (
+            "board message bus; verified direct lanes: " + ", ".join(
+                "ccd send_message to session_id " + str(lanes[name]["session_id"])
+                if name == "ccd" else name for name in direct
+            )
+            if direct else "board message bus; no verified direct lane"
         )
         sender = self_identity()
         own_seat = seat_for_identity(args.board, sender)
@@ -4857,6 +4932,22 @@ def command_inbox(args) -> int:
     return 0
 
 
+def command_verify_owner(args) -> int:
+    """Read-only ownership proof using the same authority as narrow/release."""
+    session = find_session(rows(args.board.read_text(encoding="utf-8")), args.id)
+    if session is None or not active(session):
+        raise ValueError("target session is absent or terminal")
+    if not _caller_owns_session(args.board, session):
+        raise ValueError(seat_ownership_error())
+    identity = detect_self()
+    print(json.dumps({
+        "session_uuid": session.session_uuid,
+        "native": {"client": identity.client, "harness_session_id": identity.harness_session_id,
+                   "host_session_id": identity.host_session_id, "primary_ref": identity.primary_ref},
+    }, sort_keys=True))
+    return 0
+
+
 def command_whoami(args) -> int:
     """This shell's session identity, seat, board row, and the lanes peers would use."""
     identity = self_identity()
@@ -4872,6 +4963,7 @@ def command_whoami(args) -> int:
             local_machine=(
                 getattr(args, "local_machine", None) or local_machine_identity()[0]
             ),
+            local_hostname=(platform.node() if not getattr(args, "local_machine", None) else None),
             registry=getattr(args, "registry", None),
         )
         if row is not None
@@ -5470,6 +5562,9 @@ def parser() -> argparse.ArgumentParser:
         help="Isolated worktree path and branch: /path/to/worktree @ branch",
     )
     claim.add_argument("--area", action="append", required=True)
+    claim.add_argument("--then-cwd", type=Path, help="Exact working directory for --then")
+    claim.add_argument("--then-timeout", type=float, default=60, help="Finite effect timeout, at most 900 seconds")
+    claim.add_argument("--then", nargs=argparse.REMAINDER, help="Run this exact argv only after successful authenticated claim; put this option last")
     claim.add_argument(
         "--replace",
         action="store_true",
@@ -5708,6 +5803,8 @@ def parser() -> argparse.ArgumentParser:
     inbox.add_argument("--id", "--session", dest="id")
     inbox.add_argument("--mark-read", action="store_true")
     inbox.add_argument("--json", action="store_true")
+    verify_owner = commands.add_parser("verify-owner", help="Read-only native ownership proof for one existing seat.")
+    verify_owner.add_argument("--id", "--session", dest="id", required=True)
     whoami = commands.add_parser(
         "whoami",
         help="This shell's session identity, seat, row, and the lanes peers use to reach it.",
@@ -5814,6 +5911,7 @@ COMMANDS = {
     "resolve": command_resolve,
     "inbox": command_inbox,
     "whoami": command_whoami,
+    "verify-owner": command_verify_owner,
     "migrate": command_migrate,
     "lease-disable": command_lease_disable,
     "stale": command_stale,

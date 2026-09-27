@@ -112,6 +112,9 @@ def install(agent: str | None, no_launchctl: bool) -> None:
         0o755,
     )
 
+    for helper in ("ritual_workers.py", "credential_paths.py"):
+        atomic_write(runtime_root / "bin" / helper, (SCRIPT_DIR / helper).read_bytes(), 0o755)
+
     selection_file = runtime_root / "agent-cli"
     if agent is not None or not selection_file.exists():
         atomic_write(selection_file, f"{agent or 'auto'}\n".encode(), 0o600)

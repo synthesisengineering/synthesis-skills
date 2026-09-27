@@ -25,8 +25,16 @@ import sys
 import uuid
 from typing import Any, Iterable
 
-from board_grammar import parse_table_rows
-from plan_reference import PlanReference, resolve_plan_target
+_CONTEXT_SCRIPTS = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle" / "scripts"
+if str(_CONTEXT_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_CONTEXT_SCRIPTS))
+import record_transaction  # noqa: E402 - sibling owner path
+_REPO_GUARD = Path(__file__).resolve().parents[2] / "synthesis-repo-guard"
+if str(_REPO_GUARD) not in sys.path:
+    sys.path.insert(0, str(_REPO_GUARD))
+import publication_receipt  # noqa: E402 - verified sibling diagnostic owner
+from board_grammar import parse_table_rows  # noqa: E402 - sibling owner path
+from plan_reference import PlanReference, resolve_plan_target  # noqa: E402 - sibling owner path
 
 STATE_FILE = "CURRENT_STATE.json"
 STATE_SCHEMA = 1
@@ -248,6 +256,7 @@ def _index_entry(text: str, project_id: str) -> str:
     return text[start:end]
 
 
+@record_transaction.guarded("project", error=ProjectStateError)
 def checkpoint_applicability(project: Path, *, git_runner=None) -> tuple[str, list[str]]:
     """Determine structured adoption without issuing a receipt or health verdict.
 
@@ -580,6 +589,12 @@ def _safe_fast_forward(
     expected_project_tree: str,
     relative: str,
 ) -> tuple[bool, str | None]:
+    # This explicit operation can update any project in the checkout. A
+    # shared resolver lock is insufficient even when selection names one
+    # project; refuse a newly appeared, unadmitted record directory too.
+    for project in _checkout_record_projects(repo):
+        if not record_transaction.is_managed(project, exclusive=True):
+            return False, "checkout record writer boundary changed before fast-forward"
     current = _run(repo, "rev-parse", "HEAD").stdout.strip()
     upstream = _run(
         repo, "rev-parse", "--symbolic-full-name", "@{upstream}", check=False
@@ -615,7 +630,7 @@ def _safe_fast_forward(
     return True, None
 
 
-def resolve_project(
+def _resolve_project_unlocked(
     project_id: str,
     index_path: Path,
     *,
@@ -692,6 +707,8 @@ def resolve_project(
         project = worktree / relative
         if not project.is_dir():
             continue
+        if not record_transaction.is_managed(project):
+            return RecoveryReport(project_id, "UNKNOWN", None, None, None, [], ["project worktree appeared after managed read admission"], {"continuity": "UNKNOWN"})
         project_head, tree, timestamp = project_metadata(repository_head)
         if not project_head or not tree:
             continue
@@ -884,6 +901,32 @@ def resolve_project(
         issues,
         planes,
     )
+
+
+def _checkout_record_projects(repo: Path) -> set[Path]:
+    """Existing ordinary record directories affected by checkout-wide Git writes."""
+    projects = repo / "projects"
+    return {path for path in projects.iterdir() if path.is_dir()}
+
+
+def resolve_project(project_id: str, index_path: Path, **kwargs) -> RecoveryReport:
+    from contextlib import ExitStack
+    index_path = Path(index_path).resolve()
+    try:
+        repo = _repository_root(index_path.parent)
+        relative = Path("projects") / project_id
+        readers = {worktree / relative for worktree, _, _ in _worktrees(repo)
+                   if (worktree / relative).is_dir()}
+        writers = (_checkout_record_projects(repo)
+                   if kwargs.get("fast_forward_canonical", False) else set())
+        with ExitStack() as stack:
+            for project in sorted(readers | writers, key=str):
+                stack.enter_context(record_transaction.managed(
+                    project, exclusive=project in writers))
+            return _resolve_project_unlocked(project_id, index_path, **kwargs)
+    except (record_transaction.RecordTransactionError, ProjectStateError, OSError) as exc:
+        return RecoveryReport(project_id, "UNKNOWN", None, None, None, [],
+                              [str(exc)], {"continuity": "UNKNOWN"})
 
 
 def _released_versions(
@@ -1121,6 +1164,7 @@ def _uncompiled_current_state_prose(project: Path, context: str) -> list[str]:
     return findings
 
 
+@record_transaction.guarded("project", error=ProjectStateError)
 def semantic_issues(project: Path) -> list[str]:
     """Return contradictions in operational and human-readable current state."""
     project = project.resolve()
@@ -1218,6 +1262,7 @@ def _git_identity(project: Path) -> tuple[Path, str, str, str]:
     return repo, relative, head, tree
 
 
+@record_transaction.guarded("project", error=ProjectStateError, exclusive=True)
 def build_operational_state(
     project: Path,
     *,
@@ -1290,6 +1335,7 @@ def render_context_current_state(project: Path, state: dict[str, Any]) -> str:
     )
 
 
+@record_transaction.guarded("project", error=ProjectStateError, exclusive=True)
 def compile_context(project: Path, state: dict[str, Any]) -> None:
     """Replace or introduce the generated current-state block atomically."""
     _atomic_text(project.resolve() / "CONTEXT.md", _compiled_context(project, state))
@@ -1368,6 +1414,7 @@ def _receipt_path(receipt_root: Path, session_id: str, project_id: str) -> Path:
     return receipt_root / name
 
 
+@record_transaction.guarded("project", error=ProjectStateError, exclusive=True)
 def checkpoint_project(
     project: Path,
     *,
@@ -1436,6 +1483,7 @@ def checkpoint_project(
     return payload
 
 
+@record_transaction.guarded("project", error=ProjectStateError)
 def validate_checkpoint(
     project: Path,
     *,
@@ -1836,8 +1884,9 @@ def _observer_local_file(path: Path) -> tuple[bytes, tuple[int, ...]]:
             raise ProjectStateError("local handoff evidence is not a regular file")
         raw = handle.read()
         after = os.fstat(handle.fileno())
-    signature = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_size,
-                               value.st_mtime_ns, value.st_ctime_ns)
+    def signature(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns)
     if signature(before) != signature(after) or signature(after) != signature(path.lstat()):
         raise ProjectStateError("local handoff evidence changed during verification")
     return raw, signature(after)
@@ -1931,10 +1980,17 @@ def _observer_completed_local_source(payload: dict[str, Any], root: Path, manife
         return False
     data, receipt_snapshot = _observer_local_json(receipt)
     if (type(data.get("schema_version")) is not int or data["schema_version"] != 1
-            or data.get("session_id") != payload["session_id"] or data.get("readiness") != "LOCAL_READY"
+            or data.get("session_id") != payload["session_id"]
             or data.get("pending_manifest") != str(manifest)
             or data.get("pending_manifest_sha256") != _sha_bytes(snapshot[0])):
         raise ProjectStateError("local handoff receipt does not bind this native attribution")
+    if data.get("readiness") != "LOCAL_READY":
+        readiness = data.get("readiness")
+        label = readiness if isinstance(readiness, str) and readiness in {"BLOCKED", "UNKNOWN", "REMOTE_READY"} else "unverified"
+        raise ProjectStateError(
+            f"local handoff identity binding is valid, but readiness is {label}; "
+            "inspect the exact-session receipt results and retained path evidence. "
+            "Incomplete readiness does not authorize identity repair, dropping paths, or publication")
     results = data.get("results")
     if not isinstance(results, list) or not results:
         raise ProjectStateError("local handoff receipt has no source evidence")
@@ -1985,16 +2041,18 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
             raise ProjectStateError("exact native-session pending attribution has invalid paths")
         if _observer_completed_local_source(payload, repo_guard_root, own, attribution, snapshot):
             return "NOT_APPLICABLE", [
-                "exact-session receipt proves committed local source retained pending publication; "
-                "manifest preserved; no checkpoint receipt issued or publication authority granted"
+                "exact-session receipt proves committed local source retention, not remote publication; "
+                "remote publication remains unverified; manifest preserved; no checkpoint receipt issued or publication authority granted. "
+                "When publication is authorized, use checkpoint_sync.py --flush-session with this exact native session"
             ]
         return "UNKNOWN", [
             f"native session has an outstanding attributed-edit manifest: {own}; "
             "no active coordination seat matched this native event. Preserve the manifest. "
             "For ongoing authorized edits, verify the native-to-seat identity binding before "
             "recovering ownership; widening path claims does not fix an identity mismatch. "
-            "For completed edits, use the authorized exact-session checkpoint_sync.py "
-            "publication or verified worktree-retirement recovery. A manifest alone does "
+            "For completed edits, remote publication remains unverified. When authorized, use "
+            "checkpoint_sync.py --flush-session with this exact native session for publication, "
+            "or verified worktree-retirement recovery. A manifest alone does "
             "not authorize claiming, migration, publication or foreign-manifest repair."
         ]
     return None
@@ -2029,9 +2087,11 @@ def _honor_release_requests_at_stop(
         if not session_uuid:
             return
         cwd = payload.get("cwd")
+        from peer_addressing import identity_from_hook
         honor_open_requests(
             board, session_uuid,
             Path(str(cwd)).expanduser() if cwd else None,
+            caller_identity=identity_from_hook(payload),
         )
     except Exception:
         return
@@ -2095,8 +2155,27 @@ def checkpoint_hook(
         return "FAIL", [str(exc)]
 
 
-def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, Any]) -> int:
-    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
+def _checkpoint_publication(payload: dict[str, Any], root: Path | None = None) -> dict[str, Any]:
+    """Observe only exact native identity; never inspect a foreign last receipt."""
+    try:
+        observer_native_identity(payload)
+    except (OSError, ProjectStateError, ValueError, TypeError):
+        return {"status": "UNKNOWN", "owner": publication_receipt.OWNER,
+                "live_remote_rechecked": False, "detail": "Native identity is unverified; publication remains unknown."}
+    if root is None:
+        root = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
+    return publication_receipt.observe(root, payload.get("session_id"))
+
+
+def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, Any],
+                          publication: dict[str, Any] | None = None) -> int:
+    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS",
+              "publication": {"status": "NOT_EVALUATED",
+                              "owner": "checkpoint_sync.py --flush-session",
+                              "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
+                                        "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
+                                        "a retained pending manifest alone does not prove edits are unpublished."}}
+    report["publication"] = publication if publication is not None else _checkpoint_publication(payload)
     if verdict == "NOT_APPLICABLE":
         report["no_receipt_issued"] = True
     # Codex validates Stop stdout against an additionalProperties:false schema.
@@ -2282,7 +2361,8 @@ def main(argv: list[str] | None = None) -> int:
             receipt_root=args.receipt_root,
             repo_guard_root=args.repo_guard_root,
         )
-        return _emit_checkpoint_hook(verdict, issues, payload)
+        publication = _checkpoint_publication(payload, args.repo_guard_root)
+        return _emit_checkpoint_hook(verdict, issues, payload, publication=publication)
     verdict, issues = validate_checkpoint(
         args.project,
         session_id=args.session_id,
@@ -2290,7 +2370,12 @@ def main(argv: list[str] | None = None) -> int:
         receipt_root=args.receipt_root,
         source_heads=_source_head_args(args.source_head),
     )
-    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS"}
+    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS",
+              "publication": {"status": "NOT_EVALUATED",
+                              "owner": "checkpoint_sync.py --flush-session",
+                              "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
+                                        "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
+                                        "a retained pending manifest alone does not prove edits are unpublished."}}
     if verdict == "NOT_APPLICABLE":
         report["no_receipt_issued"] = True
     print(json.dumps(report, indent=2))

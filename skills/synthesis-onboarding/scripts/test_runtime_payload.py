@@ -21,9 +21,11 @@ SOURCE_FILES = {
         "skills/synthesis-git-hooks/scripts/pre-commit": (".synthesis/git-hooks/pre-commit", 0o755),
         "skills/synthesis-git-hooks/scripts/commit-msg": (".synthesis/git-hooks/commit-msg", 0o755),
         "skills/synthesis-git-hooks/scripts/_load_config.py": (".synthesis/git-hooks/_load_config.py", 0o755),
+        "skills/synthesis-git-hooks/scripts/_scan_staged.py": (".synthesis/git-hooks/_scan_staged.py", 0o755),
         **{"skills/synthesis-project-management/scripts/" + n:
            (".synthesis/git-hooks/" + n, 0o755) for n in
-           ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py")},
+           ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
+        "skills/synthesis-agent-conformance/scripts/live_receipt.py": (".synthesis/git-hooks/live_receipt.py", 0o755),
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },
@@ -34,7 +36,7 @@ SOURCE_FILES = {
                for n in ("kernel_sync.py", "whole_system.py")},
     "day-end": {"skills/synthesis-daily-rituals/scripts/" + n:
                 (".synthesis/day-end/bin/" + n, 0o755)
-                for n in ("day-end", "day-end-nudge.sh", "ritual_state.py")},
+                for n in ("day-end", "day-end-nudge.sh", "ritual_state.py", "ritual_workers.py", "credential_paths.py")},
 }
 
 
@@ -594,7 +596,7 @@ def day_end_history(tmp_path, request):
     root = tmp_path / "history"
     source = Path(runtime.__file__).resolve().parents[3]
     launcher_relative = "skills/synthesis-daily-rituals/scripts/day-end"
-    release(root, "4.83.0", omit=(DAY_END_DEPENDENCY,), replacements={
+    release(root, "4.83.0", omit=(DAY_END_DEPENDENCY, "skills/synthesis-daily-rituals/scripts/ritual_workers.py", "skills/synthesis-daily-rituals/scripts/credential_paths.py"), replacements={
         DAY_END_NUDGE: LEGACY_NUDGE, launcher_relative: (source / launcher_relative).read_text(),
     })
     home = tmp_path / "home"
@@ -615,7 +617,7 @@ def day_end_history(tmp_path, request):
         fixture_git(root, "commit", "-qm", "Fixture")
         fixture_git(root, "tag", "-f", "v4.83.0", "HEAD")
     old = fixture_git(root, "rev-parse", "HEAD")
-    for relative in (DAY_END_NUDGE, DAY_END_DEPENDENCY):
+    for relative in (DAY_END_NUDGE, DAY_END_DEPENDENCY, "skills/synthesis-daily-rituals/scripts/ritual_workers.py", "skills/synthesis-daily-rituals/scripts/credential_paths.py"):
         if (root / relative).is_symlink():
             (root / relative).unlink()
         (root / relative).write_bytes((source / relative).read_bytes())
@@ -769,9 +771,11 @@ CLAIM_DEPENDENCY = "skills/synthesis-project-management/scripts/claim_scope.py"
 GRAMMAR_DEPENDENCY = "skills/synthesis-project-management/scripts/board_grammar.py"
 ARCHIVE_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_archive.py"
 NATIVE_GIT_DEPENDENCY = "skills/synthesis-project-management/scripts/native_git.py"
+SCANNER_DEPENDENCY = "skills/synthesis-git-hooks/scripts/_scan_staged.py"
+PROCESS_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_process.py"
 
 
-@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY])
+@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/live_receipt.py"])
 def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace
@@ -784,6 +788,7 @@ def pre_claim_bundle(tmp_path, request):
     fixture_git(current, "config", "user.email", "fixture@example.invalid")
     source = Path(runtime.__file__).resolve().parents[3]
     for relative in SOURCE_FILES["git-hooks"]:
+        (current / relative).parent.mkdir(parents=True, exist_ok=True)
         (current / relative).write_bytes((source / relative).read_bytes())
     for client in ("claude", "codex"):
         (current / ("." + client + "-plugin/plugin.json")).write_text(json.dumps({
@@ -826,11 +831,29 @@ def test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure(p
     assert machine.helper.stat().st_mode & 0o777 == 0o755
     assert machine.pointer.read_text().strip() == str(machine.current / "skills/synthesis-git-hooks/scripts")
     result = subprocess.run([sys.executable, "-B", "-c",
-        "import coordination; assert coordination.overlaps('release-train:fixture', 'release-train:fixture')"],
+        "import coordination, coordination_process, sys; "
+        "assert coordination.overlaps('release-train:fixture', 'release-train:fixture'); "
+        "result=coordination_process.run([sys.executable,'-c','print(123)'],cwd='.'); "
+        "assert result.returncode == 0 and result.stdout == str(123) + chr(10)"],
         cwd=machine.helper.parent, capture_output=True, text=True, timeout=15,
         env={**os.environ, "HOME": str(machine.home)})
     assert result.returncode == 0, result.stderr
     assert all(row["status"] == "current" for row in runtime.verify(claim_bundle_plan(machine, proof)))
+    if machine.dependency == SCANNER_DEPENDENCY:
+        # Execute the actual newly installed boundary, not just an import.
+        config = machine.home / ".synthesis/git-hook-config.yaml"
+        config.write_text("config_version: 2\npersonal_remote_patterns:\n  - 'never'\n"
+                          "tier_0_always:\n  credentials:\n    - 'AKIA[0-9A-Z]{16}'\n"
+                          "tier_1_strict_only:\n  confidentiality:\n    - 'synthetic-restricted-marker'\n"
+                          "check_commit_message: false\n")
+        staged = machine.current / "ordinary.txt"
+        staged.write_bytes(b"harmless\xff synthetic-restricted-marker\n")
+        fixture_git(machine.current, "add", "ordinary.txt")
+        result = subprocess.run([str(machine.helper.with_name("pre-commit"))],
+            cwd=machine.current, capture_output=True, timeout=20,
+            env={**os.environ, "HOME": str(machine.home), "SYNTHESIS_GIT_HOOK_CONFIG": str(config)})
+        assert result.returncode == 1 and b"SENSITIVE PATTERN DETECTED" in result.stdout
+
 
 
 @pytest.mark.parametrize("damage", ["missing-engine", "modified-engine", "missing-hook", "modified-hook", "unrelated-pointer"])

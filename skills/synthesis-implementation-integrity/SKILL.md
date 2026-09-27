@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.1"
+  version: "1.3.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -23,6 +23,8 @@ This protocol exists to keep looking.
 For autopilot task contracts, use the owning [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods. Inspect the executed consumer's code and expectation as well as its result; a disconnected or fixed-answer check is a substantive defect. Semantic calibration cannot certify execution, and execution cannot certify that the chosen check answers the user's question.
 
 ---
+
+Before verification, follow [verification custody](../synthesis-implementation-integrity/references/verification-custody.md): use an isolated copy by default; shared-checkout checks must restore only their own authenticated changes, preserving concurrent edits and unresolved evidence.
 
 ## When to Invoke
 

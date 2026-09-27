@@ -24,6 +24,12 @@ SPEC.loader.exec_module(MODULE)
 
 @pytest.fixture(autouse=True)
 def isolated_module_state(tmp_path, monkeypatch):
+    # Fixtures establish their own explicit native identities. A real caller's
+    # seat must never leak into synthetic retirement or the user's live board.
+    for key in ("SYNTHESIS_COORDINATION_SESSION", "SYNTHESIS_CLIENT_SESSION_REF",
+                "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID",
+                "CLAUDECODE", "MUSE_SESSION_ID"):
+        monkeypatch.delenv(key, raising=False)
     state = tmp_path / "synthesis-home" / "repo-guard"
     monkeypatch.setattr(MODULE, "STATE_DIR", state)
     monkeypatch.setattr(MODULE, "LIFECYCLE_LOCK", state / "lifecycle.lock")
@@ -1398,7 +1404,8 @@ def test_interrupted_retirement_preserves_foreign_row_exactly(tmp_path, monkeypa
 
 
 def test_unrecorded_removal_only_diagnoses_owned_cells(tmp_path, monkeypatch, capsys):
-    _remote, repo = build_repo(tmp_path); worktree = add_feature_worktree(tmp_path, repo)
+    _remote, repo = build_repo(tmp_path)
+    worktree = add_feature_worktree(tmp_path, repo)
     commit_and_merge(repo, worktree)
     board = tmp_path / 'board' / 'active-sessions.md'
     row = _claim_row(board, {}, [f'{worktree} @ feature/demo'], [f'{worktree}/change.txt'])
@@ -1414,7 +1421,8 @@ def test_unrecorded_removal_only_diagnoses_owned_cells(tmp_path, monkeypatch, ca
 
 
 def test_narrowing_refuses_recreated_removed_path(tmp_path, monkeypatch):
-    recreated = tmp_path / 'recreated'; recreated.mkdir()
+    recreated = tmp_path / 'recreated'
+    recreated.mkdir()
     calls = []
     monkeypatch.setattr(MODULE.subprocess, 'run', lambda *a, **kw: calls.append((a,kw)))
     assert MODULE._narrow_retired_claims(recreated, tmp_path / 'board') is False

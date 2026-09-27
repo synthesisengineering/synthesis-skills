@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -146,7 +145,14 @@ def inbox_text(
     if "release-request" in text and mark:
         try:
             from coordination import honor_open_requests, rows as _coord_rows
-            seat_rows = [row for row in _coord_rows(text) if row.session_uuid in forms or row.compact_id in forms]
+            # Delivery aliases are not ownership. A legacy alias can equal a
+            # different row's compact id; only the exact native seat UUID may
+            # select the holder for a mutating honor pass.
+            own_seat = seat_for_identity(board, identity, strict=True)
+            seat_rows = [row for row in _coord_rows(text)
+                         if own_seat and row.session_uuid == own_seat.session_uuid]
+            if len(seat_rows) != 1:
+                raise ValueError("honor pass needs one exact native-owned row")
             if seat_rows:
                 cwd = payload.get("cwd") if isinstance(payload, dict) else None
                 honor = honor_open_requests(

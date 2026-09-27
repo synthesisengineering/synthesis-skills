@@ -1438,7 +1438,8 @@ def test_deleted_file_inside_existing_repository_is_deleted_or_missing_not_stran
     assert local[0]["file_evidence"] == [{"path": str(removed), "state": "deleted-or-missing"}]
 
     results, _ = MODULE.flush_pending_session(cfg, session, dry_run=False)
-    assert [result["action"] for result in results] == ["clean", "retired-repositories"]
+    assert [result["action"] for result in results] == ["clean", "publication-unknown", "retired-repositories"]
+    assert "missing publication path is not a committed deletion" in results[1]["detail"]
     assert not manifest.exists()
 
 
@@ -1873,3 +1874,73 @@ def test_source_readiness_still_requires_fetchable_matching_upstream(tmp_path, f
         command("git", "commit", "--allow-empty", "-qm", "unpublished", cwd=repo)
     result = MODULE.source_groups_remote_ready({repo: [repo / "projects" / "alpha" / "CONTEXT.md"]})[repo]
     assert result["action"] == action and result["alert"]
+
+
+def test_exact_flush_produces_content_bound_offline_publication_receipt(tmp_path, monkeypatch):
+    repo, _remote, cfg = repository(tmp_path)
+    target = repo / "projects/alpha/CONTEXT.md"
+    target.write_text("actual fixture owner publication\n")
+    native = "synthetic-publication-native"
+    manifest = MODULE.pending_manifest_path(native)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    raw = (json.dumps({"schema_version": 2, "session_id": native,
+                       "paths": [str(target)], "remote_paths": [str(target)]}) + "\n").encode()
+    manifest.write_bytes(raw)
+    results, _manifests = MODULE.flush_pending_session(cfg, native, dry_run=False)
+    assert not [item for item in results if item.get("alert")], results
+    proof = MODULE.publication_receipt.observe(MODULE.STATE_DIR, native)
+    assert proof["status"] == "VERIFIED_REMOTE_READY", proof
+    assert proof["manifest_sha256"] == hashlib.sha256(raw).hexdigest()
+    target.write_text("new local work\n")
+    assert MODULE.publication_receipt.observe(MODULE.STATE_DIR, native)["status"] == "UNKNOWN"
+
+
+def retirement_claim_binding(board="/synthetic/coordination/active-sessions.md"):
+    return {"schema_version": 1, "sha256": "a" * 64, "board": board,
+            "session_uuid": "00000000-0000-4000-8000-000000000001",
+            "native": {"client": "codex", "harness_session_id": "fixture-native",
+                       "host_session_id": "", "primary_ref": "codex:fixture-native"}}
+
+
+def test_retirement_claim_binding_is_an_independent_exact_copy():
+    original = retirement_claim_binding()
+    copied = MODULE.validate_retirement_claims_runtime(original)
+    assert copied == original and copied is not original
+    original["native"]["primary_ref"] = "codex:changed"
+    assert copied["native"]["primary_ref"] == "codex:fixture-native"
+    assert MODULE.validate_retirement_claims_runtime(None) is None
+
+
+@pytest.mark.parametrize("key,value", [
+    ("schema_version", True), ("schema_version", 2), ("sha256", "../other-runtime"),
+    ("sha256", int("1" * 64)),
+    ("board", "relative.md"), ("board", "/root/../other/board.md"),
+    ("board", "/bad\x00board"), ("session_uuid", ""), ("native", {}),
+    ("native", {"client": "", "harness_session_id": "", "host_session_id": "", "primary_ref": ""}),
+])
+def test_retirement_claim_binding_rejects_ambiguous_authority(key, value):
+    binding = retirement_claim_binding()
+    binding[key] = value
+    with pytest.raises(ValueError):
+        MODULE.validate_retirement_claims_runtime(binding)
+
+
+def test_prepared_retirement_cannot_replace_or_strip_original_claim_binding(tmp_path, monkeypatch):
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "bound-worktree"
+    command("git", "worktree", "add", "-qb", "feature/bound", str(worktree), cwd=repo)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    binding = retirement_claim_binding()
+    options = dict(expect_active=True, dry_run=False, claims_runtime=binding)
+    with MODULE.lifecycle_lock():
+        _, intent, _ = MODULE.prepare_retirement_intent(worktree, repo, head, "origin", "origin/main", **options)
+    before = intent.read_bytes()
+    for replacement in (None, {**binding, "sha256": "b" * 64}, {**binding, "board": "/different/board.md"}):
+        with MODULE.lifecycle_lock(), pytest.raises(ValueError, match="different retained claim owner"):
+            MODULE.prepare_retirement_intent(worktree, repo, head, "origin", "origin/main",
+                                             **dict(options, claims_runtime=replacement))
+        assert intent.read_bytes() == before
+        assert worktree.exists()

@@ -16,7 +16,7 @@ It does not infer that local files represent all history or all workspaces.
 
 ## Source boundary
 
-Run `python3 <skill-root>/scripts/decay_sweep.py --as-of YYYY-MM-DD
+Run `synthesis exec-public synthesis-daily-rituals/scripts/decay_sweep.py --as-of YYYY-MM-DD
 --plans-dir <declared-daily-plans-directory> --json`. Repeat `--plans-dir` for
 each plan directory declared for this seat. Include archived subdirectories
 under each declared root: there is no lookback cutoff. Supply `--artifacts-dir

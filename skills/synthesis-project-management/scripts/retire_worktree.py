@@ -51,6 +51,8 @@ import subprocess
 import sys
 import tempfile
 import uuid
+import types
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -64,11 +66,48 @@ LIFECYCLE_LOCK = STATE_DIR / "lifecycle.lock"
 RETIREMENT_RUNTIME_DIR = STATE_DIR / "retirement-runtime"
 RETIREMENT_DIR = STATE_DIR / "retired-worktrees"
 LIFECYCLE_LOCK_FD_ENV = "SYNTHESIS_LIFECYCLE_LOCK_FD"
+LIFECYCLE_LOCK_TIMEOUT = 5.0
 CHECKPOINT_SYNC = (
     Path(__file__).resolve().parents[2]
     / "synthesis-repo-guard"
     / "checkpoint_sync.py"
 )
+
+
+_RETIREMENT_RUNTIME = None
+
+
+def retirement_runtime_owner():
+    """Load only this source's owner, without writing pyc into a retiring tree."""
+    global _RETIREMENT_RUNTIME
+    if _RETIREMENT_RUNTIME is None:
+        path = Path(__file__).resolve().with_name("retirement_runtime.py")
+        validate_state_paths(path)
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("source-managed retirement runtime owner is unavailable")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(descriptor)
+            if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+                    or before.st_nlink != 1 or before.st_mode & 0o022
+                    or not before.st_mode & 0o400 or before.st_size > 1024 * 1024):
+                raise ValueError("unsafe source-managed retirement runtime owner")
+            with os.fdopen(descriptor, "rb", closefd=False) as handle:
+                content = handle.read(1024 * 1024 + 1)
+            def identity(info):
+                return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_nlink,
+                        info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+            if (len(content) > 1024 * 1024 or identity(before) != identity(os.fstat(descriptor))
+                    or identity(before) != identity(path.lstat())):
+                raise ValueError("retirement runtime owner changed during load")
+            validate_state_paths(path)
+        finally:
+            os.close(descriptor)
+        module = types.ModuleType("retirement_runtime")
+        module.__file__ = str(path)
+        exec(compile(content, str(path), "exec"), module.__dict__)
+        _RETIREMENT_RUNTIME = module
+    return _RETIREMENT_RUNTIME
 
 
 def run(
@@ -104,7 +143,7 @@ def _under_retired(cell: str, retired: str) -> bool:
     return real == retired or real.startswith(retired + os.sep)
 
 
-def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only: bool = False) -> bool:
+def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only: bool = False, claims_runtime: dict | None = None) -> bool:
     """Release the caller's claimed areas under the removed worktree.
 
     Retirement without narrowing leaves the seat's row naming a removed
@@ -121,6 +160,13 @@ def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only:
     if worktree.exists() or worktree.is_symlink():
         print(f"retire-worktree WARNING: removed-worktree path has been recreated: {worktree}; no claims changed", file=sys.stderr)
         return False
+    if claims_runtime is not None:
+        try:
+            retirement_runtime = retirement_runtime_owner()
+            board = retirement_runtime.authenticate(claims_runtime, RETIREMENT_RUNTIME_DIR, board)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"retire-worktree WARNING: retained claim runtime refused: {exc}", file=sys.stderr)
+            return False
     coordination = Path(__file__).resolve().parent / "coordination.py"
     retired = os.path.realpath(worktree)
     session_id = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
@@ -135,13 +181,16 @@ def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only:
         )
         return True
     try:
-        completed = subprocess.run(
-            base_cmd + ["status", "--json"],
-            capture_output=True, text=True, timeout=60,
-            env={**os.environ, "LC_ALL": "C"},
+        completed = (
+            retirement_runtime.invoke(RETIREMENT_RUNTIME_DIR, claims_runtime["sha256"], board, ["status", "--json"])
+            if claims_runtime is not None else subprocess.run(
+                base_cmd + ["status", "--json"],
+                capture_output=True, text=True, timeout=60,
+                env={**os.environ, "LC_ALL": "C"},
+            )
         )
         if completed.returncode != 0:
-            raise ValueError(completed.stderr.strip() or "coordination status failed")
+            raise ValueError(completed.stderr.strip() or completed.stdout.strip() or "coordination status failed")
         sessions = json.loads(completed.stdout)["sessions"]
         if not isinstance(sessions, list):
             raise ValueError("coordination status lacks a sessions list")
@@ -180,11 +229,15 @@ def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only:
               f"Owner recovery: coordination.py {remedy}", file=sys.stderr)
         return False
     try:
-        narrowed = subprocess.run(
-            narrow_cmd, capture_output=True, text=True, timeout=60,
-            env={**os.environ, "LC_ALL": "C"},
+        narrowed = (
+            retirement_runtime.invoke(RETIREMENT_RUNTIME_DIR, claims_runtime["sha256"], board,
+                                      narrow_cmd[len(base_cmd):])
+            if claims_runtime is not None else subprocess.run(
+                narrow_cmd, capture_output=True, text=True, timeout=60,
+                env={**os.environ, "LC_ALL": "C"},
+            )
         )
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"retire-worktree WARNING: claim narrowing did not finish: {exc}; retry verified retirement", file=sys.stderr)
         return False
     if narrowed.returncode != 0:
@@ -237,6 +290,17 @@ def validate_state_paths(*paths: Path) -> None:
                 raise ValueError(f"state path contains a symlink component: {current}")
 
 
+def require_surviving_retirement_state(worktree: Path) -> None:
+    """The intent, locks and runtime must outlive removal, even when ignored."""
+    paths = (STATE_DIR, RETIREMENT_DIR, RETIREMENT_RUNTIME_DIR, LIFECYCLE_LOCK)
+    validate_state_paths(*paths)
+    for path in paths:
+        absolute = lexical_absolute(path)
+        for ancestor in (absolute, *absolute.parents):
+            if ancestor.exists() and os.path.samefile(ancestor, worktree):
+                raise ValueError("retirement state must be outside the target worktree so it survives removal")
+
+
 @contextmanager
 def lifecycle_lock():
     validate_state_paths(STATE_DIR, LIFECYCLE_LOCK, RETIREMENT_RUNTIME_DIR)
@@ -247,11 +311,21 @@ def lifecycle_lock():
     if not stat.S_ISREG(os.fstat(descriptor).st_mode):
         os.close(descriptor)
         raise ValueError(f"lifecycle lock is not a regular file: {LIFECYCLE_LOCK}")
-    fcntl.flock(descriptor, fcntl.LOCK_EX)
+    locked = False
+    deadline = time.monotonic() + LIFECYCLE_LOCK_TIMEOUT
     try:
+        while not locked:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("retirement lifecycle lock is busy; retry the retained operation")
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
         yield descriptor
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        if locked:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
 
 
@@ -624,6 +698,10 @@ def resume_retirement(
         )
     try:
         with lifecycle_lock() as lock_fd:
+            claims_runtime = data.get("claims_runtime")
+            if claims_runtime is not None or os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip():
+                retirement_runtime = retirement_runtime_owner()
+                retirement_runtime.authenticate(claims_runtime, RETIREMENT_RUNTIME_DIR, board)
             checkpoint_sync = pinned_reconciler(data)
             completed = run_reconciler(
                 checkpoint_sync,
@@ -634,7 +712,7 @@ def resume_retirement(
             print(f"Resumed retirement from {intent}")
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return fail(str(exc))
-    if not _narrow_retired_claims(worktree, board):
+    if not _narrow_retired_claims(worktree, board, claims_runtime=claims_runtime):
         return fail("retirement is retained; caller claim cleanup requires an authenticated retry")
     branch = recorded_branch
     if not branch:
@@ -815,6 +893,11 @@ def main() -> int:
             "first"
         )
 
+    try:
+        require_surviving_retirement_state(worktree)
+    except (OSError, ValueError) as exc:
+        return fail(str(exc))
+
     # --ignored: every check retirement runs sees only tracked files, so a
     # worktree holding nothing but ignored content used to read clean and
     # take its ignored files with it on removal (intake 56: a 26 MB
@@ -918,6 +1001,12 @@ def main() -> int:
 
     try:
         with lifecycle_lock() as lock_fd:
+            claims_runtime = None
+            if os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip():
+                retirement_runtime = retirement_runtime_owner()
+                claims_runtime = retirement_runtime.prepare(
+                    Path(__file__).resolve().parent.parent, RETIREMENT_RUNTIME_DIR, args.board
+                )
             checkpoint_sync = stage_reconciler()
             verify_reconciler_interface(checkpoint_sync)
             prepared = run_reconciler(
@@ -933,12 +1022,15 @@ def main() -> int:
                     args.remote,
                     "--retirement-base",
                     base,
-                ] + (["--retirement-branch", branch] if branch else []),
+                ] + (["--retirement-branch", branch] if branch else [])
+                  + (["--retirement-claims-runtime", json.dumps(claims_runtime)] if claims_runtime else []),
                 lock_fd,
             )
             intent = reconciler_detail(prepared)
             intent_data = json.loads(intent.read_text(encoding="utf-8"))
             checkpoint_sync = pinned_reconciler(intent_data)
+            if claims_runtime is not None:
+                retirement_runtime.authenticate(intent_data.get("claims_runtime"), RETIREMENT_RUNTIME_DIR, args.board)
 
             removed = run(repository, "worktree", "remove", str(worktree))
             if removed.returncode != 0:
@@ -959,7 +1051,7 @@ def main() -> int:
     # Removal succeeded: the caller's cells under the retired tree are now
     # stale. Narrow them in the same step so the row never names a removed
     # checkout (intake 33). An incomplete cleanup remains an authenticated retry.
-    if not _narrow_retired_claims(worktree, args.board):
+    if not _narrow_retired_claims(worktree, args.board, claims_runtime=claims_runtime):
         return fail("retirement is retained; caller claim cleanup requires an authenticated retry")
 
     if branch is None:

@@ -61,18 +61,19 @@ if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
     # published-precedent entry covers, so commit logs stay generic even
     # where the diff may restate published biography.
     SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
-    REGEX_CHECK_ERR=$(echo "" | grep -i -E "$SCAN_REGEX" 2>&1 >/dev/null || true)
-    if echo "$REGEX_CHECK_ERR" | grep -qi -E 'grep:|invalid|unrecognized|error'; then
-        fail_closed "The commit-message regex cannot be parsed by grep -E:
-
-  $REGEX_CHECK_ERR"
-    fi
-
-    # Ignore comment lines (stripped by git anyway).
-    MSG_MATCHES=$(grep -v '^#' "$MSG_FILE" | grep -i -E "$SCAN_REGEX" || true)
-    if [ -n "$MSG_MATCHES" ] && [ -n "${ALLOWLIST_REGEX:-}" ]; then
-        MSG_MATCHES=$(echo "$MSG_MATCHES" | grep -ivE "$ALLOWLIST_REGEX" || true)
-    fi
+    SCANNER="$HOOK_DIR/_scan_staged.py"
+    [ -f "$SCANNER" ] || fail_closed "Staged scanner not found at $SCANNER."
+    set +e
+    MSG_MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" \
+        --active="$SCAN_REGEX" --allowlist="${ALLOWLIST_REGEX:-}" \
+        --exclusion="" --message "$MSG_FILE")
+    SCAN_STATUS=$?
+    set -e
+    case "$SCAN_STATUS" in
+        0) [ -z "$MSG_MATCHES" ] || fail_closed "Message scanner returned inconsistent clean output." ;;
+        1) [ -n "$MSG_MATCHES" ] || fail_closed "Message scanner reported a match without evidence." ;;
+        *) fail_closed "Message scanner exited $SCAN_STATUS; no clean scan was established." ;;
+    esac
     if [ -n "$MSG_MATCHES" ]; then
         cat <<EOF
 

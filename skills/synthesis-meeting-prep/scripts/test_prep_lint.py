@@ -6,11 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from prep_lint import lint  # noqa: E402
+import prep_lint  # noqa: E402
 
 CLEAN_PACK = """\
 # Rivera 1:1 — Tue, 13:00 ET
@@ -188,3 +188,30 @@ def test_cli_exit_codes(tmp_path: Path) -> None:
     )
     assert bad.returncode == 1
     assert "R10" in bad.stdout
+
+
+# B05: basis forms and factual contrasts are different contracts.
+def test_basis_heading_requires_nonempty_body():
+    assert not prep_lint.check_basis("## Basis\nRead the synthetic source dated 2026-09-22.\n")
+    assert prep_lint.check_basis("## Basis\n\n## Questions\nA question.\n")
+    assert prep_lint.check_basis("Basis:   \n## Other\nText\n")
+    assert prep_lint.check_basis("```md\nBasis: invented\n```\n")
+
+
+def test_factual_contrasts_are_not_self_restatements():
+    for text in ("The meeting is Tuesday, not Wednesday.",
+                 "Use field A, not field B.", "Revenue increased, not decreased.",
+                 "Do not send credentials."):
+        assert not prep_lint.check_sentences([text]), text
+    assert prep_lint.check_sentences(["The rollout is a management question, not a technology one."])
+
+
+def test_html_comment_only_basis_is_not_visible_evidence():
+    for body in (
+        "## Basis\n<!--\nHidden sources 2026-09-26\n-->\n",
+        "<!--\n## Basis\nHidden sources 2026-09-26\n-->\n",
+        "Basis: <!-- no actual visible basis -->\n",
+    ):
+        assert prep_lint.check_basis(body)
+    assert not prep_lint.check_basis("```html\n<!--\n```\n## Basis\nVisible record 2026-09-26\n")
+    assert not prep_lint.check_basis("## Basis\n<!-- hidden note --> Visible source 2026-09-26\n")

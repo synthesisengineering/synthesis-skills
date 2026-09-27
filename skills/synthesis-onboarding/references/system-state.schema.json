@@ -92,7 +92,8 @@
             "protected_hours": {"type": "array", "items": {"type": "string", "minLength": 1}},
             "personal_remote_patterns": {"type": "array", "items": {"type": "string", "minLength": 1}},
             "confidential_terms": {"type": "array", "items": {"type": "string", "minLength": 1}},
-            "inbox_cleanup": {"type": "boolean"}
+            "inbox_cleanup": {"type": "boolean"},
+            "message_guard": {"type": ["object", "null"], "description": "Explicit owner capabilities, policy, and digest-bound review. Validated by the message-guard owner before activation."}
           }
         }
       ]

@@ -12,7 +12,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.1"
+  version: "3.1.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -287,3 +287,27 @@ Approval of text is not approval of staleness. Immediately before transmitting: 
 - [`synthesis-disclosure-policy`](../synthesis-disclosure-policy/SKILL.md) — a sibling config-driven pattern (a published-precedent ledger instead of a persona registry) for the adjacent question of what may be said about real parties, rather than who's speaking.
 
 A private companion configuration — the user's actual persona registry, exact signature wording, and any organization-specific rules layered on top (assignment routing, approval-phase state, team-specific content limits) — belongs in their private skill collection. This public skill carries the mechanism only.
+
+
+## Email construction and verification
+
+Use HTML paragraphs by default and avoid rendered line breaks inside prose
+paragraphs. The principal may explicitly choose plain text or intentional line
+structure through the message-guard owner's formatting policy. This choice
+never changes authorship lanes, exact-text approval, disclosure or recipient
+checks. Follow the principal's private transport restrictions when present.
+
+Load `synthesis-message-guard` for construction, capability enrollment and the
+complete tool-input ledger. Ground every populated alternate part; bind the
+final recipients, subject, body, thread fields and tool name with `--message-sha`.
+After an authorized draft/send, verify its actual raw readback and preserve the
+message ID and provenance. Do not call a synthetic MIME roundtrip a native send,
+a filed draft or delivery confirmation. Route catalog changes to the existing
+configuration owner, preserving unrelated hooks and non-email workflows.
+
+
+Other human-readable correspondence follows the same overridable default for
+paragraphs. Use `--build-text` for literal prose and `--verify-text-readback`
+after an authorized post. Intentional code, poetry and address blocks require
+an owner-approved paragraph-policy override; never normalize significant
+whitespace. Retain post IDs, retrieval evidence and any missing-readback gap.

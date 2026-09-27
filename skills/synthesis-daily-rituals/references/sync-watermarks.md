@@ -34,11 +34,11 @@ Four defects were filed from that day and one mechanism closes them:
 ## The verbs
 
 ```bash
-python3 <skill-root>/scripts/sync_watermark.py begin   --workspace <W> --label day-start
-python3 <skill-root>/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
-python3 <skill-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
-python3 <skill-root>/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
-python3 <skill-root>/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
+synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py begin   --workspace <W> --label day-start
+synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
+synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
+synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
+synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
 ```
 
 - **`begin`** stamps the run. Everything the run must re-read is judged

@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 SKILLS_DIR="$(cd -- "$SCRIPT_DIR/../.." &> /dev/null && pwd)"
 COORDINATION_SOURCE="$SKILLS_DIR/synthesis-project-management/scripts"
 COORDINATION_REFERENCES="$SKILLS_DIR/synthesis-project-management/references"
+CONFORMANCE_SOURCE="$SKILLS_DIR/synthesis-agent-conformance/scripts"
 
 TARGET_DIR="$HOME/.synthesis/git-hooks"
 TARGET_REFERENCES="$HOME/.synthesis/references"
@@ -40,6 +41,10 @@ for source in \
     "$COORDINATION_SOURCE/fleet_handoff.py" \
     "$COORDINATION_SOURCE/fleet_logical.py" \
     "$COORDINATION_SOURCE/fleet_subscriptions.py" \
+    "$COORDINATION_SOURCE/coordination_process.py" \
+    "$COORDINATION_SOURCE/coordination_lock.py" \
+    "$COORDINATION_SOURCE/project_recipient.py" \
+    "$CONFORMANCE_SOURCE/live_receipt.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -55,6 +60,7 @@ echo "→ Copying engine to $TARGET_DIR/"
 cp -f "$SCRIPT_DIR/pre-commit" "$TARGET_DIR/pre-commit"
 cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
+cp -f "$SCRIPT_DIR/_scan_staged.py" "$TARGET_DIR/_scan_staged.py"
 cp -f "$COORDINATION_SOURCE/coordination.py" "$TARGET_DIR/coordination.py"
 cp -f "$COORDINATION_SOURCE/claim_scope.py" "$TARGET_DIR/claim_scope.py"
 cp -f "$COORDINATION_SOURCE/native_git.py" "$TARGET_DIR/native_git.py"
@@ -70,6 +76,10 @@ cp -f "$COORDINATION_SOURCE/fleet_doctor.py" "$TARGET_DIR/fleet_doctor.py"
 cp -f "$COORDINATION_SOURCE/fleet_handoff.py" "$TARGET_DIR/fleet_handoff.py"
 cp -f "$COORDINATION_SOURCE/fleet_logical.py" "$TARGET_DIR/fleet_logical.py"
 cp -f "$COORDINATION_SOURCE/fleet_subscriptions.py" "$TARGET_DIR/fleet_subscriptions.py"
+cp -f "$COORDINATION_SOURCE/coordination_process.py" "$TARGET_DIR/coordination_process.py"
+cp -f "$COORDINATION_SOURCE/coordination_lock.py" "$TARGET_DIR/coordination_lock.py"
+cp -f "$COORDINATION_SOURCE/project_recipient.py" "$TARGET_DIR/project_recipient.py"
+cp -f "$CONFORMANCE_SOURCE/live_receipt.py" "$TARGET_DIR/live_receipt.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -78,6 +88,7 @@ chmod 755 \
     "$TARGET_DIR/pre-commit" \
     "$TARGET_DIR/commit-msg" \
     "$TARGET_DIR/_load_config.py" \
+    "$TARGET_DIR/_scan_staged.py" \
     "$TARGET_DIR/coordination.py" \
     "$TARGET_DIR/claim_scope.py" \
     "$TARGET_DIR/native_git.py" \
@@ -92,7 +103,11 @@ chmod 755 \
     "$TARGET_DIR/fleet_doctor.py" \
     "$TARGET_DIR/fleet_handoff.py" \
     "$TARGET_DIR/fleet_logical.py" \
-    "$TARGET_DIR/fleet_subscriptions.py"
+    "$TARGET_DIR/fleet_subscriptions.py" \
+    "$TARGET_DIR/coordination_process.py" \
+    "$TARGET_DIR/coordination_lock.py" \
+    "$TARGET_DIR/project_recipient.py" \
+    "$TARGET_DIR/live_receipt.py"
 chmod 644 "$TARGET_DIR/source-path" "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
 
 if [ -f "$CONFIG_PATH" ]; then

@@ -306,6 +306,8 @@ def window(
         "target": target,
         "to": stamp(moment),
         "to_epoch": int(moment.timestamp()),
+        "latest": int(moment.timestamp()),
+        "oldest": int(through.timestamp()) if through is not None else None,
     }
     if through is None:
         result.update(
@@ -335,6 +337,7 @@ def advance(
     now: datetime | None = None,
     home: Path | None = None,
     surface_level: bool = False,
+    acquisition: dict | None = None,
 ) -> dict:
     """Record a successful write. Never moves a watermark backwards or into
     the future; with targets, records each target's own read."""
@@ -351,6 +354,26 @@ def advance(
             f"ahead of {precise(moment)}{hint}"
         )
     data = load(workspace, home, moment)
+    acquisition_result = None
+    if surface in {"meetings", "slack"}:
+        if acquisition is None:
+            raise ValueError(f"{surface} advance requires acquisition evidence")
+        # The evidence helper is part of this verified entrypoint's dependency
+        # closure. Validate all captures before touching any store slot.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import acquisition_evidence
+        prior = [_through(data, surface, target) for target in targets] if targets else [_through(data, surface)]
+        known_prior = [value for value in prior if value is not None]
+        previous = min(known_prior) if known_prior else None
+        try:
+            acquisition_result = acquisition_evidence.validate(
+                acquisition, workspace=workspace, surface=surface, through=new,
+                previous=previous, now=moment, targets=targets)
+        except (OSError, TypeError, KeyError, UnicodeError) as exc:
+            raise ValueError(f"acquisition evidence cannot be verified: {exc}") from exc
+        if not acquisition_result["can_advance"]:
+            raise ValueError("acquisition has unresolved gaps; watermark unchanged: "
+                             + json.dumps(acquisition_result["gaps"], sort_keys=True))
     surface_entry = data["surfaces"].setdefault(surface, {})
     surface_entry.setdefault("targets", {})
     entries: list[dict] = []
@@ -378,6 +401,8 @@ def advance(
             continue
         entry["through"] = stamp(new)
         entry["updated_at"] = stamp(moment)
+        if acquisition_result is not None:
+            entry["acquisition"] = acquisition_result
         entry.pop("migrated_from", None)
         # An entry that just wrote has no outstanding gap, so its deferral is spent.
         data["deferrals"].pop(key, None)
@@ -577,20 +602,29 @@ def _print_row(row: dict, label: str) -> None:
     print(f"  {state:9s} {label:28s} {through}{extra}")
 
 
+def _read_acquisition(path):
+    if path is None:
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import acquisition_evidence
+    return acquisition_evidence.read_json(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("begin", "window", "advance", "defer", "status"):
+    for name in ("begin", "window", "advance", "defer", "status", "acquisition-check"):
         p = sub.add_parser(name)
         p.add_argument("--workspace", required=True)
         p.add_argument("--json", action="store_true")
         if name == "begin":
             p.add_argument("--label", default="")
-        if name in ("window", "advance", "defer"):
+        if name in ("window", "advance", "defer", "acquisition-check"):
             p.add_argument("--surface", required=True)
         if name == "window" or name == "defer":
             p.add_argument("--target")
-        if name == "advance":
+        if name in ("advance", "acquisition-check"):
+            p.add_argument("--acquisition-evidence", help="exact acquisition JSON required for meetings and Slack")
             p.add_argument("--through", required=True,
                            help="ISO-8601, YYYY-MM-DD (END of that day), epoch seconds as "
                                 "`window` prints them or Slack's ts carries them, or `now`")
@@ -618,7 +652,15 @@ def main(argv: list[str] | None = None) -> int:
             result = window(args.workspace, args.surface, args.target)
         elif args.command == "advance":
             result = advance(args.workspace, args.surface, args.through, tuple(args.target),
-                             surface_level=args.surface_level)
+                             surface_level=args.surface_level,
+                             acquisition=_read_acquisition(args.acquisition_evidence))
+        elif args.command == "acquisition-check":
+            import acquisition_evidence
+            moment = now_local()
+            result = acquisition_evidence.validate(
+                _read_acquisition(args.acquisition_evidence), workspace=args.workspace,
+                surface=args.surface, through=parse_moment(args.through, moment),
+                targets=args.target, now=moment)
         elif args.command == "defer":
             result = defer(args.workspace, args.surface, args.reason, args.target)
         else:
@@ -650,6 +692,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(json.dumps(result, indent=2))
 
+    if args.command == "acquisition-check" and not result["can_advance"]:
+        return 1
     if args.command == "status" and result["blocking"]:
         return 1
     return 0

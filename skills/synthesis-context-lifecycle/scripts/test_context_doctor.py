@@ -1582,7 +1582,7 @@ class SkillOutputsTests(unittest.TestCase):
 
     Positive: a hand-made packet page with no rulings fires skill-outputs as
     a defect. Negatives: a marked page verifying against its embedded spec
-    stays silent, and a closed record (unmarked but ruled) warns at most.
+    stays silent; an unmarked page cannot establish closure by a rulings filename.
     """
 
     def setUp(self) -> None:
@@ -1621,12 +1621,12 @@ class SkillOutputsTests(unittest.TestCase):
     def test_marked_packet_passes_silently(self):
         self.assertNotIn("skill-outputs", checks_in(self._packet(marker=True)))
 
-    def test_closed_unmarked_packet_warns_at_most(self):
+    def test_unverified_ruling_file_does_not_close_unmarked_packet(self):
         result = self._packet(marker=False, rulings=True)
         hits = [item for item in result["data"]["findings"]
                 if item["check"] == "skill-outputs"]
         self.assertTrue(hits)
-        self.assertTrue(all(h["severity"] == "warning" for h in hits))
+        self.assertTrue(any(h["severity"] == "defect" for h in hits))
 
 
 if __name__ == "__main__":

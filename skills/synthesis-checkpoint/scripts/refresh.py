@@ -20,14 +20,15 @@ import uuid
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
-for directory in ("synthesis-project-management", "synthesis-agent-conformance"):
+for directory in ("synthesis-project-management", "synthesis-agent-conformance", "synthesis-context-lifecycle"):
     sys.path.insert(0, str(ROOT / "skills" / directory / "scripts"))
-import project_state
-from plan_reference import locate_plan
-from live_receipt import session_receipt_path
-from conformance import _receipt_check
-import coordination
-from peer_addressing import all_seats, detect_self
+import record_transaction  # noqa: E402 - sibling skill paths must be established first
+import project_state  # noqa: E402 - sibling skill paths must be established first
+from plan_reference import locate_plan  # noqa: E402 - sibling skill paths must be established first
+from live_receipt import session_receipt_path  # noqa: E402 - sibling skill paths must be established first
+from conformance import _receipt_check  # noqa: E402 - sibling skill paths must be established first
+import coordination  # noqa: E402 - sibling skill paths must be established first
+from peer_addressing import all_seats, detect_self  # noqa: E402 - sibling skill paths must be established first
 
 MARKER = "REFRESH_FEEDBACK_JSON:"
 CHECKS = frozenset({"recovery", "project_tiers", "native_runtime", "installed_parity", "skill_files"})
@@ -298,51 +299,52 @@ def inspect(args, *, ignore_campaign: bool = False) -> tuple[dict, dict | None]:
         # No project prose is opened before a causal selection exists.
         if recovery.status in {"PASS", "LOCAL_RECOVERABLE"} and recovery.selected_path:
             project = Path(recovery.selected_path)
-            # The registry locator identifies the logical input across a
-            # conflict-to-recovered transition; selected checkout stays in
-            # recovery evidence instead of silently changing the report key.
-            checks["project_status"], state, invalid_state = selected_lifecycle(project, args.index.name, args.project_id)
-            structured_required = True
-            try:
-                applicability, _issues = project_state.checkpoint_applicability(project)
-                structured_required = applicability == "REQUIRED"
-                checks["structured_checkpoint"] = status(applicability, "STRUCTURED_CHECKPOINT_APPLICABILITY",
-                    checkpoint_accepted=False, no_receipt_issued=True)
-                if structured_required and not (project / project_state.STATE_FILE).is_file():
-                    invalid_state = True
-                    checks["structured_checkpoint"] = status("FAIL", "ADOPTED_STRUCTURED_STATE_MISSING",
+            with record_transaction.managed(project):
+                # The registry locator identifies the logical input across a
+                # conflict-to-recovered transition; selected checkout stays in
+                # recovery evidence instead of silently changing the report key.
+                checks["project_status"], state, invalid_state = selected_lifecycle(project, args.index.name, args.project_id)
+                structured_required = True
+                try:
+                    applicability, _issues = project_state.checkpoint_applicability(project)
+                    structured_required = applicability == "REQUIRED"
+                    checks["structured_checkpoint"] = status(applicability, "STRUCTURED_CHECKPOINT_APPLICABILITY",
                         checkpoint_accepted=False, no_receipt_issued=True)
-            except (OSError, project_state.ProjectStateError):
-                invalid_state = True
-                checks["structured_checkpoint"] = status("UNKNOWN", "STRUCTURED_APPLICABILITY_UNVERIFIED",
-                    checkpoint_accepted=False, no_receipt_issued=True)
-            if invalid_state:
-                checks["structured_hashes"] = status("FAIL", "STRUCTURED_STATE_INVALID")
-            if "project_tiers" in requested:
-                targets = report["read_targets"]
-                targets.append(file_evidence(project / project_state.STATE_FILE, "structured_state", required=structured_required))
-                targets.append(file_evidence(project / "CONTEXT.md", "context"))
-                if targets[-1]["status"] == "PASS":
-                    context = (project / "CONTEXT.md").read_text(encoding="utf-8")
-                    plan = locate_plan(project, context, **({"controlling_plan": state.get("controlling_plan")} if state else {}))
-                    if plan.resolved:
-                        targets.append(file_evidence(plan.resolved, "controlling_plan"))
-                    else:
-                        targets.append({"role": "controlling_plan", "required": plan.declared is not None,
-                            **status("FAIL" if plan.declared is not None else "NOT_PRESENT", "DECLARED_PLAN_INVALID" if plan.declared is not None else "OPTIONAL_PLAN_ABSENT")})
-                targets.append(file_evidence(project / "REFERENCE.md", "reference", required=False))
-                logs = sorted((project / "sessions").glob("????-??.md"))
-                targets.append(file_evidence(logs[-1] if logs else project / "sessions" / "YYYY-MM.md", "latest_session"))
-                issues = project_state.semantic_issues(project)
-                required_fail = any(t["status"] == "FAIL" for t in targets)
-                checks["project_tiers"] = status("FAIL" if required_fail or issues else "PASS", "PROJECT_INPUTS_INSPECTED", semantic_issue_count=len(issues),
-                    warning_count=sum(t["status"] == "NOT_PRESENT" for t in targets), agent_reading="NOT_VERIFIED")
-                if state is not None:
-                    try:
-                        hashes_match = state.get("content_hashes") == project_state._content_hashes(project, state.get("controlling_plan"))
-                    except (OSError, ValueError, project_state.ProjectStateError):
-                        hashes_match = False
-                    checks["structured_hashes"] = status("PASS" if hashes_match else "FAIL", "STRUCTURED_CONTENT_HASHES")
+                    if structured_required and not (project / project_state.STATE_FILE).is_file():
+                        invalid_state = True
+                        checks["structured_checkpoint"] = status("FAIL", "ADOPTED_STRUCTURED_STATE_MISSING",
+                            checkpoint_accepted=False, no_receipt_issued=True)
+                except (OSError, project_state.ProjectStateError):
+                    invalid_state = True
+                    checks["structured_checkpoint"] = status("UNKNOWN", "STRUCTURED_APPLICABILITY_UNVERIFIED",
+                        checkpoint_accepted=False, no_receipt_issued=True)
+                if invalid_state:
+                    checks["structured_hashes"] = status("FAIL", "STRUCTURED_STATE_INVALID")
+                if "project_tiers" in requested:
+                    targets = report["read_targets"]
+                    targets.append(file_evidence(project / project_state.STATE_FILE, "structured_state", required=structured_required))
+                    targets.append(file_evidence(project / "CONTEXT.md", "context"))
+                    if targets[-1]["status"] == "PASS":
+                        context = (project / "CONTEXT.md").read_text(encoding="utf-8")
+                        plan = locate_plan(project, context, **({"controlling_plan": state.get("controlling_plan")} if state else {}))
+                        if plan.resolved:
+                            targets.append(file_evidence(plan.resolved, "controlling_plan"))
+                        else:
+                            targets.append({"role": "controlling_plan", "required": plan.declared is not None,
+                                **status("FAIL" if plan.declared is not None else "NOT_PRESENT", "DECLARED_PLAN_INVALID" if plan.declared is not None else "OPTIONAL_PLAN_ABSENT")})
+                    targets.append(file_evidence(project / "REFERENCE.md", "reference", required=False))
+                    logs = sorted((project / "sessions").glob("????-??.md"))
+                    targets.append(file_evidence(logs[-1] if logs else project / "sessions" / "YYYY-MM.md", "latest_session"))
+                    issues = project_state.semantic_issues(project)
+                    required_fail = any(t["status"] == "FAIL" for t in targets)
+                    checks["project_tiers"] = status("FAIL" if required_fail or issues else "PASS", "PROJECT_INPUTS_INSPECTED", semantic_issue_count=len(issues),
+                        warning_count=sum(t["status"] == "NOT_PRESENT" for t in targets), agent_reading="NOT_VERIFIED")
+                    if state is not None:
+                        try:
+                            hashes_match = state.get("content_hashes") == project_state._content_hashes(project, state.get("controlling_plan"))
+                        except (OSError, ValueError, project_state.ProjectStateError):
+                            hashes_match = False
+                        checks["structured_hashes"] = status("PASS" if hashes_match else "FAIL", "STRUCTURED_CONTENT_HASHES")
         else:
             checks["project_tiers"] = status("NOT_CHECKED", "UNRESOLVED_PROJECT_NO_PROSE_READ")
 

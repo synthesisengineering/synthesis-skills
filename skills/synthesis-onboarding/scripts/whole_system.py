@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import stat
 import re
 import shlex
 import sys
@@ -103,7 +105,35 @@ def profile_choices(catalog: dict, profile: str, manifest_present: bool) -> dict
 def load_answers(path: Path | None) -> dict:
     if path is None:
         return {}
-    return _json(Path(path))
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024:
+            raise ValueError("answers must be a regular JSON file of at most 1 MiB")
+        raw = bytearray()
+        while len(raw) <= 1024 * 1024:
+            block = os.read(descriptor, min(65536, 1024 * 1024 + 1 - len(raw)))
+            if not block:
+                break
+            raw.extend(block)
+        after = os.fstat(descriptor)
+        if (len(raw) > 1024 * 1024 or len(raw) != before.st_size
+                or (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            raise ValueError("answers changed or exceeded the input bound")
+    finally:
+        os.close(descriptor)
+    def unique_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate answers key: " + key)
+            result[key] = value
+        return result
+    value = json.loads(raw, object_pairs_hook=unique_pairs)
+    if not isinstance(value, dict):
+        raise ValueError("answers must contain a JSON object")
+    return value
 
 
 def validate_answers(answers: dict, require_workspace: bool) -> dict:
@@ -126,6 +156,14 @@ def validate_answers(answers: dict, require_workspace: bool) -> dict:
             isinstance(item, str) and item.strip() for item in value
         ):
             raise ValueError("answers.%s must be a list of non-empty strings" % key)
+    guard = answers.get("message_guard")
+    if guard is not None:
+        if not isinstance(guard, dict) or set(guard) - {
+            "capabilities", "email_policy", "reviewed_configuration_sha256", "owner_review"
+        }:
+            raise ValueError("answers.message_guard has invalid or unknown fields")
+        if not isinstance(guard.get("capabilities"), list) or not guard["capabilities"]:
+            raise ValueError("answers.message_guard.capabilities must be nonempty")
     git_name = str(answers.get("git_name") or "").strip()
     git_email = str(answers.get("git_email") or "").strip()
     if bool(git_name) != bool(git_email):
@@ -178,6 +216,22 @@ def build_personal_policy(repo_root: Path, answers: dict) -> dict:
 
 def build_message_guard_config(repo_root: Path, answers: dict) -> dict:
     config = _template(repo_root, MESSAGE_TEMPLATE_REL)
+    selection = answers.get("message_guard")
+    if not isinstance(selection, dict) or not selection.get("capabilities"):
+        raise ValueError("NOT_CONFIGURED: supply reviewed message_guard capabilities in answers")
+    config["message_capabilities"] = copy.deepcopy(selection["capabilities"])
+    if "email_policy" in selection:
+        config["email_policy"] = copy.deepcopy(selection["email_policy"])
+    # Every exact declared transport is caught by the engine as well as the hook.
+    for row in config["message_capabilities"]:
+        if not isinstance(row, dict) or not isinstance(row.get("tool_names"), list):
+            raise ValueError("fresh message capabilities require exact tool_names")
+        for name in row["tool_names"]:
+            if not isinstance(name, str) or not name:
+                raise ValueError("tool_names must be nonempty strings")
+            pattern = "^" + re.escape(name) + "$"
+            if pattern not in config["gated_tool_patterns"]:
+                config["gated_tool_patterns"].append(pattern)
     existing = {entry["name"] for entry in config["block_patterns"]}
     for index, phrase in enumerate(answers["avoid_phrases"], start=1):
         name = "personal-avoid-%d" % index
@@ -210,6 +264,13 @@ def build_capture_config(repo_root: Path, answers: dict, repo_path: Path) -> dic
 
 
 def validate_message_guard(config: dict) -> None:
+    if not isinstance(config, dict) or not isinstance(config.get("message_capabilities"), list) or not config["message_capabilities"]:
+        raise ValueError("NOT_CONFIGURED: explicit owner message capabilities required")
+    policy = config.get("email_policy")
+    if (not isinstance(policy, dict) or set(policy) != {"default_format", "allow_intra_paragraph_breaks"}
+            or policy["default_format"] not in {"html", "plain"}
+            or not isinstance(policy["allow_intra_paragraph_breaks"], bool)):
+        raise ValueError("explicit valid email policy required")
     required = {
         "config_version",
         "gated_tool_patterns",
@@ -339,10 +400,10 @@ def rendered_kernel(source: str, client: str) -> str:
     )
 
 
-def message_guard_hook(command_path: Path) -> dict:
+def message_guard_hook(command_path: Path, tool_names=()) -> dict:
     command = "%s -B %s --gate" % (shlex.quote(sys.executable), shlex.quote(str(command_path)))
     return {
-        "matcher": SEND_TOOL_MATCHER,
+        "matcher": SEND_TOOL_MATCHER + ("|^(?:" + "|".join(re.escape(name) for name in tool_names) + ")$" if tool_names else ""),
         "hooks": [{"type": "command", "command": command}],
     }
 
@@ -357,7 +418,7 @@ def kernel_sync_hook(command_path: Path, client: str) -> dict:
     }
 
 
-def merge_message_guard_hook(existing: dict, command_path: Path) -> tuple[dict, bool]:
+def merge_message_guard_hook(existing: dict, command_path: Path, tool_names=()) -> tuple[dict, bool]:
     if not isinstance(existing, dict):
         raise ValueError("client hook config must be a JSON object")
     result = copy.deepcopy(existing)
@@ -367,22 +428,42 @@ def merge_message_guard_hook(existing: dict, command_path: Path) -> tuple[dict, 
     entries = hooks.setdefault("PreToolUse", [])
     if not isinstance(entries, list):
         raise ValueError("client PreToolUse hooks must be a list")
-    wanted = message_guard_hook(command_path)
-    for index, entry in enumerate(entries):
+    wanted = message_guard_hook(command_path, tool_names)
+    retained = []
+    inserted = False
+    for entry in entries:
         if not isinstance(entry, dict):
+            retained.append(entry)
             continue
-        commands = [
-            hook.get("command", "")
-            for hook in entry.get("hooks", [])
-            if isinstance(hook, dict)
-        ]
-        if any("message_guard.py" in command for command in commands):
-            if entry == wanted:
-                return result, False
-            entries[index] = wanted
-            return result, True
-    entries.append(wanted)
-    return result, True
+        owned = []
+        for hook in entry.get("hooks", []):
+            command = hook.get("command", "") if isinstance(hook, dict) else ""
+            if not isinstance(command, str):
+                raise ValueError("invalid hook command requires owner review")
+            try:
+                arguments = shlex.split(command)
+            except ValueError as exc:
+                raise ValueError("unparseable hook command requires owner review") from exc
+            interpreter = bool(arguments) and re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", Path(arguments[0]).name)
+            tail = arguments[1:]
+            if tail[:1] == ["-B"]:
+                tail = tail[1:]
+            belongs = bool(interpreter) and tail == [str(command_path), "--gate"]
+            if "message_guard.py" in command and not belongs:
+                raise ValueError("ambiguous message-guard command requires owner review")
+            owned.append(belongs)
+        if any(owned):
+            if not all(owned):
+                raise ValueError("mixed owner hook group requires explicit integration")
+            if not inserted:
+                retained.append(wanted)
+                inserted = True
+        else:
+            retained.append(entry)
+    if not inserted:
+        retained.append(wanted)
+    hooks["PreToolUse"] = retained
+    return result, result != existing
 
 
 def merge_kernel_sync_hook(

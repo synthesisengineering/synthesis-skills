@@ -17,14 +17,14 @@ from typing import Iterable
 
 
 from board_grammar import (
-    SCHEMA_VERSION,
+    SCHEMA_VERSION as SCHEMA_VERSION,
     V1_COLUMNS,
     V2_COLUMNS,
     V3_COLUMNS,
     V4_COLUMNS,
     V5_COLUMNS,
-    UnsupportedBoardSchemaError,
-    parse_table_rows,
+    UnsupportedBoardSchemaError as UnsupportedBoardSchemaError,
+    parse_table_rows as parse_table_rows,
 )
 
 CROCKFORD_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
@@ -131,7 +131,11 @@ def session_words() -> tuple[str, ...]:
         / "session-words-v1.txt.zlib.b85"
     )
     try:
-        encoded = b"".join(path.read_bytes().splitlines())
+        # Standard source loaders read this exact resource; a retained runtime
+        # loader supplies its already-verified bytes without reopening a path.
+        loader = globals().get("__loader__")
+        content = loader.get_data(str(path)) if hasattr(loader, "get_data") else path.read_bytes()
+        encoded = b"".join(content.splitlines())
         contents = zlib.decompress(base64.b85decode(encoded))
     except (OSError, ValueError, zlib.error) as exc:
         raise ValueError(f"session word list asset is unreadable: {path}") from exc
