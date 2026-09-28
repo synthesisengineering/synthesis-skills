@@ -978,6 +978,8 @@ changed_surfaces:
 - path: skills/synthesis-agent-conformance/scripts/test_hermes_vendor_boundaries.py
   cases:
   - final-d4b36c008d27ea86
+  - hosted-de579d609d3871d0
+  - hosted-a6661c8e4ee319d0
 - path: skills/synthesis-agent-conformance/scripts/test_provider_intake.py
   cases:
   - final-3cac8d8131d87ccb
@@ -1083,6 +1085,8 @@ changed_surfaces:
   - final-f569c936f947d2db
   - final-f631c02cb3988e2e
   - final-f6fa79e1a4ab0817
+  - hosted-de579d609d3871d0
+  - hosted-a6661c8e4ee319d0
 - path: skills/synthesis-agent-guardrails/guards/publish_guard.py
   cases:
   - final-5857026479f84f56
@@ -11488,7 +11492,7 @@ cases:
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_p13_owner_boundaries.py::test_actual_write_admission_denies_confidential_nonreader
-  motivating_defect: 'Write admission denies a nonreader access to a restricted project'
+  motivating_defect: Write admission denies a nonreader access to a restricted project
 - id: final-eb5daded70d6f097
   control_class: acceptance-test
   expected_status: pass
@@ -11529,7 +11533,8 @@ cases:
   control_class: acceptance-test
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_p13_registry.py::test_actual_resolver_denies_confidential_reader_before_prose
-  motivating_defect: 'Resolver denies unauthorized restricted-project access before reading prose'
+  motivating_defect: Resolver denies unauthorized restricted-project access before
+    reading prose
 - id: final-7c1e042d6c13058a
   control_class: acceptance-test
   expected_status: pass
@@ -12679,3 +12684,15 @@ cases:
   fixture: ../synthesis-slack-sync/scripts/test_thread_acquisition.py::test_detailed_discovery_follows_old_parent_and_omits_oldest
   motivating_defect: 'Inspected changed-owner contract: detailed discovery follows
     old parent and omits oldest'
+- id: hosted-de579d609d3871d0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_hermes_vendor_boundaries.py::test_native_explicit_workdir_and_absolute_write_positive
+  motivating_defect: Repeated guard calls preserve the verified release with ordinary
+    Python bytecode settings.
+- id: hosted-a6661c8e4ee319d0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_hermes_vendor_boundaries.py::test_verified_parser_rejects_changed_generation_with_bytecode_enabled
+  motivating_defect: A changed verified parser remains refused when ordinary Python
+    bytecode is enabled.

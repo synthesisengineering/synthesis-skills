@@ -250,9 +250,14 @@ def test_unknown_native_persistent_cwd_cannot_authorize_relative_write(
     )
 
 
-def test_native_explicit_workdir_and_absolute_write_positive(tmp_path):
+@pytest.mark.parametrize("bytecode_enabled", [True, False])
+def test_native_explicit_workdir_and_absolute_write_positive(tmp_path, monkeypatch, bytecode_enabled):
     import hermes_adapter
 
+    monkeypatch.setattr(sys, "dont_write_bytecode", not bytecode_enabled)
+    monkeypatch.setattr(sys, "pycache_prefix", None)
+    generation = tmp_path / "materialized-parser-generation"
+    original_members = {p.relative_to(generation).as_posix() for p in generation.rglob("*")}
     home = tmp_path / "hermes"
     home.mkdir()
     work = tmp_path / "work"
@@ -269,3 +274,22 @@ def test_native_explicit_workdir_and_absolute_write_positive(tmp_path):
             )
             == {}
         )
+        assert {p.relative_to(generation).as_posix() for p in generation.rglob("*")} == original_members
+
+
+def test_verified_parser_rejects_changed_generation_with_bytecode_enabled(tmp_path, monkeypatch):
+    import hermes_adapter
+
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)
+    monkeypatch.setattr(sys, "pycache_prefix", None)
+    generation = tmp_path / "materialized-parser-generation"
+    parser = generation / "skills/synthesis-project-management/scripts/publication_command.py"
+    parser.write_bytes(parser.read_bytes() + b"\n# synthetic changed release bytes\n")
+    home = tmp_path / "hermes"
+    home.mkdir()
+    result = hermes_adapter.guard(
+        {"tool_name": "terminal", "tool_input": {"command": "pwd"}, "cwd": str(tmp_path)}, home
+    )
+    assert result["action"] == "block"
+    assert "content digest drifted" in result["message"]
+    assert not list(generation.rglob("*.pyc"))
