@@ -309,7 +309,7 @@ def test_missing_native_validator_fails_closed(observer: SimpleNamespace, monkey
     original = builtins.__import__
 
     def missing(name, *args, **kwargs):
-        if name == "live_receipt":
+        if name == "native_transcript_identity":
             raise ImportError("fixture missing installed dependency")
         return original(name, *args, **kwargs)
 

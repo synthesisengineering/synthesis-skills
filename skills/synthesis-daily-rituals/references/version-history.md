@@ -6,6 +6,11 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.43.0 — Bound repository evidence
+
+v2.43.0 (2026-09-27): preserve exact Git repository and ref identity when
+collecting ritual and portfolio evidence; refuse changed or foreign bindings.
+
 ## v2.42.0 — Verified ritual evidence and acquisition custody
 
 v2.42.0 (2026-09-26): worker completion consumes the declared workspace's

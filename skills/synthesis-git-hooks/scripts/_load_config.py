@@ -61,6 +61,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
+from urllib.parse import urlsplit
 import uuid
 import warnings
 from pathlib import Path
@@ -82,6 +84,8 @@ COORDINATION_ENGINE_FILES = (
     "native_git.py",
     "coordination_schema.py",
     "board_grammar.py",
+    "team_contract.py",
+    "native_identity.py",
     "coordination_archive.py",
     "pointer_lock.py",
     "peer_addressing.py",
@@ -95,7 +99,7 @@ COORDINATION_ENGINE_FILES = (
     "coordination_process.py",
     "coordination_lock.py",
     "project_recipient.py",
-    "live_receipt.py",
+    "native_transcript_identity.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
@@ -255,6 +259,8 @@ def parse_simple_yaml(text: str) -> dict:
                 "supported subset"
             )
         key, rest = _split_key(content, lineno)
+        if key in cur:
+            raise ConfigError(f"line {lineno}: duplicate mapping key before aggregation")
         if rest == "":
             pending_key = (indent, cur, key)
         else:
@@ -313,7 +319,7 @@ def classify_repo(config: dict, push_urls: List[str]) -> str:
     their sites, and it left published surfaces with personal remotes
     completely unguarded.
     """
-    if not push_urls:
+    if not push_urls or config.get("_team_mandatory_regex"):
         return "strict"
     strict_patterns = flatten_patterns(config.get("strict_repo_patterns") or [])
     surface_patterns = flatten_patterns(config.get("public_surface_patterns") or [])
@@ -719,6 +725,178 @@ def _validated_pattern_problems(config: dict, config_bytes: bytes) -> List[str]:
     return problems
 
 
+def _team_policy_bytes(path: Path) -> bytes:
+    path = path.absolute()
+    def identity(st):
+        return (st.st_dev, st.st_ino, st.st_mode, st.st_uid, st.st_nlink,
+                st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    try:
+        for part in (path, *path.parents):
+            if part.is_symlink():
+                raise ConfigError("team policy path contains a symbolic link")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(fd)
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                    or before.st_uid != os.getuid() or before.st_mode & 0o022
+                    or before.st_size > 1024 * 1024):
+                raise ConfigError("team policy is unsafe or exceeds the byte bound")
+            with os.fdopen(fd, "rb", closefd=False) as stream:
+                raw = stream.read(1024 * 1024 + 1)
+            if (len(raw) > 1024 * 1024 or identity(before) != identity(os.fstat(fd))
+                    or identity(before) != identity(path.lstat())):
+                raise ConfigError("team policy changed during observation")
+            if any(parent.is_symlink() for parent in path.parents):
+                raise ConfigError("team policy ancestor changed to an alias")
+        finally:
+            os.close(fd)
+        return raw
+    except OSError as exc:
+        raise ConfigError("team policy unavailable") from exc
+
+
+def _team_remote_binding(text):
+    """Parse a bounded Git spelling; None means restrictions cannot be excluded.
+
+    This is not an authenticated repository equivalence relation. Different
+    transports or ports on one host stay ambiguous, never an access grant.
+    """
+    if (not isinstance(text, str) or not text or len(text) > 8192
+            or any(ord(c) < 33 or ord(c) == 127 for c in text)
+            or "\\" in text or "%" in text):
+        return None
+    try:
+        value = text
+        if "://" not in value:
+            match = re.fullmatch(r"(?:([A-Za-z0-9._-]+)@)?(\[[^\]]+\]|[A-Za-z0-9.-]+):(.+)", value)
+            if match is None:
+                return None
+            user, host, path = match.groups()
+            if path.startswith(("/", "~")):
+                return None
+            value = "ssh://" + (user + "@" if user else "") + host + "/" + path
+        url = urlsplit(value)
+        if (url.scheme not in {"https", "ssh"} or not url.hostname
+                or url.password or (url.username and url.scheme != "ssh")
+                or url.query or url.fragment or not url.path.startswith("/")
+                or any(p in {".", ".."} for p in url.path.split("/"))
+                or "//" in url.path or url.hostname.endswith(".")):
+            return None
+        port = url.port or (443 if url.scheme == "https" else 22)
+        if not 1 <= port <= 65535:
+            return None
+        return url.scheme, url.hostname.lower(), port, url.path
+    except ValueError:
+        return None
+
+
+def _team_remote_applies(prefix, remote):
+    if remote is None:
+        return True
+    scheme, host, port, path = prefix
+    other_scheme, other_host, other_port, other_path = remote
+    if host != other_host:
+        return False
+    if (scheme, port) != (other_scheme, other_port):
+        # Same host but a different service cannot demonstrate disjointness.
+        # Retain restrictions; do not assert the repositories are identical.
+        return True
+    return other_path.startswith(path)
+
+
+def apply_team_policy(config: dict, push_urls: List[str]) -> dict:
+    """Add digest-bound team restrictions without exporting personal exemptions.
+
+    References are explicitly enrolled by the config owner. No files, ACLs or
+    host policy are changed. Unknown repository identity applies every enrolled
+    restriction; it cannot select a weaker policy. Native/host enforcement still
+    requires the ordinary installation and actual protected-host acceptance.
+    """
+    if any(key.startswith("_team_") for key in config):
+        raise ConfigError("internal team policy values cannot be supplied as authority")
+    declarations = config.get("team_policy_files", {})
+    if not isinstance(declarations, dict) or len(declarations) > 32:
+        raise ConfigError("team_policy_files must be a bounded path-to-SHA256 mapping")
+    if declarations and (not isinstance(push_urls, list) or len(push_urls) > 256):
+        raise ConfigError("team repository remote inventory exceeds its bound")
+    remote_bindings = [_team_remote_binding(url) for url in push_urls] if declarations else []
+    result = dict(config)
+    mandatory = []
+    strict = flatten_patterns(config.get("strict_repo_patterns") or [])
+    deadline = time.monotonic() + 5
+    pattern_count = 0
+    seen_organizations = set()
+    evidence = []
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ConfigError("duplicate team policy member before aggregation")
+            value[key] = item
+        return value
+    for name, digest in declarations.items():
+        if (not isinstance(name, str) or not Path(name).is_absolute()
+                or str(Path(name)) != name or ".." in Path(name).parts
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            raise ConfigError("team policy requires an exact absolute path and SHA256")
+        raw = _team_policy_bytes(Path(name))
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise ConfigError("team policy differs from its enrolled source digest")
+        try:
+            policy = json.loads(raw, object_pairs_hook=unique)
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            raise ConfigError("team policy is malformed") from exc
+        if (not isinstance(policy, dict) or set(policy) != {"schema", "organization", "repository_prefixes", "mandatory_patterns"}
+                or type(policy["schema"]) is not int or policy["schema"] != 1
+                or not isinstance(policy["organization"], str)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,95}", policy["organization"])
+                or policy["organization"] in seen_organizations):
+            raise ConfigError("team policy shape or organization identity invalid")
+        seen_organizations.add(policy["organization"])
+        for key in ("repository_prefixes", "mandatory_patterns"):
+            values = policy[key]
+            if (not isinstance(values, list) or not 1 <= len(values) <= 4096
+                    or any(not isinstance(v, str) or not v or len(v) > 8192 for v in values)
+                    or len(set(values)) != len(values)):
+                raise ConfigError("team policy patterns must be bounded unique strings")
+            # Keep the existing Python and ERE dual-engine contract.
+            pattern_count += len(values)
+            if pattern_count > 256:
+                raise ConfigError("team policy exceeds the aggregate 256-pattern bound")
+            if key == "repository_prefixes":
+                prefix_bindings = []
+                for prefix in values:
+                    binding = _team_remote_binding(prefix)
+                    if binding is None or "://" not in prefix or not prefix.endswith("/"):
+                        raise ConfigError("repository prefix must be a credential-free explicit remote directory")
+                    if urlsplit(prefix).username:
+                        raise ConfigError("repository prefix must not contain login identity")
+                    prefix_bindings.append(binding)
+            else:
+                for value in values:
+                    if time.monotonic() >= deadline:
+                        raise ConfigError("team policy validation exceeded its time bound")
+                    problems = validate_all_patterns({"tier_0_always": [value]})
+                    if problems:
+                        raise ConfigError("invalid team pattern: " + "; ".join(problems))
+        applies = not remote_bindings or any(
+            _team_remote_applies(prefix, remote)
+            for prefix in prefix_bindings for remote in remote_bindings
+        )
+        if applies:
+            mandatory.extend(policy["mandatory_patterns"])
+            strict.extend("^" + re.escape(prefix) for prefix in policy["repository_prefixes"])
+        if hashlib.sha256(_team_policy_bytes(Path(name))).hexdigest() != digest:
+            raise ConfigError("team policy changed before configuration completion")
+        evidence.append({"organization":policy["organization"], "sha256":digest, "applies":applies})
+    if time.monotonic() >= deadline:
+        raise ConfigError("team policy validation exceeded its time bound")
+    result["strict_repo_patterns"] = list(dict.fromkeys(strict))
+    result["_team_mandatory_regex"] = "|".join(dict.fromkeys(mandatory))
+    result["_team_policy_evidence"] = evidence
+    return result
+
+
 def load_config(path: Path) -> dict:
     if not path.exists():
         print(
@@ -772,6 +950,12 @@ def load_config(path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(2)
+    try:
+        config = apply_team_policy(config, get_push_remotes()) if "team_policy_files" in config else config
+    except ConfigError as exc:
+        print(f"synthesis-git-hooks: team policy refused: {exc}", file=sys.stderr)
+        sys.exit(2)
+    config_bytes = config_bytes + b"\0team-policy-state\0" + json.dumps(config, sort_keys=True).encode("utf-8")
     problems = _validated_pattern_problems(config, config_bytes)
     if problems:
         print(
@@ -824,6 +1008,7 @@ def emit_shell_vars(config: dict) -> None:
     # a pattern-catalog file is a plausible place for a false positive on
     # Tier-1 vocabulary, never a legitimate place for a secret.
     print(f"TIER0_REGEX={shlex.quote(build_active_regex(config, 'personal'))}")
+    print(f"MANDATORY_REGEX={shlex.quote(config.get('_team_mandatory_regex', ''))}")
     print(f"ALLOWLIST_REGEX={shlex.quote(allowlist)}")
     print(f"DIFF_EXCLUDE_REGEX={shlex.quote(diff_excludes)}")
     print(f"CHECK_COMMIT_MSG={check_msg}")
@@ -969,8 +1154,11 @@ def _grep_validates(pattern: str, executable: Optional[str] = None) -> Optional[
             input="",
             capture_output=True,
             text=True,
+            timeout=2,
             **({"executable": executable} if executable else {}),
         )
+    except subprocess.TimeoutExpired:
+        return "grep validation timed out"
     except FileNotFoundError:  # pragma: no cover
         return "grep not found on PATH"
     if proc.returncode > 1:
@@ -991,7 +1179,7 @@ def source_engine_path(path: Path, name: str) -> Path:
         return local
     return (
         path.parents[1]
-        / ("synthesis-agent-conformance" if name == "live_receipt.py" else "synthesis-project-management")
+        / ("synthesis-agent-conformance" if name == "native_transcript_identity.py" else "synthesis-project-management")
         / "scripts"
         / name
     )
@@ -1160,7 +1348,7 @@ def run_doctor(config_path: Path) -> int:
         problems.append(f"config missing: {config_path}")
     else:
         try:
-            config = parse_simple_yaml(config_path.read_text())
+            config = apply_team_policy(parse_simple_yaml(config_path.read_text()), get_push_remotes())
             t0 = flatten_patterns((config or {}).get("tier_0_always") or {})
             t1 = flatten_patterns(
                 (config or {}).get("tier_1_strict_only") or {}

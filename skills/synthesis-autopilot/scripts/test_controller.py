@@ -13,8 +13,10 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(SCRIPTS.parents[1] / 'synthesis-project-management/scripts'))
-from test_run_admission import world  # noqa: F401
-from test_run_state import engine, contract  # noqa: F401
+from test_run_admission import world as world  # noqa: E402
+from test_run_state import engine as engine, contract  # noqa: E402
+
+__all__ = ["engine", "world"]
 
 
 @pytest.fixture
@@ -57,7 +59,6 @@ def attribute_recovery_fixture(world):
     repo guard; enumerate and hash its real dirty files to exercise PM's full
     resolver instead of replacing it with a selected-path stub.
     """
-    import hashlib
     import project_state
     import os
     import tempfile
@@ -548,3 +549,275 @@ def test_generation_recover_requires_exact_prior_binding_and_preserves_history(f
     current = state_of(world, response)['extensions']['native_observations']['sources']['root']
     assert current['history'][0]['cursor'] == old['cursor']
     assert current['cursor']['offset'] == old['cursor']['offset']
+
+
+HISTORY_LIMITS = {"steps": 128, "bytes": 512 * 1024 * 1024, "sources": 8, "wall_millis": 120000}
+
+
+def historical_fixture(facade, engine, world, monkeypatch, *, shape=None):
+    from test_native_replay import broken_history, original_cursor_shape, src
+    from test_run_state import command
+    import workflow
+    import native_observations as native
+    if shape:
+        old = original_cursor_shape(engine, world, monkeypatch, shape)
+    else:
+        old = broken_history(engine, world, monkeypatch, cancel=True, separate_cancel=True)
+    workflow.register_commands(engine.register_command)
+    old = command(engine, world, old, "workflow.configure", {"dimensions": {
+        "domains": ["software"], "uncertainty": "low", "effect": "local-reversible", "horizon": "session", "parallelizable": False}})
+    old = command(engine, world, old, "workflow.budget", {"limits": {"model_tokens": {"limit": 10000, "enforcement": "forecast"}},
+        "deadline": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    for identity, actual in (("known", {"model_tokens": 23}), ("unknown", None)):
+        old = command(engine, world, old, "workflow.reserve", {"reservation_id": identity, "category": "work", "amounts": {"model_tokens": 100}})
+        old = command(engine, world, old, "workflow.settle", {"reservation_id": identity, "actual": actual})
+    old = command(engine, world, old, "close", {"status": "incomplete", "reason": "Retained original interval"})
+    event = engine._read(engine._home(world["project"], old["run_id"]) / "events" / f"{old['revision']:012d}.json")
+    subject = {"run_id": old["run_id"], "revision": old["revision"], "event_digest": event["digest"],
+        "state_digest": engine._digest(old), "source_handle": "root", "source_digest": native._digest(src(old))}
+    current = state_of(world, invoke(facade, world, start_request(world, "current-interval")))
+    return old, current, subject
+
+
+def history_request(current, subject, identity="history", limits=None):
+    return request("recover", {"reconcile_sources": True, "historical_subject": subject,
+        "replay_limits": limits or HISTORY_LIMITS}, current, identity)
+
+
+@pytest.mark.parametrize("shape", [None, "partial", "unequal"])
+def test_current_run_qualifies_historical_subject_without_replacing_lineage(facade, engine, world, monkeypatch, shape):
+    import native_observations as native
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch, shape=shape)
+    old_bytes = {str(path): path.read_bytes() for path in engine._home(world["project"], old["run_id"]).rglob("*") if path.is_file()}
+    req = history_request(current, subject)
+    response = invoke(facade, world, req)
+    final = state_of(world, response)
+    row = final["extensions"]["native_history"][native._digest(subject)]
+    assert row["status"] == "complete", response
+    assert row["source"]["cursor"]["offset"] == world["transcript"].stat().st_size
+    assert row["subject_terminal"] == old["terminal"]
+    assert row["subject_budget_digest"] == native._digest(old["extensions"]["workflow"]["budget"])
+    assert row["authority_granted"] is False and row["effects_replayed"] is False
+    assert row["native_acceptance"] == row["negative_coverage"] == "UNKNOWN"
+    assert row["validation_bytes_charged"] > 0 and row["steps"] > 1
+    if shape is None:
+        assert row["prior_invalidation_count"] > 0
+    assert final["extensions"]["workflow"]["budget"] == current["extensions"]["workflow"]["budget"]
+    assert final["extensions"]["native_observations"] == current["extensions"]["native_observations"]
+    for key in ("contract", "profile", "artifacts", "effects", "plan"):
+        assert final[key] == current[key]
+    assert not final.get("successor")
+    assert engine.load_run(world["project"], old["run_id"]) == old
+    assert all(Path(name).read_bytes() == data for name, data in old_bytes.items())
+    assert state_of(world, invoke(facade, world, req)) == final
+
+
+@pytest.mark.parametrize("fault", ["state_digest", "event_digest", "source_digest", "revision", "self", "open"])
+def test_historical_subject_refuses_forged_stale_or_open_binding(facade, engine, world, monkeypatch, fault):
+    import native_observations as native
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    if fault in {"state_digest", "event_digest", "source_digest"}:
+        subject[fault] = "0" * 64
+    elif fault == "revision":
+        subject["revision"] -= 1
+    else:
+        event = engine._read(engine._home(world["project"], current["run_id"]) / "events" / f"{current['revision']:012d}.json")
+        subject.update(run_id=current["run_id"], revision=current["revision"], state_digest=engine._digest(current), event_digest=event["digest"],
+            source_digest=native._digest(current["extensions"]["native_observations"]["sources"]["root"]))
+        if fault == "open":
+            current = state_of(world, invoke(facade, world, start_request(world, "another-current")))
+    response = invoke(facade, world, history_request(current, subject))
+    assert response["status"] == "UNRESOLVED", response
+    assert not state_of(world, response)["extensions"].get("native_history")
+    assert engine.load_run(world["project"], old["run_id"]) == old
+
+
+@pytest.mark.parametrize("fault", ["source", "journal", "allowance", "expired"])
+def test_historical_validation_cannot_resume_changed_custody_or_reset_allowance(facade, engine, world, monkeypatch, fault):
+    import native_observations as native
+    import observation_bridge
+    from test_run_state import command
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    current = command(engine, world, current, "native.history", {"subject": subject, "limits": HISTORY_LIMITS})
+    retained = deepcopy(current)
+    if fault == "source":
+        with world["transcript"].open("a") as stream:
+            stream.write(" ")
+    elif fault == "journal":
+        path = engine._home(world["project"], old["run_id"]) / "events" / "000000000001.json"
+        path.write_bytes(path.read_bytes() + b" ")
+    elif fault == "expired":
+        monkeypatch.setattr(observation_bridge, "_history_tick", lambda record: (_ for _ in ()).throw(ValueError("deadline exhausted")))
+    limits = deepcopy(HISTORY_LIMITS)
+    if fault == "allowance":
+        limits["steps"] += 1
+    with pytest.raises(ValueError):
+        command(engine, world, current, "native.history", {"subject": subject, "limits": limits})
+    assert engine.load_run(world["project"], current["run_id"]) == retained
+    row = retained["extensions"]["native_history"][native._digest(subject)]
+    assert row["steps"] == 1
+
+
+@pytest.mark.parametrize("fault", ["step", "byte"])
+def test_historical_validation_limits_are_persistent_across_requests(facade, engine, world, monkeypatch, fault):
+    import native_observations as native
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    limits = deepcopy(HISTORY_LIMITS)
+    limits["steps" if fault == "step" else "bytes"] = 1
+    response = invoke(facade, world, history_request(current, subject, limits=limits))
+    assert response["status"] == "UNRESOLVED"
+    final = state_of(world, response)
+    if fault == "step":
+        row = deepcopy(final["extensions"]["native_history"][native._digest(subject)])
+        assert row["steps"] == 1
+        retry = invoke(facade, world, history_request(final, subject, "another-request", limits))
+        assert retry["status"] == "UNRESOLVED"
+        assert state_of(world, retry)["extensions"]["native_history"][native._digest(subject)] == row
+    else:
+        assert not final["extensions"].get("native_history")
+    assert engine.load_run(world["project"], old["run_id"]) == old
+
+
+@pytest.mark.parametrize("client", ["claude", "codex"])
+def test_historical_identity_is_its_own_not_the_current_actor(facade, engine, world, monkeypatch, client):
+    from test_native_replay import src
+    old, unused, subject = historical_fixture(facade, engine, world, monkeypatch)
+    previous = world["actor"]["native_payload"]["session_id"]
+    identity = "01990000-0000-7000-8000-000000000099"
+    home = world["scratch"] / "current-native"
+    if client == "claude":
+        path = home / "projects/fixture" / (identity + ".jsonl")
+        row = {"type": "user", "sessionId": identity, "cwd": str(world["repo"]),
+            "message": {"role": "user", "content": "Synthetic current owner"}}
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+        ref = "cc:" + identity
+    else:
+        path = home / "sessions/2026/09/28" / ("rollout-" + identity + ".jsonl")
+        row = {"type": "session_meta", "payload": {"id": identity, "cwd": str(world["repo"])}}
+        monkeypatch.setenv("CODEX_HOME", str(home))
+        ref = "codex:" + identity
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(row) + "\n")
+    world["actor"]["native_payload"].update(session_id=identity, transcript_path=str(path))
+    world["transcript"] = path
+    world["board"].write_text(world["board"].read_text().replace("cc:" + previous, ref).replace("| claude |", "| " + client + " |"))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", ref)
+    current = state_of(world, invoke(facade, world, start_request(world, "new-native-current")))
+    response = invoke(facade, world, history_request(current, subject))
+    assert response["coverage"]["historical_subject"]["status"] == "complete", response
+    assert response["coverage"]["historical_subject"]["invalidation_status"] == "invalidated"
+    assert src(state_of(world, response))["binding"]["producer"]["root_session_id"] == identity
+    assert src(old)["binding"]["producer"]["root_session_id"] == previous
+    assert engine.load_run(world["project"], old["run_id"]) == old
+
+
+@pytest.mark.parametrize("fault", ["source", "subject", "board"])
+def test_historical_commit_rechecks_late_source_subject_and_authority(facade, engine, world, monkeypatch, fault):
+    import observation_bridge
+    from test_run_state import command
+    from test_observation_bridge import append, pair
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    reducer = observation_bridge._reduce_history
+    def mutate(state, prepared, context):
+        result = reducer(state, prepared, context)
+        if fault == "source":
+            append(world, *pair(world, "concurrent"))
+        elif fault == "subject":
+            path = engine._home(world["project"], old["run_id"]) / "events" / ".run-new"
+            path.write_text("retained incomplete staging")
+        else:
+            world["board"].write_text(world["board"].read_text().replace("| active |", "| complete |"))
+        return result
+    monkeypatch.setitem(engine._COMMANDS, "native.history", mutate)
+    with pytest.raises(ValueError):
+        command(engine, world, current, "native.history", {"subject": subject, "limits": HISTORY_LIMITS})
+    assert engine.load_run(world["project"], current["run_id"]) == current
+
+
+def test_historical_committed_page_survives_projection_interruption(facade, engine, world, monkeypatch):
+    from test_run_state import command
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    original = engine._project
+    monkeypatch.setattr(engine, "_project", lambda *a, **k: (_ for _ in ()).throw(OSError("projection interrupted")))
+    with pytest.raises(OSError, match="projection interrupted"):
+        command(engine, world, current, "native.history", {"subject": subject, "limits": HISTORY_LIMITS}, command_id="historical-cold")
+    monkeypatch.setattr(engine, "_project", original)
+    recovered = engine.load_run(world["project"], current["run_id"])
+    assert recovered["revision"] == current["revision"] + 1
+    assert command(engine, world, current, "native.history", {"subject": subject, "limits": HISTORY_LIMITS}, command_id="historical-cold") == recovered
+    assert engine.load_run(world["project"], old["run_id"]) == old
+
+
+def test_historical_partial_user_record_retains_newly_decoded_cancellation(facade, engine, world, monkeypatch):
+    import test_native_replay
+    from test_observation_bridge import append
+    original_append = test_native_replay.append
+    def replace_final(target, *rows):
+        converted = []
+        for row in rows:
+            if row.get("message", {}).get("content") == [{"type": "text", "text": "5" * 200000}]:
+                row = {"type": "user", "sessionId": target["actor"]["native_payload"]["session_id"],
+                    "message": {"role": "user", "content": "Pause this task. " + "x" * 200000}}
+            converted.append(row)
+        original_append(target, *converted)
+    monkeypatch.setattr(test_native_replay, "append", replace_final)
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch, shape="partial")
+    # A later source record is explicitly outside the historical qualification.
+    append(world, {"type": "user", "sessionId": world["actor"]["native_payload"]["session_id"],
+        "message": {"role": "user", "content": "Later unrelated source text"}})
+    response = invoke(facade, world, history_request(current, subject))
+    assert "historical_subject" in response["coverage"], response
+    row = response["coverage"]["historical_subject"]
+    assert row["status"] == "complete", response
+    assert row["prior_invalidation_count"] == 0
+    assert row["invalidation_status"] == "invalidated"
+    assert row["observed_offset"] < world["transcript"].stat().st_size
+    assert "source" not in row and "journal_witnesses" not in row
+    assert "derived_projection" not in row and "cursor" not in row
+    assert row["authority_granted"] is False
+    assert engine.load_run(world["project"], old["run_id"]) == old
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+@pytest.mark.parametrize("default_limits", [False, True])
+def test_current_recovery_finishes_captured_partial_snapshot(facade, engine, world, monkeypatch, cancel, default_limits):
+    from test_native_replay import original_cursor_shape, src
+    from test_observation_bridge import append
+    import observation_bridge
+    state = original_cursor_shape(engine, world, monkeypatch, "partial")
+    if cancel:
+        append(world, {"type": "user", "sessionId": world["actor"]["native_payload"]["session_id"],
+            "message": {"role": "user", "content": "Pause this task."}})
+    data = {"reconcile_sources": True}
+    if not default_limits:
+        data["replay_limits"] = HISTORY_LIMITS
+    response = invoke(facade, world, request("recover", data, state, "partial-current"))
+    assert response["coverage"]["replay_driver"]["status"] == "complete", response
+    current = state_of(world, response)
+    assert src(current)["cursor"]["offset"] == src(current)["cursor"]["frame_start"] == world["transcript"].stat().st_size
+    verdict = observation_bridge.current_invalidation(engine.inspect_context(current, world["actor"]))
+    assert verdict["status"] == ("invalidated" if cancel else "clear")
+
+
+def test_exhausted_historical_allowance_refuses_before_subject_io(facade, engine, world, monkeypatch):
+    import observation_bridge
+    old, current, subject = historical_fixture(facade, engine, world, monkeypatch)
+    limits = {**HISTORY_LIMITS, "steps": 1}
+    original = observation_bridge._history_head
+    reads = []
+    def counted(*args, **kwargs):
+        reads.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(observation_bridge, "_history_head", counted)
+    response = invoke(facade, world, history_request(current, subject, limits=limits))
+    assert response["status"] == "UNRESOLVED", response
+    assert len(reads) == 1
+    saved = state_of(world, response)
+    for name in ("retry-a", "retry-b"):
+        reads.clear()
+        req = history_request(saved, subject, limits=limits)
+        req["request_id"] = name
+        response = invoke(facade, world, req)
+        assert response["status"] == "UNRESOLVED", response
+        assert reads == []
+        saved = state_of(world, response)

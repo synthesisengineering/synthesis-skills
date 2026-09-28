@@ -3,12 +3,12 @@
 Shared advisory-lock and message board for independent agent sessions operating
 on the same ecosystem.
 
-Schema: v5
+Schema: v6
 
 ## Active sessions
 
-| session uuid | compact id | speakable id v1 | legacy id | agent | machine | machine label | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| session uuid | compact id | speakable id v1 | legacy id | agent | machine | machine label | client session ref | project | started | heartbeat | mode | workspace(s) / branch | goal | claimed areas (advisory lock) | context role | status | person | standing role |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 
 ## Messages
 

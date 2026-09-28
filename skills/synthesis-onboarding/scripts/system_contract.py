@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import base64
 import fcntl
+import time
 import hashlib
 import json
 import os
@@ -239,6 +240,7 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
             "acceptance",
             "auth_help",
             "welcome",
+            "team_contract",
         },
         "manifest",
     )
@@ -265,7 +267,7 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
 
     for index, entry in enumerate(data.get("skills_repos") or []):
         entry = _require_mapping(entry, "skills_repos[%d]" % index)
-        _reject_unknown(entry, {"name", "repository", "capability"}, "skills_repos[%d]" % index)
+        _reject_unknown(entry, {"name", "repository", "capability", "entitlement"}, "skills_repos[%d]" % index)
         safe_identifier(entry.get("name"), "skills_repos[%d].name" % index)
         validate_repository_url(entry.get("repository"))
         if entry.get("capability") != "skills-install":
@@ -275,7 +277,7 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
         entry = _require_mapping(entry, "knowledge_bases[%d]" % index)
         _reject_unknown(
             entry,
-            {"name", "repository", "default_branch", "local_hooks"},
+            {"name", "repository", "default_branch", "local_hooks", "entitlement"},
             "knowledge_bases[%d]" % index,
         )
         safe_identifier(entry.get("name"), "knowledge_bases[%d].name" % index)
@@ -285,6 +287,25 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
             raise ContractError("knowledge_bases[%d].default_branch is unsafe" % index)
         if not isinstance(entry.get("local_hooks", False), bool):
             raise ContractError("knowledge_bases[%d].local_hooks must be boolean" % index)
+
+    team = data.get("team_contract")
+    if team is not None:
+        if not isinstance(team, dict) or set(team) != {"path", "sha256"} or not isinstance(team["path"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json", team["path"]) or not re.fullmatch(r"[0-9a-f]{64}", str(team["sha256"])):
+            raise ContractError("team_contract must bind a sibling JSON document and SHA-256")
+    names = set()
+    for key in ("skills_repos", "knowledge_bases"):
+        entries = data.get(key) or []
+        if not isinstance(entries, list) or len(entries) > 4096:
+            raise ContractError("organization assets must be bounded lists")
+        for entry in entries:
+            identity = (key, entry["name"])
+            if identity in names:
+                raise ContractError("duplicate organization asset identity before aggregation")
+            names.add(identity)
+            if team is not None:
+                safe_identifier(entry.get("entitlement"), "asset entitlement")
+            elif "entitlement" in entry:
+                raise ContractError("entitlement requires an explicit team contract")
 
     instruction_sources = data.get("instruction_sources") or []
     if not isinstance(instruction_sources, list) or len(instruction_sources) != 1:
@@ -1218,9 +1239,21 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     for index, entry_value in enumerate(organizations):
         entry = _require_mapping(entry_value, "desired state organizations[%d]" % index)
         fields = {"repository", "manifest_path", "commit_policy", "commit"}
-        _reject_unknown(entry, fields | {"mode", "workspace"}, "desired state organizations[%d]" % index)
+        _reject_unknown(entry, fields | {"mode", "workspace", "principal_selection"}, "desired state organizations[%d]" % index)
         if not fields <= set(entry):
             raise ContractError("desired state organizations[%d] is incomplete" % index)
+        selection = entry.get("principal_selection")
+        if selection is not None:
+            if not isinstance(selection, dict) or set(selection) != {"person", "requested", "team_digest"}:
+                raise ContractError("principal_selection fields are incomplete")
+            safe_identifier(selection["person"], "principal")
+            requested = selection["requested"]
+            if not isinstance(requested, list) or len(requested) > 4096 or any(not isinstance(item, str) for item in requested) or len(set(requested)) != len(requested):
+                raise ContractError("requested entitlements must be unique bounded identifiers")
+            for item in requested:
+                safe_identifier(item, "requested entitlement")
+            if not re.fullmatch(r"[0-9a-f]{64}", str(selection["team_digest"])):
+                raise ContractError("principal selection requires a source digest")
         validate_repository_url(entry.get("repository"))
         if entry.get("manifest_path") != ".agents/onboarding.yaml":
             raise ContractError("desired state organization manifest path is invalid")
@@ -1489,9 +1522,27 @@ class SystemState:
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        with self.lock_path.open("a+b") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            descriptor = os.open(self.lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        except OSError as exc:
+            raise ContractError("onboarding transaction lock is unavailable") from exc
+        with os.fdopen(descriptor, "a+b") as lock:
+            info = os.fstat(lock.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
+                raise ContractError("onboarding transaction lock has a foreign owner or shape")
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ContractError("onboarding transaction owner is busy; no effect admitted")
+                    time.sleep(0.02)
             try:
+                current = self.lock_path.lstat()
+                if (current.st_dev, current.st_ino, current.st_mode) != (info.st_dev, info.st_ino, info.st_mode):
+                    raise ContractError("onboarding transaction lock identity changed")
                 yield
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
@@ -2634,6 +2685,25 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
     evidence = _require_mapping(evidence, "outcome evidence")
     if evidence.get("source_class") != task.get("source_class"):
         raise ContractError("outcome source class does not match the trusted capability")
+    if task_id == "first-use-artifact-check":
+        from first_run_store import MAX_ARTIFACT_BYTES, read_file
+        if set(evidence) != {"source_class", "artifact", "sha256"} or not isinstance(evidence["artifact"], str) or not HEX64_RE.fullmatch(str(evidence["sha256"])):
+            raise ContractError("first-use artifact evidence is invalid")
+        data, identity = read_file(Path(evidence["artifact"]), MAX_ARTIFACT_BYTES)
+        try:
+            text = data.decode("utf-8")
+        except UnicodeError as exc:
+            raise ContractError("first-use artifact must be UTF-8 text") from exc
+        if not text.strip() or "\x00" in text:
+            raise ContractError("first-use artifact is empty or not text")
+        checksum = hashlib.sha256(data).hexdigest()
+        if checksum != evidence["sha256"]:
+            raise ContractError("first-use artifact differs from the exact reviewed bytes")
+        return {"task_id": task_id, "capability": task["capability"],
+                "source_class": task["source_class"], "artifact": evidence["artifact"],
+                "artifact_sha256": checksum, "artifact_bytes": len(data),
+                "artifact_identity": identity, "verified_at": utcnow(),
+                "scope": "local artifact custody only; no native execution or quality claim"}
     if task_id != "workspace-grounding-check":
         raise ContractError("outcome task has no public verifier")
     workspace_value = evidence.get("workspace")

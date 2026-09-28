@@ -1141,12 +1141,260 @@ def test_repository_ci_fetches_authoritative_base_history() -> None:
             encoding="utf-8"
         )
     )
-    checkout = next(
+    checkouts = [
         step
         for step in workflow["jobs"]["conformance"]["steps"]
-        if step.get("uses") == "actions/checkout@v4"
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert len(checkouts) == 1
+    assert checkouts[0]["with"]["fetch-depth"] == 0
+
+
+# Official release metadata was verified before updating these reviewed pins.
+# Static contracts below do not attest execution on a hosted Actions runner.
+_HOSTED_ACTION_PINS = {
+    "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",  # v7.0.1
+    "actions/setup-python": "5fda3b95a4ea91299a34e894583c3862153e4b97",  # v7.0.0
+    "actions/setup-node": "820762786026740c76f36085b0efc47a31fe5020",  # v7.0.0
+    "actions/upload-artifact": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",  # v7.0.1
+    "oven-sh/setup-bun": "0c5077e51419868618aeaa5fe8019c62421857d6",  # v2.2.0
+}
+
+
+def _hosted_workflow(path: Path) -> dict:
+    # BaseLoader keeps the YAML 1.2 `on` key intact; scalar comparisons below
+    # intentionally use strings, including explicit booleans and fetch depth.
+    class UniqueLoader(yaml.BaseLoader):
+        pass
+
+    def mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            assert key not in result, f"ambiguous duplicate workflow key: {key}"
+            result[key] = loader.construct_object(value_node)
+        return result
+
+    UniqueLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping
     )
-    assert checkout["with"]["fetch-depth"] == 0
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueLoader)
+
+
+def _hosted_security_contract(workflow: dict, name: str) -> None:
+    assert workflow["permissions"] == {"contents": "read"}
+    expected_events = {"pull_request", "push"}
+    if name == "distribution.yml":
+        expected_events.add("workflow_dispatch")
+    assert set(workflow["on"]) == expected_events
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    for job_id, job in workflow["jobs"].items():
+        assert job.get("permissions", workflow["permissions"]) == {"contents": "read"}
+        assert job.get("continue-on-error", "false") == "false"
+        if name == "distribution.yml" and job_id == "arch-package":
+            assert job["if"] == "github.event_name == 'workflow_dispatch'"
+        else:
+            assert "if" not in job
+        for step in job["steps"]:
+            assert step.get("continue-on-error", "false") == "false"
+            if step.get("name") == "Establish prescribed macOS framework interpreter":
+                assert name == "validate.yml" and job_id == "onboarding-portability"
+                assert step["if"] == "runner.os == 'macOS'"
+            else:
+                assert "if" not in step
+            if "uses" in step:
+                owner, ref = step["uses"].rsplit("@", 1)
+                assert owner in _HOSTED_ACTION_PINS
+                assert ref == _HOSTED_ACTION_PINS[owner]
+                assert re.fullmatch(r"[0-9a-f]{40}", ref)
+                assert (
+                    step.get("with", {}).get("allow-unsafe-pr-checkout", "false")
+                    == "false"
+                )
+
+
+def _distribution_contract(workflow: dict) -> None:
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"packages", "arch-package"}
+    packages = jobs["packages"]
+    assert packages["runs-on"] == "${{ matrix.os }}"
+    assert packages["strategy"] == {
+        "fail-fast": "false",
+        "matrix": {
+            "os": ["ubuntu-latest", "macos-latest"],
+            "python": ["3.12", "3.13", "3.14"],
+        },
+    }
+    setup = {
+        s["uses"].split("@")[0]: s.get("with", {})
+        for s in packages["steps"]
+        if "uses" in s
+    }
+    assert [s["uses"].split("@")[0] for s in packages["steps"] if "uses" in s] == [
+        "actions/checkout",
+        "actions/setup-python",
+        "actions/setup-node",
+        "oven-sh/setup-bun",
+    ]
+    assert setup["actions/setup-python"] == {"python-version": "${{ matrix.python }}"}
+    assert setup["actions/setup-node"] == {
+        "node-version": "22",
+        "package-manager-cache": "false",
+    }
+    assert setup["oven-sh/setup-bun"] == {}
+    assert [s["run"] for s in packages["steps"] if "run" in s] == [
+        "python -m pip install pytest jsonschema pyyaml",
+        "python -B -m pytest skills/synthesis-onboarding/scripts/test_distribution.py -q",
+        "sh -n packages/launcher.sh onboard.sh",
+    ]
+    arch = jobs["arch-package"]
+    assert arch["runs-on"] == "ubuntu-latest"
+    assert arch["container"] == "archlinux:base-devel"
+    assert arch["if"] == "github.event_name == 'workflow_dispatch'"
+    run_lines = [line for s in arch["steps"] for line in s.get("run", "").splitlines()]
+    for required in (
+        'python -B packages/check_arch.py --source "$GITHUB_WORKSPACE" --output /tmp/arch-package-candidate',
+        "useradd --create-home package-builder",
+        "chown -R package-builder:package-builder /tmp/arch-package-candidate",
+        "runuser -u package-builder -- makepkg --noconfirm",
+        "runuser -u package-builder -- makepkg --printsrcinfo > .SRCINFO",
+        "synthesis --version",
+        "synthesis --help",
+        "test ! -e /root/.synthesis",
+    ):
+        assert required in run_lines
+    upload = arch["steps"][-1]
+    assert upload["uses"].split("@")[0] == "actions/upload-artifact"
+    assert upload["with"] == {
+        "name": "arch-package-evidence",
+        "path": "/tmp/arch-package-candidate/adapters/aur/",
+    }
+
+
+def _repo_guard_contract(workflow: dict) -> None:
+    for event in ("pull_request", "push"):
+        assert set(workflow["on"][event]["paths"]) == {
+            "skills/synthesis-repo-guard/**",
+            ".github/workflows/repo-guard.yml",
+        }
+    assert set(workflow["jobs"]) == {"checkpoint"}
+    job = workflow["jobs"]["checkpoint"]
+    assert job["runs-on"] == "ubuntu-latest"
+    steps = job["steps"]
+    assert [s["uses"].split("@")[0] for s in steps if "uses" in s] == [
+        "actions/checkout",
+        "actions/setup-python",
+    ]
+    assert steps[1]["with"] == {"python-version": "3.12"}
+    assert [s["run"] for s in steps if "run" in s] == [
+        "python -m pip install pytest pyyaml",
+        "python -m pytest skills/synthesis-repo-guard/test_checkpoint_sync.py "
+        "skills/synthesis-repo-guard/test_deleted_paths.py -q",
+    ]
+
+
+def _validate_history_contract(workflow: dict) -> None:
+    assert set(workflow["jobs"]) == {"conformance", "onboarding-portability"}
+    steps = workflow["jobs"]["conformance"]["steps"]
+    checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
+    assert len(checkouts) == 1 and checkouts[0]["with"]["fetch-depth"] == "0"
+    assert workflow["jobs"]["onboarding-portability"]["strategy"] == {
+        "fail-fast": "false",
+        "matrix": {"os": ["ubuntu-latest", "macos-latest"]},
+    }
+
+
+_HOSTED_SPECIFIC_CONTRACTS = {
+    "validate.yml": _validate_history_contract,
+    "distribution.yml": _distribution_contract,
+    "repo-guard.yml": _repo_guard_contract,
+}
+
+
+@pytest.mark.parametrize("name", sorted(_HOSTED_SPECIFIC_CONTRACTS))
+def test_hosted_workflow_execution_and_security_contracts(name: str) -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows" / name)
+    _hosted_security_contract(workflow, name)
+    _HOSTED_SPECIFIC_CONTRACTS[name](workflow)
+
+
+@pytest.mark.parametrize(
+    "name,old,new",
+    [
+        ("repo-guard.yml", "contents: read", "contents: write"),
+        (
+            "repo-guard.yml",
+            "    runs-on: ubuntu-latest",
+            "    runs-on: ubuntu-latest\n    permissions:\n      contents: write",
+        ),
+        ("repo-guard.yml", "  pull_request:", "  pull_request_target:"),
+        ("repo-guard.yml", "actions/checkout@", "unreviewed/checkout@"),
+        ("repo-guard.yml", _HOSTED_ACTION_PINS["actions/setup-python"], "v7"),
+        (
+            "repo-guard.yml",
+            "    runs-on: ubuntu-latest",
+            "    runs-on: ubuntu-latest\n    if: false",
+        ),
+        (
+            "repo-guard.yml",
+            "      - run: python -m pytest",
+            "      - continue-on-error: true\n        run: python -m pytest",
+        ),
+        (
+            "repo-guard.yml",
+            "      - run: python -m pytest",
+            "      - if: false\n        run: python -m pytest",
+        ),
+        ("repo-guard.yml", " skills/synthesis-repo-guard/test_deleted_paths.py", ""),
+        ("repo-guard.yml", "      - '.github/workflows/repo-guard.yml'\n", ""),
+        (
+            "distribution.yml",
+            "package-manager-cache: false",
+            "package-manager-cache: true",
+        ),
+        ("distribution.yml", "node-version: '22'", "node-version: '24'"),
+        ("distribution.yml", "['3.12', '3.13', '3.14']", "['3.12', '3.13']"),
+        ("distribution.yml", "[ubuntu-latest, macos-latest]", "[ubuntu-latest]"),
+        (
+            "distribution.yml",
+            "if: github.event_name == 'workflow_dispatch'",
+            "if: always()",
+        ),
+        (
+            "distribution.yml",
+            "runuser -u package-builder -- makepkg --noconfirm",
+            "makepkg --noconfirm",
+        ),
+        ("distribution.yml", "          test ! -e /root/.synthesis\n", ""),
+        (
+            "distribution.yml",
+            "test_distribution.py -q",
+            "test_distribution.py -q || true",
+        ),
+        ("distribution.yml", _HOSTED_ACTION_PINS["oven-sh/setup-bun"], "v2"),
+        ("distribution.yml", "name: arch-package-evidence", "name: other-evidence"),
+        ("validate.yml", "fetch-depth: 0", "fetch-depth: 1"),
+        ("validate.yml", "[ubuntu-latest, macos-latest]", "[ubuntu-latest]"),
+    ],
+)
+def test_hosted_workflow_contract_refuses_boundary_mutations(tmp_path, name, old, new):
+    repository = Path(__file__).resolve().parents[3]
+    original = (repository / ".github/workflows" / name).read_text()
+    assert old in original
+    target = tmp_path / name
+    target.write_text(original.replace(old, new, 1))
+    with pytest.raises((AssertionError, KeyError, ValueError)):
+        workflow = _hosted_workflow(target)
+        _hosted_security_contract(workflow, name)
+        _HOSTED_SPECIFIC_CONTRACTS[name](workflow)
+
+
+def test_hosted_workflow_contract_refuses_duplicate_permission_keys(tmp_path):
+    target = tmp_path / "ambiguous.yml"
+    target.write_text("permissions:\n  contents: write\n  contents: read\n")
+    with pytest.raises(AssertionError, match="duplicate workflow key"):
+        _hosted_workflow(target)
 
 
 def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:

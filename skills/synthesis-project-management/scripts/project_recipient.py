@@ -4,6 +4,7 @@ Only the registry's block project mappings and scalar routing fields are read.
 No prose, active pointer, board title, or client memory supplies a relationship.
 The parser is deliberately stdlib-only and refuses unsupported routing syntax.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +14,7 @@ import stat
 import subprocess
 
 PROJECT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,159}\Z")
-FIELD = re.compile(r'''(?:'([^']+)'|"([^"]+)"|([^\s:]+)):\s*(.*)\Z''')
+FIELD = re.compile(r"""(?:'([^']+)'|"([^"]+)"|([^\s:]+)):\s*(.*)\Z""")
 ROUTING_FIELDS = {"id", "status", "superseded_by"}
 MAX_REGISTRY_BYTES = 4 * 1024 * 1024
 
@@ -25,7 +26,10 @@ def error(detail: str) -> ValueError:
 def scalar(raw: str) -> str:
     # Routing IDs/statuses are literal scalars, not YAML aliases, lists, tags,
     # block strings, escapes, merges, or expressions.
-    match = re.fullmatch(r'''(?:'([A-Za-z0-9_.-]+)'|"([A-Za-z0-9_.-]+)"|([A-Za-z0-9_.-]+))(?:\s+#.*)?\s*''', raw)
+    match = re.fullmatch(
+        r"""(?:'([A-Za-z0-9_.-]+)'|"([A-Za-z0-9_.-]+)"|([A-Za-z0-9_.-]+))(?:\s+#.*)?\s*""",
+        raw,
+    )
     if not match:
         raise error("registry routing field is not a single literal scalar")
     value = next(value for value in match.groups() if value is not None)
@@ -43,10 +47,10 @@ def quote_open(text: str, quote: str, *, continuation: bool = False) -> bool:
             offset += 2
             continue
         if character == quote:
-            if quote == "'" and text[offset:offset + 2] == "''":
+            if quote == "'" and text[offset : offset + 2] == "''":
                 offset += 2
                 continue
-            remainder = text[offset + 1:].strip()
+            remainder = text[offset + 1 :].strip()
             if remainder and not remainder.startswith("#"):
                 raise error("registry quoted scalar has trailing syntax")
             return False
@@ -64,11 +68,20 @@ def registry_entries(text: str) -> dict[str, dict[str, str]]:
     lines = text.splitlines()
     headers = [i for i, line in enumerate(lines) if re.match(r"^projects\s*:", line)]
     if headers:
-        if len(headers) != 1 or not re.fullmatch(r"projects:\s*(?:#.*)?", lines[headers[0]]):
+        if len(headers) != 1 or not re.fullmatch(
+            r"projects:\s*(?:#.*)?", lines[headers[0]]
+        ):
             raise error("registry projects section is ambiguous or unsupported")
-        lines = lines[headers[0] + 1:]
+        lines = lines[headers[0] + 1 :]
     else:
-        first = next((line for line in lines if line.strip() and not line.lstrip().startswith("#")), "")
+        first = next(
+            (
+                line
+                for line in lines
+                if line.strip() and not line.lstrip().startswith("#")
+            ),
+            "",
+        )
         if not first.startswith("- "):
             raise error("registry has no block project list")
     entries = []
@@ -82,7 +95,7 @@ def registry_entries(text: str) -> dict[str, dict[str, str]]:
             continue
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        indent_text = line[:len(line) - len(line.lstrip())]
+        indent_text = line[: len(line) - len(line.lstrip())]
         if "\t" in indent_text:
             raise error("registry indentation is unsupported")
         indent, body = len(indent_text), line.strip()
@@ -94,7 +107,10 @@ def registry_entries(text: str) -> dict[str, dict[str, str]]:
             entry_indent = indent
         if indent == entry_indent and body.startswith("- "):
             field = FIELD.fullmatch(body[2:])
-            if not field or next(v for v in field.groups()[:3] if v is not None) != "id":
+            if (
+                not field
+                or next(v for v in field.groups()[:3] if v is not None) != "id"
+            ):
                 raise error("registry project entries must start with one id")
             current = {"id": scalar(field.group(4))}
             entries.append(current)
@@ -129,23 +145,43 @@ def registry_entries(text: str) -> dict[str, dict[str, str]]:
     return result
 
 
-def project_route(index: Path, project_id: str) -> dict:
+def project_route(index: Path, project_id: str, *, board=None) -> dict:
     if not PROJECT_ID.fullmatch(project_id):
         raise error("project selector is invalid")
     try:
-        if not index.is_absolute() or index.is_symlink() or not stat.S_ISREG(index.stat().st_mode):
+        import team_contract
+
+        try:
+            team_contract.require_registry(index, board=board)
+        except (team_contract.TeamContractError, OSError, RuntimeError) as exc:
+            raise error("team registry access is unavailable") from exc
+        if (
+            not index.is_absolute()
+            or index.is_symlink()
+            or not stat.S_ISREG(index.stat().st_mode)
+        ):
             raise error("registry must be an absolute regular file")
         if index.stat().st_size > MAX_REGISTRY_BYTES:
             raise error("registry is oversized")
+
         def git(*args):
-            done = subprocess.run(["git", "--no-optional-locks", "-C", str(index.parent), *args], capture_output=True, text=True)
+            done = subprocess.run(
+                ["git", "--no-optional-locks", "-C", str(index.parent), *args],
+                capture_output=True,
+                text=True,
+            )
             if done.returncode:
                 raise error("registry Git evidence is unavailable")
             return done.stdout.strip()
+
         root = Path(git("rev-parse", "--show-toplevel")).resolve()
         relative = index.resolve().relative_to(root).as_posix()
-        tracked = git("ls-files", "--stage", "--", ":(top,literal)" + relative).splitlines()
-        if len(tracked) != 1 or not re.match(r"100(?:644|755) [0-9a-f]+ 0\t", tracked[0]):
+        tracked = git(
+            "ls-files", "--stage", "--", ":(top,literal)" + relative
+        ).splitlines()
+        if len(tracked) != 1 or not re.match(
+            r"100(?:644|755) [0-9a-f]+ 0\t", tracked[0]
+        ):
             raise error("registry is not an unambiguous Git-tracked regular file")
         raw = index.read_bytes()
         entries = registry_entries(raw.decode("utf-8"))
@@ -169,6 +205,11 @@ def project_route(index: Path, project_id: str) -> dict:
         if lifecycle not in {"archived", "superseded", "completed"} or not successor:
             raise error("terminal or unknown project has no verified live successor")
         current = successor
-    return {"requested_project": project_id, "resolved_project": current, "chain": chain,
-            "registry": str(index), "registry_sha256": hashlib.sha256(raw).hexdigest(),
-            "scope": "report delivery only; no project identity, claim or execution authority"}
+    return {
+        "requested_project": project_id,
+        "resolved_project": current,
+        "chain": chain,
+        "registry": str(index),
+        "registry_sha256": hashlib.sha256(raw).hexdigest(),
+        "scope": "report delivery only; no project identity, claim or execution authority",
+    }

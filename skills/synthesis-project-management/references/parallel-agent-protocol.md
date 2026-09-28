@@ -70,6 +70,16 @@ Re-claiming merges by default: a `claim --id` call unions the named areas
 and workspaces with what the row already holds, and names what it retained
 and added. Omission never shrinks a claim — a re-claim written from a
 compacted context cannot silently drop the areas it forgot to restate.
+For the same authenticated seat and project, the role also keeps the higher of
+its existing and requested values (`none`, `contributor`, `owner`). A helper
+sharing that identity cannot demote the owner through an incremental claim.
+The command reports a retained role; an explicit `--replace` can change it only
+when the replacement scope passes the ordinary context and ownership checks.
+This does not inherit a role across projects or authorize a foreign session.
+Canonical-context claims are checked against that effective role inside the
+locked, authenticated update, including when a helper repeats an already held
+context path. A new contributor, a cross-project claim, or an explicit role
+replacement cannot borrow the prior owner's authority to bypass this check.
 Shrinking is the explicit `narrow` verb, which names each area or
 workspace to release (`--release`; `--keep` names what to retain and
 releases the held complement instead), refuses targets the row does not
@@ -611,3 +621,39 @@ payload whose bytes have changed since the handoff. The queue
 (`resources/handoffs/queue.json`) is written atomically. Reader identity
 comes from `--as` or `SYNTHESIS_HANDOFF_SELF` — with neither, `read` refuses
 rather than guess, because guessing could claim another agent's work.
+
+
+## Durable work placement and unexplained loss
+
+Create long-lived worktrees, source copies, virtual environments and sole
+recovery evidence under the durable workspace, for example
+`~/workspaces/example/.worktrees/feature-review`. System temporary directories
+and session scratchpads have no durable retention contract. Their retention
+varies by OS, administrator policy, storage pressure and file timestamps; never
+promise a universal number of safe days or keep them alive by touching files.
+
+The existing `scripts/create_worktree.py` owner refuses a temporary destination
+before publishing a reservation or creating the target. It checks canonical
+paths and temporary-root aliases while retaining exact native identity, board
+serialization, parent-descriptor verification and ordinary claims. A bounded
+synthetic test may explicitly pass `--fixture-deadline <epoch-seconds>` no more
+than 900 seconds ahead. Its receipt says `ephemeral-test-fixture`; this neither
+grants edit authority nor establishes durable custody. Preserve the test inputs,
+outputs and evidence before closure; the deadline never authorizes deletion.
+Do not label production work a test to bypass durable placement.
+
+`fleet_doctor.py --board <board> --repo <repository>` inspects the selected Git
+registrations, missing linked metadata and vanished tracked paths without
+pruning. Optional repeated `--source-path` and `--venv` flags inspect only the
+declared source/virtual-environment paths, not a whole disk. The doctor reports
+recoverable registered HEAD/branch evidence where available. Missing paths,
+unknown age, or a prunable registration do not prove which cleaner ran, loss of
+all refs, completion, or permission to release anyone's claims. Preserve the
+common Git directory, refs, surviving files and logs before any separately
+authorized recovery. Never prune to make disappearance look like retirement.
+
+`retire_worktree.py` distinguishes unexplained registered-checkout loss from its
+existing exact, verified retirement-intent recovery. The latter still requires
+its own retained identity, manifest and branch proofs. Temporary placement
+alone does not prevent the sanctioned retirement of a verified complete owned
+fixture; missing evidence never authorizes cleanup.

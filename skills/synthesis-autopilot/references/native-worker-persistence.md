@@ -1,0 +1,19 @@
+# Registered native session continuity
+
+This package extends the existing `delegation_boundary` native worker. It adds no scheduler, permission authority, account store or D3 study assignment.
+
+The file contract may contain `native_session`, an exact `{artifact_id,path,digest}` member also present in `immutable_inputs`. Its closed JSON has schema_version=1, kind=native-worker-session, operation=allocate|resume, run_id, child_id, owner={session_uuid,native_ref}, source and account_scope registered file references, and predecessor_child_id (null only for allocate). Neither a supplied session ID nor a transcript path is admitted in this intent.
+
+The supported persistent path is Codex's existing managed owner, bound to an explicit registered scoped account record. That record declares the exact model and effort; the current selected and native-observed values must match it. The product does not hardcode this evaluation's model or effort. Ordinary unscoped workers retain the existing ephemeral path. Muse/Hermes/Claude persistence is not claimed by this extension. The source reference must identify the accepted current activated release bytes; the execution account is source-pinned, current and bounded by the unchanged run deadline. Existing PM, claims, executable, permission policy and final pre-effect checks remain authoritative.
+
+Allocation requires exactly native-callback and emits no model turn. A successful verified allocation may complete as model-free work, retaining protection UNKNOWN. It cannot prove protected execution. Its receipt records the actual native identity and bounded current transcript prefix after process cleanup.
+
+Resume requires a productive capability and an exact predecessor child whose completed receipt is authenticated by both existing journal observation and evidence records, raw transport custody, current artifacts and freshness. Account, source, compiled profile, executable and integration owner must match. Failed/cancelled/incomplete predecessors, foreign identities, corrupt prefixes and an already-attempted successor are refused. An uncertain allocation is retained rather than replayed. Ancestry is finite (32). Every productive resume uses the same existing managed connection for fresh permission probes and the productive turn. A prior ENFORCED result does not substitute for this connection's proof.
+
+The post-cleanup checkpoint binds the actual transport identity and exact append-only transcript prefix. Historical predecessor verification retains its authenticated output manifest; it does not require old output bytes to remain unchanged after an authorized successor. Immutable inputs and raw evidence still must verify. Ordinary completion continues to require current outputs. Full available native history can be exported through the existing bounded native observation/archive owners; this checkpoint alone is not a whole-history archive.
+
+Original native failures remain failures. Source fixtures and an observed cold connection are separate from real OS process-loss survival and installed live loading. No native/provider call was performed by this package.
+
+Allocation completion and independent integration consume the existing authenticated `native_worker` evidence. The integration review binds the actual native producer, not the parent dispatch identity, and requires that producer to match the verified receipt and recorded child observation. A copied receipt or changed child summary supplies no authority.
+
+The complete source acceptance fixture drives actual PM admission, dispatch, journal observation, worker recording, return and independent integration through allocation, productive resume and a fresh-connection cold resume. Only native transport and installed-source observations are programmed. Current account/profile checks, source/claim freshness, uncertain predecessors and consumed attempts remain enforced. This fixture is not live native recovery evidence.

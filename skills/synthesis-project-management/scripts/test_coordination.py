@@ -2382,7 +2382,7 @@ def test_wider_rows_than_the_engine_knows_name_the_newer_engine(tmp_path):
     with pytest.raises(ValueError) as caught:
         MODULE.rows("\n".join(lines))
     message = str(caught.value)
-    assert f"{len(MODULE.V5_COLUMNS) + 1} columns" in message
+    assert f"{len(MODULE.TABLE_COLUMNS) + 1} columns" in message
     assert "written by a newer engine" in message
 
     lines[index] = "| " + " | ".join(["x"] * (len(MODULE.V1_COLUMNS) + 1)) + " |"

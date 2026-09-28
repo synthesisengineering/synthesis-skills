@@ -12,7 +12,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
+TERMINAL_STATUSES = frozenset({"released", "complete", "completed", "closed"})
+
+
+def active_status(status: str) -> bool:
+    """One coordination status rule; parked seats remain addressable."""
+    return status not in TERMINAL_STATUSES
+
 V5_COLUMNS = (
     "session uuid",
     "compact id",
@@ -32,6 +39,7 @@ V5_COLUMNS = (
     "context role",
     "status",
 )
+V6_COLUMNS = V5_COLUMNS + ("person", "standing role")
 V4_COLUMNS = (
     "session uuid",
     "compact id",
@@ -97,6 +105,7 @@ _COLUMNS = {
     3: V3_COLUMNS,
     4: V4_COLUMNS,
     5: V5_COLUMNS,
+    6: V6_COLUMNS,
 }
 _WIDTHS = frozenset(map(len, _COLUMNS.values()))
 _ENGINE = Path(__file__).with_name("coordination.py")

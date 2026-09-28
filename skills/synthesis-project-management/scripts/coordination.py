@@ -32,6 +32,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from board_grammar import (  # noqa: E402 — standalone script binds its sibling owner first
+    TERMINAL_STATUSES as TERMINAL_STATUSES,
+    active_status,
     board_schema,
     ensure_writable_schema,
     parse_cells as parse_cells,  # public archive-owner import
@@ -74,6 +76,7 @@ from coordination_schema import (  # noqa: E402
     V3_COLUMNS,
     V4_COLUMNS,
     V5_COLUMNS,
+    V6_COLUMNS,
     SessionIdentity,
     column_count_error,
     display_id,
@@ -89,12 +92,14 @@ from coordination_schema import (  # noqa: E402
 
 DEFAULT_BOARD = Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
-TABLE_COLUMNS = V5_COLUMNS
+TABLE_COLUMNS = V6_COLUMNS
 
 
 def table_header(columns: tuple[str, ...]) -> str:
     return (
-        "| " + " | ".join(columns) + " |\n"
+        "| "
+        + " | ".join(columns)
+        + " |\n"
         + "|"
         + "|".join("---" for _ in columns)
         + "|"
@@ -152,21 +157,22 @@ def self_identity(requested_ref: str = "") -> SelfIdentity:
     if requested_ref.startswith("codex:") and identity.client != CLIENT_CODEX:
         return SelfIdentity(
             client=CLIENT_CODEX,
-            harness_session_id=requested_ref[len("codex:"):],
+            harness_session_id=requested_ref[len("codex:") :],
             explicit_ref=requested_ref,
             pid=identity.pid,
         )
     if requested_ref.startswith("muse:") and identity.client != CLIENT_MUSE:
         return SelfIdentity(
             client=CLIENT_MUSE,
-            harness_session_id=requested_ref[len("muse:"):],
+            harness_session_id=requested_ref[len("muse:") :],
             explicit_ref=requested_ref,
             pid=identity.pid,
         )
     if requested_ref and not identity.primary_ref:
         return SelfIdentity(explicit_ref=requested_ref, pid=identity.pid)
     return identity
-TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
+
+
 CONTEXT_RESERVED_PATTERNS = (
     "context.md",
     "reference.md",
@@ -196,6 +202,8 @@ class Session:
     status: str
     client_ref: str = ""
     machine_label: str = ""
+    person: str = ""
+    standing_role: str = ""
 
     @property
     def machine_display(self) -> str:
@@ -247,6 +255,8 @@ class Session:
             del values[6]
         if "client session ref" not in columns:
             del values[6]
+        if "person" in columns:
+            values.extend([self.person or "-", self.standing_role or "-"])
         return values
 
 
@@ -293,8 +303,9 @@ def split_values(value: str) -> list[str]:
 
 def overlaps(left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
     """Use the shared conflict policy without granting checkout authority."""
-    return claim_scope.claim_conflicts(left, right,
-        left_workspaces=left_workspaces, right_workspaces=right_workspaces)
+    return claim_scope.claim_conflicts(
+        left, right, left_workspaces=left_workspaces, right_workspaces=right_workspaces
+    )
 
 
 def workspace_parts(workspace: str) -> tuple[str, str]:
@@ -375,15 +386,14 @@ def _emit_check_staged(args, payload: dict) -> None:
         print("outside claim: " + ", ".join(payload["outside_paths"]))
     if payload.get("remediation"):
         print("remediation: " + payload["remediation"])
-    print(
-        "unverified remainder: "
-        + "; ".join(payload["unverified_remainder"])
-    )
+    print("unverified remainder: " + "; ".join(payload["unverified_remainder"]))
 
 
 def _git_bytes(repository: Path, *arguments: str) -> subprocess.CompletedProcess:
     if arguments in claim_scope.native_git._QUERIES:
-        return claim_scope.native_git.run(["git", *arguments], cwd=repository, capture_output=True)
+        return claim_scope.native_git.run(
+            ["git", *arguments], cwd=repository, capture_output=True
+        )
     return subprocess.run(
         ["git", *arguments],
         cwd=repository,
@@ -396,14 +406,18 @@ def _repository_state(repository: Path) -> tuple[Path, str]:
     requested = repository.expanduser()
     if not requested.is_dir():
         raise RuntimeError(f"repository is not a directory: {requested}")
-    combined = _git_bytes(requested, "rev-parse", "--show-toplevel", "--symbolic-full-name", "HEAD")
+    combined = _git_bytes(
+        requested, "rev-parse", "--show-toplevel", "--symbolic-full-name", "HEAD"
+    )
     if combined.returncode == 0:
         lines = combined.stdout.decode("utf-8", errors="strict").splitlines()
         if len(lines) != 2 or not Path(lines[0]).is_absolute():
             raise RuntimeError("Git returned ambiguous repository and branch identity")
-        if not lines[1].startswith("refs/heads/") or not lines[1][len("refs/heads/"):]:
-            raise RuntimeError("detached HEAD has no exact branch identity for a board workspace claim")
-        return Path(lines[0]).resolve(), lines[1][len("refs/heads/"):]
+        if not lines[1].startswith("refs/heads/") or not lines[1][len("refs/heads/") :]:
+            raise RuntimeError(
+                "detached HEAD has no exact branch identity for a board workspace claim"
+            )
+        return Path(lines[0]).resolve(), lines[1][len("refs/heads/") :]
     # An unborn branch has no resolvable HEAD commit. Git's branch command
     # still owns its name; retain that explicit path without inferring it from
     # administrative files or a previously observed checkout.
@@ -472,9 +486,7 @@ def _absolute_claim_pattern(claim: str, repository: Path) -> str | None:
     if not candidate.is_absolute():
         parts = candidate.parts
         base = (
-            repository.parent
-            if parts and parts[0] == repository.name
-            else repository
+            repository.parent if parts and parts[0] == repository.name else repository
         )
         candidate = base / candidate
     # AGENT HEURISTIC: board claims can be recorded through a symlinked macOS
@@ -518,9 +530,7 @@ def _glob_matches_path(pattern: str, candidate: str) -> bool:
     return matches(0, 0)
 
 
-def _claim_authorizes_path(
-    claim: str, repository: Path, staged_path: str
-) -> bool:
+def _claim_authorizes_path(claim: str, repository: Path, staged_path: str) -> bool:
     pattern = _absolute_claim_pattern(claim, repository)
     if pattern is None:
         return False
@@ -541,8 +551,7 @@ def _outside_claim(
         path
         for path in staged_paths
         if not any(
-            _claim_authorizes_path(claim, repository, path)
-            for claim in session.claims
+            _claim_authorizes_path(claim, repository, path) for claim in session.claims
         )
     ]
 
@@ -675,6 +684,11 @@ def claims_context(claim: str) -> bool:
 
 
 def session_from_cells(cells: list[str]) -> Session:
+    if len(cells) == len(V6_COLUMNS):
+        session = session_from_cells(cells[: len(V5_COLUMNS)])
+        session.person = "" if plain(cells[-2]) == "-" else plain(cells[-2])
+        session.standing_role = "" if plain(cells[-1]) == "-" else plain(cells[-1])
+        return session
     if len(cells) == len(V5_COLUMNS):
         raw_ref = plain(cells[7])
         return Session(
@@ -784,6 +798,8 @@ def with_identity(session: Session, identity: SessionIdentity) -> Session:
         machine=session.machine,
         client_ref=session.client_ref,
         machine_label=session.machine_label,
+        person=session.person,
+        standing_role=session.standing_role,
         project=session.project,
         started=session.started,
         heartbeat=session.heartbeat,
@@ -833,7 +849,7 @@ def sessions_from_parsed_rows(parsed_rows) -> list[Session]:
 
 
 def active(session: Session) -> bool:
-    return session.status not in TERMINAL_STATUSES
+    return active_status(session.status)
 
 
 def parse_time(value: str) -> datetime | None:
@@ -903,7 +919,9 @@ FLEET_PARKED_EXPIRY_DAYS = 7
 PARKED_STATUS = "parked"
 
 _FLEET_CHALLENGE_RE = re.compile(r"^fleet-challenge\s+target=(\S+)\s+challenger=(.+)$")
-_FLEET_PARKED_RE = re.compile(r"^fleet-parked\s+target=(\S+)\s+basis=(\S+)\s+actor=(.+)$")
+_FLEET_PARKED_RE = re.compile(
+    r"^fleet-parked\s+target=(\S+)\s+basis=(\S+)\s+actor=(.+)$"
+)
 _FLEET_OVERLAPS_PARKED_RE = re.compile(
     r"^fleet-overlaps-parked\s+new=(\S+)\s+parked=(\S+)\s+areas=(.*)$"
 )
@@ -1185,12 +1203,8 @@ def overlaps_parked_block(new_compact: str, parked: Session, areas: list[str]) -
 
 def resume_notice_block(target: Session, successors: list[dict]) -> str:
     if successors:
-        detail = "; ".join(
-            f"{item['new']} ({item['areas']})" for item in successors
-        )
-        note = (
-            f"overlaps-parked successors to re-validate before writing: {detail}."
-        )
+        detail = "; ".join(f"{item['new']} ({item['areas']})" for item in successors)
+        note = f"overlaps-parked successors to re-validate before writing: {detail}."
     else:
         note = "no overlaps-parked successors recorded."
     return (
@@ -1227,7 +1241,9 @@ def post_challenge(
         raise FleetParkError("challenge requires a challenger label")
     return append_bus_block(
         content,
-        challenge_block(session, challenger.strip(), moment.isoformat(timespec="seconds")),
+        challenge_block(
+            session, challenger.strip(), moment.isoformat(timespec="seconds")
+        ),
     )
 
 
@@ -1279,11 +1295,7 @@ def park_session(
             )
         latest_challenge = max(record["posted"] for record in mature)
         age = fleet_heartbeat_age(session, moment)
-        beat = (
-            moment - age
-            if age is not None
-            else parse_time(session.heartbeat)
-        )
+        beat = moment - age if age is not None else parse_time(session.heartbeat)
         if beat is not None and beat.tzinfo is None:
             beat = beat.replace(tzinfo=timezone.utc)
         if beat is not None and beat >= latest_challenge:
@@ -1295,7 +1307,10 @@ def park_session(
     return append_bus_block(
         updated,
         park_record_block(
-            session, basis, actor.strip(), moment.isoformat(timespec="seconds"),
+            session,
+            basis,
+            actor.strip(),
+            moment.isoformat(timespec="seconds"),
             evidence=evidence,
         ),
     )
@@ -1461,18 +1476,24 @@ def replace_table(
     """
     declared = board_schema(text)
     effective = force_schema or declared or SCHEMA_VERSION
-    if effective not in {3, 4, 5}:
+    if effective not in {3, 4, 5, 6}:
         raise ValueError(
-            "board serialization requires schema v3, v4, or v5; migrate the "
+            "board serialization requires schema v3, v4, v5, or v6; migrate the "
             "board explicitly before mutating its sessions"
         )
     sessions = ensure_identities(sessions)
-    if effective >= 5:
+    if effective >= 6:
+        columns = V6_COLUMNS
+    elif effective == 5:
         columns = V5_COLUMNS
     elif effective == 4:
         columns = V4_COLUMNS
     else:
         columns = V3_COLUMNS
+    if effective < 6 and any(s.person or s.standing_role for s in sessions):
+        raise ValueError(
+            "team attribution requires explicit schema v6 migration; refusing silent loss"
+        )
     rendered = [table_header(columns)]
     rendered.extend(
         "| " + " | ".join(sanitize(value) for value in session.cells(columns)) + " |"
@@ -1511,11 +1532,18 @@ def _prune_board_backups(board: Path, newest: Path) -> None:
     directory = newest.parent
     if directory.is_symlink():
         raise OSError("coordination backup directory is a symlink")
-    pattern = re.compile(re.escape(board.name) + r"\.\d{8}T\d{12}(?:\.[A-Za-z0-9_-]+)?\.bak\Z")
-    backups = [p for p in directory.iterdir() if pattern.fullmatch(p.name)
-               and stat.S_ISREG(p.lstat().st_mode) and p != newest]
+    pattern = re.compile(
+        re.escape(board.name) + r"\.\d{8}T\d{12}(?:\.[A-Za-z0-9_-]+)?\.bak\Z"
+    )
+    backups = [
+        p
+        for p in directory.iterdir()
+        if pattern.fullmatch(p.name) and stat.S_ISREG(p.lstat().st_mode) and p != newest
+    ]
     # Keep the just-created copy even when the wall clock moved backward.
-    for path in sorted(backups, key=lambda p: p.name, reverse=True)[BOARD_BACKUPS_KEEP - 1:]:
+    for path in sorted(backups, key=lambda p: p.name, reverse=True)[
+        BOARD_BACKUPS_KEEP - 1 :
+    ]:
         if not path.is_symlink() and stat.S_ISREG(path.lstat().st_mode):
             path.unlink()
 
@@ -1533,15 +1561,21 @@ def write_board(board: Path, content: str) -> None:
         backup_dir.mkdir(parents=True, exist_ok=True)
         descriptor, backup_name = tempfile.mkstemp(
             prefix=f".{board.name}.{datetime.now().strftime('%Y%m%dT%H%M%S%f')}.",
-            suffix=".tmp", dir=str(backup_dir),
+            suffix=".tmp",
+            dir=str(backup_dir),
         )
         os.close(descriptor)
         temporary_backup = Path(backup_name)
         backup = backup_dir / (temporary_backup.name[1:-4] + ".bak")
         try:
             shutil.copy2(board, temporary_backup)
-            if temporary_backup.read_bytes() != original or board.read_bytes() != original:
-                raise OSError(f"coordination backup verification failed: {temporary_backup}")
+            if (
+                temporary_backup.read_bytes() != original
+                or board.read_bytes() != original
+            ):
+                raise OSError(
+                    f"coordination backup verification failed: {temporary_backup}"
+                )
             os.replace(temporary_backup, backup)
         finally:
             temporary_backup.unlink(missing_ok=True)
@@ -1566,7 +1600,10 @@ def write_board(board: Path, content: str) -> None:
         except OSError as exc:
             # The mutation already succeeded. Do not invite an unsafe retry of
             # a published operation because optional recovery pruning failed.
-            print(f"COORDINATION maintenance warning: backup pruning failed: {exc}", file=sys.stderr)
+            print(
+                f"COORDINATION maintenance warning: backup pruning failed: {exc}",
+                file=sys.stderr,
+            )
 
 
 LEASE_CONFIG_NAME = "lease.json"
@@ -1643,7 +1680,9 @@ def lease_repository(config: dict) -> Path:
                 timeout=LEASE_GIT_TIMEOUT,
             )
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError("coordination lease repository initialization timed out") from exc
+            raise RuntimeError(
+                "coordination lease repository initialization timed out"
+            ) from exc
         if created.returncode != 0:
             raise RuntimeError(
                 f"coordination lease repository init failed: {created.stderr.strip()}"
@@ -1671,13 +1710,15 @@ def lease_fetch(config: dict) -> tuple[str, str | None]:
             )
         if not listed.stdout.strip():
             return "", None
-        raise RuntimeError(
-            f"coordination lease fetch failed: {fetched.stderr.strip()}"
-        )
+        raise RuntimeError(f"coordination lease fetch failed: {fetched.stderr.strip()}")
     resolved = git_lease(repository, "rev-parse", "--verify", "refs/lease/current")
     if resolved.returncode != 0:
-        raise RuntimeError(f"coordination lease tip unreadable: {resolved.stderr.strip()}")
-    if not isinstance(resolved.stdout, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", resolved.stdout.strip()):
+        raise RuntimeError(
+            f"coordination lease tip unreadable: {resolved.stderr.strip()}"
+        )
+    if not isinstance(resolved.stdout, str) or not re.fullmatch(
+        r"(?:[0-9a-f]{40}|[0-9a-f]{64})", resolved.stdout.strip()
+    ):
         raise RuntimeError("coordination lease fetched tip is not a valid object id")
     sha = resolved.stdout.strip()
     tree = git_lease(repository, "ls-tree", "--name-only", sha)
@@ -1698,20 +1739,34 @@ def lease_fetch(config: dict) -> tuple[str, str | None]:
 
 
 def lease_publish(
-    config: dict, board_name: str, content: str, expected_sha: str, *, archive_parent: str | None = None
+    config: dict,
+    board_name: str,
+    content: str,
+    expected_sha: str,
+    *,
+    archive_parent: str | None = None,
 ) -> tuple[bool, str]:
     repository = lease_repository(config)
     blob = git_lease(repository, "hash-object", "-w", "--stdin", input_text=content)
     if blob.returncode != 0:
-        raise RuntimeError(f"coordination lease blob write failed: {blob.stderr.strip()}")
+        raise RuntimeError(
+            f"coordination lease blob write failed: {blob.stderr.strip()}"
+        )
     tree = git_lease(
         repository,
         "mktree",
         input_text=f"100644 blob {blob.stdout.strip()}\t{board_name}\n",
     )
     if tree.returncode != 0:
-        raise RuntimeError(f"coordination lease tree write failed: {tree.stderr.strip()}")
-    commit_arguments = ["commit-tree", tree.stdout.strip(), "-m", "Update coordination board"]
+        raise RuntimeError(
+            f"coordination lease tree write failed: {tree.stderr.strip()}"
+        )
+    commit_arguments = [
+        "commit-tree",
+        tree.stdout.strip(),
+        "-m",
+        "Update coordination board",
+    ]
     if expected_sha:
         commit_arguments.extend(["-p", expected_sha])
     if archive_parent:
@@ -1769,7 +1824,13 @@ def remove_lease_declaration(content: str) -> str:
 
 
 def lease_update(
-    board: Path, config: dict, operation, *, declare: bool = True, require_fence: bool = False
+    board: Path,
+    config: dict,
+    operation,
+    *,
+    declare: bool = True,
+    require_fence: bool = False,
+    team_enrollment=None,
 ) -> None:
     _invalidate_lease_stamp(board)
     if board.exists():
@@ -1781,12 +1842,15 @@ def lease_update(
         sha, content = lease_fetch(config)
         if content is None:
             if require_fence:
-                raise RuntimeError("coordination lease remote ref has not been published; an authority read cannot bootstrap local claims")
+                raise RuntimeError(
+                    "coordination lease remote ref has not been published; an authority read cannot bootstrap local claims"
+                )
             content = (
                 board.read_text(encoding="utf-8") if board.exists() else template()
             )
         ensure_writable_schema(content)
         updated = operation(content)
+        validate_team_transition(board, content, updated, enrollment=team_enrollment)
         if declare:
             updated = ensure_lease_declaration(updated, config["remote"])
         if sha and updated == content and not require_fence:
@@ -1807,9 +1871,13 @@ def lease_stamp_path(board: Path) -> Path:
 
 
 def _lease_stamp_binding(board: Path, config: dict) -> dict:
-    return {"board": str(board.resolve()), "remote": config["remote"],
-            "ref": config["ref"], "repository": str(config["repository"].resolve()),
-            "board_sha256": hashlib.sha256(board.read_bytes()).hexdigest()}
+    return {
+        "board": str(board.resolve()),
+        "remote": config["remote"],
+        "ref": config["ref"],
+        "repository": str(config["repository"].resolve()),
+        "board_sha256": hashlib.sha256(board.read_bytes()).hexdigest(),
+    }
 
 
 def _invalidate_lease_stamp(board: Path) -> None:
@@ -1819,7 +1887,9 @@ def _invalidate_lease_stamp(board: Path) -> None:
         pass
 
 
-def _cached_lease_refresh(board: Path, config: dict, max_age_seconds: float) -> dict | None:
+def _cached_lease_refresh(
+    board: Path, config: dict, max_age_seconds: float
+) -> dict | None:
     try:
         path = lease_stamp_path(board)
         if path.is_symlink() or not path.is_file() or not board.is_file():
@@ -1837,16 +1907,27 @@ def _cached_lease_refresh(board: Path, config: dict, max_age_seconds: float) -> 
             return None
         if stamp.get("binding") != _lease_stamp_binding(board, config):
             return None
-        return {"configured": True, "refreshed": False, "cache_hit": True,
-                "age_seconds": age, "sha": stamp["sha"]}
+        return {
+            "configured": True,
+            "refreshed": False,
+            "cache_hit": True,
+            "age_seconds": age,
+            "sha": stamp["sha"],
+        }
     except (OSError, ValueError, TypeError):
         return None
 
 
 def _write_lease_stamp(board: Path, config: dict, sha: str) -> None:
-    stamp = {"schema": 1, "fetched_at": time.time(), "sha": sha,
-             "binding": _lease_stamp_binding(board, config)}
-    descriptor, name = tempfile.mkstemp(prefix=f".{board.name}.lease-fetch.", suffix=".tmp", dir=board.parent)
+    stamp = {
+        "schema": 1,
+        "fetched_at": time.time(),
+        "sha": sha,
+        "binding": _lease_stamp_binding(board, config),
+    }
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{board.name}.lease-fetch.", suffix=".tmp", dir=board.parent
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(stamp, handle, sort_keys=True)
@@ -1869,8 +1950,13 @@ def _lease_refresh_locked(board: Path, *, max_age_seconds: float = 0) -> dict:
                 raise RuntimeError("board declares a lease but lease.json is missing")
             return {"configured": False}
         if max_age_seconds:
-            if not math.isfinite(max_age_seconds) or not 0 < max_age_seconds <= PASSIVE_STOP_REFRESH_SECONDS:
-                raise RuntimeError("passive lease refresh interval must be at most 300 seconds")
+            if (
+                not math.isfinite(max_age_seconds)
+                or not 0 < max_age_seconds <= PASSIVE_STOP_REFRESH_SECONDS
+            ):
+                raise RuntimeError(
+                    "passive lease refresh interval must be at most 300 seconds"
+                )
             cached = _cached_lease_refresh(board, config, max_age_seconds)
             if cached is not None:
                 return cached
@@ -1919,8 +2005,13 @@ def lease_refresh(board: Path, *, max_age_seconds: float = 0) -> dict:
 def require_fresh_board(board: Path) -> dict:
     """Forced live read; a legitimate local-only board needs no remote."""
     result = lease_refresh(board)
-    if result.get("error") or (result.get("configured") and not result.get("refreshed")):
-        raise RuntimeError("coordination lease refresh failed: " + str(result.get("error") or "remote authority was not refreshed"))
+    if result.get("error") or (
+        result.get("configured") and not result.get("refreshed")
+    ):
+        raise RuntimeError(
+            "coordination lease refresh failed: "
+            + str(result.get("error") or "remote authority was not refreshed")
+        )
     return result
 
 
@@ -1944,11 +2035,98 @@ def _board_scoped_fleet_dir(board: Path):
         del os.environ[fleet_identity.FLEET_DIR_ENV]
 
 
+def validate_team_transition(
+    board: Path, before: str, after: str, *, enrollment=None
+) -> None:
+    """Bind optional team attribution to one declared board-local contract.
+
+    Host lease ACLs and native-session ownership remain independent authorities.
+    Standing-role labels never bypass overlap, staleness, workspace or claim checks.
+    """
+    import team_contract
+
+    pattern = re.compile(
+        r"(?m)^Team-Contract: ([a-z0-9][a-z0-9._-]{0,95}\.json) @ ([0-9a-f]{64})[ \t]*$"
+    )
+    declarations = pattern.findall(before)
+    if (
+        len(declarations) != len(re.findall(r"(?m)^Team-Contract:", before))
+        or len(declarations) > 1
+    ):
+        raise ValueError("malformed or duplicate team contract declaration")
+    after_declarations = pattern.findall(after)
+    if len(after_declarations) != len(re.findall(r"(?m)^Team-Contract:", after)):
+        raise ValueError("malformed team contract declaration")
+    if enrollment is not None:
+        name, digest, expected_board = enrollment
+        if hashlib.sha256(before.encode("utf-8")).hexdigest() != expected_board:
+            raise ValueError(
+                "team enrollment board changed; exact renewed review required"
+            )
+        if any(row.status not in {"released", "complete"} for row in rows(before)):
+            raise ValueError(
+                "team enrollment requires all existing sessions released; no foreign attribution or claim adoption"
+            )
+        if after_declarations != [(name, digest)]:
+            raise ValueError(
+                "team enrollment must publish exactly the reviewed declaration"
+            )
+        declarations = after_declarations
+    elif after_declarations != declarations:
+        raise ValueError(
+            "ordinary board mutation cannot add, remove or replace its team contract"
+        )
+    sessions = rows(after)
+    original = {row.session_uuid: row for row in rows(before)}
+    for row in sessions:
+        previous = original.get(row.session_uuid)
+        if previous is not None and previous.person != row.person:
+            raise ValueError(
+                "ordinary mutation cannot relabel an existing session's principal"
+            )
+    if not declarations:
+        if any(s.person or s.standing_role for s in sessions):
+            raise ValueError(
+                "principal attribution needs an explicitly enrolled team contract"
+            )
+        return
+    if (enrollment is None and board_schema(before) != 6) or board_schema(after) != 6:
+        raise ValueError(
+            "team contract requires schema v6 and verified member reader readiness"
+        )
+    name, digest = declarations[0]
+    contract = team_contract.load(board.parent / name, expected_digest=digest)
+    for session in sessions:
+        if not active(session):
+            continue
+        scheme = session.client_ref.split(":", 1)[0]
+        client = next(
+            (
+                client
+                for client, schemes in team_contract.CLIENT_SCHEMES.items()
+                if scheme in schemes
+            ),
+            None,
+        )
+        team_contract.attribution(
+            contract,
+            person=session.person,
+            agent=session.agent.lower().replace(" ", "-"),
+            client=client,
+            machine=session.machine,
+            native_ref=session.client_ref,
+            standing_role=session.standing_role,
+        )
+    # A same-call replacement of the declared source cannot land an unchecked board.
+    team_contract.load(board.parent / name, expected_digest=digest)
+
+
 @contextlib.contextmanager
 def _board_lock(path: Path, timeout: float | None = None):
     """Reuse the authority lock owner for finite effect-bearing operations."""
     if timeout is not None:
         from coordination_lock import bounded_lock
+
         with bounded_lock(path, timeout=timeout):
             yield
     else:
@@ -1957,17 +2135,31 @@ def _board_lock(path: Path, timeout: float | None = None):
             yield
 
 
-def locked_update(board: Path, operation, *, require_fence: bool = False,
-                  lock_timeout: float | None = None) -> None:
+def locked_update(
+    board: Path,
+    operation,
+    *,
+    require_fence: bool = False,
+    lock_timeout: float | None = None,
+    team_enrollment=None,
+) -> None:
     board.parent.mkdir(parents=True, exist_ok=True)
     lock_path = board.parent / ".active-sessions.lock"
     with _board_lock(lock_path, lock_timeout):
         config = lease_configuration(board)
         with _board_scoped_fleet_dir(board):
             if config is not None:
-                lease_update(board, config, operation, require_fence=require_fence)
+                lease_update(
+                    board,
+                    config,
+                    operation,
+                    require_fence=require_fence,
+                    team_enrollment=team_enrollment,
+                )
                 return
-            content = board.read_text(encoding="utf-8") if board.exists() else template()
+            content = (
+                board.read_text(encoding="utf-8") if board.exists() else template()
+            )
             ensure_writable_schema(content)
             declared = declared_lease(content)
             if declared is not None:
@@ -1978,10 +2170,16 @@ def locked_update(board: Path, operation, *, require_fence: bool = False,
                     "'lease-disable --local-only' only if the lease is being "
                     "retired everywhere"
                 )
-            write_board(board, operation(content))
+            updated = operation(content)
+            validate_team_transition(
+                board, content, updated, enrollment=team_enrollment
+            )
+            write_board(board, updated)
 
 
-def _check_staged_board_snapshot(board: Path, *, lock_timeout: float | None = None) -> str | None:
+def _check_staged_board_snapshot(
+    board: Path, *, lock_timeout: float | None = None
+) -> str | None:
     """Return one lock/CAS-fenced authority snapshot for check-staged.
 
     AGENT HEURISTIC: a read followed by an unlocked mirror write can restore
@@ -2022,12 +2220,18 @@ def _validate_with_snapshot(
         # Identity, role and selector checks still run. Native scope discovery
         # only supports pair comparisons, which cannot occur for one seat.
         return _validate_sessions(sessions, scopes, notices=notices)
-    claims = [(claim, tuple(session.workspaces)) for session in live for claim in session.claims]
+    claims = [
+        (claim, tuple(session.workspaces))
+        for session in live
+        for claim in session.claims
+    ]
     with scopes.snapshot(claims):
         return _validate_sessions(sessions, scopes, notices=notices)
 
 
-def _validate_passive_paths_once(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
+def _validate_passive_paths_once(
+    sessions: list[Session], owner: Session, paths: list[Path]
+) -> list[str]:
     """Validate only the current lifecycle's paths, without conferring writes.
 
     Global doctor and every mutating admission still use validate_sessions.
@@ -2035,6 +2239,7 @@ def _validate_passive_paths_once(sessions: list[Session], owner: Session, paths:
     defects only matter here when they can alias this owner or these targets.
     """
     from dataclasses import replace
+
     scopes = claim_scope.ClaimScopeResolver()
     problems = _validate_sessions([owner], scopes)
     own_keys = set(identity_lookup_keys(owner.identity))
@@ -2047,20 +2252,34 @@ def _validate_passive_paths_once(sessions: list[Session], owner: Session, paths:
             problems.append("duplicate active native session reference")
     live = [peer for peer in sessions if peer is not owner and active(peer)]
     targets = [(str(path), tuple(owner.workspaces)) for path in paths]
-    claims = targets + [(claim, tuple(peer.workspaces)) for peer in live for claim in peer.claims]
+    claims = targets + [
+        (claim, tuple(peer.workspaces)) for peer in live for claim in peer.claims
+    ]
     with scopes.snapshot(claims, focus=targets) as candidates:
         scoped_owner = replace(owner, claims=[str(path) for path in paths])
         for peer in live:
-            relevant = [claim for claim in peer.claims if (claim, tuple(peer.workspaces)) in candidates]
-            context_peer = peer.project == owner.project and peer.context_role == "owner"
+            relevant = [
+                claim
+                for claim in peer.claims
+                if (claim, tuple(peer.workspaces)) in candidates
+            ]
+            context_peer = (
+                peer.project == owner.project and peer.context_role == "owner"
+            )
             if relevant or context_peer:
                 # Reuse exact role, identity, advisory/parked and overlap
                 # policy. Only unrelated peer-to-peer pairs are absent.
-                problems.extend(_validate_sessions([scoped_owner, replace(peer, claims=relevant)], scopes))
+                problems.extend(
+                    _validate_sessions(
+                        [scoped_owner, replace(peer, claims=relevant)], scopes
+                    )
+                )
     return list(dict.fromkeys(problems))
 
 
-def validate_passive_paths(sessions: list[Session], owner: Session, paths: list[Path]) -> list[str]:
+def validate_passive_paths(
+    sessions: list[Session], owner: Session, paths: list[Path]
+) -> list[str]:
     """One fresh resnapshot after an unstable provisional observation.
 
     No verdict or effect escapes a failed attempt. A stable overlap fails
@@ -2214,23 +2433,33 @@ def _validate_sessions(
             right_advisory = advisory[id(right)]
             advisory_pair = left_advisory or right_advisory
             parked_sides = [
-                session.compact_id
-                for session in (left, right)
-                if is_parked(session)
+                session.compact_id for session in (left, right) if is_parked(session)
             ]
             area_details: list[str] = []
             parked_details: list[str] = []
             for left_claim in left.claims:
                 for right_claim in right.claims:
                     try:
-                        conflict = scopes.conflicts(left_claim, right_claim,
-                            left_workspaces=left.workspaces, right_workspaces=right.workspaces)
+                        conflict = scopes.conflicts(
+                            left_claim,
+                            right_claim,
+                            left_workspaces=left.workspaces,
+                            right_workspaces=right.workspaces,
+                        )
                     except claim_scope.ClaimIdentityError as exc:
                         if not _report_unverifiable_owner(
-                            problems, seen_unverifiable, scopes,
-                            left, left_claim, right, right_claim, exc,
+                            problems,
+                            seen_unverifiable,
+                            scopes,
+                            left,
+                            left_claim,
+                            right,
+                            right_claim,
+                            exc,
                         ):
-                            problems.append(f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}")
+                            problems.append(
+                                f"{_tag(left)} / {_tag(right)}: unverifiable claim scope: {exc}"
+                            )
                         continue
                     if conflict:
                         if parked_sides:
@@ -2242,9 +2471,7 @@ def _validate_sessions(
                                 f"{left_claim} overlaps {right_claim}"
                             )
                         elif advisory_pair:
-                            area_details.append(
-                                f"{left_claim} overlaps {right_claim}"
-                            )
+                            area_details.append(f"{left_claim} overlaps {right_claim}")
                         else:
                             # FLEET-AC-04: a cross-Mac loser must see WHO holds
                             # the scope — the winner's (machine_label,
@@ -2266,7 +2493,10 @@ def _validate_sessions(
             if advisory_pair and notices is not None and area_details:
                 advisory_sides = [
                     session.compact_id
-                    for session, is_advisory in ((left, left_advisory), (right, right_advisory))
+                    for session, is_advisory in (
+                        (left, left_advisory),
+                        (right, right_advisory),
+                    )
                     if is_advisory
                 ]
                 notices.append(
@@ -2300,7 +2530,12 @@ def _validate_sessions(
 
 
 def command_status(args) -> int:
-    lease = lease_refresh(args.board, max_age_seconds=PASSIVE_STOP_REFRESH_SECONDS if getattr(args, "passive_stop", False) else 0)
+    lease = lease_refresh(
+        args.board,
+        max_age_seconds=PASSIVE_STOP_REFRESH_SECONDS
+        if getattr(args, "passive_stop", False)
+        else 0,
+    )
     if not args.board.is_file():
         if lease.get("error"):
             print(f"COORDINATION ERROR: {lease['error']}", file=sys.stderr)
@@ -2343,9 +2578,12 @@ def command_status(args) -> int:
                 )
         for problem in payload["problems"]:
             print(f"COORDINATION ERROR: {problem}", file=sys.stderr)
-    return 10 if args.strict and (payload["problems"] or any(
-        item["stale"] for item in payload["sessions"]
-    )) else 0
+    return (
+        10
+        if args.strict
+        and (payload["problems"] or any(item["stale"] for item in payload["sessions"]))
+        else 0
+    )
 
 
 def command_check_staged(args) -> int:
@@ -2524,9 +2762,7 @@ def command_check_staged(args) -> int:
                 repository=repository,
                 staged_paths=current_paths,
             )
-            subscription_state["unsubscribed"] = list(
-                current_decision.unsubscribed
-            )
+            subscription_state["unsubscribed"] = list(current_decision.unsubscribed)
             if current_decision.allowed:
                 subscription_state["recorded"] = False
                 return content
@@ -2603,9 +2839,7 @@ def command_check_staged(args) -> int:
                 raise RuntimeError(
                     "Git index changed before the override could be recorded"
                 )
-            current_outside = _outside_claim(
-                current_session, repository, current_paths
-            )
+            current_outside = _outside_claim(current_session, repository, current_paths)
             override_state["session"] = current_session
             override_state["outside"] = current_outside
             if not current_outside:
@@ -2785,32 +3019,43 @@ def succession_notice_block(
 def command_claim(args) -> int:
     dependent = getattr(args, "then", None)
     if dependent is not None:
-        if (not isinstance(dependent, list) or not dependent
-                or any(not isinstance(item, str) or not item or "\0" in item for item in dependent)):
-            print("coordination claim refused: --then requires explicit nonempty argv", file=sys.stderr)
-            return 10
-        directory = getattr(args, "then_cwd", None)
-        timeout = getattr(args, "then_timeout", 60)
-        if (directory is None or not Path(directory).is_absolute() or not Path(directory).is_dir()
-                or isinstance(timeout, bool) or not isinstance(timeout, (int, float))
-                or not math.isfinite(timeout) or not 0 < timeout <= 900):
-            print("coordination claim refused: --then requires an existing absolute --then-cwd and a finite timeout at most 900 seconds", file=sys.stderr)
-            return 10
-    if any(plain(area).startswith("create:") for area in args.area):
-        print("coordination claim refused: creation-only reservations require create_worktree.py", file=sys.stderr)
-        return 10
-    requested = [sanitize(area) for area in args.area]
-    workspaces = [sanitize(workspace) for workspace in args.workspace]
-    if args.context_role == "contributor":
-        reserved = [claim for claim in requested if claims_context(claim)]
-        if reserved:
+        if (
+            not isinstance(dependent, list)
+            or not dependent
+            or any(
+                not isinstance(item, str) or not item or "\0" in item
+                for item in dependent
+            )
+        ):
             print(
-                "coordination claim refused: contributor sessions cannot claim "
-                "canonical project context: " + ", ".join(reserved),
+                "coordination claim refused: --then requires explicit nonempty argv",
                 file=sys.stderr,
             )
             return 10
-
+        directory = getattr(args, "then_cwd", None)
+        timeout = getattr(args, "then_timeout", 60)
+        if (
+            directory is None
+            or not Path(directory).is_absolute()
+            or not Path(directory).is_dir()
+            or isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or not 0 < timeout <= 900
+        ):
+            print(
+                "coordination claim refused: --then requires an existing absolute --then-cwd and a finite timeout at most 900 seconds",
+                file=sys.stderr,
+            )
+            return 10
+    if any(plain(area).startswith("create:") for area in args.area):
+        print(
+            "coordination claim refused: creation-only reservations require create_worktree.py",
+            file=sys.stderr,
+        )
+        return 10
+    requested = [sanitize(area) for area in args.area]
+    workspaces = [sanitize(workspace) for workspace in args.workspace]
     try:
         requested_ref = (
             normalize_client_ref(args.client_ref)
@@ -2879,6 +3124,31 @@ def command_claim(args) -> int:
                     )
                 claimed["resumed"] = existing_self.identity.compact_id
         full_reset = bool(getattr(args, "replace", False))
+        effective_context_role = args.context_role
+        role_order = {"none": 0, "contributor": 1, "owner": 2}
+        if (
+            existing_self is not None
+            and not full_reset
+            and existing_self.project == args.project
+            and args.context_role in role_order
+            and role_order.get(existing_self.context_role, -1)
+            > role_order[args.context_role]
+        ):
+            # The same authenticated seat keeps its existing project authority
+            # while adding work. A helper's narrower requested role must not
+            # silently demote its owner or invalidate already retained context.
+            effective_context_role = existing_self.context_role
+            claimed["retained_context_role"] = effective_context_role
+        # Context authority is the authenticated row's effective role, not a
+        # helper's narrower request. Check only after ownership and project
+        # selection inside the same board transaction, before any write.
+        if effective_context_role == "contributor":
+            reserved = [claim for claim in requested if claims_context(claim)]
+            if reserved:
+                raise RuntimeError(
+                    "contributor sessions cannot claim canonical project context: "
+                    + ", ".join(reserved)
+                )
         if existing_self is not None and not full_reset:
             # Merge by default (ruling B): a re-claim grows the held set,
             # never shrinks it by omission. Agents thinking incrementally
@@ -2947,6 +3217,10 @@ def command_claim(args) -> int:
             agent=args.agent,
             machine=claim_machine,
             machine_label=claim_label,
+            person=getattr(args, "person", "")
+            or (existing_self.person if existing_self else ""),
+            standing_role=getattr(args, "standing_role", "")
+            or (existing_self.standing_role if existing_self else ""),
             client_ref=requested_ref
             or (existing_self.client_ref if existing_self else ""),
             project=args.project,
@@ -2956,7 +3230,7 @@ def command_claim(args) -> int:
             workspaces=effective_workspaces,
             goal=args.goal,
             claims=effective_areas,
-            context_role=args.context_role,
+            context_role=effective_context_role,
             status="active",
         )
         prospective = [
@@ -2984,11 +3258,7 @@ def command_claim(args) -> int:
                 continue
             stale_id = advisory[0]
             stale_session = next(
-                (
-                    session
-                    for session in current
-                    if session.compact_id == stale_id
-                ),
+                (session for session in current if session.compact_id == stale_id),
                 None,
             )
             if stale_session is None:
@@ -3008,8 +3278,7 @@ def command_claim(args) -> int:
         ]
         overlaps = parked_overlaps(replacement, parked_rows) if parked_rows else []
         claimed["overlaps_parked"] = [
-            {"parked": parked.compact_id, "areas": areas}
-            for parked, areas in overlaps
+            {"parked": parked.compact_id, "areas": areas} for parked, areas in overlaps
         ]
         sharers: dict[str, str] = {}
         for session in current:
@@ -3058,6 +3327,12 @@ def command_claim(args) -> int:
         f"({identity.speakable_id}; uuid={identity.session_uuid}{legacy})."
     )
     if claimed.get("merged"):
+        if claimed.get("retained_context_role"):
+            print(
+                "NOTICE: merge retained context role "
+                f"{claimed['retained_context_role']} (requested {args.context_role}). "
+                "Use an explicit --replace with valid retained scope to change roles."
+            )
         retained_areas = claimed["retained_areas"]
         added_areas = claimed["added_areas"]
         retained_workspaces = claimed["retained_workspaces"]
@@ -3083,7 +3358,9 @@ def command_claim(args) -> int:
                 f"NOTICE: merge added {len(added_workspaces)} new workspace(s): "
                 f"{', '.join(added_workspaces)}."
             )
-        if not (retained_areas or added_areas or retained_workspaces or added_workspaces):
+        if not (
+            retained_areas or added_areas or retained_workspaces or added_workspaces
+        ):
             print("NOTICE: already held exactly this scope; heartbeat updated.")
     if claimed.get("replaced"):
         dropped_areas = claimed["dropped_areas"]
@@ -3162,27 +3439,41 @@ def command_claim(args) -> int:
     effect = getattr(args, "then", None)
     if effect:
         from coordination_process import run as run_effect
+
         try:
             content = _check_staged_board_snapshot(args.board, lock_timeout=5)
             own = find_session(rows(content or "", strict=True), identity.session_uuid)
-            if (own is None or not active(own) or not _caller_owns_session(args.board, own)
-                    or not set(claimed["areas"]).issubset(own.claims)):
-                raise ValueError("successful claim no longer binds the exact native owner and scope")
+            if (
+                own is None
+                or not active(own)
+                or not _caller_owns_session(args.board, own)
+                or not set(claimed["areas"]).issubset(own.claims)
+            ):
+                raise ValueError(
+                    "successful claim no longer binds the exact native owner and scope"
+                )
             # This is sequencing, not extra permission: OS/harness guards keep
             # governing the explicitly supplied command. Never shell-expand it.
-            result = run_effect(list(effect), cwd=args.then_cwd,
-                                timeout=getattr(args, "then_timeout", 60))
+            result = run_effect(
+                list(effect),
+                cwd=args.then_cwd,
+                timeout=getattr(args, "then_timeout", 60),
+            )
             if result.stdout:
                 print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
             if result.returncode:
-                print("dependent coordination effect FAILED; claim and partial work retained", file=sys.stderr)
+                print(
+                    "dependent coordination effect FAILED; claim and partial work retained",
+                    file=sys.stderr,
+                )
             return result.returncode if result.returncode >= 0 else 10
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-            print(f"dependent coordination effect REFUSED: {exc}; claim retained", file=sys.stderr)
+            print(
+                f"dependent coordination effect REFUSED: {exc}; claim retained",
+                file=sys.stderr,
+            )
             return 10
     return 0
-
-
 
 
 def command_succeed(args) -> int:
@@ -3226,7 +3517,9 @@ def command_succeed(args) -> int:
                 f"(status {predecessor.status}); succession takes only "
                 "active dead seats"
             )
-        only = [area.strip() for area in (getattr(args, "only", None) or []) if area.strip()]
+        only = [
+            area.strip() for area in (getattr(args, "only", None) or []) if area.strip()
+        ]
         if only and not successor_selector:
             raise RuntimeError(
                 "--only moves named areas into an owned row; pass --session"
@@ -3320,14 +3613,10 @@ def command_succeed(args) -> int:
                 )
             succeeded["merged"] = True
             succeeded["retained_areas"] = [
-                area
-                for area in existing_self.claims
-                if area not in moving
+                area for area in existing_self.claims if area not in moving
             ]
             succeeded["added_areas"] = [
-                area
-                for area in moving
-                if area not in existing_self.claims
+                area for area in moving if area not in existing_self.claims
             ]
             identity = existing_self.identity
             replacement = replace(
@@ -3358,6 +3647,8 @@ def command_succeed(args) -> int:
                 agent=args.agent,
                 machine=successor_machine,
                 machine_label=successor_label,
+                person=getattr(args, "person", ""),
+                standing_role=getattr(args, "standing_role", ""),
                 client_ref=requested_ref,
                 project=predecessor.project,
                 started=now,
@@ -3377,10 +3668,14 @@ def command_succeed(args) -> int:
             # keeps its status (parked or dead-active) and the rest of its
             # scope, and the record names what moved and why.
             notice = succession_notice_block(
-                predecessor, identity.compact_id, moved=only,
+                predecessor,
+                identity.compact_id,
+                moved=only,
                 evidence=harness_gone_evidence(args.board, predecessor) or "",
             )
-            predecessor.claims = [area for area in predecessor.claims if area not in only]
+            predecessor.claims = [
+                area for area in predecessor.claims if area not in only
+            ]
             succeeded["partial"] = True
         else:
             notice = succession_notice_block(predecessor, identity.compact_id)
@@ -3450,7 +3745,9 @@ def _git_toplevel(path: Path) -> Path | None:
     try:
         run = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -3466,7 +3763,9 @@ def _git_upstream_missing(root: str) -> bool:
     try:
         run = subprocess.run(
             ["git", "-C", root, "rev-parse", "--verify", "@{u}"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -3504,7 +3803,9 @@ def release_request_working_state(
         try:
             status = subprocess.run(
                 ["git", "-C", str(top), "status", "--porcelain", "--", *areas],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
         except (OSError, subprocess.SubprocessError):
             return None
@@ -3517,20 +3818,26 @@ def release_request_working_state(
         else:
             try:
                 log = subprocess.run(
-                    ["git", "-C", str(top), "log", "@{u}..HEAD",
-                     "--format=%H", "--", *areas],
-                    capture_output=True, text=True, timeout=30,
+                    [
+                        "git",
+                        "-C",
+                        str(top),
+                        "log",
+                        "@{u}..HEAD",
+                        "--format=%H",
+                        "--",
+                        *areas,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
             except (OSError, subprocess.SubprocessError):
                 return None
             if log.returncode != 0:
                 return None
-            unpushed += len(
-                [line for line in log.stdout.splitlines() if line.strip()]
-            )
-        dirty += len(
-            [line for line in status.stdout.splitlines() if line.strip()]
-        )
+            unpushed += len([line for line in log.stdout.splitlines() if line.strip()])
+        dirty += len([line for line in status.stdout.splitlines() if line.strip()])
         checked.append(top)
     if not checked:
         return None
@@ -3547,8 +3854,11 @@ def release_request_working_state(
 
 def _holder_identity_forms(holder: Session) -> set[str]:
     return {
-        holder.session_uuid, holder.compact_id, holder.speakable_id,
-        holder.identity.compact_id, holder.identity.speakable_id,
+        holder.session_uuid,
+        holder.compact_id,
+        holder.speakable_id,
+        holder.identity.compact_id,
+        holder.identity.speakable_id,
         holder.identity.session_uuid,
     } - {""}
 
@@ -3605,20 +3915,19 @@ def command_request_narrow(args) -> int:
         if holder is None:
             raise RuntimeError(f"holder not found: {args.holder}")
         if not active(holder):
-            raise RuntimeError(
-                f"holder {holder.label} is {holder.status}, not active"
-            )
+            raise RuntimeError(f"holder {holder.label} is {holder.status}, not active")
         own = None
         if seat is not None:
             own = next(
-                (s for s in current
-                 if s.session_uuid == seat.session_uuid and active(s)),
+                (
+                    s
+                    for s in current
+                    if s.session_uuid == seat.session_uuid and active(s)
+                ),
                 None,
             )
         if own is None:
-            raise RuntimeError(
-                "request-narrow requires the caller to hold a live seat"
-            )
+            raise RuntimeError("request-narrow requires the caller to hold a live seat")
         if own.session_uuid == holder.session_uuid:
             raise RuntimeError(
                 "cannot request-narrow from your own row; narrow it directly"
@@ -3626,8 +3935,7 @@ def command_request_narrow(args) -> int:
         matched = [area for area in areas if area in holder.claims]
         if not matched:
             raise RuntimeError(
-                f"no named area is held by {holder.label}: "
-                + ", ".join(areas)
+                f"no named area is held by {holder.label}: " + ", ".join(areas)
             )
         for req in open_release_requests(content):
             if (
@@ -3635,20 +3943,21 @@ def command_request_narrow(args) -> int:
                 and req.holder in _holder_identity_forms(holder)
                 and sorted(req.areas) == sorted(matched)
             ):
-                raise RuntimeError(
-                    f"duplicate of open release-request {req.id}"
-                )
+                raise RuntimeError(f"duplicate of open release-request {req.id}")
         request_id = f"req-{uuid.uuid4().hex[:12]}"
         posted["id"] = request_id
         posted["holder"] = holder.compact_id
-        posted["skipped"] = ", ".join(
-            area for area in areas if area not in matched
-        )
+        posted["skipped"] = ", ".join(area for area in areas if area not in matched)
         return append_bus_block(
             content,
             release_request_block(
-                holder, own.compact_id, caller.sender_key,
-                matched, reason, timestamp(), request_id=request_id,
+                holder,
+                own.compact_id,
+                caller.sender_key,
+                matched,
+                reason,
+                timestamp(),
+                request_id=request_id,
             ),
         )
 
@@ -3686,8 +3995,11 @@ def _honor_roots(board_content: str, holder: Session, cwd: Path) -> list[Path]:
 
 
 def honor_open_requests(
-    board: Path, holder_uuid: str, cwd: Path | None = None,
-    *, caller_identity: SelfIdentity | None = None,
+    board: Path,
+    holder_uuid: str,
+    cwd: Path | None = None,
+    *,
+    caller_identity: SelfIdentity | None = None,
 ) -> list[str]:
     """Narrow clean requested areas off one owned row; reply to each.
 
@@ -3711,12 +4023,12 @@ def honor_open_requests(
     if holder is None or not active(holder):
         return []
     caller = caller_identity if caller_identity is not None else detect_self()
-    if not isinstance(caller, SelfIdentity) or not _caller_owns_session(board, holder, caller=caller):
+    if not isinstance(caller, SelfIdentity) or not _caller_owns_session(
+        board, holder, caller=caller
+    ):
         return ["honor pass refused: hook identity does not own this row"]
     forms = _holder_identity_forms(holder)
-    targeted = [
-        req for req in open_release_requests(content) if req.holder in forms
-    ]
+    targeted = [req for req in open_release_requests(content) if req.holder in forms]
     if not targeted:
         return []
     base = cwd or Path.cwd()
@@ -3726,17 +4038,14 @@ def honor_open_requests(
         matched = [area for area in req.areas if area in holder.claims]
         if not matched:
             verdicts.append((req, [], "narrowed", "areas already released"))
-            outcomes.append(
-                f"honored {req.id}: already released; replied narrowed"
-            )
+            outcomes.append(f"honored {req.id}: already released; replied narrowed")
             continue
         state = release_request_working_state(
             _honor_roots(content, holder, base), matched
         )
         if state is None:
             outcomes.append(
-                f"deferred {req.id}: checkout unverifiable under "
-                + ", ".join(matched)
+                f"deferred {req.id}: checkout unverifiable under " + ", ".join(matched)
             )
             continue
         dirty, unpushed, no_upstream = state
@@ -3769,8 +4078,10 @@ def honor_open_requests(
         honor_outcome["seat"] = current_seat
         answered = parse_release_replies(live)
         narrowed = [
-            area for _req, areas, result, _d in verdicts
-            for area in areas if result == "narrowed"
+            area
+            for _req, areas, result, _d in verdicts
+            for area in areas
+            if result == "narrowed"
         ]
         narrowed = [area for area in narrowed if area in holder_now.claims]
         # Single clock read for the row and the seat (see command_claim):
@@ -3797,7 +4108,9 @@ def honor_open_requests(
                 continue
             updated = append_bus_block(
                 updated,
-                release_reply_block(req, holder_now.compact_id, moment, result=result, detail=detail),
+                release_reply_block(
+                    req, holder_now.compact_id, moment, result=result, detail=detail
+                ),
             )
         return updated
 
@@ -3811,9 +4124,12 @@ def honor_open_requests(
     row_heartbeat = honor_outcome.get("heartbeat")
     existing = honor_outcome.get("seat")
     if existing is not None:
-        if not update_seat_heartbeat(board, expected=existing,
-                                     last_heartbeat=row_heartbeat):
-            outcomes.append("honor pass preserved a concurrent seat change; heartbeat was not overwritten")
+        if not update_seat_heartbeat(
+            board, expected=existing, last_heartbeat=row_heartbeat
+        ):
+            outcomes.append(
+                "honor pass preserved a concurrent seat change; heartbeat was not overwritten"
+            )
     return outcomes
 
 
@@ -3881,13 +4197,9 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
         if holder is None:
             raise RuntimeError(f"holder not found: {holder_selector}")
         if not active(holder):
-            raise RuntimeError(
-                f"holder {holder.label} is {holder.status}, not active"
-            )
+            raise RuntimeError(f"holder {holder.label} is {holder.status}, not active")
         if req.holder not in _holder_identity_forms(holder):
-            raise RuntimeError(
-                f"release-request {request_id} names a different holder"
-            )
+            raise RuntimeError(f"release-request {request_id} names a different holder")
         if holder.machine not in set(local_machine_identity()):
             raise RuntimeError(
                 "idle-holder evidence is local-only; the holder row lives "
@@ -3899,9 +4211,7 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
             seat = None
         transcript = _harness_transcript(seat) if seat is not None else None
         if transcript is None:
-            raise RuntimeError(
-                "no holder harness log to test for activity; refusing"
-            )
+            raise RuntimeError("no holder harness log to test for activity; refusing")
         try:
             modified = datetime.fromtimestamp(
                 transcript.stat().st_mtime, tz=timezone.utc
@@ -3915,9 +4225,7 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
             )
         areas = [area for area in req.areas if area in holder.claims]
         if not areas:
-            raise RuntimeError(
-                f"nothing still held under release-request {request_id}"
-            )
+            raise RuntimeError(f"nothing still held under release-request {request_id}")
         state = release_request_working_state([Path.cwd()], areas)
         if state is None:
             raise RuntimeError(
@@ -3956,8 +4264,12 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
         return append_bus_block(
             updated,
             administrative_narrow_block(
-                holder, caller_key, request_id, areas,
-                timestamp(), evidence=evidence,
+                holder,
+                caller_key,
+                request_id,
+                areas,
+                timestamp(),
+                evidence=evidence,
             ),
         )
 
@@ -4013,7 +4325,8 @@ def command_narrow(args) -> int:
         return _command_narrow_idle_holder(args, args.id, reason)
     release_areas = [sanitize(area) for area in (getattr(args, "release", None) or [])]
     release_workspaces = [
-        sanitize(workspace) for workspace in (getattr(args, "release_workspace", None) or [])
+        sanitize(workspace)
+        for workspace in (getattr(args, "release_workspace", None) or [])
     ]
     legacy_areas = [sanitize(area) for area in (getattr(args, "area", None) or [])]
     legacy_workspaces = [
@@ -4021,7 +4334,8 @@ def command_narrow(args) -> int:
     ]
     keep_areas = [sanitize(area) for area in (getattr(args, "keep", None) or [])]
     keep_workspaces = [
-        sanitize(workspace) for workspace in (getattr(args, "keep_workspace", None) or [])
+        sanitize(workspace)
+        for workspace in (getattr(args, "keep_workspace", None) or [])
     ]
     legacy_spelling = bool(legacy_areas or legacy_workspaces)
     drop_areas = release_areas + legacy_areas
@@ -4033,7 +4347,12 @@ def command_narrow(args) -> int:
             file=sys.stderr,
         )
         return 10
-    if not drop_areas and not drop_workspaces and not keep_areas and not keep_workspaces:
+    if (
+        not drop_areas
+        and not drop_workspaces
+        and not keep_areas
+        and not keep_workspaces
+    ):
         print(
             "coordination narrow refused: name at least one area or workspace "
             "to release (--release) or to keep (--keep)",
@@ -4068,7 +4387,9 @@ def command_narrow(args) -> int:
                     + ", ".join(unknown_keep_areas)
                 )
             unknown_keep_workspaces = [
-                workspace for workspace in keep_workspaces if workspace not in held_workspaces
+                workspace
+                for workspace in keep_workspaces
+                if workspace not in held_workspaces
             ]
             if unknown_keep_workspaces:
                 raise RuntimeError(
@@ -4079,7 +4400,9 @@ def command_narrow(args) -> int:
                 drop_areas = [area for area in held_areas if area not in keep_areas]
             if keep_workspaces:
                 drop_workspaces = [
-                    workspace for workspace in held_workspaces if workspace not in keep_workspaces
+                    workspace
+                    for workspace in held_workspaces
+                    if workspace not in keep_workspaces
                 ]
             if not drop_areas and not drop_workspaces:
                 raise RuntimeError(
@@ -4088,11 +4411,12 @@ def command_narrow(args) -> int:
         unknown_areas = [area for area in drop_areas if area not in held_areas]
         if unknown_areas:
             raise RuntimeError(
-                "narrow target is not held by this session: "
-                + ", ".join(unknown_areas)
+                "narrow target is not held by this session: " + ", ".join(unknown_areas)
             )
         unknown_workspaces = [
-            workspace for workspace in drop_workspaces if workspace not in held_workspaces
+            workspace
+            for workspace in drop_workspaces
+            if workspace not in held_workspaces
         ]
         if unknown_workspaces:
             raise RuntimeError(
@@ -4121,9 +4445,7 @@ def command_narrow(args) -> int:
         # narrow used to bump the row heartbeat without touching the seat,
         # diverging the two stores on every call (BUG-1).
         narrowed["heartbeat"] = now
-        narrowed["released_areas"] = [
-            area for area in held_areas if area in drop_areas
-        ]
+        narrowed["released_areas"] = [area for area in held_areas if area in drop_areas]
         narrowed["retained_areas"] = [
             area for area in held_areas if area not in drop_areas
         ]
@@ -4131,10 +4453,14 @@ def command_narrow(args) -> int:
             workspace for workspace in held_workspaces if workspace in drop_workspaces
         ]
         narrowed["retained_workspaces"] = [
-            workspace for workspace in held_workspaces if workspace not in drop_workspaces
+            workspace
+            for workspace in held_workspaces
+            if workspace not in drop_workspaces
         ]
         narrowed["warn_zero_areas"] = not narrowed_row.claims and bool(held_areas)
-        narrowed["warn_all_workspaces"] = bool(held_workspaces) and not narrowed_row.workspaces
+        narrowed["warn_all_workspaces"] = (
+            bool(held_workspaces) and not narrowed_row.workspaces
+        )
         return replace_table(content, prospective)
 
     try:
@@ -4161,9 +4487,7 @@ def command_narrow(args) -> int:
         f"({identity.speakable_id}; uuid={identity.session_uuid})."
     )
     if released_areas:
-        print(
-            f"Released {len(released_areas)} area(s): {', '.join(released_areas)}."
-        )
+        print(f"Released {len(released_areas)} area(s): {', '.join(released_areas)}.")
     if released_workspaces:
         print(
             f"Released {len(released_workspaces)} workspace(s): "
@@ -4176,11 +4500,7 @@ def command_narrow(args) -> int:
     )
     print(
         f"Retained {len(retained_workspaces)} workspace(s)"
-        + (
-            f": {', '.join(retained_workspaces)}"
-            if retained_workspaces
-            else " (none)"
-        )
+        + (f": {', '.join(retained_workspaces)}" if retained_workspaces else " (none)")
         + "."
     )
     row_heartbeat = narrowed.get("heartbeat")
@@ -4192,14 +4512,18 @@ def command_narrow(args) -> int:
             compact_id=existing.compact_id,
             machine=existing.machine,
             machine_label=existing.machine_label,
-            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
+            identity=self_identity()
+            if self_identity().primary_ref
+            else SelfIdentity(
                 client=existing.client,
                 harness_session_id=existing.harness_session_id,
                 host_session_id=existing.host_session_id,
                 pid=existing.pid,
             ),
             cwd=existing.cwd,
-            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
+            last_heartbeat=row_heartbeat
+            if isinstance(row_heartbeat, str)
+            else timestamp(),
             status="active",
         )
     return 0
@@ -4281,14 +4605,18 @@ def command_heartbeat(args) -> int:
             compact_id=existing.compact_id,
             machine=existing.machine,
             machine_label=existing.machine_label,
-            identity=self_identity() if self_identity().primary_ref else SelfIdentity(
+            identity=self_identity()
+            if self_identity().primary_ref
+            else SelfIdentity(
                 client=existing.client,
                 harness_session_id=existing.harness_session_id,
                 host_session_id=existing.host_session_id,
                 pid=existing.pid,
             ),
             cwd=existing.cwd,
-            last_heartbeat=row_heartbeat if isinstance(row_heartbeat, str) else timestamp(),
+            last_heartbeat=row_heartbeat
+            if isinstance(row_heartbeat, str)
+            else timestamp(),
             status="active",
         )
     return 0
@@ -4303,9 +4631,7 @@ def seat_ownership_error(extra: str = "") -> str:
     """
     message = "caller identity does not own the target session seat"
     caller = detect_self()
-    if not (
-        caller.harness_session_id or caller.host_session_id or caller.explicit_ref
-    ):
+    if not (caller.harness_session_id or caller.host_session_id or caller.explicit_ref):
         message += (
             "; this process exports no client identity "
             "(export SYNTHESIS_CLIENT_SESSION_REF=<scheme>:<id> to identify "
@@ -4316,7 +4642,9 @@ def seat_ownership_error(extra: str = "") -> str:
     return message
 
 
-def _caller_owns_session(board: Path, session: Session, *, caller: SelfIdentity | None = None) -> bool:
+def _caller_owns_session(
+    board: Path, session: Session, *, caller: SelfIdentity | None = None
+) -> bool:
     """Whether the running client identity owns this board session.
 
     The compact id is an address, not authority. A refused claim may mention a
@@ -4340,9 +4668,7 @@ def _caller_owns_record(session: Session, caller: SelfIdentity, seat) -> bool:
                 caller.harness_session_id
                 and caller.harness_session_id == seat.harness_session_id
                 and (
-                    not seat.client
-                    or not caller.client
-                    or seat.client == caller.client
+                    not seat.client or not caller.client or seat.client == caller.client
                 )
             )
         if seat.host_session_id:
@@ -4513,9 +4839,7 @@ def resolve_targets(
     guessing vector this resolver exists to remove.
     """
     identity = [
-        session
-        for session in sessions
-        if selector_matches(session.identity, selector)
+        session for session in sessions if selector_matches(session.identity, selector)
     ]
     if identity:
         return "identity", identity
@@ -4530,7 +4854,9 @@ def resolve_targets(
     ]
     if refs:
         return "client-ref", refs
-    base = candidate[: -len(" sessions")] if candidate.endswith(" sessions") else candidate
+    base = (
+        candidate[: -len(" sessions")] if candidate.endswith(" sessions") else candidate
+    )
     projects = [
         session
         for session in sessions
@@ -4550,7 +4876,7 @@ def delivery_lane(session: Session) -> str:
         )
     if session.client_ref.startswith("codex:"):
         return (
-            f"codex queue --thread {session.client_ref[len('codex:'):]} on machine "
+            f"codex queue --thread {session.client_ref[len('codex:') :]} on machine "
             f"{session.machine_display}, or the board message bus"
         )
     if session.client_ref.startswith("cc:"):
@@ -4563,7 +4889,14 @@ def delivery_lane(session: Session) -> str:
     return "board message bus (session has no registered client ref)"
 
 
-def report_recipient(sessions: list[Session], selector: str, project_index: Path | None, *, durable: bool = False) -> tuple[str, dict | None]:
+def report_recipient(
+    sessions: list[Session],
+    selector: str,
+    project_index: Path | None,
+    *,
+    durable: bool = False,
+    board: Path | None = None,
+) -> tuple[str, dict | None]:
     """Resolve a report address; exact handles never inherit project successors.
 
     This opt-in destination resolver is separate from thread/claim resolution.
@@ -4580,9 +4913,23 @@ def report_recipient(sessions: list[Session], selector: str, project_index: Path
         return matches[0].label, None
     if project_index is not None:
         from project_recipient import project_route
+
         candidate = selector.strip()
-        project = candidate[:-len(" sessions")] if candidate.endswith(" sessions") else candidate
-        route = project_route(project_index, project)
+        project = (
+            candidate[: -len(" sessions")]
+            if candidate.endswith(" sessions")
+            else candidate
+        )
+        if board is not None:
+            import team_contract
+
+            try:
+                team_contract.require_board_reference(project_index, board)
+            except (team_contract.TeamContractError, OSError, RuntimeError) as exc:
+                raise ValueError(
+                    "report recipient reference access is unavailable"
+                ) from exc
+        route = project_route(project_index, project, board=board)
         label = f"{route['resolved_project']} sessions"
         return (label + DURABLE_RECIPIENT_SUFFIX) if durable else label, route
     if kind == "project":
@@ -4611,7 +4958,10 @@ def command_message_resolve(args) -> int:
         print("coordination message: --resolve needs a message key", file=sys.stderr)
         return 2
     if not args.board.is_file():
-        print(f"coordination message failed: no coordination board at {args.board}", file=sys.stderr)
+        print(
+            f"coordination message failed: no coordination board at {args.board}",
+            file=sys.stderr,
+        )
         return 10
     try:
         content = args.board.read_text(encoding="utf-8")
@@ -4623,7 +4973,9 @@ def command_message_resolve(args) -> int:
         if not matches:
             raise ValueError(f"no bus message matches key {prefix!r}")
         if len(matches) > 1:
-            raise ValueError(f"key {prefix!r} matches {len(matches)} messages; use a longer prefix")
+            raise ValueError(
+                f"key {prefix!r} matches {len(matches)} messages; use a longer prefix"
+            )
         message = matches[0]
         suffix = f" sessions{DURABLE_RECIPIENT_SUFFIX}"
         if not message.recipient.strip().casefold().endswith(suffix):
@@ -4632,12 +4984,16 @@ def command_message_resolve(args) -> int:
         if project.casefold() != (sender.project or "").casefold():
             raise ValueError("only a seat on the message's project can resolve it")
         if (sender.context_role or "").casefold() not in DURABLE_ROLES:
-            raise ValueError("only an owner or contributor seat can resolve a durable message")
+            raise ValueError(
+                "only an owner or contributor seat can resolve a durable message"
+            )
         mark_resolved(args.board, message.key, by=sender.compact_id)
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"coordination message failed: {exc}", file=sys.stderr)
         return 10
-    print(f"Resolved durable message {message.key} for project {project} (retired by {sender.compact_id}).")
+    print(
+        f"Resolved durable message {message.key} for project {project} (retired by {sender.compact_id})."
+    )
     return 0
 
 
@@ -4645,7 +5001,10 @@ def command_message(args) -> int:
     if getattr(args, "resolve", None):
         return command_message_resolve(args)
     if not getattr(args, "to", None):
-        print("coordination message: --to is required unless --resolve is given", file=sys.stderr)
+        print(
+            "coordination message: --to is required unless --resolve is given",
+            file=sys.stderr,
+        )
         return 2
     if getattr(args, "durable", False) and getattr(args, "free_address", False):
         print(
@@ -4666,18 +5025,24 @@ def command_message(args) -> int:
         sender_label = sender.label if sender is not None else sanitize(args.sender)
         project_index = getattr(args, "project_index", None)
         kind, _ = resolve_targets(current, args.to)
-        if project_index is None and kind == "none" and getattr(args, "free_address", False):
+        if (
+            project_index is None
+            and kind == "none"
+            and getattr(args, "free_address", False)
+        ):
             recipient_label = sanitize(args.to)
         else:
             recipient_label, route = report_recipient(
-                current, args.to, project_index, durable=getattr(args, "durable", False)
+                current,
+                args.to,
+                project_index,
+                durable=getattr(args, "durable", False),
+                board=args.board,
             )
             if route is not None:
                 delivered["route"] = route
         delivered["recipient"] = recipient_label
-        heading = (
-            f"### → {recipient_label}, from {sender_label} — {timestamp()}"
-        )
+        heading = f"### → {recipient_label}, from {sender_label} — {timestamp()}"
         block = f"{heading}\n\n{body.strip()}\n\n"
         marker = re.search(
             r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
@@ -4724,9 +5089,7 @@ def command_resolve(args) -> int:
     )
     kind, matches = resolve_targets(pool, args.to)
     if args.role:
-        matches = [
-            session for session in matches if session.context_role == args.role
-        ]
+        matches = [session for session in matches if session.context_role == args.role]
     entries = [
         {
             "session": session.compact_id,
@@ -4758,21 +5121,31 @@ def command_resolve(args) -> int:
             local_machine=(
                 getattr(args, "local_machine", None) or local_machine_identity()[0]
             ),
-            local_hostname=(platform.node() if not getattr(args, "local_machine", None) else None),
+            local_hostname=(
+                platform.node() if not getattr(args, "local_machine", None) else None
+            ),
             registry=getattr(args, "registry", None),
         )
         direct = sorted(name for name in lanes if name != "bus")
         entries[0]["delivery"] = (
-            "board message bus; verified direct lanes: " + ", ".join(
+            "board message bus; verified direct lanes: "
+            + ", ".join(
                 "ccd send_message to session_id " + str(lanes[name]["session_id"])
-                if name == "ccd" else name for name in direct
+                if name == "ccd"
+                else name
+                for name in direct
             )
-            if direct else "board message bus; no verified direct lane"
+            if direct
+            else "board message bus; no verified direct lane"
         )
         sender = self_identity()
         own_seat = seat_for_identity(args.board, sender)
         sender_row = next(
-            (s for s in sessions if own_seat and s.session_uuid == own_seat.session_uuid and active(s)),
+            (
+                s
+                for s in sessions
+                if own_seat and s.session_uuid == own_seat.session_uuid and active(s)
+            ),
             None,
         )
         sender_compact = sender_row.compact_id if sender_row else ""
@@ -4781,7 +5154,11 @@ def command_resolve(args) -> int:
                 args.board,
                 sender=sender,
                 sender_row=(
-                    {"uuid": sender_row.session_uuid, "compact": sender_row.compact_id, "project": sender_row.project}
+                    {
+                        "uuid": sender_row.session_uuid,
+                        "compact": sender_row.compact_id,
+                        "project": sender_row.project,
+                    }
                     if sender_row
                     else None
                 ),
@@ -4836,11 +5213,15 @@ def command_resolve(args) -> int:
             print(f"  client ref: {entry['client_ref'] or '-'}")
             print(f"  delivery: {entry['delivery']}")
         if lanes:
-            print("Exact invocations (copy verbatim; the message must start with your board id):")
+            print(
+                "Exact invocations (copy verbatim; the message must start with your board id):"
+            )
             for line in lane_invocations(lanes, sender_compact):
                 print(f"  {line}")
             if receipt_path is not None:
-                print(f"Delivery receipt: {receipt_path} (valid 20 minutes; the send gate matches it)")
+                print(
+                    f"Delivery receipt: {receipt_path} (valid 20 minutes; the send gate matches it)"
+                )
             if receipt_note:
                 print(f"note: {receipt_note}", file=sys.stderr)
     if len(entries) == 1:
@@ -4892,7 +5273,9 @@ def command_inbox(args) -> int:
         key = f"seat:{row.session_uuid}"
     else:
         seat = seat_for_identity(args.board, identity)
-        row = next((s for s in sessions if seat and s.session_uuid == seat.session_uuid), None)
+        row = next(
+            (s for s in sessions if seat and s.session_uuid == seat.session_uuid), None
+        )
         if row is None:
             print(
                 "inbox: this shell holds no seat on the board; pass --session <id> or "
@@ -4901,7 +5284,9 @@ def command_inbox(args) -> int:
             )
             return 1
         key = identity.sender_key or f"seat:{row.session_uuid}"
-    forms = {row.session_uuid, row.compact_id, row.speakable_id} | ({row.legacy_id} if row.legacy_id else set())
+    forms = {row.session_uuid, row.compact_id, row.speakable_id} | (
+        {row.legacy_id} if row.legacy_id else set()
+    )
     messages = unread_messages(
         content,
         board=args.board,
@@ -4917,7 +5302,12 @@ def command_inbox(args) -> int:
                 {
                     "session": row.compact_id,
                     "unread": [
-                        {"from": m.sender, "to": m.recipient, "at": m.timestamp, "body": m.body}
+                        {
+                            "from": m.sender,
+                            "to": m.recipient,
+                            "at": m.timestamp,
+                            "body": m.body,
+                        }
                         for m in messages
                     ],
                 },
@@ -4925,7 +5315,10 @@ def command_inbox(args) -> int:
             )
         )
     else:
-        print(render_inbox(messages, limit=len(messages) or 1) or f"No unread messages for {row.compact_id}.")
+        print(
+            render_inbox(messages, limit=len(messages) or 1)
+            or f"No unread messages for {row.compact_id}."
+        )
     if messages and getattr(args, "mark_read", False):
         mark_seen(args.board, key, {m.key for m in messages})
         print(f"Marked {len(messages)} message(s) read for {row.compact_id}.")
@@ -4940,11 +5333,20 @@ def command_verify_owner(args) -> int:
     if not _caller_owns_session(args.board, session):
         raise ValueError(seat_ownership_error())
     identity = detect_self()
-    print(json.dumps({
-        "session_uuid": session.session_uuid,
-        "native": {"client": identity.client, "harness_session_id": identity.harness_session_id,
-                   "host_session_id": identity.host_session_id, "primary_ref": identity.primary_ref},
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "session_uuid": session.session_uuid,
+                "native": {
+                    "client": identity.client,
+                    "harness_session_id": identity.harness_session_id,
+                    "host_session_id": identity.host_session_id,
+                    "primary_ref": identity.primary_ref,
+                },
+            },
+            sort_keys=True,
+        )
+    )
     return 0
 
 
@@ -4952,8 +5354,12 @@ def command_whoami(args) -> int:
     """This shell's session identity, seat, board row, and the lanes peers would use."""
     identity = self_identity()
     seat = seat_for_identity(args.board, identity) if args.board.is_file() else None
-    sessions = rows(args.board.read_text(encoding="utf-8")) if args.board.is_file() else []
-    row = next((s for s in sessions if seat and s.session_uuid == seat.session_uuid), None)
+    sessions = (
+        rows(args.board.read_text(encoding="utf-8")) if args.board.is_file() else []
+    )
+    row = next(
+        (s for s in sessions if seat and s.session_uuid == seat.session_uuid), None
+    )
     lanes = (
         delivery_lanes(
             client_ref=row.client_ref,
@@ -4963,13 +5369,17 @@ def command_whoami(args) -> int:
             local_machine=(
                 getattr(args, "local_machine", None) or local_machine_identity()[0]
             ),
-            local_hostname=(platform.node() if not getattr(args, "local_machine", None) else None),
+            local_hostname=(
+                platform.node() if not getattr(args, "local_machine", None) else None
+            ),
             registry=getattr(args, "registry", None),
         )
         if row is not None
         else {}
     )
-    receipts = load_receipts(args.board, identity.sender_key) if identity.sender_key else []
+    receipts = (
+        load_receipts(args.board, identity.sender_key) if identity.sender_key else []
+    )
     payload = {
         "client": identity.client or None,
         "harness_session_id": identity.harness_session_id or None,
@@ -4978,7 +5388,12 @@ def command_whoami(args) -> int:
         "sender_key": identity.sender_key or None,
         "seat": str(seat.compact_id) if seat else None,
         "row": (
-            {"session": row.compact_id, "uuid": row.session_uuid, "project": row.project, "status": row.status}
+            {
+                "session": row.compact_id,
+                "uuid": row.session_uuid,
+                "project": row.project,
+                "status": row.status,
+            }
             if row
             else None
         ),
@@ -5000,11 +5415,36 @@ def command_whoami(args) -> int:
         print("lanes peers use to reach this session:")
         for line in lane_invocations(lanes, "<their id>"):
             print(f"  {line}")
-    print(f"receipts held: {', '.join(r for r in payload['receipts_held'] if r) or 'none'}")
+    print(
+        f"receipts held: {', '.join(r for r in payload['receipts_held'] if r) or 'none'}"
+    )
     return 0 if row is not None and identity.sender_key else 1
 
 
 def command_migrate(args) -> int:
+    selection = tuple(
+        getattr(args, field, None)
+        for field in ("team_contract", "team_digest", "expected_board_sha256")
+    )
+    team_enrollment = (
+        selection if any(value is not None for value in selection) else None
+    )
+    if team_enrollment is not None:
+        name, digest, expected = selection
+        if (
+            not isinstance(name, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,95}\.json", name)
+            or not all(
+                isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in (digest, expected)
+            )
+        ):
+            print(
+                "coordination migrate refused: team enrollment needs one sibling contract, its exact digest and expected board SHA-256",
+                file=sys.stderr,
+            )
+            return 10
+
     def operation(content: str) -> str:
         migrated = ensure_identities(rows(content))
         local_id, local_label = local_machine_identity()
@@ -5021,11 +5461,31 @@ def command_migrate(args) -> int:
         problems = validate_sessions(migrated)
         if problems:
             raise RuntimeError("; ".join(problems))
-        return replace_table(content, migrated, force_schema=SCHEMA_VERSION)
+        updated = replace_table(content, migrated, force_schema=SCHEMA_VERSION)
+        if team_enrollment is not None:
+            import team_contract
+
+            name, digest, _ = team_enrollment
+            team_contract.load(args.board.parent / name, expected_digest=digest)
+            # The transition validator checks the exact original generation and
+            # inactive population again at every existing Git lease CAS attempt.
+            declaration = f"Team-Contract: {name} @ {digest}"
+            if re.search(r"(?m)^Team-Contract:", updated):
+                updated = re.sub(r"(?m)^Team-Contract:[^\n]*$", declaration, updated)
+            else:
+                match = re.search(r"(?m)^Schema: v[0-9]+[ \t]*$", updated)
+                if match is None:
+                    raise ValueError("migration did not emit its schema declaration")
+                updated = (
+                    updated[: match.end()] + "\n" + declaration + updated[match.end() :]
+                )
+        return updated
 
     try:
-        locked_update(args.board, operation)
-    except RuntimeError as exc:
+        locked_update(
+            args.board, operation, lock_timeout=5.0, team_enrollment=team_enrollment
+        )
+    except (RuntimeError, ValueError, OSError) as exc:
         print(f"coordination migrate failed: {exc}", file=sys.stderr)
         return 10
     print(f"Migrated {args.board} to schema v{SCHEMA_VERSION}.")
@@ -5059,11 +5519,15 @@ def _harness_transcript(seat) -> Path | None:
     if not native:
         return None
     if seat.client == CLIENT_MUSE:
-        scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+        scripts = (
+            Path(__file__).resolve().parents[2]
+            / "synthesis-agent-conformance"
+            / "scripts"
+        )
         if str(scripts) not in sys.path:
             sys.path.insert(0, str(scripts))
         try:
-            from live_receipt import resolve_muse_transcript
+            from native_transcript_identity import resolve_muse_transcript
         except (ImportError, SyntaxError):
             return None
         return resolve_muse_transcript(native)
@@ -5071,18 +5535,27 @@ def _harness_transcript(seat) -> Path | None:
         root = Path(os.environ.get("CODEX_HOME", "~/.codex")).expanduser() / "sessions"
         pattern = f"*{native}*.jsonl"
     else:
-        root = Path(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")).expanduser() / "projects"
+        root = (
+            Path(os.environ.get("CLAUDE_CONFIG_DIR", "~/.claude")).expanduser()
+            / "projects"
+        )
         pattern = f"{native}.jsonl"
     try:
         if not root.is_dir() or root.is_symlink():
             return None
-        matches = [path for path in root.rglob(pattern) if path.is_file() and not path.is_symlink()]
+        matches = [
+            path
+            for path in root.rglob(pattern)
+            if path.is_file() and not path.is_symlink()
+        ]
     except OSError:
         return None
     return matches[0] if len(matches) == 1 else None
 
 
-def harness_gone_evidence(board: Path, session: Session, now: datetime | None = None) -> str | None:
+def harness_gone_evidence(
+    board: Path, session: Session, now: datetime | None = None
+) -> str | None:
     """Why this row's harness is gone on this machine, or None (no evidence).
 
     Rajiv's 2026-09-20 ruling: a seat whose harness process is gone is dead
@@ -5168,9 +5641,7 @@ def command_fleet_doctor(args) -> int:
     import fleet_doctor
     import fleet_paths
 
-    root = getattr(args, "synthesis_root", None) or (
-        Path.home() / ".synthesis"
-    )
+    root = getattr(args, "synthesis_root", None) or (Path.home() / ".synthesis")
     failures = 0
     try:
         hits = fleet_paths.check_synced_root(Path(root))
@@ -5276,8 +5747,10 @@ def worktree_evidence(session: "Session", this_machine: str) -> tuple[str, bool]
     reserves to them.
     """
     if session.machine and this_machine and session.machine != this_machine:
-        return (f"claimed on {session.machine}, not this machine — "
-                "cannot be judged from here"), False
+        return (
+            f"claimed on {session.machine}, not this machine — "
+            "cannot be judged from here"
+        ), False
     paths = []
     for entry in session.workspaces:
         candidate = entry.split(" @ ")[0].strip()
@@ -5287,8 +5760,10 @@ def worktree_evidence(session: "Session", this_machine: str) -> tuple[str, bool]
         return "no absolute worktree recorded — cannot verify", False
     missing = [p for p in paths if not p.exists()]
     if missing and len(missing) == len(paths):
-        return (f"worktree no longer exists ({missing[0]}) — the session "
-                "cannot still be writing there"), True
+        return (
+            f"worktree no longer exists ({missing[0]}) — the session "
+            "cannot still be writing there"
+        ), True
     if missing:
         return f"{len(missing)} of {len(paths)} recorded worktrees are gone", True
     return "worktree still present — may be a live session", False
@@ -5325,39 +5800,53 @@ def command_stale(args) -> int:
     shown = stale if args.all else stale[: args.limit]
 
     if args.json:
-        print(json.dumps({
-            "threshold_days": args.threshold,
-            "active_total": sum(1 for s in sessions if active(s)),
-            "stale_total": len(stale),
-            "undated": unknown_age,
-            "shown": [{
-                "id": s.compact_id,
-                "uuid": s.session_uuid,
-                "agent": s.agent,
-                "machine": s.machine,
-                "project": s.project,
-                "heartbeat": s.heartbeat,
-                "age_days": round(age, 2),
-                "advisory": downgraded(s),
-                "evidence": note,
-                "worktree_gone": gone,
-                "claims": s.claims,
-            } for age, s, note, gone in shown],
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "threshold_days": args.threshold,
+                    "active_total": sum(1 for s in sessions if active(s)),
+                    "stale_total": len(stale),
+                    "undated": unknown_age,
+                    "shown": [
+                        {
+                            "id": s.compact_id,
+                            "uuid": s.session_uuid,
+                            "agent": s.agent,
+                            "machine": s.machine,
+                            "project": s.project,
+                            "heartbeat": s.heartbeat,
+                            "age_days": round(age, 2),
+                            "advisory": downgraded(s),
+                            "evidence": note,
+                            "worktree_gone": gone,
+                            "claims": s.claims,
+                        }
+                        for age, s, note, gone in shown
+                    ],
+                },
+                indent=2,
+            )
+        )
         return 0
 
     live = sum(1 for s in sessions if active(s))
     if not stale:
-        print(f"Coordination review: {live} active session(s), none quiet for "
-              f"more than {args.threshold:g} day(s). No claims to resolve.")
+        print(
+            f"Coordination review: {live} active session(s), none quiet for "
+            f"more than {args.threshold:g} day(s). No claims to resolve."
+        )
         return 0
 
-    print(f"Coordination review: {len(stale)} of {live} active session(s) have "
-          f"been quiet for more than {args.threshold:g} day(s).")
-    print(f"Rows quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d are ADVISORY: they no "
-          "longer block overlapping claims, and grants through them are "
-          "recorded on the bus. Releasing a row stays YOUR call — advisory "
-          "is not proof of death, and no agent releases another seat.\n")
+    print(
+        f"Coordination review: {len(stale)} of {live} active session(s) have "
+        f"been quiet for more than {args.threshold:g} day(s)."
+    )
+    print(
+        f"Rows quiet past {STALE_CLAIM_DEFAULT_DAYS:g}d are ADVISORY: they no "
+        "longer block overlapping claims, and grants through them are "
+        "recorded on the bus. Releasing a row stays YOUR call — advisory "
+        "is not proof of death, and no agent releases another seat.\n"
+    )
     for age, session, note, gone in shown:
         flag = "LIKELY GONE" if gone else "unverified"
         advisory = downgraded(session)
@@ -5368,15 +5857,19 @@ def command_stale(args) -> int:
         print(f"    evidence: {note}")
         if session.claims:
             head = session.claims[0]
-            extra = f" (+{len(session.claims) - 1} more)" if len(session.claims) > 1 else ""
+            extra = (
+                f" (+{len(session.claims) - 1} more)" if len(session.claims) > 1 else ""
+            )
             label = "holds:    " if advisory else "blocks:   "
             print(f"    {label}{head}{extra}")
         print(f"    release:  coordination.py release --id {session.compact_id}\n")
     if len(stale) > len(shown):
         print(f"  ...and {len(stale) - len(shown)} more; --all shows every one.")
     if unknown_age:
-        print(f"  ({unknown_age} active row(s) have an unparseable heartbeat and "
-              "were not assessed — reported rather than assumed healthy.)")
+        print(
+            f"  ({unknown_age} active row(s) have an unparseable heartbeat and "
+            "were not assessed — reported rather than assumed healthy.)"
+        )
     return 0
 
 
@@ -5453,7 +5946,9 @@ def command_doctor(args) -> int:
     stale_files = stale_seat_files(args.board)
     if stale_files:
         names = ", ".join(path.name for path, _reason in stale_files)
-        print(f"WARN coordination.seats: {len(stale_files)} stale schema-1 seat file(s) skipped by strict reads: {names}")
+        print(
+            f"WARN coordination.seats: {len(stale_files)} stale schema-1 seat file(s) skipped by strict reads: {names}"
+        )
     print(
         f"PASS coordination: schema v{declared}{schema_note}, "
         f"{len(sessions)} session(s){seat_line}{lease_line}"
@@ -5464,13 +5959,17 @@ def command_doctor(args) -> int:
 def command_archive(args) -> int:
     try:
         from coordination_archive import archive
+
         result = archive(args.board, dry_run=args.dry_run)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"coordination archive failed: {exc}", file=sys.stderr)
         return 10
-    print(json.dumps(result, sort_keys=True) if args.json else
-          f"Coordination archive: {result['rows']} released rows, {result['messages']} messages"
-          + (" (dry run)" if args.dry_run else ""))
+    print(
+        json.dumps(result, sort_keys=True)
+        if args.json
+        else f"Coordination archive: {result['rows']} released rows, {result['messages']} messages"
+        + (" (dry run)" if args.dry_run else "")
+    )
     return 0
 
 
@@ -5497,13 +5996,20 @@ def parser() -> argparse.ArgumentParser:
     result = _FailClosedParser(description=__doc__)
     result.add_argument("--board", type=Path, default=DEFAULT_BOARD)
     commands = result.add_subparsers(dest="command", required=True)
-    archive = commands.add_parser("archive", help="Archive released rows older than 30 days and their closed addressed messages through lease CAS")
+    archive = commands.add_parser(
+        "archive",
+        help="Archive released rows older than 30 days and their closed addressed messages through lease CAS",
+    )
     archive.add_argument("--dry-run", action="store_true")
     archive.add_argument("--json", action="store_true")
     status = commands.add_parser("status")
     status.add_argument("--json", action="store_true")
     status.add_argument("--strict", action="store_true")
-    status.add_argument("--passive-stop", action="store_true", help="Passive Stop observation only; permit a successful mirror refresh younger than five minutes")
+    status.add_argument(
+        "--passive-stop",
+        action="store_true",
+        help="Passive Stop observation only; permit a successful mirror refresh younger than five minutes",
+    )
     status.add_argument("--stale-after-minutes", type=int, default=240)
     check_staged = commands.add_parser(
         "check-staged",
@@ -5550,6 +6056,16 @@ def parser() -> argparse.ArgumentParser:
             "strong selector fails closed."
         ),
     )
+    claim.add_argument(
+        "--person",
+        default="",
+        help="Opaque principal attribution for an explicitly enrolled team board; never an access grant",
+    )
+    claim.add_argument(
+        "--standing-role",
+        default="",
+        help="Optional declared standing role; does not own claims",
+    )
     claim.add_argument("--agent", required=True)
     claim.add_argument("--machine", default=socket.gethostname())
     claim.add_argument("--project", required=True)
@@ -5562,9 +6078,20 @@ def parser() -> argparse.ArgumentParser:
         help="Isolated worktree path and branch: /path/to/worktree @ branch",
     )
     claim.add_argument("--area", action="append", required=True)
-    claim.add_argument("--then-cwd", type=Path, help="Exact working directory for --then")
-    claim.add_argument("--then-timeout", type=float, default=60, help="Finite effect timeout, at most 900 seconds")
-    claim.add_argument("--then", nargs=argparse.REMAINDER, help="Run this exact argv only after successful authenticated claim; put this option last")
+    claim.add_argument(
+        "--then-cwd", type=Path, help="Exact working directory for --then"
+    )
+    claim.add_argument(
+        "--then-timeout",
+        type=float,
+        default=60,
+        help="Finite effect timeout, at most 900 seconds",
+    )
+    claim.add_argument(
+        "--then",
+        nargs=argparse.REMAINDER,
+        help="Run this exact argv only after successful authenticated claim; put this option last",
+    )
     claim.add_argument(
         "--replace",
         action="store_true",
@@ -5629,6 +6156,16 @@ def parser() -> argparse.ArgumentParser:
         "--agent",
         default="",
         help="Successor agent name (required when allocating a new row).",
+    )
+    succeed.add_argument(
+        "--person",
+        default="",
+        help="Explicit incoming principal attribution on a team board",
+    )
+    succeed.add_argument(
+        "--standing-role",
+        default="",
+        help="Incoming declared standing role; no inherited authority",
     )
     succeed.add_argument("--machine", default=socket.gethostname())
     succeed.add_argument(
@@ -5703,7 +6240,8 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     narrow.add_argument(
-        "--basis", choices=("idle-holder",),
+        "--basis",
+        choices=("idle-holder",),
         help="administrative narrow basis (idle-holder only)",
     )
     narrow.add_argument(
@@ -5765,7 +6303,8 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     message.add_argument(
-        "--project-index", type=Path,
+        "--project-index",
+        type=Path,
         help="Explicit Git-tracked registry for report-only project successor routing; exact session handles stay exact.",
     )
     message.add_argument(
@@ -5803,7 +6342,9 @@ def parser() -> argparse.ArgumentParser:
     inbox.add_argument("--id", "--session", dest="id")
     inbox.add_argument("--mark-read", action="store_true")
     inbox.add_argument("--json", action="store_true")
-    verify_owner = commands.add_parser("verify-owner", help="Read-only native ownership proof for one existing seat.")
+    verify_owner = commands.add_parser(
+        "verify-owner", help="Read-only native ownership proof for one existing seat."
+    )
     verify_owner.add_argument("--id", "--session", dest="id", required=True)
     whoami = commands.add_parser(
         "whoami",
@@ -5812,7 +6353,18 @@ def parser() -> argparse.ArgumentParser:
     whoami.add_argument("--json", action="store_true")
     whoami.add_argument("--registry", type=Path, default=None, help=argparse.SUPPRESS)
     whoami.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
-    commands.add_parser("migrate")
+    migrate = commands.add_parser("migrate")
+    migrate.add_argument(
+        "--team-contract",
+        help="Explicitly enroll or renew one sibling team JSON file on an inactive board.",
+    )
+    migrate.add_argument(
+        "--team-digest", help="Exact SHA-256 of the reviewed team declaration."
+    )
+    migrate.add_argument(
+        "--expected-board-sha256",
+        help="Exact reviewed board generation; stale CAS input refuses.",
+    )
     commands.add_parser("doctor")
     challenge = commands.add_parser(
         "challenge",
@@ -5882,9 +6434,12 @@ def parser() -> argparse.ArgumentParser:
         "only; rows past the default threshold are advisory automatically, "
         "and releasing a claim stays the user's decision.",
     )
-    stale.add_argument("--threshold", type=float,
-                       default=STALE_CLAIM_DEFAULT_DAYS,
-                       help="days of silence before a claim is surfaced")
+    stale.add_argument(
+        "--threshold",
+        type=float,
+        default=STALE_CLAIM_DEFAULT_DAYS,
+        help="days of silence before a claim is surfaced",
+    )
     stale.add_argument("--limit", type=int, default=3)
     stale.add_argument("--all", action="store_true")
     stale.add_argument("--json", action="store_true")
@@ -5953,6 +6508,39 @@ def main() -> int:
         # on, never a traceback whose last line gets quoted as the problem.
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def passive_board_snapshot(board: Path) -> str:
+    """Read the current leased board without mutation or an execution dependency."""
+    if board.is_symlink() or not board.is_file() or board.parent.is_symlink():
+        raise RuntimeError("coordination board is missing or unsafe")
+
+    def mutation_stamp():
+        info = board.stat()
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    before = mutation_stamp()
+    config = lease_configuration(board)
+    text = board.read_text(encoding="utf-8")
+    if config is None and declared_lease(text) is not None:
+        raise RuntimeError("declared coordination lease has no local configuration")
+    if (
+        config is not None
+        and _cached_lease_refresh(board, config, PASSIVE_STOP_REFRESH_SECONDS) is None
+    ):
+        raise RuntimeError(
+            "passive coordination snapshot is stale; owning PM lease refresh is required"
+        )
+    if mutation_stamp() != before:
+        raise RuntimeError("coordination snapshot changed during passive observation")
+    return text
 
 
 if __name__ == "__main__":

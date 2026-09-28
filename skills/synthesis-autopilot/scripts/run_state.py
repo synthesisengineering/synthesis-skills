@@ -25,6 +25,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
+import importlib
 import json
 import os
 from pathlib import Path
@@ -32,16 +33,24 @@ import re
 import stat
 import sys
 import tempfile
+import time
 import uuid
 
 PM_SCRIPTS = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
 if str(PM_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PM_SCRIPTS))
-from plan_reference import resolve_plan_target
-from run_admission import admit_paths, admission_scope, bounded_lock, inspect_paths, native_binding, reconcile_readback, safe_path
-from project_state import observer_native_identity
-import coordination
-import journal_storage
+resolve_plan_target = importlib.import_module("plan_reference").resolve_plan_target
+_admission = importlib.import_module("run_admission")
+admit_paths = _admission.admit_paths
+admission_scope = _admission.admission_scope
+bounded_lock = _admission.bounded_lock
+inspect_paths = _admission.inspect_paths
+native_binding = _admission.native_binding
+reconcile_readback = _admission.reconcile_readback
+safe_path = _admission.safe_path
+observer_native_identity = importlib.import_module("project_state").observer_native_identity
+coordination = importlib.import_module("coordination")
+journal_storage = importlib.import_module("journal_storage")
 
 SCHEMA = 1
 VERIFIER_VERSION = "run-state-1"
@@ -58,7 +67,7 @@ _TERMINAL_COMMANDS = set()
 _EVIDENCE_SOURCES = {}
 _OBSERVERS = {}
 _ACCEPTANCE = {}
-REQUEST_OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish"})
+REQUEST_OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish", "successor"})
 MAX_INPUT_BYTES = 256 * 1024
 
 
@@ -595,13 +604,15 @@ def _resume_user_message(actor, proof, spec, released_at):
                 quoted_paragraph = True
             if quoted_paragraph:
                 if current:
-                    paragraphs.append("\n".join(current).strip()); current = []
+                    paragraphs.append("\n".join(current).strip())
+                    current = []
                 continue
             opening = re.fullmatch(r" {0,3}(`{3,}|~{3,})(.*)", expanded)
             if opening and (opening[1][0] != "`" or "`" not in opening[2]):
                 fence = (opening[1][0], len(opening[1]))
                 if current:
-                    paragraphs.append("\n".join(current).strip()); current = []
+                    paragraphs.append("\n".join(current).strip())
+                    current = []
                 continue
             # Indented code remains data. Expand tabs using Markdown's four
             # column stops; stripping first would erase this provenance.
@@ -613,7 +624,8 @@ def _resume_user_message(actor, proof, spec, released_at):
                 in_markup = in_markup or bool(markup.stack or markup.rawdata or markup.seen)
             if not stripped or indented or in_markup or stripped.startswith((">", "<", "```", "~~~")):
                 if current:
-                    paragraphs.append("\n".join(current).strip()); current = []
+                    paragraphs.append("\n".join(current).strip())
+                    current = []
                 continue
             current.append(line)
     if spec["excerpt"] not in paragraphs:
@@ -682,16 +694,40 @@ def _resume_binding(project, state, actor, payload):
     return proof
 
 
-def _events(project, run_id):
+def _events(project, run_id, *, verify_successor=True):
     home = _home(project, run_id)
     directory = safe_path(home / "events", Path(project).resolve())
     if not directory.is_dir():
         raise RunStateError("run has no committed events")
-    files = sorted(directory.iterdir())
-    files = [path for path in files if not path.name.startswith(".run-")]
+    # Bound physical enumeration before materialization, including interrupted
+    # staging entries. Staging is retained evidence, not an unlimited allowance.
+    files = []
+    enumeration_deadline = time.monotonic() + MAX_SUCCESSOR_SECONDS
+    before = directory.lstat()
+    fields = ("st_dev", "st_ino", "st_mode", "st_mtime_ns", "st_ctime_ns")
+    def signature(info):
+        return tuple(getattr(info, key) for key in fields)
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if signature(before) != signature(os.fstat(fd)):
+            raise RunStateError("event directory changed before enumeration")
+        # Path.iterdir uses os.listdir on supported Python versions. scandir
+        # streams from this verified descriptor instead of allocating all names.
+        with os.scandir(fd) as entries:
+            for count, entry in enumerate(entries, 1):
+                if count > MAX_EVENTS or time.monotonic() > enumeration_deadline:
+                    raise RunStateError("event directory exceeds the bounded enumeration limit")
+                if not entry.name.startswith(".run-"):
+                    files.append(directory / entry.name)
+        if signature(before) != signature(os.fstat(fd)) or signature(before) != signature(directory.lstat()):
+            raise RunStateError("event directory changed during enumeration")
+    finally:
+        os.close(fd)
+    files.sort()
     if not files or len(files) > MAX_EVENTS:
         raise RunStateError("event stream is empty or exceeds supported replay limit")
     previous = ""
+    initial_state = None
     commands = set()
     for revision, path in enumerate(files, 1):
         if path.name != f"{revision:012d}.json":
@@ -711,7 +747,14 @@ def _events(project, run_id):
             raise RunStateError("event stream contains duplicate command IDs")
         commands.add(event["command_id"])
         previous = digest
+        if revision == 1:
+            initial_state = state
         yield event
+    if verify_successor and initial_state.get("successor"):
+        if state.get("successor") != initial_state["successor"]:
+            raise RunStateError("successor lineage changed within its journal")
+        parents = _successor_chain(project, initial_state["successor"]["predecessor"], time.monotonic() + MAX_SUCCESSOR_SECONDS)
+        _successor_inheritance(initial_state, parents[0])
 
 
 def _last_event(project, run_id):
@@ -819,7 +862,19 @@ def replay_request_step(project, run_id, *, request_binding, actor, command=None
         return state
 
 
+def _require_unlinked_predecessor(project, run_id):
+    """A committed child fixes this exact parent head; pending hints do not."""
+    child = _home(project, successor_identity(project, run_id))
+    committed = safe_path(child / "events" / "000000000001.json", Path(project).resolve())
+    try:
+        committed.lstat()
+    except FileNotFoundError:
+        return
+    raise RunStateError("committed successor makes the linked predecessor immutable")
+
+
 def _append(project, state, command_id, command_digest, command, previous_digest, proof, *, prepared_authority=None):
+    _require_unlinked_predecessor(project, state["run_id"])
     home = _home(project, state["run_id"])
     event = {"schema_version": SCHEMA, "revision": state["revision"], "previous_digest": previous_digest,
              "command_id": command_id, "command_digest": command_digest, "command": command,
@@ -848,12 +903,16 @@ def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, run
     committed. Native work must separately authenticate through ordinary PM.
     """
     import prepared_native_launch as launch
-    project=Path(project).absolute();_id(run_id);_id(permit_id)
+    project=Path(project).absolute()
+    _id(run_id)
+    _id(permit_id)
     if phase not in {"reserve","submit","observe"}:
         raise RunStateError("unsupported prepared launch phase")
     home=_home(project,run_id)
     with bounded_lock(home/".run.lock",create=False):
-        previous=_last_event(project,run_id);state=previous["state"]
+        previous=_last_event(project,run_id)
+        state=previous["state"]
+        _require_unlinked_predecessor(project, run_id)
         grant=launch._grant(state,permit_id,token)
         if phase in {"reserve","submit"}:
             required="prepared" if phase=="reserve" else "consumed"
@@ -873,19 +932,23 @@ def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, run
             recovery_capsule.resolve(project,state['project_id'],grant['issuer_selector'],runtime_root)
         plan_before=_plan(project,state["plan"]).resolved.read_text(encoding="utf-8")
         before=launch.attribution_snapshot(project,grant)
-        updated=deepcopy(state);row=updated["extensions"]["prepared_native_launch"]["permits"][permit_id]
+        updated=deepcopy(state)
+        row=updated["extensions"]["prepared_native_launch"]["permits"][permit_id]
         result=None
         if phase=="reserve":
             row.update(status="consumed",consumed_at=_now(),consumed_revision=state["revision"]+1)
         elif phase=="submit":
-            if not callable(send):raise RunStateError("native submission requires the owned transport operation")
+            if not callable(send):
+                raise RunStateError("native submission requires the owned transport operation")
             result=send()
             row.update(status="submitted",submitted_at=_now(),admission=deepcopy(result))
         else:
-            row["outcome"]=deepcopy(outcome);row["observed_at"]=_now()
+            row["outcome"]=deepcopy(outcome)
+            row["observed_at"]=_now()
             if row["status"]!="cancelled":
                 row["status"]="observed" if outcome.get("status")=="native_terminal" else "unknown"
-        updated["revision"]=state["revision"]+1;updated["updated_at"]=_now()
+        updated["revision"]=state["revision"]+1
+        updated["updated_at"]=_now()
         projection_hashes={str(path):hashlib.sha256(raw).hexdigest()
             for path,raw in _projection_bytes(project,updated,plan_before).items()}
         if phase in {"reserve","submit"}:
@@ -951,7 +1014,7 @@ def _create(project, *, project_id, plan, contract, profile, actor, command_id, 
     _record_request(state, request_binding, command_id, creation_digest)
     home = _home(project, run_id)
     with bounded_lock(home / ".run.lock"):
-        if (home / "events").exists() and any((home / "events").iterdir()):
+        if _has_event_prefix(home / "events"):
             first = next(_events(project, run_id))
             if first["command_id"] != command_id or first["command_digest"] != creation_digest:
                 raise RunStateError("run creation identity already exists with different input")
@@ -978,6 +1041,389 @@ def _create(project, *, project_id, plan, contract, profile, actor, command_id, 
         _project(project, state)
         _index_update(runtime_root, proof["session_uuid"], run_id, _index_entry(project, state))
         return deepcopy(state)
+
+
+
+# A successor is another event in the existing run owner, not a second budget
+# authority. The complete predecessor remains immutable and addressable.
+MAX_SUCCESSOR_SECONDS = 120
+MAX_SUCCESSOR_DEPTH = 32
+MAX_SUCCESSOR_RESERVATIONS = 2048
+MAX_SUCCESSOR_ARTIFACT_BYTES = 1024 * 1024 * 1024
+MAX_SUCCESSOR_INTERVAL_SECONDS = 7 * 24 * 3600
+
+
+def _successor_tick(until):
+    if time.monotonic() >= until:
+        raise RunStateError("successor transaction elapsed bound exceeded")
+
+
+def _successor_head(event):
+    state = event["state"]
+    return {"run_id": state["run_id"], "revision": state["revision"],
+            "event_digest": event["digest"], "state_digest": _digest(state),
+            "deadline": state.get("extensions", {}).get("workflow", {}).get("budget", {}).get("deadline")}
+
+
+def _successor_reference(value):
+    if not isinstance(value, dict) or set(value) != {"run_id", "revision", "event_digest", "state_digest", "deadline"}:
+        raise RunStateError("predecessor reference has unknown or missing fields")
+    _uuid(value["run_id"])
+    if type(value["revision"]) is not int or not 1 <= value["revision"] <= MAX_EVENTS:
+        raise RunStateError("invalid predecessor revision")
+    for key in ("event_digest", "state_digest"):
+        if not isinstance(value[key], str) or not re.fullmatch("[a-f0-9]{64}", value[key]):
+            raise RunStateError("invalid predecessor digest")
+    _time(value["deadline"])
+
+
+def _successor_chain(project, reference, until):
+    """Fully replay each linked predecessor, without recursive projection trust."""
+    seen, states, count = set(), [], 0
+    child = None
+    while reference is not None:
+        _successor_tick(until)
+        _successor_reference(reference)
+        ident = reference["run_id"]
+        if ident in seen or len(seen) >= MAX_SUCCESSOR_DEPTH:
+            raise RunStateError("successor history is cyclic or exceeds depth bound")
+        seen.add(ident)
+        last, initial = None, None
+        for last in _events(project, ident, verify_successor=False):
+            if initial is None:
+                initial = last["state"]
+            count += 1
+            _successor_tick(until)
+            if count > MAX_EVENTS:
+                raise RunStateError("successor history exceeds aggregate replay bound")
+        if last is None or _successor_head(last) != reference:
+            raise RunStateError("predecessor head/deadline changed or history is missing")
+        state = last["state"]
+        if state["status"] not in TERMINAL:
+            raise RunStateError("predecessor is not terminal")
+        if child is not None:
+            _successor_inheritance(child, state)
+        child = initial
+        states.append(state)
+        link = initial.get("successor")
+        if state.get("successor") != link:
+            raise RunStateError("successor lineage changed within its journal")
+        reference = link["predecessor"] if link else None
+    return states
+
+
+
+def _successor_inherited_view(state):
+    value = deepcopy(state)
+    for key in ("run_id", "revision", "status", "created_at", "updated_at", "owner", "terminal", "completion", "handoff", "successor"):
+        value.pop(key, None)
+    value["extensions"].pop("controller", None)
+    flow = value["extensions"]["workflow"]
+    flow.pop("bindings", None)
+    flow["budget"].pop("deadline", None)
+    return value
+
+
+def _successor_inheritance(child, parent):
+    if (child["project_id"] != parent["project_id"]
+            or child["run_id"] != successor_identity(Path(child["owner"]["project_root"]), parent["run_id"])
+            or _successor_inherited_view(child) != _successor_inherited_view(parent)
+            or child["extensions"]["workflow"]["budget"]["deadline"] != child["successor"]["deadline"]
+            or any(child["owner"][key] != parent["owner"][key] for key in ("session_uuid", "native_ref", "repository", "branch"))):
+        raise RunStateError("successor history drops or changes inherited obligations/costs")
+
+
+def _successor_journal_witnesses(project, chain, until):
+    """Bind verified predecessor files across a slow final admission fence."""
+    witnesses, entries = {}, 0
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    for state in chain:
+        home = _home(project, state["run_id"])
+        for relative in ("events", "state-blocks/v1"):
+            directory = safe_path(home / relative, Path(project))
+            if not directory.exists():
+                continue
+            if not directory.is_dir():
+                raise RunStateError("predecessor journal directory is unsafe")
+            witnesses[str(directory)] = tuple(getattr(directory.stat(), key) for key in fields)
+            with os.scandir(directory) as members:
+                for member in members:
+                    _successor_tick(until)
+                    entries += 1
+                    if entries > MAX_EVENTS + journal_storage.MAX_STORE_ENTRIES:
+                        raise RunStateError("predecessor journal witness count exceeds bound")
+                    info = member.stat(follow_symlinks=False)
+                    if not stat.S_ISREG(info.st_mode):
+                        raise RunStateError("predecessor journal member is not regular")
+                    witnesses[member.path] = tuple(getattr(info, key) for key in fields)
+    return witnesses
+
+
+def _successor_file(project, record, until, remaining, witnesses):
+    """Bounded descriptor read with an exact pathname/metadata recheck."""
+    _successor_tick(until)
+    path = safe_path(Path(project) / record["path"], Path(project))
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    digest, size = hashlib.sha256(), 0
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > min(remaining, journal_storage.MAX_LOGICAL_BYTES):
+            raise RunStateError("successor evidence is nonregular or exceeds byte bound")
+        while chunk := os.read(fd, 128 * 1024):
+            size += len(chunk)
+            if size > min(remaining, journal_storage.MAX_LOGICAL_BYTES):
+                raise RunStateError("successor evidence exceeds byte bound")
+            digest.update(chunk)
+            _successor_tick(until)
+        after, present = os.fstat(fd), path.lstat()
+        fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(getattr(before, key) != getattr(other, key) for other in (after, present) for key in fields):
+            raise RunStateError("successor evidence changed during read")
+        if size != before.st_size or digest.hexdigest() != record["digest"]:
+            raise RunStateError("successor evidence digest changed")
+        witnesses[str(path)] = tuple(getattr(before, key) for key in fields)
+        return size
+    finally:
+        os.close(fd)
+
+
+def _successor_inputs(project, state, intent, until):
+    remaining = MAX_SUCCESSOR_ARTIFACT_BYTES
+    witnesses = {}
+    records = [*state["artifacts"].values(), intent["authorization_ref"]]
+    if len(records) > MAX_EVENTS:
+        raise RunStateError("successor artifact count exceeds bound")
+    for record in records:
+        remaining -= _successor_file(project, record, until, remaining, witnesses)
+    return witnesses
+
+
+def _successor_recheck_files(project, witnesses, until):
+    fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    for name, expected in witnesses.items():
+        _successor_tick(until)
+        info = safe_path(Path(name), Path(project)).lstat()
+        if tuple(getattr(info, key) for key in fields) != expected:
+            raise RunStateError("successor evidence changed during final admission")
+
+
+def _successor_ledger(state):
+    import workflow
+    ledger = state["extensions"]["workflow"]["budget"]
+    limits, reservations = ledger.get("limits"), ledger.get("reservations")
+    if not isinstance(limits, dict) or not 1 <= len(limits) <= 16 or not isinstance(reservations, dict) or len(reservations) > MAX_SUCCESSOR_RESERVATIONS:
+        raise RunStateError("predecessor resource ledger shape exceeds bounds")
+    for name, policy in limits.items():
+        workflow._id(name)
+        workflow._object(policy, {"limit", "enforcement"}, {"limit", "enforcement"})
+        if policy["enforcement"] not in {"hard", "forecast"} or policy["limit"] is None and policy["enforcement"] != "forecast":
+            raise RunStateError("invalid inherited resource enforcement")
+        if policy["limit"] is not None:
+            workflow._integer(policy["limit"])
+    for ident, row in reservations.items():
+        workflow._id(ident)
+        if row.get("id") != ident or row.get("status") not in {"reserved", "settled", "unknown"} or row.get("category") not in {"work", "integration", "verification", "recovery", "overhead"}:
+            raise RunStateError("invalid inherited reservation")
+        if set(row.get("amounts", {})) != set(limits):
+            raise RunStateError("inherited reservation omits resource dimensions")
+        workflow._amounts(ledger, row["amounts"])
+        if row.get("actual") is not None:
+            workflow._amounts(ledger, row["actual"])
+        seen, parent = {ident}, row.get("parent_id")
+        while parent is not None:
+            if parent not in reservations or parent in seen or len(seen) >= MAX_SUCCESSOR_DEPTH:
+                raise RunStateError("inherited budget ancestry is missing, cyclic or too deep")
+            seen.add(parent)
+            parent = reservations[parent].get("parent_id")
+    for row in reservations.values():
+        if row["status"] == "settled" and not workflow._reservation_accounted(ledger, row):
+            raise RunStateError("inherited settled reservation undercounts unknown usage")
+    # Summaries derive from the unchanged complete nested ledger, not caller
+    # totals. Negative remaining capacity/breaches stay retained, never refunded.
+    workflow.budget_summary(state)
+
+
+def _successor_quiescent(state):
+    """Only owner-recorded terminal custody is retained; never adopt live work."""
+    flow = state.get("extensions", {}).get("workflow", {})
+    if not flow.get("budget"):
+        raise RunStateError("predecessor has no bounded resource ledger")
+    _successor_ledger(state)
+    import workflow
+    for child in [*flow.get("children", {}).values(), *flow.get("retained_children", [])]:
+        if child.get("disposition") not in workflow.TERMINAL_CHILD or child.get("audit_status") not in {"accepted", "rejected"}:
+            raise RunStateError("predecessor worker/process custody needs reconciliation")
+    if any(node.get("status") == "running" for node in flow.get("graph", {}).get("nodes", {}).values()):
+        raise RunStateError("predecessor has active workflow work")
+    if any(effect.get("status") not in {"confirmed", "failed", "cancelled"} for effect in state.get("effects", {}).values()):
+        raise RunStateError("predecessor effect custody needs reconciliation")
+    extensions = state.get("extensions", {})
+    continuation = extensions.get("capabilities", {}).get("continuation")
+    if continuation and continuation.get("status") != "cancelled":
+        raise RunStateError("predecessor native continuation needs confirmed cancellation")
+    permits = extensions.get("prepared_native_launch", {}).get("permits", {})
+    if any(item.get("status") not in {"cancelled", "observed"} for item in permits.values()):
+        raise RunStateError("predecessor native launch custody needs reconciliation")
+    # Unknown actual usage, consumed attempts, breaches and all historical
+    # native projections stay byte-equivalent; they never become zero/PASS.
+
+
+def successor_identity(project, predecessor_id):
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"synthesis-successor:{Path(project).resolve()}:{_uuid(predecessor_id)}"))
+
+
+def _has_event_prefix(directory):
+    """Bound discovery to one physical entry; replay validates all membership."""
+    if not directory.exists():
+        return False
+    before = directory.lstat()
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fields = ("st_dev", "st_ino", "st_mode", "st_mtime_ns", "st_ctime_ns")
+        def signature(info):
+            return tuple(getattr(info, key) for key in fields)
+        if signature(before) != signature(os.fstat(fd)):
+            raise RunStateError("successor event directory changed before discovery")
+        with os.scandir(fd) as entries:
+            present = next(entries, None) is not None
+        if signature(before) != signature(os.fstat(fd)) or signature(before) != signature(directory.lstat()):
+            raise RunStateError("successor event directory changed during discovery")
+        return present
+    finally:
+        os.close(fd)
+
+
+def create_successor(project, *, project_id, intent, actor, command_id,
+                     runtime_root=None, request_binding=None):
+    """Atomically derive one bounded continuation from an exact terminal head.
+
+    The request is scoped intent, not an external effect/credential grant.
+    Limits, reservations, native counters, failures and unfinished obligations
+    are copied from verified owner state; callers cannot substitute them.
+    """
+    project = Path(project).resolve(strict=True)
+    _id(project_id, "project ID")
+    _id(command_id, "command ID")
+    if len(_json(intent)) > MAX_INPUT_BYTES:
+        raise RunStateError("successor request exceeds bounded input")
+    if not isinstance(intent, dict) or set(intent) != {"predecessor", "deadline", "authorization_ref"}:
+        raise RunStateError("successor intent has unknown or missing fields")
+    _successor_reference(intent["predecessor"])
+    if not isinstance(intent["authorization_ref"], dict) or set(intent["authorization_ref"]) != {"path", "digest"}:
+        raise RunStateError("authorization reference has unknown or missing fields")
+    if not isinstance(intent["authorization_ref"]["digest"], str) or not re.fullmatch("[a-f0-9]{64}", intent["authorization_ref"]["digest"]):
+        raise RunStateError("invalid authorization reference digest")
+    request_binding = _request_binding(request_binding)
+    if request_binding and (request_binding["operation"] != "successor" or request_binding["step"] != "create" or request_binding["initial_revision"] != 0):
+        raise RunStateError("successor requires its initial request step")
+    until = time.monotonic() + MAX_SUCCESSOR_SECONDS
+    chain = _successor_chain(project, intent["predecessor"], until)
+    old = chain[0]
+    if old["project_id"] != project_id or any(row["project_id"] != project_id for row in chain):
+        raise RunStateError("predecessor chain changed project scope")
+    _successor_quiescent(old)
+    new_id = successor_identity(project, old["run_id"])
+    home = _home(project, new_id)
+    plan = _plan(project, old["plan"]).resolved
+    auth = safe_path(project / intent["authorization_ref"]["path"], project)
+    paths = [home, plan, _plan_lock(project, plan), auth, _home(project, old["run_id"])]
+    def admission():
+        proof = admit_paths(Path(actor["board"]), project_id, project, paths, actor["native_payload"])
+        for key in ("session_uuid", "native_ref", "repository", "branch", "board"):
+            if proof[key] != old["owner"][key]:
+                raise RunStateError("successor requires exact predecessor native owner and workspace")
+        _successor_tick(until)
+        return proof
+    proof = admission()
+    plan_digest = _plan_digest(project, old)
+    material = {"project_id": project_id, "intent": intent, "request_binding": request_binding,
+                "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
+    command_digest = _digest(material)
+    # A deterministic single child ID serializes concurrent competing requests
+    # without changing the predecessor or inventing another authority index.
+    with bounded_lock(home / ".run.lock", timeout=max(.01, until-time.monotonic())):
+        _successor_tick(until)
+        if _has_event_prefix(home / "events"):
+            first = next(_events(project, new_id))
+            if first["command_id"] != command_id or first["command_digest"] != command_digest:
+                raise RunStateError("successor already exists with different request or predecessor")
+            recovered = load_run(project, new_id)
+            committed = first["state"]
+            if (committed["successor"].get("plan_digest") != plan_digest
+                    or any(committed["owner"].get(key) != proof.get(key)
+                           for key in ("session_uuid", "native_ref", "claim_hash", "repository", "branch", "board"))):
+                raise RunStateError("successor recovery claim/plan authority changed since commit")
+            history_witnesses = _successor_journal_witnesses(project, chain, until)
+            _successor_chain(project, intent["predecessor"], until)
+            witnesses = _successor_inputs(project, old, intent, until)
+            final = admission()
+            _successor_recheck_files(project, witnesses, until)
+            _successor_recheck_files(project, history_witnesses, until)
+            if (any(final.get(key) != proof.get(key) for key in ("session_uuid", "native_ref", "claim_hash", "repository", "branch"))
+                    or _plan_digest(project, old) != plan_digest):
+                raise RunStateError("successor recovery authority or plan changed")
+            _project(project, recovered)
+            _index_update(runtime_root, proof["session_uuid"], new_id, _index_entry(project, recovered))
+            return recovered
+        # The existing discovery index retains the exact unfinished request;
+        # it never supplies an admitted run without its authoritative event.
+        basis = {"command_id": command_id, "command_digest": command_digest,
+                 "plan_digest": plan_digest,
+                 "authority": {key: proof.get(key) for key in
+                     ("session_uuid", "native_ref", "claim_hash", "repository", "branch", "board")}}
+        pending = _index_read(_index_path(runtime_root, proof["session_uuid"]), proof["session_uuid"])["runs"].get(new_id)
+        if pending is not None and (pending.get("status") != "pending" or pending.get("successor_basis") != basis):
+            raise RunStateError("pending successor request or authority changed")
+        # No active predecessor is written. Its existing lock excludes an
+        # ordinary terminal-safe observation while the exact source is copied.
+        with bounded_lock(_home(project, old["run_id"]) / ".run.lock", create=False,
+                          timeout=max(.01, until-time.monotonic())):
+            checked = _successor_chain(project, intent["predecessor"], until)
+            _successor_quiescent(checked[0])
+            history_witnesses = _successor_journal_witnesses(project, checked, until)
+            _successor_chain(project, intent["predecessor"], until)
+            _successor_recheck_files(project, history_witnesses, until)
+            _successor_inputs(project, old, intent, until)
+            now = _now()
+            deadline = _time(intent["deadline"])
+            if not _time(now) < deadline <= _time(now) + timedelta(seconds=MAX_SUCCESSOR_INTERVAL_SECONDS) or deadline <= _time(intent["predecessor"]["deadline"]):
+                raise RunStateError("new successor deadline is expired, excessive, or does not advance the interval")
+            state = deepcopy(old)
+            for key in ("terminal", "completion", "handoff"):
+                state.pop(key, None)
+            state.update(run_id=new_id, revision=1, status="preparing", created_at=now, updated_at=now)
+            state["extensions"].pop("controller", None)
+            flow = state["extensions"]["workflow"]
+            flow["bindings"] = {key: state[key] for key in ("run_id", "contract_digest", "profile_digest")}
+            flow["budget"]["deadline"] = intent["deadline"]
+            state["successor"] = {"schema_version": 1, **deepcopy(intent), "plan_digest": plan_digest,
+                "history_coverage": "complete owner-linked chain; untyped legacy evidence retained without reinterpretation"}
+            # Preserve the complete old receipts with old run bindings. They
+            # remain historical and cannot satisfy this new run's acceptance.
+            state["owner"] = proof
+            _record_request(state, request_binding, command_id, command_digest)
+            witnesses = _successor_inputs(project, old, intent, until)
+            _successor_chain(project, intent["predecessor"], until)
+            # Publish only a pending discovery hint before the final fence:
+            # slow host-index locks cannot age the later effect admission.
+            _native_index_update(runtime_root, proof)
+            _index_update(runtime_root, proof["session_uuid"], new_id,
+                          {**_index_entry(project, state, "pending"), "successor_basis": basis})
+            final = admission()
+            _successor_recheck_files(project, witnesses, until)
+            _successor_recheck_files(project, history_witnesses, until)
+            if any(final.get(key) != proof.get(key) for key in ("session_uuid", "native_ref", "claim_hash", "repository", "branch", "board")):
+                raise RunStateError("successor authority changed before commit")
+            if _plan_digest(project, old) != plan_digest:
+                raise RunStateError("successor plan changed before commit")
+            if _time(_now()) >= deadline:
+                raise RunStateError("successor deadline expired before commit")
+            state["owner"] = final
+            _successor_tick(until)
+            _append(project, state, command_id, command_digest, "successor", "", final)
+            _project(project, state)
+            _index_update(runtime_root, final["session_uuid"], new_id, _index_entry(project, state))
+            return deepcopy(state)
 
 
 def register_command(name, reducer, *, allowed_fields=("extensions",), terminal_safe=False):
@@ -1672,6 +2118,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             raise RunStateError("stale run revision; reload before retry")
         if state["status"] in TERMINAL and command not in _TERMINAL_COMMANDS:
             raise RunStateError("terminal run cannot be reopened; create a new run identity")
+        _require_unlinked_predecessor(project, run_id)
         # Trusted sources and the bounded observer share this one admitted
         # operation. Pure reducer context never contains the token, and the
         # scope ends before the fresh mutation admission below.

@@ -18,12 +18,13 @@ from pathlib import Path
 
 COORDINATION_SCRIPTS = (
     "coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py",
-    "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py",
+    "board_grammar.py",
+    "team_contract.py", "native_identity.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py",
     "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py",
     "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py",
 )
 MEMBERS = tuple("scripts/" + name for name in COORDINATION_SCRIPTS) + (
-    "references/session-words-v1.txt.zlib.b85", "scripts/live_receipt.py",
+    "references/session-words-v1.txt.zlib.b85", "scripts/native_transcript_identity.py",
 )
 MAX_FILE = 4 * 1024 * 1024
 MAX_TOTAL = 16 * 1024 * 1024
@@ -72,6 +73,27 @@ def read_regular(path, *, limit=MAX_FILE):
         os.close(descriptor)
 
 
+def source_storage_detail(source, worktree, entry, reason):
+    """Use the exact fleet owner without writing bytecode into retiring source."""
+    path = Path(source) / "scripts/fleet_paths.py"
+    content = read_regular(path)
+    name = "_synthesis_retirement_storage_owner"
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    previous = sys.modules.get(name)
+    # Dataclass annotation processing needs its module during definition.
+    # Neither a normal import nor its pyc cache is used for source ownership.
+    sys.modules[name] = module
+    try:
+        exec(compile(content, str(path), "exec"), module.__dict__)
+        return module.missing_worktree_detail(worktree, entry, reason)
+    finally:
+        if previous is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous
+
+
 def fsync_directory(path):
     descriptor = os.open(safe_path(path), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -102,7 +124,7 @@ def verify(store, digest, *, snapshot=False):
     if not isinstance(files, dict) or set(files) != set(MEMBERS):
         raise ValueError("retained coordination runtime dependency set changed")
     expected = {"": {"MANIFEST.json", "scripts", "references"},
-                "scripts": set(COORDINATION_SCRIPTS) | {"live_receipt.py"},
+                "scripts": set(COORDINATION_SCRIPTS) | {"native_transcript_identity.py"},
                 "references": {"session-words-v1.txt.zlib.b85"}}
     total = 0
     for relative, names in expected.items():
@@ -129,8 +151,8 @@ def verify(store, digest, *, snapshot=False):
 
 
 def source_member(source, relative):
-    if relative == "scripts/live_receipt.py":
-        return source.parent / "synthesis-agent-conformance/scripts/live_receipt.py"
+    if relative == "scripts/native_transcript_identity.py":
+        return source.parent / "synthesis-agent-conformance/scripts/native_transcript_identity.py"
     return source / relative
 
 

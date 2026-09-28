@@ -10,7 +10,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.42.0"
+  version: "2.43.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -23,6 +23,7 @@ Version history, the rationale behind each rule, and the incidents that produced
 
 **Mandatory ritual evidence route:** Before recording a worker completion or beginning day-start, read [Ritual evidence](references/ritual-evidence.md). It specifies verified entrypoints, workspace artifact readiness, lesson-candidate custody, names-only credential-path coverage, and truthful refusal. The worker write is the completion; no historical artifact backfill.
 
+Use the mandatory [mechanical owner map](references/mechanical-extraction.md) for transcript, channel, watermark, repository-state and grounding work; scripts do not replace interpretation or action authority.
 ## Configuration
 
 These values are user-specific. Update them for your environment.

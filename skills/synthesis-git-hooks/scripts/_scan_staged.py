@@ -322,12 +322,12 @@ def message_lines(path: str, deadline: float) -> bytes:
 
 
 def scan(
-    tier0: str, active: str, allowlist: str, exclusion: str, message: str | None = None
+    tier0: str, active: str, allowlist: str, exclusion: str, message: str | None = None, *, mandatory: str = ""
 ) -> bytes:
     if not tier0 or not active:
         raise ScanError("credential and active patterns must be nonempty")
     deadline = time.monotonic() + SCAN_SECONDS
-    for pattern in (tier0, active, allowlist, exclusion):
+    for pattern in (tier0, active, allowlist, exclusion, mandatory):
         if pattern:
             grep(b"", pattern, deadline)
     if message is None:
@@ -336,6 +336,8 @@ def scan(
     else:
         unfiltered = selected = message_lines(message, deadline)
     matches = grep(unfiltered, tier0, deadline)
+    if not matches and mandatory:
+        matches = grep(unfiltered, mandatory, deadline)
     if not matches:
         matches = grep(selected, active, deadline)
         if matches and allowlist:
@@ -348,10 +350,11 @@ def main() -> int:
     for name in ("tier0", "active", "allowlist", "exclusion"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--message")
+    parser.add_argument("--mandatory", default="")
     args = parser.parse_args()
     try:
         matches = scan(
-            args.tier0, args.active, args.allowlist, args.exclusion, args.message
+            args.tier0, args.active, args.allowlist, args.exclusion, args.message, mandatory=args.mandatory
         )
     except (ScanError, OSError, ValueError) as exc:
         print(f"staged scanner failed closed: {exc}", file=sys.stderr)

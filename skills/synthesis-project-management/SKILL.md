@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.19.0"
+  version: "2.20.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,6 +14,7 @@ metadata:
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
 
+For multi-person work, first read the mandatory [team contract](references/team-contract.md) and [managed workflow requirements](references/team-managed-workflows.md); declared attribution never replaces native identity, leases or host ACLs.
 ## Configuration
 
 These values are user-specific. Update them for your environment.
@@ -24,7 +25,6 @@ These values are user-specific. Update them for your environment.
 | `projects_path` | `projects/` | Directory within the workspace for all project folders |
 | `index_file` | `projects/index.yaml` | Single index file for all projects |
 | `lessons_path` | `lessons/` | Cross-project lessons and patterns directory |
-
 ---
 
 ## Design Principles
@@ -99,7 +99,6 @@ ai-knowledge-{workspace}/
 | **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
 | **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
 | **No patterns.md** | Patterns are lessons with `type: pattern` in front matter. One folder to search. |
-
 ---
 
 ## Project Naming
@@ -124,6 +123,7 @@ Full rationale:
 
 ---
 
+For explicit selected-project upgrades, follow [the migration owner](references/project-migration.md): exact preview consent, source custody and native admission remain mandatory; installation is not migration.
 ## Components
 
 ### 1. Project Index (`index.yaml`)

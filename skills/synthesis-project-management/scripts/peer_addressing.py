@@ -386,6 +386,12 @@ def _read_seat_path(path: Path, *, expected_uuid: str | None = None, strict: boo
         if strict:
             raise
         return None
+    return seat_from_document(data, expected_uuid=expected_uuid, strict=strict, source=path)
+
+
+def seat_from_document(data, *, expected_uuid=None, strict=False, source="captured coordination seat") -> Seat | None:
+    """Canonical seat validation for already captured bounded document bytes."""
+    path = source
     if (
         not isinstance(data, dict) or not data.get("session_uuid")
         or (expected_uuid is not None and data.get("session_uuid") != expected_uuid)

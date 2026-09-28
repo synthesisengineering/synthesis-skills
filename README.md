@@ -18,7 +18,16 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
-Release **4.150.0** adds recoverable project transactions, explicit obligation
+Release **4.151.0** adds native callback and linked-run recovery, explicit team
+enrollment and review, portable evidence, and declared maintenance. Installed
+source and genuine native execution remain separately verified states.
+
+Original-history recovery refreshes appended records before protected commands;
+normal transcript growth retains the same decoder generation. Repository
+diagnostics verify actual Git storage and indexes, while native retirement
+avoids writing bytecode into the source being retired.
+
+This release also adds recoverable project transactions, explicit obligation
 succession and source-bound ritual/acquisition reports. It strengthens Git and
 message guards, exact session coordination and installed runtime verification.
 
@@ -30,7 +39,7 @@ protections or allowing pytest to remove a supplied existing directory.
 
 
 
-Release **4.149.9** adds bounded authenticated journal storage for large
+Bounded authenticated journal storage supports large
 native-history recovery while preserving prior event bytes, ownership and costs.
 Required autopilot checks cover the entire collected suite in bounded groups.
 Release checks reject changed source, inherited test selection and stale bytecode.

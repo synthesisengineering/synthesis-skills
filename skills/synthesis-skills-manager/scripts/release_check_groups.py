@@ -22,6 +22,27 @@ import sys
 import tempfile
 import time
 
+# Product fixtures deliberately replace shared standard-library attributes. The
+# execution observer captures its own primitives before fixtures run, so logging
+# cannot consume simulated deadlines or mistake simulated metadata for custody.
+# Real file mutation is still checked through these original OS primitives.
+_diagnostic_monotonic = time.monotonic
+_diagnostic_os_open = os.open
+_diagnostic_os_close = os.close
+_diagnostic_os_read = os.read
+_diagnostic_os_write = os.write
+_diagnostic_os_fstat = os.fstat
+_diagnostic_os_stat = os.stat
+_diagnostic_os_lstat = os.lstat
+_diagnostic_os_getuid = os.getuid
+_diagnostic_os_fsync = os.fsync
+_diagnostic_is_regular = stat.S_ISREG
+_diagnostic_mode = stat.S_IMODE
+_diagnostic_dumps = json.dumps
+_diagnostic_loads = json.loads
+_diagnostic_sha256 = hashlib.sha256
+_diagnostic_open_file = open
+
 GROUPS = ("state", "native", "evaluation", "core")
 AP = "skills/synthesis-autopilot/scripts"
 CHECK_SECONDS = 900
@@ -32,6 +53,9 @@ MAX_TESTS = 20000
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 STATE_PREFIXES = (
     "test_run_state",
+    # Controller admission/readback owns the run-state transition facade.
+    # Keep its complete family together in the state partition.
+    "test_controller",
     "test_journal_",
     "test_required_citations",
     "test_search_budget",
@@ -417,6 +441,81 @@ def bounded_run(
     return result
 
 
+def _progress_stamp(info):
+    # A diagnostic reader may update atime; that is not content mutation.
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_gid,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def read_progress(path: Path) -> dict:
+    """Bounded diagnostic evidence only; never substitutes for final inventory."""
+    fd = _diagnostic_os_open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = _diagnostic_os_fstat(fd)
+        if (
+            not _diagnostic_is_regular(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != _diagnostic_os_getuid()
+            or _diagnostic_mode(before.st_mode) != 0o600
+            or before.st_size > REPORT_BYTES
+        ):
+            raise ValueError("invalid or oversized progress custody")
+        raw = bytearray()
+        while len(raw) < before.st_size:
+            block = _diagnostic_os_read(fd, min(65536, before.st_size - len(raw)))
+            if not block:
+                raise ValueError("progress changed while reading")
+            raw.extend(block)
+        if _progress_stamp(_diagnostic_os_fstat(fd)) != _progress_stamp(
+            before
+        ) or _progress_stamp(_diagnostic_os_lstat(path)) != _progress_stamp(before):
+            raise ValueError("progress changed while reading")
+    finally:
+        _diagnostic_os_close(fd)
+    trailing = bool(raw and not raw.endswith(b"\n"))
+    lines = bytes(raw).splitlines()
+    if trailing:
+        lines = lines[:-1]
+    events = [_diagnostic_loads(line) for line in lines]
+    if (
+        not events
+        or len(events) > MAX_TESTS * 4 + 4
+        or any(
+            not isinstance(row, dict) or row.get("sequence") != index
+            for index, row in enumerate(events)
+        )
+        or events[0].get("kind") != "start"
+    ):
+        raise ValueError("invalid progress sequence")
+    phases = {
+        key: sum(
+            row.get("duration", 0)
+            for row in events
+            if row.get("kind") == "phase" and row.get("when") == key
+        )
+        for key in ("setup", "call", "teardown")
+    }
+    finished = events[-1].get("kind") == "sessionfinish" and not trailing
+    return {
+        "status": "DIAGNOSTIC_ONLY" if finished else "INCOMPLETE",
+        "authorizes_success": False,
+        "trailing_incomplete": trailing,
+        "events": events,
+        "bytes": len(raw),
+        "sha256": _diagnostic_sha256(raw).hexdigest(),
+        "timing": {"phase_seconds": phases},
+    }
+
+
 class InventoryPlugin:
     def __init__(self, group: str, report: Path):
         self.group = group
@@ -428,6 +527,86 @@ class InventoryPlugin:
         self.counts = {}
         self.subtests = {}
         self.subtest_count = 0
+        self.started = _diagnostic_monotonic()
+        self.collection_seconds = None
+        self.progress = report.with_suffix(".progress.jsonl")
+        self.progress_identity = None
+        self.progress_parent = None
+        self.progress_sequence = 0
+        self.reporting_seconds = 0.0
+
+    def _progress(self, kind, **data):
+        """Append each observed phase once, with constant per-phase work.
+
+        Writes survive a killed pytest process; power-loss durability is not
+        claimed. Final inventory and unchanged source remain acceptance gates.
+        """
+        started = _diagnostic_monotonic()
+        records = []
+        if self.progress_identity is None:
+            records.append({"kind": "start", "group": self.group, "schema_version": 1})
+        records.append({"kind": kind, **data})
+        raw = b""
+        for record in records:
+            record["sequence"] = self.progress_sequence
+            self.progress_sequence += 1
+            raw += (
+                _diagnostic_dumps(
+                    record, sort_keys=True, separators=(",", ":")
+                ).encode()
+                + b"\n"
+            )
+        if self.progress_sequence > MAX_TESTS * 4 + 4:
+            raise ValueError("progress event ceiling exceeded")
+        parent = _diagnostic_os_open(
+            self.report.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+        fd = None
+        try:
+            info = _diagnostic_os_fstat(parent)
+            parent_identity = (info.st_dev, info.st_ino, info.st_mode, info.st_uid)
+            if (
+                self.progress_parent is not None
+                and self.progress_parent != parent_identity
+            ):
+                raise ValueError("progress parent changed")
+            self.progress_parent = parent_identity
+            flags = os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK
+            if self.progress_identity is None:
+                flags |= os.O_CREAT | os.O_EXCL
+            fd = _diagnostic_os_open(self.progress.name, flags, 0o600, dir_fd=parent)
+            before = _diagnostic_os_fstat(fd)
+            if (
+                not _diagnostic_is_regular(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_uid != _diagnostic_os_getuid()
+                or _diagnostic_mode(before.st_mode) != 0o600
+                or self.progress_identity is not None
+                and _progress_stamp(before) != self.progress_identity
+            ):
+                raise ValueError("progress custody changed")
+            if before.st_size + len(raw) > REPORT_BYTES:
+                raise ValueError("progress byte ceiling exceeded")
+            if _diagnostic_os_write(fd, raw) != len(raw):
+                raise OSError("incomplete progress write")
+            after = _diagnostic_os_fstat(fd)
+            if (
+                _progress_stamp(
+                    _diagnostic_os_stat(
+                        self.progress.name, dir_fd=parent, follow_symlinks=False
+                    )
+                )
+                != _progress_stamp(after)
+                or _diagnostic_os_lstat(self.report.parent)[:3]
+                != _diagnostic_os_fstat(parent)[:3]
+            ):
+                raise ValueError("progress pathname changed")
+            self.progress_identity = _progress_stamp(after)
+        finally:
+            if fd is not None:
+                _diagnostic_os_close(fd)
+            _diagnostic_os_close(parent)
+            self.reporting_seconds += _diagnostic_monotonic() - started
 
     def pytest_collection_modifyitems(self, session, config, items):
         self.full = [item.nodeid for item in items]
@@ -440,6 +619,14 @@ class InventoryPlugin:
         deselected = [item for item in items if item.nodeid not in wanted]
         items[:] = [item for item in items if item.nodeid in wanted]
         config.hook.pytest_deselected(items=deselected)
+        self.collection_seconds = _diagnostic_monotonic() - self.started
+        self._progress(
+            "collection",
+            inventory=self.full,
+            selected=self.selected,
+            group_counts=self.counts,
+            seconds=self.collection_seconds,
+        )
 
     def pytest_collectreport(self, report):
         if report.failed:
@@ -475,6 +662,14 @@ class InventoryPlugin:
                     "duration": report.duration,
                 }
             )
+            self._progress(
+                "subtest",
+                nodeid=report.nodeid,
+                ordinal=len(rows),
+                when=report.when,
+                outcome=report.outcome,
+                duration=report.duration,
+            )
             if report.outcome != "passed":
                 self.errors.append(
                     "required subtest failed or skipped: " + report.nodeid
@@ -505,6 +700,13 @@ class InventoryPlugin:
         if not ordered:
             self.errors.append("execution phase outside parent lifecycle order")
         phases[report.when] = {"outcome": report.outcome, "duration": report.duration}
+        self._progress(
+            "phase",
+            nodeid=report.nodeid,
+            when=report.when,
+            outcome=report.outcome,
+            duration=report.duration,
+        )
 
     def pytest_sessionfinish(self, session, exitstatus):
         if set(self.phases) != set(self.selected):
@@ -528,7 +730,20 @@ class InventoryPlugin:
                 p["outcome"] != "passed" for p in phases.values()
             ):
                 self.errors.append("required execution failed or skipped: " + node)
+        self._progress("sessionfinish", exitstatus=int(exitstatus), errors=self.errors)
+        timing = {
+            "collection_seconds": self.collection_seconds,
+            "elapsed_seconds": _diagnostic_monotonic() - self.started,
+            "reporting_seconds": self.reporting_seconds,
+            "phase_seconds": {
+                key: sum(
+                    row.get(key, {}).get("duration", 0) for row in self.phases.values()
+                )
+                for key in ("setup", "call", "teardown")
+            },
+        }
         payload = {
+            "timing": timing,
             "group": self.group,
             "inventory": self.full,
             "selected": self.selected,
@@ -538,14 +753,14 @@ class InventoryPlugin:
             "subtests": self.subtests,
             "exitstatus": int(exitstatus),
         }
-        raw = json.dumps(payload, sort_keys=True).encode()
+        raw = _diagnostic_dumps(payload, sort_keys=True).encode()
         if len(raw) > REPORT_BYTES:
             self.errors.append("inventory report exceeds byte ceiling")
         else:
-            with self.report.open("xb") as stream:
+            with _diagnostic_open_file(self.report, "xb") as stream:
                 stream.write(raw)
                 stream.flush()
-                os.fsync(stream.fileno())
+                _diagnostic_os_fsync(stream.fileno())
         if self.errors:
             session.exitstatus = 1
 
@@ -604,7 +819,16 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
         )
         print(completed.stdout, end="")
         if not report.is_file() or report.stat().st_size > REPORT_BYTES:
+            try:
+                diagnostic = read_progress(report.with_suffix(".progress.jsonl"))
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                diagnostic = {
+                    "status": "UNAVAILABLE",
+                    "authorizes_success": False,
+                    "error": str(error),
+                }
             return 1, {
+                "partial_execution": diagnostic,
                 "group": group,
                 "fixture_custody": str(temp),
                 "error": "missing or oversized execution inventory",

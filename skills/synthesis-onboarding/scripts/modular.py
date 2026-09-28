@@ -19,9 +19,9 @@ import subprocess
 import tempfile
 import uuid
 
-from system_contract import (ContractError, atomic_write_json, canonical_tree_digest,
+from system_contract import (ContractError, atomic_write_json,
                              default_desired_state, file_digest, json_digest,
-                             public_source_identity, safe_identifier, active_release_descriptor, descriptor_fields,
+                             safe_identifier, active_release_descriptor, descriptor_fields,
                              release_descriptor_from_checkout, validate_release_descriptor, verify_materialized_release,
                              safe_relative_path, validate_modular_selection, utcnow)
 
@@ -148,6 +148,11 @@ def runtime_files(source):
     # stdlib-only module without activating or exposing the autopilot skill.
     if "skills/synthesis-agent-conformance/scripts/conformance.py" in result:
         result.add("skills/synthesis-autopilot/scripts/capabilities.py")
+    # Corpus review imports the existing exact-spec decision owner. Include
+    # only executable support; this does not expose or activate that skill.
+    if "skills/synthesis-agent-conformance/scripts/provider_intake.py" in result:
+        result.update({"skills/synthesis-decision-packet/scripts/build_packet.py",
+                       "skills/synthesis-decision-packet/scripts/record_rulings.py"})
     return {name: _entry(source / name) for name in sorted(result)}
 
 
@@ -544,20 +549,44 @@ def inspect(state):
                            "Local installation verified. Load the selected skill in a fresh client; use synthesis activate to enable the broader ecosystem."}
 
 
-def setup(state, source, roots, clients, stage_core, release=None, command="setup"):
+def setup(state, source, roots, clients, stage_core, release=None, command="setup", *, preflight=None, first_run=None):
     selection = validate_modular_selection({"roots": roots, "stage_core": stage_core})
+    if first_run is not None and (not isinstance(first_run, dict)
+            or set(first_run) != {"id", "plan_digest"}
+            or not re.fullmatch(r"[a-f0-9]{32}", str(first_run["id"]))
+            or not re.fullmatch(r"[a-f0-9]{64}", str(first_run["plan_digest"]))):
+        raise ContractError("first-run transaction correlation is invalid")
     previous = state.read_desired()
     if previous and previous["profile"] != "modular" and previous.get("enabled", True):
         raise ContractError("an active full/catalog installation must be explicitly deactivated before modular setup")
     release = release or (previous or {}).get("release") or {"channel": "stable", "version_pin": None}
     desired = default_desired_state("modular", clients, release["channel"], release.get("version_pin"), modular=selection)
     with state.locked():
+        if preflight is not None:
+            preflight()
         recover(state)
         if state.read_desired() != previous:
             raise ContractError("desired selection changed during setup planning; retry")
+        def operation(tx):
+            if preflight is not None:
+                preflight()
+            if first_run is not None:
+                # The existing transaction owner records exact journey custody
+                # before resource effects, allowing its own crash recovery.
+                observation = state.read_observation()
+                pending = observation["transactions"][-1]
+                if pending["transaction_id"] != tx["transaction_id"] or pending["state"] != "pending":
+                    raise ContractError("first-run pending transaction changed")
+                pending.setdefault("details", {})["first_run"] = dict(first_run)
+                tx.setdefault("details", {})["first_run"] = dict(first_run)
+                state._save_observation(observation)
+            result = install_operation(state, source, desired, tx)
+            if first_run is not None:
+                result.setdefault("details", {})["first_run"] = dict(first_run)
+            return result
         try:
             transaction = state.run_transaction(command, desired,
-                lambda tx: install_operation(state, source, desired, tx), rollback=lambda _: recover(state, rollback=True), already_locked=True)
+                operation, rollback=lambda _: recover(state, rollback=True), already_locked=True)
         except BaseException:
             raise
         finish(state)

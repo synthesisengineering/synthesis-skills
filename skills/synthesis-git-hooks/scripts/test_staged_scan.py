@@ -75,6 +75,7 @@ def test_invalid_utf8_middle_zip_stored_part_is_scanned_without_crash(tmp_path):
         b"\xff\x00\n" + SYNTHETIC_ACCESS_KEY + b"\n",
         b"\xff\ncaf\xc3\xa9\n",
     ],
+    ids=['invalid-utf8-sensitive-word', 'nul-before-credential', 'invalid-utf8-unicode'],
 )
 def test_invalid_bytes_never_hide_sensitive_added_line(tmp_path, suffix):
     root, _, env = repo(tmp_path)
@@ -237,6 +238,7 @@ def test_missing_scanner_refuses_before_delegate(tmp_path):
         b"harmless\xff confidential\n",
         b"harmless\x00 " + SYNTHETIC_ACCESS_KEY + b"\n",
     ],
+    ids=['nul-sensitive-word', 'invalid-utf8-sensitive-word', 'nul-credential'],
 )
 def test_commit_message_bytes_cannot_hide_policy_matches(tmp_path, body):
     root, policy, env = repo(tmp_path)

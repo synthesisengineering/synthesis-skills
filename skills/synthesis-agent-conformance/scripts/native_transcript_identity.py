@@ -1,0 +1,471 @@
+#!/usr/bin/env python3
+"""Canonical native transcript identity and bounded JSONL projection.
+
+This owner imports only the standard library. Receipt, checkpoint and retained
+coordination consumers execute these same functions; none copies their bodies.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import uuid
+from pathlib import Path
+from typing import TextIO
+
+MAX_BINDING_LINES = 1_000
+TRANSCRIPT_READ_CHARS = 64 * 1024
+MAX_PROJECTED_STRING_CHARS = 512
+MAX_TRANSCRIPT_JSON_DEPTH = 128
+RECEIPT_CLIENTS = {"claude", "codex", "muse"}
+
+_ASCII_DIGITS = re.compile(r"[0-9]+")
+# Disjoint, possessive alternatives validate complete runs in the current
+# fixed-size text buffer without per-escape Python work or backtracking.
+_STRING_RUN = re.compile(r'(?:[^"\\\x00-\x1f]++|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))++')
+_HORIZONTAL_SPACE = re.compile(r"[ \t\r]+")
+_DIGITS = re.compile(r"[0-9]+")
+_NON_STRING = object()
+_ROOT_PROJECTION = {
+    "type": True,
+    "sessionId": True,
+    "payload": {"id": True, "session_id": True},
+    "stream": {"id": True, "kind": True},
+}
+
+
+class _InvalidTranscriptJSON(ValueError):
+    """A transcript record cannot safely supply identity evidence."""
+
+
+class _TranscriptJSON:
+    """Validate JSONL while retaining only the fixed identity projection.
+
+    ``readline`` and ``json.loads`` on a complete record both allocate in
+    proportion to an individual prompt or tool result. This parser instead
+    keeps one fixed input chunk and bounded strings for the handful of
+    projected keys/values. Discarded strings and numbers are validated in
+    chunks, and containers have a fixed nesting bound. Every inspected line
+    is parsed completely, so a large ignored value cannot hide a subsequent
+    identity declaration or malformed suffix.
+    """
+
+    def __init__(self, handle: TextIO):
+        self.handle = handle
+        self.buffer = ""
+        self.offset = 0
+
+    def peek(self) -> str:
+        if self.offset == len(self.buffer):
+            self.buffer = self.handle.read(TRANSCRIPT_READ_CHARS)
+            self.offset = 0
+        return self.buffer[self.offset : self.offset + 1]
+
+    def take(self) -> str:
+        value = self.peek()
+        self.offset += bool(value)
+        return value
+
+    def expect(self, wanted: str) -> None:
+        if self.take() != wanted:
+            raise _InvalidTranscriptJSON("unexpected JSON token")
+
+    def spaces(self) -> None:
+        while self.peek():
+            match = _HORIZONTAL_SPACE.match(self.buffer, self.offset)
+            if match is None:
+                return
+            self.offset = match.end()
+
+    def string(self, capture: bool) -> object:
+        self.expect('"')
+        fragments: list[str] = ['"'] if capture else []
+        retained = 1
+
+        def retain(fragment: str) -> None:
+            nonlocal capture, retained
+            if not capture:
+                return
+            retained += len(fragment)
+            if retained > MAX_PROJECTED_STRING_CHARS:
+                capture = False
+                fragments.clear()
+            else:
+                fragments.append(fragment)
+
+        while self.peek():
+            match = _STRING_RUN.match(self.buffer, self.offset)
+            if match is not None:
+                if capture:
+                    retain(self.buffer[self.offset:match.end()])
+                self.offset = match.end()
+                continue
+            # Quotes, invalid tokens and escapes split across buffer edges
+            # still pass through the existing checked character path.
+            special = self.take()
+            if special == '"':
+                retain('"')
+                # Only bounded, already validated strings reach json.loads;
+                # it supplies the standard escape and surrogate semantics.
+                return json.loads("".join(fragments)) if capture else _NON_STRING
+            if special != "\\":
+                raise _InvalidTranscriptJSON("unescaped JSON control character")
+            escaped = self.take()
+            if escaped and escaped in '"\\/bfnrt':
+                retain("\\" + escaped)
+            elif escaped == "u":
+                digits = "".join(self.take() for _ in range(4))
+                if len(digits) != 4 or any(c not in "0123456789abcdefABCDEF" for c in digits):
+                    raise _InvalidTranscriptJSON("invalid JSON unicode escape")
+                retain("\\u" + digits)
+            else:
+                raise _InvalidTranscriptJSON("invalid JSON escape")
+        raise _InvalidTranscriptJSON("unterminated JSON string")
+
+    def digits(self) -> None:
+        if not self.peek() or self.peek() not in "0123456789":
+            raise _InvalidTranscriptJSON("JSON number requires a digit")
+        while self.peek():
+            match = _DIGITS.match(self.buffer, self.offset)
+            if match is None:
+                return
+            self.offset = match.end()
+
+    def number(self) -> None:
+        if self.peek() == "-":
+            self.take()
+        if self.peek() == "0":
+            self.take()
+        elif self.peek() and self.peek() in "123456789":
+            self.digits()
+        else:
+            raise _InvalidTranscriptJSON("invalid JSON number")
+        if self.peek() == ".":
+            self.take()
+            self.digits()
+        if self.peek() and self.peek() in "eE":
+            self.take()
+            if self.peek() and self.peek() in "+-":
+                self.take()
+            self.digits()
+
+    def value(self, projection: object = None, depth: int = 0) -> object:
+        if depth > MAX_TRANSCRIPT_JSON_DEPTH:
+            raise _InvalidTranscriptJSON("JSON nesting exceeds the verification limit")
+        self.spaces()
+        token = self.peek()
+        if token == '"':
+            return self.string(capture=projection is not None)
+        if token == "{":
+            self.take()
+            wanted = projection if isinstance(projection, dict) else {}
+            result: dict[str, object] = {}
+            self.spaces()
+            if self.peek() == "}":
+                self.take()
+                return result if isinstance(projection, dict) else _NON_STRING
+            while True:
+                self.spaces()
+                key = self.string(capture=bool(wanted))
+                self.spaces()
+                self.expect(":")
+                selected = wanted.get(key)
+                if selected is not None and key in result:
+                    raise _InvalidTranscriptJSON("duplicate projected identity key")
+                value = self.value(selected, depth + 1)
+                if selected is not None:
+                    result[key] = value
+                self.spaces()
+                separator = self.take()
+                if separator == "}":
+                    return result if isinstance(projection, dict) else _NON_STRING
+                if separator != ",":
+                    raise _InvalidTranscriptJSON("invalid JSON object separator")
+        if token == "[":
+            self.take()
+            self.spaces()
+            if self.peek() == "]":
+                self.take()
+                return _NON_STRING
+            while True:
+                self.value(depth=depth + 1)
+                self.spaces()
+                separator = self.take()
+                if separator == "]":
+                    return _NON_STRING
+                if separator != ",":
+                    raise _InvalidTranscriptJSON("invalid JSON array separator")
+        if token and token in "-0123456789":
+            self.number()
+            return _NON_STRING
+        for literal in ("true", "false", "null"):
+            if token == literal[0]:
+                for character in literal:
+                    self.expect(character)
+                return None if literal == "null" else _NON_STRING
+        raise _InvalidTranscriptJSON("invalid JSON value")
+
+    def record(self) -> object:
+        self.spaces()
+        if self.peek() in {"", "\n"}:
+            self.take()
+            return None
+        value = self.value(_ROOT_PROJECTION)
+        self.spaces()
+        if self.take() not in {"", "\n"}:
+            raise _InvalidTranscriptJSON("JSONL record has trailing content")
+        return value
+
+
+def claude_root_transcript_path(
+    transcript: Path, transcript_root: Path, session_id: str
+) -> bool:
+    """Return whether a path is Claude's canonical root-session transcript.
+
+    Root transcripts use ``projects/<encoded-cwd>/<session-id>.jsonl``.
+    Claude subagent transcripts also carry the parent session UUID, so root
+    containment plus a matching JSON field is not sufficient provenance.
+    """
+    if not transcript.is_absolute() or not session_id:
+        return False
+    root = transcript_root.expanduser().absolute()
+    candidate = transcript.expanduser().absolute()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError:
+        return False
+    if (
+        len(relative.parts) != 3
+        or relative.parts[0] != "projects"
+        or any(part in {".", ".."} for part in relative.parts)
+        or relative.parts[-1] != f"{session_id}.jsonl"
+    ):
+        return False
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return False
+    try:
+        candidate.resolve(strict=False).relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def client_root_transcript_path(
+    transcript: Path, client: str, session_id: str, transcript_root: Path
+) -> bool:
+    """Validate the configured native transcript root without reading history.
+
+    Claude requires its root-session filename and directory shape. Codex
+    retains the conformance contract of containment in its configured root;
+    the structured ``session_meta`` declaration supplies its session identity.
+    Missing Claude destinations may be valid at SessionStart, so file
+    existence/type is deliberately verified separately by the binding reader.
+    """
+    if client not in RECEIPT_CLIENTS or not transcript.is_absolute():
+        return False
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    root = transcript_root.expanduser().absolute()
+    candidate = transcript.expanduser().absolute()
+    try:
+        relative = candidate.relative_to(root)
+        if (
+            not relative.parts
+            or any(part in {".", ".."} for part in relative.parts)
+            or root.is_symlink()
+        ):
+            return False
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return False
+        candidate.resolve(strict=False).relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    if client == "claude":
+        return claude_root_transcript_path(candidate, root, session_id)
+    if client == "muse":
+        return muse_root_transcript_path(candidate, root, session_id)
+    return True
+
+
+def muse_sessions_root() -> Path:
+    """The Muse session store, honoring the test override."""
+    override = os.environ.get("MUSE_SESSIONS_DIR", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".local" / "share" / "muse" / "sessions"
+
+
+def muse_root_transcript_path(
+    transcript: Path, transcript_root: Path, session_id: str
+) -> bool:
+    """Validate the Muse date-sharded session-log shape.
+
+    Muse keeps ``sessions/YYYY/MM/DD/<uuid>/session.jsonl``. The directory
+    name must equal the claimed session id and the filename must be exactly
+    ``session.jsonl``; containment and symlink checks stay with the caller.
+    """
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    try:
+        relative = transcript.expanduser().absolute().relative_to(
+            transcript_root.expanduser().absolute()
+        )
+    except (OSError, ValueError):
+        return False
+    parts = relative.parts
+    return (
+        len(parts) == 5
+        and all(_ASCII_DIGITS.fullmatch(part) for part in parts[0:3])
+        and parts[3] == session_id
+        and parts[4] == "session.jsonl"
+    )
+
+
+def resolve_muse_transcript(session_id: str) -> Path | None:
+    """Locate a Muse session log by session id, or None.
+
+    Muse hook payloads carry no transcript path, so the date shard must be
+    searched. The walk is fixed-depth (year/month/day), skips symlinks, and
+    requires exactly one match: zero means no evidence, several means the
+    evidence is ambiguous and must not be used.
+    """
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    root = muse_sessions_root()
+    try:
+        if not root.is_dir() or root.is_symlink():
+            return None
+    except OSError:
+        return None
+    matches: list[Path] = []
+    try:
+        for year in root.iterdir():
+            if not _shard_dir(year):
+                continue
+            for month in year.iterdir():
+                if not _shard_dir(month):
+                    continue
+                for day in month.iterdir():
+                    if not _shard_dir(day):
+                        continue
+                    session_dir = day / session_id
+                    try:
+                        if session_dir.is_symlink() or not session_dir.is_dir():
+                            continue
+                    except OSError:
+                        continue
+                    candidate = session_dir / "session.jsonl"
+                    try:
+                        if candidate.is_file() and not candidate.is_symlink():
+                            matches.append(candidate)
+                    except OSError:
+                        continue
+                    if len(matches) > 1:
+                        return None
+    except OSError:
+        return None
+    return matches[0] if len(matches) == 1 else None
+
+
+def _shard_dir(path: Path) -> bool:
+    """A date-shard level: ASCII digits, a real directory, never a link."""
+    try:
+        return (
+            _ASCII_DIGITS.fullmatch(path.name) is not None
+            and path.is_dir()
+            and not path.is_symlink()
+        )
+    except OSError:
+        return False
+
+
+def transcript_binding_state(
+    transcript: Path, client: str, session_id: str
+) -> str:
+    """Return ``bound``, ``pending``, ``conflicting``, or ``invalid``.
+
+    ``pending`` covers a transcript Claude has not created or populated yet.
+    Once an inspected record declares any different session id, the state is
+    ``conflicting`` and must not be preserved as genuine evidence. The first
+    ``MAX_BINDING_LINES`` physical JSONL lines are inspected completely with
+    bounded memory, even when an individual line contains a large prompt.
+    Malformed or ambiguous records fail closed rather than being skipped:
+    a rejected record could otherwise conceal a contradictory declaration.
+    """
+    if client not in RECEIPT_CLIENTS:
+        return "invalid"
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return "invalid"
+    if not transcript.exists():
+        return "pending"
+    if transcript.is_symlink() or not transcript.is_file():
+        return "invalid"
+    matched = False
+    conflicting = False
+    try:
+        with transcript.open(encoding="utf-8") as handle:
+            parser = _TranscriptJSON(handle)
+            for _ in range(MAX_BINDING_LINES):
+                if not parser.peek():
+                    break
+                payload = parser.record()
+                if not isinstance(payload, dict):
+                    continue
+                declared: tuple[object, ...] = ()
+                if client == "codex":
+                    metadata = payload.get("payload")
+                    if payload.get("type") == "session_meta" and isinstance(
+                        metadata, dict
+                    ):
+                        declared = (metadata.get("id"), metadata.get("session_id"))
+                elif client == "claude":
+                    declared = (payload.get("sessionId"),)
+                elif client == "muse":
+                    stream = payload.get("stream")
+                    declared = (
+                        (stream.get("id"),)
+                        if isinstance(stream, dict)
+                        else ()
+                    )
+                for value in declared:
+                    if value is None or value == "":
+                        continue
+                    if value == session_id:
+                        matched = True
+                    else:
+                        conflicting = True
+    except (OSError, UnicodeError, ValueError, RecursionError):
+        return "invalid"
+    if conflicting:
+        return "conflicting"
+    return "bound" if matched else "pending"
+
+
+def transcript_binds_session(
+    transcript: Path, client: str, session_id: str
+) -> bool:
+    """Return whether a client transcript declares the claimed session id.
+
+    Both clients write the binding at the start of their JSONL transcript.
+    The inspected prefix must contain a matching structured declaration and
+    no conflicting declaration or malformed JSON. Its memory use is bounded
+    independently of transcript length and individual record size; later
+    history beyond the line limit is not a new source of identity evidence.
+    """
+    return transcript_binding_state(transcript, client, session_id) == "bound"
+
+

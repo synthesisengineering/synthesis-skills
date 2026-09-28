@@ -5,13 +5,14 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.1"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Adversarial Review
 
+Before freezing or accepting a package, apply the mandatory [domain contracts and replay scorecard](references/domain-review-contract.md); validate exact source bindings with `scripts/review_contract.py` and retain the existing ledger/action owners.
 ## Purpose
 
 Adversarial collaboration is useful when differently shaped agents attack the same work

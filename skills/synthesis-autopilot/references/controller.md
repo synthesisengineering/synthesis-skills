@@ -1,6 +1,6 @@
 # Admitted execution controller
 
-The normal agent interface has eight operations over the existing PM admission,
+The normal agent interface has nine operations over the existing PM admission,
 run journal, workflow, evidence and completion owners. It does not create another
 scheduler, private state store, tool launcher or acceptance authority. The agent
 interprets the user's intent and produces the request; users need not author JSON.
@@ -13,7 +13,7 @@ the actual native event and coordination board. Native source mode is the defaul
 `--source-mode synthetic` labels a fixture and cannot qualify native execution.
 
 Every request is schema 1 with `request_id`, `operation`, `project_id` and `input`.
-After `start`, include the returned `run_id` and the current `expected_revision`.
+After `start` or `successor`, include the returned `run_id` and the current `expected_revision`.
 The complete request is bound to its stable ID. A changed body cannot reuse an
 existing ID, even after partial progress. The existing journal commits each step
 with that binding; there is no separate request database. Inspect committed
@@ -31,6 +31,7 @@ exact journal reference when further pagination is required.
 | Operation | Purpose and required interpretation |
 | --- | --- |
 | `start` | Supply `plan_ref`, `outcome_contract`, task `dimensions`, and `resource_envelope` containing `limits` and an actual authorized `deadline`. Optional preference references and task graph use their existing owner schemas. Resolve the profile, create the run, configure workflow and enroll the current native source. |
+| `successor` | Derive a bounded continuation from an exact terminal predecessor through one atomic journal append. Supply its exact head/deadline, a new authorized deadline and a digest-bound scoped authorization reference. Limits, costs, history and obligations come from the owner, never replacement caller totals. Read [successor transactions](successor-transactions.md). |
 | `next` | Inspect ready work with `mode: inspect`, or admit a selected task with `mode: start`. Dependency, current authority, resources, history and native instructions constrain admission. A readiness result does not itself execute a task. |
 | `record` | Register a durable artifact, invoke a supported observer, ingest a bounded native page, record a task attempt, bind a real profile obligation, or register/revise/resolve a decisive uncertainty. The specific kind has a closed input schema. Caller PASS fields are never evidence. |
 | `checkpoint` | Preserve current progress and, when requested and applicable, obtain the existing PM execution-basis observation. This observation does not certify a normal whole-project clean checkpoint. |

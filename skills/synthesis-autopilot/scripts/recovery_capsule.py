@@ -98,7 +98,10 @@ def capture(context):
     # schemas, without copying recursive earlier capsules or reinterpreting them.
     refs = {key: {'event_ref': parent_ref, 'pointer': '/state/extensions/' + key.replace('~','~0').replace('/','~1'),
                   'sha256': run_state._digest(value)} for key, value in extensions.items()}
+    from native_archive import verify_archives
+    archive_coverage = verify_archives(project,state)
     result = {'schema_version': 1, 'kind': 'recovery-capsule', 'authority_granted': False,
+        'native_archive_coverage': archive_coverage,
         'project_id': state['project_id'], 'run_id': state['run_id'],
         'basis': {'revision': state['revision'], 'event_digest': head['digest'],
             'state_digest': run_state._digest(state), 'plan_digest': context['plan_digest'],
@@ -177,6 +180,11 @@ def _report(context):
     from observation_bridge import current_invalidation
     state = context['state']
     pending = []
+    from native_archive import verify_archives
+    archive_coverage = verify_archives(context['project'],state)
+    for issue in archive_coverage['issues']:
+        pending.append({'owner':'native archive owner','kind':'artifact_reconciliation',
+            'archive_id':issue['archive_id'],'reason':issue['reason']})
     for identity in sorted(set(state['artifacts']) - set(context['artifacts'])):
         pending.append({'owner': 'artifact owner', 'kind': 'artifact_reconciliation', 'artifact_id': identity})
     for identity, item in state['effects'].items():

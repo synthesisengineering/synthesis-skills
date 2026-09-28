@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.21.0"
+  version: "1.21.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -218,3 +218,16 @@ spec remains incomplete filing. No check grants action authority.
 
 The complete [context protocol details](references/context-protocol-details.md)
 remain mandatory for the corresponding lifecycle operations.
+
+
+### Durable custody before a session ends
+
+Long-lived worktrees, source copies, environments and sole recovery inputs must
+live in the durable workspace, outside system temp roots and session scratchpads.
+Keep bounded test fixtures separately identified and capture their evidence
+before closure. Temporary retention is policy- and clock-dependent, never a
+universal four-day guarantee. Follow PM's [durable placement and missing-work
+protocol](../synthesis-project-management/references/parallel-agent-protocol.md#durable-work-placement-and-unexplained-loss).
+A vanished `.git` link or tracked file is unresolved loss evidence; retain its
+registration, refs and surviving files. It is not retirement, deletion authority,
+or a reason to discard foreign claims.

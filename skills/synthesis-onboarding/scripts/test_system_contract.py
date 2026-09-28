@@ -26,10 +26,12 @@ import system_contract  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def isolated_native_roots(monkeypatch, tmp_path):
-    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json"))
-    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "message-guard"))
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    # A synthetic release fixture must not consult the developer's policy.
+    # Full sandbox setup tests provide their own HOME and actual guard config.
+    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "unselected-guard/patterns.json"))
+    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "unselected-guard/state"))
 
 
 def git(path: Path, *args: str) -> str:
@@ -76,6 +78,13 @@ def release_repo(tmp_path: Path, version: str = "9.8.7") -> Path:
         "    print(os.environ.get('SYNTHESIS_ACTIVE_DESCRIPTOR', 'missing'))\n",
         encoding="utf-8",
     )
+    # The installed launcher verifies its declared helper closure before
+    # dispatch, including commands whose synthetic CLI exits immediately.
+    import release_runtime
+    for relative in release_runtime.ENTRYPOINT_DEPENDENCIES['synthesis-onboarding/scripts/synthesis_cli.py']:
+        target = root / 'skills' / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / 'skills' / relative, target)
     git(root, "init", "-q", "-b", "main")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "fixture")

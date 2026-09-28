@@ -17,23 +17,46 @@ import contextlib
 import fcntl
 import hashlib
 import threading
+import time
+import math
 from pathlib import Path
 
-from system_contract import ContractError, atomic_write_json, json_digest, validate_desired_state
+from system_contract import (
+    ContractError,
+    atomic_write_json,
+    json_digest,
+    validate_desired_state,
+)
 
 _engine_mutex = threading.RLock()
 _engine_depth = {}
 
 
 def engine_state_root(home):
-    default = Path(os.environ.get("XDG_STATE_HOME", str(Path(home) / ".local/state"))) / "synthesis"
+    default = (
+        Path(os.environ.get("XDG_STATE_HOME", str(Path(home) / ".local/state")))
+        / "synthesis"
+    )
     return Path(os.environ.get("SYNTHESIS_ONBOARD_STATE_DIR", str(default)))
 
 
 @contextlib.contextmanager
-def engine_lock(root, *, read_only=False):
+def engine_lock(root, *, read_only=False, timeout=5.0):
+    """Bound both in-process and cross-process admission; never steal a lock."""
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or not 0 < timeout <= 30
+    ):
+        raise ContractError(
+            "engine lock timeout must be positive and at most 30 seconds"
+        )
     root = Path(root)
-    with _engine_mutex:
+    deadline = time.monotonic() + timeout
+    if not _engine_mutex.acquire(timeout=timeout):
+        raise ContractError("bounded engine mutex wait expired")
+    try:
         if _engine_depth.get(str(root), 0):
             yield
             return
@@ -45,21 +68,52 @@ def engine_lock(root, *, read_only=False):
             return
         if not read_only:
             root.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("rb" if read_only else "a+b") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        flags = os.O_RDONLY if read_only else os.O_RDWR | os.O_CREAT
+        fd = os.open(
+            lock_path,
+            flags | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            0o600,
+        )
+        try:
+            import stat
+
+            opened = os.fstat(fd)
+            if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+                raise ContractError("engine lock must be a singly linked regular file")
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ContractError("bounded engine lock wait expired")
+                    time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+            current = lock_path.lstat()
+            if (current.st_dev, current.st_ino) != (
+                opened.st_dev,
+                opened.st_ino,
+            ) or current.st_nlink != 1:
+                raise ContractError("engine lock pathname changed while waiting")
             _engine_depth[str(root)] = 1
             try:
                 yield
             finally:
                 _engine_depth.pop(str(root), None)
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+    finally:
+        _engine_mutex.release()
 
 
 def regular_tree(path: Path) -> None:
     for parent in (path, *path.parents):
         if parent.is_symlink():
             # macOS canonical system aliases are not user-selected links.
-            aliases = {Path("/var"): Path("/private/var"), Path("/tmp"): Path("/private/tmp")}
+            aliases = {
+                Path("/var"): Path("/private/var"),
+                Path("/tmp"): Path("/private/tmp"),
+            }
             if parent in aliases and parent.resolve() == aliases[parent]:
                 continue
             raise ContractError("enrollment refuses a symbolic-link target: %s" % path)
@@ -78,13 +132,17 @@ def copy_verified(source, destination):
     if destination.exists():
         raise ContractError("verified copy destination already exists")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".enrollment-copy-", dir=destination.parent) as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix=".enrollment-copy-", dir=destination.parent
+    ) as temporary:
         staged = Path(temporary) / "payload"
         if source.is_dir():
             shutil.copytree(source, staged)
         else:
             shutil.copy2(source, staged)
-        if EnrollmentJournal._fingerprint(source) != EnrollmentJournal._fingerprint(staged):
+        if EnrollmentJournal._fingerprint(source) != EnrollmentJournal._fingerprint(
+            staged
+        ):
             raise ContractError("enrollment copy verification failed")
         os.replace(staged, destination)
 
@@ -102,7 +160,9 @@ def move_verified(source, destination):
             raise
         copy_verified(source, destination)
         regular_tree(source)
-        if EnrollmentJournal._fingerprint(source) != EnrollmentJournal._fingerprint(destination):
+        if EnrollmentJournal._fingerprint(source) != EnrollmentJournal._fingerprint(
+            destination
+        ):
             raise ContractError("enrollment archive changed before retirement")
         if source.is_dir():
             shutil.rmtree(source)
@@ -116,7 +176,10 @@ class EnrollmentJournal:
         regular_tree(self.root)
         self.path = self.root / "journal.json"
         self.data = json.loads(self.path.read_text())
-        if self.data.get("schema_version") != 1 or self.data.get("transaction_id") != self.root.name:
+        if (
+            self.data.get("schema_version") != 1
+            or self.data.get("transaction_id") != self.root.name
+        ):
             raise ContractError("invalid enrollment journal identity")
         if self.data.get("state") not in {"pending", "committed", "rolled-back"}:
             raise ContractError("invalid enrollment journal state")
@@ -129,14 +192,24 @@ class EnrollmentJournal:
         proposed = validate_desired_state(self.data.get("proposed_desired"))
         entries = proposed.get("organizations") or []
         if len(entries) != 1 or entries[0].get("mode") != "additive":
-            raise ContractError("enrollment journal must declare one additive organization")
+            raise ContractError(
+                "enrollment journal must declare one additive organization"
+            )
         if json_digest(proposed) != self.data["proposed_desired_digest"]:
             raise ContractError("enrollment journal proposed state digest changed")
-        workspaces = Path(os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces")))
+        workspaces = Path(
+            os.environ.get("SYNTHESIS_WORKSPACES_ROOT", str(state.home / "workspaces"))
+        )
         receipts = engine_state_root(state.home) / "receipts.json"
         files = {str(p) for p in (state.desired_path, state.invites_path, receipts)}
-        files.update(str(workspaces / entries[0]["workspace"] / name) for name in ("AGENTS.md", "CLAUDE.md"))
-        parents = {str(state.home / (".claude" if c == "claude" else ".agents") / "skills") for c in desired["clients"]}
+        files.update(
+            str(workspaces / entries[0]["workspace"] / name)
+            for name in ("AGENTS.md", "CLAUDE.md")
+        )
+        parents = {
+            str(state.home / (".claude" if c == "claude" else ".agents") / "skills")
+            for c in desired["clients"]
+        }
         if not set(self.data["skill_parents"]) <= parents:
             raise ContractError("enrollment journal claims an unselected skill target")
         for value in self.data["allowed_files"]:
@@ -147,7 +220,17 @@ class EnrollmentJournal:
             self._target(entry["target"])
 
     @classmethod
-    def create(cls, root, transaction_id, desired, *, files, skill_parents, proposed=None, purpose="enroll"):
+    def create(
+        cls,
+        root,
+        transaction_id,
+        desired,
+        *,
+        files,
+        skill_parents,
+        proposed=None,
+        purpose="enroll",
+    ):
         if not re.fullmatch(r"[a-f0-9]{32}", transaction_id):
             raise ContractError("invalid enrollment transaction identity")
         root = Path(root) / transaction_id
@@ -158,19 +241,24 @@ class EnrollmentJournal:
         regular_tree(staging_root)
         staging_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         data = {
-            "schema_version": 1, "transaction_id": transaction_id,
+            "schema_version": 1,
+            "transaction_id": transaction_id,
             "purpose": purpose,
-            "previous_desired_digest": json_digest(desired), "state": "pending",
+            "previous_desired_digest": json_digest(desired),
+            "state": "pending",
             "proposed_desired_digest": json_digest(proposed),
             "proposed_desired": proposed,
             "allowed_files": [str(Path(p).absolute()) for p in files],
             "skill_parents": [str(Path(p).absolute()) for p in skill_parents],
-            "entries": [], "retained_data": [],
+            "entries": [],
+            "retained_data": [],
         }
         # Only a complete identity is discoverable as a pending transaction.
         # Interrupted staging has authorized no target mutation and is retained
         # separately, never interpreted as an active journal.
-        with tempfile.TemporaryDirectory(prefix=transaction_id + "-", dir=staging_root) as stage:
+        with tempfile.TemporaryDirectory(
+            prefix=transaction_id + "-", dir=staging_root
+        ) as stage:
             atomic_write_json(Path(stage) / "journal.json", data)
             os.replace(stage, root)
         return cls(root)
@@ -187,7 +275,9 @@ class EnrollmentJournal:
             and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", path.name)
         )
         if not allowed:
-            raise ContractError("enrollment target is outside its exact write set: %s" % path)
+            raise ContractError(
+                "enrollment target is outside its exact write set: %s" % path
+            )
         regular_tree(path)
         return path
 
@@ -215,10 +305,16 @@ class EnrollmentJournal:
     @staticmethod
     def _fingerprint(path):
         import hashlib
+
         entries = [path, *sorted(path.rglob("*"))] if path.is_dir() else [path]
         return [
-            [str(p.relative_to(path)), p.stat().st_mode & 0o777,
-             hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "directory"]
+            [
+                str(p.relative_to(path)),
+                p.stat().st_mode & 0o777,
+                hashlib.sha256(p.read_bytes()).hexdigest()
+                if p.is_file()
+                else "directory",
+            ]
             for p in entries
         ]
 
@@ -240,12 +336,20 @@ class EnrollmentJournal:
             failed = self.root / "failed" / entry["slot"]
             if entry["existed"]:
                 regular_tree(backup)
-                if not backup.exists() or self._fingerprint(backup) != entry.get("fingerprint"):
-                    raise ContractError("enrollment rollback backup is missing or changed")
+                if not backup.exists() or self._fingerprint(backup) != entry.get(
+                    "fingerprint"
+                ):
+                    raise ContractError(
+                        "enrollment rollback backup is missing or changed"
+                    )
             if target.exists() and not failed.exists():
                 failed.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 move_verified(target, failed)
-            elif target.exists() and failed.exists() and self._fingerprint(target) == self._fingerprint(failed):
+            elif (
+                target.exists()
+                and failed.exists()
+                and self._fingerprint(target) == self._fingerprint(failed)
+            ):
                 # Interrupted cross-device retirement: the complete failed
                 # generation is already archived. Finish its exact removal.
                 self._target(target)
@@ -263,7 +367,9 @@ class EnrollmentJournal:
                 if self._fingerprint(target) != self._fingerprint(backup):
                     raise ContractError("enrollment rollback verification failed")
             elif target.exists():
-                raise ContractError("enrollment rollback target changed during recovery")
+                raise ContractError(
+                    "enrollment rollback target changed during recovery"
+                )
             entry["restored"] = True
             self._save()
         self.data["state"] = "rolled-back"
@@ -279,7 +385,9 @@ def recover_enrollments(state):
     if not root.exists():
         return
     regular_tree(root)
-    transactions = {t["transaction_id"]: t for t in state.read_observation()["transactions"]}
+    transactions = {
+        t["transaction_id"]: t for t in state.read_observation()["transactions"]
+    }
     for path in sorted(root.iterdir()):
         if path.name == ".staging":
             continue
@@ -288,18 +396,29 @@ def recover_enrollments(state):
             continue
         current = state.read_desired()
         if current is None:
-            raise ContractError("enrollment journal has no existing desired installation")
+            raise ContractError(
+                "enrollment journal has no existing desired installation"
+            )
         journal.validate_scope(state, current)
         transaction = transactions.get(path.name)
-        if not transaction or transaction["command"] != "enroll" or transaction["desired_digest"] != journal.data["proposed_desired_digest"]:
+        if (
+            not transaction
+            or transaction["command"] != "enroll"
+            or transaction["desired_digest"] != journal.data["proposed_desired_digest"]
+        ):
             raise ContractError("enrollment journal is not bound to its transaction")
         if transaction and transaction["state"] == "committed":
             journal.commit()
         else:
             # The same desired-state lock is held by every caller. Never
             # guess ownership after an unrelated desired generation change.
-            if json_digest(current) not in {journal.data["previous_desired_digest"], journal.data["proposed_desired_digest"]}:
-                raise ContractError("interrupted enrollment has a different desired state; recovery required")
+            if json_digest(current) not in {
+                journal.data["previous_desired_digest"],
+                journal.data["proposed_desired_digest"],
+            }:
+                raise ContractError(
+                    "interrupted enrollment has a different desired state; recovery required"
+                )
             journal.rollback()
 
 
@@ -313,11 +432,16 @@ def require_settled_enrollments(state):
         if path.name == ".staging":
             continue
         if EnrollmentJournal(path).data["state"] == "pending":
-            raise ContractError("unfinished enrollment requires recovery; run synthesis repair before diagnostic acceptance")
+            raise ContractError(
+                "unfinished enrollment requires recovery; run synthesis repair before diagnostic acceptance"
+            )
 
 
 def validate_copy_scope(journal, root, home):
-    if journal.data.get("purpose") != "org-copy" or journal.root.parent != Path(root) / "copy-transactions":
+    if (
+        journal.data.get("purpose") != "org-copy"
+        or journal.root.parent != Path(root) / "copy-transactions"
+    ):
         raise ContractError("invalid organization-copy journal identity")
     if journal.data["allowed_files"] != [str(Path(root) / "receipts.json")]:
         raise ContractError("organization-copy journal claims an unrelated receipt")
@@ -340,10 +464,14 @@ def recover_copy_transactions(root, home, *, verify_only=False):
         if journal.data["state"] != "pending":
             continue
         if verify_only:
-            raise ContractError("unfinished organization copy requires synthesis repair")
+            raise ContractError(
+                "unfinished organization copy requires synthesis repair"
+            )
         validate_copy_scope(journal, root, home)
         receipt = Path(root) / "receipts.json"
-        original = next((e for e in journal.data["entries"] if e["target"] == str(receipt)), None)
+        original = next(
+            (e for e in journal.data["entries"] if e["target"] == str(receipt)), None
+        )
         if original is None:
             if journal.data["entries"]:
                 raise ContractError("organization-copy journal has no receipt binding")
@@ -352,18 +480,31 @@ def recover_copy_transactions(root, home, *, verify_only=False):
             journal.rollback()
             continue
         before = original.get("fingerprint", [[None, None, None]])[0][2]
-        current = hashlib.sha256(receipt.read_bytes()).hexdigest() if receipt.exists() else None
+        current = (
+            hashlib.sha256(receipt.read_bytes()).hexdigest()
+            if receipt.exists()
+            else None
+        )
         if current not in {before, journal.data.get("receipt_after_sha256")}:
-            raise ContractError("organization-copy receipt changed outside its transaction")
+            raise ContractError(
+                "organization-copy receipt changed outside its transaction"
+            )
         journal.rollback()
 
 
 @contextlib.contextmanager
 def organization_copy_transaction(receipts, paths, home):
     import uuid
+
     root = receipts.path.parent
-    journal = EnrollmentJournal.create(root / "copy-transactions", uuid.uuid4().hex, None,
-        files=[receipts.path], skill_parents=sorted({p.parent for p in paths}), purpose="org-copy")
+    journal = EnrollmentJournal.create(
+        root / "copy-transactions",
+        uuid.uuid4().hex,
+        None,
+        files=[receipts.path],
+        skill_parents=sorted({p.parent for p in paths}),
+        purpose="org-copy",
+    )
     validate_copy_scope(journal, root, home)
     journal.capture(receipts.path)
     for path in paths:
@@ -373,7 +514,9 @@ def organization_copy_transaction(receipts, paths, home):
         yield
         # Receipts.save uses this canonical encoding. Journal the expected
         # committed bytes before activation for crash-safe recovery.
-        encoded = (json.dumps(receipts.data, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        encoded = (json.dumps(receipts.data, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
         journal.data["receipt_after_sha256"] = hashlib.sha256(encoded).hexdigest()
         journal._save()
         receipts.save()

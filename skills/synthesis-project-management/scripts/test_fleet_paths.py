@@ -260,3 +260,45 @@ def test_real_absolute_home_token_still_refused(tmp_path, monkeypatch, actual):
     path = tmp_path / "git-hook-config.yaml"
     path.write_text(f'path: "{actual}"\n')
     assert [hit.value for hit in FP.check_synced_root(tmp_path)] == [actual]
+
+
+def test_temporary_classifier_canonical_alias_and_unknown_age(tmp_path, monkeypatch):
+    root = tmp_path / "temporary"
+    root.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(root, target_is_directory=True)
+    monkeypatch.setenv("TMPDIR", str(root))
+    for path in (root / "source", alias / "source"):
+        result = FP.classify_storage(path)
+        assert result["status"] == "temporary"
+        assert result["retention_deadline"] is None
+    assert FP.classify_storage(Path("/tmp") / "fixture")["status"] == "temporary"
+
+
+def test_storage_classifier_never_calls_old_age_durable(tmp_path, monkeypatch):
+    monkeypatch.setattr(FP, "temporary_roots", lambda: [tmp_path / "swept"])
+    assert FP.classify_storage(tmp_path / "durable")["status"] == "durable-candidate"
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    assert FP.classify_storage(loop / "source")["status"] == "unknown"
+
+
+@pytest.mark.parametrize("path", ["/tmp/example", "/private/tmp/example", "/var/tmp/example", "/private/var/tmp/example", "/private/var/folders/ab/cdef/T/source", "/private/var/folders/ab/cdef/C/cache"])
+def test_system_temporary_roots_cannot_be_removed_by_environment(path, monkeypatch):
+    monkeypatch.setenv("TMPDIR", "/nonexistent/durable-looking-temp")
+    result = FP.classify_storage(Path(path))
+    assert result["status"] == "temporary" and result["retention_deadline"] is None
+
+
+def test_fixture_clock_rollback_does_not_extend_allowance(tmp_path, monkeypatch):
+    import time
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now - 1000)
+    with pytest.raises(ValueError, match="900-second"):
+        FP.require_work_placement(tmp_path, fixture_deadline=now + 10)
+
+
+def test_registered_inventory_bounds_before_any_git(monkeypatch):
+    monkeypatch.setattr(FP, "_storage_git", lambda *a, **k: pytest.fail("Git ran beyond admitted input bound"))
+    with pytest.raises(ValueError, match="64"):
+        FP.inspect_worktrees([Path("/fixture")] * 65)

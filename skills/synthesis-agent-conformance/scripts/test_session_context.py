@@ -21,7 +21,8 @@ SPEC.loader.exec_module(MODULE)
 
 CONFORMANCE_PATH = Path(__file__).with_name("conformance.py")
 CONFORMANCE_SPEC = importlib.util.spec_from_file_location(
-    "conformance", CONFORMANCE_PATH)
+    "conformance", CONFORMANCE_PATH
+)
 assert CONFORMANCE_SPEC and CONFORMANCE_SPEC.loader
 CONFORMANCE = importlib.util.module_from_spec(CONFORMANCE_SPEC)
 sys.modules[CONFORMANCE_SPEC.name] = CONFORMANCE
@@ -68,8 +69,12 @@ def test_next_actions_is_empty_when_every_item_is_complete() -> None:
     assert MODULE.next_actions(context) == []
 
 
-@pytest.mark.parametrize("kind", ["large", "oversize", "duplicate", "symlink", "broken-symlink"])
-def test_session_context_reads_state_through_shared_contract(tmp_path, monkeypatch, kind):
+@pytest.mark.parametrize(
+    "kind", ["large", "oversize", "duplicate", "symlink", "broken-symlink"]
+)
+def test_session_context_reads_state_through_shared_contract(
+    tmp_path, monkeypatch, kind
+):
     import project_state
 
     project = tmp_path / "alpha"
@@ -77,8 +82,12 @@ def test_session_context_reads_state_through_shared_contract(tmp_path, monkeypat
     (project / "CONTEXT.md").write_text("# Context\n")
     (project / "plan.md").write_text("# Plan\n")
     path = project / project_state.STATE_FILE
-    value = {"phase": "shared reader", "status": "active", "next_actions": ["Inspect"],
-             "controlling_plan": "plan.md"}
+    value = {
+        "phase": "shared reader",
+        "status": "active",
+        "next_actions": ["Inspect"],
+        "controlling_plan": "plan.md",
+    }
     raw = json.dumps(value).encode()
     if kind in {"symlink", "broken-symlink"}:
         target = tmp_path / "target.json"
@@ -93,7 +102,9 @@ def test_session_context_reads_state_through_shared_contract(tmp_path, monkeypat
         monkeypatch.setattr(project_state, "MAX_STATE_JSON_BYTES", 128)
     # Isolate this consumer boundary: resolver and semantic checks have their
     # own integration fixtures; the parser and on-disk inputs stay real.
-    monkeypatch.setattr(MODULE, "reconciled_project", lambda *args, **kwargs: (project, []))
+    monkeypatch.setattr(
+        MODULE, "reconciled_project", lambda *args, **kwargs: (project, [])
+    )
     monkeypatch.setattr(MODULE, "semantic_issues", lambda _project: [])
     monkeypatch.setattr(MODULE, "record_freshness", lambda _project: (True, "fixture"))
     original = Path.read_text
@@ -164,8 +175,11 @@ class _StubRuntime:
         self._expected = expected
 
     def verified_release(self):
-        return {"release_root": "/fixture/root", "content_digest": self._expected,
-                "_verification_mode": "activation-receipt-v1"}
+        return {
+            "release_root": "/fixture/root",
+            "content_digest": self._expected,
+            "_verification_mode": "activation-receipt-v1",
+        }
 
     def full_digest_report(self, root):
         assert str(root) == "/fixture/root"
@@ -176,10 +190,12 @@ def test_sessionstart_prepends_runtime_digest_line(tmp_path, monkeypatch) -> Non
     pointer = tmp_path / "active-release.json"
     pointer.write_text("{}")
     monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
-    monkeypatch.setattr(MODULE, "_release_runtime",
-                        lambda: _StubRuntime("ab" * 32, "ab" * 32))
+    monkeypatch.setattr(
+        MODULE, "_release_runtime", lambda: _StubRuntime("ab" * 32, "ab" * 32)
+    )
     message = MODULE.append_runtime_digest_notice(
-        "Context integrity: OK.", {"hook_event_name": "SessionStart"})
+        "Context integrity: OK.", {"hook_event_name": "SessionStart"}
+    )
     assert message.startswith("Synthesis runtime digest: verified (620 files")
     assert message.endswith("Context integrity: OK.")
 
@@ -188,10 +204,12 @@ def test_sessionstart_reports_a_drifted_tree(tmp_path, monkeypatch) -> None:
     pointer = tmp_path / "active-release.json"
     pointer.write_text("{}")
     monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
-    monkeypatch.setattr(MODULE, "_release_runtime",
-                        lambda: _StubRuntime("ab" * 32, "cd" * 32))
+    monkeypatch.setattr(
+        MODULE, "_release_runtime", lambda: _StubRuntime("ab" * 32, "cd" * 32)
+    )
     message = MODULE.append_runtime_digest_notice(
-        "Context integrity: OK.", {"hook_event_name": "SessionStart"})
+        "Context integrity: OK.", {"hook_event_name": "SessionStart"}
+    )
     assert "DRIFTED" in message
     assert "synthesis doctor" in message
 
@@ -203,8 +221,12 @@ def test_digest_line_absent_without_an_installed_release(monkeypatch) -> None:
         raise AssertionError("runtime probe should not run")
 
     monkeypatch.setattr(MODULE, "_release_runtime", fail)
-    assert MODULE.append_runtime_digest_notice(
-        "context", {"hook_event_name": "SessionStart"}) == "context"
+    assert (
+        MODULE.append_runtime_digest_notice(
+            "context", {"hook_event_name": "SessionStart"}
+        )
+        == "context"
+    )
     assert MODULE.append_runtime_digest_notice("context", {}) == "context"
 
 
@@ -240,12 +262,20 @@ def test_build_without_pointer_explains_automatic_named_project_recovery(
     assert "never ask the user to run a context-lifecycle command" in message
 
 
-def test_sessionstart_without_pointer_forces_refresh_before_local_claims(tmp_path, monkeypatch):
+def test_sessionstart_without_pointer_forces_refresh_before_local_claims(
+    tmp_path, monkeypatch
+):
     import coordination
+
     board = tmp_path / "board.md"
     board.write_text(coordination.template())
     calls = []
-    monkeypatch.setattr(coordination, "lease_refresh", lambda path: calls.append(path) or {"configured": True, "refreshed": False, "error": "fixture unavailable"})
+    monkeypatch.setattr(
+        coordination,
+        "lease_refresh",
+        lambda path: calls.append(path)
+        or {"configured": True, "refreshed": False, "error": "fixture unavailable"},
+    )
     with pytest.raises(RuntimeError, match="fixture unavailable"):
         MODULE.build(tmp_path / "no-pointer.json", board)
     assert calls == [board]
@@ -272,17 +302,13 @@ def test_build_without_pointer_warns_when_workspace_registry_is_behind(
     workspace = tmp_path / "workspace"
     canonical = workspace / "ai-knowledge-example"
     canonical.mkdir(parents=True)
-    subprocess.run(
-        ["git", "init", "-q", "-b", "main", str(canonical)], check=True
-    )
+    subprocess.run(["git", "init", "-q", "-b", "main", str(canonical)], check=True)
     for key, value in (
         ("user.email", "fixture@example.invalid"),
         ("user.name", "Fixture"),
         ("core.hooksPath", "/dev/null"),
     ):
-        subprocess.run(
-            ["git", "-C", str(canonical), "config", key, value], check=True
-        )
+        subprocess.run(["git", "-C", str(canonical), "config", key, value], check=True)
     subprocess.run(
         ["git", "-C", str(canonical), "remote", "add", "origin", str(origin)],
         check=True,
@@ -294,9 +320,7 @@ def test_build_without_pointer_warns_when_workspace_registry_is_behind(
         encoding="utf-8",
     )
     (project / "CONTEXT.md").write_text("**Phase:** Old\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "-C", str(canonical), "add", "projects"], check=True
-    )
+    subprocess.run(["git", "-C", str(canonical), "add", "projects"], check=True)
     subprocess.run(
         ["git", "-C", str(canonical), "commit", "-q", "-m", "initial"],
         check=True,
@@ -367,9 +391,7 @@ def test_build_without_pointer_marks_uncomparable_registry_unknown(
     projects = repository / "projects"
     projects.mkdir(parents=True)
     (projects / "index.yaml").write_text("projects: []\n", encoding="utf-8")
-    subprocess.run(
-        ["git", "init", "-q", "-b", "main", str(repository)], check=True
-    )
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repository)], check=True)
 
     message = MODULE.build(
         tmp_path / "missing-pointer.json",
@@ -425,17 +447,28 @@ def test_build_discovers_stopped_project_from_cwd(tmp_path: Path, monkeypatch) -
         project / "resources",
     )
 
-    assert f"Stopped synthesis project discovered from the task directory: {project}." in message
+    assert (
+        f"Stopped synthesis project discovered from the task directory: {project}."
+        in message
+    )
     assert "Current phase: Validation." in message
     assert "Current status: Active." in message
     assert f"Controlling plan: {plan}." in message
     assert "Resume from durable state" in message
 
 
-def test_stopped_project_recovery_reads_newer_isolated_worktree(tmp_path: Path, monkeypatch) -> None:
+def test_stopped_project_recovery_reads_newer_isolated_worktree(
+    tmp_path: Path, monkeypatch
+) -> None:
     repo = tmp_path / "repo"
-    subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, capture_output=True)
-    for key, value in (("user.email", "fixture@example.invalid"), ("user.name", "Fixture"), ("core.hooksPath", "/dev/null")):
+    subprocess.run(
+        ["git", "init", "-b", "main", str(repo)], check=True, capture_output=True
+    )
+    for key, value in (
+        ("user.email", "fixture@example.invalid"),
+        ("user.name", "Fixture"),
+        ("core.hooksPath", "/dev/null"),
+    ):
         subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
     project = repo / "projects" / "alpha"
     plan = project / "resources" / "artifacts" / "plan.md"
@@ -455,9 +488,17 @@ def test_stopped_project_recovery_reads_newer_isolated_worktree(tmp_path: Path, 
         encoding="utf-8",
     )
     subprocess.run(["git", "-C", str(repo), "add", "projects"], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-m", "initial"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "initial"],
+        check=True,
+        capture_output=True,
+    )
     newer = tmp_path / "newer"
-    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-b", "feature/newer", str(newer)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "worktree", "add", "-b", "feature/newer", str(newer)],
+        check=True,
+        capture_output=True,
+    )
     newer_context = newer / "projects" / "alpha" / "CONTEXT.md"
     newer_context.write_text(
         newer_context.read_text(encoding="utf-8")
@@ -465,8 +506,14 @@ def test_stopped_project_recovery_reads_newer_isolated_worktree(tmp_path: Path, 
         .replace("old action", "new action"),
         encoding="utf-8",
     )
-    subprocess.run(["git", "-C", str(newer), "add", "projects/alpha/CONTEXT.md"], check=True)
-    subprocess.run(["git", "-C", str(newer), "commit", "-m", "advance"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(newer), "add", "projects/alpha/CONTEXT.md"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(newer), "commit", "-m", "advance"],
+        check=True,
+        capture_output=True,
+    )
     monkeypatch.setattr(MODULE, "record_freshness", lambda path: (True, "current"))
 
     lines: list[str] = []
@@ -495,7 +542,10 @@ def test_build_rejects_incomplete_or_unleased_pointer(
     monkeypatch.setattr(
         MODULE,
         "record_freshness",
-        lambda path: (False, "project record is 3 commit(s) behind fetched origin/main"),
+        lambda path: (
+            False,
+            "project record is 3 commit(s) behind fetched origin/main",
+        ),
     )
     try:
         MODULE.build(pointer, tmp_path / "no-board.md")
@@ -539,9 +589,16 @@ def test_live_receipt_records_real_sessionstart_shape(
     source_root = tmp_path / "release"
     plugin_root = tmp_path / "native-plugin"
     repo = MODULE.SCRIPTS_DIR.parents[2]
-    tracked = subprocess.run(
-        ["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True,
-    ).stdout.decode().split("\0")
+    tracked = (
+        subprocess.run(
+            ["git", "ls-files", "-z"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+        )
+        .stdout.decode()
+        .split("\0")
+    )
     for relative in filter(None, tracked):
         target = source_root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -561,9 +618,7 @@ def test_live_receipt_records_real_sessionstart_shape(
             encoding="utf-8"
         )
     )["version"]
-    desired = system_contract.default_desired_state(
-        "skills-only", ["codex"], "stable"
-    )
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
     state.run_transaction(
         "setup",
         desired,
@@ -615,7 +670,10 @@ def test_live_receipt_records_real_sessionstart_shape(
     assert not list(receipt.parent.glob("*.tmp"))
     observed = state.read_observation()["transactions"][-1]
     assert observed["live-loaded"]["status"] == "verified"
-    assert observed["live-loaded"]["receipts"]["codex"]["session_id"] == payload["session_id"]
+    assert (
+        observed["live-loaded"]["receipts"]["codex"]["session_id"]
+        == payload["session_id"]
+    )
 
 
 def test_live_receipt_preserves_prior_session_when_latest_advances(
@@ -652,8 +710,9 @@ def test_live_receipt_preserves_prior_session_when_latest_advances(
 
     record(first_session)
     first_events = list(
-        (receipt.parent / "public-sessionstart-events" / "codex" / first_session)
-        .glob("*.json")
+        (receipt.parent / "public-sessionstart-events" / "codex" / first_session).glob(
+            "*.json"
+        )
     )
     assert len(first_events) == 1
     first_contents = first_events[0].read_bytes()
@@ -662,13 +721,13 @@ def test_live_receipt_preserves_prior_session_when_latest_advances(
 
     assert first_events[0].read_bytes() == first_contents
     second_events = list(
-        (receipt.parent / "public-sessionstart-events" / "codex" / second_session)
-        .glob("*.json")
+        (receipt.parent / "public-sessionstart-events" / "codex" / second_session).glob(
+            "*.json"
+        )
     )
     assert len(second_events) == 1
     assert (
-        json.loads(receipt.read_text(encoding="utf-8"))["session_id"]
-        == second_session
+        json.loads(receipt.read_text(encoding="utf-8"))["session_id"] == second_session
     )
     client_latest = receipt.with_name("public-sessionstart-codex.json")
     assert (
@@ -685,9 +744,7 @@ def test_latest_receipt_pointer_never_moves_backward(tmp_path: Path) -> None:
     }
     older = {
         "receipt_event_id": "019fff79-5858-7993-a329-b301bccf5d72",
-        "recorded_at": (
-            datetime.now(timezone.utc) - timedelta(minutes=1)
-        ).isoformat(),
+        "recorded_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
     }
     MODULE.atomic_json_write(destination, newer)
 
@@ -711,8 +768,7 @@ def test_live_receipt_rejects_symlinked_event_registry(
     transcript = codex_home / "sessions" / f"{session_id}.jsonl"
     transcript.parent.mkdir(parents=True)
     transcript.write_text(
-        json.dumps({"type": "session_meta", "payload": {"id": session_id}})
-        + "\n",
+        json.dumps({"type": "session_meta", "payload": {"id": session_id}}) + "\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
@@ -768,7 +824,9 @@ def test_live_receipt_rejects_codex_subagent_transcript(
     assert not receipt.exists()
 
 
-def test_claude_signal_wins_over_inherited_codex_home(tmp_path: Path, monkeypatch) -> None:
+def test_claude_signal_wins_over_inherited_codex_home(
+    tmp_path: Path, monkeypatch
+) -> None:
     claude_home = tmp_path / ".claude"
     session_id = "019fff79-5858-7993-a329-b301bccf5d32"
     transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
@@ -846,9 +904,14 @@ def test_live_receipt_preserves_empty_claude_transcript_until_binding(
     assert recorded["transcript_bound_at_record"] is False
 
 
-@pytest.mark.parametrize("shape", [
-    "ambiguous-clients", "symlink-root-bound", "symlink-root-pending",
-])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        "ambiguous-clients",
+        "symlink-root-bound",
+        "symlink-root-pending",
+    ],
+)
 def test_rejected_claude_identity_cannot_write_receipts(tmp_path, monkeypatch, shape):
     """The pre-transcript exception cannot override terminal provenance refusal."""
     session_id = "019fff79-5858-7993-a329-b301bccf5d37"
@@ -861,10 +924,16 @@ def test_rejected_claude_identity_cannot_write_receipts(tmp_path, monkeypatch, s
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse"))
     if shape == "ambiguous-clients":
         monkeypatch.setenv("CODEX_HOME", str(claude_home))
-        transcript.write_text(json.dumps({
-            "sessionId": session_id, "type": "session_meta",
-            "payload": {"id": session_id},
-        }) + "\n")
+        transcript.write_text(
+            json.dumps(
+                {
+                    "sessionId": session_id,
+                    "type": "session_meta",
+                    "payload": {"id": session_id},
+                }
+            )
+            + "\n"
+        )
     else:
         linked_home = tmp_path / "claude-link"
         linked_home.symlink_to(claude_home, target_is_directory=True)
@@ -872,21 +941,36 @@ def test_rejected_claude_identity_cannot_write_receipts(tmp_path, monkeypatch, s
         transcript = linked_home / transcript.relative_to(claude_home)
         if shape == "symlink-root-pending":
             transcript.unlink()
-    payload = {"hook_event_name": "SessionStart", "session_id": session_id,
-               "transcript_path": str(transcript)}
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": session_id,
+        "transcript_path": str(transcript),
+    }
     assert MODULE.client_provenance(payload, session_id) is None
     # Check the actual consumer and all fixture bytes, including latest,
     # immutable receipt events, and the lifecycle state registry.
-    before = {str(p.relative_to(tmp_path)): p.read_bytes()
-              for p in tmp_path.rglob("*") if p.is_file()}
-    assert MODULE.record_live_receipt(payload, tmp_path / "receipts/latest.json") is False
-    assert {str(p.relative_to(tmp_path)): p.read_bytes()
-            for p in tmp_path.rglob("*") if p.is_file()} == before
+    before = {
+        str(p.relative_to(tmp_path)): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    }
+    assert (
+        MODULE.record_live_receipt(payload, tmp_path / "receipts/latest.json") is False
+    )
+    assert {
+        str(p.relative_to(tmp_path)): p.read_bytes()
+        for p in tmp_path.rglob("*")
+        if p.is_file()
+    } == before
     assert not (tmp_path / "receipts").exists()
 
 
-@pytest.mark.parametrize("transition", ["canonical-bound", "ambiguous-bound", "symlink-root"])
-def test_pending_claude_receipt_revalidates_before_promotion(tmp_path, monkeypatch, transition):
+@pytest.mark.parametrize(
+    "transition", ["canonical-bound", "ambiguous-bound", "symlink-root"]
+)
+def test_pending_claude_receipt_revalidates_before_promotion(
+    tmp_path, monkeypatch, transition
+):
     """A native first write cannot inherit authority from the pending exception."""
     session_id = "019fff79-5858-7993-a329-b301bccf5d37"
     claude_home = tmp_path / "claude"
@@ -895,9 +979,15 @@ def test_pending_claude_receipt_revalidates_before_promotion(tmp_path, monkeypat
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(tmp_path / "muse"))
-    payload = {"hook_event_name": "SessionStart", "session_id": session_id,
-               "transcript_path": str(transcript)}
-    assert MODULE.deferred_claude_provenance(payload, session_id) == ("claude", "claude-transcript")
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": session_id,
+        "transcript_path": str(transcript),
+    }
+    assert MODULE.deferred_claude_provenance(payload, session_id) == (
+        "claude",
+        "claude-transcript",
+    )
     original_plugin_identity = MODULE.plugin_identity
 
     def first_native_write():
@@ -929,12 +1019,15 @@ def test_pending_claude_receipt_revalidates_before_promotion(tmp_path, monkeypat
         assert not (tmp_path / "state").exists()
 
 
-def _muse_store(tmp_path: Path, session_id: str, *, declared: str | None = None) -> Path:
+def _muse_store(
+    tmp_path: Path, session_id: str, *, declared: str | None = None
+) -> Path:
     store = tmp_path / "muse-sessions"
     log = store / "2026" / "09" / "17" / session_id / "session.jsonl"
     log.parent.mkdir(parents=True)
     log.write_text(
-        json.dumps({"stream": {"kind": "session", "id": declared or session_id}}) + "\n",
+        json.dumps({"stream": {"kind": "session", "id": declared or session_id}})
+        + "\n",
         encoding="utf-8",
     )
     return store
@@ -974,15 +1067,18 @@ def test_muse_payload_without_store_evidence_records_nothing(
     store.mkdir()
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
 
-    assert MODULE.record_live_receipt(
-        {
-            "hook_event_name": "SessionStart",
-            "session_id": "019fff79-5858-7993-a329-b301bccf5daa",
-            "source": "startup",
-            "transcript_path": None,
-        },
-        receipt,
-    ) is False
+    assert (
+        MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": "019fff79-5858-7993-a329-b301bccf5daa",
+                "source": "startup",
+                "transcript_path": None,
+            },
+            receipt,
+        )
+        is False
+    )
     assert not receipt.exists()
 
 
@@ -996,15 +1092,18 @@ def test_muse_payload_with_conflicting_log_records_nothing(
     )
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
 
-    assert MODULE.record_live_receipt(
-        {
-            "hook_event_name": "SessionStart",
-            "session_id": session_id,
-            "source": "startup",
-            "transcript_path": None,
-        },
-        receipt,
-    ) is False
+    assert (
+        MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "source": "startup",
+                "transcript_path": None,
+            },
+            receipt,
+        )
+        is False
+    )
     assert not receipt.exists()
 
 
@@ -1022,15 +1121,18 @@ def test_muse_store_with_two_date_shards_for_one_session_is_ambiguous(
     )
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
 
-    assert MODULE.record_live_receipt(
-        {
-            "hook_event_name": "SessionStart",
-            "session_id": session_id,
-            "source": "startup",
-            "transcript_path": None,
-        },
-        receipt,
-    ) is False
+    assert (
+        MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "source": "startup",
+                "transcript_path": None,
+            },
+            receipt,
+        )
+        is False
+    )
     assert not receipt.exists()
 
 
@@ -1050,7 +1152,9 @@ def test_muse_store_ignores_non_digit_shards_and_symlinked_session_dirs(
     target.mkdir(parents=True)
     link = target / session_id
     try:
-        link.symlink_to(store / "2026" / "09" / "17" / session_id, target_is_directory=True)
+        link.symlink_to(
+            store / "2026" / "09" / "17" / session_id, target_is_directory=True
+        )
     except OSError:
         pytest.skip("symlinks unavailable")
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
@@ -1082,15 +1186,18 @@ def test_muse_message_text_uuid_is_not_binding_evidence(
     )
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
 
-    assert MODULE.record_live_receipt(
-        {
-            "hook_event_name": "SessionStart",
-            "session_id": session_id,
-            "source": "startup",
-            "transcript_path": None,
-        },
-        receipt,
-    ) is False
+    assert (
+        MODULE.record_live_receipt(
+            {
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "source": "startup",
+                "transcript_path": None,
+            },
+            receipt,
+        )
+        is False
+    )
     assert not receipt.exists()
 
 
@@ -1102,9 +1209,12 @@ def test_claude_pending_transcript_is_never_shadowed_by_the_muse_store(
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
     missing = tmp_path / ".claude" / "projects" / "w" / f"{session_id}.jsonl"
 
-    assert MODULE.client_provenance(
-        {"session_id": session_id, "transcript_path": str(missing)}, session_id
-    ) is None
+    assert (
+        MODULE.client_provenance(
+            {"session_id": session_id, "transcript_path": str(missing)}, session_id
+        )
+        is None
+    )
 
 
 def test_same_claude_session_retains_pending_and_bound_events(
@@ -1157,8 +1267,7 @@ def test_live_receipt_rejects_conflicting_claude_transcript_without_overwrite(
     transcript = claude_home / "projects" / "workspace" / f"{session_id}.jsonl"
     transcript.parent.mkdir(parents=True)
     transcript.write_text(
-        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d99"})
-        + "\n",
+        json.dumps({"sessionId": "019fff79-5858-7993-a329-b301bccf5d99"}) + "\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_home))
@@ -1344,11 +1453,18 @@ def test_live_receipt_rejects_existing_transcript_for_another_session(
     assert not receipt.exists()
 
 
-
 # --- receipt before context; a pointer is a cache, not authority (4.93.2) -----------------------
 
-def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error=None,
-                receipt_error=None):
+
+def _drive_main(
+    monkeypatch,
+    capsys,
+    tmp_path,
+    *,
+    pointer_text=None,
+    build_error=None,
+    receipt_error=None,
+):
     """Run main() in-process with a stubbed receipt recorder and, optionally, a
     forced context failure; return (exit code, additionalContext, call order)."""
     import io
@@ -1372,15 +1488,20 @@ def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error
             raise receipt_error
         return True
 
-    def recording_outcome(payload, destination, outcome, detail):
+    def recording_outcome(payload, destination, outcome, detail, **kwargs):
         outcomes.append((outcome, detail))
         return True
 
     monkeypatch.setattr(MODULE, "build", recording_build)
     monkeypatch.setattr(MODULE, "record_live_receipt", recording_receipt)
     monkeypatch.setattr(MODULE, "record_context_outcome", recording_outcome)
-    monkeypatch.setattr(MODULE, "append_currency_notice", lambda message, payload: message)
-    monkeypatch.setattr(MODULE, "append_runtime_digest_notice", lambda message, payload: message)
+    monkeypatch.setattr(
+        MODULE, "append_currency_notice", lambda message, payload: message
+    )
+    monkeypatch.setattr(
+        MODULE, "append_runtime_digest_notice", lambda message, payload: message
+    )
+
     def unchanged_inbox(message, payload, board, *, diagnostic=False):
         assert not diagnostic
         return message
@@ -1414,7 +1535,9 @@ def _drive_main(monkeypatch, capsys, tmp_path, *, pointer_text=None, build_error
     return code, context, calls, outcomes
 
 
-def test_main_records_the_receipt_before_building_context(monkeypatch, capsys, tmp_path) -> None:
+def test_main_records_the_receipt_before_building_context(
+    monkeypatch, capsys, tmp_path
+) -> None:
     """The receipt proves the client delivered the event; nothing that happens
     while building context may erase it, so it is recorded first."""
     code, context, calls, outcomes = _drive_main(monkeypatch, capsys, tmp_path)
@@ -1426,16 +1549,22 @@ def test_main_records_the_receipt_before_building_context(monkeypatch, capsys, t
     assert outcomes[0][1].endswith("bytes")
 
 
-def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, capsys, tmp_path) -> None:
+def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(
+    monkeypatch, capsys, tmp_path
+) -> None:
     """2026-09-03: a pointer set by another session named a project in a
     worktree eleven commits behind; the hook failed closed before recording
     and every Claude session on the machine lost its receipt. The pointer is
     a cache: an unvalidatable one is ignored, said so, and never injected."""
     project = tmp_path / "project"
     project.mkdir()
-    (project / "CONTEXT.md").write_text("**Phase:** 2\n**Status:** Active\n", encoding="utf-8")
+    (project / "CONTEXT.md").write_text(
+        "**Phase:** 2\n**Status:** Active\n", encoding="utf-8"
+    )
     code, context, calls, _outcomes = _drive_main(
-        monkeypatch, capsys, tmp_path,
+        monkeypatch,
+        capsys,
+        tmp_path,
         pointer_text=json.dumps({"project": str(project), "plan": "unknown"}),
     )
 
@@ -1444,7 +1573,9 @@ def test_main_ignores_a_pointer_it_cannot_validate_with_a_notice(monkeypatch, ca
     assert context.startswith("Active-project pointer ignored: ")
     assert "not authority for this one" in context
     assert "No active synthesis project pointer is set." in context
-    assert "Active synthesis project" not in context, "the unvalidated pointer's project was injected"
+    assert "Active synthesis project" not in context, (
+        "the unvalidated pointer's project was injected"
+    )
 
 
 def _codex_sessionstart_payload(tmp_path, monkeypatch):
@@ -1483,7 +1614,10 @@ def test_context_outcome_files_a_second_record(tmp_path, monkeypatch) -> None:
     assert MODULE.record_context_outcome(payload, receipt, "INJECTED", "1234 bytes")
 
     events = list(
-        (receipt.parent / "receipt-events" / "codex" / payload["session_id"]).glob("*.json"))
+        (receipt.parent / "receipt-events" / "codex" / payload["session_id"]).glob(
+            "*.json"
+        )
+    )
     assert len(events) == 2
     record = json.loads(receipt.read_text(encoding="utf-8"))
     assert record["context_outcome"] == "INJECTED"
@@ -1492,9 +1626,14 @@ def test_context_outcome_files_a_second_record(tmp_path, monkeypatch) -> None:
     # The outcome record carries the delivery contract forward: the
     # latest pointer it updates must keep every field the hook-live
     # verifier requires, not just the outcome.
-    for field in ("plugin_version", "plugin_root", "execution_root",
-                  "provenance_env", "transcript_path",
-                  "transcript_bound_at_record"):
+    for field in (
+        "plugin_version",
+        "plugin_root",
+        "execution_root",
+        "provenance_env",
+        "transcript_path",
+        "transcript_bound_at_record",
+    ):
         assert record[field], field
 
 
@@ -1525,7 +1664,9 @@ def _receipt_check_passes_latest(path: Path, record: dict) -> None:
     assert checks[0].ok is True, checks[0].detail
 
 
-def test_injected_outcome_latest_passes_the_receipt_check(tmp_path, monkeypatch) -> None:
+def test_injected_outcome_latest_passes_the_receipt_check(
+    tmp_path, monkeypatch
+) -> None:
     """Producer-to-consumer: delivery then INJECTED keeps latest green."""
     payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
 
@@ -1544,7 +1685,8 @@ def test_refused_outcome_latest_passes_the_receipt_check(tmp_path, monkeypatch) 
 
     assert MODULE.record_live_receipt(payload, receipt)
     assert MODULE.record_context_outcome(
-        payload, receipt, "REFUSED", "build: coordination board schema is invalid")
+        payload, receipt, "REFUSED", "build: coordination board schema is invalid"
+    )
 
     latest = receipt.with_name("receipt-codex.json")
     record = json.loads(latest.read_text(encoding="utf-8"))
@@ -1558,16 +1700,23 @@ def test_context_outcome_rejects_probes(tmp_path: Path) -> None:
     assert not MODULE.record_context_outcome({}, receipt, "INJECTED", "1 bytes")
     assert not MODULE.record_context_outcome(
         {"hook_event_name": "SessionStart", "session_id": "not-a-uuid"},
-        receipt, "INJECTED", "1 bytes")
+        receipt,
+        "INJECTED",
+        "1 bytes",
+    )
     assert not receipt.exists()
 
 
-def test_main_announces_a_no_pointer_failure_and_exits_zero(monkeypatch, capsys, tmp_path) -> None:
+def test_main_announces_a_no_pointer_failure_and_exits_zero(
+    monkeypatch, capsys, tmp_path
+) -> None:
     """Ruling S14 (2026-09-20) supersedes the old exit-2-with-no-stdout
     contract: with no pointer in play, a context failure announces the
     refusal as additionalContext and exits 0 — after the receipt."""
     code, context, calls, outcomes = _drive_main(
-        monkeypatch, capsys, tmp_path,
+        monkeypatch,
+        capsys,
+        tmp_path,
         build_error=ValueError("coordination board schema is invalid"),
     )
 
@@ -1580,11 +1729,15 @@ def test_main_announces_a_no_pointer_failure_and_exits_zero(monkeypatch, capsys,
     assert "coordination board schema is invalid" in outcomes[0][1]
 
 
-def test_main_refused_line_but_exit_two_on_a_receipt_failure(monkeypatch, capsys, tmp_path) -> None:
+def test_main_refused_line_but_exit_two_on_a_receipt_failure(
+    monkeypatch, capsys, tmp_path
+) -> None:
     """Ruling S14: when the delivery proof itself cannot be written, the
     REFUSED line still goes out, but the exit stays 2."""
     code, context, calls, outcomes = _drive_main(
-        monkeypatch, capsys, tmp_path,
+        monkeypatch,
+        capsys,
+        tmp_path,
         receipt_error=OSError("disk is read-only"),
     )
 
@@ -1602,7 +1755,9 @@ def _plugin_root_with_version(root: Path, version: str) -> Path:
     return root
 
 
-def test_plugin_identity_prefers_the_client_provided_plugin_root(tmp_path: Path, monkeypatch) -> None:
+def test_plugin_identity_prefers_the_client_provided_plugin_root(
+    tmp_path: Path, monkeypatch
+) -> None:
     """Under `synthesis exec-public` the script executes from the active
     release root, but the client loaded the plugin from its own cache and
     exports that root to every hook; the receipt must name the root the
@@ -1634,16 +1789,25 @@ def test_plugin_identity_falls_back_to_the_execution_root_without_a_client_root(
 
 
 @pytest.mark.parametrize("supplied", [False, True])
-def test_native_identity_contract_muse_receipt_round_trip(tmp_path, monkeypatch, supplied):
+def test_native_identity_contract_muse_receipt_round_trip(
+    tmp_path, monkeypatch, supplied
+):
     import project_state
+
     session = "01990000-0000-7000-8000-000000000333"
     store = _muse_store(tmp_path, session)
     path = store / "2026/09/17" / session / "session.jsonl"
     monkeypatch.setenv("MUSE_SESSIONS_DIR", str(store))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    payload = {"hook_event_name": "SessionStart", "session_id": session, "cwd": str(tmp_path), "source": "startup"}
-    if supplied: payload["transcript_path"] = str(path)
+    payload = {
+        "hook_event_name": "SessionStart",
+        "session_id": session,
+        "cwd": str(tmp_path),
+        "source": "startup",
+    }
+    if supplied:
+        payload["transcript_path"] = str(path)
     receipt = tmp_path / "receipt.json"
     assert MODULE.record_live_receipt(payload, receipt)
     emitted = json.loads(receipt.read_text())
@@ -1651,8 +1815,21 @@ def test_native_identity_contract_muse_receipt_round_trip(tmp_path, monkeypatch,
     assert project_state.observer_native_identity(emitted) == ("muse", session)
 
 
-@pytest.mark.parametrize("damage", ["relative", "nonstring", "foreign", "missing", "symlink", "duplicate", "contradictory-session"])
-def test_native_identity_contract_provenance_refuses_supplied_muse_path_damage(tmp_path, monkeypatch, damage):
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "relative",
+        "nonstring",
+        "foreign",
+        "missing",
+        "symlink",
+        "duplicate",
+        "contradictory-session",
+    ],
+)
+def test_native_identity_contract_provenance_refuses_supplied_muse_path_damage(
+    tmp_path, monkeypatch, damage
+):
     session = "01990000-0000-7000-8000-000000000444"
     store = _muse_store(tmp_path, session)
     path = store / "2026/09/17" / session / "session.jsonl"
@@ -1660,14 +1837,128 @@ def test_native_identity_contract_provenance_refuses_supplied_muse_path_damage(t
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     payload = {"session_id": session, "transcript_path": str(path)}
-    if damage == "relative": payload["transcript_path"] = "session.jsonl"
-    elif damage == "nonstring": payload["transcript_path"] = {"path": str(path)}
+    if damage == "relative":
+        payload["transcript_path"] = "session.jsonl"
+    elif damage == "nonstring":
+        payload["transcript_path"] = {"path": str(path)}
     elif damage == "foreign":
-        other = tmp_path / "foreign.jsonl"; other.write_bytes(path.read_bytes()); payload["transcript_path"] = str(other)
-    elif damage == "missing": payload["transcript_path"] = str(path.parent / "missing.jsonl")
+        other = tmp_path / "foreign.jsonl"
+        other.write_bytes(path.read_bytes())
+        payload["transcript_path"] = str(other)
+    elif damage == "missing":
+        payload["transcript_path"] = str(path.parent / "missing.jsonl")
     elif damage == "symlink":
-        saved = path.with_suffix(".retained"); path.rename(saved); path.symlink_to(saved)
+        saved = path.with_suffix(".retained")
+        path.rename(saved)
+        path.symlink_to(saved)
     elif damage == "duplicate":
-        other = store / "2026/09/18" / session / "session.jsonl"; other.parent.mkdir(parents=True); other.write_bytes(path.read_bytes())
-    else: payload["session_id"] = "01990000-0000-7000-8000-000000000555"
+        other = store / "2026/09/18" / session / "session.jsonl"
+        other.parent.mkdir(parents=True)
+        other.write_bytes(path.read_bytes())
+    else:
+        payload["session_id"] = "01990000-0000-7000-8000-000000000555"
     assert MODULE.client_provenance(payload, session) is None
+
+
+def test_actual_context_producer_emits_registry_bound_callback_witness(
+    tmp_path, monkeypatch, capsys
+):
+    """Actual producer and registry, synthetic transcript; no native process."""
+    import io
+    import hashlib
+    from live_receipt import receipt_event_path, callback_generation
+    from vendor_native import _witness
+
+    payload, receipt = _codex_sessionstart_payload(tmp_path, monkeypatch)
+    source = MODULE.execution_root()
+    monkeypatch.delenv(MODULE.CLIENT_PLUGIN_ROOT_ENV, raising=False)
+    monkeypatch.setattr(MODULE, "build", lambda *a, **k: "Synthetic context")
+    monkeypatch.setattr(MODULE, "append_currency_notice", lambda m, p: m)
+    monkeypatch.setattr(MODULE, "append_runtime_digest_notice", lambda m, p: m)
+    monkeypatch.setattr(MODULE, "append_inbox", lambda m, *a, **k: m)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "session_context.py",
+            "--format",
+            "codex",
+            "--active-project-file",
+            str(tmp_path / "missing-pointer.json"),
+            "--coordination-board",
+            str(tmp_path / "missing-board.md"),
+            "--live-receipt",
+            str(receipt),
+        ],
+    )
+    assert MODULE.main() == 0
+    output = capsys.readouterr()
+    witness = _witness(output.out.strip())
+    event = receipt_event_path(
+        receipt,
+        client="codex",
+        session_id=payload["session_id"],
+        event_id=witness["event_id"],
+    )
+    raw = event.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == witness["sha256"]
+    record = json.loads(raw)
+    assert record["context_outcome"] == "INJECTED"
+    assert record["callback_generation"] == callback_generation(source, source)
+    assert record["context_outcome_detail"] == "17 bytes"
+    assert "outcome record failed" not in output.err
+
+
+def test_ephemeral_callback_candidate_has_no_live_or_latest_authority(
+    tmp_path, monkeypatch
+):
+    import uuid
+
+    sid = str(uuid.uuid4())
+    root = tmp_path / "plugin"
+    root.mkdir()
+    for name in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        file = root / name
+        file.parent.mkdir(exist_ok=True)
+        file.write_text(json.dumps({"version": "1.2.3"}))
+    destination = tmp_path / "receipts/latest.json"
+    monkeypatch.setenv("SYNTHESIS_CALLBACK_OBSERVATION", "codex-ephemeral-callback")
+    monkeypatch.setattr(MODULE, "plugin_identity", lambda: ("1.2.3", str(root)))
+    monkeypatch.setattr(MODULE, "execution_root", lambda: root)
+    monkeypatch.setattr(MODULE, "client_provenance", lambda *a: None)
+    calls = []
+    monkeypatch.setattr(
+        MODULE.SystemState, "record_live_load", lambda *a, **k: calls.append(k)
+    )
+    payload = {
+        "session_id": sid,
+        "hook_event_name": "SessionStart",
+        "cwd": str(tmp_path),
+        "source": "startup",
+    }
+    assert MODULE.record_live_receipt(payload, destination)
+    result = MODULE.record_context_outcome(
+        payload, destination, "INJECTED", "fixture bytes", return_record=True
+    )
+    assert result["provenance_env"] == "codex-callback-candidate"
+    assert (
+        result["transcript_bound_at_record"] is False
+        and result["callback_candidate"] is True
+    )
+    assert not calls and not destination.exists()
+    assert all(
+        not p.exists() for p in MODULE.latest_receipt_paths(destination, "codex")
+    )
+    checks = []
+    from live_receipt import receipt_event_path
+
+    path = receipt_event_path(
+        destination, client="codex", session_id=sid, event_id=result["receipt_event_id"]
+    )
+    CONFORMANCE._receipt_check(checks, "probe", path, expected_client="codex")
+    assert checks and not checks[0].ok
+    before = sorted(p.read_bytes() for p in destination.parent.rglob("*.json"))
+    monkeypatch.delenv("SYNTHESIS_CALLBACK_OBSERVATION")
+    assert not MODULE.record_live_receipt(payload, destination)
+    assert before == sorted(p.read_bytes() for p in destination.parent.rglob("*.json"))

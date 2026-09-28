@@ -589,7 +589,7 @@ def dispatch(state, payload, context):
     if mode == "native-cli":
         from delegation_boundary import validate_requirements
         validate_requirements(payload.get("client"), payload.get("required_capabilities"))
-        if (payload.get("client") not in {"claude", "codex", "muse"} or "dispatch_receipt_id" in payload
+        if (payload.get("client") not in {"claude", "codex", "muse", "hermes"} or "dispatch_receipt_id" in payload
                 or admission["session_uuid"] != context["binding"]["session_uuid"]
                 or admission["native_ref"] != context["binding"].get("native_ref")):
             raise ValueError("Native CLI work needs its current parent admission and known client")
@@ -666,9 +666,23 @@ def child_return(state, payload, context):
         raise ValueError("Invalid or duplicate child return")
     if child.get("mode") == "native-cli" and payload["disposition"] == "complete":
         observed = child.get("worker_observation", {})
+        passive = (child.get("client") == "hermes"
+                   and child.get("required_capabilities") == ["native-context-observation"]
+                   and observed.get("model_turns_started") == 0
+                   and observed.get("boundary", {}).get("status") == "UNKNOWN"
+                   and observed.get("boundary", {}).get("mechanism") == "hermes-local-peer-observation")
+        allocation = False
+        if child.get("client") == "codex" and child.get("required_capabilities") == ["native-callback"] and child.get("file_contract", {}).get("native_session"):
+            from delegation_boundary import native_session_binding
+            binding = native_session_binding(state, child, context, historical=True)
+            allocation = bool(binding and binding.get("persistent_allocation") is True
+                              and observed.get("session_checkpoint")
+                              and observed.get("boundary", {}).get("status") == "UNKNOWN"
+                              and _evidence(state, context, child.get("worker_receipt_id"),
+                                            "native_worker")["data"] == observed)
         if (not child.get("worker_receipt_id") or observed.get("terminal") != "completed"
                 or observed.get("preservation") != "PASS" or observed.get("native_exit_code") != 0
-                or observed.get("boundary", {}).get("status") != "ENFORCED") :
+                or (observed.get("boundary", {}).get("status") != "ENFORCED" and not passive and not allocation)) :
             raise ValueError("Native worker completion requires its successful preserved launch observation")
     _strings(payload["artifact_ids"])
     _strings(payload["evidence_ids"])
@@ -952,7 +966,7 @@ def retry_decision(state, task_id):
     flow = state["extensions"]["workflow"]
     persistence = state.get("extensions", {}).get("workflow_persistence", {})
     node = _node(flow, task_id)
-    obligation = _lineage(state, node["criteria"])
+    _lineage(state, node["criteria"])
     decisions = [persistence["decisions"][key] for key in _related_obligations(state, node["criteria"])
                  if key in persistence.get("decisions", {})]
     if any(key in persistence.get("cancelled_obligations", []) for key in _related_obligations(state, node["criteria"])):
@@ -1505,7 +1519,6 @@ def _authenticated_observations(state, context, ids):
         records.append(record)
     native_result = None
     if native:
-        from observation_bridge import current_events
         native_result = _current_native(context, native)
         if native_result["status"] != "current":
             raise ValueError("Native observation ranges are not currently verified")
@@ -1550,9 +1563,11 @@ def _derive_attempt(state, context, payload):
             executed_strategies.append(_consumer_strategy(context, data))
             facts["execution"] = {key: execution.get(key) for key in ("returncode", "timed_out", "output_exceeded")}
             if execution.get("timed_out") is True:
-                outcomes.add("failure"); family = "transient_tool"
+                outcomes.add("failure")
+                family = "transient_tool"
             elif execution.get("returncode") != 0 or execution.get("output_exceeded") is True:
-                outcomes.add("failure"); family = "permanent_tool"
+                outcomes.add("failure")
+                family = "permanent_tool"
             elif data.get("passed") is True:
                 outcomes.add("evidence")
             else:

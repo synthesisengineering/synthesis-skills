@@ -24,8 +24,8 @@ SOURCE_FILES = {
         "skills/synthesis-git-hooks/scripts/_scan_staged.py": (".synthesis/git-hooks/_scan_staged.py", 0o755),
         **{"skills/synthesis-project-management/scripts/" + n:
            (".synthesis/git-hooks/" + n, 0o755) for n in
-           ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
-        "skills/synthesis-agent-conformance/scripts/live_receipt.py": (".synthesis/git-hooks/live_receipt.py", 0o755),
+           ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
+        "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py": (".synthesis/git-hooks/native_transcript_identity.py", 0o755),
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },
@@ -217,11 +217,16 @@ def test_unknown_component_is_not_silently_skipped(installation):
 
 def test_unrelated_unavailable_history_does_not_block_current_payload(installation):
     current, _, _, home, state, receipts, _ = installation
-    target = home / ".synthesis/message-guard/message_guard.py"
-    target.write_bytes((current / "skills/synthesis-message-guard/scripts/message_guard.py").read_bytes())
+    # This is the complete-current-closure positive, not a legacy installation
+    # needing parser introduction. The separate component controls cover that.
+    for name in ("message_guard.py", "native_git.py", "claim_scope.py", "board_grammar.py", "coordination_schema.py"):
+        owner = "synthesis-message-guard" if name == "message_guard.py" else "synthesis-project-management"
+        target = home / ".synthesis/message-guard" / name
+        target.write_bytes((current / "skills" / owner / "scripts" / name).read_bytes())
+        target.chmod(0o755)
     plan = runtime.plan(current, home, state, {"message-guard"}, receipts.data,
                         legacy_releases=[(home / "missing-history", {})])
-    assert runtime.verify(plan)[0]["status"] == "current"
+    assert all(row["status"] == "current" for row in runtime.verify(plan))
 
 
 def test_injected_second_write_failure_restores_payloads(installation, monkeypatch):
@@ -775,7 +780,7 @@ SCANNER_DEPENDENCY = "skills/synthesis-git-hooks/scripts/_scan_staged.py"
 PROCESS_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_process.py"
 
 
-@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/live_receipt.py"])
+@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py"])
 def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace

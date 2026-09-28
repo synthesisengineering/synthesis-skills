@@ -1439,3 +1439,17 @@ def test_owned_narrow_timeout_is_incomplete_not_success(tmp_path, monkeypatch):
         raise subprocess.TimeoutExpired(argv, 60)
     monkeypatch.setattr(MODULE.subprocess, 'run', invoke)
     assert MODULE._narrow_retired_claims(worktree, tmp_path / 'board') is False
+
+
+def test_unexplained_missing_link_refuses_with_recovery_evidence(tmp_path):
+    _, clone = build_repo(tmp_path)
+    target = add_feature_worktree(tmp_path, clone)
+    head = git(clone, "rev-parse", "feature/demo").stdout.strip()
+    (target / ".git").unlink()
+    result = retire("--repository", str(clone), "--worktree", str(target), cwd=clone)
+    assert result.returncode != 0
+    assert "unexplained disappearance" in result.stderr and head in result.stderr
+    assert "prune" in result.stderr
+    assert git(clone, "rev-parse", "feature/demo").stdout.strip() == head
+    assert target.exists()
+    assert str(target) in git(clone, "worktree", "list", "--porcelain").stdout

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import re
 import shutil
 import subprocess
@@ -65,6 +66,12 @@ def canonical_remote(url: str) -> str:
     return url[:-4] if url.endswith(".git") else url.rstrip("/")
 
 
+def repository_key(url: str) -> str:
+    """Equal basenames in different organizations cannot alias one checkout."""
+    slug = repository_slug(url)
+    return slug + "-" + hashlib.sha256(canonical_remote(url).encode("utf-8")).hexdigest()
+
+
 def acquire_repository(
     url: str,
     data_root: Path,
@@ -78,7 +85,7 @@ def acquire_repository(
         raise ContractError("organization commit must be an exact commit identity")
     if restore_commit and not expected_commit:
         raise ContractError("organization repair requires its recorded commit")
-    slug = repository_slug(url)
+    slug = repository_key(url)
     data_root = Path(data_root)
     data_root.mkdir(parents=True, exist_ok=True)
     if data_root.is_symlink() or not data_root.is_dir():

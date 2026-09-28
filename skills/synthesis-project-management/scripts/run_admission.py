@@ -5,6 +5,7 @@ Admission is a fresh coordination/native-identity proof, not action permission.
 This module reuses PM's exact physical worktree, segment-glob and native
 transcript policies. A workspace listing alone never authorizes a write.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -24,18 +25,21 @@ from project_recipient import registry_entries
 from project_state import observer_native_identity, row_for_event
 
 
-
-
 _ISSUED = object()
 _ACTIVE_OBSERVATION = ContextVar("run_admission_operation", default=None)
 
 
 def _fingerprint(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(
+            value, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+    ).hexdigest()
 
 
 class _AdmittedPaths(dict):
     """Serializable proof data with non-transferable issuance metadata."""
+
     def __init__(self, value, actor, marker):
         if marker is not _ISSUED:
             raise AdmissionError("admission proof must originate from PM")
@@ -78,12 +82,22 @@ def admission_scope(proof, actor, project, *, purpose="mutation"):
     issuance metadata; a proof is consumed once; the token expires when this
     context exits. Mutation entry and every later Stop re-admit through PM.
     """
-    expected_type = {"mutation": _AdmittedPaths, "passive-stop": _PassivePaths}.get(purpose)
-    if (expected_type is None or type(proof) is not expected_type or proof._consumed or
-        proof._digest != _fingerprint(proof) or proof._actor != _fingerprint(actor) or
-        str(Path(project).resolve(strict=True)) != proof.get("project_root") or
-        time.monotonic() - proof._issued_at > 1.0 or _ACTIVE_OBSERVATION.get() is not None):
-        raise AdmissionError("fresh exact unused PM admission is required for this operation")
+    expected_type = {"mutation": _AdmittedPaths, "passive-stop": _PassivePaths}.get(
+        purpose
+    )
+    if (
+        expected_type is None
+        or type(proof) is not expected_type
+        or proof._consumed
+        or proof._digest != _fingerprint(proof)
+        or proof._actor != _fingerprint(actor)
+        or str(Path(project).resolve(strict=True)) != proof.get("project_root")
+        or time.monotonic() - proof._issued_at > 1.0
+        or _ACTIVE_OBSERVATION.get() is not None
+    ):
+        raise AdmissionError(
+            "fresh exact unused PM admission is required for this operation"
+        )
     proof._consumed = True
     observation = _AdmissionObservation(proof, actor, project, _ISSUED)
     reset = _ACTIVE_OBSERVATION.set(observation)
@@ -97,12 +111,17 @@ def admission_scope(proof, actor, project, *, purpose="mutation"):
 def read_admission_observation(context):
     """Read only a live token in its originating actor/project operation."""
     token = context.get("admission_observation")
-    if (not isinstance(token, _AdmissionObservation) or not token.active or
-        _ACTIVE_OBSERVATION.get() is not token or
-        token.actor != _fingerprint(context.get("actor")) or
-        token.project != str(Path(context["project"]).resolve(strict=True)) or
-        token.proof != context.get("binding")):
-        raise AdmissionError("admission observation is inactive, transferred, or rebound")
+    if (
+        not isinstance(token, _AdmissionObservation)
+        or not token.active
+        or _ACTIVE_OBSERVATION.get() is not token
+        or token.actor != _fingerprint(context.get("actor"))
+        or token.project != str(Path(context["project"]).resolve(strict=True))
+        or token.proof != context.get("binding")
+    ):
+        raise AdmissionError(
+            "admission observation is inactive, transferred, or rebound"
+        )
     return deepcopy(token.proof)
 
 
@@ -125,38 +144,33 @@ def safe_path(path: Path, boundary: Path) -> Path:
     return path
 
 
-
-
 def _snapshot(board: Path, *, readonly: bool = False) -> str:
     if board.is_symlink() or not board.is_file() or board.parent.is_symlink():
         raise AdmissionError("coordination board is missing or unsafe")
     if readonly:
-        def mutation_stamp():
-            info = board.stat()
-            return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
-                    info.st_mtime_ns, info.st_ctime_ns)
-        before = mutation_stamp()
-        config = coordination.lease_configuration(board)
-        text = board.read_text(encoding="utf-8")
-        if config is None and coordination.declared_lease(text) is not None:
-            raise AdmissionError("declared coordination lease has no local configuration")
-        if config is not None and coordination._cached_lease_refresh(board, config, coordination.PASSIVE_STOP_REFRESH_SECONDS) is None:
-            raise AdmissionError("passive coordination snapshot is stale; owning PM lease refresh is required")
-        if mutation_stamp() != before:
-            raise AdmissionError("coordination snapshot changed during passive observation")
-        return text
+        try:
+            return coordination.passive_board_snapshot(board)
+        except (OSError, RuntimeError) as exc:
+            raise AdmissionError(str(exc)) from exc
     # Same lock and leased CAS fence as coordination._check_staged_board_snapshot.
     # Queue for at most two existing Git operation budgets (60s by default).
     # This is a queue bound, not a guarantee that all remote CAS retries finish
     # inside it. A longer-held lock remains an explicit unresolved admission;
     # the read-only Stop path above never waits or weakens the lease fence.
-    with bounded_lock(board.parent / ".active-sessions.lock", timeout=2 * coordination.LEASE_GIT_TIMEOUT):
+    with bounded_lock(
+        board.parent / ".active-sessions.lock",
+        timeout=2 * coordination.LEASE_GIT_TIMEOUT,
+    ):
         config = coordination.lease_configuration(board)
         if config is not None:
-            coordination.lease_update(board, config, lambda text: text, require_fence=True)
+            coordination.lease_update(
+                board, config, lambda text: text, require_fence=True
+            )
         text = board.read_text(encoding="utf-8")
         if config is None and coordination.declared_lease(text) is not None:
-            raise AdmissionError("declared coordination lease has no local configuration")
+            raise AdmissionError(
+                "declared coordination lease has no local configuration"
+            )
         return text
 
 
@@ -172,23 +186,40 @@ def reconcile_readback(board: Path) -> dict:
     if board.is_symlink() or not board.is_file() or board.parent.is_symlink():
         raise AdmissionError("coordination board is missing or unsafe")
     try:
-        with bounded_lock(board.parent / ".active-sessions.lock", timeout=2 * coordination.LEASE_GIT_TIMEOUT):
+        with bounded_lock(
+            board.parent / ".active-sessions.lock",
+            timeout=2 * coordination.LEASE_GIT_TIMEOUT,
+        ):
             result = coordination._lease_refresh_locked(board)
             if result.get("cache_warning"):
-                raise AdmissionError("fresh PM snapshot could not be retained: " + result["cache_warning"])
+                raise AdmissionError(
+                    "fresh PM snapshot could not be retained: "
+                    + result["cache_warning"]
+                )
             return result
     except (OSError, RuntimeError, ValueError) as exc:
-        raise AdmissionError("owner readback refresh unavailable; committed journal remains retained: " + str(exc)) from exc
+        raise AdmissionError(
+            "owner readback refresh unavailable; committed journal remains retained: "
+            + str(exc)
+        ) from exc
 
 
-def native_binding(board: Path, native_payload: dict, *, readonly: bool = False,
-                   optional: bool = False, _passive_paths=None) -> dict | None:
+def native_binding(
+    board: Path,
+    native_payload: dict,
+    *,
+    readonly: bool = False,
+    optional: bool = False,
+    _passive_paths=None,
+) -> dict | None:
     """Resolve one active native seat without scanning run storage."""
     try:
         board = Path(board).expanduser().absolute()
         if optional and not board.exists():
             return None
         text = _snapshot(board, readonly=readonly)
+        if "Team-Contract:" in text or "Board-Schema: 6" in text:
+            coordination.validate_team_transition(board, text, text)
         parsed_rows = parse_table_rows(text)
         row = row_for_event(parsed_rows, native_payload, board=board)
         if row is None:
@@ -202,47 +233,118 @@ def native_binding(board: Path, native_payload: dict, *, readonly: bool = False,
             raise AdmissionError("native seat is not active")
         if _passive_paths is not None and not readonly:
             raise AdmissionError("passive inspection cannot authorize a mutation")
-        problems = (coordination.validate_sessions(sessions) if _passive_paths is None else
-                    coordination.validate_passive_paths(sessions, session, _passive_paths))
+        problems = (
+            coordination.validate_sessions(sessions)
+            if _passive_paths is None
+            else coordination.validate_passive_paths(sessions, session, _passive_paths)
+        )
         if problems:
-            raise AdmissionError("coordination admission is unresolved: " + "; ".join(problems))
+            raise AdmissionError(
+                "coordination admission is unresolved: " + "; ".join(problems)
+            )
         # Validate the human aliases too; a contradictory identity is not proof.
         from coordination_schema import identity_from_uuid
+
         expected = identity_from_uuid(session.session_uuid)
-        if session.compact_id != expected.compact_id or session.speakable_id != expected.speakable_id:
+        if (
+            session.compact_id != expected.compact_id
+            or session.speakable_id != expected.speakable_id
+        ):
             raise AdmissionError("coordination seat aliases do not bind its UUID")
-        scope = {"session_uuid": session.session_uuid, "native_ref": session.client_ref,
-                 "project_id": session.project, "workspaces": sorted(session.workspaces),
-                 "claims": sorted(session.claims), "machine": session.machine}
-        return {**scope, "claim_hash": hashlib.sha256(json.dumps(scope, sort_keys=True).encode()).hexdigest(),
-                "client": client, "native_session_id": native, "board": str(board)}
+        scope = {
+            "session_uuid": session.session_uuid,
+            "native_ref": session.client_ref,
+            "project_id": session.project,
+            "workspaces": sorted(session.workspaces),
+            "claims": sorted(session.claims),
+            "machine": session.machine,
+        }
+        if session.person:
+            import team_contract
+
+            declared = team_contract.board_principal(
+                board, native_payload=native_payload
+            )
+            scope["team"] = {
+                "person": session.person,
+                "standing_role": session.standing_role,
+                "declaration_sha256": declared["sha256"],
+                "inventory": sorted(
+                    (
+                        s.session_uuid,
+                        s.client_ref,
+                        s.person,
+                        s.standing_role,
+                        s.status,
+                        s.project,
+                        sorted(s.workspaces),
+                        sorted(s.claims),
+                    )
+                    for s in sessions
+                ),
+            }
+        return {
+            **scope,
+            "claim_hash": hashlib.sha256(
+                json.dumps(scope, sort_keys=True).encode()
+            ).hexdigest(),
+            "client": client,
+            "native_session_id": native,
+            "board": str(board),
+        }
     except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, AdmissionError):
             raise
         raise AdmissionError(f"native admission failed: {exc}") from exc
 
 
-def admit_paths(board: Path, project_id: str, project: Path, paths: list[Path],
-                native_payload: dict, *, expected_claim_hash: str | None = None,
-                readonly: bool = False) -> dict:
+def admit_paths(
+    board: Path,
+    project_id: str,
+    project: Path,
+    paths: list[Path],
+    native_payload: dict,
+    *,
+    expected_claim_hash: str | None = None,
+    readonly: bool = False,
+) -> dict:
     """Authorize exact paths for a registered project and native coordination seat.
 
     The returned digest excludes heartbeats, but binds claims, project, seat,
     machine and exact workspaces. Consumers must re-admit each mutation; this
     record is not a transferable capability or a publish/deploy approval.
     """
-    return _admit_paths(board, project_id, project, paths, native_payload,
-                        expected_claim_hash=expected_claim_hash, readonly=readonly)
+    return _admit_paths(
+        board,
+        project_id,
+        project,
+        paths,
+        native_payload,
+        expected_claim_hash=expected_claim_hash,
+        readonly=readonly,
+    )
 
 
-def inspect_paths(board: Path, project_id: str, project: Path, paths: list[Path],
-                  native_payload: dict) -> dict:
+def inspect_paths(
+    board: Path, project_id: str, project: Path, paths: list[Path], native_payload: dict
+) -> dict:
     """Fresh, exact, read-only Stop proof; no global-board or write verdict."""
-    return _admit_paths(board, project_id, project, paths, native_payload, readonly=True, passive=True)
+    return _admit_paths(
+        board, project_id, project, paths, native_payload, readonly=True, passive=True
+    )
 
 
-def _admit_paths(board, project_id, project, paths, native_payload, *,
-                 expected_claim_hash=None, readonly=False, passive=False):
+def _admit_paths(
+    board,
+    project_id,
+    project,
+    paths,
+    native_payload,
+    *,
+    expected_claim_hash=None,
+    readonly=False,
+    passive=False,
+):
     try:
         project = Path(project).absolute()
         repository, branch = coordination._repository_state(project)
@@ -250,6 +352,11 @@ def _admit_paths(board, project_id, project, paths, native_payload, *,
         if project != repository / "projects" / project_id:
             raise AdmissionError("project is not the exact registry-owned directory")
         registry = safe_path(repository / "projects/index.yaml", repository)
+        import team_contract
+
+        team_contract.require_registry(
+            registry, board=board, native_payload=native_payload
+        )
         if project_id not in registry_entries(registry.read_text(encoding="utf-8")):
             raise AdmissionError("project is not registered")
         if not paths:
@@ -269,31 +376,86 @@ def _admit_paths(board, project_id, project, paths, native_payload, *,
             target = safe_path(target, target_root)
             targets.append(target)
             repositories[target_root] = target_branch
-            target_workspaces[str(target)] = {"repository": str(target_root), "branch": target_branch}
-        binding = native_binding(Path(board), native_payload, readonly=readonly,
-                                 _passive_paths=targets if passive else None)
+            target_workspaces[str(target)] = {
+                "repository": str(target_root),
+                "branch": target_branch,
+            }
+        binding = native_binding(
+            Path(board),
+            native_payload,
+            readonly=readonly,
+            _passive_paths=targets if passive else None,
+        )
         if binding["project_id"] != project_id:
             raise AdmissionError("native seat belongs to a different project")
-        if expected_claim_hash is not None and binding["claim_hash"] != expected_claim_hash:
+        if (
+            expected_claim_hash is not None
+            and binding["claim_hash"] != expected_claim_hash
+        ):
             raise AdmissionError("coordination claim changed")
         # Reconstruct no policy: these are the exact functions check-staged uses.
-        session = coordination.Session(binding["session_uuid"], "", "", "", "", binding["machine"],
-                                       project_id, "", "", "", binding["workspaces"], "", binding["claims"], "", "active")
+        session = coordination.Session(
+            binding["session_uuid"],
+            "",
+            "",
+            "",
+            "",
+            binding["machine"],
+            project_id,
+            "",
+            "",
+            "",
+            binding["workspaces"],
+            "",
+            binding["claims"],
+            "",
+            "active",
+        )
         for target_root, target_branch in repositories.items():
-            if not coordination._workspace_registered(session, target_root, target_branch):
-                raise AdmissionError("exact physical worktree and branch are not registered")
-            relative = [str(path.relative_to(target_root)) for path in targets
-                        if target_workspaces[str(path)]["repository"] == str(target_root)]
+            if not coordination._workspace_registered(
+                session, target_root, target_branch
+            ):
+                raise AdmissionError(
+                    "exact physical worktree and branch are not registered"
+                )
+            relative = [
+                str(path.relative_to(target_root))
+                for path in targets
+                if target_workspaces[str(path)]["repository"] == str(target_root)
+            ]
             outside = coordination._outside_claim(session, target_root, relative)
             if outside:
-                raise AdmissionError("write paths are outside the current exact claim: " + ", ".join(outside))
-            if coordination._repository_state(target_root) != (target_root, target_branch):
+                raise AdmissionError(
+                    "write paths are outside the current exact claim: "
+                    + ", ".join(outside)
+                )
+            if coordination._repository_state(target_root) != (
+                target_root,
+                target_branch,
+            ):
                 raise AdmissionError("worktree identity changed during admission")
         proof_type = _PassivePaths if passive else _AdmittedPaths
-        purpose = {"purpose": "passive-stop", "global_board_validated": False} if passive else {}
-        return proof_type({**binding, **purpose, "project_root": str(project), "repository": str(repository),
-                "branch": branch, "paths": [str(path) for path in targets], "target_workspaces": target_workspaces},
-                {"board": str(Path(board).expanduser().absolute()), "native_payload": native_payload}, _ISSUED)
+        purpose = (
+            {"purpose": "passive-stop", "global_board_validated": False}
+            if passive
+            else {}
+        )
+        return proof_type(
+            {
+                **binding,
+                **purpose,
+                "project_root": str(project),
+                "repository": str(repository),
+                "branch": branch,
+                "paths": [str(path) for path in targets],
+                "target_workspaces": target_workspaces,
+            },
+            {
+                "board": str(Path(board).expanduser().absolute()),
+                "native_payload": native_payload,
+            },
+            _ISSUED,
+        )
     except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, AdmissionError):
             raise

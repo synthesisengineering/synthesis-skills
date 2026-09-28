@@ -17,6 +17,18 @@ A contributor can become a runtime steward through sustained ownership of an
 adapter, responsive review, and passing live evidence. Maintainer access is
 granted case by case based on the same demonstrated care.
 
+## Contribution evidence and succession
+
+The managed [contribution and role workflow](skills/synthesis-project-management/references/team-managed-workflows.md)
+records complete issue inventories, unanswered response observations, captured
+acceptance evidence, explicit scoped proposals and approved dated appointments.
+Documentation, methodology, safety fixtures, runtime adapters, accessibility,
+compatibility, translations and research are separate contribution lanes.
+The queue does not manufacture remote labels or a production service-level claim.
+Repeat contributors, runtime stewards and maintainers retain an explicit scope
+and backup; succession closes the exact prior appointment and preserves credit.
+Neither a generated proposal nor a passing test grants repository membership.
+
 ## Decision model
 
 Routine fixes are decided in pull-request review. Changes to the portable

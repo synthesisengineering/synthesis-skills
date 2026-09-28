@@ -322,6 +322,40 @@ def check_divergence(repos: list[str | Path], *, git_runner=None) -> DoctorCheck
     return DoctorCheck(DIVERGENCE_CHECK, True, "; ".join(summaries))
 
 
+
+def check_storage(repos, *, source_paths=(), venvs=()) -> DoctorCheck:
+    """Read declared storage and Git registrations; never prune or repair."""
+    import fleet_paths
+    import stat
+
+    issues = []
+    if len(source_paths) + len(venvs) > 64:
+        return DoctorCheck("storage-custody", False, "declared source/venv inventory exceeds 64 inputs")
+    try:
+        rows = fleet_paths.inspect_worktrees([Path(p) for p in repos])
+        for row in rows:
+            issues.extend(row["issues"])
+        for raw in [*source_paths, *venvs]:
+            path = Path(raw).expanduser()
+            placement = fleet_paths.classify_storage(path)
+            if placement["status"] != "durable-candidate":
+                issues.append(f"{path}: {placement['reason']}; move only through verified custody, never delete from diagnosis")
+            if not path.exists():
+                issues.append(f"{path}: declared source/venv missing; preserve its record and recovery evidence")
+        for raw in venvs:
+            marker = Path(raw).expanduser() / "pyvenv.cfg"
+            try:
+                info = marker.lstat()
+                if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 65536:
+                    raise ValueError("venv metadata is not a bounded nonempty regular file")
+            except (OSError, ValueError) as exc:
+                issues.append(f"{raw}: declared venv metadata unavailable ({exc}); rebuild only from preserved source/dependency evidence")
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        issues.append("storage inspection UNKNOWN: " + str(exc))
+    return DoctorCheck("storage-custody", not issues,
+                       "; ".join(issues) if issues else "declared storage and registered worktrees checked; retention age, unregistered paths and venv package/runtime integrity remain UNKNOWN")
+
+
 def run_all(
     *,
     board: Path,
@@ -329,6 +363,8 @@ def run_all(
     repos: list[str | Path] | None = None,
     machine_id: str | None = None,
     git_runner=None,
+    source_paths=(),
+    venvs=(),
 ) -> list[DoctorCheck]:
     """Every fleet-doctor check against one board, in gate order."""
     board = Path(board)
@@ -362,6 +398,7 @@ def run_all(
         parked,
         check_artifacts(artifacts_dir),
         check_divergence(scan, git_runner=git_runner),
+        check_storage(scan, source_paths=source_paths, venvs=venvs),
     ]
 
 
@@ -375,12 +412,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifacts-dir", type=Path, default=None)
     parser.add_argument("--repo", dest="repos", action="append", default=None)
     parser.add_argument("--machine-id", default=None)
+    parser.add_argument("--source-path", action="append", default=[], help="Explicit long-lived source custody path; read-only diagnosis")
+    parser.add_argument("--venv", action="append", default=[], help="Explicit virtual environment record; read-only diagnosis")
     args = parser.parse_args(argv)
     checks = run_all(
         board=args.board,
         artifacts_dir=args.artifacts_dir,
         repos=args.repos,
         machine_id=args.machine_id,
+        source_paths=args.source_path,
+        venvs=args.venv,
     )
     print(format_report(checks))
     return 0 if all(check.ok for check in checks) else 1

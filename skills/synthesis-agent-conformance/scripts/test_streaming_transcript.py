@@ -16,7 +16,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 
-import live_receipt  # noqa: E402
+import native_transcript_identity as live_receipt  # noqa: E402
 
 
 SESSION = "019fff79-5858-7993-a329-b301bccf5d31"
@@ -405,3 +405,23 @@ def test_dense_escaped_record_keeps_bounded_reads_and_memory(tmp_path, monkeypat
         tracemalloc.stop()
     assert reads and peak < 4 * 1024 * 1024
     assert _digest(path) == before
+
+
+def test_receipt_and_native_consumers_share_the_single_identity_owner():
+    import importlib
+    import ast
+    import sys
+
+    receipt = importlib.import_module("live_receipt")
+    for name in ("transcript_binding_state", "transcript_binds_session",
+                 "client_root_transcript_path", "muse_sessions_root", "resolve_muse_transcript"):
+        assert getattr(receipt, name) is getattr(live_receipt, name)
+    parsed = ast.parse(Path(live_receipt.__file__).read_text())
+    imports = set()
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            assert node.level == 0
+            imports.add(node.module.split(".")[0])
+    assert imports <= sys.stdlib_module_names

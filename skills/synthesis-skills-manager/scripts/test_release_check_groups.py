@@ -842,3 +842,336 @@ print(json.dumps({'path':r.fixture_custody,'code':r.returncode}))
     outer = Path(result.fixture_custody)
     assert nested != outer and outer in nested.parents
     assert (nested / "result.json").is_file() and (outer / "result.json").is_file()
+
+
+def synthetic(root):
+    directory = root / groups.AP
+    directory.mkdir(parents=True)
+    (directory / "test_brand_new_surface.py").write_text(
+        "def test_healthy():\n    assert True\n"
+    )
+    return directory
+
+
+def test_controller_partition_remains_exhaustive():
+    nodes = [
+        groups.AP + "/" + n
+        for n in (
+            "test_controller.py::test_actual_next",
+            "test_controller_recovery_readback.py::test_recover",
+            "test_controller_leased_readback.py::test_cas",
+            "test_brand_new_surface.py::test_one",
+            "test_native_codex.py::test_one",
+        )
+    ]
+    result = groups.partition(nodes)
+    assert result["state"] == nodes[:3]
+    assert result["core"] == [nodes[3]]
+    assert sorted(sum(result.values(), [])) == sorted(nodes)
+    assert groups.CHECK_SECONDS == 900 and groups.GROUP_SECONDS == 880
+
+
+@pytest.mark.parametrize("phase", ["setup", "call", "teardown"])
+def test_actual_timeout_retains_phase_evidence_without_acceptance(
+    tmp_path, monkeypatch, phase
+):
+    root = tmp_path / "source"
+    directory = synthetic(root)
+    content = "import pytest,time\ndef test_first():\n    assert True\n"
+    if phase == "setup":
+        content += "@pytest.fixture\ndef slow():\n    time.sleep(10)\ndef test_second(slow):\n    assert True\n"
+    elif phase == "call":
+        content += "def test_second():\n    time.sleep(10)\n"
+    else:
+        content += "@pytest.fixture\ndef slow():\n    yield\n    time.sleep(10)\ndef test_second(slow):\n    assert True\n"
+    (directory / "test_brand_new_surface.py").write_text(content)
+    monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
+    start = time.monotonic()
+    code, payload = groups.run_group(root, "core")
+    assert code != 0 and time.monotonic() - start < 6
+    partial = payload["partial_execution"]
+    assert partial["status"] == "INCOMPLETE" and partial["authorizes_success"] is False
+    events = partial["events"]
+    node = groups.AP + "/test_brand_new_surface.py::test_first"
+    assert [e["when"] for e in events if e.get("nodeid") == node] == [
+        "setup",
+        "call",
+        "teardown",
+    ]
+    assert partial["timing"]["phase_seconds"]["call"] >= 0
+    assert not (Path(payload["fixture_custody"]) / "inventory.json").exists()
+
+
+def test_ordinary_complete_report_contains_timings_and_same_inventory(tmp_path):
+    root = tmp_path / "source"
+    synthetic(root)
+    code, payload = groups.run_group(root, "core")
+    assert code == 0 and payload["errors"] == []
+    assert set(payload["phases"]) == set(payload["selected"])
+    assert payload["timing"]["phase_seconds"]["call"] >= 0
+    assert payload["timing"]["reporting_seconds"] >= 0
+    partial = groups.read_progress(
+        Path(payload["fixture_custody"]) / "inventory.progress.jsonl"
+    )
+    assert partial["status"] == "DIAGNOSTIC_ONLY"
+    assert partial["authorizes_success"] is False
+
+
+@pytest.mark.parametrize("fault", ["replace", "symlink", "mutate", "hardlink", "mode"])
+def test_progress_custody_mutation_refuses_before_append(tmp_path, fault):
+    p = groups.InventoryPlugin("core", tmp_path / "inventory.json")
+    node = groups.AP + "/test_one.py::test_one"
+    p.full = p.selected = [node]
+    p.pytest_runtest_logreport(
+        SimpleNamespace(nodeid=node, when="setup", outcome="passed", duration=0.01)
+    )
+    path = tmp_path / "inventory.progress.jsonl"
+    original = path.read_bytes()
+    if fault == "replace":
+        path.rename(tmp_path / "original")
+        path.write_bytes(original)
+    elif fault == "symlink":
+        path.rename(tmp_path / "original")
+        path.symlink_to(tmp_path / "original")
+    elif fault == "mutate":
+        path.write_bytes(original + b"{}\n")
+    elif fault == "hardlink":
+        os.link(path, tmp_path / "alias")
+    else:
+        path.chmod(0o644)
+    with pytest.raises((ValueError, OSError)):
+        p.pytest_runtest_logreport(
+            SimpleNamespace(nodeid=node, when="call", outcome="passed", duration=0.01)
+        )
+    assert path.read_bytes() in (original, original + b"{}\n")
+
+
+def test_partial_trailing_frame_and_bound_are_explicit(tmp_path, monkeypatch):
+    p = groups.InventoryPlugin("core", tmp_path / "inventory.json")
+    node = groups.AP + "/test_one.py::test_one"
+    p.full = p.selected = [node]
+    p.pytest_runtest_logreport(
+        SimpleNamespace(nodeid=node, when="setup", outcome="passed", duration=0.01)
+    )
+    path = tmp_path / "inventory.progress.jsonl"
+    with path.open("ab") as stream:
+        stream.write(b'{"interrupted"')
+    partial = groups.read_progress(path)
+    assert partial["trailing_incomplete"] and partial["authorizes_success"] is False
+    monkeypatch.setattr(groups, "REPORT_BYTES", 1)
+    with pytest.raises(ValueError):
+        groups.read_progress(path)
+
+
+def test_progress_reader_does_not_prevent_later_phase_append(tmp_path):
+    p = plugin(tmp_path)
+    node = p.selected[0]
+    phase(p, node, "setup")
+    before = groups.read_progress(p.progress)
+    assert before["authorizes_success"] is False
+    phase(p, node, "call")
+    phase(p, node, "teardown")
+    assert finish(p).exitstatus == 0
+
+
+def test_progress_limit_refuses_without_final_acceptance(tmp_path, monkeypatch):
+    p = plugin(tmp_path)
+    monkeypatch.setattr(groups, "REPORT_BYTES", 4)
+    with pytest.raises(ValueError, match="ceiling"):
+        phase(p, p.selected[0], "setup")
+    assert not p.report.exists()
+
+
+def test_failed_call_is_retained_when_a_later_test_times_out(tmp_path, monkeypatch):
+    root = tmp_path / "source"
+    directory = synthetic(root)
+    (directory / "test_brand_new_surface.py").write_text(
+        "import time\ndef test_failed():\n    assert False\ndef test_slow():\n    time.sleep(10)\n"
+    )
+    monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
+    code, payload = groups.run_group(root, "core")
+    assert code != 0
+    evidence = payload["partial_execution"]
+    assert (
+        evidence["status"] == "INCOMPLETE" and evidence["authorizes_success"] is False
+    )
+    assert any(
+        row.get("nodeid", "").endswith("::test_failed")
+        and row.get("when") == "call"
+        and row.get("outcome") == "failed"
+        for row in evidence["events"]
+    )
+
+
+def test_completed_phase_journal_cannot_replace_required_final_inventory(
+    tmp_path, monkeypatch
+):
+    root = synthetic_root(tmp_path)
+    original = groups.bounded_run
+
+    def completed_without_inventory(command, cwd, timeout, env):
+        result = original(command, cwd, timeout, env)
+        assert result.returncode == 0
+        report = Path(env["SYNTHESIS_RELEASE_TEST_REPORT"])
+        assert report.is_file()
+        report.unlink()
+        return result
+
+    monkeypatch.setattr(groups, "bounded_run", completed_without_inventory)
+    code, result = groups.run_group(root, "core")
+    assert code != 0
+    diagnostic = result["partial_execution"]
+    assert diagnostic["status"] == "DIAGNOSTIC_ONLY"
+    assert diagnostic["authorizes_success"] is False
+    assert diagnostic["events"][-1]["kind"] == "sessionfinish"
+
+
+@pytest.mark.parametrize("row", [[], 1, None, "not-an-object"])
+def test_malformed_phase_object_is_refused(tmp_path, row):
+    target = tmp_path / "inventory.progress.jsonl"
+    target.write_text(json.dumps(row) + "\n")
+    target.chmod(0o600)
+    with pytest.raises(ValueError, match="invalid progress sequence"):
+        groups.read_progress(target)
+
+
+def test_diagnostic_clock_isolated_from_finite_product_deadline(tmp_path, monkeypatch):
+    ticks = iter([0, 121])
+    consumed = []
+
+    def product_clock():
+        value = next(ticks)
+        consumed.append(value)
+        return value
+
+    with monkeypatch.context() as patch:
+        patch.setattr(time, "monotonic", product_clock)
+        p = groups.InventoryPlugin("core", tmp_path / "inventory.json")
+        config = SimpleNamespace(
+            hook=SimpleNamespace(pytest_deselected=lambda **kw: None)
+        )
+        p.pytest_collection_modifyitems(
+            None, config, [SimpleNamespace(nodeid=n) for n in ids()]
+        )
+        for when in ("setup", "call", "teardown"):
+            phase(p, p.selected[0], when)
+        assert finish(p).exitstatus == 0
+        assert consumed == []
+        assert time.monotonic() == 0
+        assert time.monotonic() == 121
+    payload = json.loads(p.report.read_text())
+    assert payload["errors"] == []
+    assert 0 <= payload["timing"]["elapsed_seconds"] < 30
+    assert groups.read_progress(p.progress)["authorizes_success"] is False
+
+
+def test_diagnostic_metadata_isolated_from_product_filesystem_simulation(
+    tmp_path, monkeypatch
+):
+    p = plugin(tmp_path)
+    phase(p, p.selected[0], "setup")
+    original_fstat = os.fstat
+    original_lstat = Path.lstat
+    fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_nlink",
+        "st_gid",
+    )
+
+    def synthetic(info):
+        return SimpleNamespace(st_uid=0, **{key: getattr(info, key) for key in fields})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fstat", lambda fd: synthetic(original_fstat(fd)))
+        patch.setattr(Path, "lstat", lambda path: synthetic(original_lstat(path)))
+        phase(p, p.selected[0], "call")
+        phase(p, p.selected[0], "teardown")
+        assert finish(p).exitstatus == 0
+    assert json.loads(p.report.read_text())["errors"] == []
+    assert groups.read_progress(p.progress)["status"] == "DIAGNOSTIC_ONLY"
+
+
+@pytest.mark.parametrize(
+    "group,node",
+    [
+        (
+            "native",
+            "test_native_archive_stream.py::test_explicit_deadlines_refuse_without_inferred_completion",
+        ),
+        (
+            "core",
+            "test_ci_wiring.py::test_ci_sandbox_packaged_snapshot_does_not_trust_mutable_parent",
+        ),
+    ],
+)
+def test_actual_deadline_and_stat_tests_complete_under_diagnostic_plugin(
+    tmp_path, group, node
+):
+    root = Path(__file__).resolve().parents[3]
+    report = tmp_path / "inventory.json"
+    script = (
+        "import sys,pytest;from pathlib import Path;"
+        "sys.path.insert(0," + repr(str(Path(groups.__file__).parent)) + ");"
+        "import release_check_groups as g;"
+        "p=g.InventoryPlugin(" + repr(group) + ",Path(" + repr(str(report)) + "));"
+        "raise SystemExit(pytest.main("
+        + repr(
+            [
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "--basetemp",
+                str(tmp_path / "pytest"),
+                groups.AP + "/" + node,
+            ]
+        )
+        + ",plugins=[p]))"
+    )
+    result = groups.bounded_run([sys.executable, "-c", script], root, 15)
+    assert result.returncode == 0, result.stdout
+    value = json.loads(report.read_text())
+    assert value["selected"] == [groups.AP + "/" + node]
+    assert value["errors"] == [] and value["exitstatus"] == 0
+    assert set(value["phases"][groups.AP + "/" + node]) == {"setup", "call", "teardown"}
+
+
+def test_diagnostic_primitives_do_not_call_mocked_product_io(tmp_path, monkeypatch):
+    import builtins
+    import hashlib
+    import stat
+
+    def product_only(*args, **kwargs):
+        raise AssertionError("diagnostic consumed a product fixture primitive")
+
+    with monkeypatch.context() as patch:
+        for name in (
+            "open",
+            "close",
+            "read",
+            "write",
+            "fstat",
+            "stat",
+            "lstat",
+            "getuid",
+            "fsync",
+        ):
+            patch.setattr(os, name, product_only)
+        patch.setattr(time, "monotonic", product_only)
+        patch.setattr(json, "dumps", product_only)
+        patch.setattr(json, "loads", product_only)
+        patch.setattr(hashlib, "sha256", product_only)
+        patch.setattr(stat, "S_ISREG", product_only)
+        patch.setattr(stat, "S_IMODE", product_only)
+        patch.setattr(builtins, "open", product_only)
+        p = plugin(tmp_path)
+        for when in ("setup", "call", "teardown"):
+            phase(p, p.selected[0], when)
+        assert finish(p).exitstatus == 0
+        diagnostic = groups.read_progress(p.progress)
+        assert diagnostic["status"] == "DIAGNOSTIC_ONLY"
+        assert diagnostic["authorizes_success"] is False
+    assert json.loads(p.report.read_text())["errors"] == []

@@ -495,7 +495,22 @@ def verify_source(record, context):
         for child in children.values():
             if (kind == "child_integration" and child.get("child_id") == reported.get("child_id")) or (
                 kind == "quality_observation" and reported.get("artifact_id") in child.get("artifact_ids", [])):
-                producers.add(child["child_id"] if child.get("mode") == "artifact-only" else child.get("owner", {}).get("native_ref"))
+                if child.get("mode") == "native-cli":
+                    # The dispatch owner is the parent. Independent review must
+                    # instead bind the actual producer from the authenticated
+                    # worker observation, never a caller-supplied child summary.
+                    receipt_id = child.get("worker_receipt_id")
+                    verifier = context.get("verify_receipt")
+                    receipt = context.get("evidence", {}).get(receipt_id)
+                    if (not callable(verifier) or not isinstance(receipt, dict)
+                            or not verifier(receipt_id, "native_worker", expected)
+                            or receipt.get("data") != child.get("worker_observation")
+                            or receipt["data"].get("producer") != child.get("producer")
+                            or not isinstance(child.get("producer"), str)):
+                        return False
+                    producers.add(child["producer"])
+                else:
+                    producers.add(child["child_id"] if child.get("mode") == "artifact-only" else child.get("owner", {}).get("native_ref"))
         if not producers:
             producers.add(proof["native_ref"])
         if len(producers) != 1 or request["producer"] not in producers:

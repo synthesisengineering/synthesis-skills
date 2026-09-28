@@ -52,19 +52,24 @@ set -e
 eval "$SIDECAR_OUT"
 [ "${SYNTHESIS_SIDECAR_OK:-0}" = "1" ] || fail_closed "Sidecar output incomplete (missing OK sentinel)."
 
-# Personal-class repos (CHECK_COMMIT_MSG=0): message scanning off by design.
-if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
-    [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+# Optional message checks may be disabled. A matched team's mandatory rules
+# remain mandatory, including when personal configuration disables the checks.
+if [ "${CHECK_COMMIT_MSG:-0}" = "1" ] || [ -n "${MANDATORY_REGEX:-}" ]; then
 
     # Messages scan with MESSAGE_REGEX — the strict-class set, never
     # ledger-reduced. A commit message names the NATURE of an edit, which no
     # published-precedent entry covers, so commit logs stay generic even
     # where the diff may restate published biography.
-    SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
+    if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
+        [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+        SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
+    else
+        SCAN_REGEX="${MANDATORY_REGEX}"
+    fi
     SCANNER="$HOOK_DIR/_scan_staged.py"
     [ -f "$SCANNER" ] || fail_closed "Staged scanner not found at $SCANNER."
     set +e
-    MSG_MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" \
+    MSG_MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" --mandatory="${MANDATORY_REGEX:-}" \
         --active="$SCAN_REGEX" --allowlist="${ALLOWLIST_REGEX:-}" \
         --exclusion="" --message "$MSG_FILE")
     SCAN_STATUS=$?

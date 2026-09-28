@@ -18,6 +18,12 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent / "portfolio_review.py"
+PM = SCRIPT.parents[2] / "synthesis-project-management/scripts"
+sys.path.insert(0, str(PM))
+import test_run_admission as team_world  # noqa: E402 - use the actual admission fixture owner
+from test_p13_registry import enroll  # noqa: E402 - bind a real team registry and native seat
+
+world = team_world.world
 
 
 def run(*args: str, home: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -141,3 +147,22 @@ def test_source_without_projects_dir_is_reported_not_skipped_silently(tmp_path):
     r = run(home=home)
     assert r.returncode == 0
     assert "no projects_dir" in r.stderr
+
+
+@pytest.mark.parametrize("person,allowed", [("p-one", False), ("p-two", True)])
+def test_actual_portfolio_respects_team_reader_boundary(world, monkeypatch, person, allowed):
+    index = world["repo"] / "projects/index.yaml"
+    index.write_text("projects:\n  - id: private-project-sentinel\n    status: active\n")
+    enroll(world, person)
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(world["board"]))
+    result = run("--index", str(index), "--json")
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    if allowed:
+        assert report["stale_total"] == 1
+        assert report["shown"][0]["id"] == "private-project-sentinel"
+        assert "team access" not in result.stderr
+    else:
+        assert report["stale_total"] == 0 and not report["shown"]
+        assert "private-project-sentinel" not in result.stdout + result.stderr
+        assert "team access" in result.stderr

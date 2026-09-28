@@ -29,7 +29,15 @@ RUNTIME_SCHEMA = 1
 MAC_PYTHON = "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
 PUBLIC_ENTRYPOINTS = frozenset(
     {
+        "synthesis-agent-conformance/scripts/hermes_adapter.py",
+        "synthesis-agent-conformance/scripts/vendor_bundle.py",
         "synthesis-message-guard/scripts/message_guard.py",
+        "synthesis-daily-rituals/scripts/repo_state.py",
+        "synthesis-project-management/scripts/team_contract.py",
+        "synthesis-project-management/scripts/team_records.py",
+        "synthesis-project-management/scripts/contribution_evidence.py",
+        "synthesis-agent-conformance/scripts/provider_intake.py",
+        "synthesis-adversarial-review/scripts/review_contract.py",
         "synthesis-repo-guard/checkpoint_sync.py",
         "synthesis-repo-guard/repo_sync_check.py",
         "synthesis-agent-conformance/scripts/conformance.py",
@@ -371,44 +379,522 @@ VERIFICATION_MODE_RECEIPT = "activation-receipt-v1"
 VERIFICATION_MODE_FULL = "full-digest-legacy"
 # Entrypoints hashed at activation and re-checked per call, as paths
 # relative to skills/ (the CLI shares the entrypoint layout).
-ENTRYPOINT_DEPENDENCIES = {'synthesis-agent-conformance/scripts/conformance.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                                        'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                                        'synthesis-decision-packet/scripts/build_packet.py',
-                                                        'synthesis-decision-packet/scripts/record_rulings.py',
-                                                        'synthesis-repo-guard/publication_receipt.py'),
- 'synthesis-agent-conformance/scripts/session_context.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                                            'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                                            'synthesis-decision-packet/scripts/build_packet.py',
-                                                            'synthesis-decision-packet/scripts/record_rulings.py',
-                                                            'synthesis-repo-guard/publication_receipt.py'),
- 'synthesis-autopilot/scripts/autopilot_gate.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                                   'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                                   'synthesis-decision-packet/scripts/build_packet.py',
-                                                   'synthesis-decision-packet/scripts/record_rulings.py',
-                                                   'synthesis-repo-guard/publication_receipt.py'),
- 'synthesis-context-lifecycle/scripts/context_doctor.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                                           'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                                           'synthesis-decision-packet/scripts/build_packet.py',
-                                                           'synthesis-decision-packet/scripts/record_rulings.py',
-                                                           'synthesis-repo-guard/publication_receipt.py'),
- 'synthesis-daily-rituals/scripts/pr_queue_scan.py': ('synthesis-bitbucket/scripts/pr_queue.py',),
- 'synthesis-daily-rituals/scripts/ritual_state.py': ('synthesis-daily-rituals/scripts/credential_paths.py',
-                                                     'synthesis-daily-rituals/scripts/ritual_workers.py'),
- 'synthesis-daily-rituals/scripts/sync_watermark.py': ('synthesis-daily-rituals/scripts/acquisition_evidence.py',
-                                                       'synthesis-daily-rituals/scripts/ritual_workers.py',
-                                                       'synthesis-meeting-transcripts/verify_transcripts.py'),
- 'synthesis-project-management/scripts/project_state.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                                           'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                                           'synthesis-decision-packet/scripts/build_packet.py',
-                                                           'synthesis-decision-packet/scripts/record_rulings.py',
-                                                           'synthesis-repo-guard/publication_receipt.py'),
- 'synthesis-repo-guard/checkpoint_sync.py': ('synthesis-context-lifecycle/scripts/record_succession.py',
-                                             'synthesis-context-lifecycle/scripts/record_transaction.py',
-                                             'synthesis-decision-packet/scripts/build_packet.py',
-                                             'synthesis-decision-packet/scripts/record_rulings.py',
-                                             'synthesis-repo-guard/publication_receipt.py')}
+ENTRYPOINT_DEPENDENCIES = {
+    "synthesis-agent-conformance/scripts/conformance.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+    ),
+    "synthesis-agent-conformance/scripts/session_context.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+        "synthesis-onboarding/scripts/upgrade_campaigns.py",
+        "synthesis-project-management/scripts/run_admission.py",
+    ),
+    "synthesis-autopilot/scripts/autopilot_gate.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+    ),
+    "synthesis-context-lifecycle/scripts/context_doctor.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+    ),
+    "synthesis-daily-rituals/scripts/pr_queue_scan.py": (
+        "synthesis-bitbucket/scripts/pr_queue.py",
+    ),
+    "synthesis-daily-rituals/scripts/ritual_state.py": (
+        "synthesis-daily-rituals/scripts/credential_paths.py",
+        "synthesis-daily-rituals/scripts/ritual_workers.py",
+    ),
+    "synthesis-daily-rituals/scripts/sync_watermark.py": (
+        "synthesis-daily-rituals/scripts/acquisition_evidence.py",
+        "synthesis-daily-rituals/scripts/ritual_workers.py",
+        "synthesis-meeting-transcripts/verify_transcripts.py",
+    ),
+    "synthesis-onboarding/scripts/synthesis_cli.py": (
+        "synthesis-onboarding/scripts/maintenance_cli.py",
+        "synthesis-onboarding/scripts/machine_review.py",
+        "synthesis-onboarding/scripts/upgrade_campaigns.py",
+        "synthesis-project-management/scripts/project_migration.py",
+        "synthesis-project-management/scripts/project_format.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+    ),
+    "synthesis-project-management/scripts/project_state.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+    ),
+    "synthesis-repo-guard/checkpoint_sync.py": (
+        "synthesis-context-lifecycle/scripts/record_succession.py",
+        "synthesis-context-lifecycle/scripts/record_transaction.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+        "synthesis-repo-guard/publication_receipt.py",
+    ),
+}
+# Explicit direct consumers keep new helpers under the verified runtime owner.
+ENTRYPOINT_DEPENDENCIES["synthesis-daily-rituals/scripts/repo_state.py"] = (
+    "synthesis-daily-rituals/scripts/credential_paths.py",
+    "synthesis-daily-rituals/scripts/ritual_workers.py",
+    "synthesis-project-management/scripts/coordination_process.py",
+)
+# The peer gate imports the same schema owner in source and installed payloads.
+# Receipt-mode invocation must authenticate the complete lazy import closure.
+ENTRYPOINT_DEPENDENCIES["synthesis-message-guard/scripts/message_guard.py"] = (
+    "synthesis-project-management/scripts/native_git.py",
+    "synthesis-project-management/scripts/claim_scope.py",
+    "synthesis-project-management/scripts/board_grammar.py",
+    "synthesis-project-management/scripts/coordination_schema.py",
+)
+# The organization selector is part of the actual onboarding call chain.
+ENTRYPOINT_DEPENDENCIES["synthesis-onboarding/scripts/synthesis_cli.py"] = tuple(
+    dict.fromkeys(
+        (
+            *ENTRYPOINT_DEPENDENCIES.get(
+                "synthesis-onboarding/scripts/synthesis_cli.py", ()
+            ),
+            "synthesis-onboarding/scripts/team_enrollment.py",
+            "synthesis-project-management/scripts/team_contract.py",
+        )
+    )
+)
+for _entry in (
+    "synthesis-agent-conformance/scripts/conformance.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/board_inbox.py",
+    "synthesis-project-management/scripts/peer_send_gate.py",
+    "synthesis-repo-guard/checkpoint_sync.py",
+):
+    ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+        dict.fromkeys(
+            (
+                *ENTRYPOINT_DEPENDENCIES.get(_entry, ()),
+                "synthesis-project-management/scripts/team_contract.py",
+            )
+        )
+    )
+
+ENTRYPOINT_DEPENDENCIES["synthesis-agent-guardrails/guards/publish_guard.py"] = tuple(
+    dict.fromkeys(
+        (
+            *ENTRYPOINT_DEPENDENCIES.get(
+                "synthesis-agent-guardrails/guards/publish_guard.py", ()
+            ),
+            "synthesis-project-management/scripts/team_contract.py",
+        )
+    )
+)
+
+# Explicit team routes verify every local record/enrollment/journal owner they
+# can invoke. Ordinary CLI routes retain their separately verified closure.
+ENTRYPOINT_DEPENDENCIES["synthesis-project-management/scripts/team_records.py"] = (
+    "synthesis-agent-conformance/scripts/active_project.py",
+    "synthesis-agent-conformance/scripts/client_binaries.py",
+    "synthesis-agent-conformance/scripts/live_receipt.py",
+    "synthesis-agent-conformance/scripts/project_context.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+    "synthesis-autopilot/scripts/autopilot.py",
+    "synthesis-autopilot/scripts/capabilities.py",
+    "synthesis-autopilot/scripts/consumer_checks.py",
+    "synthesis-autopilot/scripts/controller.py",
+    "synthesis-autopilot/scripts/decision_uncertainty.py",
+    "synthesis-autopilot/scripts/delegation_boundary.py",
+    "synthesis-autopilot/scripts/domain_quality.py",
+    "synthesis-autopilot/scripts/evaluation.py",
+    "synthesis-autopilot/scripts/evaluation_artifacts.py",
+    "synthesis-autopilot/scripts/evidence_bridge.py",
+    "synthesis-autopilot/scripts/journal_storage.py",
+    "synthesis-autopilot/scripts/native_adapter_sdk.py",
+    "synthesis-autopilot/scripts/native_archive.py",
+    "synthesis-autopilot/scripts/native_archive_stream.py",
+    "synthesis-autopilot/scripts/native_claude.py",
+    "synthesis-autopilot/scripts/native_codex.py",
+    "synthesis-autopilot/scripts/native_codex_turn.py",
+    "synthesis-autopilot/scripts/native_callback.py",
+    "synthesis-autopilot/scripts/managed_permissions.py",
+    "synthesis-autopilot/scripts/managed_native.py",
+    "synthesis-autopilot/scripts/native_protection.py",
+    "synthesis-autopilot/scripts/native_copilot.py",
+    "synthesis-autopilot/scripts/native_cursor.py",
+    "synthesis-autopilot/scripts/native_muse.py",
+    "synthesis-autopilot/scripts/native_muse_contract.py",
+    "synthesis-autopilot/scripts/native_observations.py",
+    "synthesis-autopilot/scripts/native_opencode.py",
+    "synthesis-autopilot/scripts/native_resume.py",
+    "synthesis-autopilot/scripts/native_review.py",
+    "synthesis-autopilot/scripts/native_review_observer.py",
+    "synthesis-autopilot/scripts/observation_bridge.py",
+    "synthesis-autopilot/scripts/operator_status.py",
+    "synthesis-autopilot/scripts/persistence_policy.py",
+    "synthesis-autopilot/scripts/prepared_native_launch.py",
+    "synthesis-autopilot/scripts/profile_evidence.py",
+    "synthesis-autopilot/scripts/recovery_capsule.py",
+    "synthesis-autopilot/scripts/required_citations.py",
+    "synthesis-autopilot/scripts/resource_policy.py",
+    "synthesis-autopilot/scripts/run_profile.py",
+    "synthesis-autopilot/scripts/run_state.py",
+    "synthesis-autopilot/scripts/supervision.py",
+    "synthesis-autopilot/scripts/workflow.py",
+    "synthesis-context-lifecycle/scripts/context_currency.py",
+    "synthesis-context-lifecycle/scripts/context_edit.py",
+    "synthesis-context-lifecycle/scripts/record_succession.py",
+    "synthesis-context-lifecycle/scripts/record_transaction.py",
+    "synthesis-decision-packet/scripts/build_packet.py",
+    "synthesis-decision-packet/scripts/record_rulings.py",
+    "synthesis-onboarding/scripts/enrollment.py",
+    "synthesis-onboarding/scripts/machine_review.py",
+    "synthesis-onboarding/scripts/maintenance_cli.py",
+    "synthesis-onboarding/scripts/onboard.py",
+    "synthesis-onboarding/scripts/organization.py",
+    "synthesis-onboarding/scripts/owned_registrations.py",
+    "synthesis-onboarding/scripts/plugin_currency.py",
+    "synthesis-onboarding/scripts/reload_guidance.py",
+    "synthesis-onboarding/scripts/runtime_payload.py",
+    "synthesis-onboarding/scripts/system_contract.py",
+    "synthesis-onboarding/scripts/team_enrollment.py",
+    "synthesis-onboarding/scripts/team_retirement.py",
+    "synthesis-onboarding/scripts/upgrade_campaigns.py",
+    "synthesis-onboarding/scripts/whole_system.py",
+    "synthesis-project-management/scripts/board_grammar.py",
+    "synthesis-project-management/scripts/board_inbox.py",
+    "synthesis-project-management/scripts/claim_scope.py",
+    "synthesis-project-management/scripts/contribution_evidence.py",
+    "synthesis-project-management/scripts/coordination.py",
+    "synthesis-project-management/scripts/coordination_archive.py",
+    "synthesis-project-management/scripts/coordination_lock.py",
+    "synthesis-project-management/scripts/coordination_process.py",
+    "synthesis-project-management/scripts/coordination_schema.py",
+    "synthesis-project-management/scripts/execution_checkpoint.py",
+    "synthesis-project-management/scripts/fleet_doctor.py",
+    "synthesis-project-management/scripts/fleet_handoff.py",
+    "synthesis-project-management/scripts/fleet_identity.py",
+    "synthesis-project-management/scripts/fleet_paths.py",
+    "synthesis-project-management/scripts/fleet_subscriptions.py",
+    "synthesis-project-management/scripts/native_git.py",
+    "synthesis-project-management/scripts/native_identity.py",
+    "synthesis-project-management/scripts/peer_addressing.py",
+    "synthesis-project-management/scripts/plan_reference.py",
+    "synthesis-project-management/scripts/pointer_lock.py",
+    "synthesis-project-management/scripts/project_format.py",
+    "synthesis-project-management/scripts/project_migration.py",
+    "synthesis-project-management/scripts/project_recipient.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/run_admission.py",
+    "synthesis-project-management/scripts/team_contract.py",
+    "synthesis-repo-guard/publication_receipt.py",
+    "synthesis-skills-manager/scripts/cache_guardian.py",
+)
+ENTRYPOINT_DEPENDENCIES[
+    "synthesis-project-management/scripts/contribution_evidence.py"
+] = (
+    "synthesis-project-management/scripts/team_contract.py",
+    "synthesis-project-management/scripts/coordination_process.py",
+)
+for _reader in (
+    "synthesis-context-lifecycle/scripts/context_doctor.py",
+    "synthesis-daily-rituals/scripts/portfolio_review.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/project_recipient.py",
+    "synthesis-project-management/scripts/coordination.py",
+    "synthesis-project-management/scripts/run_admission.py",
+    "synthesis-agent-guardrails/guards/publish_guard.py",
+):
+    ENTRYPOINT_DEPENDENCIES[_reader] = tuple(
+        dict.fromkeys(
+            (
+                *ENTRYPOINT_DEPENDENCIES.get(_reader, ()),
+                "synthesis-project-management/scripts/team_contract.py",
+                "synthesis-project-management/scripts/native_identity.py",
+                "synthesis-project-management/scripts/coordination_process.py",
+            )
+        )
+    )
+
+# Native identity is now a canonical dependency of every route that can load
+# the existing project/native or team owners. Bind it before execution too.
+_NATIVE_IDENTITY_CONSUMERS = {
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/team_contract.py",
+    "synthesis-project-management/scripts/run_admission.py",
+    "synthesis-project-management/scripts/coordination.py",
+}
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if ({_entry} | set(_dependencies)) & _NATIVE_IDENTITY_CONSUMERS:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys(
+                (
+                    *_dependencies,
+                    "synthesis-project-management/scripts/native_identity.py",
+                )
+            )
+        )
+
+# Signed observations and exact-spec corpus review remain under their original
+# conformance/decision owners in the verified entrypoint dependency inventory.
+for _entry, _dependencies in {
+    "synthesis-agent-conformance/scripts/conformance.py": (
+        "synthesis-agent-conformance/scripts/live_receipt.py",
+        "synthesis-agent-conformance/scripts/signed_receipt.py",
+        "synthesis-onboarding/scripts/system_contract.py",
+        "synthesis-skills-manager/scripts/cache_guardian.py",
+    ),
+    "synthesis-agent-conformance/scripts/provider_intake.py": (
+        "synthesis-agent-conformance/scripts/signed_receipt.py",
+        "synthesis-decision-packet/scripts/build_packet.py",
+        "synthesis-decision-packet/scripts/record_rulings.py",
+    ),
+}.items():
+    ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+        dict.fromkeys((*ENTRYPOINT_DEPENDENCIES.get(_entry, ()), *_dependencies))
+    )
+
+# Native pilot and vendor packages bind their actual static import closure.
+# Dynamic YAML/vendor content retains its existing content-owning validator.
+_NATIVE_PILOT_DEPENDENCIES = (
+    # Existing first-run, report and identity owners are reached transitively.
+    "synthesis-agent-conformance/scripts/report_contract.py",
+    "synthesis-agent-conformance/references/conformance-report-v1.schema.json",
+    "synthesis-onboarding/scripts/first_run_store.py",
+    "synthesis-project-management/scripts/native_identity.py",
+    "synthesis-agent-conformance/scripts/active_project.py",
+    "synthesis-agent-conformance/scripts/capability_evidence.py",
+    "synthesis-agent-conformance/scripts/client_binaries.py",
+    "synthesis-agent-conformance/scripts/codex_app_server.py",
+    "synthesis-agent-conformance/scripts/codex_hook_audit.py",
+    "synthesis-agent-conformance/scripts/codex_skill_catalog.py",
+    "synthesis-agent-conformance/scripts/conformance.py",
+    "synthesis-agent-conformance/scripts/hermes_adapter.py",
+    "synthesis-agent-conformance/scripts/hermes_source.py",
+    "synthesis-agent-conformance/scripts/signed_receipt.py",
+    "synthesis-agent-conformance/scripts/live_receipt.py",
+    "synthesis-agent-conformance/scripts/project_context.py",
+    "synthesis-agent-conformance/scripts/provider_intake.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+    "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    "synthesis-agent-conformance/scripts/yaml_runtime.py",
+    "synthesis-agent-guardrails/guards/installed_artifact_guard.py",
+    "synthesis-autopilot/scripts/native_adapter_sdk.py",
+    "synthesis-context-lifecycle/scripts/context_currency.py",
+    "synthesis-context-lifecycle/scripts/context_edit.py",
+    "synthesis-context-lifecycle/scripts/record_succession.py",
+    "synthesis-context-lifecycle/scripts/record_transaction.py",
+    "synthesis-decision-packet/scripts/build_packet.py",
+    "synthesis-decision-packet/scripts/record_rulings.py",
+    "synthesis-onboarding/scripts/direct_copy.sh",
+    "synthesis-onboarding/scripts/modular.py",
+    "synthesis-onboarding/scripts/plugin_currency.py",
+    "synthesis-onboarding/scripts/release_runtime.py",
+    "synthesis-onboarding/scripts/system_contract.py",
+    "synthesis-onboarding/scripts/upgrade_campaigns.py",
+    "synthesis-project-management/scripts/board_grammar.py",
+    "synthesis-project-management/scripts/board_inbox.py",
+    "synthesis-project-management/scripts/claim_scope.py",
+    "synthesis-project-management/scripts/coordination.py",
+    "synthesis-project-management/scripts/coordination_archive.py",
+    "synthesis-project-management/scripts/coordination_lock.py",
+    "synthesis-project-management/scripts/coordination_process.py",
+    "synthesis-project-management/scripts/coordination_schema.py",
+    "synthesis-project-management/scripts/fleet_doctor.py",
+    "synthesis-project-management/scripts/fleet_handoff.py",
+    "synthesis-project-management/scripts/fleet_identity.py",
+    "synthesis-project-management/scripts/fleet_paths.py",
+    "synthesis-project-management/scripts/fleet_subscriptions.py",
+    "synthesis-project-management/scripts/native_git.py",
+    "synthesis-project-management/scripts/peer_addressing.py",
+    "synthesis-project-management/scripts/plan_reference.py",
+    "synthesis-project-management/scripts/pointer_lock.py",
+    "synthesis-project-management/scripts/project_recipient.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/publication_command.py",
+    "synthesis-project-management/scripts/run_admission.py",
+    "synthesis-project-management/scripts/team_contract.py",
+    "synthesis-repo-guard/publication_receipt.py",
+    "synthesis-skills-manager/scripts/cache_guardian.py",
+)
+for _entry in (
+    "synthesis-agent-conformance/scripts/hermes_adapter.py",
+    "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    "synthesis-agent-conformance/scripts/conformance.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+):
+    ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+        dict.fromkeys(
+            (
+                *ENTRYPOINT_DEPENDENCIES.get(_entry, ()),
+                *(_dep for _dep in _NATIVE_PILOT_DEPENDENCIES if _dep != _entry),
+            )
+        )
+    )
+
+# Hermes observation is a typed existing PM worker capability. Every entry
+# reaching the journal or callback verifies its complete local owner closure.
+_HERMES_OBSERVATION_DEPS = (
+    "synthesis-autopilot/scripts/hermes_transport.py",
+    "synthesis-autopilot/scripts/hermes_worker.py",
+    "synthesis-autopilot/scripts/native_hermes.py",
+    "synthesis-agent-conformance/scripts/vendor_hermes.py",
+)
+for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
+    if (_entry in {"synthesis-agent-conformance/scripts/hermes_adapter.py", "synthesis-agent-conformance/scripts/vendor_bundle.py"}
+            or "synthesis-autopilot/scripts/native_observations.py" in _deps
+            or "synthesis-autopilot/scripts/delegation_boundary.py" in _deps):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS)))
+
 # Host-specific PR support is optional in a modular release. A dependency
 # present at activation must still verify; absence never means scanned.
+ENTRYPOINT_DEPENDENCIES["synthesis-agent-conformance/scripts/conformance.py"] += (
+    "synthesis-agent-conformance/scripts/report_contract.py",
+    "synthesis-agent-conformance/references/conformance-report-v1.schema.json",
+)
+
+# The CLI reaches declared-machine mapping through the existing maintenance owner.
+ENTRYPOINT_DEPENDENCIES["synthesis-onboarding/scripts/synthesis_cli.py"] += (
+    "synthesis-onboarding/scripts/maintenance_cli.py",
+    "synthesis-onboarding/scripts/runtime_payload.py",
+    "synthesis-onboarding/references/platform-ownership-v1.json",
+)
+
+_VENDOR_NATIVE_DEPENDENCIES = (
+    "synthesis-agent-conformance/scripts/hermes_source.py",
+    "synthesis-agent-conformance/scripts/live_receipt.py",
+    "synthesis-agent-conformance/scripts/signed_receipt.py",
+    "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    "synthesis-agent-conformance/scripts/vendor_native.py",
+    "synthesis-autopilot/scripts/autopilot.py",
+    "synthesis-autopilot/scripts/capabilities.py",
+    "synthesis-autopilot/scripts/consumer_checks.py",
+    "synthesis-autopilot/scripts/controller.py",
+    "synthesis-autopilot/scripts/decision_uncertainty.py",
+    "synthesis-autopilot/scripts/delegation_boundary.py",
+    "synthesis-autopilot/scripts/domain_quality.py",
+    "synthesis-autopilot/scripts/evaluation.py",
+    "synthesis-autopilot/scripts/evaluation_artifacts.py",
+    "synthesis-autopilot/scripts/evidence_bridge.py",
+    "synthesis-autopilot/scripts/journal_storage.py",
+    "synthesis-autopilot/scripts/native_adapter_sdk.py",
+    "synthesis-autopilot/scripts/native_archive.py",
+    "synthesis-autopilot/scripts/native_archive_stream.py",
+    "synthesis-autopilot/scripts/native_claude.py",
+    "synthesis-autopilot/scripts/native_codex.py",
+    "synthesis-autopilot/scripts/native_codex_turn.py",
+    "synthesis-autopilot/scripts/native_callback.py",
+    "synthesis-autopilot/scripts/managed_permissions.py",
+    "synthesis-autopilot/scripts/managed_native.py",
+    "synthesis-autopilot/scripts/native_protection.py",
+    "synthesis-autopilot/scripts/native_copilot.py",
+    "synthesis-autopilot/scripts/native_cursor.py",
+    "synthesis-autopilot/scripts/native_muse.py",
+    "synthesis-autopilot/scripts/native_muse_contract.py",
+    "synthesis-autopilot/scripts/native_observations.py",
+    "synthesis-autopilot/scripts/native_opencode.py",
+    "synthesis-autopilot/scripts/native_resume.py",
+    "synthesis-autopilot/scripts/native_review.py",
+    "synthesis-autopilot/scripts/native_review_observer.py",
+    "synthesis-autopilot/scripts/observation_bridge.py",
+    "synthesis-autopilot/scripts/persistence_policy.py",
+    "synthesis-autopilot/scripts/prepared_native_launch.py",
+    "synthesis-autopilot/scripts/profile_evidence.py",
+    "synthesis-autopilot/scripts/recovery_capsule.py",
+    "synthesis-autopilot/scripts/required_citations.py",
+    "synthesis-autopilot/scripts/resource_policy.py",
+    "synthesis-autopilot/scripts/run_profile.py",
+    "synthesis-autopilot/scripts/run_state.py",
+    "synthesis-autopilot/scripts/supervision.py",
+    "synthesis-autopilot/scripts/workflow.py",
+    "synthesis-context-lifecycle/scripts/context_currency.py",
+    "synthesis-context-lifecycle/scripts/context_edit.py",
+    "synthesis-context-lifecycle/scripts/record_succession.py",
+    "synthesis-context-lifecycle/scripts/record_transaction.py",
+    "synthesis-decision-packet/scripts/build_packet.py",
+    "synthesis-decision-packet/scripts/record_rulings.py",
+    "synthesis-onboarding/scripts/release_runtime.py",
+    "synthesis-onboarding/scripts/system_contract.py",
+    "synthesis-project-management/scripts/board_grammar.py",
+    "synthesis-project-management/scripts/claim_scope.py",
+    "synthesis-project-management/scripts/coordination.py",
+    "synthesis-project-management/scripts/coordination_archive.py",
+    "synthesis-project-management/scripts/coordination_lock.py",
+    "synthesis-project-management/scripts/coordination_process.py",
+    "synthesis-project-management/scripts/coordination_schema.py",
+    "synthesis-project-management/scripts/execution_checkpoint.py",
+    "synthesis-project-management/scripts/fleet_doctor.py",
+    "synthesis-project-management/scripts/fleet_handoff.py",
+    "synthesis-project-management/scripts/fleet_identity.py",
+    "synthesis-project-management/scripts/fleet_paths.py",
+    "synthesis-project-management/scripts/fleet_subscriptions.py",
+    "synthesis-project-management/scripts/native_git.py",
+    "synthesis-project-management/scripts/peer_addressing.py",
+    "synthesis-project-management/scripts/plan_reference.py",
+    "synthesis-project-management/scripts/pointer_lock.py",
+    "synthesis-project-management/scripts/project_recipient.py",
+    "synthesis-project-management/scripts/project_state.py",
+    "synthesis-project-management/scripts/run_admission.py",
+    "synthesis-project-management/scripts/team_contract.py",
+    "synthesis-repo-guard/publication_receipt.py",
+    "synthesis-skills-manager/scripts/cache_guardian.py",
+)
+for _entry in ("synthesis-agent-conformance/scripts/vendor_bundle.py",):
+    ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+        dict.fromkeys(
+            (
+                *ENTRYPOINT_DEPENDENCIES.get(_entry, ()),
+                *(_dep for _dep in _VENDOR_NATIVE_DEPENDENCIES if _dep != _entry),
+            )
+        )
+    )
+
+# Host-specific PR support is optional in a modular release. A dependency
+# present at activation must still verify; absence never means scanned.
+# Native consumers may reach managed invocation via a vendor/team owner. Bind
+# the newly executable helpers at every such public receipt boundary, including
+# callers which contain that owner transitively rather than a direct import.
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if any(
+        _owner in _dependencies
+        for _owner in (
+            "synthesis-autopilot/scripts/autopilot.py",
+            "synthesis-autopilot/scripts/delegation_boundary.py",
+            "synthesis-agent-conformance/scripts/vendor_bundle.py",
+        )
+    ):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys(
+                (
+                    *_dependencies,
+                    "synthesis-autopilot/scripts/managed_permissions.py",
+                    "synthesis-autopilot/scripts/managed_native.py",
+                    "synthesis-autopilot/scripts/native_protection.py",
+                    "synthesis-autopilot/scripts/native_codex_turn.py",
+                )
+            )
+        )
+
+# Transcript identity has one stdlib-only source owner. Bind it for every
+# verified entrypoint that reaches either receipt or native identity consumers.
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if ({_entry} | set(_dependencies)) & {
+        "synthesis-agent-conformance/scripts/live_receipt.py",
+        "synthesis-project-management/scripts/native_identity.py",
+    }:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((
+            *_dependencies,
+            "synthesis-agent-conformance/scripts/native_transcript_identity.py",
+        )))
+
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
 )
@@ -767,23 +1253,8 @@ def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
         ) from exc
 
 
-def command(active, script, arguments):
-    if script not in PUBLIC_ENTRYPOINTS:
-        raise RuntimeContractError(
-            "public entrypoint is not declared by the execution contract"
-        )
+def verify_dependencies(active, script):
     root = Path(active["release_root"])
-    target = root / "skills" / script
-    if (
-        not target.is_file()
-        or target.is_symlink()
-        or target.resolve() != target
-        or not target.is_relative_to(root)
-    ):
-        raise RuntimeContractError(
-            "public entrypoint is unavailable or escapes the verified release"
-        )
-    verify_interpreter(active.get("interpreter"))
     verify_entrypoint(active, active.get("_verification_mode"), script)
     for dependency in ENTRYPOINT_DEPENDENCIES.get(script, ()):
         helper = root / "skills" / dependency
@@ -802,6 +1273,26 @@ def command(active, script, arguments):
                 "public entrypoint dependency is unavailable or unsafe"
             )
         verify_entrypoint(active, active.get("_verification_mode"), dependency)
+
+
+def command(active, script, arguments):
+    if script not in PUBLIC_ENTRYPOINTS:
+        raise RuntimeContractError(
+            "public entrypoint is not declared by the execution contract"
+        )
+    root = Path(active["release_root"])
+    target = root / "skills" / script
+    if (
+        not target.is_file()
+        or target.is_symlink()
+        or target.resolve() != target
+        or not target.is_relative_to(root)
+    ):
+        raise RuntimeContractError(
+            "public entrypoint is unavailable or escapes the verified release"
+        )
+    verify_interpreter(active.get("interpreter"))
+    verify_dependencies(active, script)
     return [sys.executable, "-B", str(target), *arguments]
 
 
@@ -1275,8 +1766,17 @@ def launcher_main(pointer, argv):
         cli = root / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
         if not cli.is_file() or cli.is_symlink() or cli.resolve() != cli:
             raise RuntimeContractError("verified release has no trusted synthesis CLI")
+        verify_dependencies(active, "synthesis-onboarding/scripts/synthesis_cli.py")
+        if argv[:1] == ["team"]:
+            verify_dependencies(
+                active, "synthesis-project-management/scripts/team_records.py"
+            )
         os.environ["SYNTHESIS_ACTIVE_DESCRIPTOR"] = str(pointer)
         os.execv(sys.executable, [sys.executable, "-B", str(cli), *argv])
     except (RuntimeContractError, OSError) as exc:
         print("Synthesis execution refused: %s" % exc, file=sys.stderr)
         return 2
+
+for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
+    if "synthesis-autopilot/scripts/delegation_boundary.py" in _deps or "synthesis-agent-conformance/scripts/vendor_native.py" in _deps:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS)))

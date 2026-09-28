@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.13.0"
+  version: "1.14.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,6 +14,10 @@ metadata:
 
 Treat cross-agent portability as a continuously tested system, not a file-count
 comparison.
+
+For provider releases, additional-client qualification and incident packages, use the mandatory [source-led intake and replay workflow](references/provider-change-intake.md).
+For portable signed event evidence, use [signed observations](references/signed-observations.md). Signature validity, local live acceptance and action authority are separate results.
+For the bounded Hermes CLI pilot, follow [its native contract and acceptance boundaries](references/hermes-cli-pilot.md). For vendor review or directory preparation, use the [source-bound package builder](references/vendor-review-packages.md) and its capture protocol; no callback or source test can substitute for native evidence.
 
 ## Operating model
 
@@ -24,13 +28,15 @@ Verify five planes:
 2. **Installed:** deployed plugins and skills, generated files, catalogs,
    instruction budgets, runtime configuration, and Codex's authoritative hook
    trust state. Never infer or write trust state.
-3. **Live:** client-specific receipts created by genuine lifecycle events. A
+3. **Native (live):** client-specific receipts created by genuine lifecycle events. A
    static script probe is not live evidence.
 4. **Continuity:** coordination leases, active pointers, attributed local
    working state, explicit remote publication, and bidirectional handoff
    exercises.
 5. **Capability:** authenticated read-only outcomes and explicitly supported,
    unsupported, or unverifiable product surfaces.
+
+Before producing or consuming report JSON, follow the mandatory [shared report contract](references/report-contract.md). Its five-plane schema, identity and freshness validation apply to Console as well as CLI output. UNKNOWN never becomes PASS.
 
 Name the plane whenever two facts appear to conflict. Runtime state determines
 current behavior; canonical state determines what the next deployment should

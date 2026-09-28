@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import time
+import errno
 import os
 import re
 import sys
@@ -34,16 +37,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 PROJECT_MANAGEMENT_SCRIPTS_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "synthesis-project-management"
-    / "scripts"
+    Path(__file__).resolve().parents[2] / "synthesis-project-management" / "scripts"
 )
 if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
 ONBOARDING_SCRIPTS_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "synthesis-onboarding"
-    / "scripts"
+    Path(__file__).resolve().parents[2] / "synthesis-onboarding" / "scripts"
 )
 if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(ONBOARDING_SCRIPTS_DIR))
@@ -51,8 +50,14 @@ if str(ONBOARDING_SCRIPTS_DIR) not in sys.path:
 from project_context import extract, next_actions, record_freshness  # noqa: E402
 from plan_reference import locate_plan  # noqa: E402
 from active_project import load_and_validate  # noqa: E402
-from project_state import (STATE_FILE, ProjectStateError, read_operational_state,
-                           resolve_project, semantic_issues, observer_native_identity)  # noqa: E402
+from project_state import (  # noqa: E402 - sibling owner path
+    STATE_FILE,
+    ProjectStateError,
+    read_operational_state,
+    resolve_project,
+    semantic_issues,
+    observer_native_identity,
+)  # noqa: E402
 from coordination_schema import display_id, parse_table_rows, row_identity  # noqa: E402
 from live_receipt import (  # noqa: E402
     client_root_transcript_path,
@@ -79,9 +84,11 @@ DEFAULT_LIVE_RECEIPT = (
     / "live"
     / "public-sessionstart.json"
 )
-DEFAULT_PENDING_HANDOFFS = Path(
-    os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
-) / "repo-guard" / "pending"
+DEFAULT_PENDING_HANDOFFS = (
+    Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+    / "repo-guard"
+    / "pending"
+)
 
 
 def atomic_json_write(destination: Path, payload: dict[str, object]) -> None:
@@ -107,13 +114,25 @@ def atomic_json_write(destination: Path, payload: dict[str, object]) -> None:
 
 
 @contextmanager
-def receipt_registry_lock(destination: Path):
-    """Serialize event creation and monotonic latest-pointer updates."""
+def receipt_registry_lock(destination: Path, *, timeout: float = 5.0):
+    """Serialize receipts under a finite wait; never steal another owner lock."""
+    if (
+        type(timeout) not in (int, float)
+        or not math.isfinite(timeout)
+        or not 0 < timeout <= 30
+    ):
+        raise ValueError("receipt lock requires a finite 0–30 second wait")
+    if fcntl is not None:
+        from run_admission import bounded_lock
+
+        lock_path = destination.parent / f".{destination.stem}-events.lock"
+        with bounded_lock(lock_path, timeout=timeout):
+            yield
+        return
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.parent.is_symlink():
-        raise ValueError(
-            f"receipt registry parent is a symlink: {destination.parent}"
-        )
+        raise ValueError(f"receipt registry parent is a symlink: {destination.parent}")
     lock_path = destination.parent / f".{destination.stem}-events.lock"
     if lock_path.is_symlink():
         raise ValueError(f"receipt registry lock is a symlink: {lock_path}")
@@ -125,7 +144,19 @@ def receipt_registry_lock(destination: Path):
                 handle.write(b"\0")
                 handle.flush()
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                        raise
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(
+                            "timed out acquiring native receipt lock"
+                        ) from exc
+                    time.sleep(min(0.01, max(0, deadline - time.monotonic())))
         else:  # pragma: no cover - unsupported Python platform
             raise RuntimeError("receipt registry locking is unavailable")
         try:
@@ -138,9 +169,7 @@ def receipt_registry_lock(destination: Path):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
 
 
-def _write_latest_if_newer(
-    destination: Path, receipt: dict[str, object]
-) -> None:
+def _write_latest_if_newer(destination: Path, receipt: dict[str, object]) -> None:
     if destination.exists():
         if destination.is_symlink() or not destination.is_file():
             raise ValueError(f"latest receipt path is unsafe: {destination}")
@@ -150,9 +179,9 @@ def _write_latest_if_newer(
             raise ValueError(f"latest receipt is unreadable: {destination}") from exc
         if not isinstance(current, dict):
             raise ValueError(f"latest receipt is not an object: {destination}")
-        if receipt_recorded_order(
-            current, destination
-        ) >= receipt_recorded_order(receipt, destination):
+        if receipt_recorded_order(current, destination) >= receipt_recorded_order(
+            receipt, destination
+        ):
             return
     atomic_json_write(destination, receipt)
 
@@ -214,11 +243,15 @@ def append_currency_notice(message: str, payload: dict[str, object]) -> str:
 
 def _release_runtime():
     """Load the onboarding runtime from this release tree (or checkout)."""
-    scripts = (Path(__file__).resolve().parent.parent.parent
-               / "synthesis-onboarding" / "scripts")
+    scripts = (
+        Path(__file__).resolve().parent.parent.parent
+        / "synthesis-onboarding"
+        / "scripts"
+    )
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     import release_runtime
+
     return release_runtime
 
 
@@ -243,12 +276,15 @@ def append_runtime_digest_notice(message: str, payload: dict[str, object]) -> st
         expected = projection.get("content_digest", checked.get("content_digest"))
         mode = checked.get("_verification_mode", "unknown")
         if report["tree_digest"] == expected:
-            line = ("Synthesis runtime digest: verified (%d files, %s ms, "
-                    "per-call mode %s)." % (report["files"],
-                                            report["elapsed_ms"], mode))
+            line = (
+                "Synthesis runtime digest: verified (%d files, %s ms, "
+                "per-call mode %s)." % (report["files"], report["elapsed_ms"], mode)
+            )
         else:
-            line = ("Synthesis runtime digest: DRIFTED — the full tree digest "
-                    "differs from the recorded digest; run synthesis doctor.")
+            line = (
+                "Synthesis runtime digest: DRIFTED — the full tree digest "
+                "differs from the recorded digest; run synthesis doctor."
+            )
     except Exception as exc:
         line = f"Synthesis runtime digest could not be verified: {exc}."
     return line + "\n" + message
@@ -266,7 +302,9 @@ def client_provenance(
     if payload.get("session_id") not in (None, "", session_id):
         return None
     try:
-        client, _native = observer_native_identity({**payload, "session_id": session_id})
+        client, _native = observer_native_identity(
+            {**payload, "session_id": session_id}
+        )
     except ProjectStateError:
         return None
     return client, f"{client}-transcript"
@@ -305,12 +343,36 @@ def deferred_claude_provenance(
     return "claude", "claude-transcript"
 
 
+def callback_candidate_provenance(payload, session_id):
+    """An explicit worker mode hint permits inert evidence storage, not trust.
+
+    Ephemeral Codex protocol sessions intentionally have no history file. The
+    native worker's later admitted captured-transport join must authenticate this
+    candidate. It cannot update live-load state, latest pointers, or signing.
+    """
+    if (
+        os.environ.get("SYNTHESIS_CALLBACK_OBSERVATION") != "codex-ephemeral-callback"
+        or payload.get("hook_event_name") != "SessionStart"
+        or payload.get("session_id") != session_id
+        or payload.get("transcript_path") not in (None, "")
+        or not isinstance(payload.get("cwd"), str)
+        or not Path(payload["cwd"]).is_absolute()
+    ):
+        return None
+    try:
+        uuid.UUID(session_id)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return "codex", "codex-callback-candidate"
+
+
 def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     """Record only genuine SessionStart-shaped client payloads.
 
-    Direct script probes use ``{}`` and cannot manufacture this receipt.  The
-    receipt is evidence that a client actually delivered the hook event, not
-    merely that the hook script can print a valid envelope.
+    Direct probes cannot manufacture transcript-backed live evidence. An
+    explicit ephemeral callback hint can preserve a structurally unverified
+    candidate only; the separate admitted native transport consumer must bind
+    it before it can support a scoped callback observation.
     """
     event = payload.get("hook_event_name")
     session_id = payload.get("session_id")
@@ -325,13 +387,14 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
     if provenance is None:
         provenance = deferred_claude_provenance(payload, session_id)
     if provenance is None:
+        provenance = callback_candidate_provenance(payload, session_id)
+    if provenance is None:
         return False
+    candidate = provenance == ("codex", "codex-callback-candidate")
     version, plugin_root = plugin_identity()
     client, provenance_env = provenance
     transcript = Path(str(payload.get("transcript_path") or "")).expanduser()
-    if client == "muse" and (
-        not transcript.is_absolute() or not transcript.is_file()
-    ):
+    if client == "muse" and (not transcript.is_absolute() or not transcript.is_file()):
         resolved = resolve_muse_transcript(session_id)
         if resolved is None:
             return False
@@ -340,12 +403,18 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         transcript, "muse", session_id, muse_sessions_root()
     ):
         return False
-    binding_state = transcript_binding_state(transcript, client, session_id)
-    if binding_state != "bound" and not (
-        client == "claude" and binding_state == "pending"
+    binding_state = (
+        "pending"
+        if candidate
+        else transcript_binding_state(transcript, client, session_id)
+    )
+    if (
+        not candidate
+        and binding_state != "bound"
+        and not (client == "claude" and binding_state == "pending")
     ):
         return False
-    if deferred:
+    if deferred and not candidate:
         # Claude can create its transcript while SessionStart is running. A
         # pending exception cannot promote that new history without the full
         # identity contract, or retain a destination that has become unsafe.
@@ -367,9 +436,7 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "cwd": payload.get("cwd"),
         "source": payload.get("source"),
         "transcript_path": (
-            str(transcript)
-            if client == "muse"
-            else payload.get("transcript_path")
+            str(transcript) if client == "muse" else payload.get("transcript_path")
         ),
         "transcript_bound_at_record": transcript_bound_at_record,
         "provenance_env": provenance_env,
@@ -378,6 +445,25 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         "execution_root": str(execution_root()),
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
+    if candidate:
+        receipt["callback_candidate"] = True
+    try:
+        import upgrade_campaigns
+
+        campaign_selection = upgrade_campaigns.selection(SystemState(), receipt)
+    except Exception as exc:
+        # An optional report-only catalog is not the native delivery owner.
+        # Preserve observed delivery while refusing campaign selection; no
+        # acknowledgement, execution or completion is inferred from this error.
+        receipt["campaign_notice_error"] = {
+            "status": "REFUSED",
+            "error_type": type(exc).__name__,
+            "detail": str(exc)[:400],
+            "execution_authorized": False,
+        }
+    else:
+        if campaign_selection is not None:
+            receipt["campaign_notices"] = campaign_selection
     generic_latest, client_latest = latest_receipt_paths(destination, client)
     event_path = receipt_event_path(
         client_latest,
@@ -390,18 +476,174 @@ def record_live_receipt(payload: dict[str, object], destination: Path) -> bool:
         if event_path.exists():
             raise FileExistsError(f"receipt event already exists: {event_path}")
         atomic_json_write(event_path, receipt)
-        _write_latest_if_newer(client_latest, receipt)
-        _write_latest_if_newer(generic_latest, receipt)
+        if not candidate:
+            _write_latest_if_newer(client_latest, receipt)
+            _write_latest_if_newer(generic_latest, receipt)
     if version and transcript_bound_at_record:
         SystemState().record_live_load(receipt=receipt)
     return True
 
 
+def record_hermes_observation(payload, profile_home, active, state_home, *, context=None):
+    """Retain one source observation through this receipt owner; no live grant.
+
+    The unique event uses exclusive descriptor-relative creation. Interrupted
+    partial records remain evidence and cannot become another writer's file.
+    """
+    from hermes_source import chain
+    from live_receipt import hermes_source_binding
+    from signed_receipt import held_directory, canonical
+    import hashlib
+    import stat
+
+    event = payload.get("hook_event_name")
+    if event not in {"on_session_start", "pre_llm_call"}:
+        raise ValueError("event is not an observational lifecycle callback")
+    binding = hermes_source_binding(
+        profile_home,
+        payload.get("session_id"),
+        profile=payload.get("profile"),
+        cwd=payload.get("cwd", ""),
+    )
+    if binding["status"] != "BOUND":
+        raise ValueError("native source is not bound")
+    if (
+        not isinstance(active, dict)
+        or not isinstance(active.get("content_digest"), str)
+        or not re.fullmatch(r"[a-f0-9]{64}", active["content_digest"])
+    ):
+        raise ValueError("verified release identity is missing")
+    state_home = Path(state_home)
+    chain(state_home)
+    event_id = str(uuid.uuid4())
+    receipt = {
+        "schema": 1,
+        "kind": "callback-source-observation",
+        "client": "hermes",
+        "event_id": event_id,
+        "hook_event_name": event,
+        "source_binding": binding,
+        "source_digest": active["content_digest"],
+        "plugin_version": active.get("version"),
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "native_live": "UNKNOWN",
+        "authority": False,
+    }
+    if context is not None:
+        if event != "pre_llm_call" or not isinstance(context, str) or len(context.encode()) > 5500:
+            raise ValueError("bounded Hermes consumer context required")
+        from live_receipt import callback_generation
+        receipt.update(context_sha256=hashlib.sha256(context.encode()).hexdigest(),
+                       turn_id=payload.get("extra", {}).get("turn_id"),
+                       plugin_root=active["release_root"], execution_root=active["release_root"],
+                       callback_generation=callback_generation(Path(active["release_root"]), Path(active["release_root"])),
+                       candidate_only=True)
+    raw = canonical(receipt) + b"\n"
+    descriptors, edges = [], []
+    with held_directory(state_home) as (root, root_check):
+        original_root = os.fstat(root)
+        if original_root.st_uid != os.getuid() or original_root.st_mode & 0o022:
+            raise ValueError("conformance state root ownership is unsafe")
+
+        def directory_identity(meta):
+            return meta.st_dev, meta.st_ino, meta.st_mode, meta.st_uid
+
+        def recheck():
+            root_check()
+            for parent, name, child, original in edges:
+                if (
+                    directory_identity(os.fstat(child)) != original
+                    or directory_identity(
+                        os.stat(name, dir_fd=parent, follow_symlinks=False)
+                    )
+                    != original
+                ):
+                    raise ValueError("observation directory identity changed")
+
+        parent, directory = root, state_home
+        try:
+            for component in (
+                "agent-conformance",
+                "observations",
+                "hermes",
+                hashlib.sha256(binding["session_id"].encode()).hexdigest(),
+            ):
+                recheck()
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=parent)
+                except FileExistsError:
+                    pass
+                child = os.open(
+                    component,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=parent,
+                )
+                descriptors.append(child)
+                meta = os.fstat(child)
+                if (
+                    not stat.S_ISDIR(meta.st_mode)
+                    or meta.st_uid != os.getuid()
+                    or meta.st_mode & 0o022
+                ):
+                    raise ValueError("observation directory is unsafe")
+                edges.append((parent, component, child, directory_identity(meta)))
+                parent, directory = child, directory / component
+            recheck()
+            filename = event_id + ".json"
+            fd = os.open(
+                filename,
+                os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=parent,
+            )
+            try:
+                original = os.fstat(fd)
+
+                def file_check():
+                    recheck()
+                    named = os.stat(filename, dir_fd=parent, follow_symlinks=False)
+                    current = os.fstat(fd)
+                    for observed in (named, current):
+                        if (
+                            not stat.S_ISREG(observed.st_mode)
+                            or observed.st_nlink != 1
+                            or observed.st_uid != os.getuid()
+                            or stat.S_IMODE(observed.st_mode) != 0o600
+                            or (observed.st_dev, observed.st_ino)
+                            != (original.st_dev, original.st_ino)
+                        ):
+                            raise ValueError("observation record identity changed")
+
+                position = 0
+                while position < len(raw):
+                    file_check()
+                    count = os.write(fd, raw[position:])
+                    if count <= 0:
+                        raise ValueError("observation write incomplete")
+                    position += count
+                os.fsync(fd)
+                file_check()
+                os.lseek(fd, 0, os.SEEK_SET)
+                if os.read(fd, len(raw) + 1) != raw:
+                    raise ValueError("observation readback differs")
+                file_check()
+                os.fsync(parent)
+                return directory / filename
+            finally:
+                os.close(fd)
+        except OSError as exc:
+            raise ValueError("observation custody refused: " + str(exc)) from exc
+        finally:
+            for descriptor in reversed(descriptors):
+                os.close(descriptor)
+
+
 def refused_line(reason: str) -> str:
     """The S14 REFUSED additionalContext line for a no-pointer failure."""
-    return ("synthesis project context: REFUSED (%s); no project context was "
-            "injected; run the resume skill or project_packet.py compile <id>"
-            % reason)
+    return (
+        "synthesis project context: REFUSED (%s); no project context was "
+        "injected; run the resume skill or project_packet.py compile <id>" % reason
+    )
 
 
 def print_envelope(message: str, payload: dict[str, object], format: str) -> None:
@@ -435,8 +677,9 @@ def print_envelope(message: str, payload: dict[str, object], format: str) -> Non
         print(message)
 
 
-def _newest_delivery_event(client_latest: Path, client: str,
-                           session_id: str) -> dict[str, object] | None:
+def _newest_delivery_event(
+    client_latest: Path, client: str, session_id: str
+) -> dict[str, object] | None:
     """Return the newest delivery event for one session, or None.
 
     Delivery events are the registry entries without a context_outcome;
@@ -444,8 +687,7 @@ def _newest_delivery_event(client_latest: Path, client: str,
     outcome writer anchors to this event so the latest pointers keep the
     delivery contract the hook-live verifier requires.
     """
-    directory = validate_receipt_event_directory(
-        client_latest, client, session_id)
+    directory = validate_receipt_event_directory(client_latest, client, session_id)
     if not directory.is_dir():
         return None
     best: dict[str, object] | None = None
@@ -474,8 +716,14 @@ def _newest_delivery_event(client_latest: Path, client: str,
     return best
 
 
-def record_context_outcome(payload: dict[str, object], destination: Path,
-                           outcome: str, detail: str) -> bool:
+def record_context_outcome(
+    payload: dict[str, object],
+    destination: Path,
+    outcome: str,
+    detail: str,
+    *,
+    return_record: bool = False,
+) -> bool | dict:
     """Append the second receipt record: what the hook did (S14).
 
     The delivery receipt proves the client delivered the event; this
@@ -503,13 +751,20 @@ def record_context_outcome(payload: dict[str, object], destination: Path,
     if provenance is None:
         provenance = deferred_claude_provenance(payload, session_id)
     if provenance is None:
+        provenance = callback_candidate_provenance(payload, session_id)
+    if provenance is None:
         return False
+    candidate = provenance == ("codex", "codex-callback-candidate")
     client, _provenance_env = provenance
     generic_latest, client_latest = latest_receipt_paths(destination, client)
     delivery = _newest_delivery_event(client_latest, client, session_id)
     if delivery is None:
-        raise ValueError(
-            f"outcome without a delivery receipt: {client}/{session_id}")
+        raise ValueError(f"outcome without a delivery receipt: {client}/{session_id}")
+    if (
+        delivery.get("provenance_env") != provenance[1]
+        or bool(delivery.get("callback_candidate")) != candidate
+    ):
+        raise ValueError("callback outcome cannot change delivery evidence mode")
     event_id = str(uuid.uuid4())
     record = {
         "receipt_schema": 2,
@@ -529,16 +784,26 @@ def record_context_outcome(payload: dict[str, object], destination: Path,
         "context_outcome_detail": detail,
         "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
+    if candidate:
+        record["callback_candidate"] = True
+    if return_record and outcome == "INJECTED":
+        from live_receipt import callback_generation
+
+        record["callback_generation"] = callback_generation(
+            record["plugin_root"], record["execution_root"]
+        )
     event_path = receipt_event_path(
-        client_latest, client=client, session_id=session_id, event_id=event_id)
+        client_latest, client=client, session_id=session_id, event_id=event_id
+    )
     with receipt_registry_lock(generic_latest):
         validate_receipt_event_directory(client_latest, client, session_id)
         if event_path.exists():
             raise FileExistsError(f"receipt event already exists: {event_path}")
         atomic_json_write(event_path, record)
-        _write_latest_if_newer(client_latest, record)
-        _write_latest_if_newer(generic_latest, record)
-    return True
+        if not candidate:
+            _write_latest_if_newer(client_latest, record)
+            _write_latest_if_newer(generic_latest, record)
+    return record if return_record else True
 
 
 def raising_function(exc: BaseException) -> str:
@@ -654,12 +919,16 @@ def workspace_registry_notices(cwd: Path | None) -> list[str]:
     return notices
 
 
-def reconciled_project(project: Path, *, diagnostic: bool = False) -> tuple[Path, list[str]]:
+def reconciled_project(
+    project: Path, *, diagnostic: bool = False
+) -> tuple[Path, list[str]]:
     """Resolve a project across worktrees and refs before reading its prose."""
     index = project.parent / "index.yaml"
     if not index.is_file():
         return project, []
-    synthesis_home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+    synthesis_home = Path(
+        os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
+    )
     board = synthesis_home / "coordination" / "active-sessions.md"
     pointer = synthesis_home / "active-project.json"
     report = resolve_project(
@@ -742,6 +1011,7 @@ def build(
     lines = [f"Verified local time: {now}."]
     if not diagnostic:
         from coordination import require_fresh_board
+
         require_fresh_board(coordination_board)
     sessions = active_session_ids(coordination_board)
     if sessions:
@@ -815,7 +1085,13 @@ def append_inbox(
     try:
         from board_inbox import inbox_text
 
-        extra = inbox_text(payload, board=board, mark=not diagnostic, strict=diagnostic, refresh_coordination=not diagnostic)
+        extra = inbox_text(
+            payload,
+            board=board,
+            mark=not diagnostic,
+            strict=diagnostic,
+            refresh_coordination=not diagnostic,
+        )
     except Exception as exc:  # the inbox never blocks a session start
         if diagnostic:
             raise
@@ -823,11 +1099,28 @@ def append_inbox(
     return message + ("\n" + extra if extra else "")
 
 
+def _optional_campaign_notice(payload: dict, latest: Path) -> str:
+    # Only the report-only extension is contained here. Native provenance and
+    # core receipt writes keep their ordinary fail-closed exceptions outside it.
+    try:
+        import upgrade_campaigns
+
+        return upgrade_campaigns.notice(SystemState(), payload, latest)
+    except Exception:
+        return (
+            "Campaign review is unavailable; campaign selection and reporting "
+            "remain refused. Inspect the campaign catalog and native receipt. "
+            "This notice does not authorize campaign actions or establish "
+            "acknowledgement/completion."
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--active-project-file", type=Path, default=DEFAULT_POINTER)
     parser.add_argument(
-        "--diagnostic", action="store_true",
+        "--diagnostic",
+        action="store_true",
         help="Compare local context without deliveries, receipts, currency writes or state refreshes.",
     )
     parser.add_argument(
@@ -874,8 +1167,11 @@ def main() -> int:
             # Receipt-write failure: the REFUSED line goes out, but the
             # exit stays 2 — the delivery proof itself is missing (S14).
             print(f"synthesis live receipt failed closed: {exc}", file=sys.stderr)
-            print_envelope(refused_line("live receipt failed: %s" % str(exc)[:120]),
-                           payload, args.format)
+            print_envelope(
+                refused_line("live receipt failed: %s" % str(exc)[:120]),
+                payload,
+                args.format,
+            )
             return 2
     pointer = args.active_project_file.expanduser()
     board = args.coordination_board.expanduser()
@@ -890,11 +1186,14 @@ def main() -> int:
             reason = "%s: %s" % (raising_function(exc), exc)
             if delivered:
                 try:
-                    record_context_outcome(payload, args.live_receipt.expanduser(),
-                                           "REFUSED", reason[:500])
+                    record_context_outcome(
+                        payload, args.live_receipt.expanduser(), "REFUSED", reason[:500]
+                    )
                 except Exception as outcome_exc:
-                    print(f"synthesis outcome record failed: {outcome_exc}",
-                          file=sys.stderr)
+                    print(
+                        f"synthesis outcome record failed: {outcome_exc}",
+                        file=sys.stderr,
+                    )
             print_envelope(refused_line(reason[:300]), payload, args.format)
             return 0
         # A pointer is a cache written by whichever session last activated a
@@ -917,28 +1216,43 @@ def main() -> int:
     if not args.diagnostic:
         message = append_currency_notice(message, payload)
         message = append_runtime_digest_notice(message, payload)
+        campaign_notice = _optional_campaign_notice(
+            payload, args.live_receipt.expanduser()
+        )
+        if campaign_notice:
+            message = campaign_notice + "\n" + message
     try:
         message = append_inbox(message, payload, board, diagnostic=args.diagnostic)
     except Exception as exc:
         if delivered:
             try:
                 record_context_outcome(
-                    payload, args.live_receipt.expanduser(), "REFUSED",
-                    "%s: %s" % (raising_function(exc), str(exc)[:400]))
+                    payload,
+                    args.live_receipt.expanduser(),
+                    "REFUSED",
+                    "%s: %s" % (raising_function(exc), str(exc)[:400]),
+                )
             except Exception as outcome_exc:
-                print(f"synthesis outcome record failed: {outcome_exc}",
-                      file=sys.stderr)
+                print(
+                    f"synthesis outcome record failed: {outcome_exc}", file=sys.stderr
+                )
         print(f"synthesis diagnostic inbox failed closed: {exc}", file=sys.stderr)
         return 2
 
     if delivered:
         try:
-            record_context_outcome(
-                payload, args.live_receipt.expanduser(), "INJECTED",
-                "%d bytes" % len(message.encode("utf-8")))
+            observed = record_context_outcome(
+                payload,
+                args.live_receipt.expanduser(),
+                "INJECTED",
+                "%d bytes" % len(message.encode("utf-8")),
+                return_record=True,
+            )
+            from live_receipt import callback_witness
+
+            message += "\n" + callback_witness(observed, args.live_receipt.expanduser())
         except Exception as outcome_exc:
-            print(f"synthesis outcome record failed: {outcome_exc}",
-                  file=sys.stderr)
+            print(f"synthesis outcome record failed: {outcome_exc}", file=sys.stderr)
     print_envelope(message, payload, args.format)
     return 0
 

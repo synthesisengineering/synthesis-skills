@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.4.8"
+  version: "3.5.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -57,6 +57,10 @@ user remains usable within its stated scope.
    inputs, so the user need not learn the configuration format. The underlying
    [run owners](references/run-contracts.md) remain available for specialized
    operations without creating a second source of authority.
+   After a terminal interval, use the bounded
+   [successor transaction](references/successor-transactions.md) with new scoped
+   authority. Old deadlines, costs, failures and obligations remain immutable;
+   restored evidence does not become fresh native acceptance.
 5. **Bound execution.** Configure the adaptive workflow and, when there are
    separable tasks, its dependency graph. Set a resource envelope, deadline and
    reserved integration/verification capacity. Distinguish enforceable limits
@@ -70,6 +74,16 @@ actual capabilities first. If identity or persistence cannot be established,
 complete independent read-only work in the current session and report that
 specific capability gap; do not claim a durable or unattended run exists.
 Optional components must not become prerequisites for that read-only work.
+
+## Optional evidence and measured overhead
+
+When the user authorizes retaining native history, use the existing run-owned
+[portable evidence archive](references/portable-native-evidence.md). Review its
+privacy route before copying, retain exact available bytes and explicit gaps,
+and never load an archive or native memory as action authority. Collection is
+opt-in. For a performance investigation, use the bounded
+[owner measurements](references/efficiency-measurement.md), preserving guard
+and outcome equivalence and unknown provider costs.
 
 ## Execute and adapt
 
@@ -154,7 +168,12 @@ Give workers their actual deadline and resource reservation before they start.
 When working as a delegated child, execute the child's brief. The parent owns
 the project/run lifecycle, aggregate accounting, integration and completion
 report. Do not repeat root startup or create extra journals, reports and task
-machinery outside the declared deliverables. Use scratch for working material.
+machinery outside the declared deliverables. Keep long-lived working source,
+environments and sole recovery copies in the admitted durable workspace; system
+temp and session scratchpads are only for explicitly bounded fixtures whose
+evidence is captured before closure. Use the existing [placement and loss
+protocol](../synthesis-project-management/references/parallel-agent-protocol.md#durable-work-placement-and-unexplained-loss); a missing worktree never proves
+retirement or authorizes pruning.
 For a bounded transformation, produce the artifact, perform the required
 acceptance checks and return its paths, evidence and limitations. Extend checking
 when a failure, changed input or concrete unresolved risk justifies it. A

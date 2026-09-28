@@ -32,7 +32,8 @@ SCRIPT_PATH = Path(__file__).resolve()
 SCRIPTS_DIR = SCRIPT_PATH.parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
-from yaml_runtime import DependencyError, load_yaml
+from report_contract import build as build_report, identity as report_identity  # noqa: E402 - verified sibling owner
+from yaml_runtime import DependencyError, load_yaml  # noqa: E402 - source-bound import follows path/bootstrap initialization
 
 try:
     yaml = load_yaml()
@@ -46,8 +47,8 @@ PROJECT_MANAGEMENT_SCRIPTS_DIR = (
 if str(PROJECT_MANAGEMENT_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_MANAGEMENT_SCRIPTS_DIR))
 
-from client_binaries import missing_binary_detail, resolve_client_binary
-from active_project import (
+from client_binaries import missing_binary_detail, resolve_client_binary  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from active_project import (  # noqa: E402 - source-bound import follows path/bootstrap initialization
     lease_url,
     load_and_validate,
     porcelain_paths,
@@ -56,21 +57,21 @@ from active_project import (
     sessions as coordination_sessions,
     validate as validate_active_project,
 )
-from codex_hook_audit import audit as codex_hook_audit
-from codex_skill_catalog import audit as codex_skill_catalog_audit
-from capability_evidence import sanitize_detail
-from live_receipt import (
+from codex_hook_audit import audit as codex_hook_audit  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from codex_skill_catalog import audit as codex_skill_catalog_audit  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from capability_evidence import sanitize_detail  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from live_receipt import (  # noqa: E402 - source-bound import follows path/bootstrap initialization
     claude_root_transcript_path,
     receipt_registry_root,
     session_receipt_path,
     transcript_binds_session,
 )
-from project_context import next_actions, record_freshness
-from plan_reference import locate_plan
-from project_state import (STATE_FILE, ProjectStateError, read_operational_state,
+from project_context import next_actions, record_freshness  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from plan_reference import locate_plan  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from project_state import (STATE_FILE, ProjectStateError, read_operational_state,  # noqa: E402 - source-bound import follows path/bootstrap initialization
                            semantic_issues, resolve_project as resolve_durable_project)
-from pointer_lock import locked_pointer
-from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION
+from pointer_lock import locked_pointer  # noqa: E402 - source-bound import follows path/bootstrap initialization
+from coordination_schema import SCHEMA_VERSION as COORDINATION_SCHEMA_VERSION  # noqa: E402 - source-bound import follows path/bootstrap initialization
 
 DEFAULT_SOURCE_ROOT = SCRIPT_PATH.parents[3]
 DEFAULT_ACTIVE_PROJECT = Path.home() / ".synthesis" / "active-project.json"
@@ -173,6 +174,7 @@ PLANE_BY_PREFIX = {
     "hook-live": "live",
     "capability": "capability",
     "surface": "capability",
+    "signed-observation": "capability",
 }
 
 
@@ -368,9 +370,9 @@ def source_checks(source_root: Path) -> list[Check]:
     ):
         try:
             json.loads(config.read_text(encoding="utf-8"))
-            add(checks, f"source.json.{config.name}", True, str(config))
+            add(checks, f"source.json.{config.relative_to(source_root).as_posix()}", True, str(config))
         except Exception as exc:
-            add(checks, f"source.json.{config.name}", False, f"{config}: {exc}")
+            add(checks, f"source.json.{config.relative_to(source_root).as_posix()}", False, f"{config}: {exc}")
 
     add(
         checks,
@@ -1259,6 +1261,36 @@ def _receipt_check(
         add(checks, name, False, f"{path}: {exc}")
 
 
+
+def signed_receipt_checks(envelope_path, trust_path, binding_path, *, registry=None):
+    """Portable signed observation plane, separate from local hook-live health."""
+    from signed_receipt import (read_regular, strict_json, verification_snapshot,
+                                revalidate_verified_inputs)
+    from live_receipt import signed_observation, admit_signed_observation
+    checks = []
+    try:
+        paths = (envelope_path, trust_path, binding_path)
+        raw = [read_regular(path, owner=index > 0) for index, path in enumerate(paths)]
+        envelope, trust, expected = map(strict_json, raw)
+        snapshot = verification_snapshot(envelope, trust, expected)
+        # Recheck every selected byte source before a possible registry effect.
+        def source_check():
+            if any(read_regular(path, owner=index > 0) != content for index, (path, content) in enumerate(zip(paths, raw))):
+                raise ValueError("signed receipt input changed before consumer admission")
+        source_check()
+        result = (signed_observation(envelope, trust, expected) if registry is None else
+                  admit_signed_observation(registry, envelope, trust, expected, source_check=source_check))
+        source_check()
+        revalidate_verified_inputs(snapshot, envelope, trust, expected)
+        add(checks, "signed-observation.signature", True, "Explicit local trust anchor verified; native acceptance and action authority are not inferred")
+        add(checks, "signed-observation.status", {"PASS": True, "FAIL": False, "UNKNOWN": None}[result["status"]],
+            "Signer-attested status=" + result["status"] + "; event=" + expected["event_id"] +
+            "; mode=" + ("read-only verification" if registry is None else "one-shot registry admission"))
+    except (OSError, ValueError, TypeError, KeyError, ImportError, RuntimeError) as exc:
+        add(checks, "signed-observation.signature", False, str(exc))
+    return checks
+
+
 def _enabled_plugin_root(
     client: str, version: str, home: Path | None = None
 ) -> Path | None:
@@ -1687,9 +1719,11 @@ def coordination_checks(
     # v3 and v4 remain valid declared schemas during the staged v5 migration:
     # the board upgrades only via an explicit `coordination.py migrate`,
     # after every machine's client is current.
-    schema_ok = any(
-        f"Schema: v{version}" in text
-        for version in (COORDINATION_SCHEMA_VERSION, 4, 3)
+    declarations = re.findall(r"(?m)^Schema:[ \t]*v([0-9]+)[ \t]*$", text)
+    schema_ok = (
+        len(declarations) == 1
+        and len(re.findall(r"(?m)^Schema:", text)) == 1
+        and int(declarations[0]) in {COORDINATION_SCHEMA_VERSION, 5, 4, 3}
     )
     table_ok = schema_ok and all(
         column in text
@@ -2486,6 +2520,15 @@ def native_adapter_qualification_checks(repo_root: Path) -> list[Check]:
         if Path(native_adapter_sdk.__file__).resolve().parent != directory.resolve():
             raise ValueError("qualification SDK loaded from another source tree")
         for surface, entry in supported_agent_surfaces().items():
+            if entry.get("pilot_contract") == "hermes-cli-shell-v1":
+                import hermes_adapter
+                if Path(hermes_adapter.__file__).resolve().parent != (repo_root / "skills/synthesis-agent-conformance/scripts").resolve():
+                    raise ValueError("Hermes adapter loaded from another source tree")
+                add(checks, "capability.hermes.adapter-source", True,
+                    "bounded CLI pilot uses project recovery, installed-artifact and native-source owners; writer admission remains unsupported")
+                for plane in ("installed", "live", "continuity", "outcome"):
+                    add(checks, "capability.hermes." + plane, None,
+                        "independent current-profile native acceptance has not been supplied", required=False, outcome="UNKNOWN")
             if "observation_contract" not in entry:
                 continue
             report = native_adapter_sdk.assess(surface, required=["native_identity", "permission_enforcement", "tool_outcome"])
@@ -2628,15 +2671,12 @@ def render(
     checks: Iterable[Check],
     as_json: bool,
     report_file: Path | None = None,
+    *, identity: dict | None = None, command: str = "partial",
 ) -> int:
     items = list(checks)
     failed = [item for item in items if item.required and item.ok is not True]
-    payload = {
-        "ok": not failed,
-        "status": "PASS" if not failed else "FAIL",
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "checks": [item.serialized() for item in items],
-    }
+    payload = build_report([item.serialized() for item in items], identity or
+                           report_identity(DEFAULT_SOURCE_ROOT, SCRIPT_PATH), command)
     if report_file is not None:
         destination = report_file.expanduser()
         atomic_json_write(destination, payload)
@@ -2646,8 +2686,8 @@ def render(
         for item in items:
             marker = item.status
             print(f"{marker:4} {item.name}: {item.detail}")
-        print(f"\n{'PASS' if not failed else 'FAIL'}: {len(items)} checks, {len(failed)} required failure(s)")
-    return 0 if not failed else 1
+        print(f"\n{payload['status']}: {len(items)} checks, {len(failed)} required non-passing check(s)")
+    return 0 if payload["ok"] else 1
 
 
 def parser() -> argparse.ArgumentParser:
@@ -2656,6 +2696,8 @@ def parser() -> argparse.ArgumentParser:
         "command",
         choices=(
             "source",
+            "signed-receipt",
+            "signed-receipt-issue",
             "runtime",
             "parity",
             "instructions",
@@ -2674,6 +2716,14 @@ def parser() -> argparse.ArgumentParser:
             "all",
         ),
     )
+    result.add_argument("--signing-key", type=Path, help="Explicit already-enrolled private key; no key discovery or enrollment")
+    result.add_argument("--signing-plugin-root", type=Path)
+    result.add_argument("--signing-transcript-root", type=Path)
+    result.add_argument("--signing-expires-at")
+    result.add_argument("--signed-envelope", type=Path)
+    result.add_argument("--signed-trust", type=Path)
+    result.add_argument("--signed-bindings", type=Path)
+    result.add_argument("--signed-registry", type=Path, help="Explicit latest-receipt owner path for one-shot admission; omitted means read-only")
     result.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     result.add_argument("--repo-root", type=Path)
     result.add_argument("--project", type=Path)
@@ -2758,6 +2808,34 @@ def main() -> int:
             "the all command always measures current latest health"
         )
     checks: list[Check] = []
+    if args.command == "signed-receipt-issue":
+        if not all((args.signed_envelope, args.signed_trust, args.signed_bindings, args.signing_key,
+                    args.signing_plugin_root, args.signing_transcript_root, args.signing_expires_at)) or args.signed_registry:
+            raise SystemExit("issuance requires explicit local receipt, trust, bindings, key, source/plugin/transcript roots and expiry; it cannot admit")
+        from signed_receipt import read_regular, strict_json
+        from live_receipt import issue_signed_observation
+        try:
+            trust_raw, expected_raw = read_regular(args.signed_trust, owner=True), read_regular(args.signed_bindings, owner=True)
+            result = issue_signed_observation(args.signed_envelope, args.source_root, args.signing_plugin_root,
+                args.signing_transcript_root, strict_json(trust_raw), strict_json(expected_raw), args.signing_key,
+                expires_at=args.signing_expires_at)
+            if read_regular(args.signed_trust, owner=True) != trust_raw or read_regular(args.signed_bindings, owner=True) != expected_raw:
+                raise ValueError("signer trust or target bindings changed during issuance")
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        except (OSError, ValueError, TypeError, KeyError, ImportError, RuntimeError) as exc:
+            print(json.dumps({"status": "REFUSED", "reason": str(exc)}))
+            return 2
+    if any((args.signing_key, args.signing_plugin_root, args.signing_transcript_root, args.signing_expires_at)):
+        raise SystemExit("signing arguments require signed-receipt-issue")
+    if args.command == "signed-receipt":
+        if not all((args.signed_envelope, args.signed_trust, args.signed_bindings)):
+            raise SystemExit("signed-receipt requires explicit envelope, local trust anchor and current bindings")
+        if args.local and args.signed_registry:
+            raise SystemExit("--local cannot admit a signed receipt")
+        checks.extend(signed_receipt_checks(args.signed_envelope, args.signed_trust, args.signed_bindings, registry=args.signed_registry))
+    elif any((args.signed_envelope, args.signed_trust, args.signed_bindings, args.signed_registry)):
+        raise SystemExit("signed observation inputs require signed-receipt")
     if args.command in {"source", "all"}:
         checks.extend(source_checks(args.source_root.resolve()))
     if args.command in {"parity", "all"}:
@@ -2880,7 +2958,9 @@ def main() -> int:
                 args.project.resolve(), args.readiness
             )
         )
-    return render(checks, args.json, args.report_file)
+    binding = report_identity(args.source_root, SCRIPT_PATH, args.project, args.repo_root,
+                              "private" if args.private_codex_sessionstart_receipt else "public")
+    return render(checks, args.json, args.report_file, identity=binding, command=args.command)
 
 
 if __name__ == "__main__":

@@ -249,6 +249,7 @@ cleanup_target_selected() {
 }
 
 validate_copy_scope() {
+    validate_selection "$1"
     safe_skill_tree "$1"
     # Validate every source skill name while it is still one quoted path.
     list_skills "$1" | while IFS= read -r SCOPE_SKILL; do
@@ -292,9 +293,39 @@ retire_plugin_fallbacks() {
     fi
 }
 
-# List skill directories (directories containing SKILL.md)
+# Explicit native adapters may select a bounded set from a verified local release.
+# Validate before any retirement, backup or copy; a failed list pipeline cannot
+# quietly turn an invalid selection into "all skills".
+validate_selection() {
+    [ "${SYNTHESIS_SKILLS_SELECT+set}" = set ] || return 0
+    [ "$SOURCE_MODE" = local ] || { echo "ERROR: selected copying needs explicit local source" >&2; return 1; }
+    [ -n "$SYNTHESIS_SKILLS_SELECT" ] || { echo "ERROR: empty skill selection" >&2; return 1; }
+    case "$SYNTHESIS_SKILLS_SELECT" in *[!a-z0-9\ -]*) echo "ERROR: invalid selection transport" >&2; return 1 ;; esac
+    SELECTION_COUNT=0
+    SELECTION_SEEN=" "
+    for SELECTED_SKILL in $SYNTHESIS_SKILLS_SELECT; do
+        case "$SELECTED_SKILL" in
+            synthesis-*) ;;
+            *) echo "ERROR: invalid selected skill" >&2; return 1 ;;
+        esac
+        case "$SELECTED_SKILL" in *[!a-z0-9-]*) echo "ERROR: invalid selected skill" >&2; return 1 ;; esac
+        case "$SELECTION_SEEN" in *" $SELECTED_SKILL "*) echo "ERROR: duplicate selected skill" >&2; return 1 ;; esac
+        SELECTION_SEEN="$SELECTION_SEEN$SELECTED_SKILL "
+        SELECTION_COUNT=$((SELECTION_COUNT+1))
+        [ "$SELECTION_COUNT" -le 64 ] || { echo "ERROR: skill selection exceeds bound" >&2; return 1; }
+        [ -f "$1/$SELECTED_SKILL/SKILL.md" ] || { echo "ERROR: selected skill missing" >&2; return 1; }
+    done
+}
+
+# List skill directories (directories containing SKILL.md).
 list_skills() {
-    find "$1" -mindepth 2 -maxdepth 2 -name "SKILL.md" -exec dirname {} \; | sort
+    if [ "${SYNTHESIS_SKILLS_SELECT+set}" = set ]; then
+        for SELECTED_SKILL in $SYNTHESIS_SKILLS_SELECT; do
+            printf '%s/%s\n' "$1" "$SELECTED_SKILL"
+        done
+    else
+        find "$1" -mindepth 2 -maxdepth 2 -name "SKILL.md" -exec dirname {} \; | sort
+    fi
 }
 
 # Get list of our skill names from the repo
@@ -804,6 +835,11 @@ do_uninstall() {
 
 # Default to install when piped (curl | sh)
 COMMAND="${1:-install}"
+
+if [ "${SYNTHESIS_SKILLS_SELECT+set}" = set ]; then
+    validate_selection "$SKILLS_DIR"
+    case "$COMMAND" in install|status|update) ;; *) echo "ERROR: selection does not authorize retirement" >&2; exit 1 ;; esac
+fi
 
 case "$COMMAND" in
     install)   do_install ;;

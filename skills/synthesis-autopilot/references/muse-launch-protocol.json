@@ -1,0 +1,955 @@
+{
+  "definitions": {
+    "ApprovalModeSource": {
+      "description": "How an approval mode took effect (tdd SS5.12, the effective-mode\nprojection's `source` vocabulary). Open.",
+      "enum": [
+        "startup",
+        "replay",
+        "approvalReconfigure"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CapabilityName": {
+      "description": "A grantable capability name (SS1.4.4). Open: the reserved `rawLog` entry\njoins this domain as an additive open-enum extension when SS6 un-defers\n(#13929, Scenario 5 AS-3) \u2014 closed would make that a retype.",
+      "enum": [
+        "userShell",
+        "sessionMcp",
+        "sessionListStream"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ClientCapabilities": {
+      "description": "The client's requested capability posture (SS1.4.1). Every member\ndefaults; an absent `capabilities` object means all defaults.",
+      "properties": {
+        "experimentalApi": {
+          "description": "Opt into experimental methods, fields, and variants (default `false`).",
+          "type": "boolean"
+        },
+        "optOutNotificationMethods": {
+          "description": "Exact notification method names the client declines; no wildcards;\nunknown names accepted and ignored; the protected set (SS1.7) cannot\nbe opted out.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requestedCapabilities": {
+          "description": "Names from the capability registry. Unknown entries are not an error\nand simply do not appear in `grantedCapabilities` \u2014 which is why this\nis a list of free strings rather than of registry names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "userInputDialogs": {
+          "description": "Whether this client can render a `userInput/request` dialog and answer\nit (SS5.10). **Absent means capable** (D-047): a client that predates\nthe member keeps today's contract, so no existing client changes its\nhandshake. `false` makes the host withhold `userInput/request` toward\nthis client \u2014 the D-027 additive-optional-field + withheld-method\nconvention.\n\nDeliberately NOT a `requestedCapabilities` name: that registry records\noperations a host GRANTS (SS1.4.4), and whether a client can draw a\ndialog is a fact about the client, never a privilege the host hands\nout.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "EffectiveApprovalModeState": {
+      "description": "The effective approval-mode projection (`EffectiveApprovalModeState`,\ntdd SS5.12): the same object `session/setApprovalMode` returns as\n`effectiveMode` and the `Session` object carries as `approvalMode`.",
+      "properties": {
+        "lastCommandId": {
+          "description": "The command that last set it; `null` when no command did.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/ApprovalMode",
+          "description": "The mode in effect."
+        },
+        "source": {
+          "$ref": "#/$defs/ApprovalModeSource",
+          "description": "How the mode took effect."
+        }
+      },
+      "required": [
+        "lastCommandId",
+        "mode",
+        "source"
+      ],
+      "type": "object"
+    },
+    "ErrorData": {
+      "description": "The optional `error.data` object (SS1.6). All members additive-optional;\n`kind` is always present when `data` is.",
+      "properties": {
+        "alignedNextOffset": {
+          "description": "The next provable UTF-8 boundary on a misaligned text-media\n`item/readOutput` read (`-32602` `invalidParams`, FR-016b/D-17214-2):\nabsent when no boundary is provable from the stored bytes ahead.",
+          "type": "integer"
+        },
+        "anchor": {
+          "description": "The rejected anchor value on `notFound`/`missingAnchor` and the\n`-32042` boundary arms (SS4.7.3, SS4.11); on `-32042` it is served\nas an explicit `null` when the request named no concrete anchor\n(spec 208 FM-005).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approvalId": {
+          "description": "Approval identity on SS5 errors.",
+          "type": "string"
+        },
+        "availability": {
+          "description": "The stored output's availability on `outputUnavailable` \u2014 the durable\n`ToolOutputAvailability` value, read-time-derived when the durable\nrecord still says `available` (SS4.5.5; spec 208 FM-008).",
+          "type": "string"
+        },
+        "capability": {
+          "$ref": "#/$defs/CapabilityName",
+          "description": "The missing capability, on `capabilityRequired` errors. Typed on the\ngrantable registry, so `rawLog` is outside the v1 domain and joins it\nas an additive open-enum extension when SS6 un-defers (TEST-009)."
+        },
+        "capacity": {
+          "description": "The configured command-admission bound, on `backpressured` errors.",
+          "type": "integer"
+        },
+        "choiceId": {
+          "description": "Rejected server-minted choice on `approvalChoiceInvalid`.",
+          "type": "string"
+        },
+        "commandId": {
+          "description": "The rejected command's identifier, on `commandRejected` errors. The\nratified v1 contract pairs it with `reason`\n(specs/13929-msp-activation/tdd.md SS3.6 admission-failure table and\nits `-32030` example), so a client can settle the exact command it\nsent without parsing the message string.",
+          "type": "string"
+        },
+        "currentRequirementId": {
+          "$ref": "#/$defs/ApprovalRequirementRef",
+          "description": "Current stage token on `approvalRequirementStale`."
+        },
+        "descriptor": {
+          "description": "SS1.5.1 descriptor, on `experimentalRequired` errors.",
+          "type": "string"
+        },
+        "details": {
+          "description": "Free-form additive detail.",
+          "properties": {},
+          "type": "object"
+        },
+        "earliestCursor": {
+          "description": "The oldest servable view position on `viewTruncated` (`-32040`,\nSS4.11); served as an explicit `null` when nothing before the head\nis servable \u2014 the null is present on the wire, never a dropped key\n(spec 208 FM-005 / Scenario 6.2).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "itemId": {
+          "description": "The item whose stored output was requested, on the `item/readOutput`\narms (`notFound`, `outputUnavailable`, and the misaligned-offset\n`invalidParams`).",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ErrorKind",
+          "description": "The stable camelCase category clients branch on."
+        },
+        "lastTurnId": {
+          "description": "Rejected inclusive fork boundary on `forkBoundaryInvalid`.",
+          "type": "string"
+        },
+        "latestBoundaryCursor": {
+          "description": "The latest installed boundary's view cursor on the `-32042` arms \u2014\nalways present in the `-32042` JSON and explicitly `null` when no\nboundary exists (SS4.11, FM-004).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitBytes": {
+          "description": "The exceeded byte limit, on `inputTooLarge` errors.",
+          "type": "integer"
+        },
+        "outputRef": {
+          "description": "The requested `outputRef.id`, on the same `item/readOutput` arms.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "Candidate retained paths on `sessionAmbiguous`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "description": "Failure detail vocabulary (e.g. `\"missingAnchor\"` on `notFound` for a\nmissing view-cursor anchor).",
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/ApprovalResolutionSummary",
+          "description": "Winning resolution on `approvalAlreadyResolved`."
+        },
+        "retryable": {
+          "description": "Whether retrying can succeed (e.g. `overloaded`). When present,\noverrides the error table row's `retryable` default for this code.",
+          "type": "boolean"
+        },
+        "selector": {
+          "description": "The rejected skill selector on `skillNotFound` (`-32032`, SS3.22.4).",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "Session identity on errors whose lookup is session-scoped.",
+          "type": "string"
+        },
+        "settlement": {
+          "$ref": "#/$defs/UserInputSettlementSummary",
+          "description": "Winning settlement on `userInputAlreadySettled`."
+        },
+        "userInputId": {
+          "description": "User-input prompt identity on SS5.10 errors.",
+          "type": "string"
+        },
+        "viewCursor": {
+          "description": "The blocked view position on `pageEventTooLarge` errors.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "HistoryNoneReason": {
+      "description": "Why a result served `history.mode: \"none\"` \u2014 spec 208 FM-005's typed\nunavailability (tdd SS2.5.2; D-050). Open on the client side: an absent\n(older server) or unknown (newer server) value decodes conservatively as\nan unknown reason, and `viewCursor` text never substitutes for it\n(spec 208 INV-19734-1).",
+      "enum": [
+        "excluded",
+        "cursorSuffix",
+        "historyBudget",
+        "projectionUnavailable",
+        "projectionReadLimit"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "IfBusy": {
+      "description": "Disposition when a turn is already running (tdd SS3.2). The wire default\nis `queue`: an SDK caller who has not looked at session state should not\nsilently mutate an in-flight turn.",
+      "enum": [
+        "queue",
+        "steer",
+        "replace"
+      ],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "InitializeParams": {
+      "description": "`initialize` request params (SS1.4.1).",
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/ClientCapabilities",
+          "description": "Capability posture; absent means all defaults."
+        },
+        "clientInfo": {
+          "$ref": "#/$defs/ClientInfo",
+          "description": "Client identification."
+        }
+      },
+      "required": [
+        "clientInfo"
+      ],
+      "type": "object"
+    },
+    "InitializeResult": {
+      "description": "The `initialize` result (SS1.4.1).",
+      "properties": {
+        "experimentalApi": {
+          "description": "Echo of the effective negotiated experimental setting.",
+          "type": "boolean"
+        },
+        "grantedCapabilities": {
+          "description": "Subset of the requested capabilities, plus policy-implicit grants.\nFixed for the connection lifetime (INV-009).",
+          "items": {
+            "$ref": "#/$defs/CapabilityName"
+          },
+          "type": "array"
+        },
+        "museHome": {
+          "description": "Absolute path of the muse home directory.",
+          "type": "string"
+        },
+        "platformFamily": {
+          "$ref": "#/$defs/PlatformFamily",
+          "description": "Server runtime platform family."
+        },
+        "platformOs": {
+          "$ref": "#/$defs/PlatformOs",
+          "description": "Server operating system."
+        },
+        "schema": {
+          "$ref": "#/$defs/SchemaInfo",
+          "description": "Envelope schema version and stable-surface fingerprint."
+        },
+        "serverInfo": {
+          "$ref": "#/$defs/ServerInfo",
+          "description": "Server identification."
+        },
+        "sessionDurability": {
+          "$ref": "#/$defs/SessionDurability",
+          "description": "Whether this host persists its sessions (SS2.13). Optional so the\naddition is additive under SS1.5.4; a v1 host always sends it, and a\nclient reads absent as `durable` because no server that omits it has\nthe ephemeral profile."
+        },
+        "userAgent": {
+          "description": "Exact user-agent string presented to upstream model providers.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "experimentalApi",
+        "grantedCapabilities",
+        "museHome",
+        "platformFamily",
+        "platformOs",
+        "schema",
+        "serverInfo",
+        "userAgent"
+      ],
+      "type": "object"
+    },
+    "PlatformFamily": {
+      "description": "The server runtime's platform family (SS1.4.1); may differ from the\nclient's. Closed: SS1.4.1 fixes the value set, so widening it is a\ndeliberate, gate-visible protocol change rather than a silent addition\n(a later `Closed`\u2192`Open` flip is itself additive, data-model.md \u00a75.2).",
+      "enum": [
+        "unix",
+        "windows"
+      ],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "PlatformOs": {
+      "description": "The server's operating system (SS1.4.1). Closed, for the same reason as\n[`PlatformFamily`].",
+      "enum": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ReasoningEffortState": {
+      "description": "The snapshot's standing session-default reasoning effort (tdd SS4.9.1,\nADR 31255 D1): the fold of the latest completed\n`runtime.reasoning_effort_reconfigure` fact \u2014 the same pair\n`session/reasoningEffortChanged` carries.",
+      "properties": {
+        "reasoningEffort": {
+          "$ref": "#/$defs/ReasoningEffort",
+          "description": "The standing default tier \u2014 the closed SS3.2 vocabulary, spelled\nidentically to `turn/start.reasoningEffort`."
+        },
+        "source": {
+          "$ref": "#/$defs/ReasoningEffortChangeSource",
+          "description": "Which actor class set the default."
+        }
+      },
+      "required": [
+        "reasoningEffort",
+        "source"
+      ],
+      "type": "object"
+    },
+    "SchemaInfo": {
+      "description": "The `schema` pair in [`InitializeResult`] (SS1.4.1, SS1.5.3). `version`\nis the wire **envelope** schema version \u2014 distinct from the session-view\n`schemaVersion`, the raw-log `schema_version`, and the 0.x/1.0 stability\nposture, which is not on the wire at all (INV-006a).",
+      "properties": {
+        "fingerprint": {
+          "description": "`sha256:<64 lower hex>` content hash of this server binary's\nstable-surface bundle (INV-003). A mismatch is a warning condition,\nnot an error (SS1.4.1).",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "version": {
+          "description": "Envelope schema version; `1` in v1, expected to stay `1` for a long\ntime (SS1.4.1).",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "fingerprint",
+        "version"
+      ],
+      "type": "object"
+    },
+    "ServerInfo": {
+      "description": "Server identification inside [`InitializeResult`].",
+      "properties": {
+        "name": {
+          "description": "Server name.",
+          "type": "string"
+        },
+        "version": {
+          "description": "Server version string.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "Session": {
+      "description": "The session object every lifecycle method returns or lists (tdd SS2.4).\n\nAdditive-optional evolution applies: clients must ignore unknown fields.",
+      "properties": {
+        "activeTurnId": {
+          "description": "The `turnId` of the current foreground turn when `status` is\n`running`, and `null` when the session is idle (tdd SS2.4).\n\n**Required-nullable, per the owner ruling on #22946** (\"approve\nrequired-nullable\", review comment `r3863946961`, 2026-08-26). Both\nproduction writers hard-code `\"activeTurnId\": null`\n(`session/start/commit_load.rs` for `session/start`,\n`session/snapshot.rs` feeding resume/read/list/fork) and nothing\nstrips it, so this is what the binary emits and what SS2.4's example\nspells. The optional-absent shape published it as plain `string` and\nREJECTED every idle `Session` frame the host sent \u2014 the #19923 defect\nclass this PR exists to close.\n\nE5's original evidence for optional-absent (\"every committed\ntranscript shows the omission\") was wrong: those transcripts are\nhand-authored fixtures, not host recordings. They are corrected in the\nsame change under the ruling's SS1.5 `regenerationJustification`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approvalMode": {
+          "$ref": "#/$defs/EffectiveApprovalModeState",
+          "description": "The folded effective approval mode. **Additive-optional**: a Session\nobject that omits it means the host has not folded a mode, which is\nwhy the index-derived `session/list` entry may legitimately omit it\n(tdd SS2.4, SS5.12)."
+        },
+        "attention": {
+          "description": "Attention flags (tdd SS2.4, ADR 31983 D3). **Additive-optional**,\npresent only when at least one flag is set; absence is a\nNON-assertion (nothing pending, or the loaded session's pending\nsource declined to answer). Loaded sessions only: a `notLoaded` row\nomits it even while its durable pending set is non-empty.",
+          "items": {
+            "$ref": "#/$defs/AttentionFlag"
+          },
+          "type": "array"
+        },
+        "branch": {
+          "description": "Derived workspace branch (tdd SS2.14.1, #27598) \u2014 the index's last\nderived value; the live-change signal stays `session/branchChanged`\n(SS4.6.4). **Additive-optional**, omitted when underivable.",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "RFC3339. For a fork this is the fork session id's UUIDv7 mint instant\n(tdd SS2.4).",
+          "type": "string"
+        },
+        "firstUserPrompt": {
+          "description": "Derived first-user-prompt preview (tdd SS2.14.1, #27598).\n**Additive-optional**, omitted when underivable.",
+          "type": "string"
+        },
+        "forkedFrom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ForkProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`null` for root sessions; fork provenance otherwise (tdd SS2.4)."
+        },
+        "lastActivityAt": {
+          "description": "Content-activity recency, RFC3339 (tdd SS2.4, ADR 31983 D5).\n**Additive-optional**: omitted when no content record exists. Never\nadvanced by lifecycle bookkeeping (the resume marker, re-stamps) or\na fork's copied seed-replay records, and never precedes `createdAt`.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The winning metadata fold's model; `null` when that record omits it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The durable allocated session name (tdd SS2.4/SS2.14.1, #27598;\nADR 27598 D2/D4). **Additive-optional**: present when the serving path\nholds an allocated name, omitted otherwise \u2014 absent is never\nfabricated. Authoritative and renameable via `session/rename`.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Absolute path of the session's durable log; non-nullable. Under the\nephemeral session profile it is the **empty string**, meaning \"no\ndurable log exists\" (tdd SS2.13.2) \u2014 the one value a client must not\nhand to a filesystem call.",
+          "type": "string"
+        },
+        "providerId": {
+          "description": "The winning metadata fold's provider; `null` when that record omits it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "description": "The session identity.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SessionStatus",
+          "description": "Load state as this host knows it; `session/list` reports `notLoaded`\nfor sessions loaded by *other* hosts (tdd SS2.4)."
+        },
+        "title": {
+          "description": "Derived display title (tdd SS2.14.1, #27598): a heuristic that may\nevolve \u2014 its carriage, not its derivation, is the contract.\n**Additive-optional**, omitted when underivable.",
+          "type": "string"
+        },
+        "turnCount": {
+          "description": "Completed-turn count from the session view fold (tdd SS2.4).",
+          "type": "integer"
+        },
+        "updatedAt": {
+          "description": "RFC3339; never precedes `createdAt` (tdd SS2.4).",
+          "type": "string"
+        },
+        "workspaceRoot": {
+          "description": "The winning metadata fold's workspace root; `null` when that record\nomits it \u2014 absent is never fabricated (tdd SS2.4).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "activeTurnId",
+        "createdAt",
+        "forkedFrom",
+        "modelId",
+        "path",
+        "providerId",
+        "sessionId",
+        "status",
+        "turnCount",
+        "updatedAt",
+        "workspaceRoot"
+      ],
+      "type": "object"
+    },
+    "SessionDurability": {
+      "description": "Whether this host writes its sessions to disk (SS1.4.1, SS2.13). A\nproperty of the host process, fixed at construction and identical for\nevery session and every connection it serves \u2014 never requested, granted,\nor negotiated, which is why it is not a capability. Open: the\nunrepresented degraded state (#14401) has candidate resolutions that add a\nthird value here, so closed would make that a breaking change.",
+      "enum": [
+        "durable",
+        "ephemeral"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionHistory": {
+      "description": "The `history` envelope shared by `session/resume`, `session/fork`, and\n`session/read` (tdd SS2.5.2).",
+      "properties": {
+        "items": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Item"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The full folded item array when `mode` is `inline`; `null` otherwise."
+        },
+        "mode": {
+          "$ref": "#/$defs/HistoryMode",
+          "description": "What was actually served \u2014 never what was asked for (tdd SS2.5.2)."
+        },
+        "noneReason": {
+          "$ref": "#/$defs/HistoryNoneReason",
+          "description": "Why no history was served \u2014 sent exactly when `mode` is `\"none\"`\n(tdd SS2.5.2; D-050, spec 208 INV-19734-1)."
+        },
+        "snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ViewSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The folded view state when `mode` is `snapshot` or `anchoredSnapshot`;\n`null` otherwise."
+        }
+      },
+      "required": [
+        "items",
+        "mode",
+        "snapshot"
+      ],
+      "type": "object"
+    },
+    "SessionResumeParams": {
+      "description": "`session/resume` params (tdd SS2.5.2).",
+      "properties": {
+        "commandId": {
+          "description": "The SS2.5 idempotency handle (UUIDv7). A resume that loads a session\nwrites a durable `SessionResumed` record.",
+          "type": "string"
+        },
+        "config": {
+          "$ref": "#/$defs/SessionConfig",
+          "description": "The same open construction-time extension object as `session/start`."
+        },
+        "cursor": {
+          "description": "A view cursor previously observed by this client \u2014 or an observed\n`summarizedThrough` compaction anchor (tdd SS4.5.10, D-029). When\npresent the server returns only the suffix and `history.mode` is\n`none` (tdd SS2.5.2). Omitted and explicit `null` both mean \"no\ncursor\" (#23468).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excludeItems": {
+          "description": "Return only session metadata and live resume state; page history\nseparately with `view/page`. Default `false` (tdd SS2.5.2).",
+          "type": "boolean"
+        },
+        "history": {
+          "$ref": "#/$defs/HistoryPreference",
+          "description": "History mode preference, default `auto`. A PREFERENCE, not a budget\noverride: when the requested mode does not fit the history budget the\nserver downgrades it and `history.mode` reports what was actually\nserved (tdd SS2.5.2). Ignored when `cursor` or `excludeItems` makes it\nmoot."
+        },
+        "sessionId": {
+          "description": "The session to load.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionResumeResult": {
+      "description": "`session/resume` result (tdd SS2.5.2).",
+      "properties": {
+        "history": {
+          "$ref": "#/$defs/SessionHistory",
+          "description": "The served history."
+        },
+        "pendingRequests": {
+          "description": "The late-joiner pointer set; empty when nothing is pending.",
+          "items": {
+            "$ref": "#/$defs/PendingRequestPointer"
+          },
+          "type": "array"
+        },
+        "session": {
+          "$ref": "#/$defs/Session",
+          "description": "The loaded session."
+        },
+        "viewCursor": {
+          "description": "The session view head; the connection is subscribed after it. A\nstill-loaded session a prior `view/unsubscribe` detached is\nRE-ATTACHED by this resume (spec 208 FR-002a, #28920): live delivery\nresumes from this head. Explicit-cursor re-attach with `(after, head]`\nengine replay stays `view/subscribe` (SS4.7.1).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "history",
+        "pendingRequests",
+        "session",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionSetReasoningEffortResult": {
+      "description": "`session/setReasoningEffort` result (tdd SS3.21). The default is durable\non ack and applies to turns launched after admission; a running turn keeps\nthe request options it already resolved.",
+      "properties": {
+        "commandId": {
+          "description": "Echoes the client's id.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CommandStatus",
+          "description": "Admission status."
+        }
+      },
+      "required": [
+        "commandId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SourceRange": {
+      "description": "The inclusive raw-record range a durable-sourced view event folded from\n(tdd SS4.2) \u2014 the reconciliation token: re-folding the cited records from\nthe canonical fold state immediately before `first` \u2014 appended host-death\nterminals seed from the end-of-records state \u2014 reproduces the event\n(tdd SS7.5; spec 14653 T041/INV-009). In v1 it is an **opaque provenance\ntoken**: no wire method reads what it points at (the SS6 raw-log altitude\nis deferred, #13929).\n\nEphemeral-sourced events (`item/delta`, and an `item/started` that opens\non an ephemeral record) carry no `sourceRange` \u2014 ephemeral records may be\nevicted by retention (tdd SS4.2; spec 14653 INV-009).",
+      "properties": {
+        "first": {
+          "$ref": "#/$defs/RecordPosition",
+          "description": "The first record of the inclusive range."
+        },
+        "last": {
+          "$ref": "#/$defs/RecordPosition",
+          "description": "The last record of the inclusive range; equal to `first` for an event\nfolded from one record."
+        },
+        "stream": {
+          "$ref": "#/$defs/StreamRef",
+          "description": "The stream the folded records live on (run stream, or the session\nstream's mirror of task/approval/subagent-control records \u2014 whichever\nthe fold actually consumed, tdd SS4.2)."
+        }
+      },
+      "required": [
+        "first",
+        "last",
+        "stream"
+      ],
+      "type": "object"
+    },
+    "TurnCancelParams": {
+      "description": "`turn/cancel` params (tdd SS3.5): plain cancellation on the normal command\nlane. Same shape as `turn/interrupt`, **without** `retract` \u2014 pairing a\nretract with a plain cancel is durably rejected `not_paired_interrupt`.",
+      "properties": {
+        "commandId": {
+          "description": "The SS3.1.1 idempotency handle (UUIDv7).",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "The target session.",
+          "type": "string"
+        },
+        "turnId": {
+          "description": "The exact turn to cancel; omit to target the current foreground turn.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "TurnCancelResult": {
+      "description": "`turn/cancel` result (tdd SS3.5): identical envelope to\n`turn/interrupt`.",
+      "properties": {
+        "commandId": {
+          "description": "Echoes the client's id.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CommandStatus",
+          "description": "Admission status."
+        },
+        "turnId": {
+          "description": "The cancelled turn.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "status",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnCompletedParams": {
+      "description": "`turn/completed` params (tdd SS4.5.1): the run's durable terminal record\nlanded.",
+      "properties": {
+        "durationMs": {
+          "description": "Turn duration; absent means unmeasured, never fabricated.",
+          "type": "integer"
+        },
+        "error": {
+          "$ref": "#/$defs/TurnError",
+          "description": "Present iff `terminal` is `\"failed\"` (tdd SS4.5.1): mid-turn failures\nreach the client here \u2014 never as a JSON-RPC error."
+        },
+        "reason": {
+          "description": "The runtime's free-text terminal reason, verbatim. Display and\ndiagnostics only; never branch on it.",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "The owning session.",
+          "type": "string"
+        },
+        "sourceRange": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "The durable records this event folded from."
+        },
+        "terminal": {
+          "$ref": "#/$defs/TurnTerminal",
+          "description": "The turn terminal (open enum)."
+        },
+        "timeToFirstTokenMs": {
+          "description": "Time to first token, when measured.",
+          "type": "integer"
+        },
+        "turnId": {
+          "description": "The terminated turn.",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/TokenUsage",
+          "description": "The turn's aggregate token usage, summed across the turn's model\ncompletions (same shape as `session/tokenUsage.usage`)."
+        },
+        "viewCursor": {
+          "description": "Opaque, strictly monotonic view cursor (tdd SS4.1).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "sourceRange",
+        "terminal",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnError": {
+      "description": "The settled turn-failure object (tdd SS4.5.1): `{kind, message,\nretryable}`.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/TurnErrorKind",
+          "description": "The failure class (open camelCase enum grounded in the runtime's\nterminal failure classification)."
+        },
+        "message": {
+          "description": "Human-readable failure text.",
+          "type": "string"
+        },
+        "retryable": {
+          "description": "The server's judgment that resubmitting the same input may succeed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "TurnInterruptResult": {
+      "description": "`turn/interrupt` result (tdd SS3.4). Acceptance means the interrupt was\nadmitted, **not** that the turn is already stopped: the turn is over when\nyou fold its `turn/completed` with terminal `cancelled`.",
+      "properties": {
+        "commandId": {
+          "description": "Echoes the client's id.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CommandStatus",
+          "description": "Admission status."
+        },
+        "turnId": {
+          "description": "The interrupted turn.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "status",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnStartParams": {
+      "description": "`turn/start.providerRequestOptions` is deliberately absent: **RULED\n(#22785 E3, owner, 2026-08-26) to stay off the published schema.** The\nschema is the contract, and a free-form-object node kind is revisited only\nif the experimental field graduates.\n`turn/start` params (tdd SS3.2).",
+      "properties": {
+        "commandId": {
+          "description": "The SS3.1.1 idempotency handle (UUIDv7). The fresh turn's `turnId`\nderives from it (tdd SS3.1.4).",
+          "type": "string"
+        },
+        "displayText": {
+          "description": "Presentation form of the prompt for transcripts. Durable; carried on\nthe resulting user-message view item. Never model-visible (tdd SS3.2).",
+          "type": "string"
+        },
+        "ifBusy": {
+          "$ref": "#/$defs/IfBusy",
+          "description": "Disposition when a turn is already running; default `queue`."
+        },
+        "input": {
+          "description": "Ordered content parts; required and non-empty.",
+          "items": {
+            "$ref": "#/$defs/TurnInputPart"
+          },
+          "type": "array"
+        },
+        "reasoningEffort": {
+          "$ref": "#/$defs/ReasoningEffort",
+          "description": "Reasoning tier sampled at submission for this turn."
+        },
+        "sessionId": {
+          "description": "The target session.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "input",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "TurnStartResult": {
+      "description": "`turn/start` result (tdd SS3.2).",
+      "properties": {
+        "commandId": {
+          "description": "Echoes the client's id.",
+          "type": "string"
+        },
+        "disposition": {
+          "$ref": "#/$defs/TurnStartDisposition",
+          "description": "What happened to the input."
+        },
+        "startedNewTurn": {
+          "description": "`true` iff `disposition` is `started`; retained as the boolean\nshorthand \u2014 `disposition` is authoritative (tdd SS3.2).",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/CommandStatus",
+          "description": "Admission status."
+        },
+        "turnId": {
+          "description": "The turn that will carry (or absorbed) this input. Authoritative:\nalways take it from the ack rather than deriving it (tdd SS3.2).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "disposition",
+        "startedNewTurn",
+        "status",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnUnqueueParams": {
+      "description": "`turn/unqueue` params (tdd SS3.6): reclaim a queued submit before it\nlaunches. It is **not** a stop \u2014 a reclaim that arrives after its target\nlaunched is durably rejected, never silently upgraded into a cancel.",
+      "properties": {
+        "commandId": {
+          "description": "The SS3.1.1 idempotency handle (UUIDv7).",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "The target session.",
+          "type": "string"
+        },
+        "turnId": {
+          "description": "The queued turn to reclaim, exactly as the queueing `turn/start`'s ack\nminted it and as snapshot `queuedTurns` lists it. Required, and never\n\"whichever is newest\" (tdd SS3.6).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "sessionId",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnUnqueueResult": {
+      "description": "`turn/unqueue` result (tdd SS3.6). Admission only \u2014 but for this command\nadmission *is* the race: an admitted reclaim implies the turn will not\nlaunch. The authoritative removal is the `turn/unqueued` view event.",
+      "properties": {
+        "commandId": {
+          "description": "Echoes the client's id.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CommandStatus",
+          "description": "Admission status."
+        },
+        "turnId": {
+          "description": "The reclaimed turn.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "status",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnUnqueuedParams": {
+      "description": "`turn/unqueued` params (tdd SS3.6, SS4.5.1): a queued submit's reclaim\ndurably won; its pre-minted turn never runs. Carries the reclaimed\n`turnId` and the `commandId` of the `turn/start` that queued it, so a\nclient can restore the submission's text exactly as for\n`turn/retracted`. No `turn/started`/`turn/completed` is ever emitted for\nthis `turnId` (SDK turn-waits settle on this event too, tdd SS3.1.4).\n`sourceRange` cites the SESSION stream's reclaim record \u2014 a reclaimed\nturn never had a run stream.",
+      "properties": {
+        "commandId": {
+          "description": "The `commandId` of the `turn/start` that queued the reclaimed turn.",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "The owning session.",
+          "type": "string"
+        },
+        "sourceRange": {
+          "$ref": "#/$defs/SourceRange",
+          "description": "The durable records this event folded from (the session stream's\nreclaim record)."
+        },
+        "turnId": {
+          "description": "The reclaimed turn: pre-minted at admission, never launched.",
+          "type": "string"
+        },
+        "viewCursor": {
+          "description": "Opaque, strictly monotonic view cursor (tdd SS4.1).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "commandId",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    }
+  },
+  "export_sha256": "d05cbf1a13b0ce67891598238ebbd625a616e2c86aea2f75fc3f9a25cbe4d6af",
+  "kind": "official-export-definition-excerpts",
+  "manifest": {
+    "experimental": false,
+    "fingerprint": "sha256:36466f634c8c78a812462ec941187fd4547b232ee06153e5feb2a1482f0d3d7f",
+    "schemaVersion": 1
+  },
+  "native_release": "1.4.0-R4161.1",
+  "schema_version": 1,
+  "scope": "Selected exact source definitions, not a complete JSON Schema. Native execution is not inferred."
+}

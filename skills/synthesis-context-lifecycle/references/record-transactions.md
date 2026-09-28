@@ -27,11 +27,22 @@ replacement. A JSON journal is not transferable permission. A changed claim,
 foreign owner, alias, symlink, hardlink or different source inode refuses the
 operation. No protective hook is disabled.
 
-A transaction covers existing files beneath one project on one filesystem.
-Registry edits outside that project are a separate owner operation. File
-creation, deletion, cross-project transactions and record-format migration are
-not expressed by this editor command. The existing transaction and PM owners
-must be extended explicitly if those operations are required.
+A transaction covers files beneath one project on one filesystem. Registry
+edits outside that project and deletion remain separate owner operations.
+Explicit `create` requests contain UTF-8 `text` and a nonexecutable `mode`
+(0600 or 0644); the target must be absent. The owner uses atomic no-clobber
+linking, not an overwriting rename, and authenticates its exact two-name
+interruption state before retiring the staged name. A third hardlink or foreign
+file refuses. Caller intent IDs identify retries and grant no authority.
+
+The PM [migration owner](../../synthesis-project-management/references/project-migration.md)
+uses this same transaction engine. Its optional source-custody list binds up to
+512 unchanged inputs; their exact bytes are archived privately before durable
+commit, authenticated on recovery, and counted in the 32 MiB aggregate budget.
+Source custody cannot overlap an effect. It never restores over a later writer.
+Schema-2 journals carry this additive/custody contract; historical schema-1
+journals keep their exact original recovery semantics. Neither schema supplies
+new cross-project or native mutation authority.
 
 ## Commit and recovery
 
@@ -101,3 +112,10 @@ An existing transaction or reader prevents that mutation; a fresh record
 directory appearing after lock admission refuses fast-forward. These locks do
 not grant write authority or enable fast-forward when the caller did not request
 it. The original upstream, source-tree, clean-checkout and retention gates remain.
+
+Failed pre-commit preparations never authorize effects and are retained. A retry
+under the same caller intent uses a distinct preparation directory after fresh
+source and native authority checks. At most 64 retained preparation directories
+are admitted per store (and 64 initial store preparations per project); reaching
+that bound refuses further preparation and requires explicit custody review,
+never automatic pruning. A published active commit still requires exact recovery.

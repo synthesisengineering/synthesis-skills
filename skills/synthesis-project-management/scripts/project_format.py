@@ -58,23 +58,29 @@ LOOP_RE = re.compile(r"\b(TODO|FIXME|XXX|OPEN|TBD)\b[:\s]+(.{0,120})", re.IGNORE
 
 
 def detect(project_dir: Path) -> str:
-    """Return missing | v1 | v2 | partial | unknown."""
-    if not project_dir.is_dir():
-        return "missing"
-    marker = project_dir / MARKER_NAME
-    if marker.is_file():
-        try:
-            data = yaml.safe_load(marker.read_text(encoding="utf-8")) or {}
-        except (OSError, ValueError):
-            return "unknown"
-        version = data.get("format_version")
-        if version == CURRENT_FORMAT:
-            return "v2"
-        return "unknown"
-    present = [(project_dir / name).exists() for name in V1_LAYOUT]
-    if all(present):
-        return "v1"
-    return "partial"
+    """Observe a bounded, unambiguous marker; never follow special-file input."""
+    try:
+        project_dir = record_transaction._path(project_dir)
+        if not project_dir.is_dir():
+            return 'missing'
+        marker = record_transaction._path(project_dir / MARKER_NAME, project_dir)
+        if marker.exists():
+            raw, _ = record_transaction._snapshot(marker)
+            class Strict(yaml.SafeLoader):
+                pass
+            def pairs(loader, node, deep=False):
+                return record_transaction._unique([
+                    (loader.construct_object(k, deep=True), loader.construct_object(v, deep=True))
+                    for k, v in node.value])
+            Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, pairs)
+            data = yaml.load(raw, Loader=Strict)
+            if not isinstance(data, dict) or type(data.get('format_version')) is not int:
+                return 'unknown'
+            return 'v2' if data['format_version'] == CURRENT_FORMAT else 'unknown'
+        present = [(project_dir / name).exists() for name in V1_LAYOUT]
+        return 'v1' if all(present) else 'partial'
+    except (OSError, ValueError, RuntimeError, yaml.YAMLError):
+        return 'unknown'
 
 
 def _utcnow() -> str:

@@ -4,10 +4,37 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.150.0] - 2026-09-26
+## [4.151.0] - 2026-09-27
 
-Ritual history creation now serializes cooperating writers under the existing bounded deadline and retains file locking, durable readback and path protections. Failed release acceptance preserves every unmatched case diagnostic.
+Recover the original enrolled history through one finite operation and refresh
+normal appends before protected controller and CLI actions. Preserve decoder
+generations, semantic aliases, cancellation, consumed retry budgets and the
+original mutation owner's fresh checks. Authenticate successor batch lookup
+without treating unrelated missing caches as corruption or skipping bad evidence.
 
+Keep active work on durable paths and diagnose the real checkout, common Git
+storage and ordinary or split-index integrity. Reuse one native transcript
+identity reader across consumers and avoid source bytecode writes during
+retirement. Missing, corrupt and unsupported state stays explicit.
+
+Ritual history creation now serializes cooperating writers under the existing bounded deadline and retains file locking, durable readback and path protections. Failed release acceptance preserves every unmatched case diagnostic. Retained-process acceptance publishes complete fixture PID records atomically before observing them; deliberate writer preemption exercises every terminal path.
+
+
+Bind native callbacks to their actual producing connection, context and session.
+Retain complete bounded source histories and recover linked execution intervals
+without replaying effects or resetting prior accounting. Threaded process owners
+preserve cancellation and descendant cleanup.
+
+Add explicit team enrollment, contribution and review boundaries, source-bound
+conformance reports, declared machine maintenance and upgrade campaigns. Keep
+native memory inert at action boundaries and preserve evidence during project
+migration and retirement. Native capability and live-loading reports distinguish
+observed behavior from synthetic fixtures and unsupported provider surfaces.
+
+Display complete, revision-bound review material in decision packets with exact
+downloads and explicit clipboard outcomes. Keep unavailable assets from becoming
+recorded decisions. Preserve the authenticated seat's existing context role when
+it adds claims, while retaining explicit role replacement and foreign-owner checks.
 
 Add recoverable multi-file project transactions and explicit decision/obligation
 succession. Preserve original records, unanswered decisions and exact authority;
@@ -26,11 +53,6 @@ current native lifecycle support remains a separate observation.
 Release validation now retains canonical private temporary files, test inventories
 and command receipts after success or failure, without relaxing production path
 protections or allowing pytest to remove a supplied existing directory.
-
-This release also carries the previously integrated large-journal recovery and
-bounded exhaustive CI changes described in the 4.149.9 source candidate below.
-
-## [4.149.9] - 2026-09-26
 
 Required autopilot checks now cover the entire collected suite in bounded groups.
 Release checks reject changed source, inherited test selection and stale bytecode.

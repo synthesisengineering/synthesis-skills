@@ -316,7 +316,7 @@ esac
 SCANNER="$HOOK_DIR/_scan_staged.py"
 [ -f "$SCANNER" ] || fail_closed "Staged scanner not found at $SCANNER."
 set +e
-MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" \
+MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" --mandatory="${MANDATORY_REGEX:-}" \
     --active="$ACTIVE_REGEX" --allowlist="${ALLOWLIST_REGEX:-}" \
     --exclusion="${DIFF_EXCLUDE_REGEX:-}")
 SCAN_STATUS=$?

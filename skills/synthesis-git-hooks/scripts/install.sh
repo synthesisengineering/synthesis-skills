@@ -31,6 +31,8 @@ for source in \
     "$COORDINATION_SOURCE/native_git.py" \
     "$COORDINATION_SOURCE/coordination_schema.py" \
     "$COORDINATION_SOURCE/board_grammar.py" \
+    "$COORDINATION_SOURCE/team_contract.py" \
+    "$COORDINATION_SOURCE/native_identity.py" \
     "$COORDINATION_SOURCE/coordination_archive.py" \
     "$COORDINATION_SOURCE/pointer_lock.py" \
     "$COORDINATION_SOURCE/peer_addressing.py" \
@@ -44,7 +46,7 @@ for source in \
     "$COORDINATION_SOURCE/coordination_process.py" \
     "$COORDINATION_SOURCE/coordination_lock.py" \
     "$COORDINATION_SOURCE/project_recipient.py" \
-    "$CONFORMANCE_SOURCE/live_receipt.py" \
+    "$CONFORMANCE_SOURCE/native_transcript_identity.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -66,6 +68,8 @@ cp -f "$COORDINATION_SOURCE/claim_scope.py" "$TARGET_DIR/claim_scope.py"
 cp -f "$COORDINATION_SOURCE/native_git.py" "$TARGET_DIR/native_git.py"
 cp -f "$COORDINATION_SOURCE/coordination_schema.py" "$TARGET_DIR/coordination_schema.py"
 cp -f "$COORDINATION_SOURCE/board_grammar.py" "$TARGET_DIR/board_grammar.py"
+cp -f "$COORDINATION_SOURCE/team_contract.py" "$TARGET_DIR/team_contract.py"
+cp -f "$COORDINATION_SOURCE/native_identity.py" "$TARGET_DIR/native_identity.py"
 cp -f "$COORDINATION_SOURCE/coordination_archive.py" "$TARGET_DIR/coordination_archive.py"
 cp -f "$COORDINATION_SOURCE/pointer_lock.py" "$TARGET_DIR/pointer_lock.py"
 cp -f "$COORDINATION_SOURCE/peer_addressing.py" "$TARGET_DIR/peer_addressing.py"
@@ -79,7 +83,7 @@ cp -f "$COORDINATION_SOURCE/fleet_subscriptions.py" "$TARGET_DIR/fleet_subscript
 cp -f "$COORDINATION_SOURCE/coordination_process.py" "$TARGET_DIR/coordination_process.py"
 cp -f "$COORDINATION_SOURCE/coordination_lock.py" "$TARGET_DIR/coordination_lock.py"
 cp -f "$COORDINATION_SOURCE/project_recipient.py" "$TARGET_DIR/project_recipient.py"
-cp -f "$CONFORMANCE_SOURCE/live_receipt.py" "$TARGET_DIR/live_receipt.py"
+cp -f "$CONFORMANCE_SOURCE/native_transcript_identity.py" "$TARGET_DIR/native_transcript_identity.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -94,6 +98,8 @@ chmod 755 \
     "$TARGET_DIR/native_git.py" \
     "$TARGET_DIR/coordination_schema.py" \
     "$TARGET_DIR/board_grammar.py" \
+    "$TARGET_DIR/team_contract.py" \
+    "$TARGET_DIR/native_identity.py" \
     "$TARGET_DIR/coordination_archive.py" \
     "$TARGET_DIR/pointer_lock.py" \
     "$TARGET_DIR/peer_addressing.py" \
@@ -107,7 +113,7 @@ chmod 755 \
     "$TARGET_DIR/coordination_process.py" \
     "$TARGET_DIR/coordination_lock.py" \
     "$TARGET_DIR/project_recipient.py" \
-    "$TARGET_DIR/live_receipt.py"
+    "$TARGET_DIR/native_transcript_identity.py"
 chmod 644 "$TARGET_DIR/source-path" "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
 
 if [ -f "$CONFIG_PATH" ]; then

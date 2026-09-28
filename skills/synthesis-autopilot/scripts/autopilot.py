@@ -7,7 +7,6 @@ Existing action owners remain responsible for authorization and external I/O.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -29,6 +28,7 @@ def engine():
     import consumer_checks
     import workflow
     import observation_bridge
+    import native_archive
     import controller
     capabilities.register_commands(run_state.register_command)
     workflow.register_commands(run_state.register_command)
@@ -41,6 +41,7 @@ def engine():
     evidence_bridge.register_observers(run_state.register_observer)
     consumer_checks.register_observers(run_state.register_observer)
     observation_bridge.register(run_state)
+    native_archive.register(run_state)
     controller.register(run_state)
     return run_state
 
@@ -188,12 +189,14 @@ def summary(state, context=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("create", "command", "observe", "status", "rebuild", "import", "explain", "doctor", "stop",
-        "start", "next", "record", "checkpoint", "cancel", "recover", "finish"))
+        "start", "next", "record", "checkpoint", "cancel", "recover", "finish", "successor"))
     for name in ("project", "plan", "contract", "profile", "actor", "payload", "legacy"):
         parser.add_argument("--" + name, type=Path)
     for name in ("project-id", "run-id", "command-id", "name", "surface"):
         parser.add_argument("--" + name)
     parser.add_argument("--expected-revision", type=int)
+    parser.add_argument("--replay-limits", type=Path,
+                        help="Exact finite native-validation limits for a protected command/observe request")
     parser.add_argument("--request", help="Strict bounded operation request file, or - for stdin")
     parser.add_argument("--source-mode", choices=("native", "synthetic"), default="native",
                         help="Declared source mode; never proof of native qualification")
@@ -201,7 +204,9 @@ def main(argv=None):
                         help="Prepare host-local ownership discovery outside Stop; preserve source records")
     args = parser.parse_args(argv)
     try:
-        if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish"}:
+        if args.replay_limits is not None and (args.action not in {"command", "observe"} or args.request is not None):
+            raise ValueError("--replay-limits requires a protected low-level command/observe facade")
+        if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish", "successor"}:
             import controller
             if args.action not in controller.OPERATIONS or args.project is None or args.request is None:
                 raise ValueError("facade operation requires --project and --request")
@@ -280,6 +285,10 @@ def main(argv=None):
                     if not args.run_id or not args.name or args.expected_revision is None or not args.command_id:
                         raise ValueError("command requires run-id, name, expected-revision and command-id")
                     payload = read_json(args.payload)
+                    import controller
+                    protected_name = "observe:" + args.name if args.action == "observe" else args.name
+                    if args.replay_limits is not None and not controller.protected_command(protected_name, payload):
+                        raise ValueError("--replay-limits cannot authorize an unsupported command")
                     if args.action == "command" and args.name == "workflow.grade":
                         import workflow
                         current = runtime.load_run(args.project, args.run_id)
@@ -296,6 +305,16 @@ def main(argv=None):
                             expected_revision=current["revision"], command_id=args.command_id, actor=actor,
                             runtime_root=default_runtime_root(), request_binding=binding)
                     else:
+                        import controller
+                        command = "observe:" + args.name if args.action == "observe" else args.name
+                        current = runtime.load_run(args.project, args.run_id)
+                        if controller.protected_command(command, payload) and (controller.needs_admission_replay(current) or args.replay_limits is not None):
+                            output = controller.command_with_freshness(args.project, args.run_id, command, payload,
+                                expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,
+                                runtime_root=default_runtime_root(),
+                                replay_limits=read_json(args.replay_limits) if args.replay_limits else None)
+                            print(json.dumps(output, indent=2, sort_keys=True, default=str, allow_nan=False))
+                            return 0
                         mutate = runtime.observe if args.action == "observe" else runtime.apply_command
                         output = mutate(args.project, args.run_id, args.name, payload,
                             expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,

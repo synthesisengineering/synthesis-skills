@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.0"
+  version: "1.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -34,6 +34,7 @@ enforcement layer for correspondence the way commit hooks are the enforcement
 layer for repositories: the rules live in code, run outside the model, and fail
 closed.
 
+Construct proposed attestations with the mandatory [grounding-envelope workflow](references/grounding-envelope.md); `--build-ledger` computes bytes, while the existing approval and single-use ledger owners govern effects.
 ## Why it exists
 
 Two same-night incidents (2026-07-29), both by an agent that had the relevant

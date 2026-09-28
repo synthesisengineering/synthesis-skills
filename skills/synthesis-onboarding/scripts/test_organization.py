@@ -36,7 +36,7 @@ def test_repository_slug_rejects_destination_escape() -> None:
 
 
 def test_existing_clone_with_wrong_remote_is_rejected(tmp_path: Path, monkeypatch) -> None:
-    destination = tmp_path / "organizations" / "config"
+    destination = tmp_path / "organizations" / organization.repository_key("https://example.test/group/config.git")
     (destination / ".git").mkdir(parents=True)
     monkeypatch.setattr(
         organization,
@@ -52,7 +52,7 @@ def test_existing_clone_with_wrong_remote_is_rejected(tmp_path: Path, monkeypatc
 
 
 def test_verify_only_never_fetches_or_clones(tmp_path: Path, monkeypatch) -> None:
-    destination = tmp_path / "organizations" / "config"
+    destination = tmp_path / "organizations" / organization.repository_key("https://example.test/group/config.git")
     (destination / ".git").mkdir(parents=True)
     (destination / ".agents").mkdir()
     (destination / organization.MANIFEST_RELATIVE).write_text("version: 2\n")
@@ -85,7 +85,7 @@ def test_verify_only_never_fetches_or_clones(tmp_path: Path, monkeypatch) -> Non
 def test_existing_clone_rejects_symlinked_git_directory(tmp_path: Path) -> None:
     url = "https://example.test/team/onboarding.git"
     data_root = tmp_path / "data"
-    root = data_root / "organizations" / "onboarding"
+    root = data_root / "organizations" / organization.repository_key(url)
     root.mkdir(parents=True)
     outside = tmp_path / "outside-git"
     outside.mkdir()

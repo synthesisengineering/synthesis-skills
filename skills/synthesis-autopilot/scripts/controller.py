@@ -1,4 +1,4 @@
-"""Bounded eight-operation facade over the existing PM/run/workflow owners.
+"""Bounded operation facade over the existing PM/run/workflow owners.
 
 Requests carry intent, never receipts or action grants. Each step uses the
 existing journal/CAS transaction; interruption preserves its committed prefix.
@@ -8,7 +8,6 @@ created here. Failed/unknown consumer results remain actual observations.
 from __future__ import annotations
 
 from copy import deepcopy
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,10 +19,10 @@ import uuid
 import run_state
 import run_profile
 import workflow
-import observation_bridge
+import observation_bridge as observation_bridge
 from run_admission import admit_paths, read_admission_observation, reconcile_readback, safe_path
 
-OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish"})
+OPERATIONS = frozenset({"start", "next", "record", "checkpoint", "explain", "cancel", "recover", "finish", "successor"})
 MAX_REQUEST_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
 
@@ -35,6 +34,7 @@ class Request(TypedDict):
     project_id: str
     run_id: NotRequired[str]
     expected_revision: NotRequired[int]
+    replay_limits: NotRequired[dict]
     input: dict
 
 
@@ -137,13 +137,21 @@ def _read_json_bytes(path):
 
 def validate_request(value) -> Request:
     _bounded(value)
-    _object(value, {"schema_version", "request_id", "operation", "project_id", "input"}, {"run_id", "expected_revision"})
+    _object(value, {"schema_version", "request_id", "operation", "project_id", "input"}, {"run_id", "expected_revision", "replay_limits"})
     if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["operation"] not in OPERATIONS:
         raise ValueError("unsupported request schema or operation")
     for field in ("request_id", "project_id"):
         run_state._id(value[field], field)
     operation, data = value["operation"], value["input"]
-    if operation == "start":
+    if operation == "successor":
+        if "run_id" in value or "expected_revision" in value:
+            raise ValueError("successor derives identity from its exact predecessor")
+        _object(data, {"predecessor", "deadline", "authorization_ref"})
+        run_state._successor_reference(data["predecessor"])
+        _object(data["authorization_ref"], {"path", "digest"})
+        _text(data["authorization_ref"]["path"], "scoped authorization reference")
+        run_state._time(data["deadline"])
+    elif operation == "start":
         if "run_id" in value or "expected_revision" in value:
             raise ValueError("start obtains its deterministic run identity from the existing owner")
         _object(data, {"plan_ref", "outcome_contract", "dimensions", "resource_envelope"}, {"preference_layer_refs", "graph", "execution_policy"})
@@ -171,7 +179,13 @@ def validate_request(value) -> Request:
             if not isinstance(data, dict):
                 raise ValueError("record input must be an object")
             kind = data.get("kind")
-            if kind == "artifact":
+            if kind == "protected_command":
+                _object(data, {"kind", "command", "payload", "command_id"})
+                run_state._id(data["command_id"], "command ID")
+                if (not isinstance(data["command"], str) or not isinstance(data["payload"], dict)
+                        or not protected_command(data["command"], data["payload"])):
+                    raise ValueError("protected command must name an existing supported productive owner")
+            elif kind == "artifact":
                 _object(data, {"kind", "artifact_id", "path", "role", "required", "retention"})
                 run_state._id(data["artifact_id"], "artifact ID")
                 _text(data["path"], "artifact path")
@@ -287,9 +301,17 @@ def validate_request(value) -> Request:
             elif "target_id" in data:
                 raise ValueError("run cancellation does not accept a separate target")
         elif operation == "recover":
-            _object(data, {"reconcile_sources"}, {"capsule_ref", "source_reconciliations"})
+            _object(data, {"reconcile_sources"}, {"capsule_ref", "source_reconciliations", "replay_limits", "historical_subject"})
             if type(data["reconcile_sources"]) is not bool:
                 raise ValueError("reconcile_sources must be boolean")
+            if "historical_subject" in data:
+                if not data["reconcile_sources"] or "source_reconciliations" in data:
+                    raise ValueError("historical subject requires its separate bounded recovery operation")
+                observation_bridge.validate_historical_subject(data["historical_subject"])
+            if "replay_limits" in data:
+                if not data["reconcile_sources"]:
+                    raise ValueError("replay limits require source reconciliation")
+                _replay_limits(data["replay_limits"])
             if "capsule_ref" in data:
                 _text(data["capsule_ref"], "capsule reference")
             if "source_reconciliations" in data:
@@ -308,7 +330,7 @@ def validate_request(value) -> Request:
                             continue
                         if not isinstance(row[field], str) or re.fullmatch(r"[0-9a-f]{64}", row[field]) is None:
                             raise ValueError("source reconciliation requires exact generation/frontier digests")
-                    if row["mode"] not in {"carry", "interval"}:
+                    if row["mode"] not in {"carry", "interval", "replay"}:
                         raise ValueError("unsupported source reconciliation mode")
                     if row["mode"] == "interval":
                         if type(row.get("start_offset")) is not int or row["start_offset"] < 0:
@@ -334,7 +356,60 @@ def validate_request(value) -> Request:
         if not readonly or "expected_revision" in value:
             if type(value.get("expected_revision")) is not int or value["expected_revision"] < 1:
                 raise ValueError("mutation requires an integer expected revision")
+    if "replay_limits" in value:
+        if not _protected_request(value):
+            raise ValueError("admission replay limits require a protected mutation")
+        _replay_limits(value["replay_limits"])
     return deepcopy(value)
+
+
+def protected_command(command, payload):
+    """Existing productive owners; cleanup and inspection never need replay."""
+    return (command in {"workflow.dispatch", "workflow.attempt", "workflow.progress",
+            "effect.prepare", "native.launch.prepare", "observe:native_worker", "recovery.instructions"}
+        or command == "workflow.task" and payload.get("action") in {"start", "retry", "complete"}
+        or command == "close" and payload.get("status") == "completed"
+        or command == "supervision.action" and payload.get("action") in {"request", "claim"})
+
+
+def _protected_request(request):
+    operation, data = request["operation"], request["input"]
+    if operation == "next":
+        return data.get("mode") == "start"
+    if operation == "finish":
+        return data.get("disposition") == "completed"
+    if operation != "record":
+        return False
+    kind = data.get("kind")
+    return (kind in {"protected_command", "attempt", "launch_prepare", "recovery_instructions"}
+        or kind == "check" and data.get("observer_kind") == "native_worker"
+        or kind == "supervision" and data.get("action") in {"request", "claim"})
+
+
+def needs_admission_replay(state):
+    return any(source.get("replay") for source in state.get("extensions", {}).get(
+        "native_observations", {}).get("sources", {}).values())
+
+
+def command_with_freshness(project, run_id, command, payload, *, expected_revision,
+        command_id, actor, runtime_root=None, replay_limits=None):
+    """CLI's existing command owner with a request-bound, finite preflight.
+
+    This does not perform the external effect. The original mutation, command
+    ID, current actor and commit-time constraints remain with run_state.
+    Direct run_state callers still refuse stale evidence without this facade.
+    """
+    state = run_state.load_run(project, run_id)
+    request = {"schema_version": 1, "request_id": "native-admission." + run_state._digest(command_id),
+        "operation": "record", "project_id": state["project_id"], "run_id": run_id,
+        "expected_revision": expected_revision, "input": {"kind": "protected_command",
+            "command": command, "payload": payload, "command_id": command_id}}
+    if replay_limits is not None:
+        request["replay_limits"] = _replay_limits(replay_limits)
+    response = handle(request, project=project, actor=actor, runtime_root=runtime_root)
+    if response["status"] in {"UNRESOLVED", "RECONCILE", "WAIT"}:
+        raise ValueError("protected command was not admitted: " + json.dumps(response, sort_keys=True))
+    return run_state.load_run(project, run_id)
 
 
 def preregister_evaluation(**spec):
@@ -404,7 +479,7 @@ class _Transaction:
     def command_id(self, step):
         return "controller." + run_state._digest([self.request["request_id"], step])
 
-    def step(self, step, command, payload):
+    def step(self, step, command, payload, *, bound_revision=None, command_id=None):
         if len(step) > 160:
             step = "step." + run_state._digest(step)
         self.refresh()
@@ -413,9 +488,11 @@ class _Transaction:
             self.state = self.engine.replay_request_step(self.project, self.run_id,
                 request_binding=self.binding(step), command=command, actor=self.actor)
             return committed["command_id"]
+        if bound_revision is not None and self.state["revision"] != bound_revision:
+            raise ValueError("bounded replay source state changed before its charged transaction")
         saved = self.state.get("extensions", {}).get("controller", {}).get("requests", {}).get(self.request["request_id"])
         expected = self.state["revision"] if saved else self.initial_revision
-        identity = self.command_id(step)
+        identity = command_id or self.command_id(step)
         self.engine.apply_command(self.project, self.run_id, command, payload,
             expected_revision=expected, command_id=identity, actor=self.actor, runtime_root=self.runtime_root,
             request_binding=self.binding(step))
@@ -476,6 +553,248 @@ def _start(tx, mode):
         tx.observe("project-ownership", "claim-ownership", {})
 
 
+REPLAY_DEFAULTS = {"steps": 128, "bytes": 64 * 1024 * 1024, "sources": 8, "wall_millis": 30000}
+REPLAY_CAPS = {"steps": 4096, "bytes": 16 * 1024**3, "sources": 64, "wall_millis": 900000}
+
+
+def _replay_limits(value):
+    _object(value, set(REPLAY_DEFAULTS))
+    if any(type(value[key]) is not int or not 1 <= value[key] <= REPLAY_CAPS[key] for key in value):
+        raise ValueError("original replay limits must be explicit finite positive integers within owner bounds")
+    return deepcopy(value)
+
+
+def _driver_clock():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def _driver_charge(source):
+    """Use the same pre-I/O phase ceiling as historical replay admission."""
+    return observation_bridge.replay_read_ceiling(source)
+
+
+def _driver_frontiers(state):
+    return {handle: {"generation": source["binding"]["generation"],
+        "offset": source["cursor"]["offset"], "replay_status": source.get("replay", {}).get("status"),
+        "replay_phase": source.get("replay", {}).get("phase"),
+        "replay_offset": source.get("replay", {}).get("fresh", source)["cursor"]["offset"]}
+        for handle, source in state.get("extensions", {}).get("native_observations", {}).get("sources", {}).items()}
+
+
+def _driver_state(tx, data):
+    from datetime import timedelta
+    import time
+    limits = _replay_limits(data.get("replay_limits", REPLAY_DEFAULTS))
+    first = tx.committed("recovery-admit")
+    if not first:
+        raise ValueError("bounded replay requires its committed original recovery admission")
+    event = observation_bridge._journal_event(tx.project, tx.run_id, first["revision"])
+    if event["command_id"] != first["command_id"] or event["command"] != "recovery.admit":
+        raise ValueError("bounded replay admission differs from its exact journal step")
+    started = run_state._time(event["state"]["updated_at"])
+    deadline = started + timedelta(milliseconds=limits["wall_millis"])
+    budget_deadline = tx.state.get("extensions", {}).get("workflow", {}).get("budget", {}).get("deadline")
+    if budget_deadline:
+        deadline = min(deadline, run_state._time(budget_deadline))
+    sources = event["state"].get("extensions", {}).get("native_observations", {}).get("sources", {})
+    handles = sorted(sources)
+    saved = tx.state["extensions"]["controller"]["requests"][tx.request["request_id"]]["steps"]
+    committed = []
+    for name in saved:
+        if not name.startswith("bounded-replay."):
+            continue
+        match = re.fullmatch(r"bounded-replay\.(\d+)\.(reconcile|observe)\.(\d+)\.([0-9a-f]{64})", name)
+        if not match:
+            raise ValueError("bounded replay step identity is malformed")
+        ordinal, action, amount, handle = match.groups()
+        committed.append((int(ordinal), action, int(amount), handle))
+    committed.sort()
+    if [row[0] for row in committed] != list(range(len(committed))):
+        raise ValueError("bounded replay committed step prefix is not contiguous")
+    report = {"status": "pending", "limits": limits, "steps": len(committed),
+        "validation_bytes_charged": sum(row[2] for row in committed),
+        "sources": handles, "started_at": started.isoformat(), "deadline": deadline.isoformat(),
+        "authority_granted": False, "effects_replayed": False,
+        "byte_metric": "conservative replay-validation read ceiling; setup/commit/readback retain existing owner bounds",
+        "time_bound": "no new validation step after deadline; one already admitted finite owner transaction may finish",
+        "native_acceptance": "UNKNOWN", "frontiers": _driver_frontiers(tx.state)}
+    if report["steps"] > limits["steps"] or report["validation_bytes_charged"] > limits["bytes"]:
+        raise ValueError("bounded replay committed prefix exceeds the original request allowance")
+    return report, committed, deadline, time.monotonic() + max(0, (deadline - _driver_clock()).total_seconds())
+
+
+def _driver_progress(source):
+    replay = source.get("replay", {})
+    return run_state._digest({"cursor": source["cursor"],
+        "replay": {key: replay.get(key) for key in (
+            "status", "phase", "witness_index", "revision_index", "matched", "frontier")},
+        "fresh_cursor": replay.get("fresh", {}).get("cursor")})
+
+
+def _bounded_recovery(tx, data, *, advance=True):
+    """One quiet external operation, existing serialized/idempotent owner steps."""
+    import time
+    report, committed, deadline, monotonic_deadline = _driver_state(tx, data)
+    tx.replay_driver = report
+    handles = report["sources"]
+    limits = report["limits"]
+    if len(handles) > limits["sources"]:
+        report.update(status="limited", reason="source_count_limit")
+        return report
+    specs = {row["source_handle"]: row for row in data.get("source_reconciliations", [])}
+    if set(specs) - set(handles):
+        raise ValueError("recovery cannot introduce an unbound source handle")
+    reconciled = {row[3] for row in committed if row[1] == "reconcile"}
+    observed = {row[3] for row in committed if row[1] == "observe"}
+
+    def current():
+        tx.refresh()
+        sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
+        if sorted(sources) != handles:
+            raise ValueError("bounded replay source membership changed during recovery")
+        return sources
+
+    def take(handle, action, cost, payload):
+        if not advance:
+            report.update(status="limited", reason="retained_incomplete_request")
+            return False
+        if _driver_clock() >= deadline or time.monotonic() >= monotonic_deadline:
+            report.update(status="limited", reason="time_limit")
+            return False
+        if report["steps"] >= limits["steps"]:
+            report.update(status="limited", reason="step_limit")
+            return False
+        if report["validation_bytes_charged"] + cost > limits["bytes"]:
+            report.update(status="limited", reason="validation_byte_limit")
+            return False
+        ordinal = report["steps"]
+        name = f"bounded-replay.{ordinal}.{action}.{cost}." + run_state._digest(handle)
+        tx.step(name, "native." + action, payload, bound_revision=tx.state["revision"])
+        report["steps"] += 1
+        report["validation_bytes_charged"] += cost
+        return True
+
+    for handle in handles:
+        identity = run_state._digest(handle)
+        if identity in reconciled:
+            continue
+        current()
+        payload = {"source_handle": handle}
+        if handle in specs:
+            payload["reconciliation"] = {k: v for k, v in specs[handle].items() if k != "source_handle"}
+        # Setup is a bounded source enrollment, not an original-history page.
+        if not take(handle, "reconcile", 0, payload):
+            return report
+        reconciled.add(identity)
+    while True:
+        sources = current()
+        report["frontiers"] = _driver_frontiers(tx.state)
+        failed = [handle for handle, source in sources.items() if source.get("recovery") or source.get("replay", {}).get("status") == "failed"]
+        if failed:
+            report.update(status="unknown", reason="source_reconciliation_failed", unresolved_sources=failed)
+            return report
+        pending = [handle for handle, source in sources.items() if source.get("replay", {}).get("status") == "pending"]
+        tails = [handle for handle, source in sources.items() if not source.get("replay") and run_state._digest(handle) not in observed]
+        refresh = [handle for handle, source in sources.items()
+            if source.get("replay", {}).get("status") == "complete"
+            and source["cursor"]["offset"] < source["replay"]["snapshot"][2]]
+        if not pending and refresh:
+            # Original-prefix replay does not consume the later bytes of the
+            # already captured current snapshot. Admit the existing bounded
+            # refresh owner before calling that recovery complete.
+            before_progress = _driver_progress(sources[refresh[0]])
+            if not take(refresh[0], "reconcile", 0, {"source_handle": refresh[0]}):
+                return report
+            if _driver_progress(current()[refresh[0]]) == before_progress:
+                report.update(status="unknown", reason="no_validation_progress", unresolved_sources=refresh)
+                return report
+            continue
+        if not pending and not tails:
+            partial = [handle for handle, source in sources.items()
+                if source["cursor"].get("pending") or source["cursor"].get("oversized")]
+            if partial:
+                report.update(status="unknown", reason="incomplete_physical_record", unresolved_sources=partial)
+            else:
+                report.update(status="complete", reason="bounded_validation_finished")
+            return report
+        handle = (pending or tails)[0]
+        source = sources[handle]
+        payload = {"source_handle": handle, "through_event": None, "task_id": None, "attempt_id": None}
+        if handle.startswith("worker:"):
+            payload["task_id"] = tx.state["extensions"]["workflow"]["children"][handle.removeprefix("worker:")]["task_id"]
+        before_progress = _driver_progress(source)
+        if not take(handle, "observe", _driver_charge(source), payload):
+            return report
+        if (source.get("replay", {}).get("status") == "pending"
+                and _driver_progress(current()[handle]) == before_progress):
+            report.update(status="unknown", reason="no_validation_progress", unresolved_sources=[handle])
+            return report
+        observed.add(run_state._digest(handle))
+
+
+def _historical_report(record):
+    # Pending transcript bytes and replay internals stay in the private owner
+    # journal; an operator report exposes only bounded qualification metadata.
+    names = ("schema_version", "subject", "limits", "qualified_frontier",
+        "coverage_scope", "current_run_id", "contract_digest", "profile_digest",
+        "subject_deadline", "subject_budget_digest", "prior_invalidation_count",
+        "prior_invalidation_digest", "derived_invalidation_ids", "status", "stage",
+        "steps", "validation_bytes_charged", "started_at", "deadline",
+        "authority_granted", "effects_replayed", "native_acceptance",
+        "negative_coverage", "pre_enrollment", "invalidation_status", "owner_revision")
+    report = {key: deepcopy(record[key]) for key in names if key in record}
+    cursor = record.get("source", {}).get("cursor", {})
+    report["observed_offset"] = cursor.get("offset")
+    report["record_boundary"] = cursor.get("frame_start")
+    report["pending_bytes"] = max(0, cursor.get("offset", 0) - cursor.get("frame_start", 0))
+    report["historical_record_digest"] = run_state._digest(record)
+    return report
+
+
+def _historical_recovery(tx, data, *, advance=True):
+    subject = data["historical_subject"]
+    identity = run_state._digest(subject)
+    limits = _replay_limits(data.get("replay_limits", REPLAY_DEFAULTS))
+    while True:
+        tx.refresh()
+        record = tx.state.get("extensions", {}).get("native_history", {}).get(identity)
+        if record and (record["status"] != "pending" or not advance):
+            import time
+            if record["current_run_id"] != tx.state["run_id"]:
+                raise ValueError("inherited historical validation is not current-run admission")
+            if record["limits"] != limits or record["subject"] != subject:
+                raise ValueError("historical request cannot reset its original allowance")
+            observation_bridge._history_tick(record)
+            observation_bridge._history_source_fence(record)
+            run_state._successor_recheck_files(tx.project,
+                {key: tuple(value) for key, value in record["journal_witnesses"].items()},
+                time.monotonic() + 5)
+            return deepcopy(record)
+        if not advance:
+            return {"status": "pending", "subject": deepcopy(subject), "authority_granted": False}
+        ordinal = record["steps"] if record else 0
+        tx.step(f"historical-subject.{identity}.{ordinal}", "native.history",
+                {"subject": subject, "limits": limits}, bound_revision=tx.state["revision"])
+
+
+def _admission_freshness(tx):
+    if not needs_admission_replay(tx.state):
+        return
+    # Each protected intent keeps one immutable admission timestamp and its
+    # charged prefix. Retrying the same request never restarts its allowance.
+    tx.step("recovery-admit", "recovery.admit", {"capsule_ref": None})
+    data = {"replay_limits": tx.request.get("replay_limits", REPLAY_DEFAULTS)}
+    tx.replay_data = data
+    report = _bounded_recovery(tx, data)
+    if report["status"] != "complete":
+        raise ValueError("bounded native admission remains incomplete: " + str(report.get("reason")))
+    tx.step("recovery-readback", "recovery.admit", {"capsule_ref": None})
+    # A completed prefix does not waive cancellation, an unsupported tail,
+    # unresolved effects, or the original mutation owner's fresh commit check.
+    _require_current_native(tx)
+
+
 def _catch_up(tx, prefix, *, retain_unreconciled=False):
     sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
     for handle in sorted(sources):
@@ -487,7 +806,9 @@ def _catch_up(tx, prefix, *, retain_unreconciled=False):
 
 def _record(tx, data):
     kind = data["kind"]
-    if kind == "artifact":
+    if kind == "protected_command":
+        tx.step(kind, data["command"], data["payload"], command_id=data["command_id"])
+    elif kind == "artifact":
         tx.step("artifact", "artifact.register", {"id": data["artifact_id"], **{
             key: data[key] for key in ("path", "role", "required", "retention")}})
     elif kind == "check":
@@ -904,6 +1225,20 @@ def _response(request, state, status, *, context=None, diagnostics=None):
             coverage["native"][handle] = {"enrollment": source["enrollment"], "coverage": source.get("coverage"),
                 "qualification": source["qualification"], "negative_coverage": "UNKNOWN",
                 "recovery": source.get("recovery"), "reconciliation": source.get("reconciliation")}
+            replay = source.get("replay")
+            if replay:
+                coverage["native"][handle]["replay"] = {
+                    "status": replay["status"], "phase": replay["phase"],
+                    "original_offset": replay["original_offset"], "frontier": replay["frontier"],
+                    "verified_witnesses": replay["witness_index"], "witnesses": len(replay["witnesses"]),
+                    "verified_journal_batches": replay["revision_index"], "journal_batches": len(replay["revisions"]),
+                    "decoded_through": replay.get("fresh", source)["cursor"]["offset"],
+                    "pre_enrollment": "UNKNOWN", "authority_granted": False}
+                if replay["status"] in {"pending", "failed"}:
+                    next_steps = [item for item in next_steps if item["kind"] != "ready_task"]
+                    next_steps.append({"owner": "observation_bridge", "kind": "original_interval_replay_" + replay["status"],
+                        "source_handle": handle, "failure": replay.get("failure"),
+                        "action": "Record the next bounded native observation" if replay["status"] == "pending" else "Reconcile the retained source failure; no automatic retry"})
             diagnostics.extend({"source_handle": handle, **row} for row in source.get("last_diagnostics", []))
             if source.get("recovery"):
                 next_steps.append({"owner": "observation_bridge", "kind": "generation_reconciliation",
@@ -969,9 +1304,16 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
         if operation == "cancel":
             last_step = {"run": "cancel", "task": "cancel-task", "child": "cancel-child"}[data["target"]]
         completed_prefix = bool(last_step and tx.committed(last_step)) if not readonly else False
+        if not completed_prefix and not readonly and _protected_request(request):
+            _admission_freshness(tx)
         if completed_prefix:
             tx.state = tx.engine.replay_request_step(tx.project, tx.run_id,
                 request_binding=tx.binding(last_step), actor=actor)
+        elif operation == "successor":
+            tx.run_id = run_state.successor_identity(tx.project, data["predecessor"]["run_id"])
+            tx.state = tx.engine.create_successor(tx.project, project_id=request["project_id"], intent=data,
+                actor=actor, command_id=tx.command_id("create"), runtime_root=runtime_root,
+                request_binding=tx.binding("create"))
         elif operation == "start":
             _start(tx, source_mode)
         elif readonly:
@@ -999,16 +1341,14 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
             tx.step("recovery-admit", "recovery.admit", {"capsule_ref": data.get("capsule_ref")})
             # Existing two-phase transfer remains mandatory for a new owner.
             if data["reconcile_sources"]:
-                sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
-                specs = {row["source_handle"]: row for row in data.get("source_reconciliations", [])}
-                if set(specs) - set(sources):
-                    raise ValueError("recovery cannot introduce an unbound source handle")
-                for handle in sorted(sources):
-                    payload = {"source_handle": handle}
-                    if handle in specs:
-                        payload["reconciliation"] = {key: value for key, value in specs[handle].items() if key != "source_handle"}
-                    tx.step("reconcile:" + handle, "native.reconcile", payload)
-            _checkpoint(tx, {"reason": "Current owner reconstructed the authoritative journal", "include_pm": False}, recovering=True)
+                if "historical_subject" in data:
+                    _historical_recovery(tx, data)
+                else:
+                    _bounded_recovery(tx, data)
+                # Never spend an uncharged catch-up after replay reaches a limit.
+                tx.step("checkpoint", "controller.checkpoint", {"reason": "Bounded source recovery retained its exact disposition", "include_pm": False})
+            else:
+                _checkpoint(tx, {"reason": "Current owner reconstructed the authoritative journal", "include_pm": False}, recovering=True)
             tx.step("recovery-readback", "recovery.admit", {"capsule_ref": None})
         elif operation == "finish":
             _finish(tx, data)
@@ -1029,13 +1369,26 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
                 status = "UNRESOLVED"
         if tx.state["status"] not in run_state.TERMINAL:
             sources = tx.state.get("extensions", {}).get("native_observations", {}).get("sources", {})
-            if any(source.get("recovery") or (source.get("coverage") or {}).get("first_gap") is not None
+            if any(source.get("recovery") or source.get("replay", {}).get("status") in {"pending", "failed"} or (source.get("coverage") or {}).get("first_gap") is not None
                     or any(row.get("code") == "source_unavailable" for row in source.get("last_diagnostics", [])) for source in sources.values()):
                 status = "RECONCILE"
             elif any((source.get("coverage") or {}).get("backlog_bytes") or (source.get("coverage") or {}).get("pending_bytes")
                     or any(row.get("code") == "requested_locator_not_observed" for row in source.get("last_diagnostics", [])) for source in sources.values()):
                 status = "WAIT"
         response = _response(request, tx.state, status, context=context)
+        if operation == "recover" and "historical_subject" in data:
+            historical = _historical_recovery(tx, data, advance=False)
+            response["coverage"]["historical_subject"] = _historical_report(historical)
+            if historical["status"] != "complete":
+                response["status"] = "RECONCILE"
+        elif operation == "recover" and data["reconcile_sources"]:
+            driver = getattr(tx, "replay_driver", None) or _bounded_recovery(tx, data, advance=False)
+            response["coverage"]["replay_driver"] = deepcopy(driver)
+            if driver["status"] != "complete":
+                response["status"] = "RECONCILE"
+                response["next"].append({"owner": "controller", "kind": "bounded_replay_incomplete", "reason": driver.get("reason"), "authority_granted": False})
+        if operation != "recover" and getattr(tx, "replay_driver", None):
+            response["coverage"]["replay_driver"] = deepcopy(tx.replay_driver)
         if recovery_resolution is not None:
             response["coverage"]["project_resolution"] = recovery_resolution
         if operation == "recover" and response["coverage"].get("recovery", {}).get("status") == "reconcile":
@@ -1061,6 +1414,14 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
         response = _response(request, state, "UNRESOLVED", diagnostics=[{
             "code": "owner_obligation", "owner": "existing PM/run/workflow/evidence owner", "detail": str(exc)[:4096]}])
         response["next"].append({"kind": "resolve_owner_obligation", "owner": "existing owner", "detail": str(exc)[:4096]})
+        if tx and getattr(tx, "replay_driver", None):
+            try:
+                retained, _, _, _ = _driver_state(tx, getattr(tx, "replay_data", request["input"]))
+                retained.update(status="interrupted", reason="owner_obligation", committed_prefix="verified")
+            except (ValueError, OSError, KeyError, TypeError, RuntimeError):
+                retained = {"status": "interrupted", "committed_prefix": "UNKNOWN",
+                    "authority_granted": False, "native_acceptance": "UNKNOWN"}
+            response["coverage"]["replay_driver"] = retained
         if current_acceptance is not None:
             response["coverage"]["current_acceptance"] = current_acceptance
             response["coverage"]["journal_terminal"] = state["status"] if state else None

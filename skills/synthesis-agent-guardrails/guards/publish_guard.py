@@ -91,14 +91,19 @@ def _ensure_shell_parser() -> None:
     global artifact_consumer_position, inspect_command, wrangler_operation
     if inspect_command is not None:
         return
-    scripts = (Path(__file__).resolve().parent.parent.parent
-               / "synthesis-project-management" / "scripts")
+    scripts = (
+        Path(__file__).resolve().parent.parent.parent
+        / "synthesis-project-management"
+        / "scripts"
+    )
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     import publication_command as parser
+
     artifact_consumer_position = parser.artifact_consumer_position
     inspect_command = parser.inspect_command
     wrangler_operation = parser.wrangler_operation
+
 
 ENGINE_VERSION = "1.3.1"
 LEDGER_MAX_AGE_MINUTES = 15
@@ -154,8 +159,9 @@ def _content_date(text: str) -> datetime | None:
         return None
 
 
-def future_dated_files(repo: str, now: datetime | None = None,
-                       cfg: dict | None = None) -> list[tuple[str, str]]:
+def future_dated_files(
+    repo: str, now: datetime | None = None, cfg: dict | None = None
+) -> list[tuple[str, str]]:
     """Content files whose stated publication time is still in the future.
 
     Invariant (2026-08-29, after a post dated the next afternoon went live
@@ -192,15 +198,19 @@ def _git_out(repo: str, *args: str) -> str | None:
     try:
         proc = subprocess.run(
             ["git", "-C", repo, *args],
-            capture_output=True, text=True, check=False, timeout=20,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=20,
         )
     except Exception:
         return None
     return proc.stdout if proc.returncode == 0 else None
 
 
-def published_date_mutations(repo: str,
-                             cfg: dict | None = None) -> list[tuple[str, str, str]] | None:
+def published_date_mutations(
+    repo: str, cfg: dict | None = None
+) -> list[tuple[str, str, str]] | None:
     """Content files whose ALREADY-PUBLISHED date changes in this push.
 
     The compounding half of the 2026-08-29 incident: re-dating a live post
@@ -226,8 +236,13 @@ def published_date_mutations(repo: str,
     # content_roots + content_layout.
     scans = content_scans(cfg, repo)
     changed = _git_out(
-        repo, "diff", "--name-only", "--diff-filter=M", f"{base}...HEAD",
-        "--", *[root for root, _ in scans],
+        repo,
+        "diff",
+        "--name-only",
+        "--diff-filter=M",
+        f"{base}...HEAD",
+        "--",
+        *[root for root, _ in scans],
     )
     if changed is None:
         return None
@@ -245,10 +260,45 @@ def published_date_mutations(repo: str,
         old_date, new_date = _content_date(old_text), _content_date(new_text)
         if old_date and new_date and old_date != new_date:
             mutations.append(
-                (rel, old_date.strftime("%Y-%m-%d %H:%M"),
-                 new_date.strftime("%Y-%m-%d %H:%M"))
+                (
+                    rel,
+                    old_date.strftime("%Y-%m-%d %H:%M"),
+                    new_date.strftime("%Y-%m-%d %H:%M"),
+                )
             )
     return mutations
+
+
+def _team_constraint(repo, *, prior=None, checking=False):
+    cfg = load_config()
+    if not cfg.get("team_contracts") and prior is None:
+        return None
+    import importlib.util
+
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "synthesis-project-management/scripts/team_contract.py"
+    )
+    # Verified source/installed release owns this direct dependency. No unrelated
+    # live-source fallback or caller-supplied role assertion is consulted.
+    spec = importlib.util.spec_from_file_location("_publish_team_owner", source)
+    owner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(owner)
+    current = owner.publication_constraint(cfg, repo)
+    if checking and current != prior:
+        raise ValueError(
+            "team publication binding changed or was absent from exact approval"
+        )
+    return current
+
+
+def _team_rapid(constraint, rapid):
+    if (
+        rapid
+        and constraint
+        and "no-rapid-redeploy" in constraint["policy"]["restriction_ids"]
+    ):
+        raise ValueError("team mandatory policy prohibits rapid redeployment")
 
 
 def config_path() -> str:
@@ -332,20 +382,37 @@ def deployment_binding(path: str) -> tuple[dict, str, str]:
         raise ValueError("binding must be an absolute regular file")
     raw = candidate.read_bytes()
     binding = json.loads(raw)
-    keys = {"schema", "transaction_id", "surface", "repo", "head_sha", "tree_sha",
-            "consumer_path", "consumer_sha256", "bound_files", "artifact_manifest_sha256", "plan"}
+    keys = {
+        "schema",
+        "transaction_id",
+        "surface",
+        "repo",
+        "head_sha",
+        "tree_sha",
+        "consumer_path",
+        "consumer_sha256",
+        "bound_files",
+        "artifact_manifest_sha256",
+        "plan",
+    }
     if set(binding) != keys or binding["schema"] != 1:
         raise ValueError("unknown artifact binding schema or fields")
-    if not re.fullmatch(r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", str(binding["transaction_id"])):
+    if not re.fullmatch(
+        r"[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}", str(binding["transaction_id"])
+    ):
         raise ValueError("invalid transaction identity")
-    if binding["surface"] not in ("pages", "worker", "database") or not isinstance(binding["plan"], dict):
+    if binding["surface"] not in ("pages", "worker", "database") or not isinstance(
+        binding["plan"], dict
+    ):
         raise ValueError("invalid deployment surface or plan")
     root, common = git_identity(binding["repo"])
     if root != binding["repo"]:
         raise ValueError("binding repository is not its exact working-tree root")
     if head_sha(root) != binding["head_sha"]:
         raise ValueError("working-tree HEAD changed")
-    if (_git_out(root, "rev-parse", "HEAD^{tree}") or "").strip() != binding["tree_sha"]:
+    if (_git_out(root, "rev-parse", "HEAD^{tree}") or "").strip() != binding[
+        "tree_sha"
+    ]:
         raise ValueError("working-tree tree changed")
     if _git_out(root, "status", "--porcelain", "--untracked-files=all") != "":
         raise ValueError("source working tree is not clean")
@@ -371,10 +438,14 @@ def deployment_binding(path: str) -> tuple[dict, str, str]:
 
 
 def _deployment_dir(root: Path, binding: dict) -> Path:
-    return _safe_path(root / "deployments" / (binding["transaction_id"] + "-" + binding["surface"]))
+    return _safe_path(
+        root / "deployments" / (binding["transaction_id"] + "-" + binding["surface"])
+    )
 
 
-def approve_deployment(path: str, summary: str, quote: str, rapid_redeploy: bool = False) -> int:
+def approve_deployment(
+    path: str, summary: str, quote: str, rapid_redeploy: bool = False
+) -> int:
     """Agent attestation of the principal's current exact approval, not inferred authority."""
     try:
         load_config()
@@ -382,18 +453,39 @@ def approve_deployment(path: str, summary: str, quote: str, rapid_redeploy: bool
             raise ValueError("exact approval quote and summary are required")
         with approval_lock() as root:
             binding, digest, common = deployment_binding(path)
+            team = _team_constraint(binding["repo"])
+            _team_rapid(team, rapid_redeploy)
             destination = _deployment_dir(root, binding)
             if destination.exists():
-                raise ValueError("transaction already has an approval or consumed attempt; use a fresh accepted transaction")
+                raise ValueError(
+                    "transaction already has an approval or consumed attempt; use a fresh accepted transaction"
+                )
             destination.mkdir(parents=True, mode=0o700)
-            led = {"schema": 1, "binding_path": str(_safe_path(path)), "binding_sha256": digest,
-                   "git_common_dir": common, "created_at": datetime.now(timezone.utc).isoformat(),
-                   "approved_via": "in-chat", "summary": summary.strip(), "quote": quote.strip(),
-                   "rapid_redeploy": rapid_redeploy, "binding": binding}
+            led = {
+                "schema": 1,
+                "binding_path": str(_safe_path(path)),
+                "binding_sha256": digest,
+                "git_common_dir": common,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "approved_via": "in-chat",
+                "summary": summary.strip(),
+                "quote": quote.strip(),
+                "rapid_redeploy": rapid_redeploy,
+                "binding": binding,
+                "team_constraint": team,
+            }
             _atomic_json(destination / "approval.json", led)
             _sync_dir(destination.parent)
-        print(json.dumps({"status": "approved", "transaction_id": binding["transaction_id"],
-                          "surface": binding["surface"], "binding_sha256": digest}))
+        print(
+            json.dumps(
+                {
+                    "status": "approved",
+                    "transaction_id": binding["transaction_id"],
+                    "surface": binding["surface"],
+                    "binding_sha256": digest,
+                }
+            )
+        )
         return 0
     except Exception as exc:
         print(f"publish-guard BLOCKED: {exc}", file=sys.stderr)
@@ -410,32 +502,64 @@ def consume_deployment(path: str, *, peek: bool = False) -> int:
             approval = _safe_path(directory / "approval.json")
             consumed = _safe_path(directory / "consumed.json")
             if consumed.exists():
-                raise ValueError("approval already consumed, including interrupted attempts")
+                raise ValueError(
+                    "approval already consumed, including interrupted attempts"
+                )
             led = json.loads(approval.read_bytes())
             _fresh_approval(led)
-            if (led.get("binding_path") != str(_safe_path(path)) or led.get("binding_sha256") != digest
-                    or led.get("binding") != binding or led.get("git_common_dir") != common):
+            team = _team_constraint(
+                binding["repo"], prior=led.get("team_constraint"), checking=True
+            )
+            _team_rapid(team, led.get("rapid_redeploy"))
+            if (
+                led.get("binding_path") != str(_safe_path(path))
+                or led.get("binding_sha256") != digest
+                or led.get("binding") != binding
+                or led.get("git_common_dir") != common
+            ):
                 raise ValueError("approval does not match exact candidate")
             if not str(led.get("quote", "")).strip():
                 raise ValueError("exact principal approval is missing")
-            if future_dated_files(binding["repo"], cfg=cfg) or published_date_mutations(binding["repo"], cfg=cfg) != []:
-                raise ValueError("publication timeline invariant failed or cannot be verified")
-            recent, _ = rapid_redeploy_state(binding["repo"], surface=binding["surface"])
+            if (
+                future_dated_files(binding["repo"], cfg=cfg)
+                or published_date_mutations(binding["repo"], cfg=cfg) != []
+            ):
+                raise ValueError(
+                    "publication timeline invariant failed or cannot be verified"
+                )
+            recent, _ = rapid_redeploy_state(
+                binding["repo"], surface=binding["surface"]
+            )
             if recent and not led.get("rapid_redeploy"):
                 raise ValueError("rapid redeployment requires explicit quoted approval")
             if peek:
-                print(json.dumps({"status": "admitted", "authority_receipt": False, "binding_sha256": digest}))
+                print(
+                    json.dumps(
+                        {
+                            "status": "admitted",
+                            "authority_receipt": False,
+                            "binding_sha256": digest,
+                        }
+                    )
+                )
                 return 0
             # Rename is the one-way commit point. A crash from here burns the
             # attempt; neither a receipt-write failure nor a retry resurrects it.
             os.rename(approval, consumed)
             _sync_dir(directory)
             record_publish(binding["repo"], led["summary"], binding["surface"])
-            result = {"schema": 1, "status": "consumed", "metadata_class": "approval-consumption",
-                      "transaction_id": binding["transaction_id"], "surface": binding["surface"],
-                      "binding_sha256": digest, "approval_sha256": hashlib.sha256(consumed.read_bytes()).hexdigest(),
-                      "consumed_path": str(consumed), "consumed_at": datetime.now(timezone.utc).isoformat(),
-                      "guard_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+            result = {
+                "schema": 1,
+                "status": "consumed",
+                "metadata_class": "approval-consumption",
+                "transaction_id": binding["transaction_id"],
+                "surface": binding["surface"],
+                "binding_sha256": digest,
+                "approval_sha256": hashlib.sha256(consumed.read_bytes()).hexdigest(),
+                "consumed_path": str(consumed),
+                "consumed_at": datetime.now(timezone.utc).isoformat(),
+                "guard_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            }
         print(json.dumps(result))
         return 0
     except Exception as exc:
@@ -461,9 +585,13 @@ def load_config() -> dict:
         if roots is not None and (
             not isinstance(roots, list) or not all(isinstance(r, str) for r in roots)
         ):
-            raise ValueError(f"site {site_path} content_roots must be a list of directory paths")
+            raise ValueError(
+                f"site {site_path} content_roots must be a list of directory paths"
+            )
         if desc.get("content_layout", "nested-date") not in ("nested-date", "flat"):
-            raise ValueError(f"site {site_path} content_layout must be nested-date or flat")
+            raise ValueError(
+                f"site {site_path} content_layout must be nested-date or flat"
+            )
         if "principal_name" in desc and not isinstance(desc["principal_name"], str):
             raise ValueError(f"site {site_path} principal_name must be a string")
     return cfg
@@ -541,7 +669,9 @@ def _scan_match(rel: str, scans: list[tuple[str, str]]) -> bool:
 def head_sha(repo: str) -> str:
     out = subprocess.run(
         ["git", "-C", repo, "rev-parse", "HEAD"],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if out.returncode != 0:
         raise RuntimeError(f"rev-parse failed in {repo}: {out.stderr.strip()}")
@@ -550,8 +680,13 @@ def head_sha(repo: str) -> str:
 
 def git_identity(path: str) -> tuple[str, str]:
     """Actual worktree plus shared Git identity; neither basename nor HEAD aliases."""
-    if any(os.environ.get(k) for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT")):
-        raise ValueError("alternate Git environment cannot select an approval repository")
+    if any(
+        os.environ.get(k)
+        for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT")
+    ):
+        raise ValueError(
+            "alternate Git environment cannot select an approval repository"
+        )
     root = _git_out(path, "rev-parse", "--show-toplevel")
     common = _git_out(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if not root or not common:
@@ -565,7 +700,7 @@ def _remote_key(url: str) -> str:
     if ssh:
         return ssh[1].lower() + "/" + ssh[2]
     parsed = urlparse(value)
-    return (parsed.hostname.lower() + parsed.path if parsed.hostname else value)
+    return parsed.hostname.lower() + parsed.path if parsed.hostname else value
 
 
 def _shell_segments(command: str) -> list[list[str]]:
@@ -576,7 +711,9 @@ def _shell_segments(command: str) -> list[list[str]]:
     for token in lexer:
         if token and all(c in ";&|()<>\n" for c in token):
             if token != "&&" and token.strip("\n"):
-                raise ValueError("only fail-fast publication command chains are supported")
+                raise ValueError(
+                    "only fail-fast publication command chains are supported"
+                )
             if "\n" in token and any(s and s[0] == "cd" for s in segments):
                 raise ValueError("directory selection must be chained with &&")
             if segments[-1]:
@@ -597,12 +734,23 @@ def _safe_publication_prefix(words: list[str]) -> bool:
     if not words:
         return False
     executable = Path(words[0]).name
-    return words[0] == "cd" or executable in {"echo", "true", ":"} or (
-        executable == "printf" and (len(words) == 1 or not words[1].startswith("-v")))
+    return (
+        words[0] == "cd"
+        or executable in {"echo", "true", ":"}
+        or (
+            executable == "printf"
+            and (len(words) == 1 or not words[1].startswith("-v"))
+        )
+    )
 
 
-def publication_targets(command: str, cwd: str, repos: list[str], *,
-                        parsed_segments: list[list[str]] | None = None) -> list[str]:
+def publication_targets(
+    command: str,
+    cwd: str,
+    repos: list[str],
+    *,
+    parsed_segments: list[list[str]] | None = None,
+) -> list[str]:
     """Interpret the actual command sequence, retaining the pushed source identity.
 
     Shell variables, alternate Git environments and ambiguous ref expansion are
@@ -615,10 +763,17 @@ def publication_targets(command: str, cwd: str, repos: list[str], *,
         # Assignment syntax matters only in assignment/export positions. A
         # printf argument that resembles an environment variable is data.
         assignment_words = tokens[1:] if tokens[0] == "export" else tokens[:1]
-        if any(re.match(r"(?:GIT_[A-Z_]+|PATH|CDPATH|PUBLISH_GUARD_[A-Z_]+)=", token) for token in assignment_words):
-            raise ValueError("publication environment changes must not share the command")
+        if any(
+            re.match(r"(?:GIT_[A-Z_]+|PATH|CDPATH|PUBLISH_GUARD_[A-Z_]+)=", token)
+            for token in assignment_words
+        ):
+            raise ValueError(
+                "publication environment changes must not share the command"
+            )
         if Path(tokens[0]).name in ("sh", "bash", "zsh", "eval"):
-            raise ValueError("nested shell publication requires an explicit top-level command")
+            raise ValueError(
+                "nested shell publication requires an explicit top-level command"
+            )
     identities, destinations = set(), set()
     for repo in repos:
         _, common = git_identity(repo)
@@ -633,8 +788,12 @@ def publication_targets(command: str, cwd: str, repos: list[str], *,
     targets = []
     for sequence, tokens in enumerate(segments):
         if tokens[0] == "cd":
-            if any(not _safe_publication_prefix(prior) for prior in segments[:sequence]):
-                raise ValueError("conditional directory changes cannot select a publication target")
+            if any(
+                not _safe_publication_prefix(prior) for prior in segments[:sequence]
+            ):
+                raise ValueError(
+                    "conditional directory changes cannot select a publication target"
+                )
             try:
                 args = tokens[1:]
                 if args and args[0] == "--":
@@ -649,40 +808,61 @@ def publication_targets(command: str, cwd: str, repos: list[str], *,
         # Only actual executables count: a commit message saying 'push' does not.
         # Classification is about executable position, never arbitrary argv.
         # The outer classifier already rejects nested/ambiguous publication.
-        first = (0 if Path(tokens[0]).name in ("git", "wrangler", "wrangler.js")
-                 else 1 if Path(tokens[0]).name in ("npx", "node")
-                 and len(tokens) > 1 and Path(tokens[1]).name in ("wrangler", "wrangler.js")
-                 else None)
+        first = (
+            0
+            if Path(tokens[0]).name in ("git", "wrangler", "wrangler.js")
+            else 1
+            if Path(tokens[0]).name in ("npx", "node")
+            and len(tokens) > 1
+            and Path(tokens[1]).name in ("wrangler", "wrangler.js")
+            else None
+        )
         if first is None:
             continue
         executable = Path(tokens[first]).name
-        args = tokens[first + 1:]
+        args = tokens[first + 1 :]
         if executable in ("wrangler", "wrangler.js"):
             operation = wrangler_operation(args)
             if not operation:
                 continue
             if operation == "database":
-                raise ValueError("remote database change requires the exact artifact approval consumer")
+                raise ValueError(
+                    "remote database change requires the exact artifact approval consumer"
+                )
             # The CLI applies --cwd before running the command. We cannot
             # bind an ambient approval to a different checkout/configuration.
-            if any(arg.split("=")[0] in {"--cwd", "--config", "-c"} or arg.startswith("-c") and not arg.startswith("--") for arg in args):
-                raise ValueError("Wrangler target-changing options require an exact artifact approval consumer")
+            if any(
+                arg.split("=")[0] in {"--cwd", "--config", "-c"}
+                or arg.startswith("-c")
+                and not arg.startswith("--")
+                for arg in args
+            ):
+                raise ValueError(
+                    "Wrangler target-changing options require an exact artifact approval consumer"
+                )
             if "--" in args:
-                raise ValueError("Wrangler option terminator requires an exact supported invocation")
+                raise ValueError(
+                    "Wrangler option terminator requires an exact supported invocation"
+                )
             if "--dry-run" in args:
                 if operation != "worker" or args[:1] != ["deploy"]:
                     raise ValueError("Pages deployment has no supported dry-run option")
                 # Only the exact documented nonpublishing shape is admitted.
                 # Extra flags can negate a boolean or consume it as a value.
                 if args == ["deploy", "--dry-run"] or (
-                    len(args) == 3 and args[-1] == "--dry-run" and
-                    not args[1].startswith("-") and not any(c in args[1] for c in "$`")):
+                    len(args) == 3
+                    and args[-1] == "--dry-run"
+                    and not args[1].startswith("-")
+                    and not any(c in args[1] for c in "$`")
+                ):
                     continue
                 raise ValueError("ambiguous or conflicting dry-run options")
             if not (args[:2] == ["pages", "deploy"] or args[:1] == ["deploy"]):
                 raise ValueError("unsupported Wrangler deployment invocation")
             if args[:1] == ["deploy"]:
-                raise ValueError("Worker deployment requires the exact artifact approval consumer")
+                raise ValueError(
+                    "Worker deployment requires the exact artifact approval consumer"
+                )
             if unknown_cwd:
                 raise ValueError("unresolved deployment working directory")
             targets.append(git_identity(current)[0])
@@ -710,41 +890,77 @@ def publication_targets(command: str, cwd: str, repos: list[str], *,
                 git_dir = _literal_path(value, git_cwd)
             elif flag == "--work-tree":
                 work_tree = _literal_path(value, git_cwd)
-            elif not value.startswith(("user.name=", "user.email=")) and "push" in args[index:]:
+            elif (
+                not value.startswith(("user.name=", "user.email="))
+                and "push" in args[index:]
+            ):
                 raise ValueError("Git configuration override at publication boundary")
         if index >= len(args) or args[index] != "push":
             continue
         if unknown_cwd or first != 0:
-            raise ValueError("unresolved Git publication environment or working directory")
-        if any(os.environ.get(k) for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT")):
+            raise ValueError(
+                "unresolved Git publication environment or working directory"
+            )
+        if any(
+            os.environ.get(k)
+            for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CONFIG_COUNT")
+        ):
             raise ValueError("alternate Git environment at publication boundary")
         if git_dir:
             backlink = Path(git_dir) / "gitdir"
-            inferred = str(Path(backlink.read_text().strip()).parent) if backlink.is_file() else str(Path(git_dir).parent)
+            inferred = (
+                str(Path(backlink.read_text().strip()).parent)
+                if backlink.is_file()
+                else str(Path(git_dir).parent)
+            )
             root, common = git_identity(work_tree or inferred)
             actual = _git_out(root, "rev-parse", "--absolute-git-dir")
-            if not actual or os.path.realpath(actual.strip()) != os.path.realpath(git_dir):
+            if not actual or os.path.realpath(actual.strip()) != os.path.realpath(
+                git_dir
+            ):
                 raise ValueError("Git directory and working-tree mismatch")
         else:
             root, common = git_identity(work_tree or git_cwd)
-        push_args = args[index + 1:]
+        push_args = args[index + 1 :]
         if any(arg == "--repo" or arg.startswith("--repo=") for arg in push_args):
-            raise ValueError("publication destination must be an explicit positional remote")
+            raise ValueError(
+                "publication destination must be an explicit positional remote"
+            )
         positional = [arg for arg in push_args if not arg.startswith("-")]
         remote = positional[0] if positional else "origin"
         urls = _git_out(root, "remote", "get-url", "--push", "--all", remote)
         remote_values = urls.splitlines() if urls is not None else [remote]
-        protected = common in identities or any(_remote_key(url) in destinations for url in remote_values)
+        protected = common in identities or any(
+            _remote_key(url) in destinations for url in remote_values
+        )
         if not protected:
             continue
-        safe_flags = {"--quiet", "-q", "--verbose", "-v", "--porcelain", "--set-upstream", "-u",
-                      "--atomic", "--progress", "--no-progress", "--dry-run", "-n"}
+        safe_flags = {
+            "--quiet",
+            "-q",
+            "--verbose",
+            "-v",
+            "--porcelain",
+            "--set-upstream",
+            "-u",
+            "--atomic",
+            "--progress",
+            "--no-progress",
+            "--dry-run",
+            "-n",
+        }
         if any(arg.startswith("-") and arg not in safe_flags for arg in push_args):
-            raise ValueError("multi-ref, deletion or flag-bearing publication requires an exact supported operation")
+            raise ValueError(
+                "multi-ref, deletion or flag-bearing publication requires an exact supported operation"
+            )
         if "--dry-run" in push_args or "-n" in push_args:
             continue
         refs = positional[1:]
-        if len(refs) != 1 or refs[0].startswith("+") or any(c in refs[0] for c in "*?$"):
+        if (
+            len(refs) != 1
+            or refs[0].startswith("+")
+            or any(c in refs[0] for c in "*?$")
+        ):
             raise ValueError("publication must name one exact source ref")
         source = refs[0].split(":", 1)[0]
         pushed = _git_out(root, "rev-parse", "--verify", source + "^{commit}")
@@ -752,9 +968,15 @@ def publication_targets(command: str, cwd: str, repos: list[str], *,
             raise ValueError("pushed ref is not the approved working-tree HEAD")
         targets.append(root)
     if len(targets) > 1:
-        raise ValueError("one approval cannot authorize multiple publication operations")
-    if targets and any("--approve" in tokens or "--approve-deployment" in tokens for tokens in segments):
-        raise ValueError("approval recording and publishing must be separate fail-closed operations")
+        raise ValueError(
+            "one approval cannot authorize multiple publication operations"
+        )
+    if targets and any(
+        "--approve" in tokens or "--approve-deployment" in tokens for tokens in segments
+    ):
+        raise ValueError(
+            "approval recording and publishing must be separate fail-closed operations"
+        )
     return targets
 
 
@@ -771,6 +993,7 @@ def command_mentions_repo(command: str, cwd: str, repos: list[str]) -> str | Non
     repo, the answer is None. The command has stated which repository it acts
     on, and it is not one of ours.
     """
+
     def _inside(path: str, repo: str) -> bool:
         # normpath so `.../x/../synthesis-coding-site` cannot dodge the match
         p = os.path.normpath(os.path.expanduser(path or "")).rstrip("/")
@@ -796,7 +1019,7 @@ def command_mentions_repo(command: str, cwd: str, repos: list[str]) -> str | Non
     # and mis-attributes the publish to the wrong site (observed 2026-08-31). Such a
     # token carries no location information, so it is dropped and the command's
     # literal repo mention (Pass 2) or the cwd backstop (Pass 3) decides instead.
-    UNRESOLVED = set('$"\'`*?{}')
+    UNRESOLVED = set("$\"'`*?{}")
 
     raw: list[str] = []
     for rx in (CD_RX, GIT_C_RX):
@@ -895,11 +1118,19 @@ def record_publish(repo: str, summary: str, surface: str = "pages") -> None:
     """Persist the brake before admitting execution; I/O failure blocks."""
     path = _safe_path(last_publish_path(repo, surface))
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _atomic_json(path, {"repo": repo.rstrip("/"),
-                       "consumed_at": datetime.now(timezone.utc).isoformat(), "summary": summary})
+    _atomic_json(
+        path,
+        {
+            "repo": repo.rstrip("/"),
+            "consumed_at": datetime.now(timezone.utc).isoformat(),
+            "summary": summary,
+        },
+    )
 
 
-def rapid_redeploy_state(repo: str, now: datetime | None = None, surface: str = "pages") -> tuple[bool, dict | None]:
+def rapid_redeploy_state(
+    repo: str, now: datetime | None = None, surface: str = "pages"
+) -> tuple[bool, dict | None]:
     """Whether this repo published within the brake window, and the record.
 
     Missing or unreadable state means no evidence of a recent publish — the
@@ -929,8 +1160,9 @@ def ledger_authorizes_rapid() -> bool:
             led = json.load(fh)
     except Exception:
         return False
-    return (led.get("rapid_redeploy") is True
-            and bool(str(led.get("rapid_redeploy_quote", "")).strip()))
+    return led.get("rapid_redeploy") is True and bool(
+        str(led.get("rapid_redeploy_quote", "")).strip()
+    )
 
 
 def consume_ledger(repo: str) -> tuple[bool, str]:
@@ -964,7 +1196,10 @@ def _consume_ledger_locked(repo: str) -> tuple[bool, str]:
     if age < -90:
         return False, "ledger created_at is in the future"
     if age > LEDGER_MAX_AGE_MINUTES * 60:
-        return False, f"ledger is stale ({int(age)}s old; max {LEDGER_MAX_AGE_MINUTES}m)"
+        return (
+            False,
+            f"ledger is stale ({int(age)}s old; max {LEDGER_MAX_AGE_MINUTES}m)",
+        )
     if led.get("approved_via") != "in-chat":
         return False, "ledger must attest approved_via: in-chat"
     if not str(led.get("summary", "")).strip():
@@ -981,8 +1216,13 @@ def _consume_ledger_locked(repo: str) -> tuple[bool, str]:
     if led.get("git_common_dir") and led["git_common_dir"] != git_identity(repo)[1]:
         return False, "Git common-directory identity changed"
     recent, _ = rapid_redeploy_state(repo)
-    if recent and not (led.get("rapid_redeploy") is True and str(led.get("rapid_redeploy_quote", "")).strip()):
+    if recent and not (
+        led.get("rapid_redeploy") is True
+        and str(led.get("rapid_redeploy_quote", "")).strip()
+    ):
         return False, "exact consumed ledger does not authorize rapid redeployment"
+    team = _team_constraint(repo, prior=led.get("team_constraint"), checking=True)
+    _team_rapid(team, led.get("rapid_redeploy"))
     _safe_path(lp)
     os.remove(lp)  # single-use, including a subsequent brake-recording failure
     _sync_dir(Path(state_dir()))
@@ -1018,13 +1258,18 @@ def gate() -> int:
             # wrapped, or dynamic publication cannot be matched to an
             # approval ledger, so splitting the push/deploy into its own
             # literal top-level command is the remedy, not a workaround.
-            print("publish-guard BLOCKED: chained, wrapped, or dynamic publication "
-                  "cannot be matched to an approval ledger (deliberate policy). "
-                  "Run the push or deploy as its own literal top-level command",
-                  file=sys.stderr)
+            print(
+                "publish-guard BLOCKED: chained, wrapped, or dynamic publication "
+                "cannot be matched to an approval ledger (deliberate policy). "
+                "Run the push or deploy as its own literal top-level command",
+                file=sys.stderr,
+            )
             return 2
     except ValueError as exc:
-        print(f"publish-guard BLOCKED: cannot classify shell execution ({exc})", file=sys.stderr)
+        print(
+            f"publish-guard BLOCKED: cannot classify shell execution ({exc})",
+            file=sys.stderr,
+        )
         return 2
     # Resolve only literal directory changes before publication. Other shell
     # state mutations and repository writes could change what the command will
@@ -1033,10 +1278,16 @@ def gate() -> int:
     for publication_index in inspection.publication_indices:
         for i, words in enumerate(inspection.commands[:publication_index]):
             if not _safe_publication_prefix(words) or i in inspection.write_indices:
-                print("publish-guard BLOCKED: earlier command can change publication state", file=sys.stderr)
+                print(
+                    "publish-guard BLOCKED: earlier command can change publication state",
+                    file=sys.stderr,
+                )
                 return 2
             if words[0] == "cd" and inspection.separators[i] != "&&":
-                print("publish-guard BLOCKED: directory selection must fail closed", file=sys.stderr)
+                print(
+                    "publish-guard BLOCKED: directory selection must fail closed",
+                    file=sys.stderr,
+                )
                 return 2
     strict = True
     try:
@@ -1048,13 +1299,21 @@ def gate() -> int:
         # target selection cannot depend on an earlier arbitrary command or
         # a directory change that may fail and still reach the push.
         if len(inspection.publication_indices) != 1:
-            print("publish-guard BLOCKED: compound publication has ambiguous execution or directory selection", file=sys.stderr)
+            print(
+                "publish-guard BLOCKED: compound publication has ambiguous execution or directory selection",
+                file=sys.stderr,
+            )
             return 2
     # Hook admission peeks only. The bound consumer consumes in its current
     # invocation immediately before spawning the fixed real deployment plan.
-    publication_segments = [inspection.commands[i] for i in inspection.publication_indices]
-    wrappers = [(s, position) for s in publication_segments
-                if (position := artifact_consumer_position(s)) is not None]
+    publication_segments = [
+        inspection.commands[i] for i in inspection.publication_indices
+    ]
+    wrappers = [
+        (s, position)
+        for s in publication_segments
+        if (position := artifact_consumer_position(s)) is not None
+    ]
     if wrappers:
         try:
             if not strict or len(wrappers) != 1 or len(segments) != 1:
@@ -1077,12 +1336,19 @@ def gate() -> int:
         except Exception as exc:
             print(f"publish-guard BLOCKED: {exc}", file=sys.stderr)
             return 2
-    wrangler_hit = any(Path(s[0]).name in ("wrangler", "wrangler.js") or
-                       len(s) > 1 and Path(s[0]).name in ("npx", "node") and
-                       Path(s[1]).name in ("wrangler", "wrangler.js") for s in publication_segments)
+    wrangler_hit = any(
+        Path(s[0]).name in ("wrangler", "wrangler.js")
+        or len(s) > 1
+        and Path(s[0]).name in ("npx", "node")
+        and Path(s[1]).name in ("wrangler", "wrangler.js")
+        for s in publication_segments
+    )
     push_hit = any(Path(s[0]).name == "git" for s in publication_segments)
     if not (wrangler_hit or push_hit):
-        print("publish-guard BLOCKED: classified publication has no supported direct consumer", file=sys.stderr)
+        print(
+            "publish-guard BLOCKED: classified publication has no supported direct consumer",
+            file=sys.stderr,
+        )
         return 2
 
     try:
@@ -1102,7 +1368,9 @@ def gate() -> int:
         targets = publication_targets(command, cwd, repos, parsed_segments=segments)
         target = targets[0] if targets else None
         if target is not None and not strict:
-            raise ValueError("protected publication requires an exact fail-fast command without output redirection or pipeline")
+            raise ValueError(
+                "protected publication requires an exact fail-fast command without output redirection or pipeline"
+            )
     except Exception as exc:
         print(f"publish-guard BLOCKED: {exc}", file=sys.stderr)
         return 2
@@ -1191,8 +1459,9 @@ def gate() -> int:
     return 2
 
 
-def approve(repo: str, summary: str, rapid_redeploy: bool = False,
-            quote: str = "") -> int:
+def approve(
+    repo: str, summary: str, rapid_redeploy: bool = False, quote: str = ""
+) -> int:
     repo = os.path.expanduser(repo).rstrip("/")
     try:
         cfg = load_config()
@@ -1207,14 +1476,17 @@ def approve(repo: str, summary: str, rapid_redeploy: bool = False,
         return 2
     name = principal_display(cfg, repo)
     if not summary.strip():
-        print("cannot approve: --summary must describe what "
-              f"{name} approved",
-              file=sys.stderr)
+        print(
+            f"cannot approve: --summary must describe what {name} approved",
+            file=sys.stderr,
+        )
         return 2
     if rapid_redeploy and not quote.strip():
-        print("cannot approve: --rapid-redeploy requires --quote with "
-              f"{name}'s exact words approving the rapid follow-up",
-              file=sys.stderr)
+        print(
+            "cannot approve: --rapid-redeploy requires --quote with "
+            f"{name}'s exact words approving the rapid follow-up",
+            file=sys.stderr,
+        )
         return 2
     led = {
         "repo": repo,
@@ -1229,12 +1501,16 @@ def approve(repo: str, summary: str, rapid_redeploy: bool = False,
         led["rapid_redeploy_quote"] = quote.strip()
     try:
         with approval_lock():
+            led["team_constraint"] = _team_constraint(repo)
+            _team_rapid(led["team_constraint"], rapid_redeploy)
             _atomic_json(Path(ledger_path()), led)
     except Exception as exc:
         print(f"cannot approve: {exc}", file=sys.stderr)
         return 2
-    print(f"approval ledger written for {repo} @ {sha[:12]} "
-          f"(single-use, {LEDGER_MAX_AGE_MINUTES}m TTL)")
+    print(
+        f"approval ledger written for {repo} @ {sha[:12]} "
+        f"(single-use, {LEDGER_MAX_AGE_MINUTES}m TTL)"
+    )
     return 0
 
 
@@ -1243,8 +1519,10 @@ def run_doctor() -> int:
 
     def report(good: bool, label: str, detail: str = "") -> None:
         nonlocal ok
-        print("  %s %s%s" % ("ok " if good else "FAIL", label,
-                             (": " + detail) if detail else ""))
+        print(
+            "  %s %s%s"
+            % ("ok " if good else "FAIL", label, (": " + detail) if detail else "")
+        )
         if not good:
             ok = False
 
@@ -1259,12 +1537,17 @@ def run_doctor() -> int:
                 git_identity(repo)
             except ValueError:
                 missing.append(repo)
-        report(not missing, "configured repos are git checkouts",
-               "; ".join(missing) if missing else "all present")
+        report(
+            not missing,
+            "configured repos are git checkouts",
+            "; ".join(missing) if missing else "all present",
+        )
     except Exception as exc:
         report(False, "config", str(exc))
-        print("UNHEALTHY: gated publishes will BLOCK until config is fixed "
-              "(fail closed, not fail open).")
+        print(
+            "UNHEALTHY: gated publishes will BLOCK until config is fixed "
+            "(fail closed, not fail open)."
+        )
         return 2
 
     # positive control: a push into the first configured repo, no ledger -> block
@@ -1272,29 +1555,57 @@ def run_doctor() -> int:
     # Doctor must never spend a real pending approval as its positive control.
     probe_state = tempfile.TemporaryDirectory(prefix="publish-guard-doctor-")
     env["PUBLISH_GUARD_STATE_DIR"] = os.path.realpath(probe_state.name)
-    sample = {"tool_name": "Bash",
-              "tool_input": {"command": f"cd {repos[0]} && git push origin main"},
-              "cwd": repos[0]}
+    sample = {
+        "tool_name": "Bash",
+        "tool_input": {"command": f"cd {repos[0]} && git push origin main"},
+        "cwd": repos[0],
+    }
     proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__), "--gate"],
-        input=json.dumps(sample), capture_output=True, text=True, env=env)
-    report(proc.returncode == 2, "positive control (site push, no ledger, blocks)",
-           f"exit {proc.returncode}")
-    neutral = {"tool_name": "Bash", "tool_input": {"command": "git status"},
-               "cwd": repos[0]}
+        input=json.dumps(sample),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    report(
+        proc.returncode == 2,
+        "positive control (site push, no ledger, blocks)",
+        f"exit {proc.returncode}",
+    )
+    neutral = {
+        "tool_name": "Bash",
+        "tool_input": {"command": "git status"},
+        "cwd": repos[0],
+    }
     proc = subprocess.run(
         [sys.executable, os.path.abspath(__file__), "--gate"],
-        input=json.dumps(neutral), capture_output=True, text=True, env=env)
-    report(proc.returncode == 0, "negative control (git status passes)",
-           f"exit {proc.returncode}")
+        input=json.dumps(neutral),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    report(
+        proc.returncode == 0,
+        "negative control (git status passes)",
+        f"exit {proc.returncode}",
+    )
     probe_state.cleanup()
-    proc = subprocess.run([sys.executable, os.path.abspath(__file__), "--test"],
-                          capture_output=True, text=True, timeout=120)
-    report(proc.returncode == 0, "hermetic approval and linked-worktree controls",
-           proc.stdout.splitlines()[-1] if proc.stdout.splitlines() else proc.stderr)
+    proc = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), "--test"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    report(
+        proc.returncode == 0,
+        "hermetic approval and linked-worktree controls",
+        proc.stdout.splitlines()[-1] if proc.stdout.splitlines() else proc.stderr,
+    )
 
-    for label, path_ in (("Claude Code", "~/.claude/settings.json"),
-                         ("Codex", "~/.codex/hooks.json")):
+    for label, path_ in (
+        ("Claude Code", "~/.claude/settings.json"),
+        ("Codex", "~/.codex/hooks.json"),
+    ):
         p = os.path.expanduser(path_)
         try:
             wired = "publish_guard.py" in Path(p).read_text()
@@ -1313,9 +1624,12 @@ def run_doctor() -> int:
     except Exception as exc:
         report(False, "state dir writable", str(exc))
 
-    print("HEALTHY: publish guard fully operational." if ok else
-          "UNHEALTHY: fix the failures above. The guard FAILS CLOSED, so "
-          "publishes will be blocked (not unprotected) until this is fixed.")
+    print(
+        "HEALTHY: publish guard fully operational."
+        if ok
+        else "UNHEALTHY: fix the failures above. The guard FAILS CLOSED, so "
+        "publishes will be blocked (not unprotected) until this is fixed."
+    )
     return 0 if ok else 2
 
 
@@ -1325,8 +1639,9 @@ def run_tests() -> int:
     def check(label: str, got: int, want: int) -> None:
         okc = got == want
         results.append((okc, label))
-        print("  %s %s (exit %d, want %d)" % ("ok " if okc else "FAIL",
-                                              label, got, want))
+        print(
+            "  %s %s (exit %d, want %d)" % ("ok " if okc else "FAIL", label, got, want)
+        )
 
     tmp = os.path.realpath(tempfile.mkdtemp(prefix="publish-guard-test-"))
     site = os.path.join(tmp, "fake-site-repo")
@@ -1336,15 +1651,32 @@ def run_tests() -> int:
         subprocess.run(["git", "-C", r, "init", "-q", "-b", "main"], check=True)
         # Neutralize any global core.hooksPath: the operator's own commit
         # hooks must not run (or fail) inside throwaway fixture repos.
-        subprocess.run(["git", "-C", r, "config", "core.hooksPath",
-                        os.devnull], check=True)
-        subprocess.run(["git", "-C", r, "-c", "user.email=t@t", "-c",
-                        "user.name=t", "commit", "-q", "--allow-empty",
-                        "-m", "seed"], check=True)
+        subprocess.run(
+            ["git", "-C", r, "config", "core.hooksPath", os.devnull], check=True
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                r,
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "seed",
+            ],
+            check=True,
+        )
         # The timeline invariants (v1.1.0) resolve the published base from
         # origin/main and fail closed without one; give the fixture a base.
-        subprocess.run(["git", "-C", r, "update-ref",
-                        "refs/remotes/origin/main", "HEAD"], check=True)
+        subprocess.run(
+            ["git", "-C", r, "update-ref", "refs/remotes/origin/main", "HEAD"],
+            check=True,
+        )
     cfg_path = os.path.join(tmp, "config.json")
     Path(cfg_path).write_text(json.dumps({"auto_deploy_repos": [site]}))
     env = dict(os.environ)
@@ -1353,32 +1685,53 @@ def run_tests() -> int:
     me = os.path.abspath(__file__)
 
     def invoke(payload: dict) -> int:
-        proc = subprocess.run([sys.executable, me, "--gate"],
-                              input=json.dumps(payload),
-                              capture_output=True, text=True, env=env)
+        proc = subprocess.run(
+            [sys.executable, me, "--gate"],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=env,
+        )
         return proc.returncode
 
     def write_ledger(**over) -> None:
-        led = {"repo": site, "head_sha": head_sha(site),
-               "created_at": datetime.now(timezone.utc).isoformat(),
-               "summary": "test approval", "approved_via": "in-chat"}
+        led = {
+            "repo": site,
+            "head_sha": head_sha(site),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "summary": "test approval",
+            "approved_via": "in-chat",
+        }
         led.update(over)
         Path(os.path.join(tmp, "approval.json")).write_text(json.dumps(led))
 
-    push = {"tool_name": "Bash",
-            "tool_input": {"command": f"cd {site} && git push origin main"},
-            "cwd": site}
+    push = {
+        "tool_name": "Bash",
+        "tool_input": {"command": f"cd {site} && git push origin main"},
+        "cwd": site,
+    }
     check("site push without ledger -> block", invoke(push), 2)
-    check("non-site push -> allow",
-          invoke({"tool_name": "Bash",
-                  "tool_input": {"command": "git push origin main"},
-                  "cwd": other}), 0)
-    check("plain command -> allow",
-          invoke({"tool_name": "Bash", "tool_input": {"command": "ls"},
-                  "cwd": site}), 0)
+    check(
+        "non-site push -> allow",
+        invoke(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git push origin main"},
+                "cwd": other,
+            }
+        ),
+        0,
+    )
+    check(
+        "plain command -> allow",
+        invoke({"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": site}),
+        0,
+    )
     write_ledger()
+
     def clear_recency() -> None:
         import shutil
+
         shutil.rmtree(os.path.join(tmp, "last-publish"), ignore_errors=True)
 
     check("fresh matching ledger -> allow", invoke(push), 0)
@@ -1386,8 +1739,7 @@ def run_tests() -> int:
     # Rapid-redeploy brake: the allow above stamped recency for this repo.
     write_ledger()
     check("in-window plain ledger -> brake blocks", invoke(push), 2)
-    write_ledger(rapid_redeploy=True,
-                 rapid_redeploy_quote="yes, go again right now")
+    write_ledger(rapid_redeploy=True, rapid_redeploy_quote="yes, go again right now")
     check("in-window quoted rapid ledger -> allow", invoke(push), 0)
     clear_recency()
     write_ledger(repo=other)
@@ -1398,60 +1750,110 @@ def run_tests() -> int:
     check("HEAD-moved ledger -> block", invoke(push), 2)
     write_ledger(approved_via="assumed")
     check("wrong approved_via -> block", invoke(push), 2)
-    wr = {"tool_name": "Bash",
-          "tool_input": {"command": f"cd {site} && wrangler pages deploy dist "
-                                    "--project-name=x"},
-          "cwd": site}
+    wr = {
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": f"cd {site} && wrangler pages deploy dist --project-name=x"
+        },
+        "cwd": site,
+    }
     check("wrangler deploy without ledger -> block", invoke(wr), 2)
     write_ledger()
     clear_recency()  # independent scenario: outside any rapid window
     check("wrangler deploy with ledger -> allow", invoke(wr), 0)
     bad_env = dict(env)
     bad_env["PUBLISH_GUARD_CONFIG"] = os.path.join(tmp, "missing.json")
-    proc = subprocess.run([sys.executable, me, "--gate"],
-                          input=json.dumps(push), capture_output=True,
-                          text=True, env=bad_env)
-    check("missing config + push-shaped command -> block (fail closed)",
-          proc.returncode, 2)
     proc = subprocess.run(
         [sys.executable, me, "--gate"],
-        input=json.dumps({"tool_name": "Bash",
-                          "tool_input": {"command": "echo hi"}, "cwd": tmp}),
-        capture_output=True, text=True, env=bad_env)
+        input=json.dumps(push),
+        capture_output=True,
+        text=True,
+        env=bad_env,
+    )
+    check(
+        "missing config + push-shaped command -> block (fail closed)",
+        proc.returncode,
+        2,
+    )
+    proc = subprocess.run(
+        [sys.executable, me, "--gate"],
+        input=json.dumps(
+            {"tool_name": "Bash", "tool_input": {"command": "echo hi"}, "cwd": tmp}
+        ),
+        capture_output=True,
+        text=True,
+        env=bad_env,
+    )
     check("missing config + harmless command -> allow", proc.returncode, 0)
     approve_proc = subprocess.run(
         [sys.executable, me, "--approve", site, "--summary", "test via cli"],
-        capture_output=True, text=True, env=env)
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     check("--approve writes a ledger", approve_proc.returncode, 0)
     clear_recency()  # independent scenario: outside any rapid window
     check("cli-approved push -> allow", invoke(push), 0)
     rapid_refused = subprocess.run(
-        [sys.executable, me, "--approve", site, "--rapid-redeploy",
-         "--summary", "no quote supplied"],
-        capture_output=True, text=True, env=env)
-    check("--rapid-redeploy without --quote refused",
-          rapid_refused.returncode, 2)
+        [
+            sys.executable,
+            me,
+            "--approve",
+            site,
+            "--rapid-redeploy",
+            "--summary",
+            "no quote supplied",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    check("--rapid-redeploy without --quote refused", rapid_refused.returncode, 2)
 
     linked = os.path.join(tmp, "linked candidate")
-    subprocess.run(["git", "-C", site, "worktree", "add", "-q", "-b", "candidate", linked], check=True)
-    linked_push = {"tool_name": "exec_command", "cwd": other,
-                   "tool_input": {"cmd": f"cd {shlex.quote(linked)} && git push origin HEAD:main"}}
+    subprocess.run(
+        ["git", "-C", site, "worktree", "add", "-q", "-b", "candidate", linked],
+        check=True,
+    )
+    linked_push = {
+        "tool_name": "exec_command",
+        "cwd": other,
+        "tool_input": {"cmd": f"cd {shlex.quote(linked)} && git push origin HEAD:main"},
+    }
     local_approval = Path(tmp) / "approval.json"
     if local_approval.exists():
         local_approval.unlink()
     check("linked Codex push without approval blocks", invoke(linked_push), 2)
     clear_recency()
-    approved_link = subprocess.run([sys.executable, me, "--approve", linked, "--summary", "fixture"],
-                                   capture_output=True, text=True, env=env)
+    approved_link = subprocess.run(
+        [sys.executable, me, "--approve", linked, "--summary", "fixture"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     check("linked approval accepted", approved_link.returncode, 0)
     check("linked Codex matching approval consumed", invoke(linked_push), 0)
     check("linked approval cannot replay", invoke(linked_push), 2)
     clear_recency()
     write_ledger()
-    double_push = dict(push, tool_input={"command": push["tool_input"]["command"] + " && git push origin main"})
+    double_push = dict(
+        push,
+        tool_input={
+            "command": push["tool_input"]["command"] + " && git push origin main"
+        },
+    )
     check("one approval cannot cover two pushes", invoke(double_push), 2)
-    check("raw Worker deployment blocked", invoke({"tool_name": "Bash", "cwd": site,
-          "tool_input": {"command": f"cd {site} && wrangler deploy index.js"}}), 2)
+    check(
+        "raw Worker deployment blocked",
+        invoke(
+            {
+                "tool_name": "Bash",
+                "cwd": site,
+                "tool_input": {"command": f"cd {site} && wrangler deploy index.js"},
+            }
+        ),
+        2,
+    )
 
     failures = [r for r in results if not r[0]]
     print(f"{len(results) - len(failures)}/{len(results)} passed")
@@ -1462,8 +1864,13 @@ def main() -> int:
     argv = sys.argv[1:]
     if not argv or argv[0] == "--gate":
         return gate()
-    if argv[0] in ("--approve-deployment", "--consume-deployment", "--check-deployment"):
+    if argv[0] in (
+        "--approve-deployment",
+        "--consume-deployment",
+        "--check-deployment",
+    ):
         import argparse
+
         parser = argparse.ArgumentParser()
         parser.add_argument(argv[0], required=True)
         parser.add_argument("--summary", default="")
@@ -1472,13 +1879,15 @@ def main() -> int:
         parsed = vars(parser.parse_args(argv))
         path = parsed[argv[0][2:].replace("-", "_")]
         if argv[0] == "--approve-deployment":
-            return approve_deployment(path, parsed["summary"], parsed["quote"], parsed["rapid_redeploy"])
+            return approve_deployment(
+                path, parsed["summary"], parsed["quote"], parsed["rapid_redeploy"]
+            )
         return consume_deployment(path, peek=argv[0] == "--check-deployment")
     if argv[0] == "--approve":
         repo = argv[1] if len(argv) > 1 else ""
         summary = ""
         if "--summary" in argv:
-            summary = " ".join(argv[argv.index("--summary") + 1:])
+            summary = " ".join(argv[argv.index("--summary") + 1 :])
         rapid = "--rapid-redeploy" in argv
         quote = ""
         if "--quote" in argv:

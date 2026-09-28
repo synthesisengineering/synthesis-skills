@@ -69,7 +69,7 @@ def _path(path, root=None):
     return path
 
 
-def _snapshot(path):
+def _snapshot(path, *, _links=1):
     path = _path(path)
     fd = os.open(
         path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
@@ -78,7 +78,7 @@ def _snapshot(path):
         before = os.fstat(fd)
         if (
             not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
+            or before.st_nlink != _links
             or before.st_size > MAX_FILE_BYTES
         ):
             raise RecordTransactionError(
@@ -108,9 +108,8 @@ def _snapshot(path):
         # An unchanged inode alone does not detect a new hardlink, chmod,
         # different device, or a symlink introduced during the descriptor read.
         final = _path(path).lstat()
-        if (
-            any(getattr(before, k) != getattr(after, k) for k in fields)
-            or any(getattr(after, k) != getattr(final, k) for k in fields)
+        if any(getattr(before, k) != getattr(after, k) for k in fields) or any(
+            getattr(after, k) != getattr(final, k) for k in fields
         ):
             raise RecordTransactionError("file identity changed during read")
         return data, {
@@ -302,6 +301,7 @@ def _history(store):
     data, _ = _read_json(store / "history.json")
     if (
         set(data) != {"schema", "completed", "active"}
+        or type(data["schema"]) is not int
         or data["schema"] != 1
         or not isinstance(data["completed"], dict)
         or len(data["completed"]) > MAX_HISTORY
@@ -360,16 +360,48 @@ def _authority(project, board, native_payload, paths, expected=None):
 
 
 def _matches(path, expected):
-    _, actual = _snapshot(path)
-    return actual == expected
+    try:
+        _, actual = _snapshot(path)
+    except FileNotFoundError:
+        return expected is None
+    return expected is not None and actual == expected
+
+
+def _settle_creation(path, item):
+    """Recover only the two exact names of our interrupted no-clobber link.
+
+    No general hardlink permission: both journal-derived names must designate
+    the staged inode, and its link count must be exactly two. A third link,
+    changed bytes/mode, or replaced name remains an unresolved foreign effect.
+    """
+    if item["before"] is not None:
+        return
+    stage = Path(item["stage"])
+    if not path.exists() or not stage.exists():
+        return
+    for candidate in (path, stage):
+        _, actual = _snapshot(candidate, _links=2)
+        if actual != item["after"]:
+            raise RecordTransactionError(
+                "ambiguous interrupted creation; preserve both names"
+            )
+    stage.unlink()
+    _sync_dir(stage.parent)
+    _sync_dir(path.parent)
+    if not _matches(path, item["after"]):
+        raise RecordTransactionError("created target changed during recovery")
 
 
 def _manifest(active, project):
     manifest, raw = _read_json(active / "manifest.json")
     if (
         set(manifest)
-        != {"schema", "id", "project", "project_identity", "authority", "files"}
-        or manifest["schema"] != 1
+        != (
+            {"schema", "id", "project", "project_identity", "authority", "files"}
+            | ({"sources"} if manifest.get("schema") == 2 else set())
+        )
+        or type(manifest["schema"]) is not int
+        or manifest["schema"] not in (1, 2)
     ):
         raise RecordTransactionError("invalid transaction manifest fields")
     if manifest["project"] != str(project) or not re.fullmatch(
@@ -423,6 +455,8 @@ def _manifest(active, project):
         paths.add(str(path))
         for phase in ["before", "after"]:
             value = item[phase]
+            if phase == "before" and value is None and manifest["schema"] == 2:
+                continue
             if not isinstance(value, dict) or set(value) != {
                 "dev",
                 "ino",
@@ -442,14 +476,70 @@ def _manifest(active, project):
                 or not re.fullmatch("[a-f0-9]{64}", value["sha256"])
             ):
                 raise RecordTransactionError("invalid target identity value")
-        identity = (item["before"]["dev"], item["before"]["ino"])
-        if identity in identities or item["before"]["mode"] != item["after"]["mode"]:
-            raise RecordTransactionError("aliased target or changed final mode")
-        identities.add(identity)
+        if item["before"] is not None:
+            identity = (item["before"]["dev"], item["before"]["ino"])
+            if (
+                identity in identities
+                or item["before"]["mode"] != item["after"]["mode"]
+            ):
+                raise RecordTransactionError("aliased target or changed final mode")
+            identities.add(identity)
+        elif item["after"]["mode"] not in (0o600, 0o644):
+            raise RecordTransactionError(
+                "new project records require a nonexecutable private or readable mode"
+            )
         total += item["after"]["bytes"]
     if total > MAX_TOTAL_BYTES:
         raise RecordTransactionError("transaction exceeds aggregate byte bound")
+    _check_custody(project, active, manifest)
     return manifest, _digest(raw)
+
+
+def _check_custody(project, active, manifest):
+    """Authenticate preserved source copies and their still-current inputs."""
+    sources = manifest.get("sources", [])
+    if not isinstance(sources, list) or len(sources) > 512:
+        raise RecordTransactionError("source custody count exceeds bound")
+    seen = set()
+    total = sum(item["after"]["bytes"] for item in manifest.get("files", []))
+    for index, item in enumerate(sources):
+        if not isinstance(item, dict) or set(item) != {"path", "before", "archive"}:
+            raise RecordTransactionError("invalid source custody record")
+        relative = item["path"]
+        if not isinstance(relative, str):
+            raise RecordTransactionError("source path must be text")
+        source = _path(project / relative, project)
+        if (
+            str(source.relative_to(project)) != relative
+            or STORE in source.relative_to(project).parts
+            or relative in seen
+            or item["archive"] != str(index) + ".source"
+        ):
+            raise RecordTransactionError("source custody path is ambiguous")
+        before = item["before"]
+        if (
+            not isinstance(before, dict)
+            or set(before) != {"dev", "ino", "mode", "bytes", "sha256"}
+            or any(
+                type(before[k]) is not int or before[k] < 0
+                for k in ("dev", "ino", "mode", "bytes")
+            )
+            or before["bytes"] > MAX_FILE_BYTES
+            or before["mode"] > 0o7777
+            or not isinstance(before["sha256"], str)
+            or not re.fullmatch("[a-f0-9]{64}", before["sha256"])
+        ):
+            raise RecordTransactionError("invalid source custody identity")
+        if relative in {entry["path"] for entry in manifest.get("files", [])}:
+            raise RecordTransactionError("source custody overlaps effect target")
+        seen.add(relative)
+        data, original = _snapshot(source)
+        archived, meta = _snapshot(active / "sources" / item["archive"])
+        if original != item["before"] or data != archived or meta["mode"] != 0o600:
+            raise RecordTransactionError("source or preserved custody changed")
+        total += len(data)
+        if total > MAX_TOTAL_BYTES:
+            raise RecordTransactionError("source custody exceeds aggregate capacity")
 
 
 def _project_identity(project, manifest):
@@ -462,6 +552,7 @@ def _project_identity(project, manifest):
 
 def _finish(project, active, manifest, digest, history):
     _project_identity(project, manifest)
+    _check_custody(project, active, manifest)
     for item in manifest["files"]:
         if not _matches(project / item["path"], item["after"]):
             raise RecordTransactionError(
@@ -491,6 +582,7 @@ def _finish(project, active, manifest, digest, history):
 
 def _commit(project, active, manifest, digest, history, board, payload):
     _project_identity(project, manifest)
+    _check_custody(project, active, manifest)
     paths = [project / item["path"] for item in manifest["files"]]
     expected = manifest["authority"]["claim_hash"]
     proof = _authority(project, board, payload, [*paths, project / STORE], expected)
@@ -514,6 +606,9 @@ def _commit(project, active, manifest, digest, history, board, payload):
             "journal does not match the admitted active transaction"
         )
     pending = []
+    # Reconcile exact stage links only after admission and journal binding.
+    for item, path in zip(manifest["files"], paths):
+        _settle_creation(path, item)
     for item, path in zip(manifest["files"], paths):
         if _matches(path, item["after"]):
             continue
@@ -533,6 +628,7 @@ def _commit(project, active, manifest, digest, history, board, payload):
         _replace_json(active.parent / "history.json", history)
     for item, path in pending:
         _project_identity(project, manifest)
+        _check_custody(project, active, manifest)
         _authority(project, board, payload, [*paths, project / STORE], expected)
         if not _matches(path, item["before"]) or not _matches(
             Path(item["stage"]), item["after"]
@@ -540,8 +636,15 @@ def _commit(project, active, manifest, digest, history, board, payload):
             raise RecordTransactionError(
                 "source changed before replacement; recovery required"
             )
-        os.replace(item["stage"], path)
-        _sync_dir(path.parent)
+        if item["before"] is None:
+            # Atomic absence check: unlike replace(), link never overwrites a
+            # concurrently-created target. Recovery owns only these two names.
+            os.link(item["stage"], path, follow_symlinks=False)
+            _sync_dir(path.parent)
+            _settle_creation(path, item)
+        else:
+            os.replace(item["stage"], path)
+            _sync_dir(path.parent)
     _authority(project, board, payload, [*paths, project / STORE], expected)
     return _finish(project, active, manifest, digest, history)
 
@@ -566,11 +669,25 @@ def recover(project, *, board, native_payload):
         )
 
 
-def apply(project, requests, *, board, native_payload, dry_run=False):
+def apply(
+    project,
+    requests,
+    *,
+    board,
+    native_payload,
+    dry_run=False,
+    intent_id=None,
+    source_custody=None,
+    expected_claim_hash=None,
+):
     """Preflight all files, publish durable intent, then recoverably commit."""
     import context_edit
 
     project = _path(project)
+    if intent_id is not None and (
+        not isinstance(intent_id, str) or not re.fullmatch("[a-f0-9]{32}", intent_id)
+    ):
+        raise RecordTransactionError("invalid caller intent identity")
     if not isinstance(requests, list) or not 1 <= len(requests) <= MAX_FILES:
         raise RecordTransactionError("files must be a nonempty bounded array")
     with _lock(project, exclusive=True):
@@ -591,8 +708,10 @@ def apply(project, requests, *, board, native_payload, dry_run=False):
                     "allow_stale_body",
                     "state_reviewed",
                     "expected_sha256",
+                    "create",
                 }
-                or not {"file", "edits"} <= set(request)
+                or "file" not in request
+                or (("edits" in request) == ("create" in request))
             ):
                 raise RecordTransactionError("invalid transaction request")
             if (
@@ -604,57 +723,144 @@ def apply(project, requests, *, board, native_payload, dry_run=False):
             if STORE in path.relative_to(project).parts or str(path) in seen:
                 raise RecordTransactionError("duplicate/reserved transaction target")
             seen.add(str(path))
-            data, before = _snapshot(path)
-            expected_sha256 = request.get("expected_sha256")
-            if "expected_sha256" in request and (
-                not isinstance(expected_sha256, str)
-                or not re.fullmatch("[0-9a-f]{64}", expected_sha256)
-                or before["sha256"] != expected_sha256
-            ):
-                raise RecordTransactionError("reviewed source hash changed before transaction preflight")
-            identity = (before["dev"], before["ino"])
-            if identity in inodes:
-                raise RecordTransactionError("aliased targets")
-            inodes.add(identity)
-            original = data.decode("utf-8")
-            edited = original
-            edits = request["edits"]
-            if not isinstance(edits, list) or not 1 <= len(edits) <= 1000:
-                raise RecordTransactionError("edits must be a bounded nonempty list")
-            for edit in edits:
-                edited = context_edit._edit_in_memory(edited, edit)
-            if edited == original:
-                raise RecordTransactionError("file edit leaves bytes unchanged")
-            limit = request.get("max_lines")
-            if limit is not None and (type(limit) is not int or limit < 0):
-                raise RecordTransactionError("invalid line budget")
-            flags = [
-                request.get(k, False)
-                for k in ["allow_header_lag", "allow_stale_body", "state_reviewed"]
-            ]
-            if any(type(flag) is not bool for flag in flags):
-                raise RecordTransactionError("override flags must be boolean")
-            lines = context_edit._check_budget(edited, limit, path)
-            note = context_edit._coherence_gate(path, original, edited, *flags)
-            output = edited.encode("utf-8")
+            if "create" in request:
+                if set(request) != {"file", "create"}:
+                    raise RecordTransactionError("creation cannot carry edit overrides")
+                create = request["create"]
+                if (
+                    not isinstance(create, dict)
+                    or set(create) != {"text", "mode"}
+                    or not isinstance(create["text"], str)
+                    or type(create["mode"]) is not int
+                    or create["mode"] not in (0o600, 0o644)
+                ):
+                    raise RecordTransactionError(
+                        "bounded text and nonexecutable record mode required"
+                    )
+                if not _matches(path, None) or not _path(path.parent).is_dir():
+                    raise RecordTransactionError(
+                        "new record target must be absent with an existing parent"
+                    )
+                before = None
+                output = create["text"].encode("utf-8")
+                note = "explicit additive record creation"
+                lines = context_edit._check_budget(create["text"], None, path)
+            else:
+                data, before = _snapshot(path)
+                expected_sha256 = request.get("expected_sha256")
+                if "expected_sha256" in request and (
+                    not isinstance(expected_sha256, str)
+                    or not re.fullmatch("[0-9a-f]{64}", expected_sha256)
+                    or before["sha256"] != expected_sha256
+                ):
+                    raise RecordTransactionError(
+                        "reviewed source hash changed before transaction preflight"
+                    )
+                identity = (before["dev"], before["ino"])
+                if identity in inodes:
+                    raise RecordTransactionError("aliased targets")
+                inodes.add(identity)
+                original = data.decode("utf-8")
+                edited = original
+                edits = request["edits"]
+                if not isinstance(edits, list) or not 1 <= len(edits) <= 1000:
+                    raise RecordTransactionError(
+                        "edits must be a bounded nonempty list"
+                    )
+                for edit in edits:
+                    edited = context_edit._edit_in_memory(edited, edit)
+                if edited == original:
+                    raise RecordTransactionError("file edit leaves bytes unchanged")
+                limit = request.get("max_lines")
+                if limit is not None and (type(limit) is not int or limit < 0):
+                    raise RecordTransactionError("invalid line budget")
+                flags = [
+                    request.get(k, False)
+                    for k in ["allow_header_lag", "allow_stale_body", "state_reviewed"]
+                ]
+                if any(type(flag) is not bool for flag in flags):
+                    raise RecordTransactionError("override flags must be boolean")
+                lines = context_edit._check_budget(edited, limit, path)
+                note = context_edit._coherence_gate(path, original, edited, *flags)
+                output = edited.encode("utf-8")
             total += len(output)
             if len(output) > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
                 raise RecordTransactionError("transaction byte bound exceeded")
-            prepared.append((path, before, output, note, lines))
+            prepared.append(
+                (
+                    path,
+                    before,
+                    output,
+                    note,
+                    lines,
+                    request.get("create", {}).get("mode"),
+                )
+            )
+        source_custody = [] if source_custody is None else source_custody
+        if not isinstance(source_custody, list) or len(source_custody) > 512:
+            raise RecordTransactionError("bounded preserved source list required")
+        sources, source_names = [], set()
+        for item in source_custody:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"file", "expected"}
+                or not isinstance(item["file"], str)
+            ):
+                raise RecordTransactionError(
+                    "exact source custody declaration required"
+                )
+            source = _path(project / item["file"], project)
+            if (
+                str(source.relative_to(project)) != item["file"]
+                or STORE in source.relative_to(project).parts
+                or str(source) in seen
+                or str(source) in source_names
+            ):
+                raise RecordTransactionError(
+                    "source custody overlaps an effect or repeated input"
+                )
+            data, meta = _snapshot(source)
+            if meta != item["expected"]:
+                raise RecordTransactionError("source custody changed since preview")
+            total += len(data)
+            if total > MAX_TOTAL_BYTES:
+                raise RecordTransactionError(
+                    "combined output and custody exceeds byte budget"
+                )
+            sources.append((source, meta, data))
+            source_names.add(str(source))
         paths = [item[0] for item in prepared]
-        ident = uuid.uuid4().hex
+        ident = intent_id or uuid.uuid4().hex
         store = _path(project / STORE, project)
-        initial = project / (STORE + ".init-" + ident)
+        # An interrupted preparation has no published effect intent. Preserve it
+        # and admit a distinct preparation for the same caller intent; never
+        # overwrite or infer authority from the earlier staged bytes.
+        attempt = uuid.uuid4().hex
+        initial = project / (STORE + ".init-" + ident + "-" + attempt)
+        preparation = "preparing-" + ident + "-" + attempt
+        for parent, prefix in ((project, STORE + ".init-"), (store, "preparing-")):
+            if not parent.exists():
+                continue
+            count = 0
+            for member in parent.iterdir():
+                if member.name.startswith(prefix):
+                    count += 1
+                    if count >= 64:
+                        raise RecordTransactionError(
+                            "retained preparation capacity reached; preserve and reconcile custody"
+                        )
         metadata = [
             store,
             store / "history.json",
-            store / ("preparing-" + ident),
+            store / preparation,
             store / "active",
             store / "completed" / ident,
         ]
         if not store.exists():
             metadata.extend([initial, initial / "history.json"])
-        proof = _authority(project, board, native_payload, [*paths, *metadata])
+        proof = _authority(
+            project, board, native_payload, [*paths, *metadata], expected_claim_hash
+        )
         for path, before, *_ in prepared:
             if not _matches(path, before):
                 raise RecordTransactionError("source changed during preflight")
@@ -671,18 +877,28 @@ def apply(project, requests, *, board, native_payload, dry_run=False):
             os.rename(initial, store)
             _sync_dir(project)
         history = _history(store)
+        if ident in history["completed"]:
+            raise RecordTransactionError(
+                "caller intent already committed; verify its original receipt"
+            )
         if len(history["completed"]) >= MAX_HISTORY:
             raise RecordTransactionError(
                 "transaction history capacity reached; preserve and rotate through owner"
             )
-        staging = store / ("preparing-" + ident)
+        staging = store / preparation
         staging.mkdir(mode=0o700)
         files = []
-        for index, (path, before, data, note, lines) in enumerate(prepared):
+        for index, (path, before, data, note, lines, create_mode) in enumerate(
+            prepared
+        ):
             stage = staging / (str(index) + ".staged")
-            _new_file(stage, data, before["mode"])
+            _new_file(
+                stage, data, before["mode"] if before is not None else create_mode
+            )
             _, after = _snapshot(stage)
-            if before["dev"] != after["dev"]:
+            if (
+                before["dev"] if before is not None else path.parent.stat().st_dev
+            ) != after["dev"]:
                 raise RecordTransactionError("transaction requires one filesystem")
             files.append(
                 {
@@ -694,15 +910,39 @@ def apply(project, requests, *, board, native_payload, dry_run=False):
                     "lines": lines,
                 }
             )
+        source_records = []
+        if sources:
+            (staging / "sources").mkdir(mode=0o700)
+            for index, (source, before, data) in enumerate(sources):
+                archive = str(index) + ".source"
+                _new_file(staging / "sources" / archive, data, 0o600)
+                if _snapshot(staging / "sources" / archive)[0] != data or not _matches(
+                    source, before
+                ):
+                    raise RecordTransactionError(
+                        "source custody write or original readback differs"
+                    )
+                source_records.append(
+                    {
+                        "path": str(source.relative_to(project)),
+                        "before": before,
+                        "archive": archive,
+                    }
+                )
+            _sync_dir(staging / "sources")
         info = project.stat()
         manifest = {
-            "schema": 1,
+            "schema": 2
+            if sources or any(item["before"] is None for item in files)
+            else 1,
             "id": ident,
             "project": str(project),
             "project_identity": [info.st_dev, info.st_ino],
             "authority": proof,
             "files": files,
         }
+        if manifest["schema"] == 2:
+            manifest["sources"] = source_records
         raw = _json(manifest)
         if len(raw) > MAX_MANIFEST_BYTES:
             raise RecordTransactionError("manifest exceeds bounded capacity")

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.7.0"
+  version: "1.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -87,6 +87,21 @@ Requirements, not suggestions. Each is why it worked.
    readable by one client in one conversation; the project directory is readable by every agent
    working the project, ChatGPT Codex included, and by the next session after this one is gone.
    `build_packet.py --file-into` files the first two; `record_rulings.py` files the third.
+
+## Inspect the actual material
+
+For decisions about correspondence, code, images, media or documents, include
+structured `review_assets` plus the exact row `revision` and `delivery` envelope.
+Read [the review-asset contract](references/review-assets.md) before constructing
+these fields. It defines the closed data types, integrity checks, safe Markdown,
+byte limits, copy/download behavior and unavailable-material refusal. Put the
+complete artifact there; keep context and recommendations in their own fields.
+
+The page renders material before the recommendation. The existing canonical
+spec binds every content and delivery field to saved choices and returned
+rulings. External references are never fetched automatically. Unavailable
+material stays visible but cannot acquire a selected ruling. A byte-perfect
+record still grants no authority and does not supersede an existing valid grant.
 
 ## Prior positions and contrary evidence
 

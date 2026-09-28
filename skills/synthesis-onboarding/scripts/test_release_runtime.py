@@ -524,6 +524,10 @@ def test_declared_guard_entrypoint_executes_from_the_verified_release(
     target = root / "skills" / guard
     target.parent.mkdir(parents=True)
     target.write_text("import sys\nsys.stdout.write('guard-ok\\n')\n")
+    for relative in runtime.ENTRYPOINT_DEPENDENCIES.get(guard, ()):
+        helper = root / "skills" / relative
+        helper.parent.mkdir(parents=True, exist_ok=True)
+        helper.write_text("pass\n")
     for client in ("claude", "codex"):
         manifest = root / ("." + client + "-plugin") / "plugin.json"
         manifest.parent.mkdir()
@@ -747,13 +751,13 @@ def test_ritual_owned_dependency_refuses_before_execution(active, change, monkey
         runtime.command(verified, script, ["--help"])
 
 
-def test_added_callable_surface_is_exactly_the_five_owned_ritual_helpers():
+def test_callable_ritual_surface_is_the_explicit_owned_helpers():
     declared = {
         Path(path).stem
         for path in runtime.PUBLIC_ENTRYPOINTS
         if path.startswith("synthesis-daily-rituals/")
     }
-    assert declared == set(RITUAL_HELPERS) | {"ritual_state"}
+    assert declared == set(RITUAL_HELPERS) | {"ritual_state", "repo_state"}
     assert (
         "synthesis-daily-rituals/scripts/ritual_workers.py"
         not in runtime.PUBLIC_ENTRYPOINTS
@@ -861,55 +865,81 @@ def test_real_managed_transaction_consumer_help_uses_complete_release(active, sc
         runtime.verified_release(pointer), script, ["--help"], b"", timeout=10
     )
     assert result.returncode == 0, result.stderr
-    expected = b"native stop entry point" if script.endswith("/autopilot_gate.py") else b"usage:"
+    expected = (
+        b"native stop entry point"
+        if script.endswith("/autopilot_gate.py")
+        else b"usage:"
+    )
     assert expected in result.stdout.lower()
 
 
-def test_acquisition_dependency_closure_runs_real_installed_owner(active, tmp_path, monkeypatch):
+def test_acquisition_dependency_closure_runs_real_installed_owner(
+    active, tmp_path, monkeypatch
+):
     """No provider or global write: exact real selected-release source, synthetic refusal."""
     pointer, root, data = active
     repository = Path(__file__).resolve().parents[3]
-    script = 'synthesis-daily-rituals/scripts/sync_watermark.py'
+    script = "synthesis-daily-rituals/scripts/sync_watermark.py"
     for relative in (script, *runtime.ENTRYPOINT_DEPENDENCIES[script]):
-        target = root / 'skills' / relative
+        target = root / "skills" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes((repository / 'skills' / relative).read_bytes())
+        target.write_bytes((repository / "skills" / relative).read_bytes())
     replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
-    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path / 'synthetic-state'))
-    result = runtime.execute(runtime.verified_release(pointer), script,
-                             ['advance', '--workspace', 'fixture', '--surface', 'meetings',
-                              '--through', '2026-09-25T00:00:00+00:00'], b'', timeout=10)
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "synthetic-state"))
+    result = runtime.execute(
+        runtime.verified_release(pointer),
+        script,
+        [
+            "advance",
+            "--workspace",
+            "fixture",
+            "--surface",
+            "meetings",
+            "--through",
+            "2026-09-25T00:00:00+00:00",
+        ],
+        b"",
+        timeout=10,
+    )
     assert result.returncode == 2
-    assert b'acquisition evidence' in result.stderr
-    assert not (tmp_path / 'synthetic-state/sync-watermarks/fixture.json').exists()
+    assert b"acquisition evidence" in result.stderr
+    assert not (tmp_path / "synthetic-state/sync-watermarks/fixture.json").exists()
 
 
-
-@pytest.mark.parametrize('relative', [
-    'synthesis-daily-rituals/scripts/acquisition_evidence.py',
-    'synthesis-daily-rituals/scripts/ritual_workers.py',
-    'synthesis-meeting-transcripts/verify_transcripts.py',
-])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "synthesis-daily-rituals/scripts/acquisition_evidence.py",
+        "synthesis-daily-rituals/scripts/ritual_workers.py",
+        "synthesis-meeting-transcripts/verify_transcripts.py",
+    ],
+)
 def test_acquisition_owned_dependency_cannot_be_missing(active, relative):
     pointer, root, data = active
-    script = 'synthesis-daily-rituals/scripts/sync_watermark.py'
+    script = "synthesis-daily-rituals/scripts/sync_watermark.py"
     for path in (script, *runtime.ENTRYPOINT_DEPENDENCIES[script]):
         if path == relative:
             continue
-        target = root / 'skills' / path
+        target = root / "skills" / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text('raise AssertionError("must never execute")\n')
     replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
     with pytest.raises(runtime.RuntimeContractError):
-        runtime.execute(runtime.verified_release(pointer), script, ['--help'], b'', timeout=5)
+        runtime.execute(
+            runtime.verified_release(pointer), script, ["--help"], b"", timeout=5
+        )
 
 
 @pytest.mark.parametrize("script", TRANSACTION_CONSUMERS)
 @pytest.mark.parametrize("damage", ["missing", "link", "same-stat-tamper"])
-def test_publication_proof_dependency_verified_before_consumer(active, monkeypatch, script, damage):
+def test_publication_proof_dependency_verified_before_consumer(
+    active, monkeypatch, script, damage
+):
     pointer, root, data = active
     dep = "synthesis-repo-guard/publication_receipt.py"
-    names = tuple(dict.fromkeys((script, *runtime.ENTRYPOINT_DEPENDENCIES[script], dep)))
+    names = tuple(
+        dict.fromkeys((script, *runtime.ENTRYPOINT_DEPENDENCIES[script], dep))
+    )
     for name in names:
         target = root / "skills" / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -918,7 +948,9 @@ def test_publication_proof_dependency_verified_before_consumer(active, monkeypat
     verified = runtime.verified_release(pointer)
     verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
     hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
-    monkeypatch.setattr(runtime, "_load_activation_receipt", lambda _p: {"entrypoints": hashes})
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda _p: {"entrypoints": hashes}
+    )
     helper = root / "skills" / dep
     if damage == "missing":
         helper.unlink()
@@ -929,5 +961,142 @@ def test_publication_proof_dependency_verified_before_consumer(active, monkeypat
         before = helper.stat()
         helper.write_text("fail\n")
         os.utime(helper, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.command(verified, script, ["--help"])
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "synthesis-daily-rituals/scripts/repo_state.py",
+        "synthesis-project-management/scripts/team_contract.py",
+        "synthesis-agent-conformance/scripts/provider_intake.py",
+        "synthesis-adversarial-review/scripts/review_contract.py",
+    ],
+)
+def test_new_team_review_intake_entrypoint_is_verified_and_help_only(active, script):
+    pointer, root, data = active
+    source = Path(__file__).resolve().parents[3]
+    for relative in (script, *runtime.ENTRYPOINT_DEPENDENCIES.get(script, ())):
+        destination = root / "skills" / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((source / "skills" / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    result = runtime.execute(
+        runtime.verified_release(pointer), script, ["--help"], b"", timeout=5
+    )
+    assert result.returncode == 0, result.stderr
+    assert b"usage:" in result.stdout.lower()
+
+
+@pytest.mark.parametrize(
+    "script,dependency",
+    [
+        (
+            "synthesis-daily-rituals/scripts/repo_state.py",
+            "synthesis-project-management/scripts/coordination_process.py",
+        ),
+        (
+            "synthesis-agent-conformance/scripts/conformance.py",
+            "synthesis-project-management/scripts/team_contract.py",
+        ),
+    ],
+)
+def test_new_owned_dependency_is_not_accepted_after_receipt_tamper(
+    active, script, dependency, monkeypatch
+):
+    pointer, root, data = active
+    names = (script, *runtime.ENTRYPOINT_DEPENDENCIES[script])
+    for relative in names:
+        p = root / "skills" / relative
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("pass\n")
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda _: {"entrypoints": hashes}
+    )
+    target = root / "skills" / dependency
+    target.write_text("raise RuntimeError('unreviewed')\n")
+    with pytest.raises(runtime.RuntimeContractError):
+        runtime.execute(verified, script, [], b"", timeout=5)
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "synthesis-agent-conformance/scripts/hermes_adapter.py",
+        "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    ],
+)
+def test_actual_adapter_and_vendor_entrypoints_bind_dependencies_before_execution(
+    active, script, monkeypatch
+):
+    pointer, root, data = active
+    source = Path(__file__).resolve().parents[3]
+    names = tuple(dict.fromkeys((script, *runtime.ENTRYPOINT_DEPENDENCIES[script])))
+    for relative in names:
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source / "skills" / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    result = runtime.execute(verified, script, ["--help"], b"", timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert b"usage:" in result.stdout
+    hashes = {
+        relative: runtime.file_digest(root / "skills" / relative) for relative in names
+    }
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda p: {"entrypoints": hashes}
+    )
+    for dependency in runtime.ENTRYPOINT_DEPENDENCIES[script]:
+        helper = root / "skills" / dependency
+        before = helper.read_bytes()
+        st = helper.stat()
+        helper.write_bytes(before + b"\n# drift\n")
+        os.utime(helper, ns=(st.st_atime_ns, st.st_mtime_ns))
+        with pytest.raises(runtime.RuntimeContractError):
+            runtime.command(verified, script, ["--help"])
+        helper.write_bytes(before)
+
+
+@pytest.mark.parametrize("script", [
+    "synthesis-agent-conformance/scripts/hermes_adapter.py",
+    "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    "synthesis-agent-conformance/scripts/conformance.py",
+    "synthesis-agent-conformance/scripts/session_context.py",
+])
+@pytest.mark.parametrize("dependency", [
+    "synthesis-agent-conformance/scripts/report_contract.py",
+    "synthesis-agent-conformance/references/conformance-report-v1.schema.json",
+    "synthesis-onboarding/scripts/first_run_store.py",
+    "synthesis-project-management/scripts/native_identity.py",
+])
+def test_composed_native_consumers_bind_newer_dependency_before_effect(
+    active, script, dependency, monkeypatch
+):
+    pointer, root, data = active
+    assert dependency in runtime.ENTRYPOINT_DEPENDENCIES[script]
+    names = (script, *runtime.ENTRYPOINT_DEPENDENCIES[script])
+    source = Path(__file__).resolve().parents[3]
+    for relative in names:
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source / "skills" / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
+    monkeypatch.setattr(runtime, "_load_activation_receipt", lambda _: {"entrypoints": hashes})
+    runtime.command(verified, script, ["--help"])
+    helper = root / "skills" / dependency
+    before = helper.read_bytes()
+    previous = helper.stat()
+    helper.write_bytes(before + b"\n ")
+    os.utime(helper, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     with pytest.raises(runtime.RuntimeContractError):
         runtime.command(verified, script, ["--help"])

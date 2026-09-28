@@ -68,7 +68,7 @@ alias, speakable alias, or legacy mapping. New claims normally omit an ID:
 python3 scripts/coordination.py claim \
   --agent "OpenAI Codex" --project example --mode interactive \
   --context-role owner --goal "Implement the checkpoint" \
-  --workspace "/tmp/example @ feature/checkpoint" --area "repo/**"
+  --workspace "/workspace/checkouts/example @ feature/checkpoint" --area "repo/**"
 ```
 
 The output returns all three current identities. Subsequent commands may use
