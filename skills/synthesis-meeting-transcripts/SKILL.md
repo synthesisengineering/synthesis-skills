@@ -5,10 +5,15 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.12.0"
+  version: "0.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+Version 0.13.0 connects declared Google or MCP acquisition to exact transcript
+files, source-bound verification and the existing watermark owner. Google Docs
+tabs retain native identities; MCP dispatch requires successful matching protocol
+and tools-capability negotiation. Unsupported source identity remains incomplete.
 
 The earlier release notes and rationale are retained in [references/earlier-version-history.md](references/earlier-version-history.md). Before a declared-window sweep, read the mandatory [acquisition evidence contract](../synthesis-daily-rituals/references/acquisition-evidence.md). Unknown authentication, tab enumeration, or archive coverage is a visible gap, never a no-source attestation.
 
@@ -224,6 +229,8 @@ If the config file is missing, the skill should warn and ask the user to create 
 
 The agent does not get a vote on which declared items are interesting. Relevance is judged after fetching, never before. Every declared item is fetched or retained as an unclosed gap.
 
+Use the verified Python acquisition modes documented in [declared acquisition entries](../synthesis-daily-rituals/references/acquisition-entry.md) for supported complete-window reads. They compose the current inventory, stable-tab, publication and watermark owners.
+
 Probe recorder identity at day-start using the owner's declared read-only adapter; HTTP health alone is not sign-in. Inventory every declared recorder source and account for the exact window, following all pages and retaining raw tool-call references and a same-source positive control. `inventory_documents` in the optional fetch owner provides a bounded adapter seam; never filter by meeting title or perceived relevance. Compare provider/source IDs against exact saved archive headers with `sync_watermark.py acquisition-check`; retain per-source gap decisions. Advance only with the verified acquisition evidence file; unknown enumeration or a missing archive keeps the watermark unchanged.
 
 The single-meeting path below serves an explicit user request. A ritual sync
@@ -426,7 +433,7 @@ Anthropic's hosted Gmail and Drive connectors support **one Google account each*
 **Workarounds:**
 
 1. **Switch the connector account.** Works if the user primarily uses one account. Tedious if they switch often.
-2. **Use a self-hosted multi-account MCP server.** Recommended: [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp). A bundled setup helper is in this skill's `optional-workspace-mcp/` directory — it provides `start.sh`, `stop.sh`, `install-autostart.sh` (macOS + Linux), and a cross-platform `fetch-meeting.sh` that shells out to the MCP server directly for deterministic pulls.
+2. **Use a self-hosted multi-account MCP server.** Recommended: [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp). A bundled setup helper is in this skill's `optional-workspace-mcp/` directory — it provides `start.sh`, `stop.sh`, `install-autostart.sh` (macOS + Linux), and a cross-platform `fetch-meeting.py` that shells out to the MCP server directly for deterministic pulls.
 3. **Use one Claude account per Google account.** Claude Desktop can run two separate instances (macOS: `open -n -a "Claude" --args --user-data-dir=...`), each signed into a different Claude account with different connectors. Heaviest setup.
 
 The skill's Step 2 and Step 3 work identically across all three paths. Config only needs to specify `google_account`; how authentication is wired up is the user's problem to solve once.

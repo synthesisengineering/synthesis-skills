@@ -29,6 +29,8 @@ RUNTIME_SCHEMA = 1
 MAC_PYTHON = "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3"
 PUBLIC_ENTRYPOINTS = frozenset(
     {
+        "synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py",
+        "synthesis-slack-sync/scripts/acquire.py",
         "synthesis-agent-conformance/scripts/hermes_adapter.py",
         "synthesis-agent-conformance/scripts/vendor_bundle.py",
         "synthesis-message-guard/scripts/message_guard.py",
@@ -380,6 +382,29 @@ VERIFICATION_MODE_FULL = "full-digest-legacy"
 # Entrypoints hashed at activation and re-checked per call, as paths
 # relative to skills/ (the CLI shares the entrypoint layout).
 ENTRYPOINT_DEPENDENCIES = {
+    "synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py": (
+        "synthesis-daily-rituals/scripts/acquisition_transport.py",
+        "synthesis-daily-rituals/scripts/archive_publish.py",
+        "synthesis-daily-rituals/scripts/acquisition_evidence.py",
+        "synthesis-daily-rituals/scripts/ritual_workers.py",
+        "synthesis-daily-rituals/scripts/sync_watermark.py",
+        "synthesis-meeting-transcripts/verify_transcripts.py",
+        "synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py",
+        "synthesis-meeting-transcripts/optional-workspace-mcp/document_tabs.py",
+        "synthesis-meeting-transcripts/optional-workspace-mcp/google_read.py",
+    ),
+    "synthesis-slack-sync/scripts/acquire.py": (
+        "synthesis-daily-rituals/scripts/acquisition_transport.py",
+        "synthesis-daily-rituals/scripts/archive_publish.py",
+        "synthesis-daily-rituals/scripts/acquisition_evidence.py",
+        "synthesis-daily-rituals/scripts/ritual_workers.py",
+        "synthesis-daily-rituals/scripts/sync_watermark.py",
+        "synthesis-meeting-transcripts/verify_transcripts.py",
+        "synthesis-slack-sync/scripts/preflight.py",
+        "synthesis-slack-sync/scripts/slack_workspaces.py",
+        "synthesis-slack-sync/thread_checker.py",
+        "synthesis-slack-sync/scripts/slack_read.py",
+    ),
     "synthesis-agent-conformance/scripts/conformance.py": (
         "synthesis-context-lifecycle/scripts/record_succession.py",
         "synthesis-context-lifecycle/scripts/record_transaction.py",
@@ -749,10 +774,18 @@ _HERMES_OBSERVATION_DEPS = (
     "synthesis-agent-conformance/scripts/vendor_hermes.py",
 )
 for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
-    if (_entry in {"synthesis-agent-conformance/scripts/hermes_adapter.py", "synthesis-agent-conformance/scripts/vendor_bundle.py"}
-            or "synthesis-autopilot/scripts/native_observations.py" in _deps
-            or "synthesis-autopilot/scripts/delegation_boundary.py" in _deps):
-        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS)))
+    if (
+        _entry
+        in {
+            "synthesis-agent-conformance/scripts/hermes_adapter.py",
+            "synthesis-agent-conformance/scripts/vendor_bundle.py",
+        }
+        or "synthesis-autopilot/scripts/native_observations.py" in _deps
+        or "synthesis-autopilot/scripts/delegation_boundary.py" in _deps
+    ):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS))
+        )
 
 # Host-specific PR support is optional in a modular release. A dependency
 # present at activation must still verify; absence never means scanned.
@@ -890,10 +923,14 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
         "synthesis-agent-conformance/scripts/live_receipt.py",
         "synthesis-project-management/scripts/native_identity.py",
     }:
-        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((
-            *_dependencies,
-            "synthesis-agent-conformance/scripts/native_transcript_identity.py",
-        )))
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys(
+                (
+                    *_dependencies,
+                    "synthesis-agent-conformance/scripts/native_transcript_identity.py",
+                )
+            )
+        )
 
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
@@ -1777,6 +1814,12 @@ def launcher_main(pointer, argv):
         print("Synthesis execution refused: %s" % exc, file=sys.stderr)
         return 2
 
+
 for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
-    if "synthesis-autopilot/scripts/delegation_boundary.py" in _deps or "synthesis-agent-conformance/scripts/vendor_native.py" in _deps:
-        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS)))
+    if (
+        "synthesis-autopilot/scripts/delegation_boundary.py" in _deps
+        or "synthesis-agent-conformance/scripts/vendor_native.py" in _deps
+    ):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS))
+        )

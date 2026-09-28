@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.12.0"
+  version: "3.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -184,6 +184,8 @@ slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="
 - **Every declared target is read every sync**, including targets read earlier the same day — the window simply starts where the last read stopped.
 - Note the **reply count** on every message that has threads. These will be re-read in Step 2.
 
+Use `synthesis exec-public synthesis-slack-sync/scripts/acquire.py` for the explicitly declared credential-local read adapter, following [declared acquisition entries](../synthesis-daily-rituals/references/acquisition-entry.md). It consumes preflight and the current registry; it never discovers targets or falls back between MCP and direct credentials. Keep unsupported connector coverage UNKNOWN.
+
 Before advancing a Slack watermark, read the mandatory [acquisition evidence contract](../synthesis-daily-rituals/references/acquisition-evidence.md). Use detailed channel/DM reads with complete pagination, independently search within the declared window for replies (including old parents), and follow the union of local known threads, history indicators, and search parents. `thread_checker.acquire_channel` provides this bounded read-only adapter flow. Retain actual in-window positive controls and raw call references; historical controls or empty/concise reads cannot establish absence. Save exact message IDs and bytes, then pass the complete receipt to `sync_watermark.py advance --acquisition-evidence`. If a connector lacks required detail or pagination, report unknown coverage and keep the watermark.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
@@ -249,7 +251,7 @@ For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
-- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set written by `preflight.py --json --out` this run and never a stored copy) lists exactly the targets this sync did not re-read.
+- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest> --acquisition-evidence <receipt.json>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set written by `preflight.py --json --out` this run and never a stored copy) lists exactly the targets this sync did not re-read.
 
 Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
 

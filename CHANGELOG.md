@@ -4,7 +4,48 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.151.0] - 2026-09-27
+## [4.152.0] - 2026-09-28
+
+### Added
+
+- Connect declared Google Docs and Slack read-only adapters to existing source,
+  save, verification and watermark owners. Selection binds account/workspace,
+  folder/conversation scope and finite paging; it never discovers credentials or
+  silently changes transport after a refusal.
+- Retain native tab identities, verbatim transcript/message bodies and exact
+  file receipts. Compact status leaves principal judgment explicit.
+
+### Fixed
+
+- Observe supported native web page-open and find actions, including text-result
+  thumbnails, without treating page content as authority or task completion.
+  Unknown fields, foreign identities and malformed records still stop coverage.
+- Reject contradictory Slack page totals, order and cardinality before advancing
+  coverage. Replay owned archives by conversation and parent metadata, refusing
+  ambiguous legacy records instead of interpreting quoted prose as authority.
+- Require matching successful MCP initialization, supported protocol and declared
+  tools capability before dispatch. Authentication, HTTP and malformed-response
+  failures remain distinct from verified absence.
+- Verify acquisition entrypoint dependencies through the installed runtime owner;
+  run entry, repair, regression and service-doctor controls in every release lane.
+
+### Measured scope
+
+- With two synthetic documents and 1 KiB–1 MiB bodies, exact saved bytes were
+  verified while CLI status remained 1,256–1,262 bytes. A fixed Slack thread over
+  the same body range produced 1,167–1,173-byte status with full archive custody.
+- Watermark calculations matched explicit 1-, 8- and 365-day intervals; reports
+  grow with target count. Fixed-topology local Git reports remained 581 bytes.
+  A grounding ledger remained 514 bytes while its helper consumed the full body.
+  These are mechanical output measurements, not measured model-token savings,
+  a matched prior-procedure comparison, or native/provider acceptance.
+
+### Skill versions
+
+- Daily rituals 2.44.0; meeting transcripts 0.13.0; Slack sync 3.13.0;
+  onboarding 2.10.1; skills manager 2.8.11; autopilot 3.5.1.
+
+### Core execution and recovery
 
 Recover the original enrolled history through one finite operation and refresh
 normal appends before protected controller and CLI actions. Preserve decoder

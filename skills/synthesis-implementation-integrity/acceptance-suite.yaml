@@ -1,8 +1,9 @@
 schema: 2
-suite: complete-core-4-151-0
+suite: complete-core-acquisition-native-4-152-0
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy,
-  maintenance and portable evidence owners
+  maintenance and portable evidence owners; scoped source acquisition and inert native
+  web observations
 enforcing_boundary: Fresh transaction-bound acceptance and complete required CI before
   gated publication
 receipt_consumer: synthesis-skills-manager.release.consume-acceptance.v1
@@ -10,12 +11,17 @@ change_base_policy: boundary-supplied-git-diff
 expected_status: pass
 metadata_class: acceptance-test
 issues_authority_receipt: false
-unverified_remainder: Controlled owner fixtures and source review do not prove actual
-  client trust, protected provider execution, cold survival, external delivery or
-  comparative superiority.
+unverified_remainder: Source and controlled consumers do not establish actual installed
+  loading, managed native permission qualification, cold survival, provider permissions,
+  model-token savings or comparative superiority. Final publication binds the actual
+  authenticated Git boundary.
 changed_surfaces:
 - path: .claude-plugin/plugin.json
   cases:
+  - acquisition-262cd95fb5bb0355
+  - acquisition-3c971a5c16f818a9
+  - acquisition-5e34059ab08c7d9c
+  - acquisition-76809225f92696df
   - final-003f38c1bda8262d
   - final-07706321378d92db
   - final-0a0aae0e2d54f23c
@@ -116,6 +122,10 @@ changed_surfaces:
   - final-f8f0939b644079f8
 - path: .codex-plugin/plugin.json
   cases:
+  - acquisition-262cd95fb5bb0355
+  - acquisition-3c971a5c16f818a9
+  - acquisition-5e34059ab08c7d9c
+  - acquisition-76809225f92696df
   - final-003f38c1bda8262d
   - final-07706321378d92db
   - final-0a0aae0e2d54f23c
@@ -222,6 +232,9 @@ changed_surfaces:
   - final-9b1c2f90471ee9ad
 - path: .github/workflows/validate.yml
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-8f68c26da82d7e13
+  - acquisition-e5dea17c5d5fc6c2
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
   - final-0f471cdc3ecc9c3a
@@ -273,6 +286,10 @@ changed_surfaces:
   - final-fbeaa32fe946a8af
 - path: .muse-plugin/plugin.json
   cases:
+  - acquisition-262cd95fb5bb0355
+  - acquisition-3c971a5c16f818a9
+  - acquisition-5e34059ab08c7d9c
+  - acquisition-76809225f92696df
   - final-003f38c1bda8262d
   - final-07706321378d92db
   - final-0a0aae0e2d54f23c
@@ -373,6 +390,9 @@ changed_surfaces:
   - final-f8f0939b644079f8
 - path: AGENTS.md
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-8f68c26da82d7e13
+  - acquisition-e5dea17c5d5fc6c2
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
   - final-0f471cdc3ecc9c3a
@@ -420,6 +440,10 @@ changed_surfaces:
   - final-fbeaa32fe946a8af
 - path: CHANGELOG.md
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-5e34059ab08c7d9c
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-f167b50f91646882
   - final-003f38c1bda8262d
   - final-04b4432f3085f7db
   - final-07706321378d92db
@@ -563,6 +587,10 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-fc092801303bf1fc
+  - native-web-3c0e1933f3bf12d9
+  - native-web-8919fedc3f7ab6ad
+  - native-web-d23e61645e6a653e
+  - native-web-e20a8ac96c56280c
 - path: GOVERNANCE.md
   cases:
   - final-42a40e7612918374
@@ -571,6 +599,10 @@ changed_surfaces:
   - final-fb5bcd34993c1c0e
 - path: README.md
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-5e34059ab08c7d9c
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-f167b50f91646882
   - final-003f38c1bda8262d
   - final-07292a0e9cb0524a
   - final-07706321378d92db
@@ -1190,6 +1222,10 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - native-web-3c0e1933f3bf12d9
+  - native-web-8919fedc3f7ab6ad
+  - native-web-d23e61645e6a653e
+  - native-web-e20a8ac96c56280c
 - path: skills/synthesis-autopilot/references/clients-and-recovery.md
   cases:
   - final-07292a0e9cb0524a
@@ -1894,6 +1930,10 @@ changed_surfaces:
   - final-d235cece9a2387ff
   - final-f11804603bcce313
   - final-f36cb3d7d86b2d54
+  - native-web-3c0e1933f3bf12d9
+  - native-web-8919fedc3f7ab6ad
+  - native-web-d23e61645e6a653e
+  - native-web-e20a8ac96c56280c
 - path: skills/synthesis-autopilot/scripts/native_codex_turn.py
   cases:
   - final-1dc7ad5e1e9bf2c9
@@ -2632,6 +2672,14 @@ changed_surfaces:
   - final-75dfa0ef89d4a922
   - final-8c1bd86d77e63ff6
   - final-9c1de9a4ee5f2a08
+  - linux-portability-001b4a447ae43e13
+  - linux-portability-5a0c929bd883c8e3
+  - linux-portability-73d90456d3b985c0
+  - linux-portability-91b8cab732df891d
+  - linux-portability-a3b9d4e835286e33
+  - linux-portability-c5d4bba245559d45
+  - linux-portability-dd23e38b9a80ccc0
+  - linux-portability-dd62141f663280f3
 - path: skills/synthesis-autopilot/scripts/test_hermes_transport.py
   cases:
   - final-241c54da9b759b0f
@@ -2651,6 +2699,14 @@ changed_surfaces:
   - final-dd23e38b9a80ccc0
   - final-e62bd0d65730d025
   - final-ecbfe877913c6e32
+  - linux-portability-001b4a447ae43e13
+  - linux-portability-5a0c929bd883c8e3
+  - linux-portability-73d90456d3b985c0
+  - linux-portability-91b8cab732df891d
+  - linux-portability-a3b9d4e835286e33
+  - linux-portability-c5d4bba245559d45
+  - linux-portability-dd23e38b9a80ccc0
+  - linux-portability-dd62141f663280f3
 - path: skills/synthesis-autopilot/scripts/test_journal_storage.py
   cases:
   - final-003f38c1bda8262d
@@ -2746,6 +2802,14 @@ changed_surfaces:
   - final-9e89648ce81e74ea
   - final-d5b22a02cdbc396d
   - final-e56069edaf2c93bb
+  - linux-portability-001b4a447ae43e13
+  - linux-portability-5a0c929bd883c8e3
+  - linux-portability-73d90456d3b985c0
+  - linux-portability-91b8cab732df891d
+  - linux-portability-a3b9d4e835286e33
+  - linux-portability-c5d4bba245559d45
+  - linux-portability-dd23e38b9a80ccc0
+  - linux-portability-dd62141f663280f3
 - path: skills/synthesis-autopilot/scripts/test_managed_productive.py
   cases:
   - final-11e535dbd4d68e05
@@ -2828,6 +2892,12 @@ changed_surfaces:
 - path: skills/synthesis-autopilot/scripts/test_native_custody.py
   cases:
   - final-5571d5351a07b873
+- path: skills/synthesis-autopilot/scripts/test_native_observer_integration.py
+  cases:
+  - native-web-3c0e1933f3bf12d9
+  - native-web-8919fedc3f7ab6ad
+  - native-web-d23e61645e6a653e
+  - native-web-e20a8ac96c56280c
 - path: skills/synthesis-autopilot/scripts/test_native_protocol.py
   cases:
   - final-408e746bb6b42323
@@ -3282,6 +3352,10 @@ changed_surfaces:
   - final-e1b1fdb2ffa9091f
 - path: skills/synthesis-daily-rituals/SKILL.md
   cases:
+  - acquisition-5662dbec35b61e6d
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-f167b50f91646882
+  - acquisition-f976a7cca9157c92
   - final-0e844d557f27c9b0
   - final-155e52438bc8979f
   - final-2637de88d26148fb
@@ -3294,6 +3368,12 @@ changed_surfaces:
   - final-f6edf42c1ca78690
   - final-f976a7cca9157c92
   - final-fa4af6c23af410c4
+- path: skills/synthesis-daily-rituals/references/acquisition-entry.md
+  cases:
+  - acquisition-445892b9872ecddc
+  - acquisition-58b885f62c687728
+  - acquisition-8528aa307c4268a0
+  - acquisition-c3de7f5966d207a6
 - path: skills/synthesis-daily-rituals/references/acquisition-evidence.md
   cases:
   - final-1339176b78705deb
@@ -3323,6 +3403,9 @@ changed_surfaces:
   - final-fa4af6c23af410c4
 - path: skills/synthesis-daily-rituals/references/mechanical-extraction.md
   cases:
+  - acquisition-5662dbec35b61e6d
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-f167b50f91646882
   - final-155e52438bc8979f
   - final-f6edf42c1ca78690
 - path: skills/synthesis-daily-rituals/references/ritual-evidence.md
@@ -3366,6 +3449,8 @@ changed_surfaces:
   - final-be355cf9e5fa441f
 - path: skills/synthesis-daily-rituals/references/version-history.md
   cases:
+  - acquisition-c29fd2b4cfba24ce
+  - acquisition-f976a7cca9157c92
   - final-0e844d557f27c9b0
   - final-2637de88d26148fb
   - final-3664e4a41a603089
@@ -3391,6 +3476,18 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-daily-rituals/scripts/acquisition_transport.py
+  cases:
+  - acquisition-2edea609773f4bbf
+  - acquisition-36bc2b35d6055276
+  - acquisition-792c39756ed008b0
+  - acquisition-9e404a96c303f47d
+- path: skills/synthesis-daily-rituals/scripts/archive_publish.py
+  cases:
+  - acquisition-1f1975178e346c17
+  - acquisition-720bc79f4f9a89a9
+  - acquisition-76d58abbe1aaf54f
+  - acquisition-cf08fef4cc033ec2
 - path: skills/synthesis-daily-rituals/scripts/credential_paths.py
   cases:
   - final-0e844d557f27c9b0
@@ -3876,6 +3973,861 @@ changed_surfaces:
   - final-dfd70fac106011dc
   - final-e5dea17c5d5fc6c2
   - final-e80e745ca359589d
+- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
+  cases:
+  - acquisition-81649df402478ce9
+  - acquisition-a13ac8543a1190c1
+  - final-003f38c1bda8262d
+  - final-0063326407749612
+  - final-0063af512afc6d74
+  - final-0074164e6b709156
+  - final-00f28a75e47a74a9
+  - final-00fb8b7e16233d58
+  - final-011d6659b7ea5f78
+  - final-0152e896af635d64
+  - final-01b6f5b426bd85c5
+  - final-021accca59b737c2
+  - final-02d278da1bee1861
+  - final-0394d2a9edb70219
+  - final-03ae5b84cf0cbf1c
+  - final-03c41d89f1246e4a
+  - final-04b4432f3085f7db
+  - final-05564316dfd30a59
+  - final-060a5623c34af461
+  - final-06ba26f1009d8912
+  - final-07292a0e9cb0524a
+  - final-07345c77c27372dc
+  - final-07706321378d92db
+  - final-0842c70412b90b24
+  - final-086f53c576317798
+  - final-08bd62c0a2dfd857
+  - final-08dbc3f41e6fe4d3
+  - final-0952c76be5481ebf
+  - final-0a0aae0e2d54f23c
+  - final-0a16463543ab5811
+  - final-0a6a837b5a507301
+  - final-0a84482771f82589
+  - final-0a99eef9fd2be68c
+  - final-0aae0a6c936b339c
+  - final-0ab508eed5ea8ec7
+  - final-0ac130d56e8f2347
+  - final-0ac2f2341170a079
+  - final-0afda21b454331c0
+  - final-0b45c0ef70b830c1
+  - final-0bd7d4b247e629d6
+  - final-0be8d4ebc28e897b
+  - final-0c250f772762b433
+  - final-0c26de142eeece45
+  - final-0c923f378cfe4145
+  - final-0c9f25e68cf1453d
+  - final-0cbe3949cf50c202
+  - final-0ce6b0f33090d568
+  - final-0d4fc180d69d9d31
+  - final-0d8ae14b5d44e740
+  - final-0db49811b5d114d5
+  - final-0e0bd72f3e594c62
+  - final-0e64ff6b9a5e1d5a
+  - final-0e844d557f27c9b0
+  - final-0e9813f67ce5eafd
+  - final-0f471cdc3ecc9c3a
+  - final-0f88105332fe6e1e
+  - final-106537d2d45d2f6a
+  - final-10901078e23ee9bb
+  - final-10b8bf437207b0df
+  - final-113f046dc41bae93
+  - final-11484ae6b8130cca
+  - final-116dadcecd1ef608
+  - final-11e535dbd4d68e05
+  - final-1260fcb97879de92
+  - final-127fa2104853fc53
+  - final-13373a5354d9b44c
+  - final-1339176b78705deb
+  - final-13e8e960d55c655a
+  - final-14246ba11ab22680
+  - final-146e863dfef21954
+  - final-149c17d43a4426a2
+  - final-14eec4c1afcac454
+  - final-1502a07cc43a5873
+  - final-151fb1534996193c
+  - final-155e52438bc8979f
+  - final-15bcc664f2224005
+  - final-15fa963f4e369bba
+  - final-162f3aa68c8afe58
+  - final-16333053ceeafbe4
+  - final-16a86364ffc1d52d
+  - final-16db5062108e4a5c
+  - final-17641a10604c833c
+  - final-17d1d2f7025d8419
+  - final-185722309f066e12
+  - final-18a270a45b9dceb8
+  - final-18d6eb36b76420bc
+  - final-195f76ad2d06251a
+  - final-1974b7a4b6a6fb4b
+  - final-1991c90962561d84
+  - final-1a1775c06f79ae8a
+  - final-1a2f406debd78c78
+  - final-1a6d24c6eefc85ff
+  - final-1a7f8bc45014a236
+  - final-1b3461c813492384
+  - final-1b36b69418d62c5f
+  - final-1bbd57942348ad28
+  - final-1be33aec51c38eda
+  - final-1c206ccf5757a7ed
+  - final-1c370ed4c87b5472
+  - final-1c402ee113ac6274
+  - final-1c45f6f6397919b9
+  - final-1c87a46f5f7bc923
+  - final-1d4dd2cc6dab8ef2
+  - final-1d87619bc5c419a2
+  - final-1d8c1dbbdc3993b6
+  - final-1dc7ad5e1e9bf2c9
+  - final-1dd61345b035ec63
+  - final-1e395b92b1f37c8f
+  - final-1ef633b93d1149a9
+  - final-1f205096efbd6ea1
+  - final-1f21c3634c2b77fe
+  - final-1f3e609a2188a20d
+  - final-1f63ae6b9962ceaa
+  - final-1f88e1c4ce523e5e
+  - final-1fb0369a1e57d836
+  - final-205e65d55573e746
+  - final-2075832ab129b9ff
+  - final-20bac4d9867f598e
+  - final-20bd26340bf7f780
+  - final-20d0c1492cd0a3de
+  - final-21730796218b5fb4
+  - final-21ae8e2760e7ed2b
+  - final-2210f2ba8b9d59e3
+  - final-2291530cb5709dd4
+  - final-22ccb62f2b028a32
+  - final-22f7d8f91a7faaef
+  - final-23212a48e169808f
+  - final-2327abb97e7c3698
+  - final-237816026953cbfc
+  - final-241926dd8de92bca
+  - final-241c54da9b759b0f
+  - final-244640aafa71011e
+  - final-24be5f8f7bdb7774
+  - final-24dd8da661bc70b1
+  - final-2558ab42c02b10b6
+  - final-25663aecef2cabb4
+  - final-260d9f1f9e3f4c08
+  - final-262cd95fb5bb0355
+  - final-2637de88d26148fb
+  - final-2653499319a5e07d
+  - final-265dbc21b2793051
+  - final-26a6ee76e03c600e
+  - final-272883970027a3e6
+  - final-27523fa81302fc2b
+  - final-27814924fce414da
+  - final-27939f3d602c51ab
+  - final-27a8a19ec300136c
+  - final-27c3f268468cee11
+  - final-27d43e828fd9b507
+  - final-281fff600959bbb6
+  - final-28cbf458fdb803c4
+  - final-290bf9ade038e048
+  - final-291127d274a48a28
+  - final-2960c0c37e64bfa4
+  - final-2983dbd85b9fb565
+  - final-29b0f044a1204b81
+  - final-29cd97987b7098d7
+  - final-29e202ed6ee4f37e
+  - final-2a5ad2c6621542ed
+  - final-2aa93f8a62ca70a5
+  - final-2aa9714643370ddb
+  - final-2afaa728b9f2846e
+  - final-2c9ad4279bc57605
+  - final-2cd84b53700a500c
+  - final-2cfdefe7f6900911
+  - final-2dd0cbdad6233d79
+  - final-2e4bf51bf39ef032
+  - final-2ea8ce0b71fec5cf
+  - final-2f7bbabc9bd11ae4
+  - final-2f94cf35bb0230d3
+  - final-2fe2256eb14cbe67
+  - final-2fe67cccca5b1dcd
+  - final-3037d50b0598d9d3
+  - final-3060706f5814cc7d
+  - final-308c363e013eef2b
+  - final-308deed6f4312253
+  - final-309083a31ffd9675
+  - final-30c843bd1e412c83
+  - final-313cc3d8b5ade699
+  - final-31754117b2bcddf0
+  - final-318b3864d276660a
+  - final-31a4e12afe867ad7
+  - final-31c684c29f62fc8a
+  - final-31db8e5df1a31f97
+  - final-31eca9496bc0ebd3
+  - final-32212d4d338ab857
+  - final-322997dbca6fc03f
+  - final-324023163dad8034
+  - final-3348e5775d12b93e
+  - final-33653aa92455d109
+  - final-336ac9f17fce8efc
+  - final-3446e166871b975e
+  - final-349a763820c1a41d
+  - final-34bf2b3782a9e5a5
+  - final-3568b7feb5ae0860
+  - final-357b7964359ddf2d
+  - final-35d318b3cc3fe418
+  - final-36551224ff734952
+  - final-3664e4a41a603089
+  - final-3721498448f172d2
+  - final-37a0f81c2d91d19e
+  - final-37d3fe7e8beed705
+  - final-37df45ea727b968a
+  - final-3875fb9cc0afc8eb
+  - final-38b061b9c34c2e70
+  - final-38d9510ae3aa6ad9
+  - final-390889e36321b7dd
+  - final-39325c9f19c371bb
+  - final-39acf5d30fbd50d8
+  - final-3a7a5c9716dffa53
+  - final-3ab9114d7e011b17
+  - final-3b55d40b91f3b5f5
+  - final-3bfc25ad636bfe8b
+  - final-3c3298c4ec85a35e
+  - final-3c51886a662c7ec8
+  - final-3cac8d8131d87ccb
+  - final-3d2492a9a2b4b7f0
+  - final-3d513d8660d7dec3
+  - final-3da28353f13cc99a
+  - final-3df0aeb894526bac
+  - final-3e6c518798ec80ea
+  - final-3eb859a904c44c42
+  - final-3fea90e91f64ee67
+  - final-407718246725a489
+  - final-408e746bb6b42323
+  - final-4121cb277b2d730d
+  - final-41272a1e5b593fd6
+  - final-416b6d9f24d445ab
+  - final-417c846d7aabd930
+  - final-41fa0ea7a2fb9e97
+  - final-42a40e7612918374
+  - final-42c5721991f12696
+  - final-42f3ed91c3dc6cc9
+  - final-4320cb36ac6c36d4
+  - final-43789e1b418aa8d0
+  - final-4396297787290e67
+  - final-43c19118a0d300c0
+  - final-442f5f19cc323958
+  - final-4444988d495a1f07
+  - final-44e50978595154d4
+  - final-451824fcc58b6b26
+  - final-451bb7ffee9d19a8
+  - final-451fb8ef34b6ef04
+  - final-45280f4c63433997
+  - final-4537740e0662d700
+  - final-4541b9a652e3ae69
+  - final-456352150bf6b48d
+  - final-4572f577c1a09fe7
+  - final-45855475987f2c62
+  - final-47634a8b5df5d3cf
+  - final-476dd26fcc541569
+  - final-479427417601ce89
+  - final-4890343083ec643c
+  - final-48bde005ee2737e3
+  - final-48f2ac48298ae5f5
+  - final-498def4b6f30d653
+  - final-49bbcff0c613e36d
+  - final-49ff06e2f50c7ea6
+  - final-4a0b21e22cdd3ede
+  - final-4a28f80ab1da5522
+  - final-4a2bb5257a7fd249
+  - final-4a2d97baf4ffa2d5
+  - final-4a62f2271baba519
+  - final-4b27d267b4da65b9
+  - final-4b434148391ee28c
+  - final-4b79b9c0c91f4c3a
+  - final-4bbfa4a2e8120c36
+  - final-4be49e72170a8d11
+  - final-4c23cf5a969e303f
+  - final-4d090f3acb4ef281
+  - final-4d0ac4270bd56369
+  - final-4d24414f882d04e9
+  - final-4d7e810affd15257
+  - final-4e0e65e3009c942f
+  - final-4e1e9c5052dd4189
+  - final-4e2899e4b05f419e
+  - final-4e3f95faa8cd345b
+  - final-4e60c8cec28e36f7
+  - final-4e64038ca455b1f0
+  - final-4ed08ef3f1f614a8
+  - final-4f3ab5f32f96fe4b
+  - final-4f8d9fae5daa3670
+  - final-502bb238cb20cd1a
+  - final-504ef640688f8485
+  - final-508e08ffc8c4a942
+  - final-50a62aff7316f531
+  - final-50ab4f3e0804f3dd
+  - final-50e21007f6c20d83
+  - final-51578892d74ead78
+  - final-5168f47a00875e1f
+  - final-519ec098267df69a
+  - final-51b2afd70676cbed
+  - final-51f8ffe2cbf11b8c
+  - final-51fc6b0e621bd292
+  - final-522316facf329af6
+  - final-52ad62e009ec250f
+  - final-52b0b2da10c81b15
+  - final-52bb012d8a1a8a5e
+  - final-52e645afe2eec0d6
+  - final-52e7f3ac6e9b2427
+  - final-53522d3719d24bf4
+  - final-5357e89e52baea67
+  - final-53d3136e75956810
+  - final-53d88286357b19da
+  - final-541cd4b90d89657a
+  - final-54783c250b640bad
+  - final-5527c9c744c4082a
+  - final-5538b0ed2fe54f7f
+  - final-5571d5351a07b873
+  - final-55fd584d315c2093
+  - final-565883aaaf984c7d
+  - final-567ed97aaadc11b8
+  - final-5681fd08b4371197
+  - final-5697fc182cdfdac1
+  - final-579516bd63e87e90
+  - final-58177342dc2a39d4
+  - final-5839c038c46c7f08
+  - final-585373e47fa23532
+  - final-5857026479f84f56
+  - final-59a6bec902b0705b
+  - final-59be363bd6720835
+  - final-59f52e26b000cdb4
+  - final-5a267ad40dd6db45
+  - final-5a3110d799bf695c
+  - final-5a473459b67abbad
+  - final-5ad3a36bc5014e4f
+  - final-5aee4f7b449e33c9
+  - final-5aef264cd57e2e3b
+  - final-5b38d2a0e10ecf16
+  - final-5be7dad153030491
+  - final-5c8073b3fa580be4
+  - final-5cd8b21a3fa1b3c4
+  - final-5cf48cbb1290fdd2
+  - final-5d34fdc24d962c88
+  - final-5d3a1764af6c042e
+  - final-5d53cb1265fe5d1b
+  - final-5d5902eda5162d33
+  - final-5deba893c3eb8c16
+  - final-5e64625fba05ca43
+  - final-5e799cb4a546c412
+  - final-5ed1709545f5df68
+  - final-5f6d1bc69f8473c7
+  - final-5f90017857a25f20
+  - final-5fcb1177b4d2cda1
+  - final-5fd9a7e8bc4d20cb
+  - final-6032cfbef96ba6f5
+  - final-612bae8673a2794e
+  - final-613e1870e6ca7dd4
+  - final-61491c50ebecce58
+  - final-61b987abb5a8b75d
+  - final-61e0a4b7a7e7da98
+  - final-61fcbf38183eef96
+  - final-6289cea73f0ae57b
+  - final-630e2a1e4f125dff
+  - final-634a228d0b352a43
+  - final-63c2c0f13f74667b
+  - final-641d06752219a9b5
+  - final-6429d4c7877d799a
+  - final-64b07ef4496f0b27
+  - final-64ed5c249b217348
+  - final-650a81195daad022
+  - final-6512d0ea8528dfca
+  - final-655e9edf3170ccbd
+  - final-65694b6d94d1a68e
+  - final-65fb86ced41be288
+  - final-6637852fc7ab8ba7
+  - final-66adca0339fd32e0
+  - final-6762a1a814b9ea16
+  - final-677c9b274f80a096
+  - final-68296dbb027caf09
+  - final-68afe2e0310ffefb
+  - final-68b0ad166b46e643
+  - final-68ee673ae06abdbf
+  - final-6927de54ec7ef137
+  - final-6997a38bceeef3ad
+  - final-6ae11e0867ea69b5
+  - final-6b68444a6fca618f
+  - final-6b766648b551b7d1
+  - final-6c2a39704f14ac0b
+  - final-6c303c7e206abb54
+  - final-6c7d98b3f99494fc
+  - final-6ca80d1d9a6dd925
+  - final-6cc2961c284076a8
+  - final-6d3086217a70d630
+  - final-6d8cccc5639fc795
+  - final-6eb7447e5ed448ca
+  - final-6ec3b475b18552b3
+  - final-6f518a475e4bc201
+  - final-6fd72eb3986e6797
+  - final-70255aed236ea5e9
+  - final-70e19eb5a0dac07f
+  - final-7124103c18290828
+  - final-7161f82885408a14
+  - final-71684f30f487d2bf
+  - final-7178a3778ff239ac
+  - final-71cebd824c70808f
+  - final-720bc79f4f9a89a9
+  - final-72e4d878f4641d9f
+  - final-73d90456d3b985c0
+  - final-7553bb3473c0d7e9
+  - final-7579d0f9ce4ec25a
+  - final-757f80e94c317bcc
+  - final-75cd56db21c8fdc4
+  - final-75d12b46ab468509
+  - final-75dfa0ef89d4a922
+  - final-761aec44ebe55200
+  - final-764a6ea74fd05204
+  - final-76cc2daf9900ac01
+  - final-76f3fe5886f73e81
+  - final-772aa7770a1d364a
+  - final-776a80e099cfcb23
+  - final-77a32a1e8e810724
+  - final-77f6a511cea82f2d
+  - final-7844bc6ad33f6ead
+  - final-790fbc4273f169eb
+  - final-7943e69c7c3e25bd
+  - final-796883e64cd3b8c4
+  - final-799d0c017c8d9f0f
+  - final-79c92a68ff96cc62
+  - final-79d56fa559a98bcf
+  - final-79e1eaa485fda0a4
+  - final-7a56244931297154
+  - final-7a6fd91152caa0aa
+  - final-7a72e6cf076a677e
+  - final-7b662658ba6fdf43
+  - final-7bc3e3fd192f07e0
+  - final-7c1e042d6c13058a
+  - final-7c3bc1518930a5c9
+  - final-7cca5e2baadbd13a
+  - final-7d90488f000fc0b2
+  - final-7dca023f0c4ede8c
+  - final-7df7fc31b5995bf7
+  - final-7dfb8aba2fe9bc48
+  - final-7e28879210f99a54
+  - final-7e4f0b986f264d91
+  - final-7e7a0af113b2f83c
+  - final-7ef7e03e5ffde762
+  - final-7f307153e2cc4d7c
+  - final-7f4014c20bdfad98
+  - final-800f8efcd2c7ec72
+  - final-80c0460622790895
+  - final-813ff16029fdf056
+  - final-81580940af663496
+  - final-8166c94588ad6007
+  - final-819315b201f0f699
+  - final-8204b1e60d4b8704
+  - final-82232ccb06db34e6
+  - final-825ae9b97fcd5243
+  - final-826b4583c014a39f
+  - final-827f49f9fa01290c
+  - final-82a6d875db390355
+  - final-82a918ab1d1fabd3
+  - final-831781bb28362bef
+  - final-8484300365cc51bd
+  - final-8487ede91c59ca5a
+  - final-85a533d3a1a4ee40
+  - final-85ebf9c6391ba9d7
+  - final-8604e6acb9939a99
+  - final-863c438d942f9603
+  - final-86a2098e892db98a
+  - final-86c9d3b5d652fbe9
+  - final-86f5b7eb9866ff73
+  - final-8707537d2c0c45ba
+  - final-879af9b799d97615
+  - final-87e862146905fbb2
+  - final-88188e54283a52d5
+  - final-891da86f14c9713a
+  - final-8965ed194c80872a
+  - final-896a21c1b538f18f
+  - final-8982575da4de0a3c
+  - final-8a3081a53550698d
+  - final-8a5401018bc4d205
+  - final-8ac07ce6e377dbda
+  - final-8acc02fac1697eee
+  - final-8af92d304e1d3c49
+  - final-8b6a2dac876c63a3
+  - final-8b9f4ea12fc5713b
+  - final-8ba2d9d0c7ab7014
+  - final-8bdbd8c73bb0acb8
+  - final-8c1bd86d77e63ff6
+  - final-8c5ae1fece30e80d
+  - final-8c74ec29bdd1cd8d
+  - final-8d0bb2573d60b4d8
+  - final-8d84ef4151520ebe
+  - final-8db5de565d6d28a3
+  - final-8e42d589e8952431
+  - final-8e88d9fa306b0938
+  - final-8ec9c01f431e48ed
+  - final-8f68c26da82d7e13
+  - final-8fc08d3e8ecbb69d
+  - final-8fee109b33ee874b
+  - final-90277c0caaa62a87
+  - final-9044c9f8138c4bfe
+  - final-90642837341f5fd1
+  - final-90653fed434741ff
+  - final-9104112b25c77ae5
+  - final-910ed60c48bad121
+  - final-913cc4a857f36e63
+  - final-91b4dd3c634ee0e7
+  - final-91b8cab732df891d
+  - final-91c2a3249d2e09bd
+  - final-91deec68fb639a46
+  - final-923f4652eb04c214
+  - final-9247a2cfeb6accb5
+  - final-92aa3bd8bbfc0fce
+  - final-934ff5b82d232005
+  - final-93a3d8daeca84473
+  - final-93ae008c50c391ed
+  - final-93b7b8e6a5e0eb31
+  - final-93f087e8bcf4d1be
+  - final-9448efbcbbd69f3c
+  - final-946214d510105344
+  - final-94c411b3684f4857
+  - final-954912d5a6c39435
+  - final-95b6787e19d0bde6
+  - final-96953ff65391b2d8
+  - final-96a71237ed97a5be
+  - final-96e78dc504ec5a0a
+  - final-984a43e26acac439
+  - final-9856fd38a2e41767
+  - final-98984db1805ccc6c
+  - final-98ccbefbaad0fc1d
+  - final-98ff5f1837f9340e
+  - final-995a424d209eb296
+  - final-99b28d357122d2ab
+  - final-99c1db2593f760a2
+  - final-99c1fa45bd3ace93
+  - final-99fdc8cf69230c43
+  - final-9a1f271db73d3960
+  - final-9a3508d77c5ec317
+  - final-9aa92980220fbdb7
+  - final-9acb9a74050833a7
+  - final-9b1c2f90471ee9ad
+  - final-9b31677670704911
+  - final-9b9e5141b616e7f7
+  - final-9bdeb6d2a094d34c
+  - final-9bf6970fbe29bbb0
+  - final-9c1de9a4ee5f2a08
+  - final-9d021eb187941944
+  - final-9d2390c44c1cb974
+  - final-9d7540fcdc47e600
+  - final-9d9d318e0612596e
+  - final-9dae1c10f843cfc1
+  - final-9db765d580465e7b
+  - final-9de9314f12b678b7
+  - final-9dffd0159d6ef9f8
+  - final-9e09d8e7241c34ae
+  - final-9e89648ce81e74ea
+  - final-9edd4f4925cdf6a8
+  - final-9f057c066991fcf3
+  - final-9f30cca3a0b904db
+  - final-9fb3c5b340621897
+  - final-9ff3a7b4b966ef7b
+  - final-9fff9004f3dfd656
+  - final-a04ecdcc222fefe9
+  - final-a097dfbf4e8a1920
+  - final-a0fa3bb013baf628
+  - final-a14fc99729369b52
+  - final-a176bfc1be44cc0d
+  - final-a17b4d27264dcae9
+  - final-a1edeb1aaa2acdc5
+  - final-a2bfd5d678c5bda5
+  - final-a2f462cb23f72b67
+  - final-a30b9aa9dc3f4e82
+  - final-a365deb3fc44339c
+  - final-a39dce2897f84f35
+  - final-a3b9d4e835286e33
+  - final-a4043321a00c8bb2
+  - final-a463d4c4be1256fd
+  - final-a4d837b3704068a7
+  - final-a4d9433cbe670430
+  - final-a54931afc9c36e9d
+  - final-a5a3a24f05c36222
+  - final-a5db4f5b5615af38
+  - final-a5f156e5cb8a936e
+  - final-a60cef2b128bf59f
+  - final-a624557a5a5b64a0
+  - final-a647ba2755028dcf
+  - final-a69b1bc6f7c87d87
+  - final-a6e1472c056ade28
+  - final-a771bd492dde2deb
+  - final-a7bbe3c1c99d5b8c
+  - final-a7c1b731039e2cff
+  - final-a7d49f23ab8502c4
+  - final-a7db74a450044a5b
+  - final-a856fa26b51d148c
+  - final-a8b1c802312c36d0
+  - final-a902afe489a5f28d
+  - final-a98c347dac940136
+  - final-a99fee36cf03d014
+  - final-aa6453e03794e21b
+  - final-ab074eee580fc9a1
+  - final-ab16790adcf02960
+  - final-ab3373353b6101cf
+  - final-ab342463d7bc2ec1
+  - final-ab414f7156b3be81
+  - final-ac2dd495bd377708
+  - final-ad3e66fe4f27a3d0
+  - final-ad77a0911f7e9c3e
+  - final-ad945d7787bf5aac
+  - final-adf0a146710d8dab
+  - final-ae1850e7e1961674
+  - final-ae5a1450132d4212
+  - final-ae6fe4c8814fb8cc
+  - final-ae93e0143a9a774d
+  - final-af525c3dfcdb7d25
+  - final-b07d33e84d4d9d88
+  - final-b0c35d437c25e5ed
+  - final-b0d740eeb87afc9e
+  - final-b1201469c556a0a4
+  - final-b1867167d9263dff
+  - final-b18ed05cef25637c
+  - final-b21c1393f48b0760
+  - final-b29d21610edab515
+  - final-b30028264c4b4aaa
+  - final-b31fe65b2c71c6a6
+  - final-b3de5876e58d47e7
+  - final-b4e2aed8fb2206ee
+  - final-b4e7772c93256d18
+  - final-b511ffa915f12ba4
+  - final-b52f1cca80e896f8
+  - final-b561943d705b8702
+  - final-b59119c5aed8cd60
+  - final-b5cb2855b77010cf
+  - final-b61da5b355604b77
+  - final-b668e6898cd08c80
+  - final-b674306ab53d9e7c
+  - final-b6dd75653410de9f
+  - final-b7ba8b1892abbdbe
+  - final-b82c0c27d5262f9c
+  - final-b93712d56e5a64c2
+  - final-b938b9d25363a316
+  - final-b98917bfce47a5a6
+  - final-ba0dcd34cbecde3d
+  - final-ba477140fbb8124d
+  - final-ba884fc244874124
+  - final-baefd5fb6cbb8a5f
+  - final-bb10d559409c8f76
+  - final-bc079d10de8497ec
+  - final-bc18087e7bc71b17
+  - final-bc1f08fd6251a688
+  - final-bc53343dadb62554
+  - final-bc5e217cc9db0d95
+  - final-bc73555e2679591b
+  - final-bc751edbce23de13
+  - final-bc7ce771692dc2ef
+  - final-bccd653b88234523
+  - final-bd37f299e0e0210b
+  - final-bd3edc4daa9fb814
+  - final-bd5565b874afdb26
+  - final-bd6559d492a63eb1
+  - final-bdbaf44f2f88d4ed
+  - final-be19654bb97b0233
+  - final-be2d00d6930d00d5
+  - final-be355cf9e5fa441f
+  - final-bedad9ef36de692e
+  - final-bee3dfaa33be8e74
+  - final-bfac1a7049f50b42
+  - final-bfbf28a5e67a076a
+  - final-bfedc94a9e1397ae
+  - final-bff608ce91eb6849
+  - final-c0906a6af0c934e0
+  - final-c0f16ca39bdca9d6
+  - final-c113d22db9687cce
+  - final-c144eebde6b61641
+  - final-c1c24de7376cc951
+  - final-c1cfffe5f3e3d491
+  - final-c1fe389933e4ee5a
+  - final-c2081fe02525eab8
+  - final-c2b468d04346d16c
+  - final-c2b786be532450b0
+  - final-c43f2b349b64b503
+  - final-c4664988d020027c
+  - final-c4be128beaacd2c9
+  - final-c4eff5423ad55eb3
+  - final-c50de0320b218cb7
+  - final-c5cc26e670daa1ce
+  - final-c5d4bba245559d45
+  - final-c61227d375229e82
+  - final-c64cbf5c4f55fa04
+  - final-c6f4f5b1288d276e
+  - final-c8358775a0f97f72
+  - final-c86ccb3712d8e45b
+  - final-c8869ac971a98a42
+  - final-c99924ebb825c8d0
+  - final-c9eb96cc0ab3b890
+  - final-caa6ed05375e13b3
+  - final-caed20758fc9857f
+  - final-cb2985ee4b2ef897
+  - final-cb50a6f5043338de
+  - final-cc1a32f10935ca1a
+  - final-cc4fbf3eb3176f95
+  - final-cc7bbec6b12d7f17
+  - final-cc8064c9b25f5aca
+  - final-cd8be0769a609dee
+  - final-cda62648a851c62f
+  - final-cdbbec9d48b25f19
+  - final-cdd4648553317d01
+  - final-cdd473f6f191442f
+  - final-ce12ffe907009d48
+  - final-ce51662f845b9213
+  - final-ceb35280e52ecc3f
+  - final-cece13a990f007e3
+  - final-cf5be47f70397290
+  - final-cf71004a2a4a0ba4
+  - final-cf8673a3edc64c8d
+  - final-d004696ca6e76efd
+  - final-d00bb747e51bcd1d
+  - final-d06615e098169f94
+  - final-d090e6f2bc6ea3db
+  - final-d0b879b27cec94ff
+  - final-d0ba19df5c826b76
+  - final-d1418f38aecb72e0
+  - final-d144b21b980ffb92
+  - final-d14c4a713d5e9854
+  - final-d1ce22d992cd4a0d
+  - final-d235cece9a2387ff
+  - final-d372349fd785d1ee
+  - final-d3abb818210746ee
+  - final-d45575564a46bcbf
+  - final-d46c23e8a2a4a99c
+  - final-d4b36c008d27ea86
+  - final-d552fe26f7d161f5
+  - final-d5549e4072edfbcf
+  - final-d5a848a6cb013320
+  - final-d5ac3768f5f94960
+  - final-d5b22a02cdbc396d
+  - final-d5ce76139a568e71
+  - final-d615455b604a5f46
+  - final-d68b9e05d3956eb0
+  - final-d69c36509811dd4a
+  - final-d6f1153b8cafd82e
+  - final-d72f616efc926a8f
+  - final-d7df1b893dd4531b
+  - final-d860684347f4f493
+  - final-d8e755219ab444f6
+  - final-d9a61aa59a73e8a8
+  - final-da9bbda941a82b28
+  - final-dcd70a6d21947d12
+  - final-dce88347f2f98305
+  - final-dd23e38b9a80ccc0
+  - final-dd62141f663280f3
+  - final-dd688d6407b0ecdc
+  - final-dd7018ca50fd698d
+  - final-ddd6b100de636cc8
+  - final-ddef0f38dcb05c61
+  - final-ddf27eda257f5128
+  - final-ddfc26d7205edc87
+  - final-de4cc4037dc229bd
+  - final-de99cb19e540c994
+  - final-deb0c580897ac5d5
+  - final-dedf93ccf4f6eb9b
+  - final-deec3e756247d5d2
+  - final-df4c27f542bfaca3
+  - final-df90dd2273949e9c
+  - final-df93f4890388ae0f
+  - final-dfbe20ad7cce1955
+  - final-dfd70fac106011dc
+  - final-e013f28d3bd1c00f
+  - final-e02360a103df0ee5
+  - final-e067e65763cbaff0
+  - final-e09dd8b19639a056
+  - final-e1b1fdb2ffa9091f
+  - final-e1c3935b59d9690c
+  - final-e1c53dbcef76a10c
+  - final-e2a31be4bc1dbec8
+  - final-e30eb4cc5761a354
+  - final-e4046b03dd399e1a
+  - final-e4954e9d4580d92c
+  - final-e49faf5e9b3eb81b
+  - final-e56069edaf2c93bb
+  - final-e5dea17c5d5fc6c2
+  - final-e62bd0d65730d025
+  - final-e6528e0fc2d62670
+  - final-e65a1e3b7624abbc
+  - final-e74a9e81d42a8fd7
+  - final-e76d336a70653395
+  - final-e7a8f9e07cd4a17b
+  - final-e80e745ca359589d
+  - final-e84e4b6e7148f597
+  - final-ea2c73c56eab86db
+  - final-ea2e254af2dccdb7
+  - final-ea5dde236ce0aff0
+  - final-ea74afdb9176ebcf
+  - final-eacbb2d664d7e42e
+  - final-eafe6d2861dde7f2
+  - final-eb5daded70d6f097
+  - final-eca284d3487aa248
+  - final-ecbfe877913c6e32
+  - final-ecfaa84301a43b7b
+  - final-ed096570a084a268
+  - final-ed3a6ac755703216
+  - final-ed4547658d58d0a7
+  - final-ee85a2171b67640d
+  - final-ef3435c943fe0e8d
+  - final-ef5e59cc3c324c8a
+  - final-efaafebee0aa852b
+  - final-efab99ddba35e86a
+  - final-efbe4041646729e5
+  - final-efd93db500e70d9c
+  - final-f011334e434b1649
+  - final-f11804603bcce313
+  - final-f12bc6a6dc63ca22
+  - final-f14d8b29035d070d
+  - final-f18307ebd0ef0e2c
+  - final-f1b73094410cff2e
+  - final-f1d6235259159c9d
+  - final-f20b0ffaba202a3d
+  - final-f2da5f5d2e169150
+  - final-f36cb3d7d86b2d54
+  - final-f41821b786ccc51d
+  - final-f54a4e5f6bf8099b
+  - final-f54ae114002aa77a
+  - final-f561389479e367b7
+  - final-f569c936f947d2db
+  - final-f5babb4eedaa9877
+  - final-f631c02cb3988e2e
+  - final-f64e7778560812d9
+  - final-f69385649eff6e8b
+  - final-f6a8f80839a992b2
+  - final-f6edf42c1ca78690
+  - final-f6fa79e1a4ab0817
+  - final-f706c018b0894c8f
+  - final-f71c27d83ae5859a
+  - final-f7683dd4c95ba366
+  - final-f7c435160014d62c
+  - final-f83d4de2cc3a0e5a
+  - final-f88feadb9af1c5c0
+  - final-f8a6c5d470ba1718
+  - final-f8b95061897dc3cf
+  - final-f8f0939b644079f8
+  - final-f9147a0881c8b098
+  - final-f9403b4490724f3d
+  - final-f976a7cca9157c92
+  - final-fa2cd51dc3578206
+  - final-fa4af6c23af410c4
+  - final-fad22da1660e604f
+  - final-fb4d62da0b1ca65d
+  - final-fb5bcd34993c1c0e
+  - final-fbeaa32fe946a8af
+  - final-fc092801303bf1fc
+  - final-fc1b509ffb8e386e
+  - final-fc9fe4d9f404786f
+  - final-fca721a6e8d1a6a3
+  - final-fd044dfd1e968cee
+  - final-fd5f1b197e4f6e16
+  - final-fdfde8a1885bdba4
+  - final-fea676f4c8dabd6c
+  - final-feeba738c7f806b6
+  - final-ff489875aa4b3eff
+  - final-ff69356434e1d180
+  - final-ff8066e031fedd69
+  - final-ffe9bb26d6fe109f
 - path: skills/synthesis-implementation-integrity/references/verification-custody.md
   cases:
   - final-0f471cdc3ecc9c3a
@@ -3923,6 +4875,11 @@ changed_surfaces:
   - final-cdbbec9d48b25f19
 - path: skills/synthesis-meeting-transcripts/SKILL.md
   cases:
+  - acquisition-4326cc8b363ab674
+  - acquisition-83abdfa6c5ad5823
+  - acquisition-87e862146905fbb2
+  - acquisition-ca6f3711c8d0d8ab
+  - acquisition-e98d2c3ef7c5fa48
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -3938,6 +4895,8 @@ changed_surfaces:
   - final-be355cf9e5fa441f
 - path: skills/synthesis-meeting-transcripts/extract_commitments.py
   cases:
+  - acquisition-287ffdfdae73e953
+  - acquisition-87e862146905fbb2
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -3951,6 +4910,16 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/README.md
+  cases:
+  - acquisition-4326cc8b363ab674
+  - acquisition-83abdfa6c5ad5823
+  - acquisition-ca6f3711c8d0d8ab
+  - acquisition-e98d2c3ef7c5fa48
+- path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/doctor.sh
+  cases:
+  - acquisition-1360a60ff84a21cb
+  - acquisition-a8b7f57e7ae72021
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/document_tabs.py
   cases:
   - final-1339176b78705deb
@@ -3968,6 +4937,9 @@ changed_surfaces:
   - final-be355cf9e5fa441f
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py
   cases:
+  - acquisition-445892b9872ecddc
+  - acquisition-b4b424bd7af3415c
+  - acquisition-c3de7f5966d207a6
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -3981,8 +4953,17 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/google_read.py
+  cases:
+  - acquisition-4326cc8b363ab674
+  - acquisition-83abdfa6c5ad5823
+  - acquisition-ca6f3711c8d0d8ab
+  - acquisition-e98d2c3ef7c5fa48
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py
   cases:
+  - acquisition-445892b9872ecddc
+  - acquisition-b4b424bd7af3415c
+  - acquisition-c3de7f5966d207a6
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -4011,19 +4992,36 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-meeting-transcripts/test_acquisition_entry.py
+  cases:
+  - acquisition-36bc2b35d6055276
+  - acquisition-58b885f62c687728
+  - acquisition-6a32d2bd43e7a6cd
 - path: skills/synthesis-meeting-transcripts/test_acquisition_regressions.py
   cases:
   - final-1339176b78705deb
   - final-68ee673ae06abdbf
   - final-7844bc6ad33f6ead
+- path: skills/synthesis-meeting-transcripts/test_acquisition_repair.py
+  cases:
+  - acquisition-445892b9872ecddc
+  - acquisition-58b885f62c687728
+  - acquisition-8528aa307c4268a0
+  - acquisition-c3de7f5966d207a6
 - path: skills/synthesis-meeting-transcripts/test_acquisition_tools.py
   cases:
+  - acquisition-1f1975178e346c17
+  - acquisition-720bc79f4f9a89a9
+  - acquisition-76d58abbe1aaf54f
+  - acquisition-cf08fef4cc033ec2
   - final-2ea8ce0b71fec5cf
   - final-720bc79f4f9a89a9
   - final-7579d0f9ce4ec25a
   - final-98984db1805ccc6c
 - path: skills/synthesis-meeting-transcripts/transcript_primary.py
   cases:
+  - acquisition-287ffdfdae73e953
+  - acquisition-87e862146905fbb2
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -4039,6 +5037,8 @@ changed_surfaces:
   - final-be355cf9e5fa441f
 - path: skills/synthesis-meeting-transcripts/verify_transcripts.py
   cases:
+  - acquisition-287ffdfdae73e953
+  - acquisition-87e862146905fbb2
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -4147,6 +5147,8 @@ changed_surfaces:
   - final-d8e755219ab444f6
 - path: skills/synthesis-onboarding/SKILL.md
   cases:
+  - acquisition-c3de7f5966d207a6
+  - acquisition-d0b879b27cec94ff
   - final-0d8ae14b5d44e740
   - final-17d1d2f7025d8419
   - final-1c370ed4c87b5472
@@ -4318,6 +5320,8 @@ changed_surfaces:
   - final-b938b9d25363a316
 - path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
+  - acquisition-c3de7f5966d207a6
+  - acquisition-d0b879b27cec94ff
   - final-0d8ae14b5d44e740
   - final-116dadcecd1ef608
   - final-17d1d2f7025d8419
@@ -4380,6 +5384,7 @@ changed_surfaces:
   - final-fc1b509ffb8e386e
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
+  - acquisition-c3de7f5966d207a6
   - final-0d8ae14b5d44e740
   - final-17d1d2f7025d8419
   - final-1c370ed4c87b5472
@@ -4469,6 +5474,8 @@ changed_surfaces:
   - final-feeba738c7f806b6
 - path: skills/synthesis-onboarding/scripts/synthesis_cli.py
   cases:
+  - acquisition-c3de7f5966d207a6
+  - acquisition-d0b879b27cec94ff
   - final-0d8ae14b5d44e740
   - final-17d1d2f7025d8419
   - final-1c370ed4c87b5472
@@ -4680,6 +5687,7 @@ changed_surfaces:
   - final-8b9f4ea12fc5713b
 - path: skills/synthesis-onboarding/scripts/test_release_runtime.py
   cases:
+  - acquisition-c3de7f5966d207a6
   - final-0d8ae14b5d44e740
   - final-17d1d2f7025d8419
   - final-1c370ed4c87b5472
@@ -6395,6 +7403,9 @@ changed_surfaces:
   - final-f6fa79e1a4ab0817
 - path: skills/synthesis-skills-manager/SKILL.md
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-8f68c26da82d7e13
+  - acquisition-e5dea17c5d5fc6c2
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
   - final-0f471cdc3ecc9c3a
@@ -6498,6 +7509,9 @@ changed_surfaces:
   - final-fbeaa32fe946a8af
 - path: skills/synthesis-skills-manager/scripts/release.py
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-8f68c26da82d7e13
+  - acquisition-e5dea17c5d5fc6c2
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
   - final-0f471cdc3ecc9c3a
@@ -6623,6 +7637,9 @@ changed_surfaces:
   - final-ffe9bb26d6fe109f
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
+  - acquisition-5ba9a14de5d0d699
+  - acquisition-8f68c26da82d7e13
+  - acquisition-e5dea17c5d5fc6c2
   - final-a54931afc9c36e9d
 - path: skills/synthesis-skills-manager/scripts/test_muse_command_contract.py
   cases:
@@ -6735,8 +7752,20 @@ changed_surfaces:
   - final-ef5e59cc3c324c8a
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
+  - linux-portability-001b4a447ae43e13
+  - linux-portability-5a0c929bd883c8e3
+  - linux-portability-73d90456d3b985c0
+  - linux-portability-91b8cab732df891d
+  - linux-portability-a3b9d4e835286e33
+  - linux-portability-c5d4bba245559d45
+  - linux-portability-dd23e38b9a80ccc0
+  - linux-portability-dd62141f663280f3
 - path: skills/synthesis-slack-sync/SKILL.md
   cases:
+  - acquisition-12c5504994f789ca
+  - acquisition-62f20da3a082fa00
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-d28bf5ed324b02da
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -6750,12 +7779,44 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-slack-sync/references/transcript-formats.md
+  cases:
+  - acquisition-12c5504994f789ca
+  - acquisition-62f20da3a082fa00
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-d28bf5ed324b02da
+- path: skills/synthesis-slack-sync/references/version-history.md
+  cases:
+  - acquisition-3d4c249ebc3075a2
+  - acquisition-b8d6716c3107f8b0
+- path: skills/synthesis-slack-sync/scripts/acquire.py
+  cases:
+  - acquisition-3d4c249ebc3075a2
+  - acquisition-451a04568c6b69d0
+  - acquisition-8528aa307c4268a0
+  - acquisition-cf08fef4cc033ec2
+  - acquisition-ebc4206251a9f493
+- path: skills/synthesis-slack-sync/scripts/slack_read.py
+  cases:
+  - acquisition-36bc2b35d6055276
+  - acquisition-58b885f62c687728
+  - acquisition-6a32d2bd43e7a6cd
+- path: skills/synthesis-slack-sync/scripts/slack_workspaces.py
+  cases:
+  - acquisition-84c2fc1902997bb0
+  - acquisition-b8d6716c3107f8b0
+  - acquisition-d12cc0b222c24a03
 - path: skills/synthesis-slack-sync/scripts/test_thread_acquisition.py
   cases:
   - final-43c19118a0d300c0
   - final-be355cf9e5fa441f
 - path: skills/synthesis-slack-sync/thread_checker.py
   cases:
+  - acquisition-3d4c249ebc3075a2
+  - acquisition-451a04568c6b69d0
+  - acquisition-8528aa307c4268a0
+  - acquisition-cf08fef4cc033ec2
+  - acquisition-ebc4206251a9f493
   - final-1339176b78705deb
   - final-2ea8ce0b71fec5cf
   - final-43c19118a0d300c0
@@ -6769,859 +7830,6 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
-- path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
-  cases:
-  - final-003f38c1bda8262d
-  - final-0063326407749612
-  - final-0063af512afc6d74
-  - final-0074164e6b709156
-  - final-00f28a75e47a74a9
-  - final-00fb8b7e16233d58
-  - final-011d6659b7ea5f78
-  - final-0152e896af635d64
-  - final-01b6f5b426bd85c5
-  - final-021accca59b737c2
-  - final-02d278da1bee1861
-  - final-0394d2a9edb70219
-  - final-03ae5b84cf0cbf1c
-  - final-03c41d89f1246e4a
-  - final-04b4432f3085f7db
-  - final-05564316dfd30a59
-  - final-060a5623c34af461
-  - final-06ba26f1009d8912
-  - final-07292a0e9cb0524a
-  - final-07345c77c27372dc
-  - final-07706321378d92db
-  - final-0842c70412b90b24
-  - final-086f53c576317798
-  - final-08bd62c0a2dfd857
-  - final-08dbc3f41e6fe4d3
-  - final-0952c76be5481ebf
-  - final-0a0aae0e2d54f23c
-  - final-0a16463543ab5811
-  - final-0a6a837b5a507301
-  - final-0a84482771f82589
-  - final-0a99eef9fd2be68c
-  - final-0aae0a6c936b339c
-  - final-0ab508eed5ea8ec7
-  - final-0ac130d56e8f2347
-  - final-0ac2f2341170a079
-  - final-0afda21b454331c0
-  - final-0b45c0ef70b830c1
-  - final-0bd7d4b247e629d6
-  - final-0be8d4ebc28e897b
-  - final-0c250f772762b433
-  - final-0c26de142eeece45
-  - final-0c923f378cfe4145
-  - final-0c9f25e68cf1453d
-  - final-0cbe3949cf50c202
-  - final-0ce6b0f33090d568
-  - final-0d4fc180d69d9d31
-  - final-0d8ae14b5d44e740
-  - final-0db49811b5d114d5
-  - final-0e0bd72f3e594c62
-  - final-0e64ff6b9a5e1d5a
-  - final-0e844d557f27c9b0
-  - final-0e9813f67ce5eafd
-  - final-0f471cdc3ecc9c3a
-  - final-0f88105332fe6e1e
-  - final-106537d2d45d2f6a
-  - final-10901078e23ee9bb
-  - final-10b8bf437207b0df
-  - final-113f046dc41bae93
-  - final-11484ae6b8130cca
-  - final-116dadcecd1ef608
-  - final-11e535dbd4d68e05
-  - final-1260fcb97879de92
-  - final-127fa2104853fc53
-  - final-13373a5354d9b44c
-  - final-1339176b78705deb
-  - final-13e8e960d55c655a
-  - final-14246ba11ab22680
-  - final-146e863dfef21954
-  - final-149c17d43a4426a2
-  - final-14eec4c1afcac454
-  - final-1502a07cc43a5873
-  - final-151fb1534996193c
-  - final-155e52438bc8979f
-  - final-15bcc664f2224005
-  - final-15fa963f4e369bba
-  - final-162f3aa68c8afe58
-  - final-16333053ceeafbe4
-  - final-16a86364ffc1d52d
-  - final-16db5062108e4a5c
-  - final-17641a10604c833c
-  - final-17d1d2f7025d8419
-  - final-185722309f066e12
-  - final-18a270a45b9dceb8
-  - final-18d6eb36b76420bc
-  - final-195f76ad2d06251a
-  - final-1974b7a4b6a6fb4b
-  - final-1991c90962561d84
-  - final-1a1775c06f79ae8a
-  - final-1a2f406debd78c78
-  - final-1a6d24c6eefc85ff
-  - final-1a7f8bc45014a236
-  - final-1b3461c813492384
-  - final-1b36b69418d62c5f
-  - final-1bbd57942348ad28
-  - final-1be33aec51c38eda
-  - final-1c206ccf5757a7ed
-  - final-1c370ed4c87b5472
-  - final-1c402ee113ac6274
-  - final-1c45f6f6397919b9
-  - final-1c87a46f5f7bc923
-  - final-1d4dd2cc6dab8ef2
-  - final-1d87619bc5c419a2
-  - final-1d8c1dbbdc3993b6
-  - final-1dc7ad5e1e9bf2c9
-  - final-1dd61345b035ec63
-  - final-1e395b92b1f37c8f
-  - final-1ef633b93d1149a9
-  - final-1f205096efbd6ea1
-  - final-1f21c3634c2b77fe
-  - final-1f3e609a2188a20d
-  - final-1f63ae6b9962ceaa
-  - final-1f88e1c4ce523e5e
-  - final-1fb0369a1e57d836
-  - final-205e65d55573e746
-  - final-2075832ab129b9ff
-  - final-20bac4d9867f598e
-  - final-20bd26340bf7f780
-  - final-20d0c1492cd0a3de
-  - final-21730796218b5fb4
-  - final-21ae8e2760e7ed2b
-  - final-2210f2ba8b9d59e3
-  - final-2291530cb5709dd4
-  - final-22ccb62f2b028a32
-  - final-22f7d8f91a7faaef
-  - final-23212a48e169808f
-  - final-2327abb97e7c3698
-  - final-237816026953cbfc
-  - final-241926dd8de92bca
-  - final-241c54da9b759b0f
-  - final-244640aafa71011e
-  - final-24be5f8f7bdb7774
-  - final-24dd8da661bc70b1
-  - final-2558ab42c02b10b6
-  - final-25663aecef2cabb4
-  - final-260d9f1f9e3f4c08
-  - final-262cd95fb5bb0355
-  - final-2637de88d26148fb
-  - final-2653499319a5e07d
-  - final-265dbc21b2793051
-  - final-26a6ee76e03c600e
-  - final-272883970027a3e6
-  - final-27523fa81302fc2b
-  - final-27814924fce414da
-  - final-27939f3d602c51ab
-  - final-27a8a19ec300136c
-  - final-27c3f268468cee11
-  - final-27d43e828fd9b507
-  - final-281fff600959bbb6
-  - final-28cbf458fdb803c4
-  - final-290bf9ade038e048
-  - final-291127d274a48a28
-  - final-2960c0c37e64bfa4
-  - final-2983dbd85b9fb565
-  - final-29b0f044a1204b81
-  - final-29cd97987b7098d7
-  - final-29e202ed6ee4f37e
-  - final-2a5ad2c6621542ed
-  - final-2aa93f8a62ca70a5
-  - final-2aa9714643370ddb
-  - final-2afaa728b9f2846e
-  - final-2c9ad4279bc57605
-  - final-2cd84b53700a500c
-  - final-2cfdefe7f6900911
-  - final-2dd0cbdad6233d79
-  - final-2e4bf51bf39ef032
-  - final-2ea8ce0b71fec5cf
-  - final-2f7bbabc9bd11ae4
-  - final-2f94cf35bb0230d3
-  - final-2fe2256eb14cbe67
-  - final-2fe67cccca5b1dcd
-  - final-3037d50b0598d9d3
-  - final-3060706f5814cc7d
-  - final-308c363e013eef2b
-  - final-308deed6f4312253
-  - final-309083a31ffd9675
-  - final-30c843bd1e412c83
-  - final-313cc3d8b5ade699
-  - final-31754117b2bcddf0
-  - final-318b3864d276660a
-  - final-31a4e12afe867ad7
-  - final-31c684c29f62fc8a
-  - final-31db8e5df1a31f97
-  - final-31eca9496bc0ebd3
-  - final-32212d4d338ab857
-  - final-322997dbca6fc03f
-  - final-324023163dad8034
-  - final-3348e5775d12b93e
-  - final-33653aa92455d109
-  - final-336ac9f17fce8efc
-  - final-3446e166871b975e
-  - final-349a763820c1a41d
-  - final-34bf2b3782a9e5a5
-  - final-3568b7feb5ae0860
-  - final-357b7964359ddf2d
-  - final-35d318b3cc3fe418
-  - final-36551224ff734952
-  - final-3664e4a41a603089
-  - final-3721498448f172d2
-  - final-37a0f81c2d91d19e
-  - final-37d3fe7e8beed705
-  - final-37df45ea727b968a
-  - final-3875fb9cc0afc8eb
-  - final-38b061b9c34c2e70
-  - final-38d9510ae3aa6ad9
-  - final-390889e36321b7dd
-  - final-39325c9f19c371bb
-  - final-39acf5d30fbd50d8
-  - final-3a7a5c9716dffa53
-  - final-3ab9114d7e011b17
-  - final-3b55d40b91f3b5f5
-  - final-3bfc25ad636bfe8b
-  - final-3c3298c4ec85a35e
-  - final-3c51886a662c7ec8
-  - final-3cac8d8131d87ccb
-  - final-3d2492a9a2b4b7f0
-  - final-3d513d8660d7dec3
-  - final-3da28353f13cc99a
-  - final-3df0aeb894526bac
-  - final-3e6c518798ec80ea
-  - final-3eb859a904c44c42
-  - final-3fea90e91f64ee67
-  - final-407718246725a489
-  - final-408e746bb6b42323
-  - final-4121cb277b2d730d
-  - final-41272a1e5b593fd6
-  - final-416b6d9f24d445ab
-  - final-417c846d7aabd930
-  - final-41fa0ea7a2fb9e97
-  - final-42a40e7612918374
-  - final-42c5721991f12696
-  - final-42f3ed91c3dc6cc9
-  - final-4320cb36ac6c36d4
-  - final-43789e1b418aa8d0
-  - final-4396297787290e67
-  - final-43c19118a0d300c0
-  - final-442f5f19cc323958
-  - final-4444988d495a1f07
-  - final-44e50978595154d4
-  - final-451824fcc58b6b26
-  - final-451bb7ffee9d19a8
-  - final-451fb8ef34b6ef04
-  - final-45280f4c63433997
-  - final-4537740e0662d700
-  - final-4541b9a652e3ae69
-  - final-456352150bf6b48d
-  - final-4572f577c1a09fe7
-  - final-45855475987f2c62
-  - final-47634a8b5df5d3cf
-  - final-476dd26fcc541569
-  - final-479427417601ce89
-  - final-4890343083ec643c
-  - final-48bde005ee2737e3
-  - final-48f2ac48298ae5f5
-  - final-498def4b6f30d653
-  - final-49bbcff0c613e36d
-  - final-49ff06e2f50c7ea6
-  - final-4a0b21e22cdd3ede
-  - final-4a28f80ab1da5522
-  - final-4a2bb5257a7fd249
-  - final-4a2d97baf4ffa2d5
-  - final-4a62f2271baba519
-  - final-4b27d267b4da65b9
-  - final-4b434148391ee28c
-  - final-4b79b9c0c91f4c3a
-  - final-4bbfa4a2e8120c36
-  - final-4be49e72170a8d11
-  - final-4c23cf5a969e303f
-  - final-4d090f3acb4ef281
-  - final-4d0ac4270bd56369
-  - final-4d24414f882d04e9
-  - final-4d7e810affd15257
-  - final-4e0e65e3009c942f
-  - final-4e1e9c5052dd4189
-  - final-4e2899e4b05f419e
-  - final-4e3f95faa8cd345b
-  - final-4e60c8cec28e36f7
-  - final-4e64038ca455b1f0
-  - final-4ed08ef3f1f614a8
-  - final-4f3ab5f32f96fe4b
-  - final-4f8d9fae5daa3670
-  - final-502bb238cb20cd1a
-  - final-504ef640688f8485
-  - final-508e08ffc8c4a942
-  - final-50a62aff7316f531
-  - final-50ab4f3e0804f3dd
-  - final-50e21007f6c20d83
-  - final-51578892d74ead78
-  - final-5168f47a00875e1f
-  - final-519ec098267df69a
-  - final-51b2afd70676cbed
-  - final-51f8ffe2cbf11b8c
-  - final-51fc6b0e621bd292
-  - final-522316facf329af6
-  - final-52ad62e009ec250f
-  - final-52b0b2da10c81b15
-  - final-52bb012d8a1a8a5e
-  - final-52e645afe2eec0d6
-  - final-52e7f3ac6e9b2427
-  - final-53522d3719d24bf4
-  - final-5357e89e52baea67
-  - final-53d3136e75956810
-  - final-53d88286357b19da
-  - final-541cd4b90d89657a
-  - final-54783c250b640bad
-  - final-5527c9c744c4082a
-  - final-5538b0ed2fe54f7f
-  - final-5571d5351a07b873
-  - final-55fd584d315c2093
-  - final-565883aaaf984c7d
-  - final-567ed97aaadc11b8
-  - final-5681fd08b4371197
-  - final-5697fc182cdfdac1
-  - final-579516bd63e87e90
-  - final-58177342dc2a39d4
-  - final-5839c038c46c7f08
-  - final-585373e47fa23532
-  - final-5857026479f84f56
-  - final-59a6bec902b0705b
-  - final-59be363bd6720835
-  - final-59f52e26b000cdb4
-  - final-5a267ad40dd6db45
-  - final-5a3110d799bf695c
-  - final-5a473459b67abbad
-  - final-5ad3a36bc5014e4f
-  - final-5aee4f7b449e33c9
-  - final-5aef264cd57e2e3b
-  - final-5b38d2a0e10ecf16
-  - final-5be7dad153030491
-  - final-5c8073b3fa580be4
-  - final-5cd8b21a3fa1b3c4
-  - final-5cf48cbb1290fdd2
-  - final-5d34fdc24d962c88
-  - final-5d3a1764af6c042e
-  - final-5d53cb1265fe5d1b
-  - final-5d5902eda5162d33
-  - final-5deba893c3eb8c16
-  - final-5e64625fba05ca43
-  - final-5e799cb4a546c412
-  - final-5ed1709545f5df68
-  - final-5f6d1bc69f8473c7
-  - final-5f90017857a25f20
-  - final-5fcb1177b4d2cda1
-  - final-5fd9a7e8bc4d20cb
-  - final-6032cfbef96ba6f5
-  - final-612bae8673a2794e
-  - final-613e1870e6ca7dd4
-  - final-61491c50ebecce58
-  - final-61b987abb5a8b75d
-  - final-61e0a4b7a7e7da98
-  - final-61fcbf38183eef96
-  - final-6289cea73f0ae57b
-  - final-630e2a1e4f125dff
-  - final-634a228d0b352a43
-  - final-63c2c0f13f74667b
-  - final-641d06752219a9b5
-  - final-6429d4c7877d799a
-  - final-64b07ef4496f0b27
-  - final-64ed5c249b217348
-  - final-650a81195daad022
-  - final-6512d0ea8528dfca
-  - final-655e9edf3170ccbd
-  - final-65694b6d94d1a68e
-  - final-65fb86ced41be288
-  - final-6637852fc7ab8ba7
-  - final-66adca0339fd32e0
-  - final-6762a1a814b9ea16
-  - final-677c9b274f80a096
-  - final-68296dbb027caf09
-  - final-68afe2e0310ffefb
-  - final-68b0ad166b46e643
-  - final-68ee673ae06abdbf
-  - final-6927de54ec7ef137
-  - final-6997a38bceeef3ad
-  - final-6ae11e0867ea69b5
-  - final-6b68444a6fca618f
-  - final-6b766648b551b7d1
-  - final-6c2a39704f14ac0b
-  - final-6c303c7e206abb54
-  - final-6c7d98b3f99494fc
-  - final-6ca80d1d9a6dd925
-  - final-6cc2961c284076a8
-  - final-6d3086217a70d630
-  - final-6d8cccc5639fc795
-  - final-6eb7447e5ed448ca
-  - final-6ec3b475b18552b3
-  - final-6f518a475e4bc201
-  - final-6fd72eb3986e6797
-  - final-70255aed236ea5e9
-  - final-70e19eb5a0dac07f
-  - final-7124103c18290828
-  - final-7161f82885408a14
-  - final-71684f30f487d2bf
-  - final-7178a3778ff239ac
-  - final-71cebd824c70808f
-  - final-720bc79f4f9a89a9
-  - final-72e4d878f4641d9f
-  - final-73d90456d3b985c0
-  - final-7553bb3473c0d7e9
-  - final-7579d0f9ce4ec25a
-  - final-757f80e94c317bcc
-  - final-75cd56db21c8fdc4
-  - final-75d12b46ab468509
-  - final-75dfa0ef89d4a922
-  - final-761aec44ebe55200
-  - final-764a6ea74fd05204
-  - final-76cc2daf9900ac01
-  - final-76f3fe5886f73e81
-  - final-772aa7770a1d364a
-  - final-776a80e099cfcb23
-  - final-77a32a1e8e810724
-  - final-77f6a511cea82f2d
-  - final-7844bc6ad33f6ead
-  - final-790fbc4273f169eb
-  - final-7943e69c7c3e25bd
-  - final-796883e64cd3b8c4
-  - final-799d0c017c8d9f0f
-  - final-79c92a68ff96cc62
-  - final-79d56fa559a98bcf
-  - final-79e1eaa485fda0a4
-  - final-7a56244931297154
-  - final-7a6fd91152caa0aa
-  - final-7a72e6cf076a677e
-  - final-7b662658ba6fdf43
-  - final-7bc3e3fd192f07e0
-  - final-7c1e042d6c13058a
-  - final-7c3bc1518930a5c9
-  - final-7cca5e2baadbd13a
-  - final-7d90488f000fc0b2
-  - final-7dca023f0c4ede8c
-  - final-7df7fc31b5995bf7
-  - final-7dfb8aba2fe9bc48
-  - final-7e28879210f99a54
-  - final-7e4f0b986f264d91
-  - final-7e7a0af113b2f83c
-  - final-7ef7e03e5ffde762
-  - final-7f307153e2cc4d7c
-  - final-7f4014c20bdfad98
-  - final-800f8efcd2c7ec72
-  - final-80c0460622790895
-  - final-813ff16029fdf056
-  - final-81580940af663496
-  - final-8166c94588ad6007
-  - final-819315b201f0f699
-  - final-8204b1e60d4b8704
-  - final-82232ccb06db34e6
-  - final-825ae9b97fcd5243
-  - final-826b4583c014a39f
-  - final-827f49f9fa01290c
-  - final-82a6d875db390355
-  - final-82a918ab1d1fabd3
-  - final-831781bb28362bef
-  - final-8484300365cc51bd
-  - final-8487ede91c59ca5a
-  - final-85a533d3a1a4ee40
-  - final-85ebf9c6391ba9d7
-  - final-8604e6acb9939a99
-  - final-863c438d942f9603
-  - final-86a2098e892db98a
-  - final-86c9d3b5d652fbe9
-  - final-86f5b7eb9866ff73
-  - final-8707537d2c0c45ba
-  - final-879af9b799d97615
-  - final-87e862146905fbb2
-  - final-88188e54283a52d5
-  - final-891da86f14c9713a
-  - final-8965ed194c80872a
-  - final-896a21c1b538f18f
-  - final-8982575da4de0a3c
-  - final-8a3081a53550698d
-  - final-8a5401018bc4d205
-  - final-8ac07ce6e377dbda
-  - final-8acc02fac1697eee
-  - final-8af92d304e1d3c49
-  - final-8b6a2dac876c63a3
-  - final-8b9f4ea12fc5713b
-  - final-8ba2d9d0c7ab7014
-  - final-8bdbd8c73bb0acb8
-  - final-8c1bd86d77e63ff6
-  - final-8c5ae1fece30e80d
-  - final-8c74ec29bdd1cd8d
-  - final-8d0bb2573d60b4d8
-  - final-8d84ef4151520ebe
-  - final-8db5de565d6d28a3
-  - final-8e42d589e8952431
-  - final-8e88d9fa306b0938
-  - final-8ec9c01f431e48ed
-  - final-8f68c26da82d7e13
-  - final-8fc08d3e8ecbb69d
-  - final-8fee109b33ee874b
-  - final-90277c0caaa62a87
-  - final-9044c9f8138c4bfe
-  - final-90642837341f5fd1
-  - final-90653fed434741ff
-  - final-9104112b25c77ae5
-  - final-910ed60c48bad121
-  - final-913cc4a857f36e63
-  - final-91b4dd3c634ee0e7
-  - final-91b8cab732df891d
-  - final-91c2a3249d2e09bd
-  - final-91deec68fb639a46
-  - final-923f4652eb04c214
-  - final-9247a2cfeb6accb5
-  - final-92aa3bd8bbfc0fce
-  - final-934ff5b82d232005
-  - final-93a3d8daeca84473
-  - final-93ae008c50c391ed
-  - final-93b7b8e6a5e0eb31
-  - final-93f087e8bcf4d1be
-  - final-9448efbcbbd69f3c
-  - final-946214d510105344
-  - final-94c411b3684f4857
-  - final-954912d5a6c39435
-  - final-95b6787e19d0bde6
-  - final-96953ff65391b2d8
-  - final-96a71237ed97a5be
-  - final-96e78dc504ec5a0a
-  - final-984a43e26acac439
-  - final-9856fd38a2e41767
-  - final-98984db1805ccc6c
-  - final-98ccbefbaad0fc1d
-  - final-98ff5f1837f9340e
-  - final-995a424d209eb296
-  - final-99b28d357122d2ab
-  - final-99c1db2593f760a2
-  - final-99c1fa45bd3ace93
-  - final-99fdc8cf69230c43
-  - final-9a1f271db73d3960
-  - final-9a3508d77c5ec317
-  - final-9aa92980220fbdb7
-  - final-9acb9a74050833a7
-  - final-9b1c2f90471ee9ad
-  - final-9b31677670704911
-  - final-9b9e5141b616e7f7
-  - final-9bdeb6d2a094d34c
-  - final-9bf6970fbe29bbb0
-  - final-9c1de9a4ee5f2a08
-  - final-9d021eb187941944
-  - final-9d2390c44c1cb974
-  - final-9d7540fcdc47e600
-  - final-9d9d318e0612596e
-  - final-9dae1c10f843cfc1
-  - final-9db765d580465e7b
-  - final-9de9314f12b678b7
-  - final-9dffd0159d6ef9f8
-  - final-9e09d8e7241c34ae
-  - final-9e89648ce81e74ea
-  - final-9edd4f4925cdf6a8
-  - final-9f057c066991fcf3
-  - final-9f30cca3a0b904db
-  - final-9fb3c5b340621897
-  - final-9ff3a7b4b966ef7b
-  - final-9fff9004f3dfd656
-  - final-a04ecdcc222fefe9
-  - final-a097dfbf4e8a1920
-  - final-a0fa3bb013baf628
-  - final-a14fc99729369b52
-  - final-a176bfc1be44cc0d
-  - final-a17b4d27264dcae9
-  - final-a1edeb1aaa2acdc5
-  - final-a2bfd5d678c5bda5
-  - final-a2f462cb23f72b67
-  - final-a30b9aa9dc3f4e82
-  - final-a365deb3fc44339c
-  - final-a39dce2897f84f35
-  - final-a3b9d4e835286e33
-  - final-a4043321a00c8bb2
-  - final-a463d4c4be1256fd
-  - final-a4d837b3704068a7
-  - final-a4d9433cbe670430
-  - final-a54931afc9c36e9d
-  - final-a5a3a24f05c36222
-  - final-a5db4f5b5615af38
-  - final-a5f156e5cb8a936e
-  - final-a60cef2b128bf59f
-  - final-a624557a5a5b64a0
-  - final-a647ba2755028dcf
-  - final-a69b1bc6f7c87d87
-  - final-a6e1472c056ade28
-  - final-a771bd492dde2deb
-  - final-a7bbe3c1c99d5b8c
-  - final-a7c1b731039e2cff
-  - final-a7d49f23ab8502c4
-  - final-a7db74a450044a5b
-  - final-a856fa26b51d148c
-  - final-a8b1c802312c36d0
-  - final-a902afe489a5f28d
-  - final-a98c347dac940136
-  - final-a99fee36cf03d014
-  - final-aa6453e03794e21b
-  - final-ab074eee580fc9a1
-  - final-ab16790adcf02960
-  - final-ab3373353b6101cf
-  - final-ab342463d7bc2ec1
-  - final-ab414f7156b3be81
-  - final-ac2dd495bd377708
-  - final-ad3e66fe4f27a3d0
-  - final-ad77a0911f7e9c3e
-  - final-ad945d7787bf5aac
-  - final-adf0a146710d8dab
-  - final-ae1850e7e1961674
-  - final-ae5a1450132d4212
-  - final-ae6fe4c8814fb8cc
-  - final-ae93e0143a9a774d
-  - final-af525c3dfcdb7d25
-  - final-b07d33e84d4d9d88
-  - final-b0c35d437c25e5ed
-  - final-b0d740eeb87afc9e
-  - final-b1201469c556a0a4
-  - final-b1867167d9263dff
-  - final-b18ed05cef25637c
-  - final-b21c1393f48b0760
-  - final-b29d21610edab515
-  - final-b30028264c4b4aaa
-  - final-b31fe65b2c71c6a6
-  - final-b3de5876e58d47e7
-  - final-b4e2aed8fb2206ee
-  - final-b4e7772c93256d18
-  - final-b511ffa915f12ba4
-  - final-b52f1cca80e896f8
-  - final-b561943d705b8702
-  - final-b59119c5aed8cd60
-  - final-b5cb2855b77010cf
-  - final-b61da5b355604b77
-  - final-b668e6898cd08c80
-  - final-b674306ab53d9e7c
-  - final-b6dd75653410de9f
-  - final-b7ba8b1892abbdbe
-  - final-b82c0c27d5262f9c
-  - final-b93712d56e5a64c2
-  - final-b938b9d25363a316
-  - final-b98917bfce47a5a6
-  - final-ba0dcd34cbecde3d
-  - final-ba477140fbb8124d
-  - final-ba884fc244874124
-  - final-baefd5fb6cbb8a5f
-  - final-bb10d559409c8f76
-  - final-bc079d10de8497ec
-  - final-bc18087e7bc71b17
-  - final-bc1f08fd6251a688
-  - final-bc53343dadb62554
-  - final-bc5e217cc9db0d95
-  - final-bc73555e2679591b
-  - final-bc751edbce23de13
-  - final-bc7ce771692dc2ef
-  - final-bccd653b88234523
-  - final-bd37f299e0e0210b
-  - final-bd3edc4daa9fb814
-  - final-bd5565b874afdb26
-  - final-bd6559d492a63eb1
-  - final-bdbaf44f2f88d4ed
-  - final-be19654bb97b0233
-  - final-be2d00d6930d00d5
-  - final-be355cf9e5fa441f
-  - final-bedad9ef36de692e
-  - final-bee3dfaa33be8e74
-  - final-bfac1a7049f50b42
-  - final-bfbf28a5e67a076a
-  - final-bfedc94a9e1397ae
-  - final-bff608ce91eb6849
-  - final-c0906a6af0c934e0
-  - final-c0f16ca39bdca9d6
-  - final-c113d22db9687cce
-  - final-c144eebde6b61641
-  - final-c1c24de7376cc951
-  - final-c1cfffe5f3e3d491
-  - final-c1fe389933e4ee5a
-  - final-c2081fe02525eab8
-  - final-c2b468d04346d16c
-  - final-c2b786be532450b0
-  - final-c43f2b349b64b503
-  - final-c4664988d020027c
-  - final-c4be128beaacd2c9
-  - final-c4eff5423ad55eb3
-  - final-c50de0320b218cb7
-  - final-c5cc26e670daa1ce
-  - final-c5d4bba245559d45
-  - final-c61227d375229e82
-  - final-c64cbf5c4f55fa04
-  - final-c6f4f5b1288d276e
-  - final-c8358775a0f97f72
-  - final-c86ccb3712d8e45b
-  - final-c8869ac971a98a42
-  - final-c99924ebb825c8d0
-  - final-c9eb96cc0ab3b890
-  - final-caa6ed05375e13b3
-  - final-caed20758fc9857f
-  - final-cb2985ee4b2ef897
-  - final-cb50a6f5043338de
-  - final-cc1a32f10935ca1a
-  - final-cc4fbf3eb3176f95
-  - final-cc7bbec6b12d7f17
-  - final-cc8064c9b25f5aca
-  - final-cd8be0769a609dee
-  - final-cda62648a851c62f
-  - final-cdbbec9d48b25f19
-  - final-cdd4648553317d01
-  - final-cdd473f6f191442f
-  - final-ce12ffe907009d48
-  - final-ce51662f845b9213
-  - final-ceb35280e52ecc3f
-  - final-cece13a990f007e3
-  - final-cf5be47f70397290
-  - final-cf71004a2a4a0ba4
-  - final-cf8673a3edc64c8d
-  - final-d004696ca6e76efd
-  - final-d00bb747e51bcd1d
-  - final-d06615e098169f94
-  - final-d090e6f2bc6ea3db
-  - final-d0b879b27cec94ff
-  - final-d0ba19df5c826b76
-  - final-d1418f38aecb72e0
-  - final-d144b21b980ffb92
-  - final-d14c4a713d5e9854
-  - final-d1ce22d992cd4a0d
-  - final-d235cece9a2387ff
-  - final-d372349fd785d1ee
-  - final-d3abb818210746ee
-  - final-d45575564a46bcbf
-  - final-d46c23e8a2a4a99c
-  - final-d4b36c008d27ea86
-  - final-d552fe26f7d161f5
-  - final-d5549e4072edfbcf
-  - final-d5a848a6cb013320
-  - final-d5ac3768f5f94960
-  - final-d5b22a02cdbc396d
-  - final-d5ce76139a568e71
-  - final-d615455b604a5f46
-  - final-d68b9e05d3956eb0
-  - final-d69c36509811dd4a
-  - final-d6f1153b8cafd82e
-  - final-d72f616efc926a8f
-  - final-d7df1b893dd4531b
-  - final-d860684347f4f493
-  - final-d8e755219ab444f6
-  - final-d9a61aa59a73e8a8
-  - final-da9bbda941a82b28
-  - final-dcd70a6d21947d12
-  - final-dce88347f2f98305
-  - final-dd23e38b9a80ccc0
-  - final-dd62141f663280f3
-  - final-dd688d6407b0ecdc
-  - final-dd7018ca50fd698d
-  - final-ddd6b100de636cc8
-  - final-ddef0f38dcb05c61
-  - final-ddf27eda257f5128
-  - final-ddfc26d7205edc87
-  - final-de4cc4037dc229bd
-  - final-de99cb19e540c994
-  - final-deb0c580897ac5d5
-  - final-dedf93ccf4f6eb9b
-  - final-deec3e756247d5d2
-  - final-df4c27f542bfaca3
-  - final-df90dd2273949e9c
-  - final-df93f4890388ae0f
-  - final-dfbe20ad7cce1955
-  - final-dfd70fac106011dc
-  - final-e013f28d3bd1c00f
-  - final-e02360a103df0ee5
-  - final-e067e65763cbaff0
-  - final-e09dd8b19639a056
-  - final-e1b1fdb2ffa9091f
-  - final-e1c3935b59d9690c
-  - final-e1c53dbcef76a10c
-  - final-e2a31be4bc1dbec8
-  - final-e30eb4cc5761a354
-  - final-e4046b03dd399e1a
-  - final-e4954e9d4580d92c
-  - final-e49faf5e9b3eb81b
-  - final-e56069edaf2c93bb
-  - final-e5dea17c5d5fc6c2
-  - final-e62bd0d65730d025
-  - final-e6528e0fc2d62670
-  - final-e65a1e3b7624abbc
-  - final-e74a9e81d42a8fd7
-  - final-e76d336a70653395
-  - final-e7a8f9e07cd4a17b
-  - final-e80e745ca359589d
-  - final-e84e4b6e7148f597
-  - final-ea2c73c56eab86db
-  - final-ea2e254af2dccdb7
-  - final-ea5dde236ce0aff0
-  - final-ea74afdb9176ebcf
-  - final-eacbb2d664d7e42e
-  - final-eafe6d2861dde7f2
-  - final-eb5daded70d6f097
-  - final-eca284d3487aa248
-  - final-ecbfe877913c6e32
-  - final-ecfaa84301a43b7b
-  - final-ed096570a084a268
-  - final-ed3a6ac755703216
-  - final-ed4547658d58d0a7
-  - final-ee85a2171b67640d
-  - final-ef3435c943fe0e8d
-  - final-ef5e59cc3c324c8a
-  - final-efaafebee0aa852b
-  - final-efab99ddba35e86a
-  - final-efbe4041646729e5
-  - final-efd93db500e70d9c
-  - final-f011334e434b1649
-  - final-f11804603bcce313
-  - final-f12bc6a6dc63ca22
-  - final-f14d8b29035d070d
-  - final-f18307ebd0ef0e2c
-  - final-f1b73094410cff2e
-  - final-f1d6235259159c9d
-  - final-f20b0ffaba202a3d
-  - final-f2da5f5d2e169150
-  - final-f36cb3d7d86b2d54
-  - final-f41821b786ccc51d
-  - final-f54a4e5f6bf8099b
-  - final-f54ae114002aa77a
-  - final-f561389479e367b7
-  - final-f569c936f947d2db
-  - final-f5babb4eedaa9877
-  - final-f631c02cb3988e2e
-  - final-f64e7778560812d9
-  - final-f69385649eff6e8b
-  - final-f6a8f80839a992b2
-  - final-f6edf42c1ca78690
-  - final-f6fa79e1a4ab0817
-  - final-f706c018b0894c8f
-  - final-f71c27d83ae5859a
-  - final-f7683dd4c95ba366
-  - final-f7c435160014d62c
-  - final-f83d4de2cc3a0e5a
-  - final-f88feadb9af1c5c0
-  - final-f8a6c5d470ba1718
-  - final-f8b95061897dc3cf
-  - final-f8f0939b644079f8
-  - final-f9147a0881c8b098
-  - final-f9403b4490724f3d
-  - final-f976a7cca9157c92
-  - final-fa2cd51dc3578206
-  - final-fa4af6c23af410c4
-  - final-fad22da1660e604f
-  - final-fb4d62da0b1ca65d
-  - final-fb5bcd34993c1c0e
-  - final-fbeaa32fe946a8af
-  - final-fc092801303bf1fc
-  - final-fc1b509ffb8e386e
-  - final-fc9fe4d9f404786f
-  - final-fca721a6e8d1a6a3
-  - final-fd044dfd1e968cee
-  - final-fd5f1b197e4f6e16
-  - final-fdfde8a1885bdba4
-  - final-fea676f4c8dabd6c
-  - final-feeba738c7f806b6
-  - final-ff489875aa4b3eff
-  - final-ff69356434e1d180
-  - final-ff8066e031fedd69
-  - final-ffe9bb26d6fe109f
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -12696,3 +12904,296 @@ cases:
   fixture: ../synthesis-agent-conformance/scripts/test_hermes_vendor_boundaries.py::test_verified_parser_rejects_changed_generation_with_bytecode_enabled
   motivating_defect: A changed verified parser remains refused when ordinary Python
     bytecode is enabled.
+- id: acquisition-5662dbec35b61e6d
+  control_class: acceptance-test
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_references_are_all_linked
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-c29fd2b4cfba24ce
+  control_class: acceptance-test
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_every_labeled_version_has_a_record_entry
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-f976a7cca9157c92
+  control_class: acceptance-test
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_record_newest_entry_is_the_declared_version
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-81649df402478ce9
+  control_class: acceptance-test
+  fixture: scripts/test_acceptance_suite.py::test_changed_surfaces_reference_existing_cases
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-a13ac8543a1190c1
+  control_class: acceptance-test
+  fixture: scripts/test_acceptance_suite.py::test_shipped_manifest_validates
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-a8b7f57e7ae72021
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py::test_healthy_service_accepts_expected_plain_get_status
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-1360a60ff84a21cb
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py::test_restricted_launchd_and_port_visibility_are_unknown
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-f167b50f91646882
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_actual_cli_google_fetch_and_health_planes
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-b8d6716c3107f8b0
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_actual_cli_slack_fetch_with_secret_free_status
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-ca6f3711c8d0d8ab
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_actual_meeting_entry_pages_saves_and_advances
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-36bc2b35d6055276
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_actual_slack_entry_old_parent_exact_text_and_watermark
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-1f1975178e346c17
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_archive_merge_race_refuses_new_foreign_bytes
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-792c39756ed008b0
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_fixed_endpoint_allowlist_refuses_mutation_before_http
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-12c5504994f789ca
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_known_current_and_previous_thread_union
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-b4b424bd7af3415c
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_mcp_bounded_failure_retains_partial_raw_custody
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-4326cc8b363ab674
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_meeting_actual_refusal_has_no_watermark
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-e98d2c3ef7c5fa48
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_meeting_header_binds_exact_raw_response
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-d28bf5ed324b02da
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_missing_message_marker_never_advances_even_with_new_file_hash
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-83abdfa6c5ad5823
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_missing_yaml_actual_entry_refuses_before_effect
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-cf08fef4cc033ec2
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_partial_publication_and_idempotent_retry
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-9e404a96c303f47d
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_provider_credential_echo_never_enters_capture
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-62f20da3a082fa00
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_slack_actual_refusal_no_watermark
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-2edea609773f4bbf
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_transport_error_retains_bounded_custody
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-58b885f62c687728
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_actual_paging_consistency_before_watermark
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-6a32d2bd43e7a6cd
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_documented_search_shapes_are_explicit
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-451a04568c6b69d0
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_legacy_replay_ambiguity_is_not_empty_coverage
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-ebc4206251a9f493
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_legacy_replay_explicit_headers_ignore_quotes_and_fences
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-445892b9872ecddc
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_mcp_initialization_admits_only_matching_supported_tools
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-3d4c249ebc3075a2
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_owned_replay_refuses_corrupt_scope_and_content
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-8528aa307c4268a0
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_repair.py::test_owned_replay_uses_conversation_and_parent_metadata
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-76d58abbe1aaf54f
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_tools.py::test_archive_ancestor_replacement_cannot_redirect_publication
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-720bc79f4f9a89a9
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_tools.py::test_new_save_verified_and_previous_bytes_retained
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-287ffdfdae73e953
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_extract_commitments.py::test_summary_prose_without_dialogue_reports_zero
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-87e862146905fbb2
+  control_class: acceptance-test
+  fixture: ../synthesis-meeting-transcripts/test_version_parity.py::test_executable_components_match_the_skill_version
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-c3de7f5966d207a6
+  control_class: acceptance-test
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_actual_acquisition_entry_and_all_dependencies_are_release_verified
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-d0b879b27cec94ff
+  control_class: acceptance-test
+  fixture: ../synthesis-onboarding/scripts/test_synthesis_cli.py::test_engine_versions_and_skill_contract_agree
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-5ba9a14de5d0d699
+  control_class: enforced-gate
+  fixture: ../synthesis-skills-manager/scripts/test_b05_release_coverage.py::test_acquisition_entry_repair_regression_and_doctor_are_gated
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-8f68c26da82d7e13
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_agents_verification_list_matches_ci_workflow
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-5e34059ab08c7d9c
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_changelog_mismatch_is_reported
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-3c971a5c16f818a9
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_muse_bundle_manifest_agrees_with_siblings_and_resolves
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-e5dea17c5d5fc6c2
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_cover_ci_pytest_groups
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-262cd95fb5bb0355
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_agrees
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-76809225f92696df
+  control_class: acceptance-test
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_version_fails_closed_when_only_muse_disagrees
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-d12cc0b222c24a03
+  control_class: acceptance-test
+  fixture: ../synthesis-slack-sync/scripts/test_slack_workspaces.py::RegistryTest::test_isolated_reads_focus_only
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: acquisition-84c2fc1902997bb0
+  control_class: acceptance-test
+  fixture: ../synthesis-slack-sync/scripts/test_slack_workspaces.py::RegistryTest::test_literal_token_in_registry_is_rejected
+  motivating_defect: Acquisition source/save/watermark refusal and positive controls,
+    complete release coverage, dependency or version parity
+- id: native-web-8919fedc3f7ab6ad
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_find_page_pattern_rejects_nontext
+  motivating_defect: Reviewed native-web consumer correction; original failures retained
+- id: native-web-3c0e1933f3bf12d9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_web_action_is_digest_only_inert_observation
+  motivating_defect: Reviewed native-web consumer correction; original failures retained
+- id: native-web-d23e61645e6a653e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_web_action_kind_rejects_nontext
+  motivating_defect: Reviewed native-web consumer correction; original failures retained
+- id: native-web-e20a8ac96c56280c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observer_integration.py::test_web_action_rejects_ambiguous_or_malformed_envelopes
+  motivating_defect: Reviewed native-web consumer correction; original failures retained
+- id: linux-portability-a3b9d4e835286e33
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_hermes_transport.py::test_capture_cancellation_closes_owned_listener
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-dd23e38b9a80ccc0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_hermes_transport.py::test_deadline_retains_foreign_replacement
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-91b8cab732df891d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_hermes_transport.py::test_real_local_peer_custody_and_cleanup
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-c5d4bba245559d45
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_hermes_transport.py::test_real_peer_refusal_retains_failure
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-73d90456d3b985c0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_hermes_transport.py::test_tool_created_grandchild_cannot_impersonate_direct_native_hook
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-dd62141f663280f3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_managed_permissions.py::test_actual_fixed_probe_under_existing_os_sandbox
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-5a0c929bd883c8e3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_managed_permissions.py::test_fixed_probe_requires_permission_denial_not_namespace_or_io_error
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained
+- id: linux-portability-001b4a447ae43e13
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_group_preserves_selected_virtualenv
+  motivating_defect: Reviewed linux-portability consumer correction; original failures
+    retained

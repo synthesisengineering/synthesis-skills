@@ -346,7 +346,9 @@ def test_archive_ancestor_replacement_cannot_redirect_publication(
     parent.mkdir()
     foreign = tmp_path / "foreign"
     foreign.mkdir()
-    original = FETCH._archive_directory
+    import archive_publish
+
+    original = archive_publish._archive_directory
     count = [0]
 
     def replacement(path, **kw):
@@ -357,7 +359,7 @@ def test_archive_ancestor_replacement_cannot_redirect_publication(
             parent.symlink_to(foreign, target_is_directory=True)
         return result
 
-    monkeypatch.setattr(FETCH, "_archive_directory", replacement)
+    monkeypatch.setattr(archive_publish, "_archive_directory", replacement)
     with pytest.raises((ValueError, OSError)):
         FETCH.save_verified(parent / "meeting.md", transcript())
     assert list(foreign.iterdir()) == []

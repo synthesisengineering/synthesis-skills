@@ -1175,3 +1175,47 @@ def test_diagnostic_primitives_do_not_call_mocked_product_io(tmp_path, monkeypat
         assert diagnostic["status"] == "DIAGNOSTIC_ONLY"
         assert diagnostic["authorizes_success"] is False
     assert json.loads(p.report.read_text())["errors"] == []
+
+
+def test_actual_group_preserves_selected_virtualenv(tmp_path, monkeypatch):
+    import venv
+
+    selected = tmp_path / "selected-venv"
+    venv.EnvBuilder(with_pip=False, symlinks=True, system_site_packages=True).create(
+        selected
+    )
+    python = selected / "bin/python"
+    assert python.is_symlink()
+    env = dict(os.environ)
+    initial = subprocess.run(
+        [
+            str(python),
+            "-c",
+            'import sys,sysconfig,pytest,json; print(json.dumps({"prefix":sys.prefix,"pytest":pytest.__version__,"site":sysconfig.get_path("purelib")}))',
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
+    )
+    identity = json.loads(initial.stdout)
+    assert identity["prefix"] == str(selected)
+    sentinel = Path(identity["site"]) / "synthesis_unique_venv_sentinel.py"
+    sentinel.write_text('VALUE = "selected-environment-only"\n')
+    root = tmp_path / "source"
+    tests = root / groups.AP
+    tests.mkdir(parents=True)
+    for name in ("run_state", "native_codex", "evaluation"):
+        (tests / f"test_{name}.py").write_text("def test_one():\n    assert True\n")
+    (tests / "test_brand_new_surface.py").write_text(
+        "import sys,pytest,synthesis_unique_venv_sentinel as marker\n"
+        "def test_one():\n"
+        f"    assert sys.prefix == {identity['prefix']!r}\n"
+        f"    assert pytest.__version__ == {identity['pytest']!r}\n"
+        '    assert marker.VALUE == "selected-environment-only"\n'
+    )
+    monkeypatch.setattr(sys, "executable", str(python))
+    code, payload = groups.run_group(root, "core")
+    assert code == 0, payload
+    assert payload["selected"] == [groups.AP + "/test_brand_new_surface.py::test_one"]

@@ -76,7 +76,7 @@ python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills
 python3 -m pytest skills/synthesis-agent-guardrails/tests/ -q
 python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
 python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py
-python3 -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py -q
+python3 -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_acquisition_entry.py skills/synthesis-meeting-transcripts/test_acquisition_repair.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py skills/synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py -q
 sh -n install.sh onboard.sh tests/test_installer.sh
 ./tests/test_installer.sh
 python3 -m compileall -q skills

@@ -18,6 +18,15 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.152.0** connects declared meeting and Slack acquisition to verified
+local archives and watermarks. Paging contradictions, foreign archive identities
+and incomplete MCP negotiation refuse advancement. Adapter selection remains
+explicit; source text is retained without invented tab identities.
+
+In bounded synthetic runs, 1 KiB–1 MiB document/message bodies were preserved
+exactly while fixed-topology CLI status stayed below 1.3 KiB. These measurements
+cover mechanical output size, not model-token savings or live provider acceptance.
+
 Release **4.151.0** adds native callback and linked-run recovery, explicit team
 enrollment and review, portable evidence, and declared maintenance. Installed
 source and genuine native execution remain separately verified states.

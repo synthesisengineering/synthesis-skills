@@ -533,16 +533,37 @@ def _completed_item(value, producer):
             _closed(item, {"type", "kind", "id", "query", "action", "results"})
             _text(item["query"], "search query")
             action = item["action"]
-            _closed(action, {"type", "query", "queries"})
-            if action != {"type": "search", "query": item["query"], "queries": None}:
-                raise DialectError("unsupported search action")
+            _object(action, "native web action")
+            action_kind = _text(action.get("type"), "native web action type")
+            if action_kind == "search":
+                _closed(action, {"type", "query", "queries"})
+                if action != {
+                    "type": "search",
+                    "query": item["query"],
+                    "queries": None,
+                }:
+                    raise DialectError("unsupported search action")
+            elif action_kind in {"openPage", "findInPage"}:
+                fields = {"type", "url"}
+                if action_kind == "findInPage":
+                    fields.add("pattern")
+                _closed(action, fields)
+                _text(action["url"], "native web URL")
+                if action_kind == "findInPage":
+                    _body(action["pattern"])
+            else:
+                raise DialectError("unsupported native web action")
             if not isinstance(item["results"], list):
                 raise DialectError("invalid search results")
             for result in item["results"]:
-                _closed(result, {"type", "domain", "ref_id", "snippet", "title", "url"})
+                _object(result, "native web result")
+                fields = {"type", "domain", "ref_id", "snippet", "title", "url"}
+                if "thumbnail_url" in result:
+                    fields.add("thumbnail_url")
+                _closed(result, fields)
                 if result["type"] != "text_result":
                     raise DialectError("unsupported search result")
-                for field in ("domain", "ref_id", "snippet", "title", "url"):
+                for field in fields - {"type"}:
                     _body(result[field])
         else:
             raise DialectError("unsupported native extension")

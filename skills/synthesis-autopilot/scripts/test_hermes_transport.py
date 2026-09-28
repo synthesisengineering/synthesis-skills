@@ -26,6 +26,124 @@ profile = hermes_fixtures.profile
 
 
 @pytest.fixture
+def native_producer(tmp_path):
+    """A real finite canonical process owns peers independently of pytest's venv."""
+    import base64
+    import select
+    import signal
+    from types import SimpleNamespace
+
+    driver = tmp_path / "native-producer.py"
+    driver.write_text(
+        "import base64,json,signal,subprocess,sys\n"
+        "signal.alarm(90)\n"
+        "print(json.dumps({'ready':True}),flush=True)\n"
+        "for line in sys.stdin:\n"
+        " q=json.loads(line)\n"
+        " if q is None: break\n"
+        " assert set(q)=={'argv','timeout'} and 0<q['timeout']<=10\n"
+        " assert isinstance(q['argv'],list) and 1<=len(q['argv'])<=32\n"
+        " assert all(isinstance(x,str) and len(x)<=16384 for x in q['argv'])\n"
+        " try:\n"
+        "  r=subprocess.run(q['argv'],capture_output=True,timeout=q['timeout'])\n"
+        "  assert len(r.stdout)+len(r.stderr)<=8*1024*1024\n"
+        "  result={'returncode':r.returncode,'stdout':base64.b64encode(r.stdout).decode(),'stderr':base64.b64encode(r.stderr).decode()}\n"
+        " except Exception as exc: result={'error':type(exc).__name__}\n"
+        " print(json.dumps(result),flush=True)\n"
+    )
+    interpreter = Path(sys.executable).resolve(strict=True)
+    # Framework Python's bin launcher re-execs this actual interpreter on macOS.
+    # Use the same explicit runtime path already recognized by the sandbox owner.
+    framework = Path(sys.base_prefix) / "Resources/Python.app/Contents/MacOS/Python"
+    if sys.platform == "darwin" and framework.is_file():
+        interpreter = framework.resolve(strict=True)
+    argv = [str(interpreter), str(driver)]
+    stderr = (tmp_path / "native-producer.stderr").open("wb")
+    process = subprocess.Popen(
+        argv,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=stderr,
+        start_new_session=True,
+    )
+    wire = tmp_path / "native-producer-wire.jsonl"
+
+    def receive(seconds):
+        deadline = time.monotonic() + seconds
+        raw = bytearray()
+        while not raw.endswith(b"\n"):
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "finite native fixture response expired"
+            assert select.select([process.stdout], [], [], remaining)[0]
+            block = os.read(process.stdout.fileno(), 65536)
+            assert block, "native fixture closed before response"
+            raw.extend(block)
+            assert len(raw) <= 12 * 1024 * 1024
+        with wire.open("ab") as stream:
+            stream.write(raw)
+        return json.loads(raw)
+
+    def run(argv, *, capture_output=True, timeout):
+        assert capture_output is True and 0 < timeout <= 10
+        request = json.dumps({"argv": argv, "timeout": timeout}).encode() + b"\n"
+        with wire.open("ab") as stream:
+            stream.write(request)
+        process.stdin.write(request)
+        process.stdin.flush()
+        response = receive(timeout + 2)
+        assert "error" not in response, response
+        return subprocess.CompletedProcess(
+            argv,
+            response["returncode"],
+            base64.b64decode(response["stdout"]),
+            base64.b64decode(response["stderr"]),
+        )
+
+    try:
+        assert receive(3) == {"ready": True}
+        identity = transport.process_identity(process.pid)
+        assert identity["argv"] == argv
+        yield SimpleNamespace(identity=identity, run=run)
+    finally:
+        if process.poll() is None:
+            try:
+                process.stdin.write(b"null\n")
+                process.stdin.flush()
+            except BrokenPipeError:
+                pass
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=2)
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            absent = True
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+            absent = False
+        process.stdin.close()
+        process.stdout.close()
+        stderr.close()
+        (tmp_path / "native-producer-disposition.json").write_text(
+            json.dumps(
+                {
+                    "pid": process.pid,
+                    "returncode": process.returncode,
+                    "group_absent": absent,
+                    "argv": argv,
+                }
+            )
+        )
+        assert absent, "native fixture descendants survived terminal wait"
+
+
+@pytest.fixture
 def short_native_root(tmp_path):
     """Keep Unix socket paths short without losing release-runner custody."""
     # A native platform path, independent of the caller's retained TMPDIR.
@@ -259,14 +377,14 @@ def test_adapter_has_actual_post_assembly_observer(profile, monkeypatch):
     assert result == {}  # ignored observer output grants no execution authority
 
 
-def _process_fixture(tmp_path):
-    # Use the current synthetic pytest process as the pinned parent, never an
-    # existing user-native process. The peer is our finite local Python child.
+def _process_fixture(tmp_path, native_producer):
+    # Pin the dedicated synthetic producer's real identity, independent of the
+    # selected pytest interpreter/virtualenv. It directly owns each hook child.
     script = tmp_path / "peer.py"
     script.write_text(
         'import socket,json,sys\nfrom pathlib import Path\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\ns.settimeout(3)\ns.connect(sys.argv[1])\ns.sendall(Path(sys.argv[2]).read_bytes())\ns.shutdown(socket.SHUT_WR)\nassert s.recv(16)==b"retained\\n"\ns.close()\n'
     )
-    parent = transport.process_identity(os.getpid())
+    parent = native_producer.identity
     inputs = {}
     for arg in [*parent["argv"], str(Path(sys.executable).resolve()), str(script)]:
         if arg.startswith("/") and Path(arg).is_file():
@@ -288,8 +406,10 @@ def _process_fixture(tmp_path):
     return script, selection
 
 
-def test_real_local_peer_custody_and_cleanup(tmp_path, short_native_root):
-    script, selection = _process_fixture(tmp_path)
+def test_real_local_peer_custody_and_cleanup(
+    tmp_path, short_native_root, native_producer
+):
+    script, selection = _process_fixture(tmp_path, native_producer)
     # The Unix platform pathname limit is explicit, not a global chdir workaround.
     short = short_native_root
     sock = short / "h"
@@ -315,7 +435,7 @@ def test_real_local_peer_custody_and_cleanup(tmp_path, short_native_root):
                     {k: v for k, v in row.items() if k not in {"peer", "sequence"}}
                 )
             )
-            child = subprocess.run(argv, capture_output=True, timeout=3)
+            child = native_producer.run(argv, capture_output=True, timeout=3)
             assert child.returncode == 0, (child.stderr, result)
         thread.join(5)
         assert not thread.is_alive()
@@ -376,8 +496,10 @@ def test_partial_or_ambiguous_actual_request_refused(fault):
 
 
 @pytest.mark.parametrize("fault", ["wrong-argv", "changed-source", "malformed-wire"])
-def test_real_peer_refusal_retains_failure(tmp_path, fault, short_native_root):
-    script, selection = _process_fixture(tmp_path)
+def test_real_peer_refusal_retains_failure(
+    tmp_path, fault, short_native_root, native_producer
+):
+    script, selection = _process_fixture(tmp_path, native_producer)
     short = short_native_root
     sock = short / "h"
     packet = tmp_path / "packet.json"
@@ -401,7 +523,7 @@ def test_real_peer_refusal_retains_failure(tmp_path, fault, short_native_root):
             argv = [*argv, "unexpected"]
         if fault == "changed-source":
             script.write_text(script.read_text() + "\n# mutation after admission\n")
-        done = subprocess.run(argv, capture_output=True, timeout=3)
+        done = native_producer.run(argv, capture_output=True, timeout=3)
         assert done.returncode != 0
         thread.join(3)
         assert not thread.is_alive()
@@ -418,8 +540,10 @@ def test_real_peer_refusal_retains_failure(tmp_path, fault, short_native_root):
         assert not thread.is_alive()
 
 
-def test_deadline_retains_foreign_replacement(tmp_path, short_native_root):
-    script, selection = _process_fixture(tmp_path)
+def test_deadline_retains_foreign_replacement(
+    tmp_path, short_native_root, native_producer
+):
+    script, selection = _process_fixture(tmp_path, native_producer)
     selection["hook_argv"] = [selection["process"]["argv"][0], str(script)]
     short = short_native_root
     sock = short / "h"
@@ -445,9 +569,9 @@ def test_deadline_retains_foreign_replacement(tmp_path, short_native_root):
 
 
 def test_capture_cancellation_closes_owned_listener(
-    tmp_path, monkeypatch, short_native_root
+    tmp_path, monkeypatch, short_native_root, native_producer
 ):
-    script, selection = _process_fixture(tmp_path)
+    script, selection = _process_fixture(tmp_path, native_producer)
     selection["hook_argv"] = [selection["process"]["argv"][0], str(script)]
     short = short_native_root
     sock = short / "h"
@@ -461,9 +585,9 @@ def test_capture_cancellation_closes_owned_listener(
 
 
 def test_tool_created_grandchild_cannot_impersonate_direct_native_hook(
-    tmp_path, short_native_root
+    tmp_path, short_native_root, native_producer
 ):
-    script, selection = _process_fixture(tmp_path)
+    script, selection = _process_fixture(tmp_path, native_producer)
     short = short_native_root
     sock = short / "h"
     packet = tmp_path / "packet.json"
@@ -493,7 +617,7 @@ def test_tool_created_grandchild_cannot_impersonate_direct_native_hook(
                     {k: v for k, v in row.items() if k not in {"peer", "sequence"}}
                 )
             )
-            done = subprocess.run(
+            done = native_producer.run(
                 [selection["process"]["argv"][0], str(wrapper), *argv],
                 capture_output=True,
                 timeout=4,

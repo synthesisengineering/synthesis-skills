@@ -746,6 +746,7 @@ def test_qualified_boundary_refuses_forged_or_stale_observation(
 
 
 def test_actual_fixed_probe_under_existing_os_sandbox(managed, monkeypatch, tmp_path):
+    import errno
     import os
     import socket
     import threading
@@ -806,21 +807,76 @@ def test_actual_fixed_probe_under_existing_os_sandbox(managed, monkeypatch, tmp_
             ref = next(
                 i for i in c["immutable_inputs"] if i["artifact_id"] == "reference"
             )
-            argv, _ = _sandbox_command(
-                read, out, Path(script["path"]), ["--spec-reference", ref["path"]]
+            # Keep the registered fixed probe unchanged. The test-only wrapper
+            # records exact OS errors, then executes those original pinned bytes.
+            # Bubblewrap isolates by mount/network namespaces, whose errors must
+            # never be promoted into the stricter native EPERM/EACCES evidence.
+            diagnostics = out / "backend-observations.json"
+            wrapper = read / "backend-observer.py"
+            wrapper.write_text(
+                "import json, os, runpy, socket, sys\nfrom pathlib import Path\n"
+                + "spec = "
+                + repr(spec)
+                + "\n"
+                + "errors = {}\n"
+                + "for row in spec['filesystem']['controls']:\n"
+                + " if row['operation'] not in ('denied-read','denied-write'): continue\n"
+                + " flags = os.O_RDONLY if row['operation']=='denied-read' else os.O_WRONLY\n"
+                + " try:\n  fd=os.open(row['path'],flags|os.O_NOFOLLOW|os.O_NONBLOCK)\n"
+                + " except OSError as exc: errors[row['operation']]=exc.errno\n"
+                + " else:\n  os.close(fd)\n  errors[row['operation']]=None\n"
+                + "with socket.socket() as channel:\n"
+                + " channel.settimeout(spec['network']['timeout_seconds'])\n"
+                + " try: channel.connect((spec['network']['host'],spec['network']['port']))\n"
+                + " except OSError as exc: errors['network']=exc.errno\n"
+                + " else: errors['network']=None\n"
+                + "Path("
+                + repr(str(diagnostics))
+                + ").write_text(json.dumps(errors))\n"
+                + "sys.argv = "
+                + repr([script["path"], "--spec-reference", ref["path"]])
+                + "\n"
+                + "runpy.run_path("
+                + repr(script["path"])
+                + ", run_name='__main__')\n"
             )
+            argv, backend = _sandbox_command(read, out, wrapper, [])
             completed = bounded_run(
                 argv, read, timeout=15, env={**os.environ, "TMPDIR": str(out)}
             )
             (tmp_path / "actual-os-probe.log").write_text(completed.stdout)
-            assert completed.returncode == 0, completed.stdout
             observed = json.loads(completed.stdout)
-            assert (
-                observed["status"] == "PASS"
-                and observed["native_acceptance"] == "UNKNOWN"
-            )
+            errors = json.loads(diagnostics.read_text())
+            assert observed["native_acceptance"] == "UNKNOWN"
+            checks = {row["id"]: row for row in observed["filesystem"]["checks"]}
+            assert checks["read"]["passed"] and checks["create"]["passed"]
+            if backend == "macos-sandbox-exec":
+                assert set(errors) == {"denied-read", "denied-write", "network"}
+                assert all(
+                    value in (errno.EPERM, errno.EACCES) for value in errors.values()
+                )
+                assert completed.returncode == 0 and observed["status"] == "PASS", (
+                    observed
+                )
+            else:
+                assert backend == "linux-bubblewrap"
+                assert errors == {
+                    "denied-read": errno.ENOENT,
+                    "denied-write": errno.EROFS,
+                    "network": errno.ECONNREFUSED,
+                }
+                assert completed.returncode == 2 and observed["status"] == "FAIL", (
+                    observed
+                )
+                assert checks["denied-read"]["passed"] is False
+                assert checks["denied-write"]["passed"] is False
+                assert observed["network"]["denied"] is False
             after = protection.host_snapshot(c, after=True)
-            native_result = {"exitCode": 0, "stdout": completed.stdout, "stderr": ""}
+            native_result = {
+                "exitCode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": "",
+            }
             cfg["protection_observation"] = {
                 "before": before,
                 "after": after,
@@ -828,7 +884,12 @@ def test_actual_fixed_probe_under_existing_os_sandbox(managed, monkeypatch, tmp_
                 "profile_digest": boundary.digest(c["permissions"]),
                 "native_result_digest": boundary.digest(native_result),
             }
-            assert protection.qualified(cfg, native_result) is True
+            assert protection.qualified(cfg, native_result) is (
+                backend == "macos-sandbox-exec"
+            )
+            # Host source canaries and listener survive the actual sandbox run.
+            for ident in ("read", "denied-read", "denied-write"):
+                assert before["files"][ident] == after["files"][ident]
             assert len(healthy) == 2
         finally:
             stop.set()
@@ -1390,3 +1451,43 @@ def test_native_account_preplay_refuses_before_any_request(managed, fault):
     with pytest.raises(ValueError, match="predates"):
         native.account_read(endpoint, cfg, "before-turn")
     assert endpoint.writes == []
+
+
+@pytest.mark.parametrize(
+    "denial", ["EPERM", "EACCES", "ENOENT", "EROFS", "ECONNREFUSED", "ETIMEDOUT", "EIO"]
+)
+def test_fixed_probe_requires_permission_denial_not_namespace_or_io_error(
+    managed, monkeypatch, denial
+):
+    import errno
+    import os
+    import socket
+
+    _, _, _, spec = managed
+    denied_paths = {
+        row["path"]
+        for row in spec["filesystem"]["controls"]
+        if row["operation"] in ("denied-read", "denied-write")
+    }
+    original_open = os.open
+    code = getattr(errno, denial)
+
+    def controlled_open(path, *args, **kwargs):
+        if str(path) in denied_paths:
+            raise OSError(code, "synthetic exact denial")
+        return original_open(path, *args, **kwargs)
+
+    def controlled_connect(self, address):
+        raise OSError(code, "synthetic exact denial")
+
+    monkeypatch.setattr(os, "open", controlled_open)
+    monkeypatch.setattr(socket.socket, "connect", controlled_connect)
+    observed = protection.observe(spec)
+    qualified_denial = denial in {"EPERM", "EACCES"}
+    rows = {row["id"]: row for row in observed["filesystem"]["checks"]}
+    assert rows["read"]["passed"] and rows["create"]["passed"]
+    assert rows["denied-read"]["passed"] is qualified_denial
+    assert rows["denied-write"]["passed"] is qualified_denial
+    assert observed["network"]["denied"] is qualified_denial
+    assert observed["status"] == ("PASS" if qualified_denial else "FAIL")
+    assert observed["native_acceptance"] == "UNKNOWN"

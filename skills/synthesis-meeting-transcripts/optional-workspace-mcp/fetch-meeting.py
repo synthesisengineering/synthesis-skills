@@ -18,15 +18,13 @@ Examples:
 Config: reads .agents/meeting-transcripts.yaml starting from CWD and walking up.
 Falls back to .claude/meeting-transcripts.yaml for existing projects.
 
-Requires `uv` for httpx + pyyaml. Run via: `uv run --with httpx --with pyyaml python fetch-meeting.py ...`
-Or install deps with pip first.
+Use the verified synthesis exec-public entry. Its pinned interpreter requires
+httpx and PyYAML; see the acquisition entry reference for explicit setup.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
-import secrets
 import time
 
 try:
@@ -44,16 +42,24 @@ try:
     import httpx
     import yaml
 except ImportError as exc:
-    print(f"Missing dependency: {exc.name}. Run via:", file=sys.stderr)
     print(
-        "  uv run --with httpx --with pyyaml python fetch-meeting.py [args]",
+        f"Missing dependency in the verified interpreter: {exc.name}.", file=sys.stderr
+    )
+    print(
+        "Install httpx and PyYAML into the selected interpreter through authorized environment setup; do not select an unverified interpreter.",
         file=sys.stderr,
     )
     sys.exit(2)
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mcp_client import call_tool_text, _parse_sse, bounded_post
+from mcp_client import (
+    call_tool_text,
+    _parse_sse,
+    bounded_post,
+    _init_session,
+    session_headers,
+)
 from document_tabs import select_tabs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -103,39 +109,15 @@ def load_config(path: Path) -> dict:
 # --- MCP HTTP client ----------------------------------------------------------
 
 
-def mcp_call(url: str, tool: str, args: dict) -> str:
+def mcp_call(url: str, tool: str, args: dict, *, capture=None) -> str:
     """Call an MCP tool over HTTP streamable transport, return concatenated text content."""
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    with httpx.Client(timeout=60) as c:
-        r = bounded_post(c,
+    with httpx.Client(timeout=60, follow_redirects=False, trust_env=False) as c:
+        sid = _init_session(c, url=url, capture=capture, client_name="fetch-meeting.py")
+        r = bounded_post(
+            c,
             url,
-            headers=headers,
-            json={
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": "2025-03-26",
-                    "capabilities": {},
-                    "clientInfo": {"name": "fetch-meeting.py", "version": "0.1"},
-                },
-            },
-        )
-        r.raise_for_status()
-        sid = r.headers.get("mcp-session-id")
-        if not sid:
-            raise RuntimeError(f"No session ID in response: {r.text[:200]}")
-        bounded_post(c,
-            url,
-            headers={**headers, "Mcp-Session-Id": sid},
-            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-        )
-        r = bounded_post(c,
-            url,
-            headers={**headers, "Mcp-Session-Id": sid},
+            capture=capture,
+            headers=session_headers(sid),
             json={
                 "jsonrpc": "2.0",
                 "id": 2,
@@ -206,10 +188,18 @@ def inventory_documents(
         or not 1 <= max_pages <= 100
     ):
         raise ValueError("invalid source inventory window or page bound")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts"))
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
+    )
     from acquisition_evidence import validate_recorder_control
-    validate_recorder_control(positive_control, source=source, account=account,
-                              after=through, now=dt.datetime.now().astimezone())
+
+    validate_recorder_control(
+        positive_control,
+        source=source,
+        account=account,
+        after=through,
+        now=dt.datetime.now().astimezone(),
+    )
     cursor = None
     seen = set()
     docs = []
@@ -320,155 +310,219 @@ def recorder_readiness(cfg, mcp_url, account, *, call=None):
     }
 
 
-def _archive_directory(path, *, create=False):
-    """Open each component without following links; caller owns the returned fd."""
-    current = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        for part in path.parts[1:]:
-            if create:
-                try:
-                    os.mkdir(part, 0o700, dir_fd=current)
-                except FileExistsError:
-                    pass
-            child = os.open(
-                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current
-            )
-            os.close(current)
-            current = child
-        return current
-    except BaseException:
-        os.close(current)
-        raise
-
-
 def save_verified(path, content, *, force=False):
-    """Publish under a cooperative directory lock; preserve replaced/staging bytes.
-
-    All writes are descriptor-relative to the no-follow opened archive directory.
-    Managed project records still use the separate context transaction owner.
-    """
-    if fcntl is None:
-        raise ValueError(
-            "archive publication requires an available bounded file-lock owner"
-        )
     sys.path.insert(
         0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
     )
-    from ritual_workers import read_regular
+    from archive_publish import _publish
 
-    path = Path(path)
-    if ".." in path.parts:
-        raise ValueError("archive traversal refused")
-    path = Path(os.path.abspath(path))
-    parent = path.parent
-    fd = _archive_directory(parent, create=True)
-    original = os.fstat(fd)
-    staging = None
+    def validate(target, digest):
+        return verify_transcripts.audit_files(
+            [target], expected_hashes={str(target): digest}
+        )
 
-    def same_parent():
-        check = _archive_directory(parent)
-        try:
-            present = os.fstat(check)
-            if (present.st_dev, present.st_ino) != (original.st_dev, original.st_ino):
-                raise ValueError("archive directory changed")
-        finally:
-            os.close(check)
+    return _publish(path, content, validate=validate, force=force)
 
+
+def acquire_window(
+    cfg,
+    *,
+    mode,
+    through,
+    backfill,
+    capture_root,
+    evidence_path=None,
+    advance=False,
+    force=False,
+    home=None,
+):
+    """Actual declared acquisition → exact archives → existing watermark owner."""
+    sys.path.insert(
+        0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
+    )
+    from acquisition_transport import Capture, ReadTransport, output_path
+    from archive_publish import publish_json
+    import sync_watermark
+    from acquisition_evidence import moment, validate
+    from google_read import GoogleRead
+
+    if mode not in {"health", "inventory", "fetch"} or advance and mode != "fetch":
+        raise ValueError("invalid acquisition mode or advance intent")
+    if mode == "fetch":
+        evidence_path = output_path(evidence_path)
+    output_path(capture_root, directory=True)
+    now = dt.datetime.now().astimezone()
+    through = sync_watermark.parse_moment(through, dt.datetime.now().astimezone())
+    if through > now:
+        raise ValueError("future acquisition window")
+    relative_archive = Path(cfg["transcripts_path"])
+    if (
+        relative_archive.is_absolute()
+        or ".." in relative_archive.parts
+        or not Path(cfg["transcripts_repo"]).is_absolute()
+    ):
+        raise ValueError(
+            "archive configuration must name an absolute repository and relative transcript path"
+        )
+    output_path(Path(cfg["transcripts_repo"]) / relative_archive, directory=True)
+    workspace = cfg["workspace"]
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", workspace):
+        raise ValueError("invalid workspace identity")
+    window = sync_watermark.window(workspace, "meetings", now=through, home=home)
+    start = moment(window["from"] or backfill)
+    if start > through:
+        raise ValueError("invalid acquisition window")
+    # Validate all non-secret contract fields before resolving a credential.
+    adapter = GoogleRead(cfg, None)
+    capture = Capture(capture_root)
+    transport = ReadTransport(cfg["acquisition_adapter"].get("token"), capture)
+    adapter.transport = transport
     try:
-        deadline = time.monotonic() + 5
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise ValueError("archive writer busy; no write attempted")
-                time.sleep(0.02)
-        same_parent()
-        payload = content.encode("utf-8")
-        if len(payload) > 8 * 1024 * 1024:
-            raise ValueError("transcript exceeds archive bound")
-        digest = hashlib.sha256(payload).hexdigest()
-        old = None
-        if os.path.lexists(path):
-            old = read_regular(path, 8 * 1024 * 1024)
-            if old == payload:
-                rows = verify_transcripts.audit_files(
-                    [path], expected_hashes={str(path): digest}
-                )
-                if any(row["status"] == "INCOMPLETE" for row in rows):
-                    raise ValueError("existing exact transcript incomplete")
-                return {"path": str(path), "sha256": digest, "saved": False}
-            if not force:
-                raise ValueError(
-                    "archive differs; explicit force required to preserve and replace"
-                )
-            backup = path.with_name(
-                path.name + ".old-" + hashlib.sha256(old).hexdigest() + ".md"
-            )
-            if os.path.lexists(backup):
-                if read_regular(backup, 8 * 1024 * 1024) != old:
-                    raise ValueError("archive backup conflict")
-            else:
-                same_parent()
-                bfd = os.open(
-                    backup.name,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                    0o600,
-                    dir_fd=fd,
-                )
-                with os.fdopen(bfd, "wb") as stream:
-                    stream.write(old)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.fsync(fd)
-        same_parent()
-        name = "." + path.name + "." + secrets.token_hex(16) + ".md"
-        staging = parent / name
-        handle = os.open(
-            name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd
-        )
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.fsync(fd)
-        rows = verify_transcripts.audit_files(
-            [staging], expected_hashes={str(staging): digest}
-        )
-        if any(row["status"] == "INCOMPLETE" for row in rows):
-            raise ValueError(
-                "exact fetched transcript failed completeness; staging retained: "
-                + str(staging)
-            )
-        same_parent()
-        if old is not None and read_regular(path, 8 * 1024 * 1024) != old:
-            raise ValueError("archive changed before replacement")
-        if old is None and os.path.lexists(path):
-            raise ValueError("archive appeared before publication")
-        os.replace(name, path.name, src_dir_fd=fd, dst_dir_fd=fd)
-        staging = None
-        os.fsync(fd)
-        rows = verify_transcripts.audit_files(
-            [path], expected_hashes={str(path): digest}
-        )
-        if any(row["status"] == "INCOMPLETE" for row in rows):
-            raise ValueError("saved transcript failed exact verification")
-        return {
-            "path": str(path),
-            "sha256": digest,
-            "saved": True,
-            "verification": rows,
+        readiness = adapter.readiness()
+        health = {
+            "dependencies": "available",
+            "transport": "responsive",
+            "recorder": readiness,
+            "native_acceptance": False,
         }
+        if mode == "health":
+            return health
+        control = adapter.positive_control()
+        inventory = inventory_documents(
+            adapter.list_documents,
+            source="google-drive",
+            account=cfg["google_account"],
+            start=start,
+            through=through,
+            positive_control=control,
+        )
+        if mode == "inventory":
+            return {
+                "health": health,
+                "inventory": inventory,
+                "custody": capture.summary(include_receipts=False),
+                "can_advance": False,
+            }
+        archive_root = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"]
+        if not archive_root.is_absolute() or ".." in archive_root.parts:
+            raise ValueError("archive root must be a physical absolute path")
+        receipts = []
+        for doc in inventory["documents"]:
+            raw, call = adapter.document(doc["source_id"])
+            selected = select_tabs(
+                json.dumps(raw), transcript_tab_id=cfg["transcript_tab_id"]
+            )
+            if selected["status"] != "transcript":
+                raise ValueError(
+                    "declared transcript unavailable: "
+                    + str(selected["reason"])
+                    + "; raw notes retained in custody"
+                )
+            content = (
+                f"# Meeting source {doc['source_id']}\n\n**Source ID:** google-drive:{doc['source_id']}\n"
+                f"**Transcript tab ID:** {cfg['transcript_tab_id']}\n**Raw response SHA256:** {call.rsplit('#', 1)[1]}\n\n"
+                "## Tool notes — lossy derivative\n\n"
+                + selected["notes"]
+                + "\n\n## Verbatim transcript\n\n"
+                + selected["transcript"]
+            )
+            filename = "meetings/" + doc["source_id"] + ".md"
+            saved = save_verified(archive_root / filename, content, force=force)
+            receipts.append({"path": filename, "sha256": saved["sha256"]})
+        evidence = {
+            "schema": 1,
+            "workspace": workspace,
+            "surface": "meetings",
+            "from": start.isoformat(),
+            "through": through.isoformat(),
+            "archive_root": str(archive_root),
+            "archives": receipts,
+            "declared_sources": ["google-drive"],
+            "sources": [
+                {
+                    "id": "google-drive",
+                    "account": cfg["google_account"],
+                    "readiness": readiness,
+                    "inventory": inventory,
+                }
+            ],
+            "custody": capture.summary(),
+        }
+        checked = validate(
+            evidence,
+            workspace=workspace,
+            surface="meetings",
+            through=through,
+            previous=moment(window["from"]) if window["from"] else None,
+        )
+        if not evidence_path:
+            raise ValueError("fetch requires an exact evidence output path")
+        saved_evidence = publish_json(evidence_path, evidence)
+        result = {
+            "coverage": checked,
+            "evidence": saved_evidence,
+            "saved_files": receipts,
+            "custody": capture.summary(include_receipts=False),
+        }
+        if advance:
+            result["watermark"] = sync_watermark.advance(
+                workspace,
+                "meetings",
+                through.isoformat(),
+                acquisition=evidence,
+                home=home,
+                now=dt.datetime.now().astimezone(),
+            )
+        return result
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        transport.close()
+
+
+def acquisition_main(argv):
+    parser = argparse.ArgumentParser(
+        description="Bounded declared meeting acquisition; no implicit adapter fallback"
+    )
+    parser.add_argument(
+        "--mode", choices=["health", "inventory", "fetch"], required=True
+    )
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--through", required=True)
+    parser.add_argument("--backfill-from", required=True)
+    parser.add_argument("--capture-dir", required=True)
+    parser.add_argument("--evidence")
+    parser.add_argument("--advance", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        result = acquire_window(
+            load_config(Path(args.config)),
+            mode=args.mode,
+            through=args.through,
+            backfill=args.backfill_from,
+            capture_root=args.capture_dir,
+            evidence_path=args.evidence,
+            advance=args.advance,
+            force=args.force,
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        print(
+            json.dumps(
+                {"coverage": "unknown", "can_advance": False, "reason": str(exc)}
+            )
+        )
+        return 2
 
 
 # --- Main ---------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" in argv:
+        return acquisition_main(argv)
+
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -493,7 +547,7 @@ def main() -> int:
     p.add_argument(
         "--port", type=int, default=int(os.environ.get("WORKSPACE_MCP_PORT", 8765))
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     target_date = args.date or dt.date.today().isoformat()
 
@@ -556,7 +610,9 @@ def main() -> int:
         return 1
     file_id = ids[0]
     print(f"Found doc: {file_id}")
-    print("Fetching full content (includes all tabs: notes + transcript)...")
+    print(
+        "Fetching content; structured tab completeness still requires verification..."
+    )
 
     raw = mcp_call(
         mcp_url,

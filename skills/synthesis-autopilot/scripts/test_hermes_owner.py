@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import threading
 import time
@@ -17,16 +16,16 @@ from test_vendor_native import fixture_source
 import hermes_transport
 import vendor_native
 import vendor_bundle
-from test_hermes_transport import short_native_root
+from test_hermes_transport import short_native_root, native_producer
 
-__all__ = ["short_native_root"]
+__all__ = ["short_native_root", "native_producer"]
 
 world = run_fixture.world
 command = run_fixture.command
 
 
 @pytest.fixture
-def observed(world, monkeypatch, request, short_native_root):
+def observed(world, monkeypatch, request, short_native_root, native_producer):
     import autopilot
     import workflow
     import test_workflow
@@ -80,7 +79,7 @@ def observed(world, monkeypatch, request, short_native_root):
         + """)\nimport hermes_adapter as adapter\nq=json.loads(Path(sys.argv[1]).read_text())\nos.environ['HERMES_HOME']=q['home']\nadapter.recover=lambda *a:"Synthetic project context"\nresult=adapter.handle(q['payload'],Path(q['home']),Path(q['index']),'alpha',active=q['active'],state_home=Path(q['state_home']),capture_socket=Path(q['socket']))\nprint(json.dumps(result))\n"""
     )
     packet = w["project"] / "packet.json"
-    parent = hermes_transport.process_identity(os.getpid())
+    parent = native_producer.identity
     hookargv = [parent["argv"][0], str(producer), str(packet)]
     pins = {}
     for arg in [*parent["argv"], *hookargv]:
@@ -232,7 +231,7 @@ def observed(world, monkeypatch, request, short_native_root):
                 "payload": payload,
             }
             packet.write_text(json.dumps(q))
-            done = subprocess.run(hookargv, capture_output=True, timeout=4)
+            done = native_producer.run(hookargv, capture_output=True, timeout=4)
             assert done.returncode == 0, done.stderr
             out = json.loads(done.stdout)
             assert "SYNTHESIS_NATIVE_RECEIPT " in out.get("context", ""), out
@@ -255,7 +254,7 @@ def observed(world, monkeypatch, request, short_native_root):
                     800000 if request.param == "large-raw" else 80000
                 )
             packet.write_text(json.dumps(q))
-            done = subprocess.run(hookargv, capture_output=True, timeout=4)
+            done = native_producer.run(hookargv, capture_output=True, timeout=4)
             assert done.returncode == 0 and json.loads(done.stdout) == {}, (
                 done.stdout + done.stderr
             )

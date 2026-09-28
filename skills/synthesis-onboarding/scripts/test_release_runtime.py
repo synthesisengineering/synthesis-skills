@@ -1064,18 +1064,24 @@ def test_actual_adapter_and_vendor_entrypoints_bind_dependencies_before_executio
         helper.write_bytes(before)
 
 
-@pytest.mark.parametrize("script", [
-    "synthesis-agent-conformance/scripts/hermes_adapter.py",
-    "synthesis-agent-conformance/scripts/vendor_bundle.py",
-    "synthesis-agent-conformance/scripts/conformance.py",
-    "synthesis-agent-conformance/scripts/session_context.py",
-])
-@pytest.mark.parametrize("dependency", [
-    "synthesis-agent-conformance/scripts/report_contract.py",
-    "synthesis-agent-conformance/references/conformance-report-v1.schema.json",
-    "synthesis-onboarding/scripts/first_run_store.py",
-    "synthesis-project-management/scripts/native_identity.py",
-])
+@pytest.mark.parametrize(
+    "script",
+    [
+        "synthesis-agent-conformance/scripts/hermes_adapter.py",
+        "synthesis-agent-conformance/scripts/vendor_bundle.py",
+        "synthesis-agent-conformance/scripts/conformance.py",
+        "synthesis-agent-conformance/scripts/session_context.py",
+    ],
+)
+@pytest.mark.parametrize(
+    "dependency",
+    [
+        "synthesis-agent-conformance/scripts/report_contract.py",
+        "synthesis-agent-conformance/references/conformance-report-v1.schema.json",
+        "synthesis-onboarding/scripts/first_run_store.py",
+        "synthesis-project-management/scripts/native_identity.py",
+    ],
+)
 def test_composed_native_consumers_bind_newer_dependency_before_effect(
     active, script, dependency, monkeypatch
 ):
@@ -1091,7 +1097,9 @@ def test_composed_native_consumers_bind_newer_dependency_before_effect(
     verified = runtime.verified_release(pointer)
     verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
     hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
-    monkeypatch.setattr(runtime, "_load_activation_receipt", lambda _: {"entrypoints": hashes})
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda _: {"entrypoints": hashes}
+    )
     runtime.command(verified, script, ["--help"])
     helper = root / "skills" / dependency
     before = helper.read_bytes()
@@ -1100,3 +1108,51 @@ def test_composed_native_consumers_bind_newer_dependency_before_effect(
     os.utime(helper, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     with pytest.raises(runtime.RuntimeContractError):
         runtime.command(verified, script, ["--help"])
+
+
+ACQUISITION_ENTRIES = (
+    "synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py",
+    "synthesis-slack-sync/scripts/acquire.py",
+)
+
+
+@pytest.mark.parametrize("script", ACQUISITION_ENTRIES)
+def test_actual_acquisition_entry_and_all_dependencies_are_release_verified(
+    active, script, monkeypatch
+):
+    pointer, root, data = active
+    source = Path(__file__).resolve().parents[3]
+    names = (script, *runtime.ENTRYPOINT_DEPENDENCIES[script])
+    for relative in names:
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source / "skills" / relative).read_bytes())
+    replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    verified = runtime.verified_release(pointer)
+    result = runtime.execute(verified, script, ["--help"], b"", timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert b"usage:" in result.stdout.lower()
+    if "meeting-transcripts" in script:
+        result = runtime.execute(
+            verified, script, ["--mode", "health", "--help"], b"", timeout=10
+        )
+        assert result.returncode == 0 and b"--capture-dir" in result.stdout
+    verified["_verification_mode"] = runtime.VERIFICATION_MODE_RECEIPT
+    hashes = {name: runtime.file_digest(root / "skills" / name) for name in names}
+    monkeypatch.setattr(
+        runtime, "_load_activation_receipt", lambda _: {"entrypoints": hashes}
+    )
+    for relative in runtime.ENTRYPOINT_DEPENDENCIES[script]:
+        helper = root / "skills" / relative
+        before = helper.read_bytes()
+        st = helper.stat()
+        helper.write_bytes(before + b"\n# source drift\n")
+        os.utime(helper, ns=(st.st_atime_ns, st.st_mtime_ns))
+        with pytest.raises(runtime.RuntimeContractError):
+            runtime.command(verified, script, ["--help"])
+        helper.write_bytes(before)
+        parked = helper.with_name(helper.name + ".retained-test")
+        helper.rename(parked)
+        with pytest.raises(runtime.RuntimeContractError):
+            runtime.command(verified, script, ["--help"])
+        parked.rename(helper)
