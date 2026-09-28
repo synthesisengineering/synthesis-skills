@@ -10,6 +10,7 @@ import json
 import hashlib
 from pathlib import Path
 import re
+import time
 import native_resume
 import managed_permissions as policy
 from copy import deepcopy
@@ -26,6 +27,7 @@ METHODS = frozenset(
         "thread/read",
         "thread/resume",
         "turn/start",
+        "turn/interrupt",
         "command/exec",
     }
 )
@@ -89,6 +91,21 @@ def restrict_connection(connection, configuration, *, before_effect=None):
         expected.extend(deepcopy(actions))
         return actions
 
+    def interrupt(thread_id, turn_id):
+        nonlocal expected
+        # The exact emitted turn/start must have an admitted matching reply.
+        from native_callback import _rows
+        sent = _rows(bytes(connection.raw_stdin))
+        received = _rows(bytes(connection.raw_stdout))
+        starts = [row for row in sent if row.get("method") == "turn/start"
+                  and row.get("params", {}).get("threadId") == thread_id]
+        if len(starts) != 1 or not any(row.get("id") == starts[0]["id"]
+                and row.get("result", {}).get("turn", {}).get("id") == turn_id for row in received):
+            raise ValueError("Cancellation has no exact admitted native turn")
+        value = _rpc("synthesis-cancel-turn", "turn/interrupt", {"threadId": thread_id, "turnId": turn_id})
+        expected = expected[:position] + [value]
+        connection.send(value)
+    admit_effect.interrupt = interrupt
     return admit_effect
 
 
@@ -848,6 +865,9 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
             }
         }
     connection = None
+    thread = None
+    turn_id = None
+    cancellation = None
     code, failure, raw, errors, sent = 2, None, b"", b"", b""
     cleanup = {"cleanup_verified": True, "scope": "No child started"}
     try:
@@ -876,6 +896,8 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
             },
             require_jsonrpc=False,
         )
+
+        connection.owner_check = revalidate
 
         def before_effect():
             revalidate()
@@ -928,6 +950,7 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
                 configuration, connection.call("config/read", planned[4]["params"])
             )
         while True:
+            revalidate()
             try:
                 _readback(
                     bytes(connection.raw_stdout),
@@ -1003,6 +1026,7 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
                 transport["turn_id"] = turn_id
         productive_final = False
         while True:
+            revalidate()
             try:
                 if productive(configuration) and not productive_final:
                     from native_callback import _rows
@@ -1036,12 +1060,37 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
                 break
             except CallbackIncomplete:
                 connection._read()
+    except native_resume.NativeCancellation as exc:
+        failure = str(exc)[:4096]
+        cancellation = {"request": exc.observation, "interrupt_sent": False,
+                        "native_terminal": "UNKNOWN", "error": None}
+        if connection:
+            connection.owner_check = None  # Cleanup is not another productive effect.
+            if thread is not None and turn_id is not None:
+                try:
+                    connection.deadline = min(connection.deadline, time.monotonic() + 2)
+                    admit_effect.interrupt(thread["id"], turn_id)
+                    cancellation["interrupt_sent"] = True
+                    from native_callback import _rows
+                    while True:
+                        from native_codex_turn import transcript
+                        try:
+                            terminal = transcript(_rows(bytes(connection.raw_stdout)), thread["id"], turn_id)
+                        except CallbackIncomplete:
+                            terminal = None
+                        if terminal is not None:
+                            cancellation["native_terminal"] = terminal["status"]
+                            break
+                        connection._read()
+                except (OSError, ValueError, EOFError, TimeoutError, KeyError, TypeError) as cleanup_exc:
+                    cancellation["error"] = str(cleanup_exc)[:4096]
     except (OSError, ValueError, EOFError, TimeoutError, KeyError, TypeError) as exc:
         failure = str(exc)[:4096]
     except (KeyboardInterrupt, SystemExit) as exc:
         failure = "Managed native observation interrupted: " + type(exc).__name__
     finally:
         if connection:
+            connection.owner_check = None
             raw, errors, sent = (
                 bytes(connection.raw_stdout),
                 bytes(connection.stderr),
@@ -1057,6 +1106,8 @@ def execute(argv, configuration, cwd, timeout, environment, *, revalidate, resum
             except (OSError, ValueError, KeyboardInterrupt, SystemExit) as exc:
                 failure = failure or str(exc)
                 cleanup = {**(connection.cleanup or {}), "cleanup_verified": False}
+    if cancellation is not None:
+        cleanup["cancellation"] = cancellation
     if failure or not cleanup["cleanup_verified"]:
         code = 2
     return code, raw, errors, failure, cleanup, sent

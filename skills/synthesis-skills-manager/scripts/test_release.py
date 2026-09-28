@@ -1066,6 +1066,60 @@ def test_release_boundary_consumes_fresh_bound_acceptance_receipt(
     ]
 
 
+def receipt_with_programmed_execution(receipt, repository=None):
+    """Unit boundary fixture; actual consumer tests below execute the real runner."""
+    runner = release._acceptance_runner()
+    contract = [
+        {
+            "id": c["id"],
+            "selector": "test_synthetic.py::test_" + str(i),
+            "expected_status": "pass",
+            "control_class": "acceptance-test",
+            "motivating_defect": "programmed release boundary evidence",
+        }
+        for i, c in enumerate(receipt["cases"])
+    ]
+    cases = []
+    for c in contract:
+        cases.append(
+            {**c, "nodes": [c["selector"]], "status": "passed", "matched": True}
+        )
+    batches = []
+    for plan in runner.batch_plan(contract):
+        nodes = plan["selectors"]
+        batches.append(
+            {
+                **plan,
+                "returncode": 0,
+                "process_failure": None,
+                "inventory": {
+                    "group": "acceptance",
+                    "inventory": nodes,
+                    "selected": nodes,
+                    "errors": [],
+                    "exitstatus": 0,
+                    "subtests": {},
+                    "phases": {
+                        n: {
+                            p: {"outcome": "passed", "duration": 0, "wasxfail": None}
+                            for p in ("setup", "call", "teardown")
+                        }
+                        for n in nodes
+                    },
+                },
+            }
+        )
+    receipt["cases"] = cases
+    receipt["execution"] = {
+        "schema": 1,
+        "contract": contract,
+        "batches": batches,
+        "source_unchanged": True,
+        "source_sha256": release.source_digest(repository) if repository else "f" * 64,
+    }
+    return receipt
+
+
 def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
     expected = {
         "transaction_id": "transaction-a",
@@ -1087,6 +1141,7 @@ def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
         "cases": [{"id": "one", "matched": True}, {"id": "two", "matched": True}],
     }
 
+    receipt_with_programmed_execution(receipt)
     assert release.validate_acceptance_receipt(receipt, expected)[0]
     for field in expected:
         mutated = dict(receipt)
@@ -1520,6 +1575,7 @@ def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:
         "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
         "cases": [{"id": "fixture", "matched": True}],
     }
+    receipt_with_programmed_execution(receipt, repository)
     boundary, detail = release.acceptance_boundary(repository)
     assert boundary is not None, detail
     return repository, release.AcceptanceAuthority(
@@ -5779,9 +5835,7 @@ def test_release_boundary_first_release_without_published_authority_refuses(
     assert selected is None and "publication" in detail
 
 
-def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
-    tmp_path, monkeypatch
-):
+def real_acceptance_fixture(tmp_path, monkeypatch):
     repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
     monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
     runner = repo / release.ACCEPTANCE_RUNNER
@@ -5789,6 +5843,11 @@ def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
     shutil.copy2(
         Path(__file__).resolve().parents[3] / release.ACCEPTANCE_RUNNER, runner
     )
+    dependency = (
+        repo / "skills/synthesis-skills-manager/scripts/release_check_groups.py"
+    )
+    dependency.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(Path(__file__).with_name("release_check_groups.py"), dependency)
     fixture = repo / "skills/synthesis-implementation-integrity/test_synthetic.py"
     fixture.write_text("def test_value():\n    assert 2 + 2 == 4\n")
     manifest = repo / release.ACCEPTANCE_MANIFEST
@@ -5822,12 +5881,20 @@ def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
     git("commit", "-qm", "closed evidence")
     accepted = release.consume_acceptance(repo, release.Result(), False)
     assert accepted is not None
+    return repo, git, base, pr_base, accepted
+
+
+def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
     assert accepted.expected["change_base"] == base
     assert "feature.py" in accepted.expected["changed_paths"]
     assert accepted.boundary["review_base"] == pr_base
     assert "feature.py" not in accepted.boundary["review_paths"]
     assert release.revalidate_acceptance_authority(repo, accepted)[0]
     # A changed manifest cannot reuse a receipt, even before a new commit.
+    manifest = repo / release.ACCEPTANCE_MANIFEST
     manifest.write_text(manifest.read_text() + "# changed\n")
     assert not release.revalidate_acceptance_authority(repo, accepted)[0]
 
@@ -5899,6 +5966,7 @@ def test_release_boundary_two_real_publication_targets_allow_only_same_accepted_
         "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
         "cases": [{"id": "fixture", "matched": True}],
     }
+    receipt_with_programmed_execution(receipt, repo)
     authority = release.AcceptanceAuthority(base, expected, receipt, boundary)
     assert release.publish(repo, release.Result(), False, authority, "2.0.0")
     for bare in (remote, other):
@@ -5949,7 +6017,7 @@ def test_failed_actual_consumer_retains_traceback(tmp_path, monkeypatch, capsys)
     )
     monkeypatch.setattr(
         release,
-        "run",
+        "bounded_run",
         lambda *a, **kw: subprocess.CompletedProcess(
             a,
             1,
@@ -5964,3 +6032,48 @@ def test_failed_actual_consumer_retains_traceback(tmp_path, monkeypatch, capsys)
     assert "FileNotFoundError: history.jsonl" in out
     assert "secondary stderr detail" in out
     assert "outer runner stderr detail" in out
+
+
+def test_acceptance_consumer_rejects_terminal_flags_without_phase_evidence():
+    expected = {"transaction_id": "synthetic-boundary"}
+    forged = {
+        **expected,
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": release.ACCEPTANCE_CONSUMER_ID,
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+        "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
+        "cases": [{"id": "one", "matched": True}],
+    }
+    assert not release.validate_acceptance_receipt(forged, expected)[0]
+    receipt_with_programmed_execution(forged)
+    assert release.validate_acceptance_receipt(forged, expected)[0]
+    forged["execution"]["batches"][0]["inventory"]["phases"][
+        "test_synthetic.py::test_0"
+    ]["teardown"]["outcome"] = "failed"
+    assert not release.validate_acceptance_receipt(forged, expected)[0]
+
+
+@pytest.mark.parametrize(
+    "change", ["source_digest", "duration", "contract", "missing_phase", "source_flag"]
+)
+def test_publication_revalidates_exact_accepted_execution(
+    tmp_path, monkeypatch, change
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    evidence = accepted.receipt["execution"]
+    phase = next(iter(evidence["batches"][0]["inventory"]["phases"].values()))
+    if change == "source_digest":
+        evidence["source_sha256"] = "0" * 64
+    elif change == "duration":
+        phase["call"]["duration"] += 1
+    elif change == "contract":
+        evidence["contract"][0]["motivating_defect"] = "substituted evidence"
+        accepted.receipt["cases"][0]["motivating_defect"] = "substituted evidence"
+    elif change == "missing_phase":
+        phase.pop("call")
+    else:
+        evidence["source_unchanged"] = False
+    assert not release.revalidate_acceptance_authority(repo, accepted)[0]

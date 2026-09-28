@@ -1529,7 +1529,7 @@ def _same_process(left, right):
     return bool(left and right and left["start"] == right["start"])
 
 
-def _execute_native(argv, prompt, cwd, timeout, environment):
+def _execute_native(argv, prompt, cwd, timeout, environment, *, revalidate=None):
     """Capture partial evidence and reap only independently observed identities.
 
     Polling cannot prove absence of an unobserved double-fork between samples.
@@ -1540,6 +1540,8 @@ def _execute_native(argv, prompt, cwd, timeout, environment):
     encoded = prompt.encode("utf-8")
     if len(encoded) > 2 * 1024 * 1024:
         raise ValueError("Native worker prompt exceeds its bound")
+    if revalidate is not None:
+        revalidate()
     _process_snapshot()  # Refuse to start if precise cleanup is unavailable.
     if time.monotonic() >= deadline:
         raise ValueError("native worker deadline expired during process inventory")
@@ -1586,6 +1588,8 @@ def _execute_native(argv, prompt, cwd, timeout, environment):
     next_snapshot = began
     try:
         while selector.get_map() or process.poll() is None:
+            if revalidate is not None:
+                revalidate()
             now = time.monotonic()
             if now >= deadline:
                 failure = "native worker timed out"
@@ -1681,10 +1685,29 @@ def _execute_native(argv, prompt, cwd, timeout, environment):
     )
 
 
+def observation_intent(state, child_id):
+    """Stable original observer identity across prepare, dispatch and recovery."""
+    matches = [item for item in state.get("native_execution", {}).values()
+               if item.get("child_id") == child_id and item.get("schema_version") == 2]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError("native child has ambiguous original observer identity")
+    item = matches[0]
+    return {key: item[key] for key in ("id", "command_digest", "child_id", "nonce", "prepared_revision")}
+
+
 def run_worker(state, child_id, context, *, client, runtime_root, timeout_seconds):
     """Execute once under fresh PM admission; native work is not acceptance."""
     import re
 
+    def current_cancellation():
+        observer = context.get("current_cancellation")
+        if observer is not None:
+            value = observer()
+            if value["requested"]:
+                from native_resume import NativeCancellation
+                raise NativeCancellation(value)
     began_operation = time.monotonic()
     child, contract, budget, reservation, timeout = _worker_spec(
         state, child_id, context, client, runtime_root, timeout_seconds
@@ -1737,6 +1760,8 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
         "contract_digest": state["contract_digest"],
         "profile_digest": state["profile_digest"],
     }
+    if observation_intent(state, child_id) is not None:
+        configuration["observation_intent"] = observation_intent(state, child_id)
     session_intent = native_session_binding(state, child, context)
     if session_intent:
         if selected != _session_selection(child):
@@ -1778,6 +1803,7 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
         return value
 
     try:
+        current_cancellation()
         native_cwd = Path(contract["scratch_root"])
         if client == "muse":
             from native_review_observer import (
@@ -1824,6 +1850,7 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
                 from managed_native import execute
 
                 def revalidate():
+                    current_cancellation()
                     _authorize_worker(context, targets)
                     remaining()
                     if session_intent and client_selection(client, env) != (selected, executable):
@@ -1856,11 +1883,11 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
                 from native_callback import execute
 
                 code, stdout, stderr, failure, cleanup, request_raw = execute(
-                    argv, configuration, native_cwd, remaining(), env
+                    argv, configuration, native_cwd, remaining(), env, **({"revalidate": current_cancellation} if context.get("current_cancellation") is not None else {})
                 )
         else:
             code, stdout, stderr, failure, cleanup = _execute_native(
-                argv, prompt, native_cwd, remaining(), env
+                argv, prompt, native_cwd, remaining(), env, **({"revalidate": current_cancellation} if context.get("current_cancellation") is not None else {})
             )
         try:
             parsed = parse_worker(
@@ -1894,6 +1921,13 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
         failure = failure or str(exc)
         if not stderr:
             stderr = str(exc).encode()
+    if context.get("current_cancellation") is not None:
+        try:
+            cancellation = context["current_cancellation"]()
+            cleanup.setdefault("cancellation", {"request": cancellation, "native_terminal": "UNKNOWN", "interrupt_sent": False})
+        except (OSError, ValueError, KeyError) as exc:
+            failure = failure or "Current cancellation authority unavailable: " + str(exc)
+            cleanup.setdefault("cancellation", {"request": "UNKNOWN", "native_terminal": "UNKNOWN", "interrupt_sent": False})
     if code != 0 or failure:
         parsed["terminal"] = (
             "timed_out" if failure and "timed out" in failure else "failed"
@@ -1946,6 +1980,7 @@ def run_worker(state, child_id, context, *, client, runtime_root, timeout_second
         "output_manifest": outputs,
         "native_exit_code": code,
         "elapsed_millis": elapsed,
+        "process_cleanup": cleanup,
     }
     if session_intent and code == 0 and not failure:
         try:
@@ -2012,6 +2047,8 @@ def verify_worker_observation(data, context, *, historical_session=False):
         ):
             return False
         config = manifest["configuration"]
+        if config.get("observation_intent") != observation_intent(state, data["child_id"]):
+            return False
         if (
             config["file_contract"] != child["file_contract"]
             or config["client"] != child["client"]

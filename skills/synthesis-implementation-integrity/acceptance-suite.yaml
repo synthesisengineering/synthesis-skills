@@ -1,5 +1,5 @@
 schema: 2
-suite: complete-core-acquisition-native-4-152-0
+suite: complete-core-runtime-native-recovery-4-152-0
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy,
   maintenance and portable evidence owners; scoped source acquisition and inert native
@@ -232,6 +232,37 @@ changed_surfaces:
   - final-9b1c2f90471ee9ad
 - path: .github/workflows/validate.yml
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - acquisition-5ba9a14de5d0d699
   - acquisition-8f68c26da82d7e13
   - acquisition-e5dea17c5d5fc6c2
@@ -257,6 +288,7 @@ changed_surfaces:
   - final-4d24414f882d04e9
   - final-52bb012d8a1a8a5e
   - final-59be363bd6720835
+  - final-61491c50ebecce58
   - final-79c92a68ff96cc62
   - final-7dca023f0c4ede8c
   - final-7f4014c20bdfad98
@@ -284,6 +316,47 @@ changed_surfaces:
   - final-ef5e59cc3c324c8a
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: .muse-plugin/plugin.json
   cases:
   - acquisition-262cd95fb5bb0355
@@ -415,6 +488,7 @@ changed_surfaces:
   - final-4d24414f882d04e9
   - final-52bb012d8a1a8a5e
   - final-59be363bd6720835
+  - final-61491c50ebecce58
   - final-79c92a68ff96cc62
   - final-7dca023f0c4ede8c
   - final-7f4014c20bdfad98
@@ -438,8 +512,45 @@ changed_surfaces:
   - final-ef5e59cc3c324c8a
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
 - path: CHANGELOG.md
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - acquisition-5ba9a14de5d0d699
   - acquisition-5e34059ab08c7d9c
   - acquisition-b8d6716c3107f8b0
@@ -587,6 +698,41 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-fc092801303bf1fc
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
   - native-web-3c0e1933f3bf12d9
   - native-web-8919fedc3f7ab6ad
   - native-web-d23e61645e6a653e
@@ -599,6 +745,37 @@ changed_surfaces:
   - final-fb5bcd34993c1c0e
 - path: README.md
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - acquisition-5ba9a14de5d0d699
   - acquisition-5e34059ab08c7d9c
   - acquisition-b8d6716c3107f8b0
@@ -760,6 +937,41 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-fc092801303bf1fc
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-adversarial-review/SKILL.md
   cases:
   - final-13373a5354d9b44c
@@ -1272,6 +1484,41 @@ changed_surfaces:
   - final-cc4fbf3eb3176f95
   - final-ceb35280e52ecc3f
   - final-cece13a990f007e3
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/references/efficiency-measurement.md
   cases:
   - final-ba0dcd34cbecde3d
@@ -1384,6 +1631,41 @@ changed_surfaces:
   - final-b07d33e84d4d9d88
   - final-b561943d705b8702
   - final-e1c3935b59d9690c
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/references/portable-native-evidence.md
   cases:
   - final-27c3f268468cee11
@@ -1592,6 +1874,17 @@ changed_surfaces:
   - final-ceb35280e52ecc3f
   - final-cece13a990f007e3
   - final-ea2e254af2dccdb7
+  - final-runtime-ci-02787e046b264f2c
+  - final-runtime-ci-0488a9ca1c808b01
+  - final-runtime-ci-0f8944ac4a9ff73f
+  - final-runtime-ci-489c6971261a5261
+  - final-runtime-ci-89fe0f85ccd52d49
+  - final-runtime-ci-9643a4c7e6b78c32
+  - final-runtime-ci-9de5eb3be241d933
+  - final-runtime-ci-b9597291321ca3ac
+  - final-runtime-ci-c8ae4e0086e62837
+  - final-runtime-ci-caa6df524a231d4b
+  - final-runtime-ci-dcb5cfa255aa0d42
 - path: skills/synthesis-autopilot/scripts/capabilities.py
   cases:
   - final-1c206ccf5757a7ed
@@ -1627,6 +1920,41 @@ changed_surfaces:
   - final-e74a9e81d42a8fd7
   - final-ea2e254af2dccdb7
   - final-ed3a6ac755703216
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/delegation_boundary.py
   cases:
   - final-0063326407749612
@@ -1713,6 +2041,41 @@ changed_surfaces:
   - final-f71c27d83ae5859a
   - final-f7683dd4c95ba366
   - final-f83d4de2cc3a0e5a
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/efficiency_profile.py
   cases:
   - final-ba0dcd34cbecde3d
@@ -1725,12 +2088,82 @@ changed_surfaces:
   - final-91b8cab732df891d
   - final-cf8673a3edc64c8d
   - final-e62bd0d65730d025
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/hermes_worker.py
   cases:
   - final-6032cfbef96ba6f5
   - final-6512d0ea8528dfca
   - final-6fd72eb3986e6797
   - final-75dfa0ef89d4a922
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/journal_storage.py
   cases:
   - final-003f38c1bda8262d
@@ -1842,6 +2275,41 @@ changed_surfaces:
   - final-e56069edaf2c93bb
   - final-f2da5f5d2e169150
   - final-f36cb3d7d86b2d54
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/managed_permissions.py
   cases:
   - final-0ac130d56e8f2347
@@ -1897,6 +2365,41 @@ changed_surfaces:
   - final-796883e64cd3b8c4
   - final-9fb3c5b340621897
   - final-f11804603bcce313
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/native_claude.py
   cases:
   - final-0aae0a6c936b339c
@@ -2094,6 +2597,41 @@ changed_surfaces:
   - final-de4cc4037dc229bd
   - final-fdfde8a1885bdba4
   - final-ff489875aa4b3eff
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/native_review.py
   cases:
   - final-021accca59b737c2
@@ -2105,6 +2643,41 @@ changed_surfaces:
   - final-b07d33e84d4d9d88
   - final-b561943d705b8702
   - final-e1c3935b59d9690c
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/observation_bridge.py
   cases:
   - final-003f38c1bda8262d
@@ -2314,6 +2887,41 @@ changed_surfaces:
   - final-8fee109b33ee874b
   - final-954912d5a6c39435
   - final-f7c435160014d62c
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/required_citations.py
   cases:
   - final-003f38c1bda8262d
@@ -2487,6 +3095,41 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/search_budget.py
   cases:
   - final-003f38c1bda8262d
@@ -2570,6 +3213,56 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+- path: skills/synthesis-autopilot/scripts/test_active_native_transport.py
+  cases:
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
+- path: skills/synthesis-autopilot/scripts/test_autopilot_cli.py
+  cases:
+  - final-runtime-ci-02787e046b264f2c
+  - final-runtime-ci-0488a9ca1c808b01
+  - final-runtime-ci-0f8944ac4a9ff73f
+  - final-runtime-ci-489c6971261a5261
+  - final-runtime-ci-89fe0f85ccd52d49
+  - final-runtime-ci-9643a4c7e6b78c32
+  - final-runtime-ci-9de5eb3be241d933
+  - final-runtime-ci-b9597291321ca3ac
+  - final-runtime-ci-c8ae4e0086e62837
+  - final-runtime-ci-caa6df524a231d4b
+  - final-runtime-ci-dcb5cfa255aa0d42
 - path: skills/synthesis-autopilot/scripts/test_capabilities.py
   cases:
   - final-1c206ccf5757a7ed
@@ -2873,6 +3566,43 @@ changed_surfaces:
   - final-0e9813f67ce5eafd
   - final-308deed6f4312253
   - final-5a3110d799bf695c
+- path: skills/synthesis-autopilot/scripts/test_native_cancellation.py
+  cases:
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-autopilot/scripts/test_native_claude_context.py
   cases:
   - final-0aae0a6c936b339c
@@ -2954,6 +3684,7 @@ changed_surfaces:
 - path: skills/synthesis-autopilot/scripts/test_native_session_owner_chain.py
   cases:
   - final-021accca59b737c2
+  - final-313cc3d8b5ade699
   - final-52b0b2da10c81b15
   - final-61491c50ebecce58
   - final-813ff16029fdf056
@@ -2962,6 +3693,13 @@ changed_surfaces:
   - final-b07d33e84d4d9d88
   - final-b561943d705b8702
   - final-e1c3935b59d9690c
+  - final-fbeaa32fe946a8af
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
 - path: skills/synthesis-autopilot/scripts/test_native_session_persistence.py
   cases:
   - final-021accca59b737c2
@@ -3171,6 +3909,41 @@ changed_surfaces:
   - final-b07d33e84d4d9d88
   - final-b561943d705b8702
   - final-e1c3935b59d9690c
+  - native-recovery-059cf3c72571631a
+  - native-recovery-1af1c5b599fab6ea
+  - native-recovery-1d181178e0c73aa7
+  - native-recovery-1efe5da0b40ebabc
+  - native-recovery-32285aad947ea5be
+  - native-recovery-36787cebd74ae021
+  - native-recovery-3daee7021acc85f3
+  - native-recovery-44e3b75a96edf124
+  - native-recovery-450463e031a4f6d8
+  - native-recovery-451adc45a291efd2
+  - native-recovery-4af0739e2922d89e
+  - native-recovery-577b44fe951d5c6f
+  - native-recovery-5a0acea8080bfac7
+  - native-recovery-5d0f14305f02d7bb
+  - native-recovery-60d3b7f5de15dd7b
+  - native-recovery-66c5686798dda899
+  - native-recovery-7117ba12053883fe
+  - native-recovery-716ebc0018d46e91
+  - native-recovery-79db5ec71ea3c02b
+  - native-recovery-8cb01e7aa12395cf
+  - native-recovery-8ef78d48856b5f4c
+  - native-recovery-8f9379afde163eee
+  - native-recovery-964ab1572e1e70c6
+  - native-recovery-b594ef46916d2187
+  - native-recovery-b7707323233cb5ef
+  - native-recovery-c8773e4b46103b75
+  - native-recovery-d16b648c6ba426e0
+  - native-recovery-d3954564cba10ca1
+  - native-recovery-da73388cd9ddd7f4
+  - native-recovery-e255ab5d7a7f757b
+  - native-recovery-e369d51ce2c6c9e5
+  - native-recovery-e3dbd5ab4b456e1b
+  - native-recovery-ed9d230166b2cc98
+  - native-recovery-fd15208eda76bfc3
+  - native-recovery-ffd3a23b274486d8
 - path: skills/synthesis-bitbucket/SKILL.md
   cases:
   - final-1d4dd2cc6dab8ef2
@@ -4855,6 +5628,72 @@ changed_surfaces:
   - final-dfd70fac106011dc
   - final-e5dea17c5d5fc6c2
   - final-e80e745ca359589d
+- path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
+  cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
+- path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
+  cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
 - path: skills/synthesis-implementation-integrity/scripts/test_r5_contract.py
   cases:
   - final-45855475987f2c62
@@ -5420,6 +6259,11 @@ changed_surfaces:
   - final-d0b879b27cec94ff
   - final-d8e755219ab444f6
   - final-ddf27eda257f5128
+  - final-runtime-ci-3dc06e4e7d07602e
+  - final-runtime-ci-769133f699174371
+  - final-runtime-ci-82e5ebed54cb0dc1
+  - final-runtime-ci-b57cacaa37185fd5
+  - final-runtime-ci-fe0082cc81f84655
 - path: skills/synthesis-onboarding/scripts/runtime_payload.py
   cases:
   - final-0c26de142eeece45
@@ -5716,6 +6560,11 @@ changed_surfaces:
   - final-d0b879b27cec94ff
   - final-d8e755219ab444f6
   - final-ddf27eda257f5128
+  - final-runtime-ci-3dc06e4e7d07602e
+  - final-runtime-ci-769133f699174371
+  - final-runtime-ci-82e5ebed54cb0dc1
+  - final-runtime-ci-b57cacaa37185fd5
+  - final-runtime-ci-fe0082cc81f84655
 - path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
   - final-0d8ae14b5d44e740
@@ -7509,6 +8358,37 @@ changed_surfaces:
   - final-fbeaa32fe946a8af
 - path: skills/synthesis-skills-manager/scripts/release.py
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - acquisition-5ba9a14de5d0d699
   - acquisition-8f68c26da82d7e13
   - acquisition-e5dea17c5d5fc6c2
@@ -7539,6 +8419,7 @@ changed_surfaces:
   - final-52bb012d8a1a8a5e
   - final-5681fd08b4371197
   - final-59be363bd6720835
+  - final-61491c50ebecce58
   - final-76f3fe5886f73e81
   - final-79c92a68ff96cc62
   - final-7dca023f0c4ede8c
@@ -7569,8 +8450,45 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-fc092801303bf1fc
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - final-05564316dfd30a59
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
@@ -7602,6 +8520,7 @@ changed_surfaces:
   - final-52bb012d8a1a8a5e
   - final-59be363bd6720835
   - final-5d53cb1265fe5d1b
+  - final-61491c50ebecce58
   - final-66adca0339fd32e0
   - final-68afe2e0310ffefb
   - final-79c92a68ff96cc62
@@ -7635,6 +8554,12 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-ffe9bb26d6fe109f
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - acquisition-5ba9a14de5d0d699
@@ -7654,6 +8579,37 @@ changed_surfaces:
   - final-fc092801303bf1fc
 - path: skills/synthesis-skills-manager/scripts/test_release.py
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
   - final-0f471cdc3ecc9c3a
@@ -7711,6 +8667,37 @@ changed_surfaces:
   - final-fc092801303bf1fc
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-23212a48e169808f
+  - acceptance-execution-29734f35bfc90190
+  - acceptance-execution-3af223ab82c149f9
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-3e6c518798ec80ea
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-76c19324f7df67e3
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-8a122642d12b8b57
+  - acceptance-execution-8ba2d9d0c7ab7014
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-9856fd38a2e41767
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-e94f1c2213c0b44a
   - final-05564316dfd30a59
   - final-0a16463543ab5811
   - final-0c923f378cfe4145
@@ -7734,6 +8721,7 @@ changed_surfaces:
   - final-52bb012d8a1a8a5e
   - final-59be363bd6720835
   - final-5d53cb1265fe5d1b
+  - final-61491c50ebecce58
   - final-79c92a68ff96cc62
   - final-7dca023f0c4ede8c
   - final-85ebf9c6391ba9d7
@@ -7752,6 +8740,12 @@ changed_surfaces:
   - final-ef5e59cc3c324c8a
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
+  - final-runtime-ci-0138a58b2d15b29a
+  - final-runtime-ci-12bac5fd3f580a4f
+  - final-runtime-ci-696486b75b28cecd
+  - final-runtime-ci-708375f16656ba29
+  - final-runtime-ci-d3259f538ad2e4cf
+  - final-runtime-ci-e754cbf93b986819
   - linux-portability-001b4a447ae43e13
   - linux-portability-5a0c929bd883c8e3
   - linux-portability-73d90456d3b985c0
@@ -13197,3 +14191,531 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_group_preserves_selected_virtualenv
   motivating_defect: Reviewed linux-portability consumer correction; original failures
     retained
+- id: native-recovery-36787cebd74ae021
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_active_native_transport.py::test_busy_passive_frame_checks_current_authority_on_bounded_cadence
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-44e3b75a96edf124
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_active_native_transport.py::test_current_cancel_interrupts_exact_started_turn
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-964ab1572e1e70c6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_active_native_transport.py::test_hermes_partial_frame_cancellation_keeps_bytes_and_no_native_signal
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-e255ab5d7a7f757b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_active_native_transport.py::test_idle_shared_owner_rechecks_revoked_authority
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-32285aad947ea5be
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_active_native_transport.py::test_real_shared_pipe_owner_notices_cancel_and_reaps
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-ffd3a23b274486d8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_actual_dead_observer_retained_receipt_is_recovered
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-e3dbd5ab4b456e1b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_cancel_after_native_completion_before_append_retains_both_facts
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-450463e031a4f6d8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_cancel_between_intent_and_launch_is_visible
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-1d181178e0c73aa7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_copied_board_cannot_prepare_original_native_custody
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-5a0acea8080bfac7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_dead_observer_ambiguous_receipt_never_clears_pending
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-fd15208eda76bfc3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_derived_intent_collision_refuses_without_poisoning_history
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-8ef78d48856b5f4c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_incomplete_close_retains_effect_and_late_exact_receipt
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-c8773e4b46103b75
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_interrupted_intent_is_not_replayed
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-60d3b7f5de15dd7b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_large_retained_history_actual_transport_cancellation
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-ed9d230166b2cc98
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_late_custody_does_not_reopen_successful_or_cancelled_intervals
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-8cb01e7aa12395cf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_live_observer_receipt_cannot_be_stolen
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-79db5ec71ea3c02b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_live_result_rechecks_receipt_after_constraints
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-4af0739e2922d89e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_original_lease_before_intent_process_loss_retains_request_identity
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-b7707323233cb5ef
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_original_observer_lease_refuses_replacement_and_alias
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-d16b648c6ba426e0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_original_recovery_and_root_cancel_serialize_without_relaunch
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-451adc45a291efd2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_original_recovery_refuses_changed_source_or_authority
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-da73388cd9ddd7f4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_original_result_crash_window_is_replay_safe
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-8f9379afde163eee
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_pending_intent_refuses_substitution
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-059cf3c72571631a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_pre_dispatch_absence_cannot_follow_an_aliased_attempt_parent
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-3daee7021acc85f3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_prepared_absence_is_rechecked_at_final_append
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-e369d51ce2c6c9e5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_real_concurrent_controller_cancellation
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-66c5686798dda899
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_real_observer_loss_fence_distinguishes_no_dispatch
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-b594ef46916d2187
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_recovery_ack_cannot_reuse_original_command_id
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-7117ba12053883fe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_recovery_ack_checks_custody_after_original_commit
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-5d0f14305f02d7bb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_recovery_rechecks_exact_receipt_after_constraints
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-1efe5da0b40ebabc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_recovery_rechecks_original_plan_at_final_commit_fence
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-577b44fe951d5c6f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_reused_process_identity_never_substitutes_for_exclusive_original_lease
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-716ebc0018d46e91
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_terminal_audit_cannot_adopt_foreign_or_changed_evidence
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-1af1c5b599fab6ea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_terminal_late_custody_never_admits_other_work
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: native-recovery-d3954564cba10ca1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_cancellation.py::test_terminal_original_child_actual_native_audit_preserves_unknown_cost
+  motivating_defect: Reviewed native-recovery correction; unchanged original failures
+    retained
+- id: acceptance-execution-e4acc58094590eae
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_batch_subtest_aggregate_matches_producer_bound
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-0f49810f8d8ee377
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_batch_subtest_schema_refuses_malformed_evidence
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-e94f1c2213c0b44a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_class_and_parameter_expansion_excludes_prefix_sibling
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-b83c461292895c9a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_same_filename_directories_execute_in_distinct_batches
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-4eca95ef05437407
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_chunk_bound_preserves_every_case_and_selector
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-9bf6b3dcdaef7609
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_collection_and_teardown_fail_closed
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-dd31288b7f240849
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_collection_inventory_cannot_hide_requested_nodes
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-ce7b0bd8209f6bcf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_copied_release_owner_closure_and_missing_dependency_refusal
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-9273f3aa9948b32c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_duplicate_cases_reuse_one_exact_execution
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-8d8e3b65dd95865d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_expected_failure_does_not_accept_setup_failure
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-cd202e3be0bc4110
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_original_collection_allows_unselected_filtering_and_selected_reordering
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-b56bed56e6c194fc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_original_collection_retains_required_expansions
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-de4280126c46b307
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_parameter_expansion_and_overlapping_selectors
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-3af75df8ea4b58c8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_partial_progress_cannot_replace_final_inventory
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-961d187f3b30cb8f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_process_failure_cannot_masquerade_as_expected_test_failure
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-7acd3d1e34cf68de
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_pytest_environment_and_config_cannot_deselect
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-833571f5894f7dee
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_real_pass_and_expected_call_failure
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-64618435de740577
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_receipt_phase_and_inventory_tampering_refuses
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-cbc0ce3b917abb06
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_same_filename_different_directories_are_separate_batches
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-700474b3acbfaae6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_selected_virtualenv_survives_batch_process
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-b78df97eb749f062
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_skipped_and_xfail_are_never_acceptance
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-0570ed7442e043c2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_source_mutation_after_test_is_not_acceptance
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-a6e89e38dbe20116
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_strict_xpass_is_not_an_expected_call_failure
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-3af223ab82c149f9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_timeout_retains_partial_phases_and_reaps_child
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-29734f35bfc90190
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_consumer_rejects_terminal_flags_without_phase_evidence
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-9856fd38a2e41767
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_failed_actual_consumer_retains_traceback
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-8a122642d12b8b57
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_publication_revalidates_exact_accepted_execution
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-8ba2d9d0c7ab7014
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_actual_runner_covers_whole_release_and_exact_review
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-23212a48e169808f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_boundary_two_real_publication_targets_allow_only_same_accepted_head
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-76c19324f7df67e3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_receipt_validator_rejects_every_binding_mismatch
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: acceptance-execution-3e6c518798ec80ea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_clock_isolated_from_finite_product_deadline
+  motivating_defect: Reviewed acceptance-execution correction; unchanged original
+    failures retained
+- id: final-runtime-ci-489c6971261a5261
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_desktop_active_or_corrupt_owned_run_stays_blocking
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-b9597291321ca3ac
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_desktop_hint_cannot_supply_missing_or_foreign_native_proof
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-89fe0f85ccd52d49
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_desktop_host_fallback_uses_real_native_proof_cold
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-c8ae4e0086e62837
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_desktop_inactive_stop_stays_read_only
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-9de5eb3be241d933
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_explicit_reference_cannot_conflict_with_authenticated_native
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-0f8944ac4a9ff73f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_hook_uses_scoped_owner_lookup_and_bounded_failure
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-caa6df524a231d4b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_host_hint_does_not_create_a_desktop_ownership_association
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-02787e046b264f2c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_invalid_explicit_reference_is_not_an_ordinary_stop
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-0488a9ca1c808b01
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_malformed_desktop_hint_does_not_silently_select_cli
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-dcb5cfa255aa0d42
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_no_hint_preserves_proven_claude_cli
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-9643a4c7e6b78c32
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_autopilot_cli.py::test_valid_explicit_reference_has_existing_pm_precedence
+  motivating_defect: Reviewed desktop runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-b57cacaa37185fd5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stop_actual_receipt_cold_consumer_before_effect
+  motivating_defect: Reviewed runtime runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-3dc06e4e7d07602e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch
+  motivating_defect: Reviewed runtime runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-769133f699174371
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stop_legacy_verification_cannot_authorize_later_changed_helper
+  motivating_defect: Reviewed runtime runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-fe0082cc81f84655
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stop_receipt_covers_direct_and_lazy_source_closure
+  motivating_defect: Reviewed runtime runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-82e5ebed54cb0dc1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_stop_reservation_lazy_loader_verifies_receipt_before_import
+  motivating_defect: Reviewed runtime runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-708375f16656ba29
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_detail_actual_subtest_keeps_parent_lifecycle_and_refuses_success
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-12bac5fd3f580a4f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_detail_collection_is_retained_without_a_final_inventory
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-e754cbf93b986819
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_detail_is_stream_bounded_and_budget_never_resets
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-0138a58b2d15b29a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_detail_survives_later_process_cutoff
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-696486b75b28cecd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_detail_unicode_missing_and_renderer_refusal_are_explicit
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained
+- id: final-runtime-ci-d3259f538ad2e4cf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_native_control_partition_preserves_all_tests_and_finite_bounds
+  motivating_defect: Reviewed ci runtime and execution correction; original failures
+    remain retained

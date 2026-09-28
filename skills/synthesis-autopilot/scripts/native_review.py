@@ -499,6 +499,12 @@ def verify_source(record, context):
                     # The dispatch owner is the parent. Independent review must
                     # instead bind the actual producer from the authenticated
                     # worker observation, never a caller-supplied child summary.
+                    from run_state import native_not_started
+                    if native_not_started(context["state"], child["child_id"]):
+                        if child.get("worker_receipt_id") or child.get("worker_observation") or child.get("producer"):
+                            return False
+                        producers.add(child["child_id"])
+                        continue
                     receipt_id = child.get("worker_receipt_id")
                     verifier = context.get("verify_receipt")
                     receipt = context.get("evidence", {}).get(receipt_id)

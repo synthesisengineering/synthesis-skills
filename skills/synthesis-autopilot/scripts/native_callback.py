@@ -206,7 +206,7 @@ def hook_result(rows, thread):
     }
 
 
-def execute(argv, configuration, cwd, timeout, environment):
+def execute(argv, configuration, cwd, timeout, environment, *, revalidate=None):
     """One finite owner: initialize, ephemeral thread/start, paired callback, cleanup."""
     connection = None
     failure = None
@@ -216,6 +216,8 @@ def execute(argv, configuration, cwd, timeout, environment):
     sent = b""
     cleanup = {"cleanup_verified": True, "scope": "No child started"}
     try:
+        if revalidate is not None:
+            revalidate()
         if native_resume.binary_identity(argv[0]) != configuration.get(
             "executable_identity"
         ):
@@ -232,11 +234,14 @@ def execute(argv, configuration, cwd, timeout, environment):
             },
             require_jsonrpc=False,
         )
+        connection.owner_check = revalidate
         planned = requests(configuration)
         connection.call("initialize", planned[0]["params"])
         connection.send(planned[1])
         connection.call("thread/start", planned[2]["params"])
         while True:
+            if revalidate is not None:
+                revalidate()
             try:
                 parse(
                     bytes(connection.raw_stdout),
@@ -260,6 +265,7 @@ def execute(argv, configuration, cwd, timeout, environment):
         failure = "Callback observation interrupted: " + type(exc).__name__
     finally:
         if connection:
+            connection.owner_check = None
             raw = bytes(connection.raw_stdout)
             errors = bytes(connection.stderr)
             sent = bytes(connection.raw_stdin)

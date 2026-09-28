@@ -17,6 +17,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
+- Bind Stop-hook dependencies before activation and revalidate late imports and
+  retained execution descriptors before dispatch. Resolve desktop identity through
+  the shared authenticated reader.
+- Retain bounded failure details for setup, execution, teardown, collection and
+  subtests during interrupted release checks. Partition native lifecycle controls
+  without dropping tests or changing execution and acceptance time limits.
+- Reconcile original native intents and retained receipts after interrupted
+ownership, refusing changed plan, claim or execution evidence without replay.
+  Preserve responsive active cancellation and verified descendant cleanup.
+- Batch release acceptance within finite bounds, preserving the original test
+  inventory and all execution phases. Reject hidden collected cases, invalid
+  subtest evidence and altered release receipts at their real consumers.
+- Install the declared HTTP client dependency in the existing macOS and Linux
+  onboarding test lanes; retain their original failing evidence.
 - Observe supported native web page-open and find actions, including text-result
   thumbnails, without treating page content as authority or task completion.
   Unknown fields, foreign identities and malformed records still stop coverage.

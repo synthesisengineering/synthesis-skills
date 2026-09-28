@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,10 +13,22 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_run_admission import world  # noqa: F401
-from test_run_state import contract
+from test_run_admission import NATIVE, SEAT, world as world_fixture
+from test_run_state import contract, create as create_state, engine as engine_fixture
+from test_controller import request, start_request
 
 SCRIPT = Path(__file__).with_name("autopilot.py")
+SCRIPTS = SCRIPT.parent
+
+
+@pytest.fixture
+def world(tmp_path, monkeypatch):
+    return world_fixture.__wrapped__(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def desktop_engine(monkeypatch):
+    return engine_fixture.__wrapped__(monkeypatch)
 
 
 def cli(world, *args):
@@ -70,7 +83,7 @@ def test_cli_cancel_is_tombstoned_and_reports_unverified_cleanup(world):
 
 
 def test_hook_uses_scoped_owner_lookup_and_bounded_failure(world):
-    state = create(world)
+    create(world)
     module = importlib.import_module("autopilot")
     first = module.stop_result(world["actor"], runtime_root=world["runtime"])
     assert first["continue"] is False
@@ -194,19 +207,7 @@ def test_first_task_doctor_validates_real_registered_ownership(world):
     assert report["unattended_admitted"] is False
 
 
-"""Actual CLI processes for the bounded facade, with synthetic native fixtures."""
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-
-import pytest
-
-SCRIPTS = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPTS))
-from test_run_state import world  # noqa: F401
-from test_controller import request, start_request
+# Actual CLI processes for the bounded facade, with synthetic native fixtures.
 
 
 def facade_cli(world, action, raw):
@@ -249,3 +250,152 @@ def test_facade_cli_operation_must_match_request(world):
     assert result.returncode == 2
     assert 'operation' in result.stderr.lower()
     assert not (world['project'] / 'resources/autopilot-runs').exists()
+
+
+# Desktop transport hints remain distinct from authenticated native ownership.
+@pytest.fixture
+def clean_client_environment(monkeypatch):
+    for key in ('CLAUDE_CODE_HOST_SESSION_ID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDECODE',
+                'SYNTHESIS_HOOK_CLIENT', 'CODEX_THREAD_ID', 'MUSE_SESSION_ID'):
+        monkeypatch.delenv(key, raising=False)
+
+
+def module():
+    return importlib.import_module('autopilot')
+
+
+def snapshot(root):
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob('*') if p.is_file() and not p.is_symlink()}
+
+
+def desktop_hint(monkeypatch):
+    monkeypatch.delenv('SYNTHESIS_CLIENT_SESSION_REF', raising=False)
+    monkeypatch.setenv('CLAUDE_CODE_HOST_SESSION_ID', 'local_synthetic_desktop')
+
+
+@pytest.mark.usefixtures("clean_client_environment")
+def test_desktop_host_fallback_uses_real_native_proof_cold(world, monkeypatch):
+    desktop_hint(monkeypatch)
+    script = '''import json,sys
+sys.path.insert(0,sys.argv[1])
+import autopilot
+actor=json.loads(sys.argv[2])
+print(json.dumps({'identity':autopilot._observer_identity(actor['native_payload']),
+                  'surface':autopilot.surface_for(actor['native_payload']),
+                  'stop':autopilot.stop_result(actor,runtime_root=sys.argv[3],reserve_feedback=False)}))
+'''
+    before = snapshot(world['scratch'])
+    done = subprocess.run([sys.executable, '-B', '-c', script, str(SCRIPTS),
+                           json.dumps(world['actor']), str(world['runtime'])],
+                          capture_output=True, text=True, timeout=15)
+    assert done.returncode == 0, done.stderr
+    result = json.loads(done.stdout)
+    assert result['identity'] == ['claude', NATIVE]
+    assert result['surface'] == 'claude-code-desktop'
+    assert result['stop'] == {}
+    assert snapshot(world['scratch']) == before
+    assert not world['runtime'].exists()
+
+
+@pytest.mark.parametrize('repeat', [False, True])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_desktop_inactive_stop_stays_read_only(world, monkeypatch, repeat):
+    desktop_hint(monkeypatch)
+    world['actor']['native_payload']['stop_hook_active'] = repeat
+    before = snapshot(world['scratch'])
+    assert module().surface_for(world['actor']['native_payload']) == 'claude-code-desktop'
+    for _ in range(2):
+        assert module().stop_result(world['actor'], runtime_root=world['runtime']) == {}
+    assert snapshot(world['scratch']) == before
+    assert not world['runtime'].exists()
+
+
+@pytest.mark.parametrize('hint', ['ccd:', 'ccd:bad host', 'not-a-ref', 'unknown:fixture'])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_invalid_explicit_reference_is_not_an_ordinary_stop(world, monkeypatch, hint):
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', hint)
+    monkeypatch.setenv('CLAUDE_CODE_HOST_SESSION_ID', 'local_synthetic_desktop')
+    assert module().surface_for(world['actor']['native_payload']) is None
+    assert module().stop_result(world['actor'], runtime_root=world['runtime'])['continue'] is False
+    assert not world['runtime'].exists()
+
+
+@pytest.mark.parametrize('host', ['bad host', '../path', 'line\nbreak'])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_malformed_desktop_hint_does_not_silently_select_cli(world, monkeypatch, host):
+    desktop_hint(monkeypatch)
+    monkeypatch.setenv('CLAUDE_CODE_HOST_SESSION_ID', host)
+    assert module().surface_for(world['actor']['native_payload']) is None
+    assert module().stop_result(world['actor'], runtime_root=world['runtime'])['continue'] is False
+
+
+@pytest.mark.usefixtures("clean_client_environment")
+def test_valid_explicit_reference_has_existing_pm_precedence(world, monkeypatch):
+    monkeypatch.setenv('CLAUDE_CODE_HOST_SESSION_ID', 'bad host')
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', 'cc:' + NATIVE)
+    assert module().surface_for(world['actor']['native_payload']) == 'claude-code-cli'
+    assert module().stop_result(world['actor'], runtime_root=world['runtime']) == {}
+
+
+@pytest.mark.parametrize('ref', ['cc:01990000-0000-7000-8000-000000000099',
+                               'codex:' + NATIVE, 'muse:' + NATIVE])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_explicit_reference_cannot_conflict_with_authenticated_native(world, monkeypatch, ref):
+    monkeypatch.setenv('SYNTHESIS_CLIENT_SESSION_REF', ref)
+    result = module().stop_result(world['actor'], runtime_root=world['runtime'])
+    assert result['continue'] is False
+    assert not world['runtime'].exists()
+
+
+@pytest.mark.parametrize('fault', ['missing-session', 'wrong-session', 'bad-transcript', 'linked-transcript'])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_desktop_hint_cannot_supply_missing_or_foreign_native_proof(world, monkeypatch, fault):
+    desktop_hint(monkeypatch)
+    payload = world['actor']['native_payload']
+    if fault == 'missing-session':
+        payload.pop('session_id')
+    elif fault == 'wrong-session':
+        payload['session_id'] = '01990000-0000-7000-8000-000000000099'
+    elif fault == 'bad-transcript':
+        world['transcript'].write_text('{corrupt')
+    else:
+        actual = world['transcript'].with_suffix('.retained')
+        world['transcript'].rename(actual)
+        world['transcript'].symlink_to(actual)
+    assert module().stop_result(world['actor'], runtime_root=world['runtime'])['continue'] is False
+    assert not world['runtime'].exists()
+
+
+@pytest.mark.parametrize('fault', ['incomplete', 'corrupt-owned-index'])
+@pytest.mark.usefixtures("clean_client_environment")
+def test_desktop_active_or_corrupt_owned_run_stays_blocking(desktop_engine, world, monkeypatch, fault):
+    state = create_state(desktop_engine, world)
+    desktop_hint(monkeypatch)
+    if fault == 'corrupt-owned-index':
+        (world['runtime'] / 'owners' / f'{SEAT}.json').write_text('{corrupt own state')
+    before = snapshot(world['scratch'])
+    for repeat in (False, True):
+        world['actor']['native_payload']['stop_hook_active'] = repeat
+        result = module().stop_result(world['actor'], runtime_root=world['runtime'], reserve_feedback=False)
+        assert result['continue'] is False
+        assert result.get('decision') != 'block'
+        assert 'UNRESOLVED' in result['systemMessage']
+    assert snapshot(world['scratch']) == before
+    assert state['status'] not in ('completed', 'cancelled')
+
+
+@pytest.mark.usefixtures("clean_client_environment")
+def test_no_hint_preserves_proven_claude_cli(world, monkeypatch):
+    monkeypatch.delenv('SYNTHESIS_CLIENT_SESSION_REF', raising=False)
+    assert module().surface_for(world['actor']['native_payload']) == 'claude-code-cli'
+    assert module().stop_result(world['actor'], runtime_root=world['runtime']) == {}
+
+
+@pytest.mark.usefixtures("clean_client_environment")
+def test_host_hint_does_not_create_a_desktop_ownership_association(world, monkeypatch):
+    desktop_hint(monkeypatch)
+    monkeypatch.setenv('CLAUDE_CODE_HOST_SESSION_ID', 'local_unbound_other_host')
+    assert module()._observer_identity(world['actor']['native_payload']) == ('claude', NATIVE)
+    assert module().stop_result(world['actor'], runtime_root=world['runtime']) == {}
+    assert not (world['board'].parent / 'seats').exists()

@@ -37,7 +37,7 @@ exact journal reference when further pagination is required.
 | `checkpoint` | Preserve current progress and, when requested and applicable, obtain the existing PM execution-basis observation. This observation does not certify a normal whole-project clean checkpoint. |
 | `explain` | Inspect contract, profile, coverage, ready work and unresolved obligations. Without a native actor, this is a historical read-only snapshot. Current ownership and acceptance require authenticated readback. |
 | `cancel` | Record the user's cancellation while retaining partial work, effects and child obligations. A requested child or schedule cancellation still requires observed disposition. |
-| `recover` | Run the full causal PM resolver, re-admit the actual owner, recover a committed request prefix and reconcile native source generations explicitly. An optional `capsule_ref` must name the current authentic checkpoint event. Rotation never silently resets a cursor. |
+| `recover` | Run the full causal PM resolver, re-admit the actual owner, reconcile original interrupted native-worker custody without replay, recover a committed request prefix and reconcile native source generations explicitly. An optional `capsule_ref` must name the current authentic checkpoint event. Rotation never silently resets a cursor. |
 | `finish` | Invoke actual outcome, quality, profile and completion owners. A completed tombstone is historical state; stale current artifacts, expired evidence or new native invalidations prevent a current completed result. |
 
 The response contains `status`, `run_id`, `revision`, `committed_event_ids`,

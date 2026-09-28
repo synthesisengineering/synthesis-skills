@@ -61,6 +61,7 @@ python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-checkpoint/scripts/ -q
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
+python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native-control
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
 python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
 python3 -m pytest skills/synthesis-meeting-prep/scripts/ -q

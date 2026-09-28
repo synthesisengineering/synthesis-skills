@@ -22,6 +22,7 @@ External effects are recorded here; their action owners still enforce approval.
 """
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -447,6 +448,9 @@ def _binding(project, state, actor, *, readonly=False, passive=False):
     owner = state.get("owner")
     if owner is not None and (proof["session_uuid"], proof["native_ref"]) != (owner["session_uuid"], owner["native_ref"]):
         raise RunStateError("native actor is not this run's current owner")
+    active = _active_native(state)
+    if active is not None and active.get("schema_version") == 2 and proof["board"] != active["owner"]["board"]:
+        raise RunStateError("pending native custody requires its original coordination board")
     return proof
 
 
@@ -913,6 +917,8 @@ def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, run
         previous=_last_event(project,run_id)
         state=previous["state"]
         _require_unlinked_predecessor(project, run_id)
+        if _active_native(state) or state.get("cancellation_requested") and phase in {"reserve", "submit"}:
+            raise RunStateError("active observation or cancellation blocks prepared native work")
         grant=launch._grant(state,permit_id,token)
         if phase in {"reserve","submit"}:
             required="prepared" if phase=="reserve" else "consumed"
@@ -1245,6 +1251,8 @@ def _successor_ledger(state):
 
 def _successor_quiescent(state):
     """Only owner-recorded terminal custody is retained; never adopt live work."""
+    if _active_native(state):
+        raise RunStateError("predecessor native observation remains unresolved")
     flow = state.get("extensions", {}).get("workflow", {})
     if not flow.get("budget"):
         raise RunStateError("predecessor has no bounded resource ledger")
@@ -1777,6 +1785,8 @@ def criterion_report(state, context):
 
 
 def _complete(project, state, context):
+    if _active_native(state):
+        raise RunStateError("native observation outcome remains unresolved")
     if state["status"] != "verifying":
         raise RunStateError("completion requires the verifying state")
     if any(item["status"] == "pending" for item in state["waits"].values()):
@@ -1972,6 +1982,20 @@ def _reduce(project, state, name, payload, context):
             state["completion"] = _complete(project, state, context)
         elif not isinstance(payload.get("reason"), str) or not payload["reason"].strip():
             raise RunStateError("incomplete/cancelled close requires an honest reason")
+        children = state.get("extensions", {}).get("workflow", {}).get("children", {})
+        running = [child for child in children.values() if child.get("disposition") == "running"]
+        if payload["status"] == "cancelled" and (running or _active_native(state)):
+            state["status"] = "recovering"
+            state["cancellation_requested"] = True
+            state["cancellation_reason"] = payload["reason"]
+            for child in running:
+                child.update(cancellation_requested=True, cancellation_reason=payload["reason"])
+            return state  # A request is not observed native termination.
+        if _active_native(state) and payload["status"] != "incomplete":
+            raise RunStateError("native observation remains unresolved")
+        if _active_native(state):
+            state["cancellation_requested"] = True
+            state["cancellation_reason"] = payload["reason"]
         state["status"] = payload["status"]
         state["terminal"] = {"at": context["now"], "reason": payload.get("reason", "Completion criteria verified")}
     elif name == "effect.prepare":
@@ -2075,6 +2099,548 @@ CORE_COMMANDS = frozenset({"transition", "progress", "wait.add", "wait.resolve",
     "owner.transfer.prepare", "owner.transfer.accept", "owner.transfer.revoke", "owner.resume"})
 
 
+def _active_native(state):
+    return next((item for item in state.get("native_execution", {}).values()
+                 if item["status"] == "pending"), None)
+
+
+def native_not_started(state, child_id):
+    """Journal-owned no-dispatch proof; never a native execution receipt."""
+    items = [row for row in state.get("native_execution", {}).values()
+             if row.get("child_id") == child_id]
+    if len(items) != 1:
+        return None
+    row = items[0]
+    return row if (row.get("schema_version") == 2 and row.get("status") == "not_started"
+        and row.get("phase") == "prepared" and row.get("recovery_command")
+        and row["id"] not in state.get("observations", {})) else None
+
+
+def _cancellation_lane(state, command, payload):
+    active = _active_native(state)
+    if state.get("cancellation_requested") and (command.startswith("observe:") and command == "observe:native_worker"
+            or command in {"workflow.dispatch", "workflow.attempt", "workflow.progress"}
+            or command == "workflow.task" and payload.get("action") in {"start", "retry", "complete"}
+            or command == "close" and payload.get("status") == "completed"):
+        raise RunStateError("run cancellation blocks new productive work")
+    if active is None:
+        return
+    child = state.get("extensions", {}).get("workflow", {}).get("children", {}).get(active["child_id"], {})
+    allowed = (command == "close" and payload.get("status") in {"cancelled", "incomplete"}
+        or command == "workflow.cancel_child" and payload.get("child_id") == active["child_id"]
+        or command == "workflow.task" and payload.get("action") == "cancel"
+            and payload.get("task_id") == child.get("task_id"))
+    if not allowed:
+        raise RunStateError("native observation pending; only its authenticated cancellation is admitted")
+
+
+def _store_native_observation(state, command_id, data, context, proof):
+    _json(data)
+    if not isinstance(data, dict):
+        raise RunStateError("observer did not return typed observation data")
+    observed_at = _now()
+    observation = {"id": command_id, "kind": "native_worker", "observed_at": observed_at,
+        "expires_at": (_time(observed_at) + timedelta(hours=1)).isoformat(), "data": deepcopy(data),
+        "bindings": {**{key: state[key] for key in ("run_id", "contract_digest", "profile_digest")},
+            **{key: proof[key] for key in ("project_id", "project_root", "session_uuid", "native_ref", "claim_hash", "repository", "branch")}},
+        "artifact_digests": {key: item["digest"] for key, item in context["artifacts"].items()}}
+    observation["digest"] = _digest(observation)
+    state.setdefault("observations", {})[command_id] = observation
+    state["evidence"][command_id] = {key: value for key, value in observation.items() if key != "artifact_digests"}
+    state["evidence"][command_id].update(artifact_id=f"event:{state['revision'] + 1}", provenance="engine-observation")
+
+
+def _native_lease_identity(project, path):
+    path = safe_path(path, Path(project))
+    before = path.lstat()
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+            or stat.S_IMODE(before.st_mode) != 0o600 or before.st_nlink != 1):
+        raise RunStateError("native observer lease is not a private singly linked regular file")
+    raw = journal_storage.read_regular(path, 4096)
+    after = path.lstat()
+    fields = ("st_dev", "st_ino", "st_uid", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if any(getattr(before, key) != getattr(after, key) for key in fields):
+        raise RunStateError("native observer lease changed")
+    return {"path": str(path.relative_to(project)), "device": after.st_dev,
+        "inode": after.st_ino, "uid": after.st_uid, "mode": stat.S_IMODE(after.st_mode),
+        "size": after.st_size, "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _new_native_lease(project, run_id, command_id, nonce, custody, *, command_digest, owner):
+    """Acquire original invocation custody, including an uncommitted precursor.
+
+    The caller has replayed the entire journal and rejected every original,
+    prepare and dispatch ID. An orphan may be reused only under this exact
+    admitted request; its free lock never proves an external/native outcome.
+    """
+    path = safe_path(_home(project, run_id) / (".native-" + _digest(command_id) + ".lock"), Path(project))
+    binding = {"schema_version": 1, "run_id": run_id, "intent_id": command_id,
+        "command_digest": command_digest,
+        "owner": {key: owner[key] for key in ("session_uuid", "native_ref", "board", "claim_hash", "project_root", "repository", "branch")}}
+    record = {**binding, "nonce": nonce, "observer_pid": os.getpid()}
+    if len(_json(record)) > 4096:
+        raise RunStateError("native observer lease binding exceeds its fixed byte limit")
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        fd = None
+    if fd is not None:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(_json(record))
+            stream.flush()
+            os.fsync(stream.fileno())
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    identity = _native_lease_identity(project, path)
+    custody.enter_context(bounded_lock(path, create=False, timeout=0.05))
+    if _native_lease_identity(project, path) != identity:
+        raise RunStateError("native observer lease changed during admission")
+    from native_review import _json as strict_json
+    retained = strict_json(journal_storage.read_regular(path, 4096))
+    if (not isinstance(retained, dict) or set(retained) != set(record)
+            or {key: retained[key] for key in binding} != binding
+            or type(retained["observer_pid"]) is not int or retained["observer_pid"] <= 0
+            or not isinstance(retained["nonce"], str)):
+        raise RunStateError("uncommitted native lease does not bind this original request")
+    try:
+        if str(uuid.UUID(retained["nonce"])) != retained["nonce"]:
+            raise ValueError("noncanonical nonce")
+    except ValueError as exc:
+        raise RunStateError("original native lease nonce is invalid") from exc
+    if _native_lease_identity(project, path) != identity:
+        raise RunStateError("native observer lease changed after readback")
+    return identity, retained["nonce"]
+
+
+def _check_native_lease(project, intent):
+    lease = intent.get("lease")
+    expected = _home(project, intent["run_id"]) / (".native-" + _digest(intent["id"]) + ".lock")
+    if (not isinstance(lease, dict) or Path(project) / lease["path"] != expected
+            or _native_lease_identity(project, expected) != lease):
+        raise RunStateError("original native observer custody is unavailable or changed")
+    return Path(project) / lease["path"]
+
+
+def _native_intent_context(project, state, intent, context):
+    if (state["run_id"] != intent["run_id"] or state["owner"] != intent["owner"] or context["binding"]["claim_hash"] != intent["owner"]["claim_hash"]
+            or context["binding"]["board"] != intent["owner"]["board"]
+            or state["contract_digest"] != intent["contract_digest"]
+            or state["profile_digest"] != intent["profile_digest"]
+            or context["plan_digest"] != intent["plan_digest"]
+            or context["artifacts"].get(intent["check_id"], {}).get("digest") != intent["check_digest"]):
+        raise RunStateError("original native intent authority or source changed")
+    _check_native_lease(project, intent)
+
+
+def _native_commit_binding(project, state, intent, actor, command, payload):
+    """Fresh authority and original content after all receipt/reducer work."""
+    proof = _command_binding(project, state, actor, command, payload)
+    if (proof["claim_hash"] != intent["owner"]["claim_hash"]
+            or proof["board"] != intent["owner"]["board"]
+            or state["contract_digest"] != intent["contract_digest"]
+            or state["profile_digest"] != intent["profile_digest"]
+            or _plan_digest(project, state) != intent["plan_digest"]):
+        raise RunStateError("original native authority or plan changed before commit")
+    check = state["artifacts"].get(intent["check_id"])
+    if not check or check["digest"] != intent["check_digest"]:
+        raise RunStateError("original native check changed before commit")
+    raw = journal_storage.read_regular(safe_path(Path(project) / check["path"], Path(project)), MAX_JSON_BYTES)
+    if hashlib.sha256(raw).hexdigest() != intent["check_digest"]:
+        raise RunStateError("original native check bytes changed before commit")
+    _check_native_lease(project, intent)
+    return proof
+
+
+def _native_attempt_absent(project, run_id, child_id):
+    attempt = safe_path(_home(project, run_id) / "native-worker-attempts" / child_id, Path(project))
+    try:
+        attempt.lstat()
+    except FileNotFoundError:
+        return
+    raise RunStateError("pre-dispatch intent has unexpected attempt custody; outcome remains unknown")
+
+
+def _native_receipt_custody(data, context, *, require_cleanup=False):
+    """Revalidate the exact retained data and all raw sources at a commit fence."""
+    import delegation_boundary
+    if not delegation_boundary.verify_worker_observation(data, context):
+        raise RunStateError("native receipt or source custody changed before commit")
+    if require_cleanup:
+        from native_review import _json as strict_json
+        receipt = safe_path(Path(data["receipt_path"]), Path(context["project"]))
+        raw = journal_storage.read_regular(receipt, delegation_boundary.MAX_FILE_BYTES)
+        if (hashlib.sha256(raw).hexdigest() != data["receipt_digest"]
+                or strict_json(raw).get("process_cleanup", {}).get("cleanup_verified") is not True):
+            raise RunStateError("original native cleanup is not source verified; retain unknown effects")
+
+
+def _native_recovery_custody(project, state, intent, context):
+    current = state["native_execution"][intent["id"]]
+    if current["status"] == "not_started" and intent["phase"] == "prepared":
+        _native_attempt_absent(project, state["run_id"], intent["child_id"])
+    elif current["status"] == "completed" and intent["phase"] == "dispatch_fenced":
+        observation = state.get("observations", {}).get(intent["id"], {})
+        data = observation.get("data")
+        if (observation.get("kind") != "native_worker" or not isinstance(data, dict)
+                or _digest(data) != current.get("outcome_digest")):
+            raise RunStateError("original native result does not bind its retained observation")
+        _native_receipt_custody(data, context, require_cleanup=True)
+    else:
+        raise RunStateError("native recovery acknowledgement lacks an original result disposition")
+
+
+def _recover_native_pending(project, run_id, payload, *, expected_revision, command_id,
+                            actor, runtime_root, request_binding):
+    """Reconcile original custody, never launch or infer an external outcome.
+
+    The original completion and the recovery acknowledgement are separate
+    append commit points. A crash between them is retryable without executing
+    the observer. Terminal incomplete intervals remain terminal.
+    """
+    _fields(payload, {"intent_id"}, {"intent_id"})
+    original = _id(payload["intent_id"], "original native intent")
+    command = "native.execution.recover"
+    if command_id == original:
+        raise RunStateError("recovery acknowledgement must have its own command identity")
+    state = load_run(project, run_id)
+    _command_binding(project, state, actor, command, payload)
+    lock = _home(project, run_id) / ".run.lock"
+    with bounded_lock(lock, create=False), ExitStack() as custody:
+        previous = matching = None
+        for event in _events(project, run_id):
+            previous = event
+            if event["command_id"] == command_id:
+                matching = event
+        state = deepcopy(previous["state"])
+        proof = _command_binding(project, state, actor, command, payload)
+        material = {"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
+        if request_binding is not None:
+            material["request_binding"] = request_binding
+        digest = _digest(material)
+        # Interrupted original-result commit records this recovery's exact
+        # request identity, but not its completed step, for a fresh CAS retry.
+        _check_request(state, request_binding)
+        if matching:
+            if matching["command_digest"] != digest:
+                raise RunStateError("command ID was already used with different input")
+            return deepcopy(matching["state"])
+        if state["revision"] != expected_revision:
+            raise RunStateError("stale run revision; reload before retry")
+        _require_unlinked_predecessor(project, run_id)
+        intent = state.get("native_execution", {}).get(original)
+        if not intent or intent.get("schema_version") != 2:
+            raise RunStateError("original intent lacks authenticated recoverable observer custody")
+        original_request = intent.get("request_binding")
+        if (request_binding and original_request
+                and request_binding["request_id"] == original_request["request_id"]
+                and any(request_binding[key] != original_request[key] for key in ("request_digest", "operation", "initial_revision"))):
+            raise RunStateError("recovery cannot reuse the original request identity with another body")
+        if state["status"] in TERMINAL and state["status"] != "incomplete":
+            raise RunStateError("only incomplete terminal custody can be reconciled without reopening")
+        path = _check_native_lease(project, intent)
+        custody.enter_context(bounded_lock(path, create=False, timeout=0.05))
+        _check_native_lease(project, intent)
+        with admission_scope(proof, actor, project) as operation:
+            context = _context_observed(project, state, {}, proof, actor=actor, observation=operation)
+            context.update(state=deepcopy(state), project=project, actor=deepcopy(actor), admission_observation=operation)
+            _native_intent_context(project, state, intent, context)
+            if intent["status"] == "pending":
+                import delegation_boundary
+                attempt = safe_path(_home(project, run_id) / "native-worker-attempts" / intent["child_id"], Path(project))
+                receipt_raw = None
+                if intent["phase"] == "prepared":
+                    _native_attempt_absent(project, run_id, intent["child_id"])
+                    disposition = "not_started"
+                elif intent["phase"] == "dispatch_fenced":
+                    receipt = safe_path(attempt / "receipt.json", Path(project))
+                    receipt_raw = journal_storage.read_regular(receipt, delegation_boundary.MAX_FILE_BYTES)
+                    from native_review import _json as strict_json
+                    manifest = strict_json(receipt_raw)
+                    data = {**manifest["data"], "receipt_path": str(receipt),
+                            "receipt_digest": hashlib.sha256(receipt_raw).hexdigest()}
+                    if (not delegation_boundary.verify_worker_observation(data, context)
+                            or manifest.get("process_cleanup", {}).get("cleanup_verified") is not True):
+                        raise RunStateError("original native outcome or local cleanup is not source verified; retain unknown effects")
+                    if delegation_boundary.observation_intent(state, intent["child_id"]) != manifest["configuration"].get("observation_intent"):
+                        raise RunStateError("retained worker outcome belongs to a different original intent")
+                    _store_native_observation(state, original, data, context, proof)
+                    disposition = "completed"
+                else:
+                    raise RunStateError("unknown original native dispatch phase")
+                state["native_execution"][original] = {**intent, "status": disposition,
+                    "recovered_at": _now(), "recovery_command": command_id,
+                    "local_observer_custody": "exclusive original lease acquired",
+                    "native_termination": "not inferred from observer lease",
+                    **({"outcome_digest": _digest(data)} if receipt_raw is not None else {})}
+                _command_binding(project, state, actor, command, payload)
+                state["revision"] += 1
+                state["updated_at"] = _now()
+                _record_request(state, intent.get("request_binding"), original, intent["command_digest"])
+                # Record the interrupted recovery request basis without falsely
+                # marking its acknowledgement step as committed.
+                if request_binding:
+                    requests = state.setdefault("extensions", {}).setdefault("controller", {"schema_version": 1}).setdefault("requests", {})
+                    if len(requests) >= MAX_EVENTS and request_binding["request_id"] not in requests:
+                        raise RunStateError("controller request journal capacity reached")
+                    requests.setdefault(request_binding["request_id"], {key: request_binding[key] for key in ("request_digest", "operation", "initial_revision")} | {"steps": {}})
+                for constraint in _CONSTRAINTS.values():
+                    constraint(deepcopy(state), command, deepcopy(payload), context)
+                _native_recovery_custody(project, state, intent, context)
+                proof = _native_commit_binding(project, state, intent, actor, command, payload)
+                _append(project, state, original, intent["command_digest"], "observe:native_worker", previous["digest"], proof)
+                previous = None
+                for previous in _events(project, run_id):
+                    pass
+            elif intent["status"] not in {"completed", "not_started"}:
+                raise RunStateError("unknown native intent disposition")
+        proof = _native_commit_binding(project, state, intent, actor, command, payload)
+        with admission_scope(proof, actor, project) as operation:
+            context = _context_observed(project, state, {}, proof, actor=actor, observation=operation)
+            context.update(state=deepcopy(state), project=project, actor=deepcopy(actor), admission_observation=operation)
+            _native_recovery_custody(project, state, intent, context)
+        proof = _native_commit_binding(project, state, intent, actor, command, payload)
+        state["revision"] += 1
+        state["updated_at"] = _now()
+        _record_request(state, request_binding, command_id, digest)
+        _append(project, state, command_id, digest, command, previous["digest"], proof)
+        _project(project, state)
+        _index_update(runtime_root, state["owner"]["session_uuid"], run_id, _index_entry(project, state))
+        return deepcopy(state)
+
+
+def _observe_native_pending(project, run_id, payload, **kwargs):
+    with ExitStack() as custody:
+        return _observe_native_owned(project, run_id, payload, custody=custody, **kwargs)
+
+
+def _observe_native_owned(project, run_id, payload, *, expected_revision, command_id,
+                            actor, runtime_root, request_binding, custody):
+    """One durable attempt, with a narrowly fenced concurrent cancellation lane.
+
+    An interruption leaves the pending intent unresolved. Neither retry, a new
+    command ID, nor a cold owner restarts it. Outcome custody is committed only
+    by this invocation or the source-verifying original-intent recovery owner.
+    """
+    command = "observe:native_worker"
+    lock = _home(project, run_id) / ".run.lock"
+    initial = load_run(project, run_id)
+    _command_binding(project, initial, actor, command, payload)
+    with bounded_lock(lock, create=not lock.exists()):
+        previous = None
+        for previous in _events(project, run_id):
+            pass
+        state = deepcopy(previous["state"])
+        proof = _command_binding(project, state, actor, command, payload)
+        material = {"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
+        if request_binding is not None:
+            material["request_binding"] = request_binding
+        digest = _digest(material)
+        _check_request(state, request_binding)
+        prior = state.get("native_execution", {}).get(command_id)
+        if prior:
+            if prior["command_digest"] != digest:
+                raise RunStateError("command ID was already used with different input")
+            if prior["status"] == "completed":
+                return state
+            if prior["status"] == "not_started":
+                raise RunStateError("original native intent was finalized as not started; replay is forbidden")
+            raise RunStateError("native attempt outcome unresolved; replay is forbidden")
+        if state["revision"] != expected_revision:
+            raise RunStateError("stale run revision; reload before retry")
+        if state["status"] in TERMINAL or state.get("cancellation_requested"):
+            raise RunStateError("cancelled or terminal run cannot launch native work")
+        if _active_native(state):
+            raise RunStateError("another native observation remains unresolved")
+        intent_id = "native-intent-" + _digest(command_id)[:32]
+        dispatch_id = "native-dispatch-" + _digest(command_id)[:32]
+        if any(event["command_id"] in {command_id, intent_id, dispatch_id} for event in _events(project, run_id)):
+            raise RunStateError("command or native intent ID was already used")
+        _require_unlinked_predecessor(project, run_id)
+        with admission_scope(proof, actor, project) as operation:
+            context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
+            _fields(payload, {"check_id"}, {"check_id"})
+            check = context["artifacts"].get(_id(payload["check_id"], "observer check ID"))
+            if not check or check.get("role") != "input":
+                raise RunStateError("native observer requires a current registered input")
+            spec = _read(safe_path(Path(project) / check["path"], Path(project)))
+            if (set(spec) != {"schema_version", "kind", "arguments"} or spec["schema_version"] != 1
+                    or spec["kind"] != "native_worker" or not isinstance(spec["arguments"], dict)
+                    or set(spec["arguments"]) != {"child_id", "timeout_seconds"}):
+                raise RunStateError("invalid native observation specification")
+            args = spec["arguments"]
+            child_id = _id(args["child_id"])
+            child = state.get("extensions", {}).get("workflow", {}).get("children", {}).get(child_id)
+            if (not child or child.get("mode") != "native-cli" or child.get("disposition") != "running"
+                    or child.get("cancellation_requested") or type(args["timeout_seconds"]) is not int
+                    or not 1 <= args["timeout_seconds"] <= 3600):
+                raise RunStateError("native observation requires an uncancelled running child")
+            if proof["board"] != state["owner"]["board"]:
+                raise RunStateError("native dispatch requires the original coordination board")
+            nonce = str(uuid.uuid4())
+            lease, nonce = _new_native_lease(project, run_id, command_id, nonce, custody,
+                command_digest=digest, owner=state["owner"])
+            intent = {"schema_version": 2, "nonce": nonce, "phase": "prepared",
+                "lease": lease, "run_id": run_id, "observer_pid": os.getpid(), "check_id": payload["check_id"],
+                "request_binding": deepcopy(request_binding),
+                "id": command_id, "command_digest": digest, "child_id": child_id,
+                "status": "pending", "prepared_at": _now(), "prepared_revision": state["revision"] + 1,
+                "owner": deepcopy(state["owner"]), "check_digest": check["digest"],
+                "contract_digest": state["contract_digest"], "profile_digest": state["profile_digest"],
+                "plan_digest": context["plan_digest"]}
+            state.setdefault("native_execution", {})[command_id] = intent
+            state["revision"] += 1
+            state["updated_at"] = _now()
+            _command_binding(project, state, actor, command, payload)
+            _append(project, state, intent_id,
+                    _digest(intent), "native.execution.prepare", previous["digest"], proof)
+            _project(project, state)
+            _index_update(runtime_root, state["owner"]["session_uuid"], run_id, _index_entry(project, state))
+    # PM authority remains required while the run lock is available to cancel.
+    # No external caller can provide this closure or finalize another intent.
+    def current_cancellation():
+        current = load_run(project, run_id)
+        fresh = _binding(project, current, actor)
+        if (current.get("native_execution", {}).get(command_id) != intent
+                or current["owner"] != intent["owner"]
+                or fresh["claim_hash"] != proof["claim_hash"]):
+            raise RunStateError("native observation intent or authority changed")
+        _check_native_lease(project, intent)
+        if _plan_digest(project, current) != intent["plan_digest"]:
+            raise RunStateError("native observation plan changed")
+        registered = current["artifacts"][payload["check_id"]]
+        raw = journal_storage.read_regular(safe_path(Path(project) / registered["path"], Path(project)), MAX_JSON_BYTES)
+        if hashlib.sha256(raw).hexdigest() != intent["check_digest"]:
+            raise RunStateError("native observation input changed")
+        current_child = current["extensions"]["workflow"]["children"][child_id]
+        node = current["extensions"]["workflow"].get("graph", {}).get("nodes", {}).get(current_child.get("task_id"), {})
+        requested = bool(current.get("cancellation_requested") or current_child.get("cancellation_requested")
+                         or node.get("status") == "cancelled")
+        return {"requested": requested, "run_id": run_id, "child_id": child_id,
+                "intent_id": command_id, "revision": current["revision"],
+                "reason": current_child.get("cancellation_reason", current.get("cancellation_reason", "Task cancelled")) if requested else None}
+    # The irreversible boundary is fenced durably before invoking any adapter.
+    # Its presence means effects MAY have started, never that they did.
+    with bounded_lock(lock, create=False):
+        previous = None
+        for previous in _events(project, run_id):
+            pass
+        state = deepcopy(previous["state"])
+        cancellation = current_cancellation()
+        if cancellation["requested"]:
+            raise RunStateError("native invocation cancelled before dispatch")
+        proof = _command_binding(project, state, actor, command, payload)
+        intent = {**intent, "phase": "dispatch_fenced", "dispatch_revision": state["revision"] + 1}
+        state["native_execution"][command_id] = deepcopy(intent)
+        state["revision"] += 1
+        state["updated_at"] = _now()
+        _append(project, state, dispatch_id, _digest(intent), "native.execution.dispatch", previous["digest"], proof)
+        _project(project, state)
+        _index_update(runtime_root, state["owner"]["session_uuid"], run_id, _index_entry(project, state))
+    proof = _binding(project, state, actor)
+    with admission_scope(proof, actor, project) as operation:
+        context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
+        context.update(state=deepcopy(state), project=project, actor=deepcopy(actor),
+                       admission_observation=operation, current_cancellation=current_cancellation)
+        context["criterion_report"] = lambda: criterion_report(state, context)
+        current_cancellation()  # Never launch on a stale/revoked intent.
+        data = _OBSERVERS["native_worker"](context, deepcopy(payload))
+    with bounded_lock(lock, create=False):
+        previous = None
+        for previous in _events(project, run_id):
+            pass
+        latest = deepcopy(previous["state"])
+        cancellation = current_cancellation()
+        proof = _command_binding(project, latest, actor, command, payload)
+        with admission_scope(proof, actor, project) as operation:
+            final_context = _context_observed(project, latest, payload, proof, actor=actor, observation=operation)
+            if final_context["artifacts"][payload["check_id"]]["digest"] != intent["check_digest"]:
+                raise RunStateError("native observation specification changed during execution")
+        _store_native_observation(latest, command_id, data, context, proof)
+        latest["native_execution"][command_id] = {**intent, "status": "completed",
+            "outcome_digest": _digest(data), "observed_cancellation": cancellation}
+        latest["revision"] += 1
+        latest["updated_at"] = _now()
+        _record_request(latest, request_binding, command_id, digest)
+        for check_constraint in _CONSTRAINTS.values():
+            check_constraint(deepcopy(latest), command, deepcopy(payload), final_context)
+        # A source-backed receipt must survive registered constraints just as
+        # the original plan and actor must. Unbacked diagnostic observations
+        # remain unverified data; downstream worker intake still refuses them.
+        if "receipt_path" in data or "receipt_digest" in data:
+            proof = _native_commit_binding(project, latest, intent, actor, command, payload)
+            with admission_scope(proof, actor, project) as operation:
+                final_context = _context_observed(project, latest, payload, proof, actor=actor, observation=operation)
+                final_context.update(state=deepcopy(latest), project=project, actor=deepcopy(actor), admission_observation=operation)
+                _native_receipt_custody(data, final_context)
+        proof = _native_commit_binding(project, latest, intent, actor, command, payload)
+        _append(project, latest, command_id, digest, command, previous["digest"], proof)
+        _project(project, latest)
+        _index_update(runtime_root, latest["owner"]["session_uuid"], run_id, _index_entry(project, latest))
+        return deepcopy(latest)
+
+
+_LATE_NATIVE_CUSTODY = frozenset({"workflow.worker_record", "workflow.return", "workflow.integrate",
+                                 "artifact.register", "evidence.record"})
+
+
+def _terminal_native_custody(project, state, command, payload, context):
+    """Permit only late original-child custody, never reopen a closed interval."""
+    if state["status"] != "incomplete" or _active_native(state) or command not in _LATE_NATIVE_CUSTODY:
+        raise RunStateError("terminal run cannot be reopened")
+    intents = {row["child_id"]: row for row in state.get("native_execution", {}).values()
+               if row.get("schema_version") == 2 and row["status"] in {"completed", "not_started"}}
+    child_id = payload.get("child_id")
+    if command in {"artifact.register", "evidence.record"}:
+        if command == "artifact.register":
+            if (payload.get("role") != "evidence" or payload.get("required") is not False
+                    or payload.get("id") in state["artifacts"]):
+                raise RunStateError("terminal custody accepts only a new nonrequired native child audit artifact")
+            path = Path(payload["path"])
+            path = safe_path(path if path.is_absolute() else Path(project) / path, Path(project))
+        else:
+            artifact = context["artifacts"].get(payload.get("artifact_id"), {})
+            if payload.get("kind") != "child_integration" or artifact.get("role") != "evidence":
+                raise RunStateError("terminal custody accepts only native child audit evidence")
+            path = safe_path(Path(project) / artifact["path"], Path(project))
+        raw = journal_storage.read_regular(path, MAX_JSON_BYTES)
+        from native_review import _json as strict_json
+        record = strict_json(raw)
+        child_id = record.get("data", {}).get("child_id")
+        if record.get("kind") != "child_integration" or child_id not in intents:
+            raise RunStateError("terminal audit does not bind an original reconciled child")
+        if context["binding"]["board"] != intents[child_id]["owner"]["board"]:
+            raise RunStateError("terminal native custody requires its original coordination board")
+        from evidence_bridge import verify_source
+        owned = {**context, "state": state, "project": project}
+        if not verify_source(record, owned):
+            raise RunStateError("terminal audit lacks current independent native source proof")
+        def recheck():
+            if (journal_storage.read_regular(path, MAX_JSON_BYTES) != raw
+                    or not verify_source(record, owned)):
+                raise RunStateError("terminal child audit changed before append")
+        return recheck
+    intent = intents.get(child_id)
+    child = state.get("extensions", {}).get("workflow", {}).get("children", {}).get(child_id)
+    if not intent or not child:
+        raise RunStateError("terminal custody must name its original reconciled child")
+    if context["binding"]["board"] != intent["owner"]["board"]:
+        raise RunStateError("terminal native custody requires its original coordination board")
+    if command == "workflow.worker_record" and (intent["status"] != "completed" or payload.get("receipt_id") != intent["id"]):
+        raise RunStateError("terminal worker intake must use the exact original observation")
+    if command == "workflow.return":
+        if intent["status"] == "not_started":
+            if payload.get("disposition") not in {"failed", "cancelled"} or payload.get("artifact_ids") or payload.get("evidence_ids"):
+                raise RunStateError("undispatched child cannot claim work or native success")
+        elif child.get("worker_receipt_id") != intent["id"]:
+            raise RunStateError("terminal child return requires its original verified worker intake")
+    # Existing reducers retain source verification, independent audit, artifact
+    # equality and immutable actual/unknown settlement semantics.
+    return lambda: None
+
+
 def apply_command(project: Path, run_id: str, command: str, payload: dict, *, expected_revision: int,
                   command_id: str, actor: dict, runtime_root: Path | None = None,
                   request_binding: dict | None = None) -> dict:
@@ -2083,6 +2649,12 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
     if type(expected_revision) is not int or expected_revision < 1 or not isinstance(payload, dict):
         raise RunStateError("mutation requires an integer expected revision and object payload")
     project = Path(project).resolve(strict=True)
+    if command == "native.execution.recover":
+        return _recover_native_pending(project, run_id, payload, expected_revision=expected_revision,
+            command_id=command_id, actor=actor, runtime_root=runtime_root, request_binding=request_binding)
+    if command == "observe:native_worker" and "native_worker" in _OBSERVERS:
+        return _observe_native_pending(project, run_id, payload, expected_revision=expected_revision,
+            command_id=command_id, actor=actor, runtime_root=runtime_root, request_binding=request_binding)
     state = load_run(project, run_id)
     lock = _home(project, run_id) / ".run.lock"
     try:
@@ -2116,9 +2688,11 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             return deepcopy(matching["state"])
         if state["revision"] != expected_revision:
             raise RunStateError("stale run revision; reload before retry")
-        if state["status"] in TERMINAL and command not in _TERMINAL_COMMANDS:
+        late_custody = state["status"] == "incomplete" and command in _LATE_NATIVE_CUSTODY
+        if state["status"] in TERMINAL and command not in _TERMINAL_COMMANDS and not late_custody:
             raise RunStateError("terminal run cannot be reopened; create a new run identity")
         _require_unlinked_predecessor(project, run_id)
+        _cancellation_lane(state, command, payload)
         # Trusted sources and the bounded observer share this one admitted
         # operation. Pure reducer context never contains the token, and the
         # scope ends before the fresh mutation admission below.
@@ -2126,6 +2700,8 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             context = _context_observed(project, state, payload, proof, actor=actor, observation=operation)
             if command == "owner.resume":
                 context["owner_resume"] = deepcopy(getattr(proof, "_owner_resume_observation", None))
+            late_check = _terminal_native_custody(project, state, command, payload,
+                {**context, "actor": actor, "admission_observation": operation}) if late_custody else None
             context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
             context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True, owner_reconcile=True)
             updated = deepcopy(state)
@@ -2179,6 +2755,14 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             check(deepcopy(updated), command, deepcopy(payload), context)
         # Re-admit after reducer work: a revoked seat must not commit after a
         # slow local verifier or a concurrent board mutation.
+        if late_check is not None:
+            late_proof = _command_binding(project, state, actor, command, payload)
+            with admission_scope(late_proof, actor, project) as late_operation:
+                late_context = _context_observed(project, state, payload, late_proof, actor=actor, observation=late_operation)
+                _terminal_native_custody(project, state, command, payload,
+                    {**late_context, "actor": actor, "admission_observation": late_operation})()
+            if updated["status"] != state["status"] or updated["terminal"] != state["terminal"]:
+                raise RunStateError("late custody cannot reopen or change the terminal outcome")
         _command_binding(project, state, actor, command, payload)
         if updated["owner"]["session_uuid"] != state["owner"]["session_uuid"]:
             _native_index_update(runtime_root, updated["owner"])

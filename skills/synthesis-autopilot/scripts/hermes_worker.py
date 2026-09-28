@@ -44,7 +44,17 @@ def run(state, child, contract, context, runtime_root, timeout, before):
         "timeout_seconds": timeout,
         **{k: state[k] for k in ("run_id", "contract_digest", "profile_digest")},
     }
+    if boundary.observation_intent(state, child["child_id"]) is not None:
+        configuration["observation_intent"] = boundary.observation_intent(state, child["child_id"])
     (attempt / "launch.json").write_text(json.dumps(configuration, sort_keys=True))
+    def revalidate():
+        boundary._authorize_worker(context, contract["output_roots"] + [contract["scratch_root"], str(runtime_root)])
+        observer = context.get("current_cancellation")
+        if observer is not None:
+            value = observer()
+            if value["requested"]:
+                from native_resume import NativeCancellation
+                raise NativeCancellation(value)
     rows, failure, frames = [], None, []
     try:
         if selection(contract) != chosen or boundary.inspect_files(contract) != before:
@@ -54,6 +64,7 @@ def run(state, child, contract, context, runtime_root, timeout, before):
             chosen,
             max(0, timeout - (time.monotonic() - started)),
             raw_frames=frames,
+            **({"revalidate": revalidate} if context.get("current_cancellation") is not None else {}),
         )
     except (OSError, ValueError, KeyError, TypeError) as exc:
         failure = str(exc)[:500]
@@ -173,6 +184,8 @@ def verify(data, context):
         }:
             return False
         config = manifest["configuration"]
+        if config.get("observation_intent") != boundary.observation_intent(state, data["child_id"]):
+            return False
         if (
             any(
                 config[k] != state[k]

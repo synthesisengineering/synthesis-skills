@@ -317,7 +317,7 @@ def task(state, payload, context):
     _object(payload, {"task_id", "action", "reason", "receipt_id"}, {"task_id", "action"})
     result, flow = _base(state, context)
     node = _node(flow, payload["task_id"])
-    if any(c["task_id"] == node["id"] and c["audit_status"] != "accepted" for c in flow["children"].values()):
+    if payload["action"] != "cancel" and any(c["task_id"] == node["id"] and c["audit_status"] != "accepted" for c in flow["children"].values()):
         raise ValueError("Delegated work requires integration disposition")
     action = payload["action"]
     if action == "start":
@@ -361,6 +361,9 @@ def task(state, payload, context):
         if node["status"] == "done":
             raise ValueError("Completed work is retained")
         node.update(status="cancelled", reason=_text(payload.get("reason")))
+        for child in flow.get("children", {}).values():
+            if child.get("task_id") == node["id"] and child.get("disposition") == "running":
+                child.update(cancellation_requested=True, cancellation_reason=node["reason"])
         store = _store(result)
         obligation = _lineage(state, node["criteria"])
         store["lineages"].setdefault(obligation, sorted(node["criteria"]))
@@ -662,6 +665,8 @@ def child_return(state, payload, context):
     _object(payload, {"child_id", "disposition", "artifact_ids", "evidence_ids", "reason"}, {"child_id", "disposition", "artifact_ids", "evidence_ids", "reason"})
     result, flow = _base(state, context, current=False)
     child = flow["children"].get(payload["child_id"])
+    if child and child.get("cancellation_requested") and payload["disposition"] == "complete":
+        raise ValueError("Cancelled child requires a cancellation/failed disposition and separate cleanup evidence")
     if child is None or child["disposition"] != "running" or payload["disposition"] not in TERMINAL_CHILD:
         raise ValueError("Invalid or duplicate child return")
     if child.get("mode") == "native-cli" and payload["disposition"] == "complete":
@@ -720,6 +725,9 @@ def integrate(state, payload, context):
         raise ValueError("Child has no pending integration audit")
     data = _evidence(state, context, payload["receipt_id"], "child_integration")["data"]
     producer = child.get("producer", child["owner"]["native_ref"])
+    from run_state import native_not_started
+    if native_not_started(state, child["child_id"]):
+        producer = child["child_id"]  # An undispatched task identity, never a native producer.
     reviewer = _text(data.get("reviewer"), "native reviewer identity")
     producing_identities = {producer, child["child_id"]}
     if child.get("mode", "peer") == "peer":

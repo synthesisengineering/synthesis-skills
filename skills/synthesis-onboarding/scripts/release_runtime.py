@@ -932,6 +932,135 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
             )
         )
 
+# Stop selects desktop identity and registered owners lazily. Bind the entire
+# local import closure before the activation hash inventory is constructed.
+# These are source-owned fixed paths, never discovered from caller input.
+_AUTOPILOT_STOP_DEPENDENCIES = (
+    'synthesis-agent-conformance/scripts/hermes_source.py',
+    'synthesis-agent-conformance/scripts/live_receipt.py',
+    'synthesis-agent-conformance/scripts/native_transcript_identity.py',
+    'synthesis-agent-conformance/scripts/signed_receipt.py',
+    'synthesis-agent-conformance/scripts/vendor_bundle.py',
+    'synthesis-agent-conformance/scripts/vendor_hermes.py',
+    'synthesis-agent-conformance/scripts/vendor_native.py',
+    'synthesis-autopilot/scripts/autopilot.py',
+    'synthesis-autopilot/scripts/capabilities.py',
+    'synthesis-autopilot/scripts/consumer_checks.py',
+    'synthesis-autopilot/scripts/controller.py',
+    'synthesis-autopilot/scripts/decision_uncertainty.py',
+    'synthesis-autopilot/scripts/delegation_boundary.py',
+    'synthesis-autopilot/scripts/domain_quality.py',
+    'synthesis-autopilot/scripts/evaluation.py',
+    'synthesis-autopilot/scripts/evaluation_artifacts.py',
+    'synthesis-autopilot/scripts/evidence_bridge.py',
+    'synthesis-autopilot/scripts/hermes_transport.py',
+    'synthesis-autopilot/scripts/hermes_worker.py',
+    'synthesis-autopilot/scripts/journal_storage.py',
+    'synthesis-autopilot/scripts/managed_native.py',
+    'synthesis-autopilot/scripts/managed_permissions.py',
+    'synthesis-autopilot/scripts/native_adapter_sdk.py',
+    'synthesis-autopilot/scripts/native_archive.py',
+    'synthesis-autopilot/scripts/native_archive_stream.py',
+    'synthesis-autopilot/scripts/native_callback.py',
+    'synthesis-autopilot/scripts/native_claude.py',
+    'synthesis-autopilot/scripts/native_codex.py',
+    'synthesis-autopilot/scripts/native_codex_turn.py',
+    'synthesis-autopilot/scripts/native_copilot.py',
+    'synthesis-autopilot/scripts/native_cursor.py',
+    'synthesis-autopilot/scripts/native_hermes.py',
+    'synthesis-autopilot/scripts/native_muse.py',
+    'synthesis-autopilot/scripts/native_muse_contract.py',
+    'synthesis-autopilot/scripts/native_observations.py',
+    'synthesis-autopilot/scripts/native_opencode.py',
+    'synthesis-autopilot/scripts/native_protection.py',
+    'synthesis-autopilot/scripts/native_resume.py',
+    'synthesis-autopilot/scripts/native_review.py',
+    'synthesis-autopilot/scripts/native_review_observer.py',
+    'synthesis-autopilot/scripts/native_stop.py',
+    'synthesis-autopilot/scripts/observation_bridge.py',
+    'synthesis-autopilot/scripts/persistence_policy.py',
+    'synthesis-autopilot/scripts/prepared_native_launch.py',
+    'synthesis-autopilot/scripts/profile_evidence.py',
+    'synthesis-autopilot/scripts/recovery_capsule.py',
+    'synthesis-autopilot/scripts/required_citations.py',
+    'synthesis-autopilot/scripts/resource_policy.py',
+    'synthesis-autopilot/scripts/run_profile.py',
+    'synthesis-autopilot/scripts/run_state.py',
+    'synthesis-autopilot/scripts/supervision.py',
+    'synthesis-autopilot/scripts/workflow.py',
+    'synthesis-context-lifecycle/scripts/context_currency.py',
+    'synthesis-context-lifecycle/scripts/context_edit.py',
+    'synthesis-context-lifecycle/scripts/record_succession.py',
+    'synthesis-context-lifecycle/scripts/record_transaction.py',
+    'synthesis-decision-packet/scripts/build_packet.py',
+    'synthesis-decision-packet/scripts/record_rulings.py',
+    'synthesis-onboarding/scripts/first_run_store.py',
+    'synthesis-onboarding/scripts/release_runtime.py',
+    'synthesis-onboarding/scripts/system_contract.py',
+    'synthesis-project-management/scripts/board_grammar.py',
+    'synthesis-project-management/scripts/claim_scope.py',
+    'synthesis-project-management/scripts/coordination.py',
+    'synthesis-project-management/scripts/coordination_archive.py',
+    'synthesis-project-management/scripts/coordination_lock.py',
+    'synthesis-project-management/scripts/coordination_process.py',
+    'synthesis-project-management/scripts/coordination_schema.py',
+    'synthesis-project-management/scripts/execution_checkpoint.py',
+    'synthesis-project-management/scripts/fleet_doctor.py',
+    'synthesis-project-management/scripts/fleet_handoff.py',
+    'synthesis-project-management/scripts/fleet_identity.py',
+    'synthesis-project-management/scripts/fleet_paths.py',
+    'synthesis-project-management/scripts/fleet_subscriptions.py',
+    'synthesis-project-management/scripts/native_git.py',
+    'synthesis-project-management/scripts/native_identity.py',
+    'synthesis-project-management/scripts/peer_addressing.py',
+    'synthesis-project-management/scripts/plan_reference.py',
+    'synthesis-project-management/scripts/pointer_lock.py',
+    'synthesis-project-management/scripts/project_recipient.py',
+    'synthesis-project-management/scripts/project_state.py',
+    'synthesis-project-management/scripts/run_admission.py',
+    'synthesis-project-management/scripts/team_contract.py',
+    'synthesis-repo-guard/publication_receipt.py',
+    'synthesis-skills-manager/scripts/cache_guardian.py',
+)
+ENTRYPOINT_DEPENDENCIES['synthesis-autopilot/scripts/autopilot_gate.py'] = tuple(
+    dict.fromkeys((*ENTRYPOINT_DEPENDENCIES['synthesis-autopilot/scripts/autopilot_gate.py'], *_AUTOPILOT_STOP_DEPENDENCIES))
+)
+
+_CHECKPOINT_STOP_DEPENDENCIES = (
+    'synthesis-agent-conformance/scripts/native_transcript_identity.py',
+    'synthesis-context-lifecycle/scripts/context_currency.py',
+    'synthesis-context-lifecycle/scripts/context_edit.py',
+    'synthesis-context-lifecycle/scripts/record_succession.py',
+    'synthesis-context-lifecycle/scripts/record_transaction.py',
+    'synthesis-decision-packet/scripts/build_packet.py',
+    'synthesis-decision-packet/scripts/record_rulings.py',
+    'synthesis-onboarding/scripts/release_runtime.py',
+    'synthesis-project-management/scripts/board_grammar.py',
+    'synthesis-project-management/scripts/claim_scope.py',
+    'synthesis-project-management/scripts/coordination.py',
+    'synthesis-project-management/scripts/coordination_archive.py',
+    'synthesis-project-management/scripts/coordination_lock.py',
+    'synthesis-project-management/scripts/coordination_process.py',
+    'synthesis-project-management/scripts/coordination_schema.py',
+    'synthesis-project-management/scripts/fleet_doctor.py',
+    'synthesis-project-management/scripts/fleet_handoff.py',
+    'synthesis-project-management/scripts/fleet_identity.py',
+    'synthesis-project-management/scripts/fleet_paths.py',
+    'synthesis-project-management/scripts/fleet_subscriptions.py',
+    'synthesis-project-management/scripts/native_git.py',
+    'synthesis-project-management/scripts/native_identity.py',
+    'synthesis-project-management/scripts/peer_addressing.py',
+    'synthesis-project-management/scripts/plan_reference.py',
+    'synthesis-project-management/scripts/pointer_lock.py',
+    'synthesis-project-management/scripts/project_recipient.py',
+    'synthesis-project-management/scripts/run_admission.py',
+    'synthesis-project-management/scripts/team_contract.py',
+    'synthesis-repo-guard/publication_receipt.py',
+)
+ENTRYPOINT_DEPENDENCIES['synthesis-project-management/scripts/project_state.py'] = tuple(
+    dict.fromkeys((*ENTRYPOINT_DEPENDENCIES['synthesis-project-management/scripts/project_state.py'], *_CHECKPOINT_STOP_DEPENDENCIES))
+)
+
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
 )
@@ -1292,6 +1421,11 @@ def _verified_release_unlocked(pointer, *, require_current_interpreter=True):
 
 def verify_dependencies(active, script):
     root = Path(active["release_root"])
+    if active.get("_verification_mode") == VERIFICATION_MODE_FULL:
+        # A caller may retain a verified descriptor before dispatch. Without
+        # activation hashes the existing full-digest owner must be fresh here.
+        if tree_digest(root) != verify_projection(root, active):
+            raise RuntimeContractError("active release content digest drifted before dispatch")
     verify_entrypoint(active, active.get("_verification_mode"), script)
     for dependency in ENTRYPOINT_DEPENDENCIES.get(script, ()):
         helper = root / "skills" / dependency
@@ -1482,6 +1616,9 @@ def _policy_reservation(payload, proof, *, consume):
     # The launcher itself is pinned by the release descriptor. Resolve only
     # its sibling policy owner, never a caller-provided module/search path.
     active = verified_release()
+    # Corrective Stop feedback imports the workflow owner in the launcher
+    # process, after the child returns. Verify its complete closure here too.
+    verify_dependencies(active, "synthesis-autopilot/scripts/autopilot_gate.py")
     path = Path(active["release_root"]) / "skills/synthesis-autopilot/scripts"
     helper = path / "workflow.py"
     if helper.is_symlink() or not helper.is_file():

@@ -70,6 +70,15 @@ def actor_from_hook(payload):
             "native_payload": payload}
 
 
+def _delivery_ref():
+    """Use PM's validated transport hints; these never authenticate ownership."""
+    pm_scripts = HERE.parents[1] / "synthesis-project-management/scripts"
+    if str(pm_scripts) not in sys.path:
+        sys.path.insert(0, str(pm_scripts))
+    from coordination import detect_client_ref
+    return detect_client_ref()
+
+
 def _observer_identity(payload):
     # Combined Stop calls this before engine() or a CLI request decoder has
     # imported PM. Resolve the canonical owner explicitly; import order and
@@ -77,7 +86,11 @@ def _observer_identity(payload):
     scripts = HERE.parents[1] / "synthesis-project-management/scripts"
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
-    from project_state import observer_native_identity
+    _delivery_ref()  # Reject malformed hints even with an explicit surface.
+    from project_state import observer_native_identity, row_for_event
+    # This canonical check rejects conflicting explicit native references even
+    # when no owner index exists. Empty rows grant no seat or mutation authority.
+    row_for_event([], payload)
     return observer_native_identity(payload)
 
 
@@ -89,7 +102,10 @@ def surface_for(payload):
         return explicit if entry and entry["dialect"] in {"claude", "codex", "muse", "cursor", "copilot"} else None
     if os.environ.get("SYNTHESIS_HOOK_CLIENT") == "muse":
         return "muse-cli"
-    native = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "")
+    try:
+        native = _delivery_ref()
+    except (ValueError, OSError, ImportError, RuntimeError):
+        return None
     if native.startswith("ccd:"):
         return "claude-code-desktop"
     if native.startswith("cc:"):
@@ -98,6 +114,8 @@ def surface_for(payload):
         return "codex-cli"
     if native.startswith("muse:") or (isinstance(payload, dict) and payload.get("client") == "muse"):
         return "muse-cli"
+    if native:
+        return None  # No Stop dialect is registered for this explicit reference.
     # Discover only a family established by the PM-native transcript validator.
     # Desktop vs CLI capabilities still require an explicit surface observation.
     try:

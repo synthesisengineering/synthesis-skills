@@ -22,7 +22,8 @@ def ids():
 
 def test_complete_nonoverlapping_inventory_includes_new_tests():
     result = groups.partition(ids())
-    assert [result[g] for g in groups.GROUPS] == [[n] for n in ids()]
+    assert [result[g] for g in ("state", "native", "evaluation", "core")] == [[n] for n in ids()]
+    assert result["native-control"] == []
     assert sorted(sum(result.values(), [])) == sorted(ids())
 
 
@@ -209,7 +210,7 @@ def synthetic_root(tmp_path):
     root = tmp_path / "source"
     directory = root / groups.AP
     directory.mkdir(parents=True)
-    for name in ("run_state", "native_codex", "evaluation", "brand_new_surface"):
+    for name in ("run_state", "native_codex", "evaluation", "brand_new_surface", "native_cancellation"):
         (directory / ("test_" + name + ".py")).write_text(
             "def test_one():\n    assert True\n"
         )
@@ -231,7 +232,7 @@ def test_actual_pytest_groups_run_every_parameter_and_preserve_full_inventory(
         assert code == 0, payload
         observed.extend(payload["selected"])
         inventories.append(payload["inventory"])
-    assert len(observed) == 6 and len(set(observed)) == 6
+    assert len(observed) == 7 and len(set(observed)) == 7
     assert all(sorted(i) == sorted(observed) for i in inventories)
 
 
@@ -1050,6 +1051,8 @@ def test_diagnostic_clock_isolated_from_finite_product_deadline(tmp_path, monkey
         config = SimpleNamespace(
             hook=SimpleNamespace(pytest_deselected=lambda **kw: None)
         )
+        for node in ids():
+            p.pytest_itemcollected(SimpleNamespace(nodeid=node))
         p.pytest_collection_modifyitems(
             None, config, [SimpleNamespace(nodeid=n) for n in ids()]
         )
@@ -1219,3 +1222,119 @@ def test_actual_group_preserves_selected_virtualenv(tmp_path, monkeypatch):
     code, payload = groups.run_group(root, "core")
     assert code == 0, payload
     assert payload["selected"] == [groups.AP + "/test_brand_new_surface.py::test_one"]
+
+
+def test_native_control_partition_preserves_all_tests_and_finite_bounds():
+    nodes = [groups.AP + '/' + name + '::test_one' for name in (
+        'test_native_cancellation.py', 'test_native_admission_freshness.py',
+        'test_native_session_owner_chain.py', 'test_native_future_surface.py',
+        'test_observation_bridge.py', 'test_future_unclassified.py')]
+    result = groups.partition(nodes)
+    assert set(result) == {'state', 'native', 'native-control', 'evaluation', 'core'}
+    assert result['native-control'] == nodes[:3]
+    assert result['native'] == nodes[3:5]
+    assert result['core'] == nodes[5:]
+    assert sorted(sum(result.values(), [])) == sorted(nodes)
+    assert len(set(sum(result.values(), []))) == len(nodes)
+    assert groups.CHECK_SECONDS == 900 and groups.GROUP_SECONDS == 880
+    assert groups.ACCEPTANCE_SECONDS == 6000
+
+
+@pytest.mark.parametrize("failure_phase", ["setup", "call", "teardown"])
+def test_failure_detail_survives_later_process_cutoff(tmp_path, monkeypatch, failure_phase):
+    root = tmp_path / "source"
+    directory = synthetic(root)
+    content = "import pytest,time\n"
+    if failure_phase == "setup":
+        content += "@pytest.fixture\ndef broken():\n    raise ValueError('retained-setup-marker')\ndef test_first(broken):\n    pass\n"
+    elif failure_phase == "teardown":
+        content += "@pytest.fixture\ndef broken():\n    yield\n    raise ValueError('retained-teardown-marker')\ndef test_first(broken):\n    pass\n"
+    else:
+        content += "def test_first():\n    raise ValueError('retained-call-marker')\n"
+    content += "def test_second():\n    time.sleep(10)\n"
+    (directory / "test_brand_new_surface.py").write_text(content)
+    monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
+    code, payload = groups.run_group(root, "core")
+    assert code != 0
+    evidence = payload["partial_execution"]
+    assert evidence["status"] == "INCOMPLETE"
+    assert evidence["authorizes_success"] is False
+    failed = [row for row in evidence["events"] if row.get("outcome") == "failed"]
+    assert len(failed) == 1 and failed[0]["when"] == failure_phase
+    detail = failed[0]["failure"]
+    assert detail["status"] == "complete"
+    assert "retained-" + failure_phase + "-marker" in detail["text"]
+    assert detail["bytes"] == len(detail["text"].encode("utf-8"))
+    assert not (Path(payload["fixture_custody"]) / "inventory.json").exists()
+
+
+def test_failure_detail_collection_is_retained_without_a_final_inventory(tmp_path):
+    root = tmp_path / "source"
+    directory = synthetic(root)
+    (directory / "test_brand_new_surface.py").write_text(
+        "raise RuntimeError('retained-collection-marker')\n"
+    )
+    code, payload = groups.run_group(root, "core")
+    assert code != 0
+    evidence = payload["partial_execution"]
+    failures = [r for r in evidence["events"] if r.get("kind") == "collection-failure"]
+    assert len(failures) == 1
+    assert "retained-collection-marker" in failures[0]["failure"]["text"]
+    assert evidence["authorizes_success"] is False
+
+
+def test_failure_detail_is_stream_bounded_and_budget_never_resets(tmp_path, monkeypatch):
+    p = plugin(tmp_path)
+    monkeypatch.setattr(groups, "FAILURE_DETAIL_BYTES", 16)
+    monkeypatch.setattr(groups, "FAILURE_DETAIL_TOTAL_BYTES", 24)
+    visited = []
+
+    class LongTrace:
+        def toterminal(self, writer):
+            for index in range(1000):
+                visited.append(index)
+                writer.write("x" * 8)
+
+    first = p._failure_detail(SimpleNamespace(longrepr=LongTrace()))
+    assert first["status"] == "truncated" and first["bytes"] == 16
+    assert len(visited) <= 3
+    second = p._failure_detail(SimpleNamespace(longrepr="abcdefghijk"))
+    assert second["status"] == "truncated" and second["bytes"] == 8
+    third = p._failure_detail(SimpleNamespace(longrepr="must-not-appear"))
+    assert third["status"] == "omitted" and third["reason"] == "diagnostic_budget_exhausted"
+    assert p.failure_detail_bytes == 24
+    assert groups.REPORT_BYTES == 4 * 1024 * 1024
+
+
+def test_failure_detail_unicode_missing_and_renderer_refusal_are_explicit(tmp_path, monkeypatch):
+    p = plugin(tmp_path)
+    monkeypatch.setattr(groups, "FAILURE_DETAIL_BYTES", 5)
+    result = p._failure_detail(SimpleNamespace(longrepr="ééé"))
+    assert result["status"] == "truncated" and result["text"] == "éé"
+    assert result["bytes"] == 4
+    assert p._failure_detail(SimpleNamespace())["status"] == "unavailable"
+
+    class BrokenTrace:
+        def toterminal(self, writer):
+            raise RuntimeError("this is diagnostic rendering failure")
+
+    failure = p._failure_detail(SimpleNamespace(longrepr=BrokenTrace()))
+    assert failure["status"] == "unavailable" and failure["reason"] == "renderer_error"
+    assert failure["error_type"] == "RuntimeError"
+
+
+def test_failure_detail_actual_subtest_keeps_parent_lifecycle_and_refuses_success(tmp_path):
+    root = tmp_path / "source"
+    directory = synthetic(root)
+    (directory / "test_brand_new_surface.py").write_text(
+        "def test_one(subtests):\n"
+        "    with subtests.test(part='one'):\n"
+        "        raise ValueError('retained-subtest-marker')\n"
+    )
+    code, payload = groups.run_group(root, "core")
+    assert code != 0
+    evidence = groups.read_progress(Path(payload["fixture_custody"]) / "inventory.progress.jsonl")
+    rows = [r for r in evidence["events"] if r.get("kind") == "subtest"]
+    assert len(rows) == 1 and rows[0]["outcome"] == "failed"
+    assert "retained-subtest-marker" in rows[0]["failure"]["text"]
+    assert evidence["authorizes_success"] is False

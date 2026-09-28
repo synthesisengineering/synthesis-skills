@@ -12,6 +12,7 @@ import argparse
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import selectors
@@ -43,12 +44,15 @@ _diagnostic_loads = json.loads
 _diagnostic_sha256 = hashlib.sha256
 _diagnostic_open_file = open
 
-GROUPS = ("state", "native", "evaluation", "core")
+GROUPS = ("state", "native", "evaluation", "core", "native-control")
 AP = "skills/synthesis-autopilot/scripts"
 CHECK_SECONDS = 900
+ACCEPTANCE_SECONDS = 6000  # finite whole-suite owner, not a per-group allowance
 GROUP_SECONDS = 880  # collection, execution and reporting; 20s outer cleanup reserve
 OUTPUT_BYTES = 8 * 1024 * 1024
 REPORT_BYTES = 4 * 1024 * 1024
+FAILURE_DETAIL_BYTES = 16 * 1024
+FAILURE_DETAIL_TOTAL_BYTES = 256 * 1024
 MAX_TESTS = 20000
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
 STATE_PREFIXES = (
@@ -78,6 +82,11 @@ EVALUATION_PREFIXES = (
     "test_evidence_bridge",
     "test_profile_evidence",
 )
+NATIVE_CONTROL_PREFIXES = (
+    "test_native_cancellation",
+    "test_native_admission",
+    "test_native_session_owner_chain",
+)
 
 
 def group_for(nodeid: str) -> str:
@@ -95,6 +104,8 @@ def group_for(nodeid: str) -> str:
     ]
     if sum(choices) > 1:
         raise ValueError("overlapping group ownership")
+    if choices[1] and name.startswith(NATIVE_CONTROL_PREFIXES):
+        return "native-control"
     return GROUPS[choices.index(True)] if any(choices) else "core"
 
 
@@ -268,6 +279,8 @@ def bounded_run(
     cwd: Path,
     timeout: float = CHECK_SECONDS,
     env: dict[str, str] | None = None,
+    *,
+    suite: bool = False,
 ) -> subprocess.CompletedProcess:
     """Own one process group; limit wall time/output and reap on every exit path.
 
@@ -275,7 +288,12 @@ def bounded_run(
     Consumers retain their own OS sandbox. A descendant deliberately escaping
     its session is outside this process-group contract, never claimed reaped.
     """
-    if os.name != "posix" or timeout <= 0 or timeout > CHECK_SECONDS:
+    if (
+        type(suite) is not bool
+        or os.name != "posix"
+        or timeout <= 0
+        or timeout > (ACCEPTANCE_SECONDS if suite else CHECK_SECONDS)
+    ):
         raise ValueError("bounded release checks require POSIX and a valid deadline")
     started = time.monotonic()
     output = bytearray()
@@ -360,7 +378,7 @@ def bounded_run(
             except OSError as error:
                 failure = f"owned process-group cleanup failed: {error}"
             try:
-                process.wait(timeout=1)
+                process.wait(timeout=5 if suite else 1)
             except subprocess.TimeoutExpired:
                 pass
             try:
@@ -438,6 +456,8 @@ def bounded_run(
         os.close(custody_fd)
     result = subprocess.CompletedProcess(executed, code, text, "")
     result.fixture_custody = str(cache) if cache is not None else None
+    result.failure = failure
+    result.process_id = None if process is None else process.pid
     return result
 
 
@@ -517,10 +537,12 @@ def read_progress(path: Path) -> dict:
 
 
 class InventoryPlugin:
-    def __init__(self, group: str, report: Path):
+    def __init__(self, group: str, report: Path, selection: list[str] | None = None):
         self.group = group
+        self.selection = selection
         self.report = report
         self.full = []
+        self.collected_ids = set()
         self.selected = []
         self.phases = {}
         self.errors = []
@@ -534,6 +556,70 @@ class InventoryPlugin:
         self.progress_parent = None
         self.progress_sequence = 0
         self.reporting_seconds = 0.0
+        self.failure_detail_bytes = 0
+
+    def _failure_detail(self, report):
+        """Render bounded pytest diagnostics without collecting arbitrary locals.
+
+        The ordinary report remains the authority for outcome and lifecycle.
+        A prefix, missing representation or renderer error is explicitly labeled;
+        none supplies acceptance evidence. Stop rendering at the byte boundary.
+        """
+        limit = min(FAILURE_DETAIL_BYTES,
+                    FAILURE_DETAIL_TOTAL_BYTES - self.failure_detail_bytes)
+        if limit <= 0:
+            return {"status": "omitted", "reason": "diagnostic_budget_exhausted"}
+        representation = getattr(report, "longrepr", None)
+        if representation is None:
+            return {"status": "unavailable", "reason": "missing_representation"}
+        chunks = []
+        captured = 0
+
+        class PrefixComplete(Exception):
+            pass
+
+        class Sink:
+            def write(self, text):
+                nonlocal captured
+                remaining = limit - captured
+                raw = text[:remaining + 1].encode("utf-8")
+                prefix = raw[:remaining].decode("utf-8", errors="ignore").encode("utf-8")
+                chunks.append(prefix)
+                captured += len(prefix)
+                if len(raw) > remaining:
+                    raise PrefixComplete
+
+            def flush(self):
+                pass
+
+        status = "complete"
+        reason = None
+        error_type = None
+        try:
+            if isinstance(representation, str):
+                Sink().write(representation)
+            elif callable(getattr(representation, "toterminal", None)):
+                from _pytest._io import TerminalWriter
+
+                writer = TerminalWriter(file=Sink())
+                writer.hasmarkup = False
+                representation.toterminal(writer)
+            else:
+                status, reason = "unavailable", "unsupported_representation"
+        except PrefixComplete:
+            status = "truncated"
+        except Exception as error:
+            status, reason = "unavailable", "renderer_error"
+            error_type = type(error).__name__
+        raw = b"".join(chunks)
+        self.failure_detail_bytes += len(raw)
+        detail = {"status": status, "text": raw.decode("utf-8"),
+                  "bytes": len(raw), "sha256": _diagnostic_sha256(raw).hexdigest()}
+        if reason is not None:
+            detail["reason"] = reason
+        if error_type is not None:
+            detail["error_type"] = error_type
+        return detail
 
     def _progress(self, kind, **data):
         """Append each observed phase once, with constant per-phase work.
@@ -608,11 +694,25 @@ class InventoryPlugin:
             _diagnostic_os_close(parent)
             self.reporting_seconds += _diagnostic_monotonic() - started
 
+    def pytest_itemcollected(self, item):
+        # Collection modifiers run after this event. Expanding a declared class
+        # or function from their reduced list would silently certify omissions.
+        node = item.nodeid
+        if node in self.collected_ids or len(self.full) >= MAX_TESTS:
+            raise ValueError("duplicate or oversized original collection")
+        self.collected_ids.add(node)
+        self.full.append(node)
+
     def pytest_collection_modifyitems(self, session, config, items):
-        self.full = [item.nodeid for item in items]
-        groups = partition(self.full)
-        self.counts = {name: len(nodes) for name, nodes in groups.items()}
-        self.selected = groups[self.group]
+        if self.selection is None:
+            groups = partition(self.full)
+            self.counts = {name: len(nodes) for name, nodes in groups.items()}
+            self.selected = groups[self.group]
+        else:
+            expansions = expand_selectors(self.full, self.selection)
+            wanted = {node for nodes in expansions.values() for node in nodes}
+            self.selected = [node for node in self.full if node in wanted]
+            self.counts = {self.group: len(self.selected)}
         if not self.selected:
             raise ValueError("required group collected no tests")
         wanted = set(self.selected)
@@ -628,9 +728,19 @@ class InventoryPlugin:
             seconds=self.collection_seconds,
         )
 
+    def pytest_collection_finish(self, session):
+        # Also catch modifiers that run after our own selection. Reordering is
+        # harmless; missing, injected or duplicated required items are not.
+        actual = [item.nodeid for item in session.items]
+        if len(actual) != len(self.selected) or set(actual) != set(self.selected):
+            self.errors.append("collection modifiers changed required inventory")
+            raise ValueError("collection modifiers changed required inventory")
+
     def pytest_collectreport(self, report):
         if report.failed:
             self.errors.append("collection failed")
+            self._progress("collection-failure", nodeid=report.nodeid,
+                           outcome=report.outcome, failure=self._failure_detail(report))
 
     def pytest_runtest_logreport(self, report):
         # Pytest 9 emits real subtest call reports before the parent's call
@@ -669,8 +779,9 @@ class InventoryPlugin:
                 when=report.when,
                 outcome=report.outcome,
                 duration=report.duration,
+                **({"failure": self._failure_detail(report)} if report.outcome == "failed" else {}),
             )
-            if report.outcome != "passed":
+            if report.outcome != "passed" and self.selection is None:
                 self.errors.append(
                     "required subtest failed or skipped: " + report.nodeid
                 )
@@ -699,19 +810,37 @@ class InventoryPlugin:
         )
         if not ordered:
             self.errors.append("execution phase outside parent lifecycle order")
-        phases[report.when] = {"outcome": report.outcome, "duration": report.duration}
+        wasxfail = getattr(report, "wasxfail", None)
+        # Pytest's strict XPASS producer marks a failed call with this string
+        # instead of setting wasxfail. It is never an actual failed assertion
+        # and therefore cannot satisfy an acceptance expected-fail case.
+        longrepr = getattr(report, "longrepr", None)
+        if (
+            wasxfail is None
+            and isinstance(longrepr, str)
+            and longrepr.startswith("[XPASS(strict)] ")
+        ):
+            wasxfail = longrepr
+        phases[report.when] = {
+            "outcome": report.outcome,
+            "duration": report.duration,
+            "wasxfail": wasxfail,
+        }
         self._progress(
             "phase",
             nodeid=report.nodeid,
             when=report.when,
             outcome=report.outcome,
             duration=report.duration,
+            **({"failure": self._failure_detail(report)} if report.outcome == "failed" else {}),
         )
 
     def pytest_sessionfinish(self, session, exitstatus):
         if set(self.phases) != set(self.selected):
             self.errors.append("execution did not cover exact selected inventory")
         for node, phases in self.phases.items():
+            if self.selection is not None:
+                continue  # Caller checks exact polarity; lifecycle errors still refuse.
             # The one host-specific Darwin control is inapplicable on other OSes.
             host_skip = (
                 sys.platform != "darwin"
@@ -765,7 +894,162 @@ class InventoryPlugin:
             session.exitstatus = 1
 
 
+def expand_selectors(
+    inventory: list[str], selectors: list[str]
+) -> dict[str, list[str]]:
+    """Each declared function selector owns itself or its parameter expansions."""
+    if (
+        not isinstance(inventory, list)
+        or not inventory
+        or len(inventory) > MAX_TESTS
+        or any(not isinstance(n, str) or not n for n in inventory)
+        or len(set(inventory)) != len(inventory)
+        or not isinstance(selectors, list)
+        or not selectors
+        or len(selectors) > MAX_TESTS
+        or any(not isinstance(s, str) or "::" not in s for s in selectors)
+        or len(set(selectors)) != len(selectors)
+    ):
+        raise ValueError("invalid or duplicate selection inventory")
+    result = {
+        s: [
+            n
+            for n in inventory
+            if n == s or n.startswith(s + "[") or n.startswith(s + "::")
+        ]
+        for s in selectors
+    }
+    if any(not nodes for nodes in result.values()):
+        raise ValueError("declared selector has no collected tests")
+    return result
+
+
+def read_inventory(path: Path):
+    """Use the diagnostic owner's descriptor/stability rules for final JSON too."""
+    if path.parent.resolve(strict=True) != path.parent:
+        raise ValueError("inventory parent is an alias")
+    parent = _diagnostic_os_lstat(path.parent)
+    fd = _diagnostic_os_open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = _diagnostic_os_fstat(fd)
+        if (
+            not _diagnostic_is_regular(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != _diagnostic_os_getuid()
+            or before.st_mode & 0o022
+            or before.st_size > REPORT_BYTES
+        ):
+            raise ValueError("invalid final inventory custody")
+        raw = bytearray()
+        while len(raw) < before.st_size:
+            block = _diagnostic_os_read(fd, min(65536, before.st_size - len(raw)))
+            if not block:
+                raise ValueError("incomplete final inventory")
+            raw.extend(block)
+        if (
+            _progress_stamp(before) != _progress_stamp(_diagnostic_os_fstat(fd))
+            or _progress_stamp(before) != _progress_stamp(_diagnostic_os_lstat(path))
+            or parent[:3] != _diagnostic_os_lstat(path.parent)[:3]
+        ):
+            raise ValueError("inventory changed during read")
+
+        def unique(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate inventory JSON key")
+                result[key] = value
+            return result
+
+        return _diagnostic_loads(raw, object_pairs_hook=unique)
+    finally:
+        _diagnostic_os_close(fd)
+
+
+def selection_results(payload: dict, selectors: list[str]) -> tuple[dict, dict]:
+    """Independently consume complete phase evidence; exit 0 alone proves nothing."""
+    if not isinstance(payload, dict) or payload.get("group") != "acceptance":
+        raise ValueError("wrong acceptance inventory")
+    expanded = expand_selectors(payload.get("inventory"), selectors)
+    wanted = {n for nodes in expanded.values() for n in nodes}
+    selected = payload.get("selected")
+    if (
+        not isinstance(selected, list)
+        or len(selected) != len(wanted)
+        or set(selected) != wanted
+        or payload.get("errors") != []
+        or not isinstance(payload.get("phases"), dict)
+        or set(payload["phases"]) != wanted
+        or type(payload.get("exitstatus")) is not int
+        or payload["exitstatus"] not in (0, 1)
+    ):
+        raise ValueError("incomplete acceptance execution inventory")
+    statuses = {}
+    for node in selected:
+        phases = payload["phases"][node]
+        if (
+            not isinstance(phases, dict)
+            or set(phases) != {"setup", "call", "teardown"}
+            or any(
+                not isinstance(p, dict)
+                or "wasxfail" not in p
+                or p["wasxfail"] is not None
+                or type(p.get("duration")) not in (int, float)
+                or not math.isfinite(p["duration"])
+                or p["duration"] < 0
+                or p.get("outcome") not in ("passed", "failed")
+                for p in phases.values()
+            )
+            or any(phases[k]["outcome"] != "passed" for k in ("setup", "teardown"))
+        ):
+            raise ValueError(
+                "skipped, xfail or unsuccessful fixture lifecycle: " + node
+            )
+        statuses[node] = phases["call"]["outcome"]
+    subtests = payload.get("subtests", {})
+    if not isinstance(subtests, dict) or set(subtests) - wanted:
+        raise ValueError("unexpected subtest inventory")
+    subtest_count = 0
+    for node, rows in subtests.items():
+        if not isinstance(rows, list):
+            raise ValueError("invalid subtest evidence")
+        subtest_count += len(rows)
+        if subtest_count > MAX_TESTS:
+            raise ValueError("subtest inventory exceeds count ceiling")
+        for index, row in enumerate(rows):
+            if (
+                not isinstance(row, dict)
+                or type(row.get("ordinal")) is not int
+                or row.get("ordinal") != index + 1
+                or row.get("outcome") not in ("passed", "failed")
+                or type(row.get("duration")) not in (int, float)
+                or not math.isfinite(row["duration"])
+                or row["duration"] < 0
+            ):
+                raise ValueError("invalid or skipped subtest")
+            if row["outcome"] == "failed":
+                statuses[node] = "failed"
+    expected_exit = 1 if "failed" in statuses.values() else 0
+    if payload["exitstatus"] != expected_exit:
+        raise ValueError("process exit disagrees with actual test outcomes")
+    return expanded, statuses
+
+
 def pytest_configure(config):
+    selection_path = os.environ.get("SYNTHESIS_ACCEPTANCE_SELECTION")
+    if selection_path:
+        selectors = read_inventory(Path(selection_path))
+        if not isinstance(selectors, list):
+            raise ValueError("acceptance selection is not a list")
+        config.pluginmanager.register(
+            InventoryPlugin(
+                "acceptance",
+                Path(os.environ["SYNTHESIS_RELEASE_TEST_REPORT"]),
+                selectors,
+            ),
+            "release-inventory",
+        )
+        return
     group = os.environ.get("SYNTHESIS_RELEASE_TEST_GROUP")
     if group:
         if group not in GROUPS:
@@ -836,12 +1120,22 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
         payload = json.loads(report.read_text())
         payload["fixture_custody"] = str(temp)
         # Independently validate plugin output rather than trusting its return code alone.
-        groups = partition(payload["inventory"])
+        try:
+            groups = partition(payload["inventory"])
+        except (ValueError, KeyError, TypeError) as error:
+            payload["error"] = str(error)
+            groups = None
         if (
-            payload["selected"] != groups[group]
+            groups is None
+            or payload["selected"] != groups[group]
             or payload["errors"]
             or payload["exitstatus"] != 0
         ):
+            try:
+                payload["partial_execution"] = read_progress(report.with_suffix(".progress.jsonl"))
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                payload["partial_execution"] = {"status": "UNAVAILABLE", "authorizes_success": False,
+                                                "error": str(error)}
             return 1, payload
         if before != source_digest(root):
             return 1, {

@@ -38,6 +38,7 @@ jobs:
       - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native-control
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
       - run: python -m pytest skills/synthesis-meeting-prep/scripts/ -q
@@ -87,7 +88,7 @@ jobs:
       - name: Establish prescribed macOS framework interpreter
         if: runner.os == 'macOS'
         run: sh .github/scripts/install-ci-python.sh
-      - run: python3 -m pip install pytest pyyaml jsonschema
+      - run: python3 -m pip install pytest pyyaml jsonschema httpx
       - run: python3 -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python3 skills/synthesis-onboarding/scripts/check_capabilities.py .

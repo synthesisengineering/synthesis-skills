@@ -349,6 +349,13 @@ def _decode_frame(raw):
     )
 
 
+class NativeCancellation(ValueError):
+    """An authenticated current-owner cancellation, separate from cleanup proof."""
+    def __init__(self, observation):
+        self.observation = dict(observation)
+        super().__init__("Current native cancellation requested: " + str(observation.get("reason")))
+
+
 class RPCError(ValueError):
     def __init__(self, error):
         self.error = error
@@ -534,6 +541,7 @@ class MuseConnection:
             raise
 
     def send(self, value):
+        self._check_owner()
         if "method" in value and "id" in value:
             _finish_received_frame(self)
         _validate_reply_admission(self.raw_stdin, self.raw_stdout)
@@ -548,6 +556,7 @@ class MuseConnection:
         self._flush_outgoing()
 
     def _flush_outgoing(self):
+        self._check_owner()
         # Never block the reader on an approval reply. An uncooperative host
         # may fill its stdin while still filling stdout; both directions share
         # the same bounded event loop, and no buffered close can flush forever.
@@ -570,7 +579,13 @@ class MuseConnection:
         elif not self.outgoing and registered:
             self.selector.unregister(self.process.stdin)
 
+    def _check_owner(self):
+        check = getattr(self, "owner_check", None)
+        if check is not None:
+            check()
+
     def _read(self, seconds=0.2):
+        self._check_owner()
         if time.monotonic() >= self.deadline:
             raise TimeoutError("native transport wall bound reached")
         for key, _ in self.selector.select(

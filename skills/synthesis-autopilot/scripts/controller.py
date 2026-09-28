@@ -1338,6 +1338,15 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
             else:
                 tx.step("cancel-child", "workflow.cancel_child", {"child_id": data["target_id"], "reason": data["reason"]})
         elif operation == "recover":
+            original = run_state._active_native(tx.state) or next((row for row in tx.state.get("native_execution", {}).values()
+                if row.get("recovery_command") == tx.command_id("native-intent-recovery")), None)
+            if original is not None:
+                tx.step("native-intent-recovery", "native.execution.recover", {"intent_id": original["id"]})
+            if tx.state["status"] in run_state.TERMINAL:
+                response = _response(request, tx.state, tx.state["status"].upper(), context=tx.context())
+                response["coverage"]["original_native_custody"] = deepcopy(tx.state.get("native_execution", {}))
+                response["coverage"]["terminal_reopened"] = False
+                return response
             tx.step("recovery-admit", "recovery.admit", {"capsule_ref": data.get("capsule_ref")})
             # Existing two-phase transfer remains mandatory for a new owner.
             if data["reconcile_sources"]:
@@ -1363,6 +1372,8 @@ def handle(request: Request, *, project: Path, actor=None, runtime_root=None, so
         postamble = _postamble(tx) if finishing else None
         context = tx.context() if actor is not None else None
         status = tx.state["status"].upper() if tx.state["status"] in run_state.TERMINAL else "RECORDED" if operation in {"record", "checkpoint"} else "READY"
+        if operation == "cancel" and tx.state.get("cancellation_requested") and tx.state["status"] not in run_state.TERMINAL:
+            status = "CANCELLATION_REQUESTED"
         if finishing:
             current_acceptance = tx.completion_report()
             if current_acceptance["status"] != "PASS":

@@ -1156,3 +1156,223 @@ def test_actual_acquisition_entry_and_all_dependencies_are_release_verified(
         with pytest.raises(runtime.RuntimeContractError):
             runtime.command(verified, script, ["--help"])
         parked.rename(helper)
+
+
+# Stop imports its registered owners lazily, including desktop identity and the
+# combined checkpoint route. Receipt-mode trust must cover code, not only stats.
+STOP_ENTRIES = (
+    "synthesis-autopilot/scripts/autopilot_gate.py",
+    "synthesis-project-management/scripts/project_state.py",
+)
+
+
+def _stop_import_closure(entry):
+    import ast
+
+    skills = Path(__file__).resolve().parents[2]
+    paths = {
+        p for p in skills.rglob("*.py")
+        if not p.name.startswith("test_") and "__pycache__" not in p.parts
+    }
+    names = {}
+    for path in paths:
+        names.setdefault(path.stem, set()).add(path)
+    pending, seen = [skills / entry], set()
+    # These are executable file-path edges, not dotted Python imports. The
+    # checkpoint subprocess is coordination.py, already reached by imports.
+    explicit = {
+        "synthesis-autopilot/scripts/native_stop.py": (
+            "synthesis-onboarding/scripts/release_runtime.py",
+            "synthesis-project-management/scripts/project_state.py",
+        ),
+    }
+    while pending:
+        path = pending.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        pending.extend(skills / p for p in explicit.get(path.relative_to(skills).as_posix(), ()))
+        for node in ast.walk(ast.parse(path.read_text())):
+            imports = []
+            if isinstance(node, ast.Import):
+                imports = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports = [node.module]
+            for name in imports:
+                name = name.split(".")[0]
+                local = path.with_name(name + ".py")
+                matches = {local} if local in paths else names.get(name, set())
+                assert len(matches) <= 1, (path, name, matches)
+                pending.extend(matches)
+    return {p.relative_to(skills).as_posix() for p in seen}
+
+
+@pytest.mark.parametrize("entry", STOP_ENTRIES)
+def test_stop_receipt_covers_direct_and_lazy_source_closure(entry):
+    required = _stop_import_closure(entry)
+    assert required <= {entry, *runtime.ENTRYPOINT_DEPENDENCIES[entry]}
+    assert required <= set(runtime.RECEIPT_ENTRYPOINTS)
+
+
+def _stop_release_with_receipt(active):
+    import shutil
+
+    pointer, root, data = active
+    skills = Path(__file__).resolve().parents[2]
+    shutil.copytree(
+        skills, root / "skills", dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".ruff_cache"),
+    )
+    data = replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    write_receipt(pointer, root, data)
+    verified = runtime.verified_release(pointer)
+    assert verified["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    return pointer, root, verified
+
+
+@pytest.mark.parametrize("entry", STOP_ENTRIES)
+def test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch(active, entry):
+    import time
+
+    pointer, root, verified = _stop_release_with_receipt(active)
+    required = sorted(_stop_import_closure(entry) - {entry})
+    timings = []
+    # One retained generation is sufficient: restore exact bytes and metadata
+    # between independent substitutions rather than duplicating the whole tree.
+    for relative in required:
+        target = root / "skills" / relative
+        before, original = target.stat(), target.read_bytes()
+        offset = next(i for i, value in enumerate(original) if 65 <= value <= 90 or 97 <= value <= 122)
+        replacement = b"Q" if original[offset] != ord("Q") else b"R"
+        target.write_bytes(original[:offset] + replacement + original[offset + 1:])
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        try:
+            assert target.stat().st_ino == before.st_ino
+            assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
+            current = runtime.verified_release(pointer)
+            assert current["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+            with pytest.raises(runtime.RuntimeContractError, match="entrypoint bytes drifted since activation"):
+                runtime.execute(current, entry, ["--help"], b"", timeout=5)
+        finally:
+            target.write_bytes(original)
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        started = time.monotonic()
+        assert runtime.command(verified, entry, ["--help"])
+        timings.append(time.monotonic() - started)
+    (pointer.parent / (Path(entry).stem + "-dependency-cost.json")).write_text(json.dumps({
+        "helpers": len(required), "command_seconds": timings,
+        "scope": "actual receipt hash validation; excludes interpreter startup and native execution",
+    }, indent=2) + "\n")
+
+
+@pytest.mark.parametrize("mode", ["--gate", "--combined-stop"])
+@pytest.mark.parametrize("fault", ["none", "coordination", "native_stop", "missing-hash"])
+def test_stop_actual_receipt_cold_consumer_before_effect(active, tmp_path, monkeypatch, mode, fault):
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-autopilot/scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    from test_stop_identity import native_fixture
+
+    pointer, root, _ = _stop_release_with_receipt(active)
+    payload, env, _ = native_fixture(tmp_path / "synthetic-native", "claude-code-desktop")
+    for key in tuple(os.environ):
+        if key.startswith(("SYNTHESIS_", "CLAUDE_", "CODEX_", "MUSE_", "PYTHONPATH")):
+            monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_review_runtime")
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    entry = STOP_ENTRIES[0]
+    relative = ("synthesis-autopilot/scripts/native_stop.py" if fault == "native_stop"
+                else "synthesis-project-management/scripts/coordination.py")
+    if fault == "missing-hash":
+        receipt = json.loads(runtime.activation_receipt_path(pointer).read_text())
+        receipt["entrypoints"].pop(relative, None)
+        runtime.activation_receipt_path(pointer).write_text(json.dumps(receipt))
+    elif fault != "none":
+        target = root / "skills" / relative
+        before, original = target.stat(), target.read_bytes()
+        offset = next(i for i, value in enumerate(original) if 65 <= value <= 90 or 97 <= value <= 122)
+        changed = original[:offset] + (b"Q" if original[offset] != ord("Q") else b"R") + original[offset + 1:]
+        target.write_bytes(changed)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
+    current = runtime.verified_release(pointer)
+    assert current["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    if fault != "none":
+        with pytest.raises(runtime.RuntimeContractError, match="(entrypoint bytes drifted|no activation hash)"):
+            runtime.execute(current, entry, [mode], json.dumps(payload).encode(), timeout=20)
+    else:
+        result = runtime.execute(current, entry, [mode], json.dumps(payload).encode(), timeout=20)
+        assert result.returncode == 0, result.stderr
+        decoded = json.loads(result.stdout)
+        if mode == "--gate":
+            assert decoded == {}
+        else:
+            # The synthetic native transcript has no PM project. Real combined
+            # execution must retain that checkpoint diagnostic, not invent one.
+            assert isinstance(decoded, dict)
+            assert "runtime helper is unavailable" not in json.dumps(decoded)
+            assert "dependency" not in json.dumps(decoded)
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_stop_reservation_lazy_loader_verifies_receipt_before_import(
+    active, tmp_path, monkeypatch, tamper
+):
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-autopilot/scripts"
+    monkeypatch.syspath_prepend(str(scripts))
+    from test_stop_identity import native_fixture
+
+    pointer, root, _ = _stop_release_with_receipt(active)
+    payload, env, _ = native_fixture(tmp_path / "native", "claude-code-desktop")
+    for key in tuple(os.environ):
+        if key.startswith(("SYNTHESIS_", "CLAUDE_", "CODEX_", "MUSE_", "PYTHONPATH")):
+            monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    target = root / "skills/synthesis-autopilot/scripts/workflow.py"
+    sentinel = tmp_path / "untrusted-import-effect"
+    if tamper:
+        before, original = target.stat(), target.read_bytes()
+        body = f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('executed')\n".encode()
+        assert len(body) < len(original)
+        target.write_bytes(body + b"#" + b" " * (len(original) - len(body) - 1))
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
+    assert runtime.verified_release(pointer)["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    if tamper:
+        error = None
+        try:
+            runtime._policy_reservation(payload, {}, consume=False)
+        except Exception as exc:
+            error = exc
+        (tmp_path / "reservation-import-observation.json").write_text(json.dumps({
+            "effect": sentinel.exists(), "error_type": type(error).__name__,
+            "error": str(error),
+        }, indent=2) + "\n")
+        assert not sentinel.exists(), "unverified reservation owner executed"
+        assert isinstance(error, runtime.RuntimeContractError)
+        assert "entrypoint bytes drifted" in str(error)
+    else:
+        # The real unchanged owner reaches its ordinary missing-proof refusal;
+        # no journal, native authority, mocked validation or consumption is used.
+        with pytest.raises(KeyError, match="project"):
+            runtime._policy_reservation(payload, {}, consume=False)
+        assert not sentinel.exists()
+
+
+def test_stop_legacy_verification_cannot_authorize_later_changed_helper(active):
+    pointer, root, _ = _stop_release_with_receipt(active)
+    receipt = runtime.activation_receipt_path(pointer)
+    receipt.rename(receipt.with_suffix(".retained"))
+    current = runtime.verified_release(pointer)
+    assert current["_verification_mode"] == runtime.VERIFICATION_MODE_FULL
+    target = root / "skills/synthesis-project-management/scripts/coordination.py"
+    before = target.stat()
+    raw = target.read_bytes()
+    target.write_bytes(raw.replace(b"canonical", b"canonICAL", 1))
+    assert target.read_bytes() != raw
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(runtime.RuntimeContractError, match="content digest drifted"):
+        runtime.execute(current, STOP_ENTRIES[0], ["--gate"], b"{}", timeout=5)

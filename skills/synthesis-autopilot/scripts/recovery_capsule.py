@@ -191,6 +191,11 @@ def _report(context):
         if item['status'] in {'prepared','unknown','retryable'}:
             pending.append({'owner': 'action owner', 'kind': 'effect_reconciliation', 'effect_id': identity,
                 'status': item['status'], 'instruction': 'Read current target through its owner; do not repeat or infer outcome'})
+    for identity, intent in state.get('native_execution', {}).items():
+        if intent.get('status') == 'pending':
+            pending.append({'owner': 'run_state', 'kind': 'native_intent_reconciliation',
+                'intent_id': identity, 'child_id': intent['child_id'], 'phase': intent.get('phase', 'unbound historical custody'),
+                'instruction': 'Use controller recover to inspect the original observer lease and source-verified retained receipt; do not relaunch. Missing custody remains an unresolved effect, including after incomplete close.'})
     for identity, child in state.get('extensions', {}).get('workflow', {}).get('children', {}).items():
         if child.get('disposition') == 'running':
             pending.append({'owner': 'workflow', 'kind': 'child_reconciliation', 'child_id': identity,

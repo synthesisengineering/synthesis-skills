@@ -629,15 +629,16 @@ def test_real_owner_refuses_cancelled_or_consumed_predecessor(complete_chain, fa
     f.observe("allocate")
     if fault == "cancelled":
         f.cancel("allocate")
-        f.finish("allocate")
+        cancelled = f.state()
+        with pytest.raises(ValueError, match="Cancelled child requires a cancellation/failed disposition"):
+            f.finish("allocate")
+        assert f.state() == cancelled
         assert f.state()["extensions"]["workflow"]["children"]["allocate"][
             "cancellation_requested"
         ]
-        f.dispatch("work", "resume", "allocate")
-        with pytest.raises(
-            (ValueError, RuntimeError), match="Cancelled or incomplete predecessor"
-        ):
-            f.observe("work")
+        with pytest.raises(ValueError, match="Delegation task is not ready"):
+            f.dispatch("work", "resume", "allocate")
+        assert "work" not in f.state()["extensions"]["workflow"]["children"]
         assert len(f.instances) == 1
     else:
         f.finish("allocate")

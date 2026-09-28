@@ -197,17 +197,26 @@ def authenticate(sock, selection, *, deadline=None):
     return peer
 
 
-def _receive(sock, deadline, retained):
+def _receive(sock, deadline, retained, revalidate=None):
     raw, complete = bytearray(), False
+    next_check = 0.0
     try:
         while True:
+            if revalidate is not None and time.monotonic() >= next_check:
+                revalidate()
+                next_check = time.monotonic() + 0.1
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ValueError("observation transport timed out")
-            sock.settimeout(remaining)
-            block = sock.recv(min(16384, MAX_FRAME + 1 - len(raw)))
+            sock.settimeout(min(0.2, remaining))
+            try:
+                block = sock.recv(min(16384, MAX_FRAME + 1 - len(raw)))
+            except TimeoutError:
+                continue
             if not block:
                 complete = True
+                if revalidate is not None:
+                    revalidate()
                 break
             raw.extend(block)
             if len(raw) > MAX_FRAME:
@@ -367,11 +376,13 @@ def validate_pair(rows, selection):
     return witness
 
 
-def capture(path, selection, seconds, *, raw_frames=None):
+def capture(path, selection, seconds, *, raw_frames=None, revalidate=None):
     """Own only this finite listener; never signal/start the selected process."""
     if type(seconds) not in (int, float) or not 0 < seconds <= 3600:
         raise ValueError("finite observation deadline required")
     deadline = time.monotonic() + seconds
+    if revalidate is not None:
+        revalidate()
     validate_selection(selection, deadline=deadline)
     path = Path(path)
     _owners()
@@ -394,10 +405,20 @@ def capture(path, selection, seconds, *, raw_frames=None):
         server.listen(1)
         try:
             for sequence in range(2):
-                server.settimeout(max(0.001, deadline - time.monotonic()))
-                with server.accept()[0] as connection:
+                while True:
+                    if revalidate is not None:
+                        revalidate()
+                    if time.monotonic() >= deadline:
+                        raise ValueError("observation transport timed out")
+                    server.settimeout(min(0.2, max(0.001, deadline - time.monotonic())))
+                    try:
+                        accepted = server.accept()[0]
+                        break
+                    except TimeoutError:
+                        continue
+                with accepted as connection:
                     peer = authenticate(connection, selection, deadline=deadline)
-                    row = _receive(connection, deadline, raw_frames)
+                    row = _receive(connection, deadline, raw_frames, revalidate)
                     if set(row) != {"payload", "result", "release"}:
                         raise ValueError("unexpected callback envelope")
                     authenticate(connection, selection, deadline=deadline)

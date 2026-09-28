@@ -47,6 +47,7 @@ import contextlib
 import fcntl
 import hashlib
 import io
+import importlib.util
 import json
 import os
 import re
@@ -63,7 +64,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
-from release_check_groups import bounded_run, fixture_root, source_digest
+from release_check_groups import ACCEPTANCE_SECONDS, bounded_run, fixture_root, source_digest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(
@@ -209,6 +210,15 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "skills/synthesis-skills-manager/scripts/release_check_groups.py",
             "--group",
             "native",
+        ],
+    ),
+    (
+        "pytest.autopilot.native-control",
+        [
+            "python3",
+            "skills/synthesis-skills-manager/scripts/release_check_groups.py",
+            "--group",
+            "native-control",
         ],
     ),
     (
@@ -371,6 +381,17 @@ class AcceptanceAuthority:
     expected: dict[str, object]
     receipt: dict[str, object]
     boundary: dict[str, object] | None = None
+    receipt_sha256: str = field(init=False)
+
+    def current_receipt_digest(self) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                self.receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
+        ).hexdigest()
+
+    def __post_init__(self):
+        object.__setattr__(self, "receipt_sha256", self.current_receipt_digest())
 
 
 @dataclass(frozen=True)
@@ -701,6 +722,17 @@ def acceptance_expectation(
     }, ""
 
 
+def _acceptance_runner():
+    path = (
+        SCRIPT_DIR.parents[1]
+        / "synthesis-implementation-integrity/scripts/acceptance_suite.py"
+    )
+    spec = importlib.util.spec_from_file_location("release_acceptance_contract", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def validate_acceptance_receipt(
     receipt: object, expected: dict[str, object]
 ) -> tuple[bool, str]:
@@ -744,6 +776,13 @@ def validate_acceptance_receipt(
         )
     ):
         return False, "receipt cases are incomplete or mismatched"
+    try:
+        contract = receipt.get("execution", {}).get("contract")
+        if not isinstance(contract, list) or not contract:
+            raise ValueError("missing exact case execution contract")
+        _acceptance_runner().verify_execution(receipt, contract)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return False, "invalid phase-bound acceptance receipt: " + str(exc)
     return True, "fresh transaction-bound receipt consumed"
 
 
@@ -814,7 +853,7 @@ def consume_acceptance(
         result.add("checks.acceptance.r5", False, detail)
         return None
     command = [
-        "python3",
+        sys.executable,
         str(ACCEPTANCE_RUNNER),
         "run",
         "--manifest",
@@ -827,7 +866,9 @@ def consume_acceptance(
         transaction_id,
         "--json",
     ]
-    completed = run(command, cwd=repo)
+    # One explicit finite suite envelope; each inner group keeps its 300-second
+    # process ceiling. The runner reserves 60 seconds for final source/receipt work.
+    completed = bounded_run(command, cwd=repo, timeout=ACCEPTANCE_SECONDS, suite=True)
     if completed.returncode != 0:
         detail = _runner_failure_detail(completed.stdout or completed.stderr)
         if completed.stdout and completed.stderr:
@@ -866,6 +907,19 @@ def consume_acceptance(
         )
         return None
     valid, detail = validate_acceptance_receipt(receipt, expected)
+    if valid:
+        try:
+            runner = _acceptance_runner()
+            validated, errors = runner.validate_manifest(
+                repo / ACCEPTANCE_MANIFEST, repo
+            )
+            if validated is None:
+                raise ValueError("; ".join(errors))
+            runner.verify_execution(receipt, runner.case_contract(validated, repo))
+            if receipt["execution"]["source_sha256"] != source_digest(repo):
+                raise ValueError("receipt source tree differs from current source")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            valid, detail = False, str(exc)
     result.add("checks.acceptance.r5", valid, detail)
     if not valid:
         return None
@@ -903,7 +957,19 @@ def revalidate_acceptance_authority(
         return False, "source worktree state could not be established"
     if status.stdout.strip():
         return False, "source worktree changed before publication"
-    return validate_acceptance_receipt(authority.receipt, authority.expected)
+    try:
+        if authority.current_receipt_digest() != authority.receipt_sha256:
+            return False, "accepted execution evidence changed before publication"
+        valid, detail = validate_acceptance_receipt(
+            authority.receipt, authority.expected
+        )
+        if not valid:
+            return False, detail
+        if authority.receipt["execution"]["source_sha256"] != source_digest(repo):
+            return False, "accepted execution source changed before publication"
+        return True, detail
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return False, "accepted execution evidence unavailable: " + str(exc)
 
 
 def read_manifest_version(path: Path) -> str | None:
