@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import FunctionType
 
 # Product fixtures deliberately replace shared standard-library attributes. The
 # execution observer captures its own primitives before fixtures run, so logging
@@ -1713,6 +1714,41 @@ def selection_results(payload: dict, selectors: list[str]) -> tuple[dict, dict]:
     return expanded, statuses
 
 
+def _registered_inventory(group, report, selection=None):
+    """Bind this observer to the resident owner at registration, before fixtures.
+
+    Tests may fault-inject the public module, including limits, while their call
+    reports are emitted before monkeypatch teardown. Keep those deliberate
+    injections effective on explicitly constructed test instances, but not on
+    the independent observer. Reuse the same code objects, with a private global
+    binding; do not reload a mutable source path or implement a second runner.
+    Captured OS primitives still inspect real custody on every report. This is
+    fixture isolation, not a security boundary against arbitrary in-process code.
+    """
+    namespace = dict(globals())
+
+    def bind(function):
+        bound = FunctionType(
+            function.__code__,
+            namespace,
+            function.__name__,
+            function.__defaults__,
+            function.__closure__,
+        )
+        bound.__kwdefaults__ = function.__kwdefaults__
+        return bound
+
+    for name in ("_progress_stamp", "group_for", "partition", "expand_selectors"):
+        namespace[name] = bind(namespace[name])
+    methods = {
+        name: bind(value) if isinstance(value, FunctionType) else value
+        for name, value in InventoryPlugin.__dict__.items()
+        if name not in {"__dict__", "__weakref__"}
+    }
+    observer = type("RegisteredInventoryPlugin", (), methods)
+    return observer(group, report, selection)
+
+
 def pytest_configure(config):
     selection_path = os.environ.get("SYNTHESIS_ACCEPTANCE_SELECTION")
     if selection_path:
@@ -1720,7 +1756,7 @@ def pytest_configure(config):
         if not isinstance(selectors, list):
             raise ValueError("acceptance selection is not a list")
         config.pluginmanager.register(
-            InventoryPlugin(
+            _registered_inventory(
                 "acceptance",
                 Path(os.environ["SYNTHESIS_RELEASE_TEST_REPORT"]),
                 selectors,
@@ -1733,7 +1769,9 @@ def pytest_configure(config):
         if group not in GROUPS:
             raise ValueError("unknown release test group")
         config.pluginmanager.register(
-            InventoryPlugin(group, Path(os.environ["SYNTHESIS_RELEASE_TEST_REPORT"])),
+            _registered_inventory(
+                group, Path(os.environ["SYNTHESIS_RELEASE_TEST_REPORT"])
+            ),
             "release-inventory",
         )
 
@@ -1743,10 +1781,14 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
     before = source_digest(root)
     with retained_group_fixture() as temp:
         report = temp / "inventory.json"
+        config = temp / "pytest.ini"
+        config.write_text("[pytest]\n")
         env = dict(os.environ)
         # External pytest flags/plugins cannot deselect, repeat or short-circuit a gate.
         env.pop("PYTEST_ADDOPTS", None)
         env.pop("PYTEST_PLUGINS", None)
+        # This explicit group owns a complete partition, never its caller's slice.
+        env.pop("SYNTHESIS_ACCEPTANCE_SELECTION", None)
         env.update(
             {
                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
@@ -1763,7 +1805,15 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
                 sys.executable,
                 "-m",
                 "pytest",
+                "-c",
+                str(config),
+                "--confcutdir",
+                str(root),
                 AP,
+                # An outer acceptance config can be above a nested fixture.
+                # Bind node IDs to this explicitly admitted source root.
+                "--rootdir",
+                str(root),
                 "-q",
                 "-o",
                 "addopts=",

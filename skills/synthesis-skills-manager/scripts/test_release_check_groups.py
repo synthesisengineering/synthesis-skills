@@ -1602,3 +1602,187 @@ def test_diagnostic_destination_ancestry_is_bound_before_export(tmp_path, replac
     assert (
         Path(completed.fixture_custody) / "output.log"
     ).read_text() == "private-output-sentinel\n"
+
+
+def selected_outer_execution(tmp_path, selectors, root=None):
+    """Use the real acceptance plugin and its independently consumed receipt."""
+    root = root or Path(__file__).resolve().parents[3]
+    selection = tmp_path / "selection.json"
+    selection.write_text(json.dumps(selectors))
+    report = tmp_path / "inventory.json"
+    config = tmp_path / "pytest.ini"
+    config.write_text("[pytest]\n")
+    env = dict(os.environ)
+    env.update(
+        SYNTHESIS_ACCEPTANCE_SELECTION=str(selection),
+        SYNTHESIS_RELEASE_TEST_REPORT=str(report),
+        PYTHONPATH=str(Path(groups.__file__).parent),
+        TMPDIR=str(tmp_path),
+    )
+    modules = sorted({node.split("::", 1)[0] for node in selectors})
+    result = groups.bounded_run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-c",
+            str(config),
+            "--rootdir",
+            str(root),
+            "-o",
+            "addopts=",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "release_check_groups",
+            *modules,
+        ],
+        root,
+        90,
+        env,
+    )
+    return result, report
+
+
+def test_outer_acceptance_keeps_nested_group_inventory(tmp_path):
+    selector = (
+        "skills/synthesis-skills-manager/scripts/test_release_check_groups.py::"
+        "test_actual_pytest_groups_run_every_parameter_and_preserve_full_inventory"
+    )
+    result, report = selected_outer_execution(tmp_path, [selector])
+    assert result.returncode == 0, result.stdout
+    expanded, outcomes = groups.selection_results(
+        groups.read_inventory(report), [selector]
+    )
+    assert expanded == {selector: [selector]}
+    assert outcomes == {selector: "passed"}
+
+
+@pytest.mark.parametrize("inherited", ["subset", "foreign", "malformed", "missing"])
+def test_explicit_group_does_not_inherit_acceptance_selection(
+    tmp_path, monkeypatch, inherited
+):
+    root = synthetic_root(tmp_path)
+    directory = root / groups.AP
+    (directory / "test_brand_new_surface.py").write_text(
+        "def test_one():\n    assert True\ndef test_two():\n    assert True\n"
+    )
+    selection = tmp_path / "inherited.json"
+    if inherited != "missing":
+        selection.write_text(
+            "not json"
+            if inherited == "malformed"
+            else json.dumps(
+                [
+                    groups.AP + "/test_brand_new_surface.py::test_one"
+                    if inherited == "subset"
+                    else "foreign.py::test_foreign"
+                ]
+            )
+        )
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_SELECTION", str(selection))
+    code, payload = groups.run_group(root, "core")
+    assert code == 0, payload
+    assert payload["group"] == "core"
+    assert payload["selected"] == [
+        groups.AP + "/test_brand_new_surface.py::test_one",
+        groups.AP + "/test_brand_new_surface.py::test_two",
+    ]
+    assert len(payload["inventory"]) == 6
+
+
+@pytest.mark.parametrize("cohort", ["hosted-batch221", "additional-limits"])
+def test_outer_acceptance_survives_own_limit_and_custody_controls(tmp_path, cohort):
+    names = [
+        "test_owned_pytest_cannot_remove_supplied_existing_directory",
+        "test_owned_receipt_cannot_follow_replaced_custody",
+        "test_partial_trailing_frame_and_bound_are_explicit",
+        "test_pathname_replacement_while_descriptor_is_open_refused",
+        "test_positive_execution_covers_all_phases",
+        "test_progress_custody_mutation_refuses_before_append",
+        "test_progress_limit_refuses_without_final_acceptance",
+        "test_progress_reader_does_not_prevent_later_phase_append",
+        "test_typed_subtests_cannot_escape_parent_or_resource_bounds",
+        "test_failure_detail_is_stream_bounded_and_budget_never_resets",
+    ]
+    names = names[:8] if cohort == "hosted-batch221" else names[8:]
+    selectors = [
+        "skills/synthesis-skills-manager/scripts/test_release_check_groups.py::" + name
+        for name in names
+    ]
+    result, report = selected_outer_execution(tmp_path, selectors)
+    assert result.returncode == 0, result.stdout
+    expanded, outcomes = groups.selection_results(
+        groups.read_inventory(report), selectors
+    )
+    assert set(outcomes) == {node for nodes in expanded.values() for node in nodes}
+    assert set(outcomes.values()) == {"passed"}
+    assert len(expanded) == len(selectors)
+    progress = groups.read_progress(report.with_suffix(".progress.jsonl"))
+    assert progress["status"] == "DIAGNOSTIC_ONLY"
+    assert progress["events"][-1]["kind"] == "sessionfinish"
+
+
+def test_registered_observer_still_refuses_actual_custody_tampering(tmp_path):
+    root = tmp_path / "source"
+    root.mkdir()
+    (root / "test_tamper.py").write_text(
+        "def test_tamper(request):\n"
+        "    observer = request.config.pluginmanager.get_plugin('release-inventory')\n"
+        "    with observer.progress.open('ab') as stream:\n"
+        "        stream.write(b'{}\\n')\n"
+    )
+    result, report = selected_outer_execution(
+        tmp_path, ["test_tamper.py::test_tamper"], root
+    )
+    assert result.returncode != 0, result.stdout
+    assert not report.exists()
+    assert "progress custody changed" in result.stdout
+
+
+
+@pytest.mark.parametrize("setting", ["python_files = test_good.py", "python_functions = test_good"])
+def test_group_ignores_ancestor_collection_configuration(tmp_path, setting):
+    root = tmp_path / "source"
+    scripts = root / groups.AP
+    scripts.mkdir(parents=True)
+    (tmp_path / "pytest.ini").write_text("[pytest]\n" + setting + "\n")
+    (scripts / "test_good.py").write_text("def test_good():\n    assert True\n")
+    (scripts / "test_bad.py").write_text("def test_bad():\n    assert False, 'required failure'\n")
+    code, payload = groups.run_group(root, "core")
+    assert set(payload["selected"]) == {
+        groups.AP + "/test_good.py::test_good",
+        groups.AP + "/test_bad.py::test_bad",
+    }
+    assert code != 0
+
+
+@pytest.mark.parametrize("outside_hook", [False, True])
+def test_group_confines_conftest_and_keeps_in_root_fixtures(tmp_path, outside_hook):
+    root = tmp_path / "source"
+    scripts = root / groups.AP
+    scripts.mkdir(parents=True)
+    (root / "conftest.py").write_text(
+        "import pytest\n@pytest.fixture\ndef scoped_value():\n    return 42\n"
+    )
+    for name, assertion in (("good", "assert scoped_value == 42"), ("bad", "assert False, 'required failure'")):
+        (scripts / ("test_" + name + ".py")).write_text(
+            "def test_" + name + "(scoped_value):\n    " + assertion + "\n"
+        )
+    if outside_hook:
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        (tmp_path / "conftest.py").write_text(
+            "from pathlib import Path\n"
+            "Path(__file__).with_name('ancestor-loaded').write_text('loaded')\n"
+            "def pytest_ignore_collect(collection_path, config):\n"
+            "    return collection_path.name == 'test_bad.py'\n"
+        )
+    code, payload = groups.run_group(root, "core")
+    assert set(payload["selected"]) == {
+        groups.AP + "/test_good.py::test_good",
+        groups.AP + "/test_bad.py::test_bad",
+    }
+    assert code != 0
+    assert not (tmp_path / "ancestor-loaded").exists()
+    assert payload["phases"][groups.AP + "/test_good.py::test_good"]["call"]["outcome"] == "passed"

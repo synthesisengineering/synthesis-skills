@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
+- Bind nested release checks to their own complete selection and source root.
+  Isolate the registered inventory observer from deliberate fixture injections
+  while retaining failure on actual custody tampering. Refuse inherited outside
+  collection policy by binding owned configuration and in-root fixtures. Run ordinary hosted
+  checks before final transaction acceptance so failures remain diagnosable.
 - Retire registered nested worktrees through their verified native owner. Bind
   Git markers and backlinks to bounded, no-follow observations, refusing
   FIFO replacements and changed metadata before destructive operations.

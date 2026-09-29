@@ -6348,3 +6348,16 @@ def test_output_gate_binds_exact_bytes_at_each_observed_closure(
         with pytest.raises(ValueError, match="closure"):
             release.diagnostic_output_gate(binding, ready=phase == "ready")
         assert changed
+
+
+def test_hosted_acceptance_follows_all_ordinary_checks():
+    """Diagnose ordinary failures before the transaction acceptance consumer."""
+    root = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    steps = workflow["jobs"]["conformance"]["steps"]
+    acceptance = [i for i, step in enumerate(steps)
+                  if "--acceptance-only" in step.get("run", "")]
+    assert len(acceptance) == 1
+    assert all(i < acceptance[0] for i, step in enumerate(steps)
+               if "run" in step and i != acceptance[0]), \
+        "Ordinary hosted checks must precede final acceptance"
