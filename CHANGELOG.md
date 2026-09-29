@@ -4,6 +4,27 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.153.0] - 2026-09-29
+
+### Added
+
+- Keep failed material scans and fresh material drift fenced at recovery and
+  work admission. Report malformed retained JSON as incomplete coverage, and
+  retain open candidates when retirement evidence conflicts or changes.
+
+- Preserve declared material inputs, rationale, temporary conditions and
+  uncertainty through the existing context editor and record transaction.
+  Distinguish pending capture, unreachable associations and changed review
+  generations across ordinary checkpoint, doctor and optional recovery capsule
+  consumers. Keep semantic judgment, current authority and endpoint acceptance
+  separate from deterministic custody checks.
+
+### Fixed
+
+- Make service-doctor fixtures explicit about their platform and local configuration.
+  Exercise Linux and macOS health paths and preserve failure and unknown classifications.
+  Exclude inherited shell startup files and functions from these synthetic consumers.
+
 ## [4.152.0] - 2026-09-28
 
 ### Added

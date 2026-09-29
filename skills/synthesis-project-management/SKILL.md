@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.20.1"
+  version: "2.21.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -193,7 +193,7 @@ and the synthesis-context-lifecycle skill.
 Complete task → Update CONTEXT.md → local receipt → Next task
 ```
 
-**NOT:** task → task → task → (context compaction) → lost details.
+**NOT:** task → task → task → (context compaction) → lost details. Preserve material inputs before dependent work, compaction or handoff using the [material-context protocol](../synthesis-context-lifecycle/references/material-context.md). Retain rationale, temporary conditions, uncertainty and amendments; inspect the shared checkpoint/doctor result even when structured state is NOT_APPLICABLE.
 
 ### Session Start
 

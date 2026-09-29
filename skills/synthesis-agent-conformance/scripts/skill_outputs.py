@@ -62,9 +62,14 @@ def verify_packet(page: Path) -> list[OutputFinding]:
         try:
             module = _succession_owner()
             project = page.parent.parent.parent
-            candidates = [p for p in module.records(project)
-                          if module.rt._read_json(p)[0].get("request", {}).get("inventory", {}).get("path")
-                          == str(page.relative_to(project))]
+            candidates = []
+            for path in module.records(project):
+                request = module.record_request(module.rt._read_json(path)[0])
+                inventory = request.get('inventory')
+                if not isinstance(inventory, dict):
+                    raise ValueError('succession inventory must be an object')
+                if inventory.get('path') == str(page.relative_to(project)):
+                    candidates.append(path)
             if len(candidates) != 1:
                 raise ValueError("retired interface needs one exact succession record")
             module.validate_record(project, candidates[0])
@@ -105,7 +110,7 @@ def _succession_owner():
     return record_succession
 
 
-def scan_project(project_path: Path) -> list[OutputFinding]:
+def scan_project(project_path: Path, *, material_result=None) -> list[OutputFinding]:
     findings: list[OutputFinding] = []
     try:
         owner = _succession_owner()
@@ -115,10 +120,19 @@ def scan_project(project_path: Path) -> list[OutputFinding]:
                 if time.monotonic() > deadline:
                     raise ValueError("packet scan time bound exceeded")
                 findings.extend(verify_packet(page))
+            material = material_result if material_result is not None else owner.material_context(project_path)
+            for issue in material['issues']:
+                findings.append(OutputFinding(project_path, 'warning',
+                    'material context ' + issue['kind'] + ': ' + issue['detail'],
+                    'preserve source custody; reconcile through context_edit and review actual meaning'))
             for record in owner.records(project_path):
                 if time.monotonic() > deadline:
                     raise ValueError("succession scan time bound exceeded")
                 try:
+                    value = owner.rt._read_json(record)[0]
+                    request = owner.record_request(value)
+                    if request['kind'] == 'material-context':
+                        continue  # the shared bounded material projection above owns these
                     result = owner.validate_record(project_path, record)
                     if result['current_destinations'] == 'changed-requires-review':
                         findings.append(OutputFinding(record, "warning", "succession destinations changed; historical custody verifies but current readiness needs review", "inspect surviving obligations; do not infer completion"))

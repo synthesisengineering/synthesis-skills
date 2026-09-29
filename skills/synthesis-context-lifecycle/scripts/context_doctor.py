@@ -150,6 +150,7 @@ class ProjectAudit:
     # to notice the missing pairing.
     skipped: list[tuple[str, str]] = field(default_factory=list)
     examined: list[str] = field(default_factory=list)
+    material_context: dict = field(default_factory=dict)
 
     def add(self, check: str, severity: str, message: str, remedy: str) -> None:
         self.findings.append(
@@ -828,6 +829,7 @@ CHECKS = [
     "record-unreadable",
     "artifact-cites-missing-script",
     "skill-outputs",
+    "material-context",
 ]
 
 
@@ -1005,11 +1007,16 @@ def _audit_project_unlocked(
             "then trim CONTEXT.md",
         )
 
+    material = project_state.material_context(project_path)
+    audit.cover('material-context')
+    audit.material_context = material
+
+
     # --- skill-output provenance --------------------------------------------
     # Generator-backed skills mark their outputs; a hand-made lookalike is a
     # defect while it is live (no rulings filed), a warning once it is a
     # closed record. Added 2026-09-20 after a session hand-authored packets.
-    for found in skill_outputs.scan_project(project_path):
+    for found in skill_outputs.scan_project(project_path, material_result=material):
         audit.add("skill-outputs", found.severity, found.message, found.remedy)
 
     entries = session_entry_count(sessions_dir)
@@ -1897,6 +1904,7 @@ def main(argv: list[str] | None = None) -> int:
         "readiness": args.readiness,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "coverage": coverage_report(audits),
+        "material_context": [{"source": a.source, "project_id": a.project_id, "result": a.material_context} for a in audits],
         "sources": source_count,
         "projects_audited": len(audits),
         "defects": len(defects),

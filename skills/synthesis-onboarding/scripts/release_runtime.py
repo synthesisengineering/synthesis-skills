@@ -45,6 +45,7 @@ PUBLIC_ENTRYPOINTS = frozenset(
         "synthesis-agent-conformance/scripts/conformance.py",
         "synthesis-agent-conformance/scripts/session_context.py",
         "synthesis-context-lifecycle/scripts/context_doctor.py",
+        "synthesis-context-lifecycle/scripts/context_edit.py",
         "synthesis-daily-rituals/scripts/ritual_state.py",
         "synthesis-daily-rituals/scripts/portfolio_review.py",
         "synthesis-daily-rituals/scripts/decay_sweep.py",
@@ -1060,6 +1061,8 @@ _CHECKPOINT_STOP_DEPENDENCIES = (
 ENTRYPOINT_DEPENDENCIES['synthesis-project-management/scripts/project_state.py'] = tuple(
     dict.fromkeys((*ENTRYPOINT_DEPENDENCIES['synthesis-project-management/scripts/project_state.py'], *_CHECKPOINT_STOP_DEPENDENCIES))
 )
+
+ENTRYPOINT_DEPENDENCIES['synthesis-context-lifecycle/scripts/context_edit.py'] = ('synthesis-project-management/scripts/project_state.py', *_CHECKPOINT_STOP_DEPENDENCIES)
 
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}

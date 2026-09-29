@@ -448,10 +448,19 @@ def refresh(project_dir: Path, apply: bool = False) -> dict:
     revised = json.loads(original_state, object_pairs_hook=_unique_state_object)
     revised.setdefault("open_loops", [])
     known = {loop["id"] for loop in revised["open_loops"]}
+    import record_succession
+    material = record_succession.material_context(project_dir)
+    # Only a complete current observation may suppress rediscovery. Conflicts,
+    # changed sources and incomplete scans retain visible unreviewed candidates.
+    terminal = ([item for item in material["active_items"] if item["status"] in {"cancelled", "retired"}]
+                if not record_succession.material_needs_reconciliation(material) else [])
     newest = _newest_period_file(project_dir)
     added = []
     for loop in _skeleton_loops(newest, project_dir):
-        if loop["id"] not in known:
+        terminal_match = any(ref["path"] == loop["source"]["path"] and ref.get("anchor") == loop["text"]
+                             and ref['sha256'] == loop['source']['sha256']
+                             for item in terminal for ref in record_succession._material_refs(item))
+        if loop["id"] not in known and not terminal_match:
             revised["open_loops"].append(loop)
             known.add(loop["id"])
             added.append(loop["id"])
@@ -477,7 +486,7 @@ def refresh(project_dir: Path, apply: bool = False) -> dict:
                 _replace_generated(path, new)
         if any(path.read_text(encoding="utf-8") != new for path, _, new in writes):
             raise ValueError("refresh verification failed; rerun after reconciling ownership")
-    return {"changed": changed, "added_candidates": added, "verified": apply,
+    return {"material_context": material, "changed": changed, "added_candidates": added, "verified": apply,
             "dry_run": not apply, "atomicity": "per-file; interrupted refresh is rerunnable"}
 
 

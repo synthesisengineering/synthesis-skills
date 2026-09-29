@@ -100,7 +100,8 @@ def identifier(value):
 
 
 class Reader:
-    def __init__(self, project):
+    def __init__(self, project, *, budget=None):
+        self.budget = budget
         self.project = rt._path(project)
         self.cache = {}
         self.total = 0
@@ -124,11 +125,19 @@ class Reader:
         if rt.STORE in target.relative_to(self.project).parts:
             raise SuccessionError("transaction internals are not succession inputs")
         self.count += 1
+        if self.budget is not None:
+            self.budget['refs'] += 1
+            if self.budget['refs'] > MAX_REFS or time.monotonic() > self.budget['deadline']:
+                raise SuccessionError('aggregate material observation bound exceeded')
         if self.count > MAX_REFS or time.monotonic() > self.deadline:
             raise SuccessionError("bounded source observation exhausted")
         if path not in self.cache:
             raw, snapshot = rt._snapshot(target)
             self.total += len(raw)
+            if self.budget is not None:
+                self.budget['bytes'] += len(raw)
+                if self.budget['bytes'] > MAX_SOURCE_BYTES:
+                    raise SuccessionError('aggregate material byte bound exceeded')
             if self.total > MAX_SOURCE_BYTES:
                 raise SuccessionError("source byte bound exceeded")
             self.cache[path] = (raw, snapshot)
@@ -281,6 +290,10 @@ def decision_status(raw, spec, row_id):
 
 
 def _review(project, request, *, reader_type=Reader):
+    if not isinstance(request, dict):
+        raise SuccessionError('succession request must be an object')
+    if request.get('kind') == 'material-context':
+        return _material_review(project, request, reader_type=reader_type)
     exact(
         request,
         {"schema", "kind", "inventory", "items", "context_anchor", "context_max_lines"},
@@ -450,6 +463,10 @@ def apply(project, request, *, board, native_payload, dry_run=False):
                 rt._authority(
                     project, board, native_payload, [path, project / "CONTEXT.md"]
                 )
+                if request['kind'] == 'material-context':
+                    # Historical custody can verify after inputs change; a new
+                    # application of the old generation must still refuse.
+                    _review(project, request)
                 validate_record(project, path)
                 return {"status": "committed", "record": record, "changed": False}
         result, reader = _review(project, request)
@@ -501,9 +518,7 @@ def apply(project, request, *, board, native_payload, dry_run=False):
         if request["kind"] == "packet-retirement":
             future[source] = page
         for item in result["items"]:
-            for ref in [item["destination"]] + [
-                o["destination"] for o in item["obligations"]
-            ]:
+            for ref in _material_refs(item):
                 if (
                     ref["path"] in future
                     and future[ref["path"]].count(ref["anchor"].encode()) != 1
@@ -550,7 +565,7 @@ def apply(project, request, *, board, native_payload, dry_run=False):
             + [project / f["file"] for f in request_files]
             + [context, custody_dir]
         )
-        rt._authority(project, board, native_payload, authority_paths)
+        admission = rt._authority(project, board, native_payload, authority_paths)
         reader.unchanged()
         if not rt._matches(context, context_meta):
             raise SuccessionError("context changed during preflight")
@@ -575,6 +590,10 @@ def apply(project, request, *, board, native_payload, dry_run=False):
                     raise SuccessionError("custody directory changed")
             finally:
                 os.close(parent)
+        if request['kind'] == 'material-context':
+            # Publish a discoverable prepared record before auxiliary custody.
+            # It remains explicitly pending if preparation is interrupted.
+            custody.sort(key=lambda pair: pair[0] != path)
         for target, data in custody:
             _preserve(target, data)
         reader.unchanged()
@@ -607,13 +626,18 @@ def apply(project, request, *, board, native_payload, dry_run=False):
                 else reader.cache[file][1]["sha256"]
             )
         result_commit = context_edit.apply_transaction(
-            project, request_files, board=board, native_payload=native_payload
+            project, request_files, board=board, native_payload=native_payload,
+            **({'source_custody': [{'file': source, 'expected': meta}
+                for source, (_, meta) in reader.cache.items()
+                if source not in {row['file'] for row in request_files}],
+                'expected_claim_hash': admission['claim_hash']}
+                if request['kind'] == 'material-context' else {})
         )
         validate_record(project, path)
         return {**result_commit, "record": record}
 
 
-def validate_record(project, path):
+def validate_record(project, path, *, _budget=None, _navigation=None):
     project = rt._path(project)
     path = rt._path(path, project)
     with rt.managed(project):
@@ -655,8 +679,14 @@ def validate_record(project, path):
         observed = set()
 
         class ArchivedReader(Reader):
+            def __init__(self, project):
+                super().__init__(project, budget=_budget)
+
             def read(self, ref, **kwargs):
-                member = mapping.get(ref.get("path"))
+                exact(ref, {'path', 'sha256', 'anchor'}, {'path', 'sha256'})
+                if not isinstance(ref['path'], str):
+                    raise SuccessionError('custody source path must be a string')
+                member = mapping.get(ref['path'])
                 if member is None or member["sha256"] != ref.get("sha256"):
                     raise SuccessionError("missing or changed custody membership")
                 observed.add(ref["path"])
@@ -691,17 +721,34 @@ def validate_record(project, path):
             actual = rt._snapshot(Path(project) / request["inventory"]["path"])[0]
             if actual != expected or value.get("tombstone_sha256") != digest(actual):
                 raise SuccessionError("retired interface or binding changed")
-        if record not in rt._snapshot(Path(project) / "CONTEXT.md")[0].decode():
+        if value["kind"] != "material-context" and record not in rt._snapshot(Path(project) / "CONTEXT.md")[0].decode():
             raise SuccessionError("working context lost succession pointer")
         changed = False
-        current = Reader(project)
+        current = Reader(project, budget=_budget)
         for item in value["items"]:
-            refs = [item["destination"]] + [
-                o["destination"] for o in item["obligations"]
-            ]
+            refs = list(_material_refs(item))
             for ref in refs:
-                raw = current.read(ref, anchor=True, _allow_changed_hash=True)
-                changed = changed or digest(raw) != ref["sha256"]
+                try:
+                    raw = current.read(ref, anchor=True, _allow_changed_hash=True)
+                    changed = changed or digest(raw) != ref['sha256']
+                except (OSError, ValueError, RuntimeError):
+                    if value['kind'] != 'material-context':
+                        raise
+                    changed = True
+        if value['kind'] == 'material-context':
+            live_refs = [value['inventory']]
+            live_refs = [{k: r[k] for k in ('path', 'sha256')} for r in live_refs]
+            live_refs += [r['source'] for r in value['selected_inputs'] if r['source'] is not None]
+            if request['review'] is not None:
+                live_refs.append(request['review'])
+            if value.get('review_evidence'):
+                live_refs += [value['review_evidence']['reviewer'], value['review_evidence']['plan'], *value['review_evidence']['earlier_decisions']]
+            for ref in live_refs:
+                try:
+                    observed = current.read(ref, anchor='anchor' in ref, _allow_changed_hash=True)
+                    changed = changed or digest(observed) != ref['sha256']
+                except (OSError, ValueError, RuntimeError):
+                    changed = True
         current.unchanged()
         return {
             **value,
@@ -763,3 +810,388 @@ def assert_active_spec(directory, spec_sha256, payload_sha256=None):
                 raise SuccessionError(
                     "retired packet is documentary; build a new exact spec from surviving obligations"
                 )
+
+# Material capture is a versioned succession contract, not a lifecycle ledger.
+MATERIAL_ASPECTS = frozenset({'facts', 'rationale', 'condition', 'uncertainty'})
+MATERIAL_KINDS = frozenset({'fact', 'decision', 'constraint', 'commitment', 'risk', 'question', 'amendment', 'cancellation', 'nonmaterial'})
+MATERIAL_ACTIVE = frozenset({'open', 'amended', 'unknown'})
+
+
+def record_request(value):
+    """Validate the record envelope before any consumer dispatches on kind.
+
+    Full committed-field and custody validation remains validate_record's job.
+    A malformed or unobserved record is never a healthy empty inventory.
+    """
+    if not isinstance(value, dict) or not isinstance(value.get('request'), dict):
+        raise SuccessionError('succession record and request must be objects')
+    request = value['request']
+    if request.get('kind') not in ('material-context', 'transfer', 'packet-retirement'):
+        raise SuccessionError('succession request needs a known string kind')
+    if value.get('status') == 'prepared':
+        # The existing transaction owner intentionally has no derived kind yet.
+        exact(value, {'schema', 'status', 'request_sha256', 'request'})
+        if type(value['schema']) is not int or value['schema'] != 1 or value['request_sha256'] != digest(encoded(request)):
+            raise SuccessionError('prepared succession differs from its exact request')
+    elif value.get('status') != 'committed' or value.get('kind') != request['kind']:
+        raise SuccessionError('committed succession needs its matching kind and status')
+    return request
+
+
+def material_needs_reconciliation(report):
+    """Current applicability only; no meaning verdict or action authority."""
+    if report['record_integrity'] in ('INCOMPLETE', 'CHANGED_REQUIRES_REVIEW'):
+        return True
+    observed = bool(report['records'] or report['issues'])
+    return observed and (
+        report['record_integrity'] != 'VERIFIED_FOR_DECLARED_INPUTS'
+        or report['association_reachability'] != 'REACHABLE'
+        or report['input_coverage'] != 'VERIFIED_FOR_DECLARED_INPUTS'
+    )
+
+
+def _material_text(value, label):
+    if not isinstance(value, str) or not value.strip() or len(value) > 4096:
+        raise SuccessionError('bounded nonempty ' + label + ' required')
+    return value
+
+
+def _material_refs(item):
+    if item.get('destination') is not None:
+        yield item['destination']
+    if item.get('next_action') is not None:
+        yield item['next_action']
+    yield from item.get('aspects', {}).values()
+    for obligation in item.get('obligations', []):
+        yield obligation['destination']
+
+
+def _material_review(project, request, *, reader_type=Reader):
+    from datetime import datetime
+    exact(request, {'schema', 'kind', 'phase', 'batch', 'inventory', 'items', 'review', 'context_anchor', 'context_max_lines'})
+    if type(request['schema']) is not int or request['schema'] != 2 or request['kind'] != 'material-context' or request['phase'] not in ('capture', 'associate'):
+        raise SuccessionError('unknown material context contract')
+    _material_text(request['context_anchor'], 'context anchor')
+    if type(request['context_max_lines']) is not int or not 1 <= request['context_max_lines'] <= 150:
+        raise SuccessionError('explicit bounded context line budget required')
+    reader = reader_type(project)
+    batch = request['batch']
+    exact(batch, {'id', 'predecessor', 'captured_at', 'observation', 'excluded'})
+    identifier(batch['id'])
+    _material_text(batch['captured_at'], 'capture time')
+    when = datetime.fromisoformat(batch['captured_at'].replace('Z', '+00:00'))
+    if when.tzinfo is None:
+        raise SuccessionError('capture time needs an explicit offset; not inferred event time')
+    exact(batch['observation'], {'scope', 'start', 'end', 'gaps'})
+    if batch['observation']['scope'] != 'declared-inputs':
+        raise SuccessionError('whole-session coverage is not observable from this record')
+    for key in ('start', 'end'):
+        if batch['observation'][key] is not None:
+            _material_text(batch['observation'][key], 'observation locator')
+    gaps = batch['observation']['gaps']
+    if not isinstance(gaps, list) or len(gaps) > MAX_ITEMS:
+        raise SuccessionError('bounded explicit observation gaps required')
+    for gap in gaps:
+        _material_text(gap, 'gap description')
+    if not isinstance(batch['excluded'], list) or len(batch['excluded']) > MAX_ITEMS:
+        raise SuccessionError('bounded excluded input accounting required')
+    excluded = set()
+    for row in batch['excluded']:
+        exact(row, {'id', 'reason'})
+        identity = identifier(row['id'])
+        if identity in excluded:
+            raise SuccessionError('duplicate excluded input identity')
+        excluded.add(identity)
+        _material_text(row['reason'], 'excluded scope reason')
+    prior = None
+    if batch['predecessor'] is not None:
+        prior = json.loads(reader.read(batch['predecessor']), object_pairs_hook=rt._unique)
+        record_request(prior)
+        if prior.get('kind') != 'material-context' or prior.get('status') != 'committed':
+            raise SuccessionError('predecessor must be an exact committed material succession record')
+        if prior.get('phase') not in ('capture', 'associate'):
+            raise SuccessionError('predecessor needs a known material phase')
+        exact(prior.get('batch'), {'id', 'predecessor', 'captured_at', 'observation', 'excluded'})
+        identifier(prior['batch']['id'])
+        exact(prior.get('inventory'), {'path', 'sha256', 'format', 'declared_count'})
+        if not isinstance(prior.get('items'), list) or len(prior['items']) > MAX_ITEMS:
+            raise SuccessionError('predecessor needs bounded item objects')
+        prior_ids = []
+        for previous in prior['items']:
+            if not isinstance(previous, dict):
+                raise SuccessionError('predecessor item must be an object')
+            prior_ids.append(identifier(previous.get('id')))
+        if len(prior_ids) != len(set(prior_ids)):
+            raise SuccessionError('predecessor item identities must be unique')
+    ids, spec, _ = inventory(reader, request['inventory'])
+    if prior is not None and prior.get('phase') == 'capture':
+        if (request['phase'] != 'associate' or batch['id'] != prior['batch']['id']
+                or request['inventory'] != prior['inventory']):
+            raise SuccessionError('association must reconcile its exact captured input inventory')
+    if request['inventory']['format'] != 'json-rows' or set(spec) != {'rows'}:
+        raise SuccessionError('material inventory needs an exact JSON rows object')
+    if request['inventory']['declared_count'] != len(ids) or set(ids) & excluded:
+        raise SuccessionError('material input denominator differs from declared inventory')
+    sources = {}
+    unavailable = []
+    for row in spec['rows']:
+        exact(row, {'id', 'kind', 'source', 'availability', 'provenance', 'required_aspects', 'reason'})
+        if not isinstance(row['kind'], str) or row['kind'] not in MATERIAL_KINDS:
+            raise SuccessionError('unsupported material kind; credentials are not narrative custody')
+        _material_text(row['reason'], 'selection or nonmaterial reason')
+        exact(row['provenance'], {'origin', 'attribution', 'event_time', 'authority'})
+        if row['provenance']['origin'] not in ('primary', 'quoted', 'relayed', 'unknown') or row['provenance']['authority'] != 'source-claim-not-current-authority':
+            raise SuccessionError('source provenance never grants current principal authority')
+        _material_text(row['provenance']['attribution'], 'attribution')
+        if row['provenance']['event_time'] is not None:
+            _material_text(row['provenance']['event_time'], 'reported event time')
+        aspects = row['required_aspects']
+        if not isinstance(aspects, list) or not all(isinstance(aspect, str) for aspect in aspects) or len(aspects) != len(set(aspects)) or set(aspects) - MATERIAL_ASPECTS:
+            raise SuccessionError('unique declared material aspects required')
+        if row['kind'] == 'nonmaterial' and aspects:
+            raise SuccessionError('nonmaterial disposition must not hide declared material aspects')
+        if row['availability'] == 'retained':
+            # Whole-file references retain binary attachments without inventing
+            # a text anchor or interpreting their content. Meaning stays unknown.
+            reader.read(row['source'], anchor=isinstance(row['source'], dict) and 'anchor' in row['source'])
+        elif row['availability'] == 'unavailable' and row['source'] is None:
+            unavailable.append(row['id'])
+        else:
+            raise SuccessionError('source availability must preserve the actual limitation')
+        sources[row['id']] = row
+    rows = request['items']
+    if not isinstance(rows, list) or len(rows) > MAX_ITEMS:
+        raise SuccessionError('bounded material dispositions required')
+    seen, out, missing_aspects = set(), [], []
+    for row in rows:
+        exact(row, {'id', 'status', 'destination', 'aspects', 'not_applicable', 'owner', 'next_action', 'supersedes', 'reason'})
+        identity = identifier(row['id'])
+        if identity in seen:
+            raise SuccessionError('duplicate material disposition identity')
+        seen.add(identity)
+        if identity not in sources:
+            raise SuccessionError('extra material disposition outside selected inputs')
+        if not isinstance(row['status'], str) or row['status'] not in MATERIAL_ACTIVE | {'recorded', 'cancelled', 'retired', 'nonmaterial'}:
+            raise SuccessionError('unsupported material status; absence is never completion')
+        _material_text(row['reason'], 'disposition rationale')
+        _material_text(row['owner'], 'owner or explicit UNKNOWN with reason')
+        if not isinstance(row['aspects'], dict) or set(row['aspects']) - MATERIAL_ASPECTS or not isinstance(row['not_applicable'], dict) or set(row['not_applicable']) - MATERIAL_ASPECTS:
+            raise SuccessionError('bounded aspect references and applicability reasons required')
+        if set(row['aspects']) & set(row['not_applicable']):
+            raise SuccessionError('an aspect cannot be both present and inapplicable')
+        for reason in row['not_applicable'].values():
+            _material_text(reason, 'aspect applicability reason')
+        absent = set(sources[identity]['required_aspects']) - set(row['aspects'])
+        # A declared source condition cannot be waived as an inapplicable field.
+        missing_aspects.extend(identity + ':' + key for key in sorted(absent))
+        if row['status'] == 'nonmaterial':
+            if sources[identity]['kind'] != 'nonmaterial' or row['destination'] is not None or row['next_action'] is not None:
+                raise SuccessionError('nonmaterial disposition cannot erase a selected material item')
+        elif row['destination'] is None:
+            missing_aspects.append(identity + ':destination')
+        if row['status'] in MATERIAL_ACTIVE and row['next_action'] is None:
+            missing_aspects.append(identity + ':next_action')
+        for ref in _material_refs(row):
+            reader.read(ref, anchor=True)
+        if row['supersedes'] is not None:
+            exact(row['supersedes'], {'record', 'id'})
+            identifier(row['supersedes']['id'])
+            if prior is None or row['supersedes']['record'] != batch['predecessor'] or row['supersedes']['id'] not in {r['id'] for r in prior['items']}:
+                raise SuccessionError('amendment/cancellation must bind its exact predecessor item')
+        out.append({**row, 'obligations': [{'id': identity, 'destination': row['next_action']}] if row['next_action'] is not None and row['status'] in MATERIAL_ACTIVE else []})
+    if request['phase'] == 'capture' and (rows or request['review'] is not None):
+        raise SuccessionError('capture is retained pending review, not an associated disposition')
+    missing = sorted(set(ids) - seen)
+    coverage = ('CAPTURED_PENDING' if request['phase'] == 'capture' else 'MISSING_MATERIAL' if missing or missing_aspects else 'SOURCE_UNAVAILABLE' if unavailable else 'VERIFIED_FOR_DECLARED_INPUTS')
+    semantic = 'UNREVIEWED'
+    review_evidence = None
+    if request['review'] is not None:
+        review_evidence = json.loads(reader.read(request['review']), object_pairs_hook=rt._unique)
+        exact(review_evidence, {'schema', 'kind', 'inventory_sha256', 'dispositions_sha256', 'reviewer', 'plan', 'earlier_decisions', 'answers', 'limitations'})
+        if type(review_evidence['schema']) is not int or review_evidence['schema'] != 1 or review_evidence['kind'] != 'material-meaning-review' or review_evidence['inventory_sha256'] != request['inventory']['sha256'] or review_evidence['dispositions_sha256'] != digest(encoded(rows)):
+            raise SuccessionError('meaning review belongs to another input/destination generation')
+        reader.read(review_evidence['reviewer'], anchor=True)
+        reader.read(review_evidence['plan'], anchor=True)
+        if not isinstance(review_evidence['earlier_decisions'], list) or len(review_evidence['earlier_decisions']) > MAX_ITEMS:
+            raise SuccessionError('bounded earlier decision references required')
+        for ref in review_evidence['earlier_decisions']:
+            reader.read(ref, anchor=True)
+        _material_text(review_evidence['limitations'], 'review limitations')
+        answers = review_evidence['answers']
+        if not isinstance(answers, list) or len(answers) != len(ids):
+            raise SuccessionError('meaning review must account for each declared input')
+        reviewed = set(); grades = set()
+        dispositions = {row['id']: row for row in out}
+        for answer in answers:
+            exact(answer, {'id', 'question', 'source_refs', 'record_refs', 'assessment', 'reason'})
+            identity = identifier(answer['id'])
+            if identity in reviewed or identity not in sources:
+                raise SuccessionError('meaning answer identity differs')
+            reviewed.add(identity)
+            if answer['assessment'] not in ('faithful', 'deficient', 'uncertain'):
+                raise SuccessionError('a PASS flag is not meaning evidence')
+            grades.add(answer['assessment'])
+            _material_text(answer['question'], 'recovery question'); _material_text(answer['reason'], 'cited review reasoning')
+            source = sources[identity]['source']
+            source_paths = {source['path']} if source is not None else set()
+            if identity not in dispositions:
+                raise SuccessionError('meaning review needs a disposition for every input')
+            destination_paths = {ref['path'] for ref in _material_refs(dispositions[identity])}
+            for key, allowed in (('source_refs', source_paths), ('record_refs', destination_paths)):
+                refs = answer[key]
+                if not isinstance(refs, list) or len(refs) > 16:
+                    raise SuccessionError('bounded review citations required')
+                if sources[identity]['availability'] == 'retained' and sources[identity]['kind'] != 'nonmaterial' and not refs:
+                    raise SuccessionError('review needs actual source and record citations')
+                for ref in refs:
+                    exact(ref, {'path', 'sha256', 'anchor'}, {'path', 'sha256'})
+                    if not isinstance(ref['path'], str) or ref['path'] not in allowed:
+                        raise SuccessionError('review citation outside its exact input/destination closure')
+                    reader.read(ref, anchor=key != 'source_refs' or 'anchor' in ref)
+        semantic = 'DEFICIENCIES_REPORTED' if 'deficient' in grades else 'REVIEW_EVIDENCE_PRESENT_UNVERIFIED'
+    result = {'schema': 2, 'kind': 'material-context', 'phase': request['phase'], 'batch': batch,
+        'inventory': request['inventory'], 'inventory_ids': ids, 'inventory_count': len(ids),
+        'declared_count_matches': True, 'reconciled_ids': sorted(seen), 'missing_items': missing,
+        'missing_aspects': sorted(missing_aspects), 'extra_items': [], 'unavailable_sources': unavailable,
+        'identity_complete': request['phase'] == 'capture' or not missing and not missing_aspects,
+        'items': out, 'selected_inputs': list(sources.values()), 'unresolved_obligations': sorted(r['id'] for r in out if r['status'] in MATERIAL_ACTIVE),
+        'input_coverage': coverage, 'record_integrity': 'VERIFIED_FOR_DECLARED_INPUTS',
+        'association_reachability': 'NOT_YET_APPLIED', 'semantic_review': semantic,
+        'current_authority': 'NOT_ASSESSED', 'endpoint_recovery': 'UNKNOWN',
+        'whole_session_coverage': 'UNKNOWN', 'historical_coverage': 'UNKNOWN',
+        'authorization_granted': False, 'completion_established': False,
+        'readiness': 'requires-meaning-review', 'request_sha256': digest(encoded(request)), 'request': request,
+        'review_evidence': review_evidence, 'inventory_coverage': 'Declared bounded inputs only; source kind and reviewer statements are not authentication.'}
+    reader.unchanged()
+    return result, reader
+
+
+def _material_navigation(project, record, budget):
+    """Bounded forward Markdown links from ordinary resumption surfaces.
+
+    This proves path reachability only. File text and link labels are never a
+    semantic oracle, and external/private locators grant no read authority.
+    """
+    reader = Reader(project, budget=budget)
+    queue = [('CONTEXT.md', 0), ('REFERENCE.md', 0)]
+    seen = set(); skipped = 0
+    while queue:
+        path, depth = queue.pop(0)
+        if path in seen:
+            continue
+        if len(seen) >= MAX_RECORDS:
+            raise SuccessionError('material navigation entry bound exceeded')
+        seen.add(path)
+        target = rt._path(Path(project) / path, Path(project))
+        if not target.exists():
+            skipped += 1; continue
+        raw, _ = rt._snapshot(target)
+        reader.read({'path': path, 'sha256': digest(raw)})
+        for link in re.findall(r'\]\(([^\s)]+)(?:\s+"[^"]*")?\)', raw.decode('utf-8', errors='replace')):
+            link = link.split('#', 1)[0]
+            if not link or ':' in link or Path(link).is_absolute():
+                skipped += 1; continue
+            candidate = Path(os.path.normpath(str(Path(path).parent / link)))
+            if '..' in candidate.parts:
+                skipped += 1; continue
+            if candidate.as_posix() == record:
+                reader.unchanged()
+                return {'status': 'REACHABLE', 'examined': len(seen), 'skipped': skipped}
+            if candidate.suffix == '.md':
+                if depth >= 4:
+                    raise SuccessionError('material navigation depth bound exhausted; reachability remains unknown')
+                queue.append((candidate.as_posix(), depth + 1))
+    reader.unchanged()
+    return {'status': 'PRESENT_BUT_UNREACHABLE', 'examined': len(seen), 'skipped': skipped}
+
+
+def material_context(project):
+    """Read-only shared coverage projection; no enrollment, receipt or policy activation."""
+    started = time.monotonic()
+    budget = {'refs': 0, 'bytes': 0, 'deadline': started + SCAN_SECONDS}
+    result = {'schema': 1, 'input_coverage': 'UNKNOWN', 'record_integrity': 'UNKNOWN',
+        'association_reachability': 'UNKNOWN', 'semantic_review': 'UNREVIEWED',
+        'current_authority': 'NOT_ASSESSED', 'endpoint_recovery': 'UNKNOWN',
+        'whole_session_coverage': 'UNKNOWN', 'historical_coverage': 'UNKNOWN',
+        'authorization_granted': False, 'completion_established': False,
+        'records': [], 'active_items': [], 'issues': [], 'examined_records': 0, 'skipped_records': 0,
+        'navigation_examined': 0, 'navigation_skipped': 0}
+    try:
+        project = rt._path(project)
+        with rt.managed(project):
+            for path in records(project):
+                if time.monotonic() > budget['deadline']:
+                    raise SuccessionError('material scan deadline exhausted')
+                raw, _ = rt._snapshot(path)
+                budget['bytes'] += len(raw)
+                if budget['bytes'] > MAX_SOURCE_BYTES:
+                    raise SuccessionError('material scan byte bound exhausted')
+                value = json.loads(raw, object_pairs_hook=rt._unique)
+                request = record_request(value)
+                name = str(path.relative_to(project))
+                navigation = _material_navigation(project, name, budget)
+                result['navigation_examined'] += navigation['examined']; result['navigation_skipped'] += navigation['skipped']
+                if request['kind'] != 'material-context':
+                    result['skipped_records'] += 1
+                    if navigation['status'] != 'REACHABLE':
+                        result['association_reachability'] = 'PRESENT_BUT_UNREACHABLE'
+                        result['issues'].append({'record': name, 'kind': 'PRESENT_BUT_UNREACHABLE', 'detail': 'Retained succession lacks a forward resumption link; historical input coverage remains unknown.'})
+                    continue
+                result['examined_records'] += 1
+                if value.get('status') != 'committed':
+                    result['records'].append({'record': name, 'sha256': digest(raw), 'phase': 'prepared', 'input_coverage': 'CAPTURED_PENDING', 'semantic_review': 'UNREVIEWED', 'association_reachability': navigation['status']})
+                    result['issues'].append({'record': name, 'kind': 'CAPTURED_PENDING', 'detail': 'Prepared material record requires existing transaction recovery or exact owner reconciliation.'})
+                    continue
+                checked = validate_record(project, path, _budget=budget, _navigation=navigation)
+                result['records'].append({'record': name, 'sha256': digest(raw), 'phase': checked['phase'], 'batch': checked['batch'], 'items': checked['items'],
+                    'input_coverage': checked['input_coverage'], 'record_integrity': checked['record_integrity'], 'semantic_review': checked['semantic_review'],
+                    'current_destinations': checked['current_destinations'], 'association_reachability': navigation['status']})
+                if navigation['status'] != 'REACHABLE':
+                    result['issues'].append({'record': name, 'kind': 'PRESENT_BUT_UNREACHABLE', 'detail': 'Exact retained material exists but current resumption does not reach it.'})
+                if checked['current_destinations'] != 'exact-observed-snapshot':
+                    result['issues'].append({'record': name, 'kind': 'CHANGED_REQUIRES_REVIEW', 'detail': 'Current canonical bytes differ from the historically bound material review.'})
+            selected = [r for r in result['records'] if r.get('phase') in {'capture', 'associate'}]
+            succeeded = {r['batch']['predecessor']['path'] for r in selected if r['batch']['predecessor'] is not None}
+            active_records = [r for r in selected if not (r['phase'] == 'capture' and r['record'] in succeeded)]
+            superseded = {(item['supersedes']['record']['path'], item['supersedes']['id']) for r in active_records for item in r.get('items', []) if item.get('supersedes') is not None}
+            supersessions = [(item['supersedes']['record']['path'], item['supersedes']['id']) for r in active_records for item in r.get('items', []) if item.get('supersedes') is not None]
+            conflicting = len(supersessions) != len(superseded)
+            result['active_items'] = [{'record': r['record'], **item} for r in active_records for item in r.get('items', []) if (r['record'], item['id']) not in superseded]
+            active_records = [r for r in active_records if r['phase'] == 'capture' or not r.get('items') or any((r['record'], item['id']) not in superseded for item in r['items'])]
+            if result['records']:
+                result['record_integrity'] = 'VERIFIED_FOR_DECLARED_INPUTS'
+                values = {r['input_coverage'] for r in active_records} | {r['input_coverage'] for r in result['records'] if r['phase'] == 'prepared'}
+                if any(r['phase'] == 'prepared' for r in result['records']):
+                    result['record_integrity'] = 'INCOMPLETE'
+                result['input_coverage'] = next((v for v in ('MISSING_MATERIAL', 'CAPTURED_PENDING', 'SOURCE_UNAVAILABLE') if v in values), 'VERIFIED_FOR_DECLARED_INPUTS' if values else 'CAPTURED_PENDING')
+                result['association_reachability'] = 'PRESENT_BUT_UNREACHABLE' if any(r['association_reachability'] != 'REACHABLE' for r in result['records']) else 'REACHABLE'
+                result['semantic_review'] = 'DEFICIENCIES_REPORTED' if any(r['semantic_review'] == 'DEFICIENCIES_REPORTED' for r in active_records) else 'REVIEW_EVIDENCE_PRESENT_UNVERIFIED' if active_records and all(r['semantic_review'] == 'REVIEW_EVIDENCE_PRESENT_UNVERIFIED' for r in active_records) else 'UNREVIEWED'
+                if any(r.get('current_destinations') == 'changed-requires-review' for r in active_records):
+                    result['record_integrity'] = 'CHANGED_REQUIRES_REVIEW'; result['semantic_review'] = 'CHANGED_REQUIRES_REVIEW'
+                if conflicting:
+                    result['record_integrity'] = 'INCOMPLETE'
+                    result['issues'].append({'kind': 'CURRENT_CONFLICT', 'detail': 'Multiple retained dispositions supersede the same item; current meaning requires reconciliation.'})
+    except (OSError, ValueError, RuntimeError, UnicodeError) as exc:
+        result['record_integrity'] = 'INCOMPLETE'
+        result['issues'].append({'kind': 'INCOMPLETE', 'detail': str(exc)})
+    result['resource_usage'] = {'reference_observations': budget['refs'], 'charged_bytes': budget['bytes'], 'elapsed_seconds': time.monotonic() - started,
+        'limits': {'references': MAX_REFS, 'bytes': MAX_SOURCE_BYTES, 'records': MAX_RECORDS, 'seconds': SCAN_SECONDS}, 'model_usage': 'UNKNOWN'}
+    return result
+
+
+def material_projection(report):
+    """Reference-only view for the existing optional recovery capsule.
+
+    It binds the succession records, not a second copy of narrative or authority.
+    Re-observe with material_context before relying on current applicability.
+    """
+    fields = ('schema', 'input_coverage', 'record_integrity', 'association_reachability',
+        'semantic_review', 'current_authority', 'endpoint_recovery', 'whole_session_coverage',
+        'historical_coverage', 'authorization_granted', 'completion_established',
+        'examined_records', 'skipped_records', 'navigation_examined', 'navigation_skipped')
+    return {**{key: report[key] for key in fields},
+        'records': [{key: row[key] for key in ('record', 'sha256', 'phase', 'input_coverage',
+            'record_integrity', 'semantic_review', 'association_reachability') if key in row}
+            for row in report['records']],
+        'issues': [{key: issue[key] for key in ('record', 'kind') if key in issue} for issue in report['issues']],
+        'recovery_owner': 'record_succession.material_context', 'narrative_copied': False}

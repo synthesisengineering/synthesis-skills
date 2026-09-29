@@ -57,7 +57,7 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.10.1"
+ENGINE_VERSION = "2.10.2"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "explain",

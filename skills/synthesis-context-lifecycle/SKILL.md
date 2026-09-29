@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.21.1"
+  version: "1.22.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -148,6 +148,13 @@ When any of these fire, run the Mid-Session Refresh Protocol unconditionally.
 Scripted edits must use the public context editor and its budget/currency gates. Multi-file edits use apply-transaction with exact native/claim authority; interrupted intent must be reconciled through recover-transaction before further managed reads or writes. A journal never grants authority. Read and apply this section's complete [operating protocol](references/durable-record-operations.md) before acting.
 
 ## Decision and transfer succession
+
+For material facts, rationale, constraints, temporary conditions or changed
+instructions, follow [material context](references/material-context.md) before
+dependent work, compaction or handoff. Capture the explicit input denominator,
+then associate it through the existing editor. Pending capture, missing material,
+unreachable records and unknown semantic or endpoint coverage remain distinct.
+This applies to ordinary prose projects without autopilot or format enrollment.
 
 Before retiring a decision interface or absorbing transferred ideas, read
 [artifact succession](references/artifact-succession.md). Use the existing

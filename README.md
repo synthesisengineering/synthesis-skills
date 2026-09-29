@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.0** adds declared material-context preservation across ordinary
+project editing, checkpoint, doctor and recovery workflows. Autopilot **3.6.0**
+uses the same records to fence incomplete or changed material before new work.
+Facts, rationale, temporary conditions and uncertainty remain linked to their
+retained sources; structural checks do not certify meaning or native outcomes.
+
 Registered nested worktree retirement now verifies bounded Git metadata and
 backlinks before acting. Temporary-storage diagnostics distinguish retained
 work from durable execution homes. Release acceptance executes overlapping

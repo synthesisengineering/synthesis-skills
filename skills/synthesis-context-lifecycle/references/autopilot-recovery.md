@@ -30,6 +30,12 @@ declared output and scratch roots for inspection under the existing path owner.
 
 ## Consume through existing owners
 
+Material inputs remain in the [ordinary succession owner](material-context.md).
+Capsules carry its exact record references and separate coverage axes, without
+copying narrative. Recovery re-observes changed, pending or unreachable material
+and reports reconciliation; unknown historical scope is not automatic enrollment
+or a semantic PASS. Actual meaning acceptance uses the existing project rubric.
+
 1. Resolve the project through the PM registry and full causal project resolver
    before reading its execution journal. The controller uses explicit repo-guard,
    checkpoint receipt and coordination roots and does not fetch or refresh the

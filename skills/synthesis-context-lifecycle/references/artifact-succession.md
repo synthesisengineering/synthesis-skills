@@ -7,6 +7,11 @@ context. `record_transaction.py` owns cooperative multi-file changes and recover
 
 ## Four independent questions
 
+Schema 2 `material-context` requests extend this owner with explicit capture,
+source provenance, conditions, meaning-review references and later amendments.
+See [material context](material-context.md). The schema-1 transfer and retirement
+protocol below retains its own declared-inventory and authority boundaries.
+
 1. **Did every source item arrive?** The source inventory's exact IDs, not a
    narrative total or a receiver's list, define the denominator. Missing, extra
    and duplicate IDs cannot become a complete transfer. A declared count mismatch

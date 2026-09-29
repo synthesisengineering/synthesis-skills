@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.8.0"
+  version: "1.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -153,6 +153,13 @@ infer uncommitted work from a date difference; inspect Git status for that.
   can still contain stale claims, and a valid session date can precede its commit.
 
 ### Step 4 — Cross-reference tasks and recent decisions
+
+Inspect the returned material-context coverage separately from structural health.
+Follow the [material-context protocol](../synthesis-context-lifecycle/references/material-context.md)
+to reconcile declared inputs, rationale, temporary conditions, uncertainty and
+amendments with actual retained spans. Restore unreachable associations without
+replaying the incident. Ordinary projects retain explicit coverage before
+NOT_APPLICABLE; hashes and supplied reviewer assertions cannot certify meaning.
 
 If the client provides an in-session task or plan surface, read it. Treat that
 as the third source of truth—ephemeral session memory to compare against disk

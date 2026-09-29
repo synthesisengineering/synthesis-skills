@@ -1,5 +1,13 @@
 # Project and knowledge outcome review
 
+Use the [material-context inventory](../../synthesis-context-lifecycle/references/material-context.md)
+as a declared denominator in the existing obligation-preservation and causal
+recovery rubric. Compare retained source and output spans, including reasons,
+temporary conditions, uncertainty and cancellation. Keep whole-session scope,
+historical gaps and independent semantic acceptance explicit. Calibrate with a
+faithful concise paraphrase plus omitted-condition, invented-approval and dropped
+request controls. Programmed fixture judgments do not establish model accuracy.
+
 Trace each remaining obligation from its durable source to a current retained
 record, owner and next action. Compare obligation identities and meaningful
 content, not just counts. An omitted obligation or a changed unresolved status

@@ -769,10 +769,14 @@ def apply_edits(
 
 
 def apply_transaction(project: Path, files: list[dict], *, board: Path,
-                      native_payload: dict, dry_run: bool = False) -> dict:
+                      native_payload: dict, dry_run: bool = False,
+                      source_custody: list[dict] | None = None,
+                      expected_claim_hash: str | None = None) -> dict:
     """One recoverable multi-file project edit with fresh exact PM authority."""
     return record_transaction.apply(project, files, board=board,
-                                    native_payload=native_payload, dry_run=dry_run)
+                                    native_payload=native_payload, dry_run=dry_run,
+                                    source_custody=source_custody,
+                                    expected_claim_hash=expected_claim_hash)
 
 
 def recover_transaction(project: Path, *, board: Path, native_payload: dict) -> dict:

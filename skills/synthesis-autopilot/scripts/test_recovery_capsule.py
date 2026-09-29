@@ -21,6 +21,26 @@ def checkpoint(facade, world, state=None):
     return state_of(world,response), response['coverage']['recovery_capsule']
 
 
+@pytest.mark.parametrize('phase', ['capture', 'associate'])
+def test_material_recovery_joins_existing_capsule_without_narrative_or_authority(facade, world, phase):
+    from test_material_context import example, apply, FAITHFUL
+    p, q = example(world, phase)
+    receipt = apply(world, q)
+    state, reference = checkpoint(facade, world)
+    material = state['extensions']['controller']['checkpoint']['recovery_capsule']['material_context']
+    assert material['records'][0]['record'] == receipt['record']
+    assert material['narrative_copied'] is False
+    assert material['semantic_review'] == 'UNREVIEWED'
+    assert material['endpoint_recovery'] == 'UNKNOWN'
+    assert material['authorization_granted'] is material['completion_established'] is False
+    assert FAITHFUL.strip() not in json.dumps(material)
+    attribute_recovery_fixture(world)
+    response = invoke(facade, world, request('recover', {'reconcile_sources': True, 'capsule_ref': reference['event_ref']}, state, 'material-recover'))
+    recovery = response['coverage']['recovery']
+    assert any(row['kind'] == 'material_reconciliation' for row in recovery['pending']) == (phase == 'capture')
+    assert recovery['authority_granted'] is False
+
+
 def test_checkpoint_produces_current_journal_owned_capsule(facade,world):
     state, ref=checkpoint(facade,world)
     capsule=state['extensions']['controller']['checkpoint']['recovery_capsule']

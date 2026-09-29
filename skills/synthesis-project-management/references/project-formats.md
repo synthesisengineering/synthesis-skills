@@ -75,6 +75,13 @@ outputs before retry. It never edits `CURRENT_STATE.json`.
 
 ## Rules for every version, present and future
 
+Material preservation applies independently of format. The shared checkpoint and
+doctor result exposes declared inputs and association reachability for v1 before
+structured NOT_APPLICABLE. Follow [material context](../../synthesis-context-lifecycle/references/material-context.md);
+do not migrate or enroll a project to manufacture coverage. Refresh preserves
+curated loops and avoids recreating exact terminal source spans; changed source
+bytes require reconciliation, and absent source never completes an obligation.
+
 - New versions are strictly additive. Old readers keep working.
 - Migration is pull-based, on resume: inform the principal in one
   line, migrate, verify, then resume work. Never migrate under a

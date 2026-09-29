@@ -4,6 +4,10 @@ These are mandatory sections of the context-lifecycle skill, moved here intact t
 
 ## Editing a Durable Context File — MANDATORY for scripted edits
 
+Material source capture and association use the same editor and transaction
+owner. Apply [material context](material-context.md) before dependent work,
+compaction or handoff; an unassociated capture remains explicitly pending.
+
 A scripted edit to `CONTEXT.md`, `REFERENCE.md`, or a session log is an
 assertion that a specific change was made. A bare `str.replace()` asserts
 nothing: when an anchor no longer matches — because another agent legitimately

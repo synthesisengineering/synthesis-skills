@@ -100,7 +100,10 @@ def capture(context):
                   'sha256': run_state._digest(value)} for key, value in extensions.items()}
     from native_archive import verify_archives
     archive_coverage = verify_archives(project,state)
-    result = {'schema_version': 1, 'kind': 'recovery-capsule', 'authority_granted': False,
+    import project_state
+    from record_succession import material_projection
+    material = material_projection(project_state.material_context(project))
+    result = {'material_context': material, 'schema_version': 1, 'kind': 'recovery-capsule', 'authority_granted': False,
         'native_archive_coverage': archive_coverage,
         'project_id': state['project_id'], 'run_id': state['run_id'],
         'basis': {'revision': state['revision'], 'event_digest': head['digest'],
@@ -224,7 +227,12 @@ def _report(context):
         pending = [row for row in pending if row['kind'] != 'instruction_reconciliation']
     if native['status'] != 'clear':
         pending.append({'owner': 'observation_bridge', 'kind': 'native_reconciliation', 'status': native['status']})
-    return {'status': 'reconcile' if pending else 'clear', 'pending': pending,
+    import project_state
+    from record_succession import material_projection, material_needs_reconciliation
+    material = material_projection(project_state.material_context(context['project']))
+    if material_needs_reconciliation(material):
+        pending.append({'owner': 'context_edit', 'kind': 'material_reconciliation', 'reason': 'Current declared material is pending, changed or unreachable; no authority fence is cleared'})
+    return {'material_context': material, 'status': 'reconcile' if pending else 'clear', 'pending': pending,
         'native': native, 'criteria': run_state.criterion_report(state, context),
         'authority_granted': False, 'fence': {key: context['binding'][key] for key in
             ('session_uuid','native_ref','claim_hash','repository','branch')},
@@ -294,10 +302,10 @@ def validate_command(state, command, payload, context):
         if recovery['report']['status'] != 'clear':
             raise ValueError('recovery reconciliation remains pending; retain effects and children before work admission')
         # An admitted recovery is a journal fact, not a lease on external truth.
-        # Recheck native cancellation, instruction and artifact currentness at
+        # Recheck native cancellation, instruction, artifact and material currentness at
         # the actual command boundary. Newly admitted effects/children remain
         # with their own workflow owners and do not reopen a completed recovery.
-        external = {'native_reconciliation','instruction_reconciliation','artifact_reconciliation'}
+        external = {'native_reconciliation','instruction_reconciliation','artifact_reconciliation','material_reconciliation'}
         observed = {**context, 'state': state, 'project': Path(context['binding']['project_root'])}
         if any(row['kind'] in external for row in _report(observed)['pending']):
             raise ValueError('recovery external currentness changed; reconcile before work admission')

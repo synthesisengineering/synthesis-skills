@@ -1822,6 +1822,11 @@ def _uncompiled_current_state_prose(project: Path, context: str) -> list[str]:
     return findings
 
 
+def material_context(project: Path) -> dict[str, Any]:
+    from record_succession import material_context as observe
+    return observe(project)
+
+
 @record_transaction.guarded("project", error=ProjectStateError)
 def semantic_issues(project: Path) -> list[str]:
     """Return contradictions in operational and human-readable current state."""
@@ -2192,6 +2197,7 @@ def checkpoint_project(
     )
     _repo, _relative, head, tree = _git_identity(project)
     payload: dict[str, Any] = {
+        "material_context": material_context(project),
         "receipt_schema": RECEIPT_SCHEMA,
         "session_id": session_id,
         "project_id": project_id,
@@ -2938,6 +2944,7 @@ def checkpoint_hook(
     receipt_root: Path,
     refresh_coordination: bool = True,
     repo_guard_root: Path | None = None,
+    material_result: dict | None = None,
 ) -> tuple[str, list[str]]:
     """Bind a lifecycle event to its seat and issue an exact clean receipt."""
     try:
@@ -2969,6 +2976,8 @@ def checkpoint_hook(
             cwd = Path(str(payload.get("cwd") or ".")).resolve()
             project = _observer_project(cwd)
             if project is not None:
+                if material_result is not None:
+                    material_result.update(material_context(project))
                 verdict, issues = _observer_checkpoint_scope(payload, project)
                 return verdict, (
                     pending_scope[1] if pending_scope is not None else []
@@ -2977,6 +2986,8 @@ def checkpoint_hook(
         project = _project_from_claim(row)
         if project is None:
             return "NOT_APPLICABLE", []
+        if material_result is not None:
+            material_result.update(material_context(project))
         applicability, issues = checkpoint_applicability(project)
         if applicability == "NOT_APPLICABLE":
             return applicability, issues
@@ -3028,6 +3039,7 @@ def _emit_checkpoint_hook(
     issues: list[str],
     payload: dict[str, Any],
     publication: dict[str, Any] | None = None,
+    material_result: dict | None = None,
 ) -> int:
     report = {
         "status": verdict,
@@ -3041,6 +3053,8 @@ def _emit_checkpoint_hook(
             "a retained pending manifest alone does not prove edits are unpublished.",
         },
     }
+    if material_result is not None:
+        report["material_context"] = material_result or {"input_coverage": "UNKNOWN", "semantic_review": "UNREVIEWED", "endpoint_recovery": "UNKNOWN", "scope": "No selected project in this event"}
     report["publication"] = (
         publication if publication is not None else _checkpoint_publication(payload)
     )
@@ -3213,6 +3227,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "checkpoint":
         try:
+            material = material_context(args.project)
             applicability, issues = checkpoint_applicability(args.project)
             if applicability == "NOT_APPLICABLE":
                 print(
@@ -3222,6 +3237,7 @@ def main(argv: list[str] | None = None) -> int:
                             "issues": issues,
                             "checkpoint_accepted": False,
                             "no_receipt_issued": True,
+                            "material_context": material,
                         },
                         indent=2,
                     )
@@ -3246,14 +3262,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("hook payload is not an object")
         except (json.JSONDecodeError, ValueError) as exc:
             return _emit_checkpoint_hook("UNKNOWN", [str(exc)], {})
+        material = {}
         verdict, issues = checkpoint_hook(
             payload,
+            material_result=material,
             coordination_board=args.coordination_board,
             receipt_root=args.receipt_root,
             repo_guard_root=args.repo_guard_root,
         )
         publication = _checkpoint_publication(payload, args.repo_guard_root)
-        return _emit_checkpoint_hook(verdict, issues, payload, publication=publication)
+        return _emit_checkpoint_hook(verdict, issues, payload, publication=publication, material_result=material)
     verdict, issues = validate_checkpoint(
         args.project,
         session_id=args.session_id,
@@ -3273,6 +3291,7 @@ def main(argv: list[str] | None = None) -> int:
             "a retained pending manifest alone does not prove edits are unpublished.",
         },
     }
+    report["material_context"] = material_context(args.project)
     if verdict == "NOT_APPLICABLE":
         report["no_receipt_issued"] = True
     print(json.dumps(report, indent=2))
