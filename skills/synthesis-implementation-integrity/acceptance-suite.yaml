@@ -556,6 +556,8 @@ changed_surfaces:
   - final-runtime-ci-e754cbf93b986819
 - path: CHANGELOG.md
   cases:
+  - guard-fixture-2f7c006d1dfae02c
+  - guard-fixture-789b6457fe97a9c7
   - acceptance-execution-0570ed7442e043c2
   - acceptance-execution-0f49810f8d8ee377
   - acceptance-execution-23212a48e169808f
@@ -4791,6 +4793,8 @@ changed_surfaces:
   - final-e80e745ca359589d
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
+  - guard-fixture-2f7c006d1dfae02c
+  - guard-fixture-789b6457fe97a9c7
   - acquisition-81649df402478ce9
   - acquisition-a13ac8543a1190c1
   - final-003f38c1bda8262d
@@ -9439,6 +9443,10 @@ changed_surfaces:
   - final-98984db1805ccc6c
   - final-a30b9aa9dc3f4e82
   - final-be355cf9e5fa441f
+- path: skills/synthesis-agent-guardrails/tests/test_publish_guard_rapid.py
+  cases:
+  - guard-fixture-2f7c006d1dfae02c
+  - guard-fixture-789b6457fe97a9c7
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -15508,3 +15516,15 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_group_confines_conftest_and_keeps_in_root_fixtures
   motivating_defect: 'Independent NRO-1/NRO-2: outside collection config/hooks can omit required
     failures. Bind owned config and root fixture boundary.'
+- id: guard-fixture-2f7c006d1dfae02c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_publish_guard_rapid.py::test_consume_records_last_publish
+  motivating_defect: Hosted rapid-redeploy fixture depended on ambient operator policy.
+    Use a test-owned policy for success and retain fail-closed missing or invalid policy controls.
+- id: guard-fixture-789b6457fe97a9c7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-agent-guardrails/tests/test_publish_guard_rapid.py::test_invalid_policy_refuses_without_recording_publish
+  motivating_defect: Hosted rapid-redeploy fixture depended on ambient operator policy.
+    Use a test-owned policy for success and retain fail-closed missing or invalid policy controls.

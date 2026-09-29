@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +23,23 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolated_environment(tmp_path, monkeypatch):
+    """Every fixture owns its policy and Git environment, even on an enrolled host."""
+    home = tmp_path / "home"
+    home.mkdir()
+    for name in tuple(os.environ):
+        if name.startswith("GIT_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "config"))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(home / "gitconfig"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("PUBLISH_GUARD_CONFIG", str(home / "publish-config.json"))
+    monkeypatch.setenv("PUBLISH_GUARD_STATE_DIR", str(home / "guard-state"))
+    monkeypatch.delenv("PUBLISH_GUARD_ALLOW_FUTURE_DATES", raising=False)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -102,9 +120,8 @@ def test_rapid_flag_without_quote_refused(tmp_path, monkeypatch) -> None:
     assert not MODULE.ledger_authorizes_rapid()
 
 
-def test_consume_records_last_publish(tmp_path, monkeypatch) -> None:
-    """A successful consume stamps the repo's last-publish record so the
-    NEXT publish sees the window."""
+def _prepared_approval(tmp_path, monkeypatch):
+    """Construct one synthetic repository and approval; no ambient policy."""
     import subprocess
 
     repo = tmp_path / "repo"
@@ -124,10 +141,33 @@ def test_consume_records_last_publish(tmp_path, monkeypatch) -> None:
         "approved_via": "in-chat",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }), encoding="utf-8")
+    return repo, state
+
+
+def test_consume_records_last_publish(tmp_path, monkeypatch) -> None:
+    """A successful consume stamps the repo's last-publish record so the
+    NEXT publish sees the window."""
+    repo, _ = _prepared_approval(tmp_path, monkeypatch)
+    Path(MODULE.config_path()).write_text(
+        json.dumps({"auto_deploy_repos": [str(repo)]}), encoding="utf-8"
+    )
     ok, why = MODULE.consume_ledger(str(repo))
     assert ok, why
     in_window, prior = MODULE.rapid_redeploy_state(str(repo))
     assert in_window and prior["summary"] == "publish one"
+
+
+@pytest.mark.parametrize("contents", [None, "{", '{"auto_deploy_repos": []}'])
+def test_invalid_policy_refuses_without_recording_publish(tmp_path, monkeypatch, contents):
+    """Missing/malformed fixture policy must never become successful consumption."""
+    repo, state = _prepared_approval(tmp_path, monkeypatch)
+    approval = (state / "approval.json").read_bytes()
+    if contents is not None:
+        Path(MODULE.config_path()).write_text(contents, encoding="utf-8")
+    ok, why = MODULE.consume_ledger(str(repo))
+    assert not ok and "approval consumption failed" in why
+    assert (state / "approval.json").read_bytes() == approval
+    assert MODULE.rapid_redeploy_state(str(repo)) == (False, None)
 
 
 def test_builtin_suite_passes() -> None:

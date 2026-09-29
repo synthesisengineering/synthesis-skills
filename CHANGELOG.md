@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
+- Isolate rapid-redeploy fixtures from operator policy and Git configuration.
+  Verify successful consumption with explicit fixture policy and refusal when
+  that policy is missing or invalid; production enforcement stays fail-closed.
 - Bind nested release checks to their own complete selection and source root.
   Isolate the registered inventory observer from deliberate fixture injections
   while retaining failure on actual custody tampering. Refuse inherited outside
