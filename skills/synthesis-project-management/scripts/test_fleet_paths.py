@@ -302,3 +302,27 @@ def test_registered_inventory_bounds_before_any_git(monkeypatch):
     monkeypatch.setattr(FP, "_storage_git", lambda *a, **k: pytest.fail("Git ran beyond admitted input bound"))
     with pytest.raises(ValueError, match="64"):
         FP.inspect_worktrees([Path("/fixture")] * 65)
+
+
+def test_declared_storage_timestamp_is_root_observation_not_ttl(tmp_path):
+    import fleet_paths
+    import time
+    before = time.time_ns()
+    result = fleet_paths.observe_declared_storage(tmp_path)
+    assert before <= result["sampled_at_unix_ns"] <= time.time_ns()
+    assert result["root_metadata"]["mtime_ns"] == tmp_path.stat().st_mtime_ns
+    assert result["content_age"] == "UNKNOWN"
+    assert result["retention_deadline"] is None
+
+
+def test_declared_storage_symlink_is_unknown_and_target_unchanged(tmp_path):
+    import fleet_paths
+    target = tmp_path / "real"
+    target.mkdir()
+    (target / "sentinel").write_text("unchanged")
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    result = fleet_paths.observe_declared_storage(alias)
+    assert result["root_metadata"] is None
+    assert result["observation"].startswith("UNKNOWN")
+    assert (target / "sentinel").read_text() == "unchanged"

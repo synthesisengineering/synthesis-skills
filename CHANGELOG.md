@@ -17,6 +17,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
+- Retire registered nested worktrees through their verified native owner. Bind
+  Git markers and backlinks to bounded, no-follow observations, refusing
+  FIFO replacements and changed metadata before destructive operations.
+- Diagnose declared temporary storage and preserve retained work during
+  recovery. Guide long-lived worktrees and environments to durable paths;
+  keep exact claim identity and foreign ownership checks enforced.
+- Execute overlapping acceptance selectors once while retaining every
+  original case and expected result. Bind public diagnostic exports to
+  their directory ancestry and exact readiness bytes at completion.
+
 - Bind Stop-hook dependencies before activation and revalidate late imports and
   retained execution descriptors before dispatch. Resolve desktop identity through
   the shared authenticated reader.

@@ -322,6 +322,38 @@ changed_surfaces:
   - final-runtime-ci-708375f16656ba29
   - final-runtime-ci-d3259f538ad2e4cf
   - final-runtime-ci-e754cbf93b986819
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
   - native-recovery-059cf3c72571631a
   - native-recovery-1af1c5b599fab6ea
   - native-recovery-1d181178e0c73aa7
@@ -5661,6 +5693,38 @@ changed_surfaces:
   - acceptance-execution-de4280126c46b307
   - acceptance-execution-e4acc58094590eae
   - acceptance-execution-e94f1c2213c0b44a
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
 - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -5694,6 +5758,38 @@ changed_surfaces:
   - acceptance-execution-de4280126c46b307
   - acceptance-execution-e4acc58094590eae
   - acceptance-execution-e94f1c2213c0b44a
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
 - path: skills/synthesis-implementation-integrity/scripts/test_r5_contract.py
   cases:
   - final-45855475987f2c62
@@ -6780,6 +6876,31 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/references/active-sessions-template.md
   cases:
   - final-0e0bd72f3e594c62
@@ -6817,6 +6938,31 @@ changed_surfaces:
   - final-dcd70a6d21947d12
   - final-df4c27f542bfaca3
   - final-eca284d3487aa248
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/references/project-formats.md
   cases:
   - final-1260fcb97879de92
@@ -6883,6 +7029,31 @@ changed_surfaces:
   - final-91deec68fb639a46
   - final-bee3dfaa33be8e74
   - final-dcd70a6d21947d12
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/contribution_evidence.py
   cases:
   - final-42a40e7612918374
@@ -6943,6 +7114,31 @@ changed_surfaces:
   - final-e013f28d3bd1c00f
   - final-e49faf5e9b3eb81b
   - final-feeba738c7f806b6
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/coordination_lock.py
   cases:
   - final-08bd62c0a2dfd857
@@ -7155,6 +7351,31 @@ changed_surfaces:
   - final-96e78dc504ec5a0a
   - final-99c1fa45bd3ace93
   - final-fea676f4c8dabd6c
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/fleet_paths.py
   cases:
   - final-08bd62c0a2dfd857
@@ -7174,6 +7395,31 @@ changed_surfaces:
   - final-dcd70a6d21947d12
   - final-f69385649eff6e8b
   - final-fea676f4c8dabd6c
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/native_identity.py
   cases:
   - final-03ae5b84cf0cbf1c
@@ -7390,6 +7636,31 @@ changed_surfaces:
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
   - final-feeba738c7f806b6
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/retirement_runtime.py
   cases:
   - final-116dadcecd1ef608
@@ -7484,6 +7755,31 @@ changed_surfaces:
   - final-bee3dfaa33be8e74
   - final-dcd70a6d21947d12
   - final-e067e65763cbaff0
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/test_coordination_b06.py
   cases:
   - final-27814924fce414da
@@ -7556,6 +7852,31 @@ changed_surfaces:
   - final-c5cc26e670daa1ce
   - final-dcd70a6d21947d12
   - final-eca284d3487aa248
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/test_execution_checkpoint.py
   cases:
   - final-003f38c1bda8262d
@@ -7657,6 +7978,31 @@ changed_surfaces:
   - final-96e78dc504ec5a0a
   - final-99c1fa45bd3ace93
   - final-fea676f4c8dabd6c
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/test_fleet_paths.py
   cases:
   - final-00f28a75e47a74a9
@@ -7671,6 +8017,31 @@ changed_surfaces:
   - final-d615455b604a5f46
   - final-dcd70a6d21947d12
   - final-f69385649eff6e8b
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/test_p13_asset_custody.py
   cases:
   - final-10901078e23ee9bb
@@ -7942,6 +8313,33 @@ changed_surfaces:
   cases:
   - final-2e4bf51bf39ef032
   - final-934ff5b82d232005
+- path: skills/synthesis-project-management/scripts/test_storage_retirement_boundaries.py
+  cases:
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-project-management/scripts/test_succession_adversarial.py
   cases:
   - final-011d6659b7ea5f78
@@ -8145,6 +8543,31 @@ changed_surfaces:
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
   - final-feeba738c7f806b6
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-repo-guard/publication_receipt.py
   cases:
   - final-4d090f3acb4ef281
@@ -8159,6 +8582,33 @@ changed_surfaces:
   - final-54783c250b640bad
   - final-99fdc8cf69230c43
   - final-b93712d56e5a64c2
+- path: skills/synthesis-repo-guard/test_nested_retirement.py
+  cases:
+  - storage-delivery-08ebba9d66f36e3b
+  - storage-delivery-0e19af47c06582d2
+  - storage-delivery-10b4ff1283fade06
+  - storage-delivery-22bce142922f706e
+  - storage-delivery-23f2c60426cba3e6
+  - storage-delivery-38436f7cd8704777
+  - storage-delivery-3bbea6a1bdb893de
+  - storage-delivery-436900213090198f
+  - storage-delivery-49ef1ce48892a4c4
+  - storage-delivery-4aef6e95d863e98f
+  - storage-delivery-4cf7d2e8ac3955ec
+  - storage-delivery-5e13adf6d03b8803
+  - storage-delivery-62ea4ce30ed3ea81
+  - storage-delivery-7e2ea0f140c01473
+  - storage-delivery-8089c4ed897961a6
+  - storage-delivery-83c6d84f7671cbbe
+  - storage-delivery-9b4be63ca93b1ccf
+  - storage-delivery-a675ef0600f99be3
+  - storage-delivery-aee34e302d726140
+  - storage-delivery-b29a8efc6fd9770d
+  - storage-delivery-cc8240177ed34a6c
+  - storage-delivery-e23f2567fbfc9672
+  - storage-delivery-eb82ba30472a020c
+  - storage-delivery-ec466eea57f54eb1
+  - storage-delivery-eee93763aebb48f5
 - path: skills/synthesis-repo-guard/test_prepared_launch_attribution.py
   cases:
   - final-003f38c1bda8262d
@@ -8456,6 +8906,38 @@ changed_surfaces:
   - final-runtime-ci-708375f16656ba29
   - final-runtime-ci-d3259f538ad2e4cf
   - final-runtime-ci-e754cbf93b986819
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -8560,6 +9042,38 @@ changed_surfaces:
   - final-runtime-ci-708375f16656ba29
   - final-runtime-ci-d3259f538ad2e4cf
   - final-runtime-ci-e754cbf93b986819
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - acquisition-5ba9a14de5d0d699
@@ -8665,6 +9179,38 @@ changed_surfaces:
   - final-fa2cd51dc3578206
   - final-fbeaa32fe946a8af
   - final-fc092801303bf1fc
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -8746,6 +9292,38 @@ changed_surfaces:
   - final-runtime-ci-708375f16656ba29
   - final-runtime-ci-d3259f538ad2e4cf
   - final-runtime-ci-e754cbf93b986819
+  - hosted-delivery-0f00389325450169
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-14edd4baf61810c6
+  - hosted-delivery-1b6f351afb001489
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-27ff46e424a3bedf
+  - hosted-delivery-31617132d895a24c
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-45bd76e63b6905bb
+  - hosted-delivery-5f6943435ee845d6
+  - hosted-delivery-63668c38f38a6d7d
+  - hosted-delivery-6a9de8ff9c937bd4
+  - hosted-delivery-6ce9d4e434385a16
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-813883ae179933c7
+  - hosted-delivery-95ed1b44fa8e57f3
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-b475015ba066ed84
+  - hosted-delivery-b499865bae9b7659
+  - hosted-delivery-ba2dc419a1b9651c
+  - hosted-delivery-c2b86aeff46de1fb
+  - hosted-delivery-d7b312b193cfa8f1
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-e8d6f0a1d5221a3c
+  - hosted-delivery-ea6065d4141be62b
+  - hosted-delivery-f4d859576f35f823
+  - hosted-delivery-f6ac5895061bad2f
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-fbcf7c5c21b2a0a6
   - linux-portability-001b4a447ae43e13
   - linux-portability-5a0c929bd883c8e3
   - linux-portability-73d90456d3b985c0
@@ -14719,3 +15297,345 @@ cases:
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_native_control_partition_preserves_all_tests_and_finite_bounds
   motivating_defect: Reviewed ci runtime and execution correction; original failures
     remain retained
+- id: storage-delivery-cc8240177ed34a6c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_reclaim_merges_workspaces_by_default
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-0e19af47c06582d2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_narrow_releases_named_workspace
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-5e13adf6d03b8803
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_takes_a_parked_row_in_full
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-8089c4ed897961a6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination.py::test_succeed_merges_dead_areas_into_owned_row
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-22bce142922f706e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_create_worktree.py::test_owned_create_reservation_survives_unrelated_claim
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-9b4be63ca93b1ccf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_doctor.py::test_doctor_only_declared_venv_and_source_paths
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-62ea4ce30ed3ea81
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_paths.py::test_declared_storage_timestamp_is_root_observation_not_ttl
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-4cf7d2e8ac3955ec
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_fleet_paths.py::test_declared_storage_symlink_is_unknown_and_target_unchanged
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-eb82ba30472a020c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_actual_nested_retirement
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-e23f2567fbfc9672
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_ambiguous_claim_refuses_before_board_write
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-49ef1ce48892a4c4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_namespace_claim_refuses_before_board_write
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-10b4ff1283fade06
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_bad_repo_does_not_hide_explicit_missing_venv
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-23f2c60426cba3e6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_absolute_colon_claim_reaches_staged_consumer
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-a675ef0600f99be3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_relative_claim_stays_bound_after_workspace_addition
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-aee34e302d726140
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_legacy_temporary_claim_is_recoverable_but_doctor_reports_exposure
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-4aef6e95d863e98f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_release_mutex_never_grants_same_spelled_file_write
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-38436f7cd8704777
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_narrow_then_new_workspace_does_not_rebind_retained_claim
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-436900213090198f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_storage_retirement_boundaries.py::test_succession_binds_each_prior_workspace_before_merge
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-83c6d84f7671cbbe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_nested_prepared_proof_survives_removal_and_retry
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-eee93763aebb48f5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_prepared_identity_change_refuses_removal
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-3bbea6a1bdb893de
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_complete_refuses_changed_surviving_identity
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-08ebba9d66f36e3b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_nested_no_intent_recovery_cannot_invent_registration
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-ec466eea57f54eb1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_parent_alias_refused_before_retirement
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-7e2ea0f140c01473
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_prepared_retirement_rejects_pipe_before_metadata_read
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: storage-delivery-b29a8efc6fd9770d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_nested_retirement.py::test_last_backlink_consumption_binds_prepared_identity
+  motivating_defect: Reviewed storage delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-f85283ff08034963
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_module_bounded_eight_selector_partition_is_exhaustive
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-dd5d68552c500f2d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_current_manifest_module_partition_keeps_every_case_and_polarity
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-71e8ce59cedb4cfe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_runner_diagnostics_keep_private_failure_out_of_public_artifact
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-273d869e75b13f03
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_runner_diagnostic_members_refuse_tamper
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-41a392dd76af006a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_killed_batch_partial_phases_stay_diagnostic
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-13931c9f6162e60a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_actual_timeout_exports_partial_phases_without_acceptance
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-40f2af9d99de668e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_overlapping_selector_families_execute_once_across_batch_boundary
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-b28b2a2554f45f5a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_overlapping_reference_must_actually_collect_before_any_execution
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-3607a784a48ee088
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_shared_execution_retains_individual_expected_polarity
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-40a9a41511595e5f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_execution_owner_evidence_cannot_be_removed_or_duplicated
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-b475015ba066ed84
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_acceptance_base_resolves_to_previous_release_tag
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-6ce9d4e434385a16
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_release_consumer_exports_closed_diagnostics_without_authority_change
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-31617132d895a24c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_configured_diagnostic_refusal_cannot_accept_valid_test_receipt
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-1b6f351afb001489
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_hosted_acceptance_upload_is_exact_always_and_sanitized
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-f4d859576f35f823
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_configured_hosted_failure_keeps_raw_exception_out_of_public_stdout
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-f6ac5895061bad2f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_step_output_is_fresh_exact_and_cannot_be_replayed
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-813883ae179933c7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_step_output_rejects_unowned_or_existing_commands
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-95ed1b44fa8e57f3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumer_withholds_upload_signal_on_export_refusal
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-63668c38f38a6d7d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_step_output_replacement_after_preparation_never_sets_ready
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-ea6065d4141be62b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_diagnostic_consumer_rejects_replaced_destination_ancestor
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-5f6943435ee845d6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_output_gate_binds_exact_bytes_at_each_observed_closure
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-e8d6f0a1d5221a3c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_diagnostic_custody_is_private_and_published_schema_is_closed
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-27ff46e424a3bedf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_custody_refuses_unsafe_output_without_reading_foreign
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-0f00389325450169
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_destination_requires_new_private_external_directory
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-d7b312b193cfa8f1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostics_finite_limits_refuse_without_acceptance
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-fbcf7c5c21b2a0a6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_destination_replacement_cannot_receive_export
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-14edd4baf61810c6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_owned_receipt_cannot_index_foreign_batch_custody
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-b499865bae9b7659
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_source_pin_refuses_replaced_parent_before_read
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-c2b86aeff46de1fb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_record_mutation_during_descriptor_read_refuses
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-ba2dc419a1b9651c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_export_refuses_unindexed_destination_member
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-45bd76e63b6905bb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_public_member_replacement_at_manifest_write_is_withheld
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained
+- id: hosted-delivery-6a9de8ff9c937bd4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_destination_ancestry_is_bound_before_export
+  motivating_defect: Reviewed hosted delivery correction; original failure evidence
+    retained

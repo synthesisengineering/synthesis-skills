@@ -629,8 +629,117 @@ def retirement_result(repository: Path | str) -> dict:
     }
 
 
+def _retirement_file_observation(path: Path) -> tuple[dict, bytes]:
+    """Bound metadata bytes to one ordinary, nonblocking file observation."""
+    import stat
+    path = lexical_absolute(path)
+    if path.resolve(strict=True) != path:
+        raise ValueError("retirement identity contains a symlink or alias")
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("retirement identity is not an ordinary filesystem node")
+    if info.st_nlink != 1 or info.st_size > 65536:
+        raise ValueError("retirement metadata is linked or oversized")
+
+    def signature(st):
+        return (st.st_dev, st.st_ino, st.st_mode, st.st_uid, st.st_nlink,
+                st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_NONBLOCK", 0))
+    try:
+        before = os.fstat(fd)
+        # A FIFO or other substituted node must be rejected before reading it.
+        if not stat.S_ISREG(before.st_mode) or signature(info) != signature(before):
+            raise ValueError("retirement metadata changed before read")
+        raw = os.read(fd, 65537)
+        after = os.fstat(fd)
+    finally:
+        os.close(fd)
+    if (signature(before) != signature(after)
+            or signature(after) != signature(path.lstat())
+            or path.resolve(strict=True) != path):
+        raise ValueError("retirement metadata changed while observed")
+    if len(raw) != info.st_size:
+        raise ValueError("retirement metadata read was incomplete")
+    result = {"path": str(path), "device": info.st_dev, "inode": info.st_ino,
+              "mode": info.st_mode, "uid": info.st_uid,
+              "sha256": hashlib.sha256(raw).hexdigest()}
+    return result, raw
+
+
+def _retirement_marker(path: Path, *, directory: bool) -> dict:
+    """Stable physical identity; directory contents legitimately change on remove."""
+    if not directory:
+        return _retirement_file_observation(path)[0]
+    import stat
+    path = lexical_absolute(path)
+    if path.resolve(strict=True) != path:
+        raise ValueError("retirement identity contains a symlink or alias")
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError("retirement identity is not an ordinary filesystem node")
+    return {"path": str(path), "device": info.st_dev, "inode": info.st_ino,
+            "mode": info.st_mode, "uid": info.st_uid}
+
+
+def _retirement_git_path(repository: Path, flag: str) -> Path:
+    rc, value, error = git(repository, "rev-parse", "--path-format=absolute", flag)
+    if rc or not value or "\n" in value:
+        raise ValueError(error or "retirement Git identity is unavailable")
+    return lexical_absolute(Path(value))
+
+
+def retirement_git_identity(worktree: Path, repository: Path) -> dict:
+    """Native linked-worktree proof held by the existing durable intent owner."""
+    common = _retirement_git_path(repository, "--git-common-dir")
+    target_common = _retirement_git_path(worktree, "--git-common-dir")
+    admin = _retirement_git_path(worktree, "--git-dir")
+    if common != target_common or admin.parent != common / "worktrees":
+        raise ValueError("retirement target is not a linked worktree of the owning common directory")
+    if common == worktree or worktree in common.parents:
+        raise ValueError("retirement common directory would not survive target removal")
+    roots, error = listed_worktree_roots(repository)
+    if error or not roots or worktree not in roots or worktree == roots[0]:
+        raise ValueError(error or "retirement target is not an exact non-main registration")
+    rc, top, error = git(worktree, "rev-parse", "--show-toplevel")
+    if rc or Path(top).resolve() != worktree:
+        raise ValueError(error or "retirement target has foreign Git metadata")
+    proof = {"repository": _retirement_marker(repository, directory=True),
+             "common_directory": _retirement_marker(common, directory=True),
+             "worktree": _retirement_marker(worktree, directory=True),
+             "git_dir": _retirement_marker(admin, directory=True),
+             "git_file": _retirement_marker(worktree / ".git", directory=False),
+             "backlink": _retirement_marker(admin / "gitdir", directory=False)}
+    # Native Git resolves both ends; the reciprocal text still must name exactly
+    # the node whose identity was retained (not another checkout).
+    backlink, raw_backlink = _retirement_file_observation(admin / "gitdir")
+    if backlink != proof["backlink"]:
+        raise ValueError("retirement Git backlink changed before consumption")
+    if raw_backlink.decode("utf-8").strip() != str(worktree / ".git"):
+        raise ValueError("retirement Git backlink does not bind the exact worktree")
+    return proof
+
+
+def verify_retirement_identity(proof: dict, worktree: Path, repository: Path, *, active: bool) -> None:
+    if not isinstance(proof, dict) or set(proof) != {"repository", "common_directory", "worktree", "git_dir", "git_file", "backlink"}:
+        raise ValueError("retirement intent lacks complete linked-worktree identity")
+    if active:
+        if retirement_git_identity(worktree, repository) != proof:
+            raise ValueError("retirement linked-worktree identity changed after preparation")
+        return
+    common = _retirement_git_path(repository, "--git-common-dir")
+    if proof["repository"] != _retirement_marker(repository, directory=True) or proof["common_directory"] != _retirement_marker(common, directory=True):
+        raise ValueError("retirement surviving repository/common-directory identity changed")
+    if proof["worktree"].get("path") != str(worktree) or proof["git_file"].get("path") != str(worktree / ".git"):
+        raise ValueError("retirement proof names a different target")
+    admin = Path(proof["git_dir"].get("path", ""))
+    if admin.parent != common / "worktrees" or proof["backlink"].get("path") != str(admin / "gitdir") or os.path.lexists(admin):
+        raise ValueError("retirement administrative registration remains or is foreign")
+
+
 def validate_retirement_target(
-    worktree: Path, repository: Path, *, expect_active: bool
+    worktree: Path, repository: Path, *, expect_active: bool, proof: dict | None = None
 ) -> tuple[Path, Path]:
     repository_input = lexical_absolute(repository)
     worktree_input = lexical_absolute(worktree)
@@ -643,6 +752,8 @@ def validate_retirement_target(
     except OSError as exc:
         raise ValueError(f"repository is unavailable: {exc}") from exc
     worktree = worktree_input.resolve(strict=False)
+    if worktree != worktree_input or repository != repository_input:
+        raise ValueError("retirement path ancestry contains a symlink or alias")
 
     unsafe_roots = {Path("/").resolve(), Path.home().resolve()}
     if worktree in unsafe_roots:
@@ -650,10 +761,9 @@ def validate_retirement_target(
     if (
         worktree == repository
         or worktree in repository.parents
-        or repository in worktree.parents
     ):
         raise ValueError("retired worktree overlaps the repository root")
-    if worktree == Path.cwd().resolve():
+    if worktree == Path.cwd().resolve() or worktree in Path.cwd().resolve().parents:
         raise ValueError(
             f"retirement target is the current working directory: {worktree}; "
             f"run the retirement command from the owning repository {repository}"
@@ -672,6 +782,12 @@ def validate_retirement_target(
             raise ValueError("retirement preparation requires the exact active worktree")
     elif target_is_active or os.path.lexists(worktree):
         raise ValueError("retired worktree still exists or remains registered")
+    if expect_active:
+        retirement_git_identity(worktree, repository)
+    elif proof is not None:
+        verify_retirement_identity(proof, worktree, repository, active=False)
+    elif repository in worktree.parents:
+        raise ValueError("nested retirement recovery requires its preserved linked-worktree intent")
     return worktree, repository
 
 
@@ -851,10 +967,18 @@ def prepare_retirement_intent(
     worktree, repository = validate_retirement_target(
         worktree, repository, expect_active=expect_active
     )
+    linked_identity = retirement_git_identity(worktree, repository) if expect_active else None
     base_ref, fetched_base_oid = fetched_remote_base(repository, remote, base)
     canonical_head, canonical_base = canonical_retirement_commits(
         repository, verified_head, fetched_base_oid
     )
+    if expect_active:
+        rc, current_head, error = git(worktree, "rev-parse", "HEAD")
+        if rc or current_head != canonical_head:
+            raise ValueError(error or "retirement head does not match the exact target")
+        rc, dirty, error = git(worktree, "status", "--porcelain", "--ignored")
+        if rc or dirty:
+            raise ValueError(error or "retirement target is not clean, including ignored content")
     plans, locks = manifest_reconciliation_plans(worktree, session_id)
     try:
         touched = [plan[0] for plan in plans]
@@ -872,6 +996,8 @@ def prepare_retirement_intent(
             prior = load_retirement_intent(intent)
             if prior.get("claims_runtime") != claims_runtime:
                 raise ValueError("prepared retirement has a different retained claim owner/runtime")
+        if expect_active:
+            verify_retirement_identity(linked_identity, worktree, repository, active=True)
         prepared_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         reconciler_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         atomic_json(
@@ -894,6 +1020,7 @@ def prepare_retirement_intent(
                 "session_id": session_id,
                 "recovery_evidence": recovery_evidence,
                 "claims_runtime": claims_runtime,
+                "linked_identity": linked_identity,
             },
         )
         return result, intent, touched
@@ -920,6 +1047,29 @@ def load_retirement_intent(intent: Path) -> dict:
     return data
 
 
+def verify_prepared_retirement(intent: Path) -> dict:
+    data = load_retirement_intent(intent)
+    if data["state"] != "prepared" or data.get("mode") != "normal":
+        raise ValueError("retirement removal requires a prepared normal intent")
+    if data.get("session_id") is not None:
+        require_retirement_session_authority(data["session_id"])
+    worktree, repository = validate_retirement_target(Path(data["worktree"]), Path(data["repository"]), expect_active=True)
+    verify_retirement_identity(data.get("linked_identity"), worktree, repository, active=True)
+    if hashlib.sha256(Path(__file__).read_bytes()).hexdigest() != data.get("reconciler_sha256"):
+        raise ValueError("retirement removal is not running under its pinned reconciler")
+    head, base = canonical_retirement_commits(repository, data["head"], data["base_oid"])
+    if lexical_absolute(intent) != retirement_intent_path(worktree, head, base, data.get("session_id")):
+        raise ValueError("retirement intent filename does not bind its identity")
+    rc, current, error = git(worktree, "rev-parse", "HEAD")
+    if rc or current != head:
+        raise ValueError(error or "retirement HEAD changed after preparation")
+    rc, dirty, error = git(worktree, "status", "--porcelain", "--ignored")
+    if rc or dirty:
+        raise ValueError(error or "retirement worktree became dirty after preparation")
+    verify_retirement_identity(data["linked_identity"], worktree, repository, active=True)
+    return {**retirement_result(repository), "action": "retirement-removal-ready", "detail": str(intent)}
+
+
 def complete_retirement_intent(intent: Path, *, dry_run: bool = False) -> tuple[dict, list[Path]]:
     intent = lexical_absolute(intent)
     data = load_retirement_intent(intent)
@@ -929,7 +1079,8 @@ def complete_retirement_intent(intent: Path, *, dry_run: bool = False) -> tuple[
     repository = Path(str(data.get("repository") or ""))
     result = retirement_result(repository)
     worktree, repository = validate_retirement_target(
-        Path(str(data.get("worktree") or "")), repository, expect_active=False
+        Path(str(data.get("worktree") or "")), repository, expect_active=False,
+        proof=data.get("linked_identity")
     )
     remote = data.get("remote")
     base_ref = data.get("base_ref")
@@ -2896,6 +3047,8 @@ def main() -> int:
         default=None,
         help="Complete or resume reconciliation from a durable retirement intent",
     )
+    ap.add_argument("--verify-worktree-retirement", type=Path, default=None,
+                    help="Revalidate exact prepared native identity immediately before removal")
     ap.add_argument("--retirement-claims-runtime", default=None, help="Exact retained coordinator and native owner descriptor (JSON)")
     ap.add_argument(
         "--retirement-repository",
@@ -2953,6 +3106,7 @@ def main() -> int:
         args.reconcile_retired_worktree is not None,
         args.prepare_worktree_retirement is not None,
         args.complete_worktree_retirement is not None,
+        args.verify_worktree_retirement is not None,
     ]
     if sum(retirement_modes) > 1:
         if not args.quiet:
@@ -3000,7 +3154,15 @@ def main() -> int:
             )
         return 2
 
-    if args.complete_worktree_retirement is not None:
+    if args.verify_worktree_retirement is not None:
+        try:
+            with lifecycle_lock():
+                results = [verify_prepared_retirement(args.verify_worktree_retirement)]
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            failed = retirement_result(args.retirement_repository or "unknown")
+            failed["alert"] = str(exc)
+            results = [failed]
+    elif args.complete_worktree_retirement is not None:
         try:
             with lifecycle_lock():
                 result, _manifests = complete_retirement_intent(

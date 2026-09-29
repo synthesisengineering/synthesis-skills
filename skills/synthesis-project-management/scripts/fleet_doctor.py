@@ -323,37 +323,44 @@ def check_divergence(repos: list[str | Path], *, git_runner=None) -> DoctorCheck
 
 
 
-def check_storage(repos, *, source_paths=(), venvs=()) -> DoctorCheck:
-    """Read declared storage and Git registrations; never prune or repair."""
+def check_storage(repos, *, source_paths=(), venvs=(), declared_workspaces=()) -> DoctorCheck:
+    """Inspect only declared locations; ownership never grants fresh creation."""
     import fleet_paths
     import stat
 
     issues = []
-    if len(source_paths) + len(venvs) > 64:
-        return DoctorCheck("storage-custody", False, "declared source/venv inventory exceeds 64 inputs")
+    observations = []
+    if len(source_paths) + len(venvs) > 64 or len(declared_workspaces) > 64 or len(repos) > 64:
+        return DoctorCheck("storage-custody", False, "declared storage inventory exceeds its finite input bound")
     try:
         rows = fleet_paths.inspect_worktrees([Path(p) for p in repos])
         for row in rows:
             issues.extend(row["issues"])
-        for raw in [*source_paths, *venvs]:
-            path = Path(raw).expanduser()
-            placement = fleet_paths.classify_storage(path)
-            if placement["status"] != "durable-candidate":
-                issues.append(f"{path}: {placement['reason']}; move only through verified custody, never delete from diagnosis")
-            if not path.exists():
-                issues.append(f"{path}: declared source/venv missing; preserve its record and recovery evidence")
-        for raw in venvs:
-            marker = Path(raw).expanduser() / "pyvenv.cfg"
-            try:
-                info = marker.lstat()
-                if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 65536:
-                    raise ValueError("venv metadata is not a bounded nonempty regular file")
-            except (OSError, ValueError) as exc:
-                issues.append(f"{raw}: declared venv metadata unavailable ({exc}); rebuild only from preserved source/dependency evidence")
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         issues.append("storage inspection UNKNOWN: " + str(exc))
+    for raw in dict.fromkeys([*source_paths, *venvs, *declared_workspaces]):
+        path = Path(raw).expanduser()
+        placement = fleet_paths.observe_declared_storage(path)
+        observations.append(f"{path}: sampled_at_unix_ns={placement['sampled_at_unix_ns']}; root_metadata={placement['root_metadata']}; {placement['observation']}; content age UNKNOWN")
+        if placement["status"] != "durable-candidate":
+            issues.append(f"{path}: {placement['reason']}; existing work remains claimable for recovery; preserve and verify custody before relocation")
+        try:
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or path.resolve() != path.absolute():
+                issues.append(f"{path}: declared storage is aliased or not an ordinary directory; identity UNKNOWN")
+        except (OSError, RuntimeError) as exc:
+            issues.append(f"{path}: declared source/venv/workspace missing or unavailable ({exc}); preserve its record and recovery evidence")
+    for raw in venvs:
+        marker = Path(raw).expanduser() / "pyvenv.cfg"
+        try:
+            info = marker.lstat()
+            if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 65536:
+                raise ValueError("venv metadata is not a bounded nonempty regular file")
+        except (OSError, ValueError) as exc:
+            issues.append(f"{raw}: declared venv metadata unavailable ({exc}); rebuild only from preserved source/dependency evidence")
+    unknown = "retention deadline, unregistered paths and venv package/runtime integrity remain UNKNOWN"
     return DoctorCheck("storage-custody", not issues,
-                       "; ".join(issues) if issues else "declared storage and registered worktrees checked; retention age, unregistered paths and venv package/runtime integrity remain UNKNOWN")
+                       "; ".join([*issues, *observations, unknown]) if issues or observations else "declared storage and registered worktrees checked; " + unknown)
 
 
 def run_all(
@@ -398,7 +405,9 @@ def run_all(
         parked,
         check_artifacts(artifacts_dir),
         check_divergence(scan, git_runner=git_runner),
-        check_storage(scan, source_paths=source_paths, venvs=venvs),
+        check_storage(scan, source_paths=source_paths, venvs=venvs,
+                      declared_workspaces=repos_for_machine(content, resolved_machine)
+                      if content is not None and resolved_machine else ()),
     ]
 
 

@@ -64,7 +64,15 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
-from release_check_groups import ACCEPTANCE_SECONDS, bounded_run, fixture_root, source_digest
+from release_check_groups import (
+    ACCEPTANCE_SECONDS,
+    DIAGNOSTIC_SECONDS,
+    bounded_run,
+    fixture_root,
+    source_digest,
+    prepare_diagnostics_destination,
+    capture_acceptance_diagnostics,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(
@@ -832,6 +840,74 @@ def _runner_failure_detail(output: str) -> str:
     return "acceptance runner failed"
 
 
+def diagnostic_output_gate(
+    binding: dict | None = None, *, ready: bool = False
+) -> dict | None:
+    """Bind GitHub's current empty step-output file; diagnostics never grant release authority."""
+    name = os.environ.get("GITHUB_OUTPUT") if binding is None else binding["path"]
+    if name is None:
+        return None
+    path = Path(name)
+    if not path.is_absolute() or path.resolve(strict=True) != path:
+        raise ValueError("diagnostic output gate alias")
+    fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
+
+    def identity(info):
+        return [
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_uid,
+            info.st_gid,
+            info.st_nlink,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        ]
+
+    try:
+        before = os.fstat(fd)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.getuid()
+            or before.st_nlink != 1
+            or before.st_mode & 0o022
+            or identity(before) != identity(path.lstat())
+        ):
+            raise ValueError("diagnostic output gate refused")
+        if binding is None:
+            if ready or before.st_size != 0:
+                raise ValueError("diagnostic output gate is not fresh")
+            payload = b"diagnostics_ready=false\n"
+            expected_bytes = payload
+        else:
+            if (
+                identity(before) != binding["identity"]
+                or os.read(fd, 256) != b"diagnostics_ready=false\n"
+            ):
+                raise ValueError("diagnostic output gate changed")
+            payload = b"diagnostics_ready=true\n" if ready else b""
+            expected_bytes = b"diagnostics_ready=false\n" + payload
+        if payload and os.write(fd, payload) != len(payload):
+            raise OSError("diagnostic output gate incomplete write")
+        os.fsync(fd)
+        after = os.fstat(fd)
+        os.lseek(fd, 0, os.SEEK_SET)
+        observed = os.read(fd, len(expected_bytes) + 1)
+        if (
+            observed != expected_bytes
+            or identity(before)[:6] != identity(after)[:6]
+            or identity(after) != identity(os.fstat(fd))
+            or identity(after) != identity(path.lstat())
+            or path.resolve(strict=True) != path
+            or after.st_size != before.st_size + len(payload)
+        ):
+            raise ValueError("diagnostic output gate changed at closure")
+        return {"path": str(path), "identity": identity(after)}
+    finally:
+        os.close(fd)
+
+
 def consume_acceptance(
     repo: Path, result: Result, dry_run: bool
 ) -> AcceptanceAuthority | None:
@@ -868,11 +944,94 @@ def consume_acceptance(
     ]
     # One explicit finite suite envelope; each inner group keeps its 300-second
     # process ceiling. The runner reserves 60 seconds for final source/receipt work.
+    diagnostic_destination = None
+    output_gate = None
+    diagnostic_plan = None
+    diagnostic_path = os.environ.get("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS")
+    if diagnostic_path is not None:
+        try:
+            runner = _acceptance_runner()
+            validated, errors = runner.validate_manifest(
+                repo / ACCEPTANCE_MANIFEST, repo
+            )
+            if validated is None:
+                raise ValueError("; ".join(errors))
+            diagnostic_plan = runner.batch_plan(runner.case_contract(validated, repo))
+            diagnostic_destination = prepare_diagnostics_destination(
+                Path(diagnostic_path), repo
+            )
+            output_gate = diagnostic_output_gate()
+        except (OSError, ValueError, KeyError, TypeError):
+            result.add(
+                "checks.acceptance.diagnostics",
+                False,
+                "configured diagnostic destination or contract refused",
+            )
+            return None
+    diagnostic_deadline = time.monotonic() + ACCEPTANCE_SECONDS
     completed = bounded_run(command, cwd=repo, timeout=ACCEPTANCE_SECONDS, suite=True)
+    diagnostic_status = None
+    diagnostic_final_deadline = min(
+        diagnostic_deadline, time.monotonic() + DIAGNOSTIC_SECONDS
+    )
+    if getattr(completed, "fixture_custody", None) is not None:
+        try:
+            if diagnostic_plan is None:
+                runner = _acceptance_runner()
+                validated, errors = runner.validate_manifest(
+                    repo / ACCEPTANCE_MANIFEST, repo
+                )
+                if validated is None:
+                    raise ValueError("; ".join(errors))
+                diagnostic_plan = runner.batch_plan(
+                    runner.case_contract(validated, repo)
+                )
+            diagnostic_status = capture_acceptance_diagnostics(
+                completed,
+                repo,
+                diagnostic_plan,
+                expected,
+                diagnostic_destination,
+                deadline=diagnostic_final_deadline,
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            diagnostic_status = {"status": "REFUSED"}
+    if diagnostic_path is not None:
+        if output_gate is not None:
+            try:
+                if time.monotonic() >= diagnostic_final_deadline:
+                    raise ValueError("diagnostic finalization deadline")
+                diagnostic_output_gate(
+                    output_gate,
+                    ready=bool(
+                        diagnostic_status
+                        and diagnostic_status.get("export_closed") is True
+                    ),
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                diagnostic_status = {"status": "REFUSED"}
+        diagnostics_ok = (
+            diagnostic_status is not None and diagnostic_status["status"] == "RETAINED"
+        )
+        result.add(
+            "checks.acceptance.diagnostics",
+            diagnostics_ok,
+            "diagnostic custody "
+            + (diagnostic_status or {"status": "UNAVAILABLE"})["status"]
+            + "; never release authority",
+        )
+        if not diagnostics_ok and completed.returncode == 0:
+            return None
     if completed.returncode != 0:
-        detail = _runner_failure_detail(completed.stdout or completed.stderr)
-        if completed.stdout and completed.stderr:
-            detail += "\n--- acceptance runner stderr ---\n" + completed.stderr
+        if diagnostic_path is not None:
+            # Hosted stdout is public too. Raw errors stay only in private custody.
+            detail = (
+                "acceptance execution failed; consult sanitized diagnostic artifact"
+            )
+        else:
+            detail = _runner_failure_detail(completed.stdout or completed.stderr)
+            if completed.stdout and completed.stderr:
+                detail += "\n--- acceptance runner stderr ---\n" + completed.stderr
         result.add("checks.acceptance.r5", False, detail)
         return None
     try:

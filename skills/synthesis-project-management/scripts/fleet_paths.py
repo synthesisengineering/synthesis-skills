@@ -244,6 +244,32 @@ def require_work_placement(path: Path, *, fixture_deadline: float | None = None)
     return result
 
 
+def observe_declared_storage(path: Path) -> dict:
+    """Observe one explicitly named root, without reading its contents."""
+    import stat
+    import time
+
+    placement = classify_storage(path)
+    result = {**placement, "sampled_at_unix_ns": time.time_ns(),
+              "root_metadata": None, "content_age": "UNKNOWN"}
+    try:
+        root = Path(path).expanduser()
+        before = root.lstat()
+        if not stat.S_ISDIR(before.st_mode) or root.resolve() != root.absolute():
+            raise ValueError("declared storage root is aliased or not an ordinary directory")
+        after = root.lstat()
+        def fields(value):
+            return (value.st_dev, value.st_ino, value.st_mode, value.st_mtime_ns, value.st_ctime_ns)
+        if fields(before) != fields(after):
+            raise ValueError("declared root changed during observation")
+        result["root_metadata"] = {"mtime_ns": before.st_mtime_ns, "ctime_ns": before.st_ctime_ns,
+                                   "device": before.st_dev, "inode": before.st_ino}
+        result["observation"] = "ordinary-root; timestamps describe this directory only"
+    except (OSError, ValueError, RuntimeError) as exc:
+        result["observation"] = "UNKNOWN: " + str(exc)
+    return result
+
+
 def missing_worktree_detail(path: Path, entry: dict, reason: str) -> str:
     return (f"{path}: unexplained disappearance or invalid worktree ({reason}); "
             f"registered repository={entry.get('repository', 'UNKNOWN')} common={entry.get('common', 'UNKNOWN')} HEAD={entry.get('HEAD', 'UNKNOWN')} branch={entry.get('branch', 'detached/UNKNOWN')}; "

@@ -384,3 +384,15 @@ def test_cli_temporary_refusal_preserves_all_inputs(world, monkeypatch, capsys):
                    "--branch", "cli-risk"]) == 10
     assert "temporary" in capsys.readouterr().err
     assert board.read_bytes() == before and not target.exists()
+
+def test_owned_create_reservation_survives_unrelated_claim(world):
+    board, own, repo, target=world
+    W.reserve(board,own.compact_id,target,repo,fixture_deadline=time.time()+120)
+    token='create:'+str(target)
+    assert token in C.rows(board.read_text())[0].claims
+    from test_coordination import claim_args
+    args=claim_args(board,session_id=own.compact_id,project=own.project,workspace=f'{repo} @ main',area=str(repo/'other'))
+    assert C.command_claim(args)==0
+    assert token in C.rows(board.read_text())[0].claims
+    assert C._absolute_claim_pattern(token,repo) is None
+    assert not target.exists()

@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Registered nested worktree retirement now verifies bounded Git metadata and
+backlinks before acting. Temporary-storage diagnostics distinguish retained
+work from durable execution homes. Release acceptance executes overlapping
+selectors once and verifies diagnostic export paths and readiness bytes.
+
 Installed runtime verification now binds the complete Stop-hook dependency
 closure, including late imports and held execution descriptors. Desktop Stop
 identity uses the shared authenticated resolver. Release checks retain bounded

@@ -503,7 +503,9 @@ def test_acceptance_base_resolves_to_previous_release_tag() -> None:
         for step in steps
         if step.get("name") == "Consume transaction-bound R5 acceptance"
     )
-    assert "env" not in accept
+    assert accept["env"] == {
+        "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS": "${{ runner.temp }}/synthesis-acceptance-diagnostics"
+    }
 
 
 def test_repository_ci_executes_release_wiring_tests() -> None:
@@ -1255,6 +1257,16 @@ def _hosted_security_contract(workflow: dict, name: str) -> None:
             if step.get("name") == "Establish prescribed macOS framework interpreter":
                 assert name == "validate.yml" and job_id == "onboarding-portability"
                 assert step["if"] == "runner.os == 'macOS'"
+            elif step.get("name") == "Retain sanitized acceptance diagnostics":
+                assert name == "validate.yml" and job_id == "conformance"
+                assert (
+                    step["if"]
+                    == "always() && steps.acceptance.outputs.diagnostics_ready == 'true'"
+                )
+                assert (
+                    step["uses"]
+                    == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+                )
             else:
                 assert "if" not in step
             if "uses" in step:
@@ -6077,3 +6089,262 @@ def test_publication_revalidates_exact_accepted_execution(
     else:
         evidence["source_unchanged"] = False
     assert not release.revalidate_acceptance_authority(repo, accepted)[0]
+
+
+def test_actual_release_consumer_exports_closed_diagnostics_without_authority_change(
+    tmp_path, monkeypatch
+):
+    destination = tmp_path / "sanitized-diagnostics"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert accepted is not None
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert manifest["authorizes_release"] is False and manifest["status"] == "RETAINED"
+    report = json.loads((destination / "diagnostics.json").read_text())
+    assert report["batches"][0]["selectors"] == [
+        "skills/synthesis-implementation-integrity/test_synthetic.py::test_value"
+    ]
+    assert str(tmp_path) not in json.dumps(report)
+    assert git("status", "--porcelain") == ""
+    # A reused explicit destination is refused before any acceptance execution.
+    ordinary_owner = release.bounded_run
+
+    def forbid_test_dispatch(command, **kwargs):
+        assert command[0] == "git", "must not dispatch acceptance tests"
+        return ordinary_owner(command, **kwargs)
+
+    monkeypatch.setattr(release, "bounded_run", forbid_test_dispatch)
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+
+
+def test_configured_diagnostic_refusal_cannot_accept_valid_test_receipt(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "public"))
+    monkeypatch.setattr(
+        release, "capture_acceptance_diagnostics", lambda *a, **k: {"status": "REFUSED"}
+    )
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+
+
+def test_hosted_acceptance_upload_is_exact_always_and_sanitized():
+    root = Path(__file__).resolve().parents[3]
+    document = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    steps = document["jobs"]["conformance"]["steps"]
+    consumer = next(
+        s for s in steps if s.get("name") == "Consume transaction-bound R5 acceptance"
+    )
+    upload = next(
+        s for s in steps if s.get("name") == "Retain sanitized acceptance diagnostics"
+    )
+    assert consumer["env"] == {
+        "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS": "${{ runner.temp }}/synthesis-acceptance-diagnostics"
+    }
+    assert (
+        upload["if"]
+        == "always() && steps.acceptance.outputs.diagnostics_ready == 'true'"
+    )
+    assert (
+        upload["uses"]
+        == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    )
+    assert upload["with"]["path"].splitlines() == [
+        consumer["env"]["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] + "/diagnostics.json",
+        consumer["env"]["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] + "/manifest.json",
+    ]
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert document["permissions"] == {"contents": "read"}
+
+
+def test_configured_hosted_failure_keeps_raw_exception_out_of_public_stdout(
+    tmp_path, monkeypatch, capsys
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    fixture = repo / "skills/synthesis-implementation-integrity/test_synthetic.py"
+    fixture.write_text(
+        "def test_value(): raise RuntimeError('private-exception-sentinel')\n"
+    )
+    git("add", "-A")
+    git("commit", "-qm", "synthetic failure")
+    output_file = tmp_path / "step-output"
+    output_file.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
+    destination = tmp_path / "public"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+    output = capsys.readouterr().out
+    assert "private-exception-sentinel" not in output
+    assert "acceptance execution failed" in output
+    assert (
+        "private-exception-sentinel"
+        not in (destination / "diagnostics.json").read_text()
+    )
+
+    assert (
+        output_file.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    )
+
+
+def test_diagnostic_step_output_is_fresh_exact_and_cannot_be_replayed(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = release.diagnostic_output_gate()
+    assert output.read_text() == "diagnostics_ready=false\n"
+    release.diagnostic_output_gate(binding, ready=True)
+    assert output.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    with pytest.raises(ValueError, match="changed"):
+        release.diagnostic_output_gate(binding, ready=True)
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "nonempty", "fifo"])
+def test_diagnostic_step_output_rejects_unowned_or_existing_commands(
+    tmp_path, monkeypatch, kind
+):
+    output = tmp_path / "step-output"
+    foreign = tmp_path / "foreign"
+    foreign.write_text("private-output-command")
+    if kind == "symlink":
+        output.symlink_to(foreign)
+    elif kind == "hardlink":
+        os.link(foreign, output)
+    elif kind == "fifo":
+        os.mkfifo(output)
+    else:
+        output.write_text("diagnostics_ready=true\n")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    with pytest.raises((OSError, ValueError)):
+        release.diagnostic_output_gate()
+    assert foreign.read_text() == "private-output-command"
+
+
+def test_actual_consumer_withholds_upload_signal_on_export_refusal(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "public"))
+    public = tmp_path / "public"
+    original = os.open
+    replaced = []
+
+    def replace_at_manifest(path, flags, *args, **kwargs):
+        if path == "manifest.json" and not replaced:
+            replaced.append(True)
+            (public / "diagnostics.json").rename(tmp_path / "retained-diagnostic.json")
+            (public / "diagnostics.json").write_text("private-late-replacement")
+        return original(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", replace_at_manifest)
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+    assert replaced
+    assert output.read_text() == "diagnostics_ready=false\n"
+
+
+def test_step_output_replacement_after_preparation_never_sets_ready(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = release.diagnostic_output_gate()
+    original = tmp_path / "retained-output"
+    output.rename(original)
+    output.write_bytes(original.read_bytes())
+    with pytest.raises(ValueError, match="changed"):
+        release.diagnostic_output_gate(binding, ready=True)
+    assert output.read_text() == "diagnostics_ready=false\n"
+
+
+@pytest.mark.parametrize("replacement", ["unchanged", "symlink", "directory"])
+def test_actual_diagnostic_consumer_rejects_replaced_destination_ancestor(
+    tmp_path, monkeypatch, replacement
+):
+    import stat
+
+    repo, _, _, _, _ = real_acceptance_fixture(tmp_path, monkeypatch)
+    holder = tmp_path / "destination-parent"
+    holder.mkdir()
+    destination = holder / "public"
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    original_fsync = os.fsync
+    changed = []
+
+    def final_directory_sync(fd):
+        original_fsync(fd)
+        info = os.fstat(fd)
+        if (
+            replacement != "unchanged"
+            and not changed
+            and stat.S_ISDIR(info.st_mode)
+            and destination.exists()
+            and info.st_ino == destination.stat().st_ino
+            and (destination / "manifest.json").exists()
+        ):
+            holder.rename(tmp_path / "retained-parent")
+            if replacement == "symlink":
+                holder.symlink_to(
+                    tmp_path / "retained-parent", target_is_directory=True
+                )
+            else:
+                holder.mkdir()
+                (tmp_path / "retained-parent/public").rename(destination)
+            changed.append(True)
+
+    monkeypatch.setattr(os, "fsync", final_directory_sync)
+    accepted = release.consume_acceptance(repo, release.Result(), False)
+    if replacement == "unchanged":
+        assert accepted is not None
+        assert output.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    else:
+        assert changed and accepted is None
+        assert output.read_text() == "diagnostics_ready=false\n"
+
+
+@pytest.mark.parametrize("phase", ["initial", "ready", "not-ready"])
+@pytest.mark.parametrize("mutation", ["unchanged", "same-size-content", "mode"])
+def test_output_gate_binds_exact_bytes_at_each_observed_closure(
+    tmp_path, monkeypatch, phase, mutation
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = None if phase == "initial" else release.diagnostic_output_gate()
+    inode = output.stat().st_ino
+    original_fsync = os.fsync
+    changed = []
+
+    def boundary(fd):
+        original_fsync(fd)
+        if mutation != "unchanged" and not changed and os.fstat(fd).st_ino == inode:
+            if mutation == "same-size-content":
+                original = output.read_bytes()
+                forged = original.replace(
+                    b"diagnostics_ready=false\n", b"diagnostics_ready=true\n\n", 1
+                )
+                assert len(original) == len(forged) and forged != original
+                output.write_bytes(forged)
+            else:
+                output.chmod(0o644)
+            changed.append(True)
+
+    monkeypatch.setattr(os, "fsync", boundary)
+    if mutation == "unchanged":
+        result = release.diagnostic_output_gate(binding, ready=phase == "ready")
+        assert result is not None
+        expected = "diagnostics_ready=false\n" + (
+            "diagnostics_ready=true\n" if phase == "ready" else ""
+        )
+        assert output.read_text() == expected
+    else:
+        with pytest.raises(ValueError, match="closure"):
+            release.diagnostic_output_gate(binding, ready=phase == "ready")
+        assert changed

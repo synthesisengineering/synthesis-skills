@@ -3632,7 +3632,8 @@ def test_reclaim_merges_workspaces_by_default(
     )
     assert MODULE.command_claim(second) == 0
     row = _claims_of(board)
-    assert row.claims == ["scope/a.md"]
+    assert row.claims == [str(Path("/tmp/repo-a/scope/a.md").resolve()),
+                          str(Path("/tmp/repo-b/scope/a.md").resolve())]
     assert row.workspaces == ["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"]
 
 
@@ -3876,7 +3877,7 @@ def test_narrow_releases_named_workspace(
             mode="autonomous",
             goal="goal-A",
             workspace=["/tmp/repo-a @ feature/a", "/tmp/repo-b @ feature/b"],
-            area=["scope/a.md"],
+            area=[str(Path("/tmp/repo-a/scope/a.md").resolve())],
             context_role="owner",
         )
     )
@@ -4555,7 +4556,7 @@ def test_succeed_takes_a_parked_row_in_full(
         == "released"
     )
     assert (
-        "repo/shared/dead.md" in next(s for s in sessions if s.legacy_id == "B").claims
+        str(Path("/tmp/repo-a/repo/shared/dead.md").resolve()) in next(s for s in sessions if s.legacy_id == "B").claims
     )
 
 
@@ -4664,7 +4665,8 @@ def test_succeed_merges_dead_areas_into_owned_row(
     # Plain paths: a multi-glob cell does not survive board read-back
     # (board-grammar bold stripping), a pre-existing quirk shared with
     # claim merge, not succession.
-    assert grown.claims == ["repo/other/held.md", "repo/shared/dead.md"]
+    assert grown.claims == [str(Path("/tmp/repo-b/repo/other/held.md").resolve()),
+                            str(Path("/tmp/repo-a/repo/shared/dead.md").resolve())]
     assert grown.workspaces == [
         "/tmp/repo-b @ feature/b",
         "/tmp/repo-a @ feature/a",

@@ -95,6 +95,41 @@ def workspace_parts(workspace: str) -> tuple[str, str]:
     return tuple(plain(part) for part in workspace.rsplit(" @ ", 1)) if " @ " in workspace else (plain(workspace), "unknown")
 
 
+def admitted_claim(claim: str, workspaces, *, canonical: bool = False, allow_creation: bool = False) -> str:
+    """One filesystem grammar for admission and the eventual write consumer.
+
+    Existing creation reservations use their separate owner. Colon-bearing
+    absolute filenames remain filenames; relative repo:path is not a namespace.
+    A relative claim needs one physical binding, even on a single-row board.
+    """
+    raw = os.path.expanduser(plain(claim))
+    if not raw or any(ord(c) < 32 for c in raw) or ".." in Path(raw).parts:
+        raise ClaimIdentityError("claim path is empty, contains control characters or parent traversal")
+    if Path(raw).is_absolute():
+        return os.path.realpath(raw) if canonical else claim
+    if allow_creation and raw.startswith("create:"):
+        target = Path(raw[len("create:"):])
+        if not target.is_absolute() or str(target) == "/" or any(c in str(target) for c in "*?["):
+            raise ClaimIdentityError("invalid retained creation reservation")
+        return claim  # retain custody; only create_worktree may grant or consume it
+    if re.fullmatch(r"release-train:[A-Za-z0-9][A-Za-z0-9._-]*", raw):
+        return claim  # declared non-filesystem mutex; never write authority
+    if ":" in raw:
+        raise ClaimIdentityError("relative repo:path claim syntax is unsupported; use an absolute filesystem path")
+    candidates = set()
+    for workspace in workspaces:
+        path, _ = workspace_parts(workspace)
+        base = Path(os.path.expanduser(path))
+        if not base.is_absolute() or ".." in base.parts:
+            raise ClaimIdentityError("relative claim requires an absolute checkout context")
+        if Path(raw).parts[0] == base.name:
+            base = base.parent
+        candidates.add(os.path.realpath(base / raw))
+    if len(candidates) != 1:
+        raise ClaimIdentityError("relative claim requires one exact checkout context; use an absolute path")
+    return candidates.pop() if canonical else claim
+
+
 def _prefix(pattern: str) -> str:
     return re.split(r"[*?\[]", pattern, maxsplit=1)[0].rstrip("/")
 

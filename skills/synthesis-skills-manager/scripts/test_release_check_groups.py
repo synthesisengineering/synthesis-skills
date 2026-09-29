@@ -22,7 +22,9 @@ def ids():
 
 def test_complete_nonoverlapping_inventory_includes_new_tests():
     result = groups.partition(ids())
-    assert [result[g] for g in ("state", "native", "evaluation", "core")] == [[n] for n in ids()]
+    assert [result[g] for g in ("state", "native", "evaluation", "core")] == [
+        [n] for n in ids()
+    ]
     assert result["native-control"] == []
     assert sorted(sum(result.values(), [])) == sorted(ids())
 
@@ -210,7 +212,13 @@ def synthetic_root(tmp_path):
     root = tmp_path / "source"
     directory = root / groups.AP
     directory.mkdir(parents=True)
-    for name in ("run_state", "native_codex", "evaluation", "brand_new_surface", "native_cancellation"):
+    for name in (
+        "run_state",
+        "native_codex",
+        "evaluation",
+        "brand_new_surface",
+        "native_cancellation",
+    ):
         (directory / ("test_" + name + ".py")).write_text(
             "def test_one():\n    assert True\n"
         )
@@ -1225,15 +1233,22 @@ def test_actual_group_preserves_selected_virtualenv(tmp_path, monkeypatch):
 
 
 def test_native_control_partition_preserves_all_tests_and_finite_bounds():
-    nodes = [groups.AP + '/' + name + '::test_one' for name in (
-        'test_native_cancellation.py', 'test_native_admission_freshness.py',
-        'test_native_session_owner_chain.py', 'test_native_future_surface.py',
-        'test_observation_bridge.py', 'test_future_unclassified.py')]
+    nodes = [
+        groups.AP + "/" + name + "::test_one"
+        for name in (
+            "test_native_cancellation.py",
+            "test_native_admission_freshness.py",
+            "test_native_session_owner_chain.py",
+            "test_native_future_surface.py",
+            "test_observation_bridge.py",
+            "test_future_unclassified.py",
+        )
+    ]
     result = groups.partition(nodes)
-    assert set(result) == {'state', 'native', 'native-control', 'evaluation', 'core'}
-    assert result['native-control'] == nodes[:3]
-    assert result['native'] == nodes[3:5]
-    assert result['core'] == nodes[5:]
+    assert set(result) == {"state", "native", "native-control", "evaluation", "core"}
+    assert result["native-control"] == nodes[:3]
+    assert result["native"] == nodes[3:5]
+    assert result["core"] == nodes[5:]
     assert sorted(sum(result.values(), [])) == sorted(nodes)
     assert len(set(sum(result.values(), []))) == len(nodes)
     assert groups.CHECK_SECONDS == 900 and groups.GROUP_SECONDS == 880
@@ -1241,7 +1256,9 @@ def test_native_control_partition_preserves_all_tests_and_finite_bounds():
 
 
 @pytest.mark.parametrize("failure_phase", ["setup", "call", "teardown"])
-def test_failure_detail_survives_later_process_cutoff(tmp_path, monkeypatch, failure_phase):
+def test_failure_detail_survives_later_process_cutoff(
+    tmp_path, monkeypatch, failure_phase
+):
     root = tmp_path / "source"
     directory = synthetic(root)
     content = "import pytest,time\n"
@@ -1283,7 +1300,9 @@ def test_failure_detail_collection_is_retained_without_a_final_inventory(tmp_pat
     assert evidence["authorizes_success"] is False
 
 
-def test_failure_detail_is_stream_bounded_and_budget_never_resets(tmp_path, monkeypatch):
+def test_failure_detail_is_stream_bounded_and_budget_never_resets(
+    tmp_path, monkeypatch
+):
     p = plugin(tmp_path)
     monkeypatch.setattr(groups, "FAILURE_DETAIL_BYTES", 16)
     monkeypatch.setattr(groups, "FAILURE_DETAIL_TOTAL_BYTES", 24)
@@ -1301,12 +1320,17 @@ def test_failure_detail_is_stream_bounded_and_budget_never_resets(tmp_path, monk
     second = p._failure_detail(SimpleNamespace(longrepr="abcdefghijk"))
     assert second["status"] == "truncated" and second["bytes"] == 8
     third = p._failure_detail(SimpleNamespace(longrepr="must-not-appear"))
-    assert third["status"] == "omitted" and third["reason"] == "diagnostic_budget_exhausted"
+    assert (
+        third["status"] == "omitted"
+        and third["reason"] == "diagnostic_budget_exhausted"
+    )
     assert p.failure_detail_bytes == 24
     assert groups.REPORT_BYTES == 4 * 1024 * 1024
 
 
-def test_failure_detail_unicode_missing_and_renderer_refusal_are_explicit(tmp_path, monkeypatch):
+def test_failure_detail_unicode_missing_and_renderer_refusal_are_explicit(
+    tmp_path, monkeypatch
+):
     p = plugin(tmp_path)
     monkeypatch.setattr(groups, "FAILURE_DETAIL_BYTES", 5)
     result = p._failure_detail(SimpleNamespace(longrepr="ééé"))
@@ -1323,7 +1347,9 @@ def test_failure_detail_unicode_missing_and_renderer_refusal_are_explicit(tmp_pa
     assert failure["error_type"] == "RuntimeError"
 
 
-def test_failure_detail_actual_subtest_keeps_parent_lifecycle_and_refuses_success(tmp_path):
+def test_failure_detail_actual_subtest_keeps_parent_lifecycle_and_refuses_success(
+    tmp_path,
+):
     root = tmp_path / "source"
     directory = synthetic(root)
     (directory / "test_brand_new_surface.py").write_text(
@@ -1333,8 +1359,246 @@ def test_failure_detail_actual_subtest_keeps_parent_lifecycle_and_refuses_succes
     )
     code, payload = groups.run_group(root, "core")
     assert code != 0
-    evidence = groups.read_progress(Path(payload["fixture_custody"]) / "inventory.progress.jsonl")
+    evidence = groups.read_progress(
+        Path(payload["fixture_custody"]) / "inventory.progress.jsonl"
+    )
     rows = [r for r in evidence["events"] if r.get("kind") == "subtest"]
     assert len(rows) == 1 and rows[0]["outcome"] == "failed"
     assert "retained-subtest-marker" in rows[0]["failure"]["text"]
     assert evidence["authorizes_success"] is False
+
+
+def diagnostic_fixture(tmp_path):
+    root = tmp_path / "source"
+    root.mkdir()
+    completed = groups.bounded_run(
+        [sys.executable, "-c", "print('private-output-sentinel')"], root, 5
+    )
+    return root, completed
+
+
+def test_actual_diagnostic_custody_is_private_and_published_schema_is_closed(tmp_path):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    receipt = groups.capture_acceptance_diagnostics(
+        completed, root, [], {"transaction_id": "private-binding-sentinel"}, target
+    )
+    assert receipt["status"] == "INCOMPLETE"
+    public = Path(target["path"])
+    blob = b"".join(p.read_bytes() for p in public.iterdir() if p.is_file())
+    assert b"private-output-sentinel" not in blob
+    assert b"private-binding-sentinel" not in blob
+    assert str(tmp_path).encode() not in blob
+    raw = Path(completed.fixture_custody) / "diagnostics/raw/0000.bin"
+    assert raw.read_text() == "private-output-sentinel\n"
+    assert (raw.stat().st_mode & 0o777) == 0o600
+    assert (
+        json.loads((public / "manifest.json").read_text())["authorizes_release"]
+        is False
+    )
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "fifo", "changed", "mode"])
+def test_diagnostic_custody_refuses_unsafe_output_without_reading_foreign(
+    tmp_path, kind
+):
+    root, completed = diagnostic_fixture(tmp_path)
+    output = Path(completed.fixture_custody) / "output.log"
+    foreign = tmp_path / "private"
+    foreign.write_text("foreign-secret-sentinel")
+    if kind == "changed":
+        output.write_text("changed")
+    elif kind == "mode":
+        output.chmod(0o666)
+    else:
+        output.unlink()
+        if kind == "symlink":
+            output.symlink_to(foreign)
+        elif kind == "hardlink":
+            os.link(foreign, output)
+        else:
+            os.mkfifo(output)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED"
+    assert foreign.read_text() == "foreign-secret-sentinel"
+    assert b"foreign-secret-sentinel" not in b"".join(
+        p.read_bytes() for p in Path(target["path"]).iterdir()
+    )
+
+
+def test_diagnostic_destination_requires_new_private_external_directory(tmp_path):
+    root = tmp_path / "source"
+    root.mkdir()
+    for target in [root / "nested", root, tmp_path]:
+        with pytest.raises((OSError, ValueError)):
+            groups.prepare_diagnostics_destination(target, root)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(foreign, target_is_directory=True)
+    with pytest.raises((OSError, ValueError)):
+        groups.prepare_diagnostics_destination(alias / "child", root)
+    assert list(foreign.iterdir()) == []
+
+
+@pytest.mark.parametrize("budget", ["records", "bytes", "time"])
+def test_diagnostics_finite_limits_refuse_without_acceptance(
+    tmp_path, monkeypatch, budget
+):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    if budget == "records":
+        monkeypatch.setattr(groups, "DIAGNOSTIC_RECORDS", 1)
+    elif budget == "bytes":
+        monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", 1)
+    else:
+        monkeypatch.setattr(groups, "DIAGNOSTIC_SECONDS", 0)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED"
+    assert result["authorizes_release"] is False
+
+
+def test_diagnostic_destination_replacement_cannot_receive_export(tmp_path):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    path = Path(target["path"])
+    path.rename(tmp_path / "retained-destination")
+    path.mkdir(mode=0o700)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED"
+    assert list(path.iterdir()) == []
+
+
+def test_owned_receipt_cannot_index_foreign_batch_custody(tmp_path, monkeypatch):
+    root = tmp_path / "source"
+    root.mkdir()
+    foreign = tmp_path / "foreign-secret-directory"
+    foreign.mkdir()
+    (foreign / "selection.json").write_text("private-foreign-sentinel")
+    plan = [{"id": "one", "selectors": ["test_public.py::test_one"]}]
+    receipt = {
+        "execution": {
+            "batches": [
+                {
+                    **plan[0],
+                    "fixture_custody": str(foreign),
+                    "process_custody": str(foreign / "process"),
+                }
+            ]
+        }
+    }
+    completed = groups.bounded_run(
+        [sys.executable, "-c", "print(" + repr(json.dumps(receipt)) + ")"], root, 5
+    )
+    original = groups.os.open
+
+    def refuse_foreign(path, *args, **kwargs):
+        assert str(path) not in {str(foreign), "foreign-secret-directory"}
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(groups.os, "open", refuse_foreign)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, target)
+    assert result["status"] == "REFUSED"
+    assert (
+        "private-foreign-sentinel"
+        not in (Path(target["path"]) / "diagnostics.json").read_text()
+    )
+
+
+def test_diagnostic_source_pin_refuses_replaced_parent_before_read(tmp_path):
+    parent = tmp_path / "owned"
+    parent.mkdir(mode=0o700)
+    (parent / "inventory.json").write_text("{}")
+    identity = groups.custody_identity(parent.stat())
+    parent.rename(tmp_path / "old")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "inventory.json").write_text("private")
+    parent.symlink_to(foreign, target_is_directory=True)
+    with pytest.raises(ValueError, match="alias"):
+        groups.diagnostic_record(
+            parent / "inventory.json", time.monotonic() + 5, identity
+        )
+
+
+def test_diagnostic_record_mutation_during_descriptor_read_refuses(
+    tmp_path, monkeypatch
+):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    output = Path(completed.fixture_custody) / "output.log"
+    inode = output.stat().st_ino
+    original = groups.os.read
+    changed = []
+
+    def read_then_mutate(fd, count):
+        data = original(fd, count)
+        if not changed and groups.os.fstat(fd).st_ino == inode:
+            changed.append(True)
+            output.write_text("different-after-read")
+        return data
+
+    monkeypatch.setattr(groups.os, "read", read_then_mutate)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert changed and result["status"] == "REFUSED"
+
+
+def test_diagnostic_export_refuses_unindexed_destination_member(tmp_path):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    path = Path(target["path"])
+    (path / "unindexed.txt").write_text("private-unindexed-sentinel")
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED"
+    assert not (path / "diagnostics.json").exists()
+    assert (path / "unindexed.txt").read_text() == "private-unindexed-sentinel"
+
+
+def test_public_member_replacement_at_manifest_write_is_withheld(tmp_path, monkeypatch):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    public = Path(target["path"])
+    original = groups.os.open
+    replaced = []
+
+    def replace_at_manifest(path, flags, *args, **kwargs):
+        if path == "manifest.json" and not replaced:
+            replaced.append(True)
+            (public / "diagnostics.json").rename(tmp_path / "original-diagnostics.json")
+            (public / "diagnostics.json").write_text("private-replacement-sentinel")
+        return original(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(groups.os, "open", replace_at_manifest)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert replaced
+    assert result["status"] == "REFUSED"
+    assert result.get("export_closed", False) is False
+
+
+@pytest.mark.parametrize("replacement", ["unchanged", "symlink", "directory", "mode"])
+def test_diagnostic_destination_ancestry_is_bound_before_export(tmp_path, replacement):
+    root, completed = diagnostic_fixture(tmp_path)
+    holder = tmp_path / "parent"
+    holder.mkdir()
+    holder.chmod(0o755)
+    target = groups.prepare_diagnostics_destination(holder / "public", root)
+    if replacement in ("symlink", "directory"):
+        holder.rename(tmp_path / "retained-parent")
+        if replacement == "symlink":
+            holder.symlink_to(tmp_path / "retained-parent", target_is_directory=True)
+        else:
+            holder.mkdir()
+            (tmp_path / "retained-parent/public").rename(holder / "public")
+    elif replacement == "mode":
+        holder.chmod(0o700)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    if replacement == "unchanged":
+        assert result["status"] == "INCOMPLETE" and result["export_closed"]
+    else:
+        assert result["status"] == "REFUSED" and not result["export_closed"]
+        assert not (holder / "public/diagnostics.json").exists()
+    assert (
+        Path(completed.fixture_custody) / "output.log"
+    ).read_text() == "private-output-sentinel\n"

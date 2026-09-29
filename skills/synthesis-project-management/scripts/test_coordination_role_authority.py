@@ -16,7 +16,7 @@ def setup_owner(tmp_path, monkeypatch, *, canonical=True):
     board = tmp_path / "board" / "active-sessions.md"
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:review-owner")
     args = dict(session_id="OWNER", project="alpha", workspace="/tmp/review-one @ main")
-    area = "/tmp/review-one/projects/alpha/CONTEXT.md" if canonical else "virtual:owned"
+    area = "/tmp/review-one/projects/alpha/CONTEXT.md" if canonical else "release-train:owned"
     assert MODULE.command_claim(claim_args(board, **args, area=area)) == 0
     return board, args, area
 
@@ -92,14 +92,14 @@ def test_cross_project_does_not_inherit_role(tmp_path, monkeypatch):
     args["project"] = "beta"
     assert (
         MODULE.command_claim(
-            claim_args(board, **args, area="virtual:added", context_role="contributor")
+            claim_args(board, **args, area="release-train:added", context_role="contributor")
         )
         == 0
     )
     after = _claims_of(board)
     assert after.context_role == "contributor"
     assert after.project == "beta"
-    assert after.claims == ["virtual:owned", "virtual:added"]
+    assert after.claims == ["release-train:owned", "release-train:added"]
 
 
 def test_retained_owner_cannot_take_foreign_scope(tmp_path, monkeypatch):
@@ -112,7 +112,7 @@ def test_retained_owner_cannot_take_foreign_scope(tmp_path, monkeypatch):
                 session_id="PEER",
                 project="beta",
                 workspace="/tmp/review-two @ main",
-                area="virtual:foreign",
+                area="release-train:foreign",
                 context_role="contributor",
             )
         )
@@ -123,7 +123,7 @@ def test_retained_owner_cannot_take_foreign_scope(tmp_path, monkeypatch):
     assert (
         MODULE.command_claim(
             claim_args(
-                board, **args, area="virtual:foreign", context_role="contributor"
+                board, **args, area="release-train:foreign", context_role="contributor"
             )
         )
         == 10
@@ -137,14 +137,14 @@ def test_incremental_owner_promotion_still_refuses_second_owner(tmp_path, monkey
     args = dict(session_id="PEER", project="alpha", workspace="/tmp/review-two @ main")
     assert (
         MODULE.command_claim(
-            claim_args(board, **args, area="virtual:peer", context_role="contributor")
+            claim_args(board, **args, area="release-train:peer", context_role="contributor")
         )
         == 0
     )
     before = board.read_bytes()
     assert (
         MODULE.command_claim(
-            claim_args(board, **args, area="virtual:peer", context_role="owner")
+            claim_args(board, **args, area="release-train:peer", context_role="owner")
         )
         == 10
     )
@@ -217,13 +217,13 @@ def test_claude_same_host_requires_exact_harness_for_retained_role(
     args = dict(
         session_id="CLAUDE", project="alpha", workspace="/tmp/review-claude @ main"
     )
-    assert MODULE.command_claim(claim_args(board, **args, area="virtual:one")) == 0
+    assert MODULE.command_claim(claim_args(board, **args, area="release-train:one")) == 0
     original = _claims_of(board)
     before = board.read_bytes()
     if foreign:
         monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "review-harness-foreign")
     # This has the peer's actual command shape, with synthetic identities only.
-    helper = claim_args(board, **args, area="virtual:two", context_role="contributor")
+    helper = claim_args(board, **args, area="release-train:two", context_role="contributor")
     helper.agent = "claude-code"
     helper.mode = "implementation"
     assert MODULE.command_claim(helper) == (10 if foreign else 0)
@@ -233,4 +233,4 @@ def test_claude_same_host_requires_exact_harness_for_retained_role(
         after = _claims_of(board)
         assert after.context_role == "owner"
         assert after.identity == original.identity
-        assert after.claims == ["virtual:one", "virtual:two"]
+        assert after.claims == ["release-train:one", "release-train:two"]

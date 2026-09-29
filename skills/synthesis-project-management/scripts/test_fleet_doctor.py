@@ -427,7 +427,7 @@ def test_doctor_only_declared_venv_and_source_paths(tmp_path, monkeypatch):
     assert DOCTOR.check_storage([], source_paths=[tmp_path], venvs=[venv]).ok
     (venv / "pyvenv.cfg").unlink()
     result = DOCTOR.check_storage([], source_paths=[tmp_path / "missing"], venvs=[venv])
-    assert not result.ok and "venv metadata unavailable" in result.detail and "declared source/venv missing" in result.detail
+    assert not result.ok and "venv metadata unavailable" in result.detail and "missing or unavailable" in result.detail
 
 
 def test_doctor_refuses_input_that_git_would_resolve_to_enclosing_repository(tmp_path):

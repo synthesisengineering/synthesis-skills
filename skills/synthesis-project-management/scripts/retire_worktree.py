@@ -1055,6 +1055,10 @@ def main() -> int:
             if claims_runtime is not None:
                 retirement_runtime.authenticate(intent_data.get("claims_runtime"), RETIREMENT_RUNTIME_DIR, args.board)
 
+            verified_target = run_reconciler(
+                checkpoint_sync, ["--verify-worktree-retirement", str(intent)], lock_fd
+            )
+            reconciler_detail(verified_target)
             removed = run(repository, "worktree", "remove", str(worktree))
             if removed.returncode != 0:
                 return fail(removed.stderr.strip() or "git worktree remove failed")

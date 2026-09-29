@@ -29,15 +29,13 @@ except Exception:  # pragma: no cover - exercised only in dependency failure
     yaml = None
 
 
-BATCH_SELECTORS = 32
+BATCH_SELECTORS = 8
 CASE_SECONDS = 300
 
 VALID_EXPECTED_STATUSES = {"pass", "fail"}
 VALID_SCHEMAS = {1, 2}
 SCHEMA2_CHANGE_BASE_POLICY = "boundary-supplied-git-diff"
-SCHEMA2_RECEIPT_CONSUMER = (
-    "synthesis-skills-manager.release.consume-acceptance.v1"
-)
+SCHEMA2_RECEIPT_CONSUMER = "synthesis-skills-manager.release.consume-acceptance.v1"
 # Schema 2 requires the manifest to name its consume-acceptance boundary, but
 # the validator no longer hardcodes one repository's boundary as the only
 # legal consumer: any state-changing gate may be named, provided the id keeps
@@ -285,7 +283,9 @@ def validate_manifest(
                 if state == "deleted":
                     surface_file = _bounded_path(root / raw_path, root, f"{label}.path")
                     if os.path.lexists(surface_file):
-                        raise ManifestError(f"{label}.path declares deletion but still exists: {raw_path}")
+                        raise ManifestError(
+                            f"{label}.path declares deletion but still exists: {raw_path}"
+                        )
                 else:
                     surface_file = _bounded_regular_file(
                         root / raw_path, root, f"{label}.path"
@@ -309,7 +309,9 @@ def validate_manifest(
                 errors.append(f"{label}.cases references unknown case {mapped_id}")
             else:
                 mapped_cases.add(mapped_id)
-        surface_records.append({"path": normalized_path, "state": state, "cases": surface_cases})
+        surface_records.append(
+            {"path": normalized_path, "state": state, "cases": surface_cases}
+        )
 
     if schema == 2:
         for case_id in sorted(case_ids - mapped_cases):
@@ -335,9 +337,7 @@ def authoritative_git_evidence(
     """Bind a schema-2 run to the boundary-selected Git change universe."""
 
     if not change_base:
-        raise ManifestError(
-            "schema 2 run requires a boundary-supplied --change-base"
-        )
+        raise ManifestError("schema 2 run requires a boundary-supplied --change-base")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", change_base):
         raise ManifestError("change-base is not a safe Git revision")
     if not transaction_id or not re.fullmatch(
@@ -378,9 +378,7 @@ def authoritative_git_evidence(
     )
     ancestor = _git(root, "merge-base", "--is-ancestor", base_sha, head_sha)
     if ancestor.returncode != 0:
-        raise ManifestError(
-            "boundary-supplied change-base is not an ancestor of HEAD"
-        )
+        raise ManifestError("boundary-supplied change-base is not an ancestor of HEAD")
     head_tree = _git_value(
         root,
         "rev-parse",
@@ -403,18 +401,31 @@ def authoritative_git_evidence(
         raise ManifestError(
             f"authoritative Git change universe could not be established: {detail}"
         )
-    changed_paths = sorted(
-        {path for path in changed.stdout.split("\0") if path}
+    changed_paths = sorted({path for path in changed.stdout.split("\0") if path})
+    deleted = _git(
+        root,
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        "--diff-filter=D",
+        f"{base_sha}..{head_sha}",
+        "--",
     )
-    deleted = _git(root, "diff", "--no-renames", "--name-only", "-z", "--diff-filter=D",
-                   f"{base_sha}..{head_sha}", "--")
     if deleted.returncode != 0:
-        raise ManifestError("authoritative Git deletion evidence could not be established")
+        raise ManifestError(
+            "authoritative Git deletion evidence could not be established"
+        )
     deleted_paths = {path for path in deleted.stdout.split("\0") if path}
-    declared_deleted = {surface["path"] for surface in validated["changed_surfaces"]
-                        if surface.get("state") == "deleted"}
+    declared_deleted = {
+        surface["path"]
+        for surface in validated["changed_surfaces"]
+        if surface.get("state") == "deleted"
+    }
     if deleted_paths != declared_deleted:
-        raise ManifestError("declared deletion surfaces do not equal the authoritative Git deletion set")
+        raise ManifestError(
+            "declared deletion surfaces do not equal the authoritative Git deletion set"
+        )
     declared_paths = sorted(
         {surface["path"] for surface in validated["changed_surfaces"]}
     )
@@ -478,24 +489,45 @@ def case_contract(validated: dict[str, Any], root: Path) -> list[dict]:
 
 
 def batch_plan(contract: list[dict]) -> list[dict]:
-    """Amortize collection by actual suite directory and existing AP partition."""
+    """Give each overlapping selector family one bounded execution owner.
+
+    Every original selector remains a collection requirement. Broader class or
+    function references own their narrower references, so slicing eight owners
+    never repeats an expanded node in a later process.
+    """
     batches = {}
     for case in contract:
         selector = case["selector"]
         file = selector.split("::", 1)[0]
-        key = str(Path(file).parent)
-        if key == checks.AP:
-            key += ":" + checks.group_for(selector)
+        key = file
         row = batches.setdefault(key, {"id": key, "selectors": []})
         if selector not in row["selectors"]:
             row["selectors"].append(selector)
     result = []
     for row in batches.values():
-        for offset in range(0, len(row["selectors"]), BATCH_SELECTORS):
+        declared = set(row["selectors"])
+        references = {}
+        for selector in row["selectors"]:
+            # Overlap is delimiter-aware prefix ancestry, not string-prefix
+            # similarity. Pick the first declared ancestor without pairwise
+            # scanning the entire manifest.
+            owner = selector
+            for index, character in enumerate(selector):
+                if character == "[" or selector.startswith("::", index):
+                    prefix = selector[:index]
+                    if prefix in declared:
+                        owner = prefix
+                        break
+            references.setdefault(owner, []).append(selector)
+        owners = [s for s in row["selectors"] if s in references]
+        for offset in range(0, len(owners), BATCH_SELECTORS):
+            execution_selectors = owners[offset : offset + BATCH_SELECTORS]
+            owned = {s for owner in execution_selectors for s in references[owner]}
             result.append(
                 {
                     "id": row["id"] + ":" + str(offset // BATCH_SELECTORS),
-                    "selectors": row["selectors"][offset : offset + BATCH_SELECTORS],
+                    "selectors": [s for s in row["selectors"] if s in owned],
+                    "execution_selectors": execution_selectors,
                 }
             )
     return result
@@ -534,16 +566,21 @@ def verify_execution(receipt: dict, contract: list[dict]) -> None:
     if not isinstance(batches, list) or len(batches) != len(plan):
         raise ValueError("incomplete batch evidence")
     by_selector = {}
+    node_owners = set()
     for planned, actual in zip(plan, batches):
         if (
             not isinstance(actual, dict)
             or actual.get("id") != planned["id"]
             or actual.get("selectors") != planned["selectors"]
+            or actual.get("execution_selectors") != planned["execution_selectors"]
         ):
             raise ValueError("batch membership changed")
         expanded, statuses = checks.selection_results(
             actual.get("inventory"), planned["selectors"]
         )
+        if node_owners.intersection(statuses):
+            raise ValueError("expanded node has multiple execution owners")
+        node_owners.update(statuses)
         if (
             actual.get("process_failure", "missing") is not None
             or actual.get("returncode") != actual["inventory"]["exitstatus"]
@@ -608,6 +645,7 @@ def execute(
             if remaining <= 0:
                 raise ValueError("acceptance whole-suite deadline exhausted")
             with checks.retained_group_fixture() as custody:
+                custody_identity = checks.custody_identity(custody.stat())
                 report = custody / "inventory.json"
                 selection = custody / "selection.json"
                 selection.write_text(json.dumps(planned["selectors"]))
@@ -651,6 +689,20 @@ def execute(
                     "returncode": completed.returncode,
                     "process_failure": completed.failure,
                     "fixture_custody": str(custody),
+                    "custody_identity": custody_identity,
+                    "process_identity": completed.fixture_identity,
+                    "process_records": completed.custody_records,
+                    "diagnostic_records": {
+                        name: checks.diagnostic_record(
+                            custody / name, deadline, custody_identity
+                        )
+                        for name in (
+                            "selection.json",
+                            "pytest.ini",
+                            "inventory.json",
+                            "inventory.progress.jsonl",
+                        )
+                    },
                     "process_custody": completed.fixture_custody,
                     "output_sha256": _sha256_bytes(completed.stdout.encode()),
                 }

@@ -54,7 +54,20 @@ jobs:
           test -n "$SYNTHESIS_EVENT_REVIEW_BASE"
           echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$SYNTHESIS_EVENT_REVIEW_BASE" >> "$GITHUB_ENV"
       - name: Consume transaction-bound R5 acceptance
+        id: acceptance
+        env:
+          SYNTHESIS_ACCEPTANCE_DIAGNOSTICS: ${{ runner.temp }}/synthesis-acceptance-diagnostics
         run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
+      - name: Retain sanitized acceptance diagnostics
+        if: always() && steps.acceptance.outputs.diagnostics_ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: acceptance-diagnostics
+          path: |
+            ${{ runner.temp }}/synthesis-acceptance-diagnostics/diagnostics.json
+            ${{ runner.temp }}/synthesis-acceptance-diagnostics/manifest.json
+          if-no-files-found: error
+          retention-days: 7
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/ -q

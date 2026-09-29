@@ -479,7 +479,7 @@ def _workspace_registered(session: Session, repository: Path, branch: str) -> bo
 
 def _absolute_claim_pattern(claim: str, repository: Path) -> str | None:
     raw = plain(claim)
-    if not raw or raw.startswith("create:"):
+    if not raw or raw.startswith("create:") or (not Path(os.path.expanduser(raw)).is_absolute() and ":" in raw):
         return None
     expanded = os.path.expanduser(raw)
     candidate = Path(expanded)
@@ -547,11 +547,16 @@ def _claim_authorizes_path(claim: str, repository: Path, staged_path: str) -> bo
 def _outside_claim(
     session: Session, repository: Path, staged_paths: list[str]
 ) -> list[str]:
+    try:
+        bound = [claim_scope.admitted_claim(claim, session.workspaces, canonical=True)
+                 for claim in session.claims if not plain(claim).startswith("create:")]
+    except claim_scope.ClaimIdentityError:
+        return list(staged_paths)
     return [
         path
         for path in staged_paths
         if not any(
-            _claim_authorizes_path(claim, repository, path) for claim in session.claims
+            _claim_authorizes_path(claim, repository, path) for claim in bound
         )
     ]
 
@@ -3194,6 +3199,21 @@ def command_claim(args) -> int:
                     if workspace not in workspaces
                 ]
             effective_areas, effective_workspaces = requested, workspaces
+        # Validate before board publication, independent of peer population.
+        # Bind retained relative scopes against their OLD context before a
+        # workspace addition can reinterpret them in another checkout.
+        binding = workspaces or (existing_self.workspaces if existing_self else [])
+        bound_requested = [claim_scope.admitted_claim(
+            area, binding, canonical=len(effective_workspaces) != 1
+        ) for area in requested]
+        if existing_self is not None and not full_reset:
+            context_changed = effective_workspaces != existing_self.workspaces
+            retained = [claim_scope.admitted_claim(
+                area, existing_self.workspaces, canonical=context_changed, allow_creation=True
+            ) for area in existing_self.claims]
+            effective_areas = list(dict.fromkeys([*retained, *bound_requested]))
+        else:
+            effective_areas = bound_requested
         claimed["areas"] = effective_areas
         claimed["workspaces"] = effective_workspaces
         identity = (
@@ -3618,6 +3638,13 @@ def command_succeed(args) -> int:
             succeeded["added_areas"] = [
                 area for area in moving if area not in existing_self.claims
             ]
+            context_changed = effective_workspaces != existing_self.workspaces
+            retained = [claim_scope.admitted_claim(area, existing_self.workspaces,
+                        canonical=context_changed, allow_creation=True) for area in existing_self.claims]
+            inherited = [claim_scope.admitted_claim(area, predecessor.workspaces,
+                         canonical=context_changed or predecessor.workspaces != existing_self.workspaces, allow_creation=True)
+                         for area in moving]
+            effective_areas = list(dict.fromkeys([*retained, *inherited]))
             identity = existing_self.identity
             replacement = replace(
                 existing_self,
@@ -4425,7 +4452,8 @@ def command_narrow(args) -> int:
             )
         narrowed_row = replace(
             session,
-            claims=[area for area in held_areas if area not in drop_areas],
+            claims=[claim_scope.admitted_claim(area, held_workspaces, canonical=bool(drop_workspaces), allow_creation=True)
+                    for area in held_areas if area not in drop_areas],
             workspaces=[
                 workspace
                 for workspace in held_workspaces

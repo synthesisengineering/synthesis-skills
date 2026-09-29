@@ -44,10 +44,16 @@ Claim admission uses the shared `scripts/claim_scope.py` conflict predicate.
 Besides physical overlap, the same `projects/` metadata path in registered Git
 worktrees conflicts when their verified Git common directory is identical.
 Disjoint exact files and segment globs remain independent; ordinary source
-paths outside `projects/` remain isolated by checkout. Relative metadata claims
-need one unambiguous workspace context, and missing or ambiguous Git evidence
-refuses a possible logical overlap. Named resources such as release-train claims
-remain a separate namespace, independent of filesystem paths.
+paths outside `projects/` remain isolated by checkout. Every relative filesystem
+claim needs one unambiguous absolute workspace context before admission, even
+with no peer rows. `repo:path` is not a repository selector: use an absolute path
+(or a relative path with one exact workspace). Absolute filenames may contain
+colons. Adding a workspace binds retained relative claims to their original
+checkout and new relative claims to the explicitly requested checkout; ambiguous
+new requests refuse before writing the board. Missing or ambiguous native Git
+evidence still refuses a possible logical metadata overlap. `release-train:<plugin>`
+is a separate mutex and never grants file writes. Creation reservations remain
+exclusive to the worktree-creation owner and never grant edit authority.
 
 Conflict identity does not grant write authority. Check-staged still requires
 the actor's exact physical worktree, branch and staged paths. A currency guard
@@ -657,3 +663,26 @@ existing exact, verified retirement-intent recovery. The latter still requires
 its own retained identity, manifest and branch proofs. Temporary placement
 alone does not prevent the sanctioned retirement of a verified complete owned
 fixture; missing evidence never authorizes cleanup.
+
+### Registered nested retirement and existing temporary work
+
+Retire a registered nested linked worktree through `retire_worktree.py` with its
+owning repository, including a checkout under `.claude/worktrees/`. The checkpoint
+owner retains the exact native Git/common-directory, checkout and metadata identity
+in the prepared intent and revalidates it immediately before removal. Completion
+checks the surviving repository/common-directory and absent registration against
+that intent. An interrupted removal resumes the same pinned intent; a missing
+nested path without that proof cannot manufacture a successful retirement. Main
+checkouts, aliases, ancestors, dirty/ignored content and foreign or changed state
+still refuse. Durable retirement state and the executing runtime must survive
+the target.
+
+Existing temporary work remains claimable for preservation and recovery. A claim
+is ownership of work, not permission to create new durable work under temporary
+storage. Keep the durable-creation gate. Fleet doctor reports this machine's
+declared workspace exposure even when `--repo` narrows the Git comparison, and
+continues explicit source/venv diagnosis after a repository inspection failure.
+It does not scan the disk, touch files to extend retention, rebuild environments,
+remove registrations, or assert an OS expiration time. Preserve a missing path's
+registration, references and evidence; recover or relocate only with verified
+custody. Venv metadata presence is not proof of package/runtime health.

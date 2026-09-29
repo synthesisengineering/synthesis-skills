@@ -339,7 +339,7 @@ and refuses overlapping areas, duplicate context owners, and contributor claims
 on canonical context. Sharing one checkout with disjoint areas is granted with
 a banner. Cross-machine simultaneity requires the git-backed lease
 (compare-and-swap on a shared remote, fail-closed when unreachable); retire merged worktrees with
-`scripts/retire_worktree.py`, never by hand. Board file shape:
+`scripts/retire_worktree.py`, never by hand. Apply the [nested retirement, claim binding and temporary-work recovery rules](references/parallel-agent-protocol.md#registered-nested-retirement-and-existing-temporary-work). Board file shape:
 [references/active-sessions-template.md](references/active-sessions-template.md).
 Lease bootstrap and retirement, worktree-retirement mechanics, peer addressing,
 digests, administrative release, and canonical landing:

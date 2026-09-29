@@ -303,6 +303,8 @@ def bounded_run(
     cache = None
     executed = list(command)
     custody_fd = None
+    initial_identity = None
+    custody_records = {}
 
     def interrupted(signum, _frame):
         raise CheckInterrupted(f"check interrupted by signal {signum}")
@@ -313,10 +315,13 @@ def bounded_run(
         child_env = dict(os.environ if env is None else env)
         cache = fixture_root("synthesis-required-check-", child_env)
         custody_fd = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        initial_identity = custody_identity(os.fstat(custody_fd))
         (cache / "tmp").mkdir(mode=0o700)
         executed = fixture_command(command, cache)
         child_env.pop("PYTEST_ADDOPTS", None)
         child_env.pop("PYTEST_PLUGINS", None)
+        child_env.pop("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", None)
+        child_env.pop("GITHUB_OUTPUT", None)
         child_env.update(
             {
                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
@@ -436,6 +441,10 @@ def bounded_run(
                     stream.write(content)
                     stream.flush()
                     os.fsync(stream.fileno())
+                    custody_records[name] = {
+                        "identity": list(_progress_stamp(os.fstat(stream.fileno()))),
+                        "sha256": hashlib.sha256(content.encode()).hexdigest(),
+                    }
             os.fsync(custody_fd)
             present = cache.lstat()
             if (
@@ -456,9 +465,659 @@ def bounded_run(
         os.close(custody_fd)
     result = subprocess.CompletedProcess(executed, code, text, "")
     result.fixture_custody = str(cache) if cache is not None else None
+    result.fixture_identity = initial_identity
+    result.custody_records = custody_records
     result.failure = failure
     result.process_id = None if process is None else process.pid
     return result
+
+
+DIAGNOSTIC_RECORDS = 2000
+DIAGNOSTIC_BYTES = 32 * 1024 * 1024
+DIAGNOSTIC_SECONDS = 10
+
+
+def custody_identity(info):
+    return [info.st_dev, info.st_ino, info.st_mode, info.st_uid]
+
+
+def diagnostic_record(path: Path, deadline: float, parent_identity: list) -> dict:
+    """Pin bounded records through the already-owned group directory."""
+    if time.monotonic() >= deadline or path.parent.resolve(strict=True) != path.parent:
+        raise ValueError("diagnostic source pin deadline or alias")
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fd = None
+    try:
+        if custody_identity(os.fstat(parent)) != parent_identity:
+            raise ValueError("diagnostic source parent changed")
+        try:
+            fd = os.open(
+                path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
+            )
+        except FileNotFoundError:
+            return {"status": "MISSING"}
+        before = os.fstat(fd)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != os.getuid()
+            or before.st_mode & 0o022
+            or before.st_size > REPORT_BYTES
+        ):
+            raise ValueError("diagnostic source record refused")
+        digest = hashlib.sha256()
+        left = before.st_size
+        while left:
+            if time.monotonic() >= deadline:
+                raise ValueError("diagnostic source pin deadline")
+            data = os.read(fd, min(left, 65536))
+            if not data:
+                raise ValueError("diagnostic source truncated")
+            digest.update(data)
+            left -= len(data)
+        identity = _progress_stamp(before)
+        if (
+            identity != _progress_stamp(os.fstat(fd))
+            or identity
+            != _progress_stamp(os.stat(path.name, dir_fd=parent, follow_symlinks=False))
+            or custody_identity(path.parent.lstat()) != parent_identity
+        ):
+            raise ValueError("diagnostic source changed")
+        return {"identity": list(identity), "sha256": digest.hexdigest()}
+    finally:
+        if fd is not None:
+            os.close(fd)
+        os.close(parent)
+
+
+@contextmanager
+def _diagnostic_directory_chain(path: Path, deadline: float):
+    """Hold and recheck the no-alias chain through one observed closure."""
+    if (
+        not path.is_absolute()
+        or path.resolve(strict=True) != path
+        or len(path.parts) > 256
+    ):
+        raise ValueError("diagnostic directory ancestry refused")
+    fds = []
+    links = []
+
+    def bound():
+        if time.monotonic() >= deadline:
+            raise ValueError("diagnostic directory ancestry deadline")
+
+    def identity(info):
+        return custody_identity(info) + [info.st_gid]
+
+    def check():
+        for parent, name, fd, expected in links:
+            bound()
+            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(current.st_mode)
+                or identity(current) != expected
+                or identity(os.fstat(fd)) != expected
+            ):
+                raise ValueError("diagnostic directory ancestry changed")
+
+    try:
+        parent = None
+        for name in (path.anchor, *path.parts[1:]):
+            bound()
+            before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if not stat.S_ISDIR(before.st_mode):
+                raise ValueError("diagnostic directory ancestry is not ordinary")
+            fd = os.open(
+                name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
+            )
+            fds.append(fd)
+            expected = identity(before)
+            if identity(os.fstat(fd)) != expected:
+                raise ValueError("diagnostic directory ancestry changed on open")
+            links.append((parent, name, fd, expected))
+            parent = fd
+        check()
+        yield parent, [row[3] for row in links], check
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+
+
+def prepare_diagnostics_destination(path: Path, source: Path) -> dict:
+    """An explicit new, private external destination; never adopt old output."""
+    path = Path(path)
+    if (
+        not path.is_absolute()
+        or path.parent.resolve(strict=True) != path.parent
+        or path == source.resolve()
+        or source.resolve() in path.parents
+        or path.name in {"", ".", ".."}
+    ):
+        raise ValueError(
+            "diagnostic destination must be new, canonical and outside source"
+        )
+    with _diagnostic_directory_chain(
+        path.parent, time.monotonic() + DIAGNOSTIC_SECONDS
+    ) as (parent, ancestors, check_ancestors):
+        os.mkdir(path.name, 0o700, dir_fd=parent)
+        fd = os.open(
+            path.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
+        )
+        try:
+            info = os.fstat(fd)
+            if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+                raise ValueError("diagnostic destination ownership refused")
+            check_ancestors()
+            if custody_identity(path.lstat()) != custody_identity(info):
+                raise ValueError("diagnostic destination changed on creation")
+            return {
+                "path": str(path),
+                "identity": custody_identity(info),
+                "ancestors": ancestors + [custody_identity(info) + [info.st_gid]],
+            }
+        finally:
+            os.close(fd)
+
+
+def capture_acceptance_diagnostics(
+    completed,
+    source: Path,
+    plan: list[dict],
+    binding: dict,
+    destination: dict | None = None,
+    *,
+    deadline: float | None = None,
+) -> dict:
+    """Copy only exact owned records locally; export only a closed public schema.
+
+    No log, traceback, environment, parameter text or absolute path is exported.
+    Diagnostic completeness is not acceptance or authority. A configured failure
+    must block the consumer even if its test receipt otherwise looks successful.
+    """
+    until = min(
+        time.monotonic() + DIAGNOSTIC_SECONDS,
+        deadline if deadline is not None else float("inf"),
+    )
+    fds = []
+    anchors = []
+    members = []
+    total = 0
+    root_fd = None
+    raw_fd = None
+    export_closed = False
+    public = {
+        "schema": "acceptance-diagnostics-v1",
+        "authorizes_release": False,
+        "status": "REFUSED",
+        "binding_sha256": hashlib.sha256(
+            json.dumps(binding, sort_keys=True).encode()
+        ).hexdigest(),
+        "planned_batches": len(plan),
+        "not_admitted_batches": len(plan),
+        "reason": "CUSTODY_OR_LIMIT_REFUSED",
+        "batches": [],
+        "records": [],
+        "withheld": [
+            "raw-output",
+            "exception-text",
+            "absolute-paths",
+            "parameter-values",
+            "environment",
+            "fixture-trees",
+        ],
+    }
+
+    def bound():
+        if (
+            time.monotonic() >= until
+            or len(members) >= DIAGNOSTIC_RECORDS
+            or total > DIAGNOSTIC_BYTES
+        ):
+            raise ValueError("diagnostic budget refused")
+
+    def stamp(info):
+        return _progress_stamp(info)
+
+    def directory(parent, name, expected=None):
+        bound()
+        info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_mode & 0o022
+        ):
+            raise ValueError("diagnostic directory refused")
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        fds.append(fd)
+        if custody_identity(info) != custody_identity(os.fstat(fd)) or (
+            expected is not None and custody_identity(info) != expected
+        ):
+            raise ValueError("diagnostic directory identity changed")
+        anchors.append((parent, name, fd, custody_identity(info)))
+        return fd
+
+    def save(parent, name, data):
+        bound()
+        fd = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=parent,
+        )
+        try:
+            view = memoryview(data)
+            while view:
+                bound()
+                wrote = os.write(fd, view)
+                if wrote <= 0:
+                    raise OSError("incomplete diagnostic write")
+                view = view[wrote:]
+            os.fsync(fd)
+            finished = stamp(os.fstat(fd))
+            if finished != stamp(os.stat(name, dir_fd=parent, follow_symlinks=False)):
+                raise ValueError("diagnostic output replaced during write")
+            return finished
+        finally:
+            os.close(fd)
+
+    def read(
+        parent, name, label, cap, *, optional=False, expected_hash=None, expected=None
+    ):
+        nonlocal total
+        bound()
+        try:
+            fd = os.open(
+                name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
+            )
+        except FileNotFoundError:
+            if not optional or expected != {"status": "MISSING"}:
+                raise
+            members.append({"id": label, "status": "MISSING"})
+            return None
+        try:
+            before = os.fstat(fd)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_uid != os.getuid()
+                or before.st_mode & 0o022
+                or before.st_size > cap
+                or total + before.st_size > DIAGNOSTIC_BYTES
+            ):
+                raise ValueError("diagnostic record refused")
+            raw = bytearray()
+            while len(raw) < before.st_size:
+                bound()
+                part = os.read(fd, min(65536, before.st_size - len(raw)))
+                if not part:
+                    raise ValueError("diagnostic record truncated")
+                raw.extend(part)
+            if stamp(before) != stamp(os.fstat(fd)) or stamp(before) != stamp(
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+            ):
+                raise ValueError("diagnostic record changed")
+            if expected is not None and list(stamp(before)) != expected.get("identity"):
+                raise ValueError("diagnostic record identity differs from receipt")
+            data = bytes(raw)
+            digest = hashlib.sha256(data).hexdigest()
+            if expected is not None and digest != expected.get("sha256"):
+                raise ValueError("diagnostic record bytes differ from receipt")
+            if expected_hash is not None and digest != expected_hash:
+                raise ValueError("diagnostic captured output changed")
+            total += len(data)
+            slot = f"{len(members):04d}.bin"
+            save(raw_fd, slot, data)
+            members.append(
+                {
+                    "id": label,
+                    "status": "RETAINED",
+                    "size": len(data),
+                    "sha256": digest,
+                    "raw_member": slot,
+                }
+            )
+            anchors.append((parent, name, None, stamp(before)))
+            return data
+        finally:
+            os.close(fd)
+
+    def parse(data):
+        bound()
+
+        def pairs(rows):
+            result = {}
+            for key, value in rows:
+                if key in result:
+                    raise ValueError("duplicate diagnostic JSON key")
+                result[key] = value
+            return result
+
+        return json.loads(data, object_pairs_hook=pairs)
+
+    def phases(records, selectors):
+        clean = []
+        for row in records:
+            bound()
+            if not isinstance(row, dict) or row.get("kind") not in {"phase", "subtest"}:
+                continue
+            node = row.get("nodeid")
+            if not isinstance(node, str) or len(node) > 8192:
+                raise ValueError("invalid diagnostic test identity")
+            owners = [
+                s
+                for s in selectors
+                if node == s or node.startswith(s + "[") or node.startswith(s + "::")
+            ]
+            duration = row.get("duration")
+            if (
+                not owners
+                or row.get("when") not in {"setup", "call", "teardown"}
+                or row.get("outcome") not in {"passed", "failed", "skipped"}
+                or type(duration) not in (int, float)
+                or not math.isfinite(duration)
+                or duration < 0
+            ):
+                raise ValueError("invalid diagnostic phase")
+            clean.append(
+                {
+                    "selectors": [s.split("[", 1)[0] for s in owners],
+                    "node_sha256": hashlib.sha256(node.encode()).hexdigest(),
+                    "kind": row["kind"],
+                    "when": row["when"],
+                    "outcome": row["outcome"],
+                    "seconds": duration,
+                }
+            )
+            if len(clean) > MAX_TESTS * 4:
+                raise ValueError("diagnostic phase ceiling")
+        return clean
+
+    try:
+        # Only public source selectors are eligible. Parameter values remain hashes.
+        for batch in plan:
+            for selected in batch["selectors"]:
+                path, separator, test = selected.partition("::")
+                if (
+                    not separator
+                    or not path.endswith(".py")
+                    or Path(path).is_absolute()
+                    or any(part in {"", ".", ".."} for part in path.split("/"))
+                    or any(not (c.isalnum() or c in "_./-") for c in path)
+                    or not test
+                    or any(
+                        not (c.isalnum() or c in "_:") for c in test.split("[", 1)[0]
+                    )
+                ):
+                    raise ValueError("non-public diagnostic selector")
+        root = Path(completed.fixture_custody)
+        if root.resolve(strict=True) != root:
+            raise ValueError("diagnostic process custody alias")
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        fds.append(root_fd)
+        root_info = os.fstat(root_fd)
+        if (
+            custody_identity(root_info) != completed.fixture_identity
+            or root_info.st_uid != os.getuid()
+            or root_info.st_mode & 0o022
+        ):
+            raise ValueError("diagnostic process custody changed")
+        os.mkdir("diagnostics", 0o700, dir_fd=root_fd)
+        local = directory(root_fd, "diagnostics")
+        os.mkdir("raw", 0o700, dir_fd=local)
+        raw_fd = directory(local, "raw")
+        raw = read(
+            root_fd,
+            "output.log",
+            "runner-output",
+            OUTPUT_BYTES + 4096,
+            expected_hash=hashlib.sha256(completed.stdout.encode()).hexdigest(),
+            expected=completed.custody_records["output.log"],
+        )
+        read(
+            root_fd,
+            "result.json",
+            "runner-result",
+            REPORT_BYTES,
+            expected=completed.custody_records["result.json"],
+        )
+        try:
+            receipt = parse(raw)
+        except (ValueError, UnicodeError):
+            receipt = None
+        public["status"] = "INCOMPLETE"
+        public["reason"] = "RUNNER_RECEIPT_UNAVAILABLE"
+        if isinstance(receipt, dict):
+            batches = receipt.get("execution", {}).get("batches", [])
+            if not isinstance(batches, list) or len(batches) > len(plan):
+                raise ValueError("diagnostic batch membership changed")
+            temp = directory(root_fd, "tmp")
+            public["not_admitted_batches"] = len(plan) - len(batches)
+            complete = len(batches) == len(plan)
+            for index, batch in enumerate(batches):
+                bound()
+                expected = plan[index]
+                if (
+                    not isinstance(batch, dict)
+                    or batch.get("id") != expected["id"]
+                    or batch.get("selectors") != expected["selectors"]
+                ):
+                    raise ValueError("diagnostic batch membership changed")
+                group_path = Path(batch.get("fixture_custody", ""))
+                process_path = Path(batch.get("process_custody", ""))
+                if (
+                    group_path.parent != root / "tmp"
+                    or not group_path.name.startswith("synthesis-release-check-")
+                    or process_path.parent != group_path
+                    or not process_path.name.startswith("synthesis-required-check-")
+                ):
+                    raise ValueError("diagnostic member escaped process custody")
+                group = directory(
+                    temp, group_path.name, batch.get("custody_identity", [])
+                )
+                process = directory(
+                    group, process_path.name, batch.get("process_identity", [])
+                )
+                pins = batch["diagnostic_records"]
+                selection = parse(
+                    read(
+                        group,
+                        "selection.json",
+                        f"batch-{index}-selection",
+                        REPORT_BYTES,
+                        expected=pins["selection.json"],
+                    )
+                )
+                if selection != expected["selectors"]:
+                    raise ValueError("diagnostic selector custody differs")
+                read(
+                    group,
+                    "pytest.ini",
+                    f"batch-{index}-config",
+                    4096,
+                    expected=pins["pytest.ini"],
+                )
+                inventory = read(
+                    group,
+                    "inventory.json",
+                    f"batch-{index}-inventory",
+                    REPORT_BYTES,
+                    optional=True,
+                    expected=pins["inventory.json"],
+                )
+                progress = read(
+                    group,
+                    "inventory.progress.jsonl",
+                    f"batch-{index}-progress",
+                    REPORT_BYTES,
+                    optional=True,
+                    expected=pins["inventory.progress.jsonl"],
+                )
+                read(
+                    process,
+                    "output.log",
+                    f"batch-{index}-output",
+                    OUTPUT_BYTES + 4096,
+                    expected_hash=batch["output_sha256"],
+                    expected=batch["process_records"]["output.log"],
+                )
+                read(
+                    process,
+                    "result.json",
+                    f"batch-{index}-result",
+                    REPORT_BYTES,
+                    expected=batch["process_records"]["result.json"],
+                )
+                rows = []
+                truncated = False
+                if progress is not None:
+                    truncated = bool(progress and not progress.endswith(b"\n"))
+                    lines = progress.splitlines()
+                    if truncated:
+                        lines = lines[:-1]
+                    rows = [parse(line) for line in lines]
+                    if (
+                        not rows
+                        or len(rows) > MAX_TESTS * 4 + 4
+                        or any(
+                            not isinstance(r, dict)
+                            or type(r.get("sequence")) is not int
+                            or r["sequence"] != i
+                            for i, r in enumerate(rows)
+                        )
+                        or rows[0].get("kind") != "start"
+                    ):
+                        raise ValueError("diagnostic progress sequence refused")
+                complete = (
+                    complete
+                    and inventory is not None
+                    and progress is not None
+                    and not truncated
+                )
+                public["batches"].append(
+                    {
+                        "id": f"batch-{index}",
+                        "selectors": [
+                            s.split("[", 1)[0] for s in expected["selectors"]
+                        ],
+                        "inventory": "PRESENT" if inventory is not None else "MISSING",
+                        "progress": "MISSING"
+                        if progress is None
+                        else "TRUNCATED"
+                        if truncated
+                        else "PRESENT",
+                        "process": "OWNER_FAILURE"
+                        if batch.get("process_failure")
+                        else "EXIT_ZERO"
+                        if batch.get("returncode") == 0
+                        else "EXIT_NONZERO",
+                        "phases": phases(rows, expected["selectors"]),
+                    }
+                )
+            public["status"] = "RETAINED" if complete else "INCOMPLETE"
+            public["reason"] = (
+                "CLOSED_DIAGNOSTICS" if complete else "PARTIAL_OR_NOT_ADMITTED"
+            )
+        for parent, name, fd, identity in anchors:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if fd is None:
+                if stamp(info) != identity:
+                    raise ValueError("diagnostic member changed at closure")
+            elif (
+                custody_identity(info) != identity
+                or custody_identity(os.fstat(fd)) != identity
+            ):
+                raise ValueError("diagnostic directory changed at closure")
+        if custody_identity(root.lstat()) != completed.fixture_identity:
+            raise ValueError("diagnostic root changed at closure")
+        save(
+            local,
+            "index.json",
+            json.dumps(
+                {"schema": 1, "members": members, "authorizes_release": False},
+                sort_keys=True,
+            ).encode(),
+        )
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError):
+        public["status"] = "REFUSED"
+        public["reason"] = "CUSTODY_OR_LIMIT_REFUSED"
+        public["batches"] = []
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+    public["records"] = [
+        {k: v for k, v in row.items() if k != "raw_member"} for row in members
+    ]
+    if destination is not None:
+        path = Path(destination["path"])
+        try:
+            bound()
+            with _diagnostic_directory_chain(path, until) as (
+                fd,
+                ancestors,
+                check_ancestors,
+            ):
+                if ancestors != destination["ancestors"]:
+                    raise ValueError("diagnostic destination ancestry changed")
+                if custody_identity(os.fstat(fd)) != destination["identity"]:
+                    raise ValueError("diagnostic destination changed")
+                with os.scandir(fd) as entries:
+                    if next(entries, None) is not None:
+                        raise ValueError("diagnostic destination has unindexed members")
+                data = json.dumps(public, sort_keys=True).encode()
+                if total + len(data) > DIAGNOSTIC_BYTES:
+                    raise ValueError("diagnostic export too large")
+                diagnostic_identity = save(fd, "diagnostics.json", data)
+                manifest = {
+                    "schema": 1,
+                    "authorizes_release": False,
+                    "status": public["status"],
+                    "members": [
+                        {
+                            "path": "diagnostics.json",
+                            "size": len(data),
+                            "sha256": hashlib.sha256(data).hexdigest(),
+                        }
+                    ],
+                }
+                manifest_identity = save(
+                    fd, "manifest.json", json.dumps(manifest, sort_keys=True).encode()
+                )
+                os.fsync(fd)
+                names = set()
+                with os.scandir(fd) as entries:
+                    for entry in entries:
+                        bound()
+                        names.add(entry.name)
+                        if len(names) > 2:
+                            raise ValueError(
+                                "diagnostic destination membership changed"
+                            )
+                if names != {"diagnostics.json", "manifest.json"}:
+                    raise ValueError("diagnostic destination membership changed")
+                for name, identity in (
+                    ("diagnostics.json", diagnostic_identity),
+                    ("manifest.json", manifest_identity),
+                ):
+                    if (
+                        stamp(os.stat(name, dir_fd=fd, follow_symlinks=False))
+                        != identity
+                    ):
+                        raise ValueError(
+                            "diagnostic exported member changed at closure"
+                        )
+                if custody_identity(path.lstat()) != destination["identity"]:
+                    raise ValueError("diagnostic destination changed at closure")
+                check_ancestors()
+                export_closed = True
+        except (OSError, ValueError, KeyError):
+            public["status"] = "REFUSED"
+    return {
+        "status": public["status"],
+        "authorizes_release": False,
+        "export_closed": export_closed,
+        "record_count": len(members),
+        "raw_bytes": total,
+    }
 
 
 def _progress_stamp(info):
@@ -565,8 +1224,9 @@ class InventoryPlugin:
         A prefix, missing representation or renderer error is explicitly labeled;
         none supplies acceptance evidence. Stop rendering at the byte boundary.
         """
-        limit = min(FAILURE_DETAIL_BYTES,
-                    FAILURE_DETAIL_TOTAL_BYTES - self.failure_detail_bytes)
+        limit = min(
+            FAILURE_DETAIL_BYTES, FAILURE_DETAIL_TOTAL_BYTES - self.failure_detail_bytes
+        )
         if limit <= 0:
             return {"status": "omitted", "reason": "diagnostic_budget_exhausted"}
         representation = getattr(report, "longrepr", None)
@@ -582,8 +1242,10 @@ class InventoryPlugin:
             def write(self, text):
                 nonlocal captured
                 remaining = limit - captured
-                raw = text[:remaining + 1].encode("utf-8")
-                prefix = raw[:remaining].decode("utf-8", errors="ignore").encode("utf-8")
+                raw = text[: remaining + 1].encode("utf-8")
+                prefix = (
+                    raw[:remaining].decode("utf-8", errors="ignore").encode("utf-8")
+                )
                 chunks.append(prefix)
                 captured += len(prefix)
                 if len(raw) > remaining:
@@ -613,8 +1275,12 @@ class InventoryPlugin:
             error_type = type(error).__name__
         raw = b"".join(chunks)
         self.failure_detail_bytes += len(raw)
-        detail = {"status": status, "text": raw.decode("utf-8"),
-                  "bytes": len(raw), "sha256": _diagnostic_sha256(raw).hexdigest()}
+        detail = {
+            "status": status,
+            "text": raw.decode("utf-8"),
+            "bytes": len(raw),
+            "sha256": _diagnostic_sha256(raw).hexdigest(),
+        }
         if reason is not None:
             detail["reason"] = reason
         if error_type is not None:
@@ -739,8 +1405,12 @@ class InventoryPlugin:
     def pytest_collectreport(self, report):
         if report.failed:
             self.errors.append("collection failed")
-            self._progress("collection-failure", nodeid=report.nodeid,
-                           outcome=report.outcome, failure=self._failure_detail(report))
+            self._progress(
+                "collection-failure",
+                nodeid=report.nodeid,
+                outcome=report.outcome,
+                failure=self._failure_detail(report),
+            )
 
     def pytest_runtest_logreport(self, report):
         # Pytest 9 emits real subtest call reports before the parent's call
@@ -779,7 +1449,11 @@ class InventoryPlugin:
                 when=report.when,
                 outcome=report.outcome,
                 duration=report.duration,
-                **({"failure": self._failure_detail(report)} if report.outcome == "failed" else {}),
+                **(
+                    {"failure": self._failure_detail(report)}
+                    if report.outcome == "failed"
+                    else {}
+                ),
             )
             if report.outcome != "passed" and self.selection is None:
                 self.errors.append(
@@ -832,7 +1506,11 @@ class InventoryPlugin:
             when=report.when,
             outcome=report.outcome,
             duration=report.duration,
-            **({"failure": self._failure_detail(report)} if report.outcome == "failed" else {}),
+            **(
+                {"failure": self._failure_detail(report)}
+                if report.outcome == "failed"
+                else {}
+            ),
         )
 
     def pytest_sessionfinish(self, session, exitstatus):
@@ -1132,10 +1810,15 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
             or payload["exitstatus"] != 0
         ):
             try:
-                payload["partial_execution"] = read_progress(report.with_suffix(".progress.jsonl"))
+                payload["partial_execution"] = read_progress(
+                    report.with_suffix(".progress.jsonl")
+                )
             except (OSError, ValueError, KeyError, TypeError) as error:
-                payload["partial_execution"] = {"status": "UNAVAILABLE", "authorizes_success": False,
-                                                "error": str(error)}
+                payload["partial_execution"] = {
+                    "status": "UNAVAILABLE",
+                    "authorizes_success": False,
+                    "error": str(error),
+                }
             return 1, payload
         if before != source_digest(root):
             return 1, {

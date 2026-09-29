@@ -1,5 +1,7 @@
 """Incremental helper claims cannot silently demote their authenticated seat."""
 
+from pathlib import Path
+
 import pytest
 from test_coordination import (
     MODULE,
@@ -69,7 +71,9 @@ def test_helper_reclaim_keeps_owned_context_and_new_worktree(tmp_path, monkeypat
     assert MODULE.command_claim(helper) == 0
     current = _claims_of(board)
     assert current.context_role == "owner"
-    assert current.claims == [first.area[0], helper.area[0]]
+    assert current.claims == [
+        str(Path(first.area[0]).resolve()), str(Path(helper.area[0]).resolve())
+    ]
     assert current.workspaces == [first.workspace[0], helper.workspace[0]]
     assert MODULE.validate_sessions([current]) == []
 
