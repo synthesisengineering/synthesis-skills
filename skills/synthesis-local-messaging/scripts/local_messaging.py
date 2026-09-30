@@ -7,6 +7,7 @@ import argparse
 from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import errno
 import fcntl
 import hashlib
 import importlib
@@ -267,8 +268,12 @@ def _require_confined(path):
         physical(p)
         try:
             fd = os.open(p, os.O_WRONLY | os.O_NOFOLLOW)
-        except PermissionError:
-            continue
+        except OSError as error:
+            # Linux read-only mounts deny write-open with EROFS; sandbox policy
+            # denials use EPERM/EACCES. Other failures do not prove confinement.
+            if error.errno in (errno.EPERM, errno.EACCES, errno.EROFS):
+                continue
+            raise
         else:
             os.close(fd)
             raise Refused("OS read-only confinement is required before SQLite access")

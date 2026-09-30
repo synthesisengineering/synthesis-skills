@@ -103,6 +103,11 @@ jobs:
         if: runner.os == 'macOS'
         run: sh .github/scripts/install-ci-python.sh
       - run: python3 -m pip install pytest pyyaml jsonschema httpx
+      - name: Establish Linux sandbox for installed consumer acceptance
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap zsh
+          python3 .github/scripts/check-ci-sandbox.py
       - run: python3 -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python3 skills/synthesis-onboarding/scripts/check_capabilities.py .

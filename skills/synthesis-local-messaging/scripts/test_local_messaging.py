@@ -2,6 +2,7 @@
 """Synthetic local SQLite only. No native app, account, or personal path."""
 
 import hashlib
+import errno
 import json
 import plistlib
 import sqlite3
@@ -10,6 +11,175 @@ from pathlib import Path
 import pytest
 
 import local_messaging as lm
+
+
+@pytest.mark.parametrize("denial", [errno.EPERM, errno.EACCES, errno.EROFS])
+def test_readonly_probe_admits_only_observed_write_denials(tmp_path, monkeypatch, denial):
+    source = tmp_path.resolve() / "input.sqlite"
+    inputs = [source, Path(str(source) + "-wal"), Path(str(source) + "-shm")]
+    for path in inputs:
+        path.write_bytes(b"synthetic read-only probe input")
+    before = hashes(source.parent)
+    calls = []
+
+    def denied(path, flags):
+        calls.append(path)
+        assert flags == lm.os.O_WRONLY | lm.os.O_NOFOLLOW
+        raise OSError(denial, "synthetic OS write denial")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lm.os, "open", denied)
+        lm._require_confined(source)
+    assert calls == inputs
+    assert hashes(source.parent) == before
+
+
+@pytest.mark.parametrize("failure", [errno.EIO, errno.ENOENT, errno.ELOOP, errno.EMFILE, errno.EINVAL])
+@pytest.mark.parametrize("position", [0, 1, 2])
+def test_readonly_probe_preserves_unexpected_errors(tmp_path, monkeypatch, failure, position):
+    source = tmp_path.resolve() / "input.sqlite"
+    inputs = [source, Path(str(source) + "-wal"), Path(str(source) + "-shm")]
+    for path in inputs:
+        path.write_bytes(b"synthetic input")
+    unexpected = OSError(failure, "synthetic unexpected failure")
+    calls = []
+
+    def denied(path, flags):
+        calls.append(path)
+        if path == inputs[position]:
+            raise unexpected
+        raise OSError(errno.EROFS, "synthetic mount denial")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lm.os, "open", denied)
+        with pytest.raises(OSError) as error:
+            lm._require_confined(source)
+    assert error.value is unexpected
+    assert calls == inputs[:position + 1]
+
+
+@pytest.mark.parametrize("position", [0, 1, 2])
+def test_readonly_probe_refuses_any_writable_input_and_closes_fd(tmp_path, monkeypatch, position):
+    source = tmp_path.resolve() / "input.sqlite"
+    inputs = [source, Path(str(source) + "-wal"), Path(str(source) + "-shm")]
+    for path in inputs:
+        path.write_bytes(b"synthetic input")
+    before = hashes(source.parent)
+    real_open, real_close = lm.os.open, lm.os.close
+    opened, closed, calls = [], [], []
+
+    def write_open(path, flags):
+        calls.append(path)
+        if path == inputs[position]:
+            fd = real_open(path, flags)
+            opened.append(fd)
+            return fd
+        raise OSError(errno.EROFS, "synthetic mount denial")
+
+    def close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lm.os, "open", write_open)
+        patch.setattr(lm.os, "close", close)
+        with pytest.raises(lm.Refused, match="read-only confinement"):
+            lm._require_confined(source)
+    assert len(opened) == 1 and closed == opened
+    assert calls == inputs[:position + 1]
+    assert hashes(source.parent) == before
+
+
+def test_readonly_probe_requires_explicit_denial_errno(tmp_path, monkeypatch):
+    source = tmp_path.resolve() / "input.sqlite"
+    source.write_bytes(b"synthetic input")
+    unknown = PermissionError("No errno does not identify a qualified denial")
+
+    def denied(path, flags):
+        raise unknown
+
+    with monkeypatch.context() as patch:
+        patch.setattr(lm.os, "open", denied)
+        with pytest.raises(PermissionError) as error:
+            lm._require_confined(source)
+    assert error.value is unknown
+
+
+@pytest.mark.parametrize("job_name", ["conformance", "onboarding-portability"])
+def test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name):
+    import shlex
+    import yaml
+
+    root = Path(lm.__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    job = workflow["jobs"][job_name]
+    assert not job.get("continue-on-error", False)
+    assert job["runs-on"] == "ubuntu-latest" or "ubuntu-latest" in job["strategy"]["matrix"]["os"]
+    steps = job["steps"]
+    consumers = [i for i, step in enumerate(steps) if "pytest" in step.get("run", "") and "pip install" not in step.get("run", "")]
+    prerequisites = [
+        i for i, step in enumerate(steps)
+        if any(
+            shlex.split(line, comments=True) in (
+                ["python", ".github/scripts/check-ci-sandbox.py"],
+                ["python3", ".github/scripts/check-ci-sandbox.py"],
+            )
+            for line in step.get("run", "").splitlines()
+        )
+    ]
+    assert consumers and len(prerequisites) == 1
+    index = prerequisites[0]
+    assert index < min(consumers)
+    step = steps[index]
+    assert step.get("if") in (None, "runner.os == 'Linux'")
+    assert not step.get("continue-on-error", False)
+    assert all(not steps[i].get("continue-on-error", False) for i in consumers)
+    assert "apt-get install -y bubblewrap" in step["run"]
+    expected_blocks = {'conformance': ['sudo apt-get update && sudo apt-get install -y bubblewrap zsh',
+                     '/bin/zsh --version',
+                     'python .github/scripts/check-ci-sandbox.py',
+                     'synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || '
+                     'command -v chromium-browser || true)"',
+                     'test -n "$synthesis_ci_chromium"',
+                     '"$synthesis_ci_chromium" --version',
+                     'echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"'],
+     'onboarding-portability': ['sudo apt-get update && sudo apt-get install -y bubblewrap zsh',
+                                'python3 .github/scripts/check-ci-sandbox.py']}
+    assert step["run"].splitlines() == expected_blocks[job_name]
+
+
+
+@pytest.mark.parametrize("job_name", ["conformance", "onboarding-portability"])
+@pytest.mark.parametrize("mutation", ["early-success", "dead-branch", "masked-error", "wrong-platform", "continue", "missing", "late"])
+def test_linux_sandbox_prerequisite_rejects_nonexecution(tmp_path, monkeypatch, job_name, mutation):
+    import yaml
+
+    root = Path(lm.__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    steps = workflow["jobs"][job_name]["steps"]
+    at = next(i for i, step in enumerate(steps) if "check-ci-sandbox.py" in step.get("run", ""))
+    step = steps[at]
+    if mutation == "early-success":
+        step["run"] = "exit 0\n" + step["run"]
+    elif mutation == "dead-branch":
+        step["run"] = "if false; then\n" + step["run"] + "fi\n"
+    elif mutation == "masked-error":
+        step["run"] = step["run"].replace("check-ci-sandbox.py", "check-ci-sandbox.py || true")
+    elif mutation == "wrong-platform":
+        step["if"] = "runner.os == 'macOS'"
+    elif mutation == "continue":
+        step["continue-on-error"] = True
+    elif mutation == "missing":
+        steps.pop(at)
+    elif mutation == "late":
+        steps.append(steps.pop(at))
+    path = tmp_path / ".github/workflows/validate.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(workflow))
+    fake = tmp_path / "skills/synthesis-local-messaging/scripts/local_messaging.py"
+    monkeypatch.setattr(lm, "__file__", str(fake))
+    with pytest.raises(AssertionError):
+        test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name)
 
 
 def imessage(root, wal=False):

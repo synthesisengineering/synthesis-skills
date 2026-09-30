@@ -1257,6 +1257,11 @@ def _hosted_security_contract(workflow: dict, name: str) -> None:
             if step.get("name") == "Establish prescribed macOS framework interpreter":
                 assert name == "validate.yml" and job_id == "onboarding-portability"
                 assert step["if"] == "runner.os == 'macOS'"
+            elif step.get("name") == "Establish Linux sandbox for installed consumer acceptance":
+                assert name == "validate.yml" and job_id == "onboarding-portability"
+                assert set(step) == {"name", "if", "run"}
+                assert step["if"] == "runner.os == 'Linux'"
+                assert step["run"] == 'sudo apt-get update && sudo apt-get install -y bubblewrap zsh\npython3 .github/scripts/check-ci-sandbox.py\n'
             elif step.get("name") == "Retain sanitized acceptance diagnostics":
                 assert name == "validate.yml" and job_id == "conformance"
                 assert (
@@ -1474,6 +1479,35 @@ def test_hosted_workflow_contract_refuses_duplicate_permission_keys(tmp_path):
     target.write_text("permissions:\n  contents: write\n  contents: read\n")
     with pytest.raises(AssertionError, match="duplicate workflow key"):
         _hosted_workflow(target)
+
+
+
+@pytest.mark.parametrize("mutation", ["wrong-platform", "early-success", "dead-branch", "masked-error", "foreign-job", "foreign-workflow", "uses", "continue"])
+def test_linux_sandbox_condition_is_an_exact_execution_exception(mutation):
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows/validate.yml")
+    step = next(s for s in workflow["jobs"]["onboarding-portability"]["steps"]
+                if s.get("name") == "Establish Linux sandbox for installed consumer acceptance")
+    name = "validate.yml"
+    if mutation == "wrong-platform":
+        step["if"] = "runner.os == 'macOS'"
+    elif mutation == "early-success":
+        step["run"] = "exit 0\n" + step["run"]
+    elif mutation == "dead-branch":
+        step["run"] = "if false; then\n" + step["run"] + "fi\n"
+    elif mutation == "masked-error":
+        step["run"] += "true\n"
+    elif mutation == "foreign-job":
+        workflow["jobs"]["onboarding-portability"]["steps"].remove(step)
+        workflow["jobs"]["conformance"]["steps"].append(step)
+    elif mutation == "foreign-workflow":
+        name = "repo-guard.yml"
+    elif mutation == "uses":
+        step["uses"] = "actions/checkout@" + _HOSTED_ACTION_PINS["actions/checkout"]
+    elif mutation == "continue":
+        step["continue-on-error"] = "true"
+    with pytest.raises((AssertionError, KeyError, ValueError)):
+        _hosted_security_contract(workflow, name)
 
 
 def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:

@@ -880,24 +880,70 @@ def test_controller_partition_remains_exhaustive():
     assert groups.CHECK_SECONDS == 900 and groups.GROUP_SECONDS == 880
 
 
+
+_PHASE_READY_SECONDS = 10
+
+
+def _deadline_after_phase(monkeypatch, marker, readiness_seconds=_PHASE_READY_SECONDS):
+    """Expire the real owner only after a child reaches the intended phase.
+
+    This controls only the test subject's clock, never global time, subprocess
+    execution, phase reports or cleanup. A separate real deadline fails an
+    unreachable fixture. Independent wall-time/pipe/reaping tests remain real.
+    """
+    assert 0 < readiness_seconds <= _PHASE_READY_SECONDS and not marker.exists()
+    original = groups.bounded_run
+    real_monotonic = time.monotonic
+    observed = {}
+
+    def cutoff(command, cwd, timeout, env):
+        started = real_monotonic()
+        logical_start = started
+        observed.update(phase_reached=False, readiness_expired=False)
+
+        def now():
+            if marker.is_file():
+                observed["phase_reached"] = True
+                return logical_start + timeout + 1
+            if real_monotonic() - started >= readiness_seconds:
+                observed["readiness_expired"] = True
+                return logical_start + timeout + 1
+            return logical_start
+
+        with monkeypatch.context() as clock_patch:
+            clock_patch.setattr(groups, "time", SimpleNamespace(monotonic=now))
+            result = original(command, cwd, timeout, env)
+        observed.update(result=result, real_seconds=real_monotonic() - started)
+        assert observed["real_seconds"] < readiness_seconds + 4
+        assert observed["phase_reached"], "fixture phase was not reached before its real readiness deadline"
+        assert result.failure == "required check exceeded its unchanged wall-time ceiling"
+        return result
+
+    monkeypatch.setattr(groups, "bounded_run", cutoff)
+    return observed
+
+
 @pytest.mark.parametrize("phase", ["setup", "call", "teardown"])
 def test_actual_timeout_retains_phase_evidence_without_acceptance(
     tmp_path, monkeypatch, phase
 ):
     root = tmp_path / "source"
     directory = synthetic(root)
-    content = "import pytest,time\ndef test_first():\n    assert True\n"
+    marker = tmp_path / "phase-ready"
+    _deadline_after_phase(monkeypatch, marker)
+    ready = f"    Path({str(marker)!r}).write_text('ready')\n    time.sleep(30)\n"
+    content = "import pytest,time\nfrom pathlib import Path\ndef test_first():\n    assert True\n"
     if phase == "setup":
-        content += "@pytest.fixture\ndef slow():\n    time.sleep(10)\ndef test_second(slow):\n    assert True\n"
+        content += "@pytest.fixture\ndef slow():\n" + ready + "def test_second(slow):\n    assert True\n"
     elif phase == "call":
-        content += "def test_second():\n    time.sleep(10)\n"
+        content += "def test_second():\n" + ready
     else:
-        content += "@pytest.fixture\ndef slow():\n    yield\n    time.sleep(10)\ndef test_second(slow):\n    assert True\n"
+        content += "@pytest.fixture\ndef slow():\n    yield\n" + ready + "def test_second(slow):\n    assert True\n"
     (directory / "test_brand_new_surface.py").write_text(content)
     monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
     start = time.monotonic()
     code, payload = groups.run_group(root, "core")
-    assert code != 0 and time.monotonic() - start < 6
+    assert code != 0 and time.monotonic() - start < _PHASE_READY_SECONDS + 5
     partial = payload["partial_execution"]
     assert partial["status"] == "INCOMPLETE" and partial["authorizes_success"] is False
     events = partial["events"]
@@ -994,8 +1040,11 @@ def test_progress_limit_refuses_without_final_acceptance(tmp_path, monkeypatch):
 def test_failed_call_is_retained_when_a_later_test_times_out(tmp_path, monkeypatch):
     root = tmp_path / "source"
     directory = synthetic(root)
+    marker = tmp_path / "phase-ready"
+    _deadline_after_phase(monkeypatch, marker)
     (directory / "test_brand_new_surface.py").write_text(
-        "import time\ndef test_failed():\n    assert False\ndef test_slow():\n    time.sleep(10)\n"
+        "import time\nfrom pathlib import Path\ndef test_failed():\n    assert False\ndef test_slow():\n"
+        + f"    Path({str(marker)!r}).write_text('ready')\n    time.sleep(30)\n"
     )
     monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
     code, payload = groups.run_group(root, "core")
@@ -1261,14 +1310,16 @@ def test_failure_detail_survives_later_process_cutoff(
 ):
     root = tmp_path / "source"
     directory = synthetic(root)
-    content = "import pytest,time\n"
+    marker = tmp_path / "phase-ready"
+    _deadline_after_phase(monkeypatch, marker)
+    content = "import pytest,time\nfrom pathlib import Path\n"
     if failure_phase == "setup":
         content += "@pytest.fixture\ndef broken():\n    raise ValueError('retained-setup-marker')\ndef test_first(broken):\n    pass\n"
     elif failure_phase == "teardown":
         content += "@pytest.fixture\ndef broken():\n    yield\n    raise ValueError('retained-teardown-marker')\ndef test_first(broken):\n    pass\n"
     else:
         content += "def test_first():\n    raise ValueError('retained-call-marker')\n"
-    content += "def test_second():\n    time.sleep(10)\n"
+    content += f"def test_second():\n    Path({str(marker)!r}).write_text('ready')\n    time.sleep(30)\n"
     (directory / "test_brand_new_surface.py").write_text(content)
     monkeypatch.setattr(groups, "GROUP_SECONDS", 1.5)
     code, payload = groups.run_group(root, "core")
@@ -1786,3 +1837,41 @@ def test_group_confines_conftest_and_keeps_in_root_fixtures(tmp_path, outside_ho
     assert code != 0
     assert not (tmp_path / "ancestor-loaded").exists()
     assert payload["phases"][groups.AP + "/test_good.py::test_good"]["call"]["outcome"] == "passed"
+
+
+
+@pytest.mark.parametrize("case", ["retain-setup", "retain-call", "retain-teardown", "failed-call", "detail-setup", "detail-call", "detail-teardown"])
+def test_phase_cutoff_retains_real_evidence_after_delayed_collection(tmp_path, monkeypatch, case):
+    original = synthetic
+
+    def delayed(root):
+        directory = original(root)
+        (directory / "conftest.py").write_text("import time\ntime.sleep(2)\n")
+        return directory
+
+    monkeypatch.setattr(sys.modules[__name__], "synthetic", delayed)
+    if case.startswith("retain-"):
+        test_actual_timeout_retains_phase_evidence_without_acceptance(tmp_path, monkeypatch, case.removeprefix("retain-"))
+    elif case == "failed-call":
+        test_failed_call_is_retained_when_a_later_test_times_out(tmp_path, monkeypatch)
+    else:
+        test_failure_detail_survives_later_process_cutoff(tmp_path, monkeypatch, case.removeprefix("detail-"))
+
+
+def test_phase_cutoff_requires_readiness_without_changing_global_clock(tmp_path, monkeypatch):
+    real_clock = time.monotonic
+    original_time_module = groups.time
+    observed = _deadline_after_phase(monkeypatch, tmp_path / "never-ready", readiness_seconds=0.2)
+    started = real_clock()
+    with pytest.raises(AssertionError, match="fixture phase was not reached"):
+        groups.bounded_run([sys.executable, "-c", "import time; time.sleep(30)"], tmp_path, 0.1, dict(os.environ))
+    assert real_clock() - started < 4
+    assert groups.time is original_time_module and time.monotonic is real_clock
+    assert observed["phase_reached"] is False and observed["readiness_expired"] is True
+    result = observed["result"]
+    assert result.returncode != 0 and result.failure == "required check exceeded its unchanged wall-time ceiling"
+    with pytest.raises(ProcessLookupError):
+        os.kill(result.process_id, 0)
+    with pytest.raises(ProcessLookupError):
+        os.killpg(result.process_id, 0)
+    os.kill(os.getpid(), 0)
