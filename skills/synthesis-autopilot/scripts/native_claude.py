@@ -16,7 +16,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "claude-dialect-v3"
+ADAPTER_VERSION = "claude-dialect-v4"
 SUPPORTED_SCHEMAS = (
     "assistant.message.content.tool_use",
     "user.message.content.tool_result",
@@ -24,8 +24,14 @@ SUPPORTED_SCHEMAS = (
     "assistant.message.content.text",
     "assistant.message.content.thinking",
     "user.message.content.text",
-    "attachment.edited_text_file",
-    "attachment.total_tokens_reminder",
+    "attachment.* (opaque interactive context)",
+    "queue-operation",
+    "file-history-snapshot",
+    "file-history-delta",
+    "cost-state",
+    "system.compact_boundary",
+    "system.stop_hook_summary",
+    "system.api_error",
     "last-prompt",
     "custom-title",
     "agent-name",
@@ -134,6 +140,8 @@ def qualify_source(
     if header.get("sessionId") != root:
         raise DialectError("native root session mismatch")
     agent, sidechain = header.get("agentId"), header.get("isSidechain")
+    if "isSidechain" in header and type(sidechain) is not bool:
+        raise DialectError("native sidechain marker must be boolean")
     if thread == root:
         if agent is not None or sidechain is True or expected_agent_id is not None:
             raise DialectError("child cannot qualify as a root source")
@@ -161,6 +169,8 @@ def qualify_source(
 
 
 def _identity(row, producer):
+    if "isSidechain" in row and type(row["isSidechain"]) is not bool:
+        raise DialectError("native sidechain marker must be boolean")
     if row.get("sessionId") != producer["root_session_id"]:
         raise DialectError("native session mismatch")
     agent = producer.get("agent_id")
@@ -219,9 +229,7 @@ def _usage(
     phase = (
         "final"
         if stop_reason in FINAL_REASONS
-        else "provisional"
-        if stop_reason is None
-        else "unknown"
+        else "provisional" if stop_reason is None else "unknown"
     )
     if aggregate:
         phase = "aggregate"
@@ -231,9 +239,9 @@ def _usage(
         else None
     )
     return {
-        "grammar": "claude.print_result_usage"
-        if aggregate
-        else "claude.response_usage",
+        "grammar": (
+            "claude.print_result_usage" if aggregate else "claude.response_usage"
+        ),
         "scope": {
             "kind": "native_thread",
             **{
@@ -277,9 +285,10 @@ def is_ignored_projection(projected, producer):
     return False
 
 
-# These are interactive transcript records observed in the native 2.1.281
-# envelope. Text fields are inert source material, not fresh user messages or
-# permission, execution, cost, completion, or identity evidence.
+# Classify by native channel, not by text or by a growing attachment subtype
+# allowlist. An attachment is a rendered context container, never a principal
+# message or control event. Its bounded JSON payload is opaque. Unknown top-level
+# channels and system subtypes remain gaps: we cannot assume their semantics.
 _METADATA_FIELDS = {
     "last-prompt": {"lastPrompt", "leafUuid"},
     "custom-title": {"customTitle"},
@@ -287,16 +296,82 @@ _METADATA_FIELDS = {
     "mode": {"mode"},
     "atis-latch": {"atis"},
 }
-_ATTACHMENT_FIELDS = {
-    "edited_text_file": {"filename", "snippet"},
-    "total_tokens_reminder": {"text"},
+_SOURCE_METADATA = {"file-history-snapshot", "file-history-delta"}
+_CONTEXT_KINDS = (
+    set(_METADATA_FIELDS)
+    | _SOURCE_METADATA
+    | {
+        "attachment",
+        "system",
+        "queue-operation",
+        "cost-state",
+    }
+)
+_ENVELOPE_REQUIRED = {
+    "type",
+    "cwd",
+    "entrypoint",
+    "isSidechain",
+    "parentUuid",
+    "sessionId",
+    "timestamp",
+    "userType",
+    "uuid",
+    "version",
+}
+_ENVELOPE_OPTIONAL = {"gitBranch", "slug", "agentId"}
+_SYSTEM_FIELDS = {
+    "compact_boundary": {
+        "compactMetadata": dict,
+        "content": str,
+        "level": str,
+        "logicalParentUuid": str,
+    },
+    "stop_hook_summary": {
+        "hasOutput": bool,
+        "hookAdditionalContext": list,
+        "hookCount": int,
+        "hookErrors": list,
+        "hookInfos": list,
+        "level": str,
+        "preventedContinuation": bool,
+        "stopReason": str,
+        "toolUseID": str,
+    },
+    "api_error": {
+        "error": dict,
+        "level": str,
+        "maxRetries": int,
+        "retryAttempt": int,
+        "retryInMs": int,
+        "source": str,
+    },
+}
+_COST_FIELDS = {
+    "hasUnknownModelCost": bool,
+    "modelUsage": dict,
+    "startTime": int,
+    "totalAPIDuration": int,
+    "totalAPIDurationWithoutRetries": int,
+    "totalCostUSD": (int, float),
+    "totalDuration": int,
+    "totalLinesAdded": int,
+    "totalLinesRemoved": int,
+    "totalToolDuration": int,
 }
 
 
-def _closed_context(value, fields, label):
+def _closed_context(value, fields, label, optional=()):
     _object(value, label)
-    if set(value) != fields:
+    if not fields <= set(value) or set(value) - fields - set(optional):
         raise DialectError(f"unsupported {label} fields")
+
+
+def _typed_context(value, types, label):
+    for key, expected in types.items():
+        allowed = expected if isinstance(expected, tuple) else (expected,)
+        if type(value.get(key)) not in allowed:
+            raise DialectError(f"invalid {label} field type")
 
 
 def _context_text(value):
@@ -323,64 +398,158 @@ def _context_timestamp(stamp):
         raise DialectError("invalid interactive context timestamp") from exc
 
 
+def _context_envelope(row, required, optional=()):
+    _closed_context(
+        row,
+        _ENVELOPE_REQUIRED | required,
+        "interactive context envelope",
+        _ENVELOPE_OPTIONAL | set(optional),
+    )
+    if type(row["isSidechain"]) is not bool:
+        raise DialectError("native sidechain marker must be boolean")
+    for key in ("cwd", "entrypoint", "userType", "version", "gitBranch", "slug"):
+        if key in row:
+            _context_text(row[key])
+    _text(row["uuid"], "context record identity")
+    if row["parentUuid"] is not None:
+        _text(row["parentUuid"], "context parent identity")
+    _context_timestamp(row["timestamp"])
+
+
+def _source_metadata_identity(row, producer, locator):
+    # Source-owned snapshots omit sessionId. They cannot qualify a source or
+    # borrow an arbitrary synthetic producer's identity. The native reader's
+    # qualified source and exact locator bind them; neither grants authority.
+    if producer.get("surface") != "source-file" or producer.get("dialect") is not None:
+        raise DialectError("identity-free metadata requires a qualified source")
+    if (
+        not isinstance(locator, dict)
+        or not {"source_handle", "generation", "offset", "length", "sha256"}
+        <= locator.keys()
+    ):
+        raise DialectError("identity-free metadata requires a source locator")
+    if (
+        any(
+            not isinstance(locator[key], str) or not locator[key]
+            for key in ("source_handle", "generation")
+        )
+        or type(locator["offset"]) is not int
+        or locator["offset"] < 0
+        or type(locator["length"]) is not int
+        or locator["length"] <= 0
+        or not isinstance(locator["sha256"], str)
+        or not re.fullmatch(r"[0-9a-f]{64}", locator["sha256"])
+    ):
+        raise DialectError("invalid identity-free metadata source locator")
+    if "sessionId" in row:
+        _identity(row, producer)
+
+
 def _interactive_context(row, mode, locator):
     kind = row["type"]
+    subtype = kind
+    event_kind = "context.metadata"
     if kind == "attachment":
-        _closed_context(
-            row,
-            {
-                "type",
-                "attachment",
-                "cwd",
-                "entrypoint",
-                "gitBranch",
-                "isSidechain",
-                "parentUuid",
-                "rendered",
-                "sessionId",
-                "slug",
-                "timestamp",
-                "userType",
-                "uuid",
-                "version",
-            },
-            "interactive attachment envelope",
-        )
-        if row["isSidechain"] is not False:
-            raise DialectError("unqualified interactive attachment sidechain")
-        for key in ("cwd", "entrypoint", "gitBranch", "slug", "userType", "version"):
-            _context_text(row[key])
-        for key in ("uuid", "parentUuid"):
-            _text(row[key], key)
-        _context_timestamp(row["timestamp"])
+        _context_envelope(row, {"attachment"}, {"rendered", "renderedInHumanTurn"})
         attachment = _object(row["attachment"], "interactive attachment")
-        subtype = attachment.get("type")
-        if not isinstance(subtype, str) or subtype not in _ATTACHMENT_FIELDS:
-            raise DialectError("unsupported interactive attachment type")
-        fields = _ATTACHMENT_FIELDS[subtype]
-        _closed_context(attachment, fields | {"type"}, "interactive attachment")
-        for key in fields:
-            _context_text(attachment[key])
-        if subtype == "edited_text_file":
-            _text(attachment["filename"], "attachment filename")
-        rendered = row["rendered"]
-        if not isinstance(rendered, list) or not rendered:
-            raise DialectError(
-                "interactive attachment rendered content must be nonempty"
-            )
-        for item in rendered:
-            _closed_context(item, {"content"}, "rendered attachment")
-            _context_text(item["content"])
+        subtype = _text(attachment.get("type"), "interactive attachment type")
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,127}", subtype):
+            raise DialectError("invalid interactive attachment discriminator")
+        # Body keys, including permission/cancel/usage/tool-shaped keys, are
+        # data inside an inert channel. We emit only its digest and type.
+        for key in ("rendered", "renderedInHumanTurn"):
+            if key not in row:
+                continue
+            if not isinstance(row[key], list):
+                raise DialectError("interactive rendered context must be a list")
+            for item in row[key]:
+                _closed_context(item, {"content"}, "rendered attachment")
+                _context_text(item["content"])
         event_kind = "context.attachment"
-    else:
+    elif kind in _METADATA_FIELDS:
         fields = _METADATA_FIELDS[kind]
         _closed_context(row, fields | {"type", "sessionId"}, "interactive metadata")
         for key in fields:
             _context_text(row[key])
         if kind == "last-prompt":
             _text(row["leafUuid"], "metadata leaf identity")
-        subtype = kind
-        event_kind = "context.metadata"
+    elif kind == "queue-operation":
+        _closed_context(
+            row,
+            {"type", "sessionId", "operation", "timestamp"},
+            "interactive queue context",
+            {"content", "reason"},
+        )
+        if not isinstance(row["operation"], str) or row["operation"] not in {
+            "enqueue",
+            "dequeue",
+            "remove",
+        }:
+            raise DialectError("unsupported interactive queue operation")
+        for key in ("content", "reason"):
+            if key in row:
+                _context_text(row[key])
+        _context_timestamp(row["timestamp"])
+    elif kind == "file-history-snapshot":
+        _closed_context(
+            row,
+            {"type", "messageId", "snapshot", "isSnapshotUpdate"},
+            "file history snapshot",
+            {"sessionId"},
+        )
+        _typed_context(
+            row,
+            {"messageId": str, "snapshot": dict, "isSnapshotUpdate": bool},
+            "file history snapshot",
+        )
+        _text(row["messageId"], "snapshot message identity")
+    elif kind == "file-history-delta":
+        _closed_context(
+            row,
+            {
+                "type",
+                "messageId",
+                "snapshotMessageId",
+                "trackingPath",
+                "backup",
+                "timestamp",
+            },
+            "file history delta",
+            {"sessionId"},
+        )
+        _typed_context(
+            row,
+            {
+                "messageId": str,
+                "snapshotMessageId": str,
+                "trackingPath": str,
+                "backup": dict,
+            },
+            "file history delta",
+        )
+        for key in ("messageId", "snapshotMessageId", "trackingPath"):
+            _text(row[key], "file history identity")
+        _context_timestamp(row["timestamp"])
+    elif kind == "cost-state":
+        _closed_context(row, set(_COST_FIELDS) | {"type", "sessionId"}, "cost metadata")
+        _typed_context(row, _COST_FIELDS, "cost metadata")
+        # Native UI totals are retained context, never additional measured usage.
+    elif kind == "system":
+        subtype = row.get("subtype")
+        if not isinstance(subtype, str) or subtype not in _SYSTEM_FIELDS:
+            raise DialectError("unsupported interactive system subtype")
+        fields = _SYSTEM_FIELDS[subtype]
+        _context_envelope(
+            row,
+            {"subtype"} | set(fields),
+            {"isMeta"} if subtype == "compact_boundary" else (),
+        )
+        _typed_context(row, fields, "system context")
+        if "isMeta" in row and type(row["isMeta"]) is not bool:
+            raise DialectError("invalid system metadata marker")
+        event_kind = "context.system"
+    else:
+        raise DialectError("unsupported interactive context channel")
     return _fact(
         event_kind,
         "observed",
@@ -403,28 +572,31 @@ def _interactive_context(row, mode, locator):
 
 
 def supports_record_readback(projected, producer):
-    """Select bounded current-byte readback; projection alone never proves shape.
+    """Bounded actual-byte readback, including material message siblings.
 
-    The source owner enforces its unchanged 1 MiB record/readback budget and
-    exact current-byte comparison. decode_record then validates every field,
-    identity and body. No oversized record is ignored or interpreted here.
+    The source owner enforces its unchanged 1 MiB full-record/readback budget.
+    Projection selects a parser, never acceptance. Full strict JSON, identity,
+    envelope and payload checks still run on the exact current record bytes.
     """
     _producer(producer)
     if producer.get("dialect") is not None:
         return False
     kind = projected.get("type")
-    return isinstance(kind, str) and (kind == "attachment" or kind in _METADATA_FIELDS)
+    return isinstance(kind, str) and kind in _CONTEXT_KINDS | {"assistant", "user"}
 
 
 def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     _bounded(row)
     _object(row, "record")
     _producer(producer)
-    _identity(row, producer)
     kind = row.get("type")
     if not isinstance(kind, str):
         raise DialectError("interactive record type must be text")
-    if kind == "attachment" or kind in _METADATA_FIELDS:
+    if kind in _SOURCE_METADATA:
+        _source_metadata_identity(row, producer, source_locator)
+    else:
+        _identity(row, producer)
+    if kind in _CONTEXT_KINDS:
         return [_interactive_context(row, mode, source_locator)]
     if kind not in {"assistant", "user"}:
         raise DialectError(
@@ -681,9 +853,7 @@ def decode_wire(message, connection_binding):
     status = (
         "failed"
         if message["is_error"]
-        else "observed"
-        if subtype == "success"
-        else "terminal_unknown"
+        else "observed" if subtype == "success" else "terminal_unknown"
     )
     facts = [
         _fact(
@@ -696,9 +866,9 @@ def decode_wire(message, connection_binding):
                 "terminal_reason": message.get("terminal_reason"),
                 "native_stop_reason": message.get("stop_reason"),
                 "api_error_status": message.get("api_error_status"),
-                "provider_usage": "UNKNOWN"
-                if message["is_error"]
-                else "aggregate_only",
+                "provider_usage": (
+                    "UNKNOWN" if message["is_error"] else "aggregate_only"
+                ),
                 "portable_completion": False,
             },
             message,

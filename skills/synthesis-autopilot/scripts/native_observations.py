@@ -1782,8 +1782,14 @@ def read_page(
                             now=now,
                             candidates=candidates,
                         )
-                        if len(result["events"]) + len(events) > limits.events:
+                        if len(events) > limits.events:
                             raise SourceError("semantic event bound")
+                        if len(result["events"]) + len(events) > limits.events:
+                            next_cursor = checkpoint
+                            result["cursor"] = next_cursor
+                            result["stream_readback_bytes"] += length
+                            result["frame_revalidation_bytes"] += length
+                            break
                         result["events"].extend(events)
                         gap = sequence_gap
                         ranges.append([start, start + length])
@@ -1854,8 +1860,15 @@ def read_page(
                         attempt_id=attempt_id,
                         now=now,
                     )
-                    if len(result["events"]) + len(events) > limits.events:
+                    if len(events) > limits.events:
                         raise SourceError("normalized event count exceeds page bound")
+                    if len(result["events"]) + len(events) > limits.events:
+                        # A frame may produce multiple facts. Preserve the
+                        # unconsumed frame for the next page instead of turning
+                        # a full output page into a permanent coverage gap.
+                        next_cursor = checkpoint
+                        result["cursor"] = next_cursor
+                        break
                     result["events"].extend(events)
                     gap = sequence_gap
                 except (ValueError, TypeError, KeyError) as exc:

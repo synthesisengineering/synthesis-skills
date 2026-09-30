@@ -218,10 +218,19 @@ def main(argv=None):
     parser.add_argument("--request", help="Strict bounded operation request file, or - for stdin")
     parser.add_argument("--source-mode", choices=("native", "synthetic"), default="native",
                         help="Declared source mode; never proof of native qualification")
+    parser.add_argument("--native-from-byte", type=int, help="Doctor only: explicit native diagnostic interval start")
+    parser.add_argument("--native-physical-byte-budget", type=int,
+                        help="Doctor only: enforce a separate worst-case physical read ceiling")
+    parser.add_argument("--native-byte-budget", type=int, default=4 * 1024 * 1024,
+                        help="Doctor only: bounded native sample size, at most 16 MiB")
     parser.add_argument("--index-legacy", action="store_true",
                         help="Prepare host-local ownership discovery outside Stop; preserve source records")
     args = parser.parse_args(argv)
     try:
+        if (args.native_from_byte is not None or args.native_byte_budget != 4 * 1024 * 1024 or args.native_physical_byte_budget is not None) and args.action != "doctor":
+            raise ValueError("native diagnostic bounds require doctor")
+        if (args.native_from_byte is not None or args.native_byte_budget != 4 * 1024 * 1024 or args.native_physical_byte_budget is not None) and args.actor is None:
+            raise ValueError("native source diagnosis requires --actor")
         if args.replay_limits is not None and (args.action not in {"command", "observe"} or args.request is not None):
             raise ValueError("--replay-limits requires a protected low-level command/observe facade")
         if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish", "successor"}:
@@ -283,6 +292,27 @@ def main(argv=None):
                     if inventory["unattributed"]:
                         output["status"] = "UNKNOWN"
                         output["interpretation"] = "Ownership index prepared; unassignable records require their owning recovery review."
+                if args.actor:
+                    try:
+                        from native_doctor import inspect_source
+                        actor = read_json(args.actor)
+                        client, identity = _observer_identity(actor["native_payload"])
+                        if client == "claude":
+                            output["native_source"] = inspect_source(
+                                actor["native_payload"]["transcript_path"], client=client,
+                                expected_root_session_id=identity, start_offset=args.native_from_byte,
+                                byte_budget=args.native_byte_budget, physical_byte_budget=args.native_physical_byte_budget)
+                        else:
+                            output["native_source"] = {"status": "NOT_APPLICABLE", "client": client,
+                                "scope": "Claude interactive source diagnostic only",
+                                "native_acceptance": "UNKNOWN; use this client's existing conformance checks",
+                                "authority_granted": False}
+                    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+                        output["native_source"] = {"status": "FAIL", "authority_granted": False,
+                            "diagnostics": [{"code": "native_identity_or_source_unavailable", "error_class": type(exc).__name__}]}
+                    if output["native_source"]["status"] in {"FAIL", "UNKNOWN"}:
+                        output["status"] = output["native_source"]["status"]
+                    output["scope"] = "module imports, supported schema and applicable bounded source diagnosis"
             elif args.action == "status":
                 if args.project is None or not args.run_id:
                     raise ValueError("status requires --project and --run-id")
@@ -348,7 +378,7 @@ def main(argv=None):
                         plan=args.plan, contract=read_json(args.contract), profile=read_json(args.profile),
                         actor=actor, command_id=args.command_id, runtime_root=default_runtime_root())
         print(json.dumps(output, indent=2, sort_keys=True, default=str, allow_nan=False))
-        return 0
+        return 2 if args.action == "doctor" and output.get("native_source", {}).get("status") in {"FAIL", "UNKNOWN"} else 0
     except (ValueError, OSError, KeyError, TypeError, ImportError, RuntimeError) as exc:
         if args.action == "stop":
             text = "UNRESOLVED: autopilot runtime failed: " + str(exc)

@@ -1211,6 +1211,39 @@ def test_stop_receipt_covers_direct_and_lazy_source_closure(entry):
     assert required <= set(runtime.RECEIPT_ENTRYPOINTS)
 
 
+
+@pytest.mark.parametrize("entry", [
+    "synthesis-autopilot/scripts/autopilot_gate.py",
+    "synthesis-project-management/scripts/team_records.py",
+    "synthesis-agent-conformance/scripts/vendor_bundle.py",
+    "synthesis-local-messaging/scripts/local_messaging_cli.py",
+])
+def test_native_doctor_same_stat_drift_refuses_before_dispatch(active, entry):
+    doctor = "synthesis-autopilot/scripts/native_doctor.py"
+    # Team and messaging dispatch the controller by an explicit file-path edge.
+    assert doctor in _stop_import_closure("synthesis-autopilot/scripts/autopilot.py")
+    pointer, root, verified = _stop_release_with_receipt(active)
+    assert runtime.command(verified, entry, ["--help"])
+    target = root / "skills" / doctor
+    before, original = target.stat(), target.read_bytes()
+    offset = original.index(b"Read-only")
+    target.write_bytes(original[:offset] + b"read-only" + original[offset + 9:])
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    try:
+        assert target.stat().st_ino == before.st_ino
+        assert runtime.stat_walk(root) == json.loads(
+            runtime.activation_receipt_path(pointer).read_text()
+        )["tree_stat"]
+        current = runtime.verified_release(pointer)
+        with pytest.raises(runtime.RuntimeContractError,
+                           match="entrypoint bytes drifted since activation"):
+            runtime.execute(current, entry, ["--help"], b"", timeout=5)
+    finally:
+        target.write_bytes(original)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert runtime.command(verified, entry, ["--help"])
+
+
 def _stop_release_with_receipt(active):
     import shutil
 

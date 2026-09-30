@@ -68,6 +68,9 @@ from release_check_groups import (
     ACCEPTANCE_SECONDS,
     DIAGNOSTIC_SECONDS,
     bounded_run,
+    decode_acceptance_receipt,
+    parse_acceptance_json,
+    OUTPUT_BYTES,
     fixture_root,
     source_digest,
     prepare_diagnostics_destination,
@@ -805,25 +808,34 @@ def _runner_failure_detail(output: str) -> str:
     pytest final summary alone does not preserve the causal exception.
     """
     try:
-        receipt = json.loads(output)
-    except (TypeError, ValueError):
-        lines = (output or "").strip().splitlines()
+        receipt = parse_acceptance_json(output, max_bytes=OUTPUT_BYTES)
+        if isinstance(receipt, dict) and "receipt_transport" in receipt:
+            receipt = decode_acceptance_receipt(output)
+    except (TypeError, ValueError, RecursionError):
+        if isinstance(output, str) and "receipt_transport" in output:
+            return "acceptance runner receipt transport refused"
+        if not isinstance(output, str) or len(output) > OUTPUT_BYTES:
+            return "acceptance runner failed"
+        lines = output.strip().splitlines()
         meaningful = [
             ln.strip() for ln in lines if ln.strip() and set(ln.strip()) - set("{}")
         ]
         return meaningful[-1] if meaningful else "acceptance runner failed"
     if not isinstance(receipt, dict):
         return "acceptance runner failed"
+    cases = receipt.get("cases", [])
+    if not isinstance(cases, list):
+        return "acceptance runner failed"
     bad = [
         case
-        for case in receipt.get("cases", [])
+        for case in cases
         if isinstance(case, dict) and not case.get("matched", False)
     ]
     if bad:
         names = ", ".join(str(case.get("id", "?")) for case in bad)
-        first = (
-            (bad[0].get("stderr") or bad[0].get("stdout") or "").strip().splitlines()
-        )
+        first_stream = next((bad[0][key] for key in ("stderr", "stdout")
+                             if isinstance(bad[0].get(key), str) and bad[0][key]), "")
+        first = first_stream.strip().splitlines()
         err = first[-1].strip() if first else "no runner output"
         details = [f"{len(bad)} case(s) unmatched: {names}; first error: {err}"]
         for case in bad:
@@ -836,7 +848,7 @@ def _runner_failure_detail(output: str) -> str:
                     )
         return "\n".join(details)
     errors = receipt.get("errors")
-    if errors:
+    if isinstance(errors, list) and errors:
         return "; ".join(str(error) for error in errors[:3])
     return "acceptance runner failed"
 
@@ -941,7 +953,7 @@ def consume_acceptance(
         change_base,
         "--transaction-id",
         transaction_id,
-        "--json",
+        "--receipt",
     ]
     # One explicit finite suite envelope; each inner group keeps its 300-second
     # process ceiling. The runner reserves 60 seconds for final source/receipt work.
@@ -1036,10 +1048,10 @@ def consume_acceptance(
         result.add("checks.acceptance.r5", False, detail)
         return None
     try:
-        receipt = json.loads(completed.stdout)
-    except (TypeError, json.JSONDecodeError) as exc:
+        receipt = decode_acceptance_receipt(completed.stdout)
+    except (TypeError, ValueError) as exc:
         result.add(
-            "checks.acceptance.r5", False, f"runner receipt is not valid JSON: {exc}"
+            "checks.acceptance.r5", False, f"runner receipt transport is invalid: {exc}"
         )
         return None
     refreshed_boundary, detail = acceptance_boundary(repo)

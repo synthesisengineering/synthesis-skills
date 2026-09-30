@@ -23,7 +23,12 @@ SCRIPTS = SCRIPT.parent
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    return world_fixture.__wrapped__(tmp_path, monkeypatch)
+    result = world_fixture.__wrapped__(tmp_path, monkeypatch)
+    # CLI readiness now decodes native records, beyond identity qualification.
+    header = json.loads(result["transcript"].read_text())
+    header["message"] = {"role": "user", "content": []}
+    result["transcript"].write_text(json.dumps(header) + "\n")
+    return result
 
 
 @pytest.fixture

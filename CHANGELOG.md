@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.153.0] - 2026-09-29
+## [4.153.0] - 2026-09-30
 
 ### Added
 
@@ -20,6 +20,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   separate from deterministic custody checks.
 
 ### Fixed
+
+- Decode bounded desktop attachment and metadata records without granting native
+  authority. Diagnose the bound Claude transcript through the supported doctor,
+  with explicit inspected ranges and unchanged historical coverage limits.
+- Yield complete native records when aggregate page events reach their bound;
+  preserve cursor, cancellation and single-record refusal semantics.
+- Carry complete acceptance receipts through lossless bounded transport to both
+  release and diagnostic consumers. Refuse malformed, oversized, corrupt or stale
+  frames while preserving failed outcomes and private evidence custody.
 
 - Make service-doctor fixtures explicit about their platform and local configuration.
   Exercise Linux and macOS health paths and preserve failure and unknown classifications.

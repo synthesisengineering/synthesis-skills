@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.0** also decodes bounded Claude desktop attachment and
+metadata records as inert context. Autopilot doctor checks the current session's
+transcript and reports its exact inspection window; historical gaps remain explicit.
+Release acceptance carries complete receipts through bounded lossless transport
+while retaining source, transaction, outcome and privacy checks.
+
 Release **4.153.0** adds declared material-context preservation across ordinary
 project editing, checkpoint, doctor and recovery workflows. Autopilot **3.6.0**
 uses the same records to fence incomplete or changed material before new work.

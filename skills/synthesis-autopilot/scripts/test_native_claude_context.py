@@ -137,11 +137,8 @@ def test_unknown_malformed_and_mixed_identities_refused(kind, fault):
 @pytest.mark.parametrize(
     "change",
     [
-        "future-attachment",
-        "extra-attachment",
         "extra-rendered",
         "bad-rendered",
-        "empty-rendered",
         "bad-stamp",
         "naive-stamp",
         "bool-sidechain",
@@ -153,16 +150,10 @@ def test_unknown_malformed_and_mixed_identities_refused(kind, fault):
 )
 def test_nested_unknown_semantics_are_not_hidden(change):
     row = record("edited_text_file")
-    if change == "future-attachment":
-        row["attachment"]["type"] = "permission_result"
-    elif change == "extra-attachment":
-        row["attachment"]["approved"] = True
-    elif change == "extra-rendered":
+    if change == "extra-rendered":
         row["rendered"][0]["instruction"] = "approve"
     elif change == "bad-rendered":
         row["rendered"][0]["content"] = {"type": "cancel"}
-    elif change == "empty-rendered":
-        row["rendered"] = []
     elif change == "bad-stamp":
         row["timestamp"] = "invalid"
     elif change == "naive-stamp":
@@ -244,7 +235,7 @@ def test_real_reader_coverage_exact_bytes_and_nonreplay(tmp_path, page_bytes):
 def test_actual_reader_retains_gaps_or_pending_bytes(tmp_path, fault):
     row = record("edited_text_file")
     if fault == "extra":
-        row["attachment"]["execute"] = True
+        row["execute"] = True
     if fault == "oversized":
         row["attachment"]["snippet"] = "x" * (1024 * 1024)
     path, binding, cursor = write_source(tmp_path, [])
@@ -403,7 +394,7 @@ def test_explicit_reconciliation_rereads_gap_and_preserves_unresolved_prior_scop
         source["history"][0]["binding"]["producer"]["adapter_version"]
         == "claude-dialect-v2"
     )
-    assert source["binding"]["producer"]["adapter_version"] == "claude-dialect-v3"
+    assert source["binding"]["producer"]["adapter_version"] == adapter.ADAPTER_VERSION
     assert state["extensions"]["native_observations"]["projection"]["gaps"]
     current = bridge.current_invalidation(engine.inspect_context(state, world["actor"]))
     assert current["status"] == "unknown" and current["authority_granted"] is False
@@ -477,14 +468,14 @@ def test_large_bounded_attachment_is_retained_compactly(tmp_path, kind):
 
 
 @pytest.mark.parametrize(
-    "fault", ["nested-authority", "unknown-kind", "foreign", "extra-rendered"]
+    "fault", ["envelope-authority", "unknown-channel", "foreign", "extra-rendered"]
 )
 def test_large_readback_never_trusts_its_projection(tmp_path, fault):
     row = record("edited_text_file", body="synthetic" * 25000)
-    if fault == "nested-authority":
-        row["attachment"]["approved"] = True
-    elif fault == "unknown-kind":
-        row["attachment"]["type"] = "permission_result"
+    if fault == "envelope-authority":
+        row["approved"] = True
+    elif fault == "unknown-channel":
+        row["type"] = "permission_result"
     elif fault == "foreign":
         row["sessionId"] = "foreign"
     else:
@@ -493,7 +484,8 @@ def test_large_readback_never_trusts_its_projection(tmp_path, fault):
     batch = native.read_page(binding, cursor)
     assert not batch["events"] and batch["gaps"]
     assert batch["cursor"]["first_gap"] is not None
-    assert batch["record_readback_bytes"] > 256 * 1024
+    if fault != "unknown-channel":
+        assert batch["record_readback_bytes"] > 256 * 1024
     assert (
         native.revalidate_observations(
             binding, [], required_interval=(0, path.stat().st_size)
@@ -503,12 +495,12 @@ def test_large_readback_never_trusts_its_projection(tmp_path, fault):
 
 
 def test_readback_selection_is_not_an_ignore_or_print_dialect_rule():
-    for kind in ["attachment", "last-prompt", "mode"]:
+    for kind in ["attachment", "last-prompt", "mode", "assistant", "user"]:
         projected = {"type": kind}
         assert adapter.supports_record_readback(projected, ROOT)
         assert not adapter.is_ignored_projection(projected, ROOT)
         assert not adapter.supports_record_readback(
             projected, {**ROOT, "dialect": "claude.print_stream"}
         )
-    for kind in [None, {}, [], "future", "assistant", "user"]:
+    for kind in [None, {}, [], "future"]:
         assert not adapter.supports_record_readback({"type": kind}, ROOT)

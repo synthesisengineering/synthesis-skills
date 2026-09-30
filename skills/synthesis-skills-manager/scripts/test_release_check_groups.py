@@ -880,7 +880,6 @@ def test_controller_partition_remains_exhaustive():
     assert groups.CHECK_SECONDS == 900 and groups.GROUP_SECONDS == 880
 
 
-
 _PHASE_READY_SECONDS = 10
 
 
@@ -1540,7 +1539,7 @@ def test_owned_receipt_cannot_index_foreign_batch_custody(tmp_path, monkeypatch)
         }
     }
     completed = groups.bounded_run(
-        [sys.executable, "-c", "print(" + repr(json.dumps(receipt)) + ")"], root, 5
+        [sys.executable, "-c", "print(" + repr(groups.encode_acceptance_receipt(receipt)) + ")"], root, 5
     )
     original = groups.os.open
 
@@ -1792,7 +1791,6 @@ def test_registered_observer_still_refuses_actual_custody_tampering(tmp_path):
     assert "progress custody changed" in result.stdout
 
 
-
 @pytest.mark.parametrize("setting", ["python_files = test_good.py", "python_functions = test_good"])
 def test_group_ignores_ancestor_collection_configuration(tmp_path, setting):
     root = tmp_path / "source"
@@ -1839,7 +1837,6 @@ def test_group_confines_conftest_and_keeps_in_root_fixtures(tmp_path, outside_ho
     assert payload["phases"][groups.AP + "/test_good.py::test_good"]["call"]["outcome"] == "passed"
 
 
-
 @pytest.mark.parametrize("case", ["retain-setup", "retain-call", "retain-teardown", "failed-call", "detail-setup", "detail-call", "detail-teardown"])
 def test_phase_cutoff_retains_real_evidence_after_delayed_collection(tmp_path, monkeypatch, case):
     original = synthetic
@@ -1869,9 +1866,189 @@ def test_phase_cutoff_requires_readiness_without_changing_global_clock(tmp_path,
     assert groups.time is original_time_module and time.monotonic is real_clock
     assert observed["phase_reached"] is False and observed["readiness_expired"] is True
     result = observed["result"]
-    assert result.returncode != 0 and result.failure == "required check exceeded its unchanged wall-time ceiling"
+    assert (
+        result.returncode != 0
+        and result.failure == "required check exceeded its unchanged wall-time ceiling"
+    )
     with pytest.raises(ProcessLookupError):
         os.kill(result.process_id, 0)
     with pytest.raises(ProcessLookupError):
         os.killpg(result.process_id, 0)
     os.kill(os.getpid(), 0)
+
+
+def receipt_frame(raw, **changes):
+    """Construct hostile wire bytes independently of the production encoder."""
+    import base64
+    import hashlib
+    import zlib
+
+    envelope = {
+        "receipt_transport": groups.RECEIPT_TRANSPORT,
+        "payload_bytes": len(raw),
+        "payload_sha256": hashlib.sha256(raw).hexdigest(),
+        "payload": base64.b64encode(zlib.compress(raw)).decode("ascii"),
+    }
+    envelope.update(changes)
+    return json.dumps(envelope)
+
+
+def test_acceptance_transport_is_lossless_for_evidence_and_failed_outcomes():
+    payload = {
+        "ok": False,
+        "errors": ["original error"],
+        "cases": [{"matched": False, "stdout": "complete\névidence\n"}],
+        "execution": {"source_unchanged": False, "batches": []},
+    }
+    wire = groups.encode_acceptance_receipt(payload)
+    assert groups.decode_acceptance_receipt(wire) == payload
+    assert groups.decode_acceptance_receipt(wire.encode()) == payload
+    assert groups.OUTPUT_BYTES == 8 * 1024 * 1024
+    assert groups.RECEIPT_BYTES == 32 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "truncated",
+        "base64",
+        "deflate",
+        "length",
+        "digest",
+        "trailing",
+        "concatenated",
+        "json",
+        "duplicate",
+        "nonfinite",
+        "overflow-positive",
+        "overflow-negative",
+        "deep",
+        "metadata-duplicate",
+        "metadata-extra",
+        "metadata-boolean",
+        "unframed",
+    ],
+)
+def test_acceptance_transport_rejects_ambiguous_or_corrupt_evidence(mutation):
+    import base64
+    import zlib
+
+    raw = b'{"ok":false,"evidence":"all retained"}'
+    wire = receipt_frame(raw)
+    envelope = json.loads(wire)
+    packed = base64.b64decode(envelope["payload"])
+    if mutation == "missing":
+        wire = ""
+    elif mutation == "truncated":
+        wire = wire[:-4]
+    elif mutation == "base64":
+        envelope["payload"] = "!invalid!"
+    elif mutation == "deflate":
+        envelope["payload"] = base64.b64encode(packed[:-1]).decode()
+    elif mutation == "length":
+        envelope["payload_bytes"] += 1
+    elif mutation == "digest":
+        envelope["payload_sha256"] = "0" * 64
+    elif mutation in {"trailing", "concatenated"}:
+        tail = b"trailing" if mutation == "trailing" else zlib.compress(raw)
+        envelope["payload"] = base64.b64encode(packed + tail).decode()
+    elif mutation == "json":
+        wire = receipt_frame(b'{"ok":}')
+    elif mutation == "duplicate":
+        wire = receipt_frame(b'{"ok":false,"ok":true}')
+    elif mutation == "nonfinite":
+        wire = receipt_frame(b'{"value":NaN}')
+    elif mutation in {"overflow-positive", "overflow-negative"}:
+        value = b"1e999" if mutation == "overflow-positive" else b"-1e999"
+        wire = receipt_frame(b'{"value":' + value + b"}")
+    elif mutation == "deep":
+        wire = receipt_frame(
+            b'{"x":'
+            + b"[" * (groups.RECEIPT_JSON_DEPTH + 1)
+            + b"0"
+            + b"]" * (groups.RECEIPT_JSON_DEPTH + 1)
+            + b"}"
+        )
+    elif mutation == "metadata-duplicate":
+        wire = wire[:-1] + ',"payload_bytes":1}'
+    elif mutation == "metadata-extra":
+        envelope["untrusted"] = True
+    elif mutation == "metadata-boolean":
+        envelope["payload_bytes"] = True
+    elif mutation == "unframed":
+        wire = raw.decode()
+    if mutation in {
+        "base64",
+        "deflate",
+        "length",
+        "digest",
+        "trailing",
+        "concatenated",
+        "metadata-extra",
+        "metadata-boolean",
+    }:
+        wire = json.dumps(envelope)
+    with pytest.raises(ValueError):
+        groups.decode_acceptance_receipt(wire)
+
+
+def test_acceptance_transport_checks_declared_cap_before_inflation(monkeypatch):
+    wire = receipt_frame(b"{}", payload_bytes=groups.RECEIPT_BYTES + 1)
+
+    def forbidden():
+        pytest.fail("oversized declaration reached decompression")
+
+    monkeypatch.setattr(groups.zlib, "decompressobj", forbidden)
+    with pytest.raises(ValueError, match="metadata"):
+        groups.decode_acceptance_receipt(wire)
+
+
+def test_acceptance_transport_lying_length_cannot_expand_unbounded(monkeypatch):
+    wire = receipt_frame(b'{"evidence":"' + b"x" * 1000000 + b'"}', payload_bytes=16)
+    inflater = groups.zlib.decompressobj
+    observed = []
+
+    class LimitedInflater:
+        def __init__(self):
+            self.inner = inflater()
+
+        def decompress(self, data, max_length):
+            observed.append(max_length)
+            result = self.inner.decompress(data, max_length)
+            assert len(result) <= 17
+            return result
+
+    monkeypatch.setattr(groups.zlib, "decompressobj", LimitedInflater)
+    with pytest.raises(ValueError, match="integrity"):
+        groups.decode_acceptance_receipt(wire)
+    assert observed == [17]
+
+
+def test_acceptance_transport_producer_and_reader_refuse_both_ceilings(monkeypatch):
+    import random
+
+    monkeypatch.setattr(groups, "RECEIPT_BYTES", 128)
+    with pytest.raises(ValueError, match="decoded byte ceiling"):
+        groups.encode_acceptance_receipt({"evidence": "x" * 129})
+    monkeypatch.setattr(groups, "RECEIPT_BYTES", 10000)
+    monkeypatch.setattr(groups, "OUTPUT_BYTES", 512)
+    with pytest.raises(ValueError, match="transport exceeds"):
+        groups.encode_acceptance_receipt(
+            {"evidence": random.Random(42).randbytes(3000).hex()}
+        )
+    with pytest.raises(ValueError, match="transport exceeds"):
+        groups.decode_acceptance_receipt(" " * 513)
+
+
+def test_acceptance_transport_nesting_is_bounded_without_counting_quoted_braces():
+    payload = {"evidence": '\\"{}[]' * 1000}
+    assert (
+        groups.decode_acceptance_receipt(groups.encode_acceptance_receipt(payload))
+        == payload
+    )
+    nested = {}
+    for _ in range(groups.RECEIPT_JSON_DEPTH):
+        nested = {"child": nested}
+    with pytest.raises(ValueError, match="depth"):
+        groups.encode_acceptance_receipt(nested)

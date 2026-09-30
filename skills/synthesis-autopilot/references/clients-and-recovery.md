@@ -150,7 +150,9 @@ stopped, and a spinner is not evidence useful work continues.
 ## Diagnosis and migration
 
 `autopilot.py doctor` checks module/schema availability and explicitly labels
-native acceptance unknown. Run the existing conformance and PM doctors for
+native acceptance unknown. With the current `--actor`, it also diagnoses bounded
+current Claude source bytes as described in the source doctor procedure below.
+Run the existing conformance and PM doctors for
 their owning boundaries. A module import check cannot prove the whole system.
 
 Before switching an existing installation to the new engine, run:
@@ -296,23 +298,80 @@ existing role-specific authority checks.
 
 ## Interactive Claude context records
 
-The interactive transcript adapter recognizes the closed native shapes
-`attachment.edited_text_file`, `attachment.total_tokens_reminder`, `last-prompt`,
-`custom-title`, `agent-name`, `mode`, and `atis-latch`. Attachments become
-`context.attachment`; presentation and context metadata become
-`context.metadata`. Each observation retains its exact source locator and a
-record digest. Bodies remain source material: file excerpts and rendered text
-are not principal instructions, the prompt summary is not a new user message,
-a token reminder is not measured expenditure, and a mode/name field does not
-establish permissions or identity. No text is executed or promoted into a
-permission, completion, usage, wake, or recovery receipt.
+The interactive transcript adapter classifies records by their native channel.
+An `attachment` has a closed, typed identity/envelope and a bounded opaque JSON
+body. Its subtype and body fields do not grant semantics: environment snapshots,
+hook output, queued prompts, tool listings, permissions, instructions and usage
+inside that body all become digest-bound `context.attachment`. Unknown attachment
+subtypes are equally inert. Optional `gitBranch`, `slug`, `rendered` and
+`renderedInHumanTurn` fields and nullable `parentUuid` are supported. A qualified
+child attachment remains confined to its exact native agent identity.
 
-Only the observed closed shapes are supported. Unknown fields/subtypes,
-malformed nested values, foreign identity, print-stream records in an
-interactive source, and incomplete frames retain explicit gaps or pending
-bytes. Existing native user-message invalidation retains precedence before or
-after these context records. This support does not qualify unobserved child
-attachment envelopes or other lifecycle records.
+Presentation records (`last-prompt`, `custom-title`, `agent-name`, `mode`,
+`atis-latch`), queue operations, file-history snapshots/deltas and UI cost state
+become `context.metadata`. File-history records may omit `sessionId` only inside
+an independently qualified source with an exact source locator; such a record
+cannot qualify a source or supply identity. The closed interactive system
+subtypes `compact_boundary`, `stop_hook_summary` and `api_error` become
+`context.system`. Retained UI cost totals never enter measured usage.
+
+Every context observation contains a record digest and source locator, without
+copying context bodies. None is a fresh principal instruction, approval,
+cancellation, execution effect, measured usage or completion receipt. Ordinary
+user messages, tool calls/results and response usage retain their existing
+semantics. Unknown top-level channels/system subtypes, malformed envelopes,
+foreign or mixed identities and incomplete frames remain explicit gaps or
+pending bytes. Large supported records use the existing bounded actual-byte
+readback path, including message siblings with tool or usage data. The 1 MiB
+record ceiling is unchanged; a projection never certifies an oversized record.
+When a valid multi-fact message would overflow a page's event budget, its whole
+frame is yielded for the next page. A single frame exceeding the event ceiling
+still leaves a gap, rather than silently discarding material siblings.
+
+### Source compatibility doctor
+
+Before Claude interactive readiness or a new run, the agent uses the current
+session's actor file, whose native payload supplies the transcript and identity:
+
+```bash
+python3 "$AUTOPILOT/scripts/autopilot.py" doctor --actor "$ACTOR"
+```
+
+The supported CLI verifies that native identity through the existing PM owner,
+then decodes actual current source records through `native.read_page`. It does
+not test an empty EOF enrollment. By default it examines at most the final
+4 MiB, 32 pages and ten seconds, with a final exact-byte readback. The logical
+span limit is separate from physical reads: each operation reserves its worst
+case before I/O against a ceiling of sixteen times the logical budget plus
+4 MiB by default. `--native-physical-byte-budget N` sets a smaller or larger
+explicit ceiling, up to 512 MiB; the report includes reserved and completed
+physical bytes. A ceiling or deadline exhausted mid-check leaves it incomplete. It emits only
+counts, byte bounds, adapter identity and diagnostics; no transcript bodies are
+copied. The returned `native_source.status` is PASS only when the entire required
+diagnostic window was decoded and read back, with at least one record checked.
+For a tail sample or explicit nonzero start, `source_history_coverage` remains
+UNKNOWN and omitted bytes are named; negative authority coverage always remains
+UNKNOWN. Appends outside the frozen interval are reported as uninspected bytes
+and do not invalidate decoding of that interval. Rewritten inspected/header
+bytes, malformed records or unsupported semantic channels fail loudly. An
+incomplete required window is UNKNOWN. FAIL and UNKNOWN diagnostic checks give
+the CLI a nonzero exit status.
+
+For a bounded earlier interval, use `--native-from-byte N` and optionally
+`--native-byte-budget N` (at most 16 MiB). Starts must be complete-record
+boundaries. An explicit start requires coverage through the frozen source end;
+a byte budget that truncates that required interval returns UNKNOWN. A completed
+nonzero interval diagnoses only those bytes; it does not establish
+absence of instructions or cancellation elsewhere. Inspect any failed offset
+and report remaining coverage before making a native-readiness claim. Missing
+actor evidence leaves the module-only doctor unable to establish native
+compatibility. For other clients this probe is NOT_APPLICABLE; their doctor behavior stays
+unchanged and native acceptance remains UNKNOWN without their existing
+conformance checks.
+
+This is a read-only diagnostic. It never admits a run, consumes principal
+instructions, mutates peer journals, restores failed runs, counts provider cost
+or proves native execution, installation, wake survival or owner authority.
 
 A decoder upgrade changes the source-generation binding. It does not reset an
 existing cursor or erase an original failed generation. Use the existing

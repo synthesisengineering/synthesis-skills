@@ -1481,7 +1481,6 @@ def test_hosted_workflow_contract_refuses_duplicate_permission_keys(tmp_path):
         _hosted_workflow(target)
 
 
-
 @pytest.mark.parametrize("mutation", ["wrong-platform", "early-success", "dead-branch", "masked-error", "foreign-job", "foreign-workflow", "uses", "continue"])
 def test_linux_sandbox_condition_is_an_exact_execution_exception(mutation):
     repository = Path(__file__).resolve().parents[3]
@@ -5893,7 +5892,7 @@ def test_release_boundary_first_release_without_published_authority_refuses(
     assert selected is None and "publication" in detail
 
 
-def real_acceptance_fixture(tmp_path, monkeypatch):
+def real_acceptance_fixture(tmp_path, monkeypatch, *, receipt_bytes=0):
     repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
     monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
     runner = repo / release.ACCEPTANCE_RUNNER
@@ -5901,6 +5900,19 @@ def real_acceptance_fixture(tmp_path, monkeypatch):
     shutil.copy2(
         Path(__file__).resolve().parents[3] / release.ACCEPTANCE_RUNNER, runner
     )
+    if receipt_bytes:
+        # A synthetic long evidence field crosses the real producer and both
+        # consumers without changing any receipt/source/transaction validation.
+        text = runner.read_text()
+        anchor = "    payload, returncode = execute(validated, root, git_evidence)\n"
+        assert text.count(anchor) == 1
+        runner.write_text(
+            text.replace(
+                anchor,
+                anchor
+                + f'    payload["synthetic_transport_evidence"] = "x" * {receipt_bytes}\n',
+            )
+        )
     dependency = (
         repo / "skills/synthesis-skills-manager/scripts/release_check_groups.py"
     )
@@ -6445,3 +6457,204 @@ def test_distribution_contract_requires_source_only_controls(mutation):
         }
     with pytest.raises(AssertionError):
         _distribution_contract(workflow)
+
+
+def test_actual_consumer_retains_large_terminal_receipt(tmp_path, monkeypatch):
+    """Real execution, receipt emission, pipe owner, authority and diagnostics."""
+    import release_check_groups as checks
+
+    destination = tmp_path / "public-large-receipt"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    evidence_bytes = checks.OUTPUT_BYTES + 1024
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(
+        tmp_path, monkeypatch, receipt_bytes=evidence_bytes
+    )
+    assert accepted.receipt["synthetic_transport_evidence"] == "x" * evidence_bytes
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    public = json.loads((destination / "diagnostics.json").read_text())
+    assert public["status"] == "RETAINED"
+    assert public["not_admitted_batches"] == 0
+    assert len(public["batches"]) == 1
+    assert public["batches"][0]["process"] == "EXIT_ZERO"
+    assert "synthetic_transport_evidence" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "truncation",
+        "base64",
+        "deflate",
+        "length",
+        "digest",
+        "trailing",
+        "concatenated",
+        "json",
+        "decoded-cap",
+        "output-overflow",
+        "stale-transaction",
+        "stale-source",
+        "replay",
+        "nonzero",
+    ],
+)
+def test_actual_consumers_reject_changed_receipt_transport(
+    tmp_path, monkeypatch, mutation
+):
+    """Tamper the synthetic producer; retain real pipe, custody and consumers."""
+    import release_check_groups as checks
+
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    producer = repo / release.ACCEPTANCE_RUNNER
+    text = producer.read_text()
+    anchor = "        print(checks.encode_acceptance_receipt(payload))"
+    assert text.count(anchor) == 1
+    actions = {
+        "missing": "pass",
+        "truncation": "print(wire[:-8])",
+        "base64": "envelope['payload'] = '!private-wire-sentinel!'; print(json.dumps(envelope))",
+        "deflate": "envelope['payload'] = checks.base64.b64encode(packed[:-1]).decode(); print(json.dumps(envelope))",
+        "length": "envelope['payload_bytes'] += 1; print(json.dumps(envelope))",
+        "digest": "envelope['payload_sha256'] = '0' * 64; print(json.dumps(envelope))",
+        "trailing": "envelope['payload'] = checks.base64.b64encode(packed + b'private-wire-sentinel').decode(); print(json.dumps(envelope))",
+        "concatenated": "envelope['payload'] = checks.base64.b64encode(packed + checks.zlib.compress(b'{}')).decode(); print(json.dumps(envelope))",
+        "json": "raw = b'{invalid-private-wire-sentinel'; envelope['payload'] = checks.base64.b64encode(checks.zlib.compress(raw)).decode(); envelope['payload_bytes'] = len(raw); envelope['payload_sha256'] = checks.hashlib.sha256(raw).hexdigest(); print(json.dumps(envelope))",
+        "decoded-cap": "envelope['payload_bytes'] = checks.RECEIPT_BYTES + 1; print(json.dumps(envelope))",
+        "output-overflow": "print('x' * (checks.OUTPUT_BYTES + 1))",
+        "stale-transaction": "payload['transaction_id'] = '0' * 32; print(checks.encode_acceptance_receipt(payload))",
+        "stale-source": "payload['execution']['source_sha256'] = '0' * 64; print(checks.encode_acceptance_receipt(payload))",
+        "replay": "print("
+        + repr(checks.encode_acceptance_receipt(accepted.receipt))
+        + ")",
+        "nonzero": "print(wire)",
+    }
+    replacement = (
+        "        wire = checks.encode_acceptance_receipt(payload)\n"
+        "        envelope = json.loads(wire)\n"
+        "        packed = checks.base64.b64decode(envelope['payload'])\n"
+        "        " + actions[mutation]
+    )
+    text = text.replace(anchor, replacement)
+    if mutation == "nonzero":
+        text = text.replace("    return returncode\n", "    return 1\n")
+    producer.write_text(text)
+    git("add", "-A")
+    git("commit", "-qm", "synthetic transport control")
+    destination = checks.prepare_diagnostics_destination(
+        tmp_path / "public-control", repo
+    )
+    captured = []
+    decoded = []
+    validated = []
+    validator = release.validate_acceptance_receipt
+    owner = release.capture_acceptance_diagnostics
+    decode = release.decode_acceptance_receipt
+
+    def retain(completed, source, plan, binding, _destination, **kwargs):
+        outcome = owner(completed, source, plan, binding, destination, **kwargs)
+        captured.append((completed, outcome))
+        return outcome
+
+    def consume(raw):
+        decoded.append(True)
+        return decode(raw)
+
+    def validate(receipt, expected):
+        validated.append(True)
+        return validator(receipt, expected)
+
+    # Both consumers see the actual captured bytes. Exporting diagnostics here
+    # does not make a diagnostic refusal short-circuit the authority decoder.
+    monkeypatch.setattr(release, "capture_acceptance_diagnostics", retain)
+    monkeypatch.setattr(release, "decode_acceptance_receipt", consume)
+    monkeypatch.setattr(release, "validate_acceptance_receipt", validate)
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    completed, outcome = captured[0]
+    public = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert "private-wire-sentinel" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+    if mutation in {"stale-transaction", "stale-source", "nonzero"}:
+        assert outcome["status"] == "RETAINED"
+    elif mutation == "replay":
+        assert outcome["status"] == "REFUSED"
+    else:
+        assert outcome["status"] == "INCOMPLETE"
+        assert public["reason"] == "RUNNER_RECEIPT_UNAVAILABLE"
+    if mutation in {"nonzero", "output-overflow"}:
+        assert completed.returncode != 0
+        assert not validated  # Failure rendering may decode, never grant authority.
+    else:
+        assert completed.returncode == 0
+        assert decoded == [True]
+    if mutation == "output-overflow":
+        assert completed.failure == "required check output exceeded byte ceiling"
+        assert len(completed.stdout.encode()) == checks.OUTPUT_BYTES + 50
+
+
+def test_receipt_transport_preserves_all_unmatched_failure_details():
+    import release_check_groups as checks
+
+    receipt = _diagnostic_failure_receipt()
+    detail = release._runner_failure_detail(checks.encode_acceptance_receipt(receipt))
+    for case in receipt["cases"]:
+        assert case["stdout"] in detail
+        assert case["stderr"] in detail
+    broken = checks.encode_acceptance_receipt(receipt)[:-4]
+    assert (
+        release._runner_failure_detail(broken)
+        == "acceptance runner receipt transport refused"
+    )
+
+
+@pytest.mark.parametrize("body", [
+    '{"receipt_transport":"x","a":' + '[' * 2000 + '0' + ']' * 2000 + '}',
+    '{"receipt_transport":"x","cases":null}',
+    '{"receipt_transport":"x","value":1e999}',
+])
+def test_failure_rendering_refuses_invalid_bounded_transport(body):
+    assert release._runner_failure_detail(body) == "acceptance runner receipt transport refused"
+
+
+@pytest.mark.parametrize("body", [
+    '{"cases":null}', '{"cases":1}', '{"errors":1}',
+    '{"errors":{"error":"x"}}', '{"cases":[{"matched":false,"stdout":1}]}',
+])
+def test_failure_rendering_keeps_malformed_plain_json_non_authoritative(body):
+    assert isinstance(release._runner_failure_detail(body), str)
+
+
+@pytest.mark.parametrize("number", ["1e999", "-1e999"])
+def test_actual_consumer_rejects_nonfinite_exponent_before_success(
+    tmp_path, monkeypatch, capsys, number
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    runner = repo / release.ACCEPTANCE_RUNNER
+    text = runner.read_text()
+    anchor = "        print(checks.encode_acceptance_receipt(payload))"
+    assert text.count(anchor) == 1
+    replacement = (
+        '        payload["synthetic_measure"] = "SYNTHETIC_EXPONENT"\n'
+        '        raw = json.dumps(payload).replace(\'"SYNTHETIC_EXPONENT"\', '
+        + repr(number) + ').encode()\n'
+        '        envelope = {"receipt_transport": checks.RECEIPT_TRANSPORT, '
+        '"payload_bytes": len(raw), "payload_sha256": checks.hashlib.sha256(raw).hexdigest(), '
+        '"payload": checks.base64.b64encode(checks.zlib.compress(raw)).decode()}\n'
+        '        print(json.dumps(envelope))'
+    )
+    runner.write_text(text.replace(anchor, replacement))
+    git("add", "-A")
+    git("commit", "-qm", "synthetic exponent control")
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "diagnostics"))
+    capsys.readouterr()
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    output = capsys.readouterr().out
+    assert "PASS checks.acceptance.r5" not in output
+    public = json.loads((tmp_path / "diagnostics/diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert "synthetic_measure" not in json.dumps(public)

@@ -962,6 +962,49 @@ changed_surfaces:
   - material-correction-0ff140c8169f0162
   - material-correction-1f4b57e4c5f57848
   - material-correction-9a79cb857928f82a
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - hosted-delivery-14edd4baf61810c6
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: GOVERNANCE.md
   cases:
   - final-42a40e7612918374
@@ -1197,6 +1240,49 @@ changed_surfaces:
   - native-recovery-ed9d230166b2cc98
   - native-recovery-fd15208eda76bfc3
   - native-recovery-ffd3a23b274486d8
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - hosted-delivery-14edd4baf61810c6
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: skills/synthesis-adversarial-review/SKILL.md
   cases:
   - final-13373a5354d9b44c
@@ -1703,6 +1789,36 @@ changed_surfaces:
   - native-web-8919fedc3f7ab6ad
   - native-web-d23e61645e6a653e
   - native-web-e20a8ac96c56280c
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/references/clients-and-recovery.md
   cases:
   - final-07292a0e9cb0524a
@@ -1740,6 +1856,31 @@ changed_surfaces:
   - final-f18307ebd0ef0e2c
   - final-f20b0ffaba202a3d
   - final-f6a8f80839a992b2
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/references/controller.md
   cases:
   - final-24be5f8f7bdb7774
@@ -2150,6 +2291,36 @@ changed_surfaces:
   - final-runtime-ci-c8ae4e0086e62837
   - final-runtime-ci-caa6df524a231d4b
   - final-runtime-ci-dcb5cfa255aa0d42
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/scripts/capabilities.py
   cases:
   - final-1c206ccf5757a7ed
@@ -2684,6 +2855,31 @@ changed_surfaces:
   - final-f14d8b29035d070d
   - final-f18307ebd0ef0e2c
   - final-f6a8f80839a992b2
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/scripts/native_codex.py
   cases:
   - final-0e9813f67ce5eafd
@@ -2823,6 +3019,36 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/scripts/native_protection.py
   cases:
   - final-5697fc182cdfdac1
@@ -3564,6 +3790,36 @@ changed_surfaces:
   - final-runtime-ci-c8ae4e0086e62837
   - final-runtime-ci-caa6df524a231d4b
   - final-runtime-ci-dcb5cfa255aa0d42
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/scripts/test_capabilities.py
   cases:
   - final-1c206ccf5757a7ed
@@ -3920,6 +4176,31 @@ changed_surfaces:
   - final-f14d8b29035d070d
   - final-f18307ebd0ef0e2c
   - final-f6a8f80839a992b2
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 - path: skills/synthesis-autopilot/scripts/test_native_custody.py
   cases:
   - final-5571d5351a07b873
@@ -6683,6 +6964,45 @@ changed_surfaces:
   - hosted-sandbox-1b63e3ce8cc6fa04
   - phase-readiness-78329d878c44bda8
   - phase-readiness-39137da97638e029
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - hosted-delivery-14edd4baf61810c6
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
+  - doctor-runtime-ed5a2d554e9bd15a
 - path: skills/synthesis-implementation-integrity/references/verification-custody.md
   cases:
   - final-0f471cdc3ecc9c3a
@@ -6775,6 +7095,15 @@ changed_surfaces:
   - hosted-delivery-f6ac5895061bad2f
   - hosted-delivery-f85283ff08034963
   - hosted-delivery-fbcf7c5c21b2a0a6
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
 - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -8387,6 +8716,7 @@ changed_surfaces:
   - runtime-source-479f511363f3cfed
   - runtime-source-67c2560daf0ecda0
   - runtime-source-cb4517ddd8e7cc0e
+  - doctor-runtime-ed5a2d554e9bd15a
 - path: skills/synthesis-onboarding/scripts/runtime_payload.py
   cases:
   - final-0c26de142eeece45
@@ -8746,6 +9076,7 @@ changed_surfaces:
   - runtime-source-479f511363f3cfed
   - runtime-source-67c2560daf0ecda0
   - runtime-source-cb4517ddd8e7cc0e
+  - doctor-runtime-ed5a2d554e9bd15a
 - path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
   - final-0d8ae14b5d44e740
@@ -11668,6 +11999,18 @@ changed_surfaces:
   - messaging-delivery-ede98efda3d24f85
   - messaging-delivery-0b979517c055b445
   - messaging-delivery-e9c8b95905e9f695
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -11811,6 +12154,18 @@ changed_surfaces:
   - nested-owner-ca1a1a3b1d730492
   - nested-owner-ea809f96549d681d
   - nested-owner-fd064cfc66038bae
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - acquisition-5ba9a14de5d0d699
@@ -11955,6 +12310,18 @@ changed_surfaces:
   - nested-owner-fd064cfc66038bae
   - hosted-source-matrix-required-controls-20260930
   - hosted-sandbox-1b63e3ce8cc6fa04
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -12085,6 +12452,18 @@ changed_surfaces:
   - nested-owner-fd064cfc66038bae
   - phase-readiness-78329d878c44bda8
   - phase-readiness-39137da97638e029
+  - desktop-receipt-9d69b09875b02957
+  - desktop-receipt-cd721e1c12152730
+  - desktop-receipt-c8c003bf4f7d8981
+  - desktop-receipt-c6c37b3cc1f9dfc0
+  - desktop-receipt-ef0ad8865b01adc5
+  - desktop-receipt-97782fece65aa793
+  - desktop-receipt-a5daf5816ba0484e
+  - desktop-receipt-f1f8b16078a08897
+  - desktop-receipt-5152bfbf12f68f61
+  - receipt-review-f781bad75d9c4363
+  - receipt-review-38372b04d827b0f8
+  - receipt-review-022769d492f5d1a5
 - path: skills/synthesis-slack-sync/SKILL.md
   cases:
   - acquisition-12c5504994f789ca
@@ -12166,6 +12545,134 @@ changed_surfaces:
   - stop-deadline-ced2d163c2fa58c5
   - stop-deadline-c8de67f77d557cb9
   - stop-deadline-3fc217a90510cc05
+- path: skills/synthesis-autopilot/scripts/fixtures/claude_desktop_context.json
+  cases:
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+- path: skills/synthesis-autopilot/scripts/native_doctor.py
+  cases:
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+- path: skills/synthesis-autopilot/scripts/test_native_claude_desktop.py
+  cases:
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
+- path: skills/synthesis-autopilot/scripts/test_native_doctor.py
+  cases:
+  - final-f14d8b29035d070d
+  - final-0ac2f2341170a079
+  - final-f18307ebd0ef0e2c
+  - final-113f046dc41bae93
+  - final-995a424d209eb296
+  - desktop-receipt-a8b54ff49a87e1f0
+  - desktop-receipt-b0f817737888ded5
+  - desktop-receipt-ec40589a9631a028
+  - desktop-receipt-84dddb206b6869fd
+  - desktop-receipt-e1937bfddc5a865f
+  - desktop-receipt-3a64aa3e84001c7b
+  - desktop-receipt-0610a95e09861229
+  - desktop-receipt-a51e823381d3bb65
+  - desktop-receipt-63e6e0961d449d37
+  - desktop-receipt-82ba1efed0666bda
+  - desktop-receipt-5e53676bc81fdc71
+  - desktop-receipt-6a4bd82d1c0fa32a
+  - desktop-receipt-49b0449d3dba6f3b
+  - desktop-receipt-bbc1d1a9d9f537b3
+  - desktop-receipt-8bf7ff9f181cec13
+  - desktop-receipt-4e159066b5de6552
+  - desktop-receipt-e48686fe293fe835
+  - desktop-receipt-84945c386d134cc5
+  - desktop-receipt-a77e84a2d48ed56a
+  - desktop-receipt-31902eb04a6bd877
+  - desktop-receipt-903e439b446ab620
+  - desktop-receipt-3fdb94049c7d1ee8
+  - desktop-receipt-3d6fbeada64f0fdb
+  - desktop-receipt-c149863a33fe5899
+  - desktop-receipt-a0110b70cbd6580a
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -18472,3 +18979,195 @@ cases:
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_phase_cutoff_requires_readiness_without_changing_global_clock
   motivating_defect: A1.5second fixture timeout could precede the target phase on slow startup; real phase readiness, bounded failure when unreachable and unchanged process cleanup must be causal.
+- id: desktop-receipt-a8b54ff49a87e1f0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_observed_desktop_shape_families
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-b0f817737888ded5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_attachment_channel_is_inert_even_for_control_shaped_payload
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-ec40589a9631a028
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_unknown_top_level_control_is_still_a_gap
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-84dddb206b6869fd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_unidentified_metadata_requires_source_qualification_and_cannot_qualify
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-e1937bfddc5a865f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_generic_attachments_preserve_envelope_and_bound_checks
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-3a64aa3e84001c7b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_qualified_child_context_stays_child
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-0610a95e09861229
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_desktop_fixture_through_current_byte_reader
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-a51e823381d3bb65
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_desktop_context_actual_owner_keeps_cancellation_and_effects
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-63e6e0961d449d37
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_large_message_readback_keeps_material_siblings
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-82ba1efed0666bda
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_page_event_budget_yields_whole_material_record_without_false_gap
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-5e53676bc81fdc71
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_single_record_exceeding_event_capacity_still_fails_closed
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-6a4bd82d1c0fa32a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_empty_source_and_header_only_do_not_certify_enrolled_eof
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-49b0449d3dba6f3b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_frozen_tail_scan_reports_partial_coverage_and_unknown_type
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-bbc1d1a9d9f537b3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_doctor_exposes_failed_and_incomplete_actual_bytes
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-8bf7ff9f181cec13
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_doctor_rechecks_current_source_and_never_writes
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-4e159066b5de6552
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_doctor_read_and_time_bounds_are_reported
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-e48686fe293fe835
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_actual_cli_diagnoses_actor_source_and_returns_failure
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-84945c386d134cc5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_cli_doctor_complete_tail_does_not_claim_whole_history
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-a77e84a2d48ed56a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_cli_actor_identity_is_checked_before_source_compatibility
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-31902eb04a6bd877
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_complete_explicit_nonzero_interval_and_required_truncation
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-903e439b446ab620
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_append_after_frozen_interval_does_not_invalidate_checked_bytes
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-3fdb94049c7d1ee8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_doctor_physical_ceiling_is_enforced_before_reads
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-3d6fbeada64f0fdb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_long_source_default_window_has_scoped_success
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-c149863a33fe5899
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_final_header_rewrite_invalidates_tail_qualification
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-a0110b70cbd6580a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_doctor.py::test_other_native_client_cli_doctor_retains_behavior_without_claude_attestation
+  motivating_defect: Actual desktop context was rejected or aggregate page events produced false gaps; bounded doctor and authority boundaries must be explicit.
+- id: desktop-receipt-9d69b09875b02957
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumer_retains_large_terminal_receipt
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-cd721e1c12152730
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumers_reject_changed_receipt_transport
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-c8c003bf4f7d8981
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_receipt_transport_preserves_all_unmatched_failure_details
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-c6c37b3cc1f9dfc0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_is_lossless_for_evidence_and_failed_outcomes
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-ef0ad8865b01adc5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_rejects_ambiguous_or_corrupt_evidence
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-97782fece65aa793
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_checks_declared_cap_before_inflation
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-a5daf5816ba0484e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_lying_length_cannot_expand_unbounded
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-f1f8b16078a08897
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_producer_and_reader_refuse_both_ceilings
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: desktop-receipt-5152bfbf12f68f61
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_acceptance_transport_nesting_is_bounded_without_counting_quoted_braces
+  motivating_defect: Complete acceptance receipts exceeded ordinary subprocess output bounds before reaching release and diagnostic consumers; lossless bounded transport must preserve refusal and privacy.
+- id: receipt-review-f781bad75d9c4363
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_failure_rendering_refuses_invalid_bounded_transport
+  motivating_defect: Independent review reproduced numeric exponent overflow reaching success reporting and unbounded nested failure parsing before receipt refusal.
+- id: receipt-review-38372b04d827b0f8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_failure_rendering_keeps_malformed_plain_json_non_authoritative
+  motivating_defect: Independent review reproduced numeric exponent overflow reaching success reporting and unbounded nested failure parsing before receipt refusal.
+- id: receipt-review-022769d492f5d1a5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumer_rejects_nonfinite_exponent_before_success
+  motivating_defect: Independent review reproduced numeric exponent overflow reaching success reporting and unbounded nested failure parsing before receipt refusal.
+- id: doctor-runtime-ed5a2d554e9bd15a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_release_runtime.py::test_native_doctor_same_stat_drift_refuses_before_dispatch
+  motivating_defect: New own-transcript doctor was omitted from four runtime dependency
+    declarations; a helper substitution preserving inode, length and timestamp must
+    be rejected before each declared caller dispatches.

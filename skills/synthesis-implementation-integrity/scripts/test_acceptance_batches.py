@@ -713,7 +713,7 @@ def actual_diagnostic_run(tmp_path, code, cases=None):
             str(path),
             "--repo-root",
             str(root),
-            "--json",
+            "--receipt",
         ],
         root,
         30,
@@ -734,7 +734,7 @@ def test_actual_runner_diagnostics_keep_private_failure_out_of_public_artifact(
         completed, root, plan, {}, target
     )
     assert result["status"] == "RETAINED"
-    raw = json.loads(completed.stdout)
+    raw = module.checks.decode_acceptance_receipt(completed.stdout)
     assert raw["ok"] is False
     public = json.loads((Path(target["path"]) / "diagnostics.json").read_text())
     assert public["batches"][0]["phases"]
@@ -764,7 +764,7 @@ def test_actual_runner_diagnostic_members_refuse_tamper(tmp_path, change):
     module, root, completed, plan, target = actual_diagnostic_run(
         tmp_path, "def test_one(): pass\n"
     )
-    receipt = json.loads(completed.stdout)
+    receipt = module.checks.decode_acceptance_receipt(completed.stdout)
     batch = receipt["execution"]["batches"][0]
     group = Path(batch["fixture_custody"])
     if change == "same_bytes_replaced":
@@ -787,7 +787,7 @@ def test_actual_runner_diagnostic_members_refuse_tamper(tmp_path, change):
         receipt["execution"]["batches"][0]["fixture_custody"] = str(
             tmp_path / "foreign"
         )
-        completed.stdout = json.dumps(receipt)
+        completed.stdout = module.checks.encode_acceptance_receipt(receipt)
     result = module.checks.capture_acceptance_diagnostics(
         completed, root, plan, {}, target
     )
@@ -830,7 +830,7 @@ def test_actual_timeout_exports_partial_phases_without_acceptance(tmp_path):
         + "));"
         + "r,c=m.execute(v,Path("
         + repr(str(root))
-        + "));print(json.dumps(r));raise SystemExit(c)"
+        + "));print(m.checks.encode_acceptance_receipt(r));raise SystemExit(c)"
     )
     completed = module.checks.bounded_run([sys.executable, "-c", program], root, 20)
     assert completed.returncode != 0
@@ -843,7 +843,7 @@ def test_actual_timeout_exports_partial_phases_without_acceptance(tmp_path):
     assert report["batches"][0]["inventory"] == "MISSING"
     assert report["batches"][0]["phases"][0]["when"] == "setup"
     assert report["authorizes_release"] is False
-    assert json.loads(completed.stdout)["ok"] is False
+    assert module.checks.decode_acceptance_receipt(completed.stdout)["ok"] is False
 
 
 @pytest.mark.parametrize("kind", ["class", "parameters"])

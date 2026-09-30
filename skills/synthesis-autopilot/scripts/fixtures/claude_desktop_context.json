@@ -1,0 +1,2794 @@
+{
+  "provenance": "Wholly synthetic values; structural families observed in Claude Code 2.1.28x; no native content retained.",
+  "records": [
+    {
+      "id": "agent-name.envelope0.body0",
+      "record": {
+        "agentName": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "type": "agent-name"
+      }
+    },
+    {
+      "id": "atis-latch.envelope0.body0",
+      "record": {
+        "atis": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "type": "atis-latch"
+      }
+    },
+    {
+      "id": "attachment.agent_listing_delta.envelope0.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedTypes": [],
+          "isInitial": false,
+          "removedTypes": [],
+          "showConcurrencyNote": false,
+          "type": "agent_listing_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.agent_listing_delta.envelope1.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedTypes": [],
+          "isInitial": false,
+          "removedTypes": [],
+          "showConcurrencyNote": false,
+          "type": "agent_listing_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.agent_listing_delta.envelope2.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedTypes": [],
+          "isInitial": false,
+          "removedTypes": [],
+          "showConcurrencyNote": false,
+          "type": "agent_listing_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.auto_mode.envelope0.body0",
+      "record": {
+        "attachment": {
+          "autoModeConsentFlow": false,
+          "bashFirst": false,
+          "bashFirstSteer": "SYNTHETIC INERT CONTENT",
+          "bypass": false,
+          "steerOnly": false,
+          "type": "auto_mode"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.command_permissions.envelope0.body0",
+      "record": {
+        "attachment": {
+          "allowedTools": [],
+          "type": "command_permissions"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.command_permissions.envelope1.body0",
+      "record": {
+        "attachment": {
+          "allowedTools": [],
+          "type": "command_permissions"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.compact_file_reference.envelope0.body0",
+      "record": {
+        "attachment": {
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "filename": "SYNTHETIC INERT CONTENT",
+          "type": "compact_file_reference"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.compact_file_reference.envelope1.body0",
+      "record": {
+        "attachment": {
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "filename": "SYNTHETIC INERT CONTENT",
+          "type": "compact_file_reference"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.credential_org.envelope0.body0",
+      "record": {
+        "attachment": {
+          "organizationUuid": "SYNTHETIC INERT CONTENT",
+          "type": "credential_org"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.date.envelope0.body0",
+      "record": {
+        "attachment": {
+          "changed": false,
+          "date": "SYNTHETIC INERT CONTENT",
+          "type": "date"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.date.envelope0.body1",
+      "record": {
+        "attachment": {
+          "date": "SYNTHETIC INERT CONTENT",
+          "type": "date"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.date_change.envelope0.body0",
+      "record": {
+        "attachment": {
+          "newDate": "SYNTHETIC INERT CONTENT",
+          "type": "date_change"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope0.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "failedMcpServers": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope0.body1",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope0.body2",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope0.body3",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope1.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "failedMcpServers": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope1.body1",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope1.body2",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope1.body3",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope2.body0",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "failedMcpServers": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope2.body1",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "needsAuthMcpServers": [],
+          "pendingMcpServers": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope2.body2",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_delta.envelope2.body3",
+      "record": {
+        "attachment": {
+          "addedLines": [],
+          "addedNames": [],
+          "readdedNames": [],
+          "removedNames": [],
+          "type": "deferred_tools_delta",
+          "wireHiddenNames": []
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_record.envelope0.body0",
+      "record": {
+        "attachment": {
+          "entries": [],
+          "toolInputCopies": [],
+          "type": "deferred_tools_record"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.deferred_tools_record.envelope0.body1",
+      "record": {
+        "attachment": {
+          "entries": [],
+          "type": "deferred_tools_record"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.edited_text_file.envelope0.body0",
+      "record": {
+        "attachment": {
+          "filename": "SYNTHETIC INERT CONTENT",
+          "snippet": "SYNTHETIC INERT CONTENT",
+          "type": "edited_text_file"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.edited_text_file.envelope1.body0",
+      "record": {
+        "attachment": {
+          "filename": "SYNTHETIC INERT CONTENT",
+          "snippet": "SYNTHETIC INERT CONTENT",
+          "type": "edited_text_file"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.edited_text_file.envelope2.body0",
+      "record": {
+        "attachment": {
+          "filename": "SYNTHETIC INERT CONTENT",
+          "snippet": "SYNTHETIC INERT CONTENT",
+          "type": "edited_text_file"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.environment.envelope0.body0",
+      "record": {
+        "attachment": {
+          "changes": [],
+          "snapshot": {},
+          "type": "environment"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.environment.envelope0.body1",
+      "record": {
+        "attachment": {
+          "snapshot": {},
+          "type": "environment"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.file.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": {},
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "filename": "SYNTHETIC INERT CONTENT",
+          "type": "file"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.file.envelope1.body0",
+      "record": {
+        "attachment": {
+          "content": {},
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "filename": "SYNTHETIC INERT CONTENT",
+          "type": "file"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_additional_context.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": [],
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_additional_context"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_additional_context.envelope1.body0",
+      "record": {
+        "attachment": {
+          "content": [],
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_additional_context"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_blocking_error.envelope0.body0",
+      "record": {
+        "attachment": {
+          "blockingError": {},
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_blocking_error"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_blocking_error.envelope1.body0",
+      "record": {
+        "attachment": {
+          "blockingError": {},
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_blocking_error"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_cancelled.envelope0.body0",
+      "record": {
+        "attachment": {
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_cancelled"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_stopped_continuation.envelope0.body0",
+      "record": {
+        "attachment": {
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "message": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_stopped_continuation"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_stopped_continuation.envelope1.body0",
+      "record": {
+        "attachment": {
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "message": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_stopped_continuation"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_success.envelope0.body0",
+      "record": {
+        "attachment": {
+          "command": "SYNTHETIC INERT CONTENT",
+          "content": "SYNTHETIC INERT CONTENT",
+          "durationMs": 1,
+          "exitCode": 1,
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "stderr": "SYNTHETIC INERT CONTENT",
+          "stdout": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_success"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": null,
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_success.envelope1.body0",
+      "record": {
+        "attachment": {
+          "command": "SYNTHETIC INERT CONTENT",
+          "content": "SYNTHETIC INERT CONTENT",
+          "durationMs": 1,
+          "exitCode": 1,
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "stderr": "SYNTHETIC INERT CONTENT",
+          "stdout": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_success"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_success.envelope2.body0",
+      "record": {
+        "attachment": {
+          "command": "SYNTHETIC INERT CONTENT",
+          "content": "SYNTHETIC INERT CONTENT",
+          "durationMs": 1,
+          "exitCode": 1,
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "stderr": "SYNTHETIC INERT CONTENT",
+          "stdout": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_success"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_success.envelope3.body0",
+      "record": {
+        "attachment": {
+          "command": "SYNTHETIC INERT CONTENT",
+          "content": "SYNTHETIC INERT CONTENT",
+          "durationMs": 1,
+          "exitCode": 1,
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "stderr": "SYNTHETIC INERT CONTENT",
+          "stdout": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_success"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.hook_system_message.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": "SYNTHETIC INERT CONTENT",
+          "hookEvent": "SYNTHETIC INERT CONTENT",
+          "hookName": "SYNTHETIC INERT CONTENT",
+          "toolUseID": "SYNTHETIC INERT CONTENT",
+          "type": "hook_system_message"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.instructions.envelope0.body0",
+      "record": {
+        "attachment": {
+          "files": [],
+          "type": "instructions"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.invoked_skills.envelope0.body0",
+      "record": {
+        "attachment": {
+          "skills": [],
+          "type": "invoked_skills"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.invoked_skills.envelope1.body0",
+      "record": {
+        "attachment": {
+          "skills": [],
+          "type": "invoked_skills"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.mcp_instructions_delta.envelope0.body0",
+      "record": {
+        "attachment": {
+          "addedBlocks": [],
+          "addedNames": [],
+          "removedNames": [],
+          "type": "mcp_instructions_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.mcp_instructions_delta.envelope1.body0",
+      "record": {
+        "attachment": {
+          "addedBlocks": [],
+          "addedNames": [],
+          "removedNames": [],
+          "type": "mcp_instructions_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.mcp_instructions_delta.envelope2.body0",
+      "record": {
+        "attachment": {
+          "addedBlocks": [],
+          "addedNames": [],
+          "removedNames": [],
+          "type": "mcp_instructions_delta"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.model.envelope0.body0",
+      "record": {
+        "attachment": {
+          "identity": {},
+          "text": "SYNTHETIC INERT CONTENT",
+          "type": "model"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.nested_memory.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": {},
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "path": "SYNTHETIC INERT CONTENT",
+          "type": "nested_memory"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.nested_memory.envelope1.body0",
+      "record": {
+        "attachment": {
+          "content": {},
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "path": "SYNTHETIC INERT CONTENT",
+          "type": "nested_memory"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.nested_memory.envelope2.body0",
+      "record": {
+        "attachment": {
+          "content": {},
+          "displayPath": "SYNTHETIC INERT CONTENT",
+          "path": "SYNTHETIC INERT CONTENT",
+          "type": "nested_memory"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body0",
+      "record": {
+        "attachment": {
+          "cliPrefix": "SYNTHETIC INERT CONTENT",
+          "contextRendering": "SYNTHETIC INERT CONTENT",
+          "echoWireToolInputs": false,
+          "inlineTools": false,
+          "keptReminders": false,
+          "reminderFold": false,
+          "systemPrompt": [],
+          "systemTurns": false,
+          "toolChangeHeader": false,
+          "tools": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body1",
+      "record": {
+        "attachment": {
+          "cliPrefix": "SYNTHETIC INERT CONTENT",
+          "contextRendering": "SYNTHETIC INERT CONTENT",
+          "echoWireToolInputs": false,
+          "reminderFold": false,
+          "systemPrompt": [],
+          "tools": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body2",
+      "record": {
+        "attachment": {
+          "cliPrefix": "SYNTHETIC INERT CONTENT",
+          "reminderFold": false,
+          "systemPrompt": [],
+          "tools": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body3",
+      "record": {
+        "attachment": {
+          "cliPrefix": "SYNTHETIC INERT CONTENT",
+          "systemPrompt": [],
+          "tools": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body4",
+      "record": {
+        "attachment": {
+          "contextRendering": "SYNTHETIC INERT CONTENT",
+          "echoWireToolInputs": false,
+          "inlineTools": false,
+          "keptReminders": false,
+          "reminderFold": false,
+          "systemPrompt": [],
+          "systemTurns": false,
+          "toolChangeHeader": false,
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body5",
+      "record": {
+        "attachment": {
+          "reminderFold": false,
+          "systemPrompt": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.prompt_snapshot.envelope0.body6",
+      "record": {
+        "attachment": {
+          "systemPrompt": [],
+          "type": "prompt_snapshot"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body0",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": [],
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body1",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body2",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "isMeta": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body3",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body4",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body5",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope0.body6",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "renderedInHumanTurn": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body0",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": [],
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body1",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body2",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "isMeta": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body3",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body4",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body5",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope1.body6",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body0",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": [],
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body1",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "humanTurn": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body2",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "isMeta": false,
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body3",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body4",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "origin": {},
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body5",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.queued_command.envelope2.body6",
+      "record": {
+        "attachment": {
+          "commandMode": "SYNTHETIC INERT CONTENT",
+          "prompt": "SYNTHETIC INERT CONTENT",
+          "source_uuid": "SYNTHETIC INERT CONTENT",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "type": "queued_command",
+          "usage": {}
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.remote_session_change.envelope0.body0",
+      "record": {
+        "attachment": {
+          "commit": "SYNTHETIC INERT CONTENT",
+          "managedCommit": false,
+          "managedPr": false,
+          "pr": "SYNTHETIC INERT CONTENT",
+          "sendUserFileHint": false,
+          "type": "remote_session_change",
+          "url": null
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.session_context.envelope0.body0",
+      "record": {
+        "attachment": {
+          "context": {},
+          "type": "session_context"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.silent_turn_reminder.envelope0.body0",
+      "record": {
+        "attachment": {
+          "text": "SYNTHETIC INERT CONTENT",
+          "type": "silent_turn_reminder"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.skill_listing.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": "SYNTHETIC INERT CONTENT",
+          "isInitial": false,
+          "names": [],
+          "skillCount": 1,
+          "type": "skill_listing"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.skill_listing.envelope1.body0",
+      "record": {
+        "attachment": {
+          "content": "SYNTHETIC INERT CONTENT",
+          "isInitial": false,
+          "names": [],
+          "skillCount": 1,
+          "type": "skill_listing"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.skill_listing.envelope2.body0",
+      "record": {
+        "attachment": {
+          "content": "SYNTHETIC INERT CONTENT",
+          "isInitial": false,
+          "names": [],
+          "skillCount": 1,
+          "type": "skill_listing"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.task_reminder.envelope0.body0",
+      "record": {
+        "attachment": {
+          "content": [],
+          "itemCount": 1,
+          "type": "task_reminder"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.task_reminder.envelope1.body0",
+      "record": {
+        "attachment": {
+          "content": [],
+          "itemCount": 1,
+          "type": "task_reminder"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.task_status.envelope0.body0",
+      "record": {
+        "attachment": {
+          "deltaSummary": null,
+          "description": "SYNTHETIC INERT CONTENT",
+          "outputFilePath": "SYNTHETIC INERT CONTENT",
+          "status": "SYNTHETIC INERT CONTENT",
+          "taskId": "SYNTHETIC INERT CONTENT",
+          "taskType": "SYNTHETIC INERT CONTENT",
+          "type": "task_status"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.thinking_drop.envelope0.body0",
+      "record": {
+        "attachment": {
+          "blockHashes": [],
+          "clientChange": {},
+          "firstReportForThreadInProcess": false,
+          "model": "SYNTHETIC INERT CONTENT",
+          "newlyDropped": {},
+          "querySource": "SYNTHETIC INERT CONTENT",
+          "requestId": "SYNTHETIC INERT CONTENT",
+          "thinkingBlocksSent": 1,
+          "thinkingTurnsSent": 1,
+          "type": "thinking_drop"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.total_tokens_reminder.envelope0.body0",
+      "record": {
+        "attachment": {
+          "text": "SYNTHETIC INERT CONTENT",
+          "type": "total_tokens_reminder"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "rendered": [
+          {
+            "content": "SYNTHETIC INERT CONTENT"
+          }
+        ],
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "attachment.total_tokens_reminder.envelope1.body0",
+      "record": {
+        "attachment": {
+          "text": "SYNTHETIC INERT CONTENT",
+          "type": "total_tokens_reminder"
+        },
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "parentUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "attachment",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "cost-state.envelope0.body0",
+      "record": {
+        "hasUnknownModelCost": false,
+        "modelUsage": {},
+        "sessionId": "synthetic-root",
+        "startTime": 1,
+        "totalAPIDuration": 1,
+        "totalAPIDurationWithoutRetries": 1,
+        "totalCostUSD": 1.5,
+        "totalDuration": 1,
+        "totalLinesAdded": 1,
+        "totalLinesRemoved": 1,
+        "totalToolDuration": 1,
+        "type": "cost-state"
+      }
+    },
+    {
+      "id": "custom-title.envelope0.body0",
+      "record": {
+        "customTitle": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "type": "custom-title"
+      }
+    },
+    {
+      "id": "file-history-delta.envelope0.body0",
+      "record": {
+        "backup": {},
+        "messageId": "synthetic-identity",
+        "snapshotMessageId": "synthetic-identity",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "trackingPath": "SYNTHETIC INERT CONTENT",
+        "type": "file-history-delta"
+      }
+    },
+    {
+      "id": "file-history-snapshot.envelope0.body0",
+      "record": {
+        "isSnapshotUpdate": false,
+        "messageId": "synthetic-identity",
+        "snapshot": {},
+        "type": "file-history-snapshot"
+      }
+    },
+    {
+      "id": "last-prompt.envelope0.body0",
+      "record": {
+        "lastPrompt": "SYNTHETIC INERT CONTENT",
+        "leafUuid": "synthetic-identity",
+        "sessionId": "synthetic-root",
+        "type": "last-prompt"
+      }
+    },
+    {
+      "id": "mode.envelope0.body0",
+      "record": {
+        "mode": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "type": "mode"
+      }
+    },
+    {
+      "id": "queue-operation.envelope0.body0",
+      "record": {
+        "content": "SYNTHETIC INERT CONTENT",
+        "operation": "enqueue",
+        "reason": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "queue-operation"
+      }
+    },
+    {
+      "id": "queue-operation.envelope1.body0",
+      "record": {
+        "content": "SYNTHETIC INERT CONTENT",
+        "operation": "enqueue",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "queue-operation"
+      }
+    },
+    {
+      "id": "queue-operation.envelope2.body0",
+      "record": {
+        "operation": "enqueue",
+        "reason": "SYNTHETIC INERT CONTENT",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "queue-operation"
+      }
+    },
+    {
+      "id": "queue-operation.envelope3.body0",
+      "record": {
+        "operation": "enqueue",
+        "sessionId": "synthetic-root",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "queue-operation"
+      }
+    },
+    {
+      "id": "system.api_error.envelope0.body0",
+      "record": {
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "error": {},
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "level": "SYNTHETIC INERT CONTENT",
+        "maxRetries": 1,
+        "parentUuid": "synthetic-identity",
+        "retryAttempt": 1,
+        "retryInMs": 1,
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "source": "SYNTHETIC INERT CONTENT",
+        "subtype": "api_error",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "system",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "system.compact_boundary.envelope0.body0",
+      "record": {
+        "compactMetadata": {},
+        "content": "SYNTHETIC INERT CONTENT",
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isMeta": false,
+        "isSidechain": false,
+        "level": "SYNTHETIC INERT CONTENT",
+        "logicalParentUuid": "synthetic-identity",
+        "parentUuid": null,
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "subtype": "compact_boundary",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "system",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "system.compact_boundary.envelope1.body0",
+      "record": {
+        "compactMetadata": {},
+        "content": "SYNTHETIC INERT CONTENT",
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "isSidechain": false,
+        "level": "SYNTHETIC INERT CONTENT",
+        "logicalParentUuid": "synthetic-identity",
+        "parentUuid": null,
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "subtype": "compact_boundary",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "type": "system",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "system.stop_hook_summary.envelope0.body0",
+      "record": {
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "hasOutput": false,
+        "hookAdditionalContext": [],
+        "hookCount": 1,
+        "hookErrors": [],
+        "hookInfos": [],
+        "isSidechain": false,
+        "level": "SYNTHETIC INERT CONTENT",
+        "parentUuid": "synthetic-identity",
+        "preventedContinuation": false,
+        "sessionId": "synthetic-root",
+        "slug": "SYNTHETIC INERT CONTENT",
+        "stopReason": "SYNTHETIC INERT CONTENT",
+        "subtype": "stop_hook_summary",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "toolUseID": "SYNTHETIC INERT CONTENT",
+        "type": "system",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "system.stop_hook_summary.envelope1.body0",
+      "record": {
+        "cwd": "SYNTHETIC INERT CONTENT",
+        "entrypoint": "SYNTHETIC INERT CONTENT",
+        "gitBranch": "SYNTHETIC INERT CONTENT",
+        "hasOutput": false,
+        "hookAdditionalContext": [],
+        "hookCount": 1,
+        "hookErrors": [],
+        "hookInfos": [],
+        "isSidechain": false,
+        "level": "SYNTHETIC INERT CONTENT",
+        "parentUuid": "synthetic-identity",
+        "preventedContinuation": false,
+        "sessionId": "synthetic-root",
+        "stopReason": "SYNTHETIC INERT CONTENT",
+        "subtype": "stop_hook_summary",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "toolUseID": "SYNTHETIC INERT CONTENT",
+        "type": "system",
+        "userType": "SYNTHETIC INERT CONTENT",
+        "uuid": "synthetic-identity",
+        "version": "SYNTHETIC INERT CONTENT"
+      }
+    },
+    {
+      "id": "assistant",
+      "record": {
+        "type": "assistant",
+        "sessionId": "synthetic-root",
+        "message": {
+          "content": []
+        }
+      }
+    },
+    {
+      "id": "user",
+      "record": {
+        "type": "user",
+        "sessionId": "synthetic-root",
+        "message": {
+          "content": "Synthetic principal message"
+        }
+      }
+    }
+  ]
+}

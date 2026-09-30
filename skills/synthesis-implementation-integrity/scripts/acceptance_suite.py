@@ -831,7 +831,10 @@ def execute(
     return receipt, 0 if receipt["ok"] else 1
 
 
-def emit(payload: dict[str, Any], as_json: bool) -> None:
+def emit(payload: dict[str, Any], as_json: bool, *, as_receipt: bool = False) -> None:
+    if as_receipt:
+        print(checks.encode_acceptance_receipt(payload))
+        return
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
@@ -865,7 +868,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("action", choices=("validate", "run"))
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--json", action="store_true")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true")
+    output.add_argument(
+        "--receipt", action="store_true", help="bounded lossless machine receipt"
+    )
     parser.add_argument("--change-base")
     parser.add_argument("--transaction-id")
     return parser.parse_args(argv)
@@ -876,17 +883,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = _canonical_root(args.repo_root)
     except ManifestError as exc:
-        emit({"ok": False, "errors": [str(exc)]}, args.json)
+        emit({"ok": False, "errors": [str(exc)]}, args.json, as_receipt=args.receipt)
         return 2
     manifest_path = Path(args.manifest).expanduser()
     if not manifest_path.is_absolute():
         manifest_path = root / manifest_path
     validated, errors = validate_manifest(manifest_path, root)
     if validated is None:
-        emit({"ok": False, "errors": errors}, args.json)
+        emit({"ok": False, "errors": errors}, args.json, as_receipt=args.receipt)
         return 2
     if args.action == "validate":
-        emit(validation_receipt(validated), args.json)
+        emit(validation_receipt(validated), args.json, as_receipt=args.receipt)
         return 0
     git_evidence = None
     if validated["document"]["schema"] == 2:
@@ -898,10 +905,17 @@ def main(argv: list[str] | None = None) -> int:
                 args.transaction_id,
             )
         except ManifestError as exc:
-            emit({"ok": False, "errors": [str(exc)]}, args.json)
+            emit(
+                {"ok": False, "errors": [str(exc)]}, args.json, as_receipt=args.receipt
+            )
             return 2
     payload, returncode = execute(validated, root, git_evidence)
-    emit(payload, args.json)
+    try:
+        emit(payload, args.json, as_receipt=args.receipt)
+    except ValueError:
+        # No partial frame or data-dependent exception can masquerade as receipt.
+        print("ERROR acceptance receipt transport refused", file=sys.stderr)
+        return 2
     return returncode
 
 

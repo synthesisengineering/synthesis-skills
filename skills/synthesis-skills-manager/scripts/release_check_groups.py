@@ -9,9 +9,12 @@ Reports bind full/selected node IDs, all three execution phases and source bytes
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import math
 import os
 from pathlib import Path
@@ -23,6 +26,7 @@ import sys
 import tempfile
 import time
 from types import FunctionType
+import zlib
 
 # Product fixtures deliberately replace shared standard-library attributes. The
 # execution observer captures its own primitives before fixtures run, so logging
@@ -51,6 +55,12 @@ CHECK_SECONDS = 900
 ACCEPTANCE_SECONDS = 6000  # finite whole-suite owner, not a per-group allowance
 GROUP_SECONDS = 880  # collection, execution and reporting; 20s outer cleanup reserve
 OUTPUT_BYTES = 8 * 1024 * 1024
+# A receipt carries repeated collection/phase evidence from many bounded groups.
+# Its lossless transport shares the ordinary output ceiling; decompression has
+# its own finite ceiling and never changes test or process admission limits.
+RECEIPT_BYTES = 32 * 1024 * 1024
+RECEIPT_JSON_DEPTH = 64
+RECEIPT_TRANSPORT = "acceptance-receipt-zlib-v1"
 REPORT_BYTES = 4 * 1024 * 1024
 FAILURE_DETAIL_BYTES = 16 * 1024
 FAILURE_DETAIL_TOTAL_BYTES = 256 * 1024
@@ -88,6 +98,157 @@ NATIVE_CONTROL_PREFIXES = (
     "test_native_admission",
     "test_native_session_owner_chain",
 )
+
+
+class _ReceiptJSONDepth:
+    """Bound nesting before JSON decoding, independent of interpreter limits."""
+
+    def __init__(self):
+        self.depth = 0
+        self.quoted = False
+        self.escaped = False
+
+    def check(self, text):
+        for character in text:
+            if self.quoted:
+                if self.escaped:
+                    self.escaped = False
+                elif character == "\\":
+                    self.escaped = True
+                elif character == '"':
+                    self.quoted = False
+            elif character == '"':
+                self.quoted = True
+            elif character in "[{":
+                self.depth += 1
+                if self.depth > RECEIPT_JSON_DEPTH:
+                    raise ValueError("acceptance receipt JSON depth exceeded")
+            elif character in "]}":
+                self.depth -= 1
+
+
+def encode_acceptance_receipt(payload: dict) -> str:
+    """Losslessly frame one receipt without building its full JSON byte string.
+
+    No fields are omitted. An oversized receipt refuses; it is never truncated
+    or represented as success. The source/transaction consumer still decides
+    whether the decoded evidence establishes authority.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("acceptance receipt must be an object")
+    compressor = zlib.compressobj()
+    compressed = bytearray()
+    digest = hashlib.sha256()
+    size = 0
+    nesting = _ReceiptJSONDepth()
+
+    def retain(data):
+        if len(compressed) + len(data) > (OUTPUT_BYTES // 4) * 3:
+            raise ValueError("acceptance receipt transport exceeds byte ceiling")
+        compressed.extend(data)
+
+    try:
+        encoder = json.JSONEncoder(
+            sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        for piece in encoder.iterencode(payload):
+            # The encoder emits ASCII (including escapes); count before encoding.
+            size += len(piece)
+            if size > RECEIPT_BYTES:
+                raise ValueError("acceptance receipt exceeds decoded byte ceiling")
+            nesting.check(piece)
+            for offset in range(0, len(piece), 65536):
+                raw = piece[offset : offset + 65536].encode("ascii")
+                digest.update(raw)
+                retain(compressor.compress(raw))
+        retain(compressor.flush())
+    except (TypeError, RecursionError, zlib.error) as exc:
+        raise ValueError("acceptance receipt serialization refused") from exc
+    wire = json.dumps(
+        {
+            "receipt_transport": RECEIPT_TRANSPORT,
+            "payload_bytes": size,
+            "payload_sha256": digest.hexdigest(),
+            "payload": base64.b64encode(compressed).decode("ascii"),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    if len(wire) + 1 > OUTPUT_BYTES:  # Include the producer's terminal newline.
+        raise ValueError("acceptance receipt transport exceeds byte ceiling")
+    return wire
+
+
+def parse_acceptance_json(raw, *, max_bytes=RECEIPT_BYTES):
+    """Bound receipt/error JSON before allocating its structured representation."""
+    if not isinstance(raw, (str, bytes)) or len(raw) > max_bytes:
+        raise ValueError("acceptance receipt JSON byte ceiling exceeded")
+    text = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+    if len(text.encode("utf-8")) > max_bytes:
+        raise ValueError("acceptance receipt JSON byte ceiling exceeded")
+    _ReceiptJSONDepth().check(text)
+
+    def unique(rows):
+        value = {}
+        for key, item in rows:
+            if key in value:
+                raise ValueError("duplicate acceptance receipt JSON key")
+            value[key] = item
+        return value
+
+    def invalid_constant(_value):
+        raise ValueError("non-finite acceptance receipt JSON value")
+
+    def finite_float(value):
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError("non-finite acceptance receipt JSON value")
+        return result
+
+    return json.loads(text, object_pairs_hook=unique,
+                      parse_constant=invalid_constant, parse_float=finite_float)
+
+
+def decode_acceptance_receipt(output: str | bytes) -> dict:
+    """Read one bounded frame; reject ambiguous, corrupt or expanding evidence."""
+    if not isinstance(output, (str, bytes)) or len(output) > OUTPUT_BYTES:
+        raise ValueError("acceptance receipt transport exceeds byte ceiling")
+
+    try:
+        wire = output.encode("ascii") if isinstance(output, str) else output
+        envelope = parse_acceptance_json(wire, max_bytes=OUTPUT_BYTES)
+        if (
+            not isinstance(envelope, dict)
+            or set(envelope)
+            != {"receipt_transport", "payload_bytes", "payload_sha256", "payload"}
+            or envelope["receipt_transport"] != RECEIPT_TRANSPORT
+            or type(envelope["payload_bytes"]) is not int
+            or not 0 < envelope["payload_bytes"] <= RECEIPT_BYTES
+            or not isinstance(envelope["payload_sha256"], str)
+            or len(envelope["payload_sha256"]) != 64
+            or any(c not in "0123456789abcdef" for c in envelope["payload_sha256"])
+            or not isinstance(envelope["payload"], str)
+        ):
+            raise ValueError("acceptance receipt transport metadata refused")
+        packed = base64.b64decode(envelope["payload"], validate=True)
+        inflater = zlib.decompressobj()
+        # The declared bound is checked before expansion. A lying length may
+        # produce at most one extra byte; never use unbounded decompress/flush.
+        raw = inflater.decompress(packed, envelope["payload_bytes"] + 1)
+        if (
+            len(raw) != envelope["payload_bytes"]
+            or not inflater.eof
+            or inflater.unused_data
+            or inflater.unconsumed_tail
+            or hashlib.sha256(raw).hexdigest() != envelope["payload_sha256"]
+        ):
+            raise ValueError("acceptance receipt transport integrity refused")
+        payload = parse_acceptance_json(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("acceptance receipt must be an object")
+        return payload
+    except (UnicodeError, binascii.Error, zlib.error, RecursionError) as exc:
+        raise ValueError("acceptance receipt transport refused") from exc
 
 
 def group_for(nodeid: str) -> str:
@@ -882,7 +1043,7 @@ def capture_acceptance_diagnostics(
             expected=completed.custody_records["result.json"],
         )
         try:
-            receipt = parse(raw)
+            receipt = decode_acceptance_receipt(raw)
         except (ValueError, UnicodeError):
             receipt = None
         public["status"] = "INCOMPLETE"

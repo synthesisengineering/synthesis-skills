@@ -57,6 +57,13 @@ user remains usable within its stated scope.
    inputs, so the user need not learn the configuration format. The underlying
    [run owners](references/run-contracts.md) remain available for specialized
    operations without creating a second source of authority.
+   Before starting a Claude interactive run, execute `autopilot.py doctor --actor`
+   with this session's current actor file. Read its `native_source` byte bounds,
+   decoded-record count and diagnostics. A decoder failure or incomplete required
+   diagnostic interval blocks compatibility readiness. A successful bounded
+   window leaves omitted history and owner authority coverage UNKNOWN.
+   Follow the [source doctor procedure](references/clients-and-recovery.md#source-compatibility-doctor)
+   instead of treating an EOF enrollment as a decoder test.
    After a terminal interval, use the bounded
    [successor transaction](references/successor-transactions.md) with new scoped
    authority. Old deadlines, costs, failures and obligations remain immutable;
