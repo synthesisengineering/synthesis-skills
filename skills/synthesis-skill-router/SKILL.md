@@ -70,6 +70,7 @@ Route by the requested outcome and the current stage. Load operative references 
 - Run day-start, day-end, or gap recovery: `../synthesis-daily-rituals/SKILL.md`, `../synthesis-catchup-ledger/SKILL.md`
 - Coordinate an absence: `../synthesis-absence-coordination/SKILL.md`
 - Act as chief of staff: `../synthesis-chief-of-staff/SKILL.md`
+- Review an explicitly authorized local Messages or WhatsApp window: `../synthesis-local-messaging/SKILL.md`. Loading this route grants no discovery, collection, or send authority.
 - Compose or send agent correspondence: `../synthesis-agent-correspondence/SKILL.md`
 - Enforce outbound-message safety: `../synthesis-message-guard/SKILL.md`
 - Govern disclosure: `../synthesis-disclosure-policy/SKILL.md`

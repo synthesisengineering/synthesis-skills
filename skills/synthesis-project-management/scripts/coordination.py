@@ -50,6 +50,8 @@ from peer_addressing import (  # noqa: E402
     DURABLE_ROLES,
     SelfIdentity,
     all_seats,
+    administrative_messages,
+    administrative_message_scan,
     stale_seat_files,
     delivery_lanes,
     detect_self,
@@ -592,12 +594,9 @@ def _append_override_message(
     staged_paths: list[str],
     reason: str,
 ) -> str:
-    marker = re.search(
-        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
-        content,
-    )
-    if marker is None:
-        raise RuntimeError("board lacks Protocol boundary")
+    from board_grammar import message_insert_offset
+
+    marker = message_insert_offset(content)
     body = (
         f"### recorded-staged-claim-override — {timestamp()}\n\n"
         f"Session: {session.session_uuid}\n\n"
@@ -606,7 +605,7 @@ def _append_override_message(
         f"Outside-claim paths: {', '.join(sanitize(path) for path in staged_paths)}\n\n"
         f"Reason: {sanitize(reason)}\n\n"
     )
-    return content[: marker.start()] + body + content[marker.start() :]
+    return content[: marker] + body + content[marker :]
 
 
 def _append_subscription_override_message(
@@ -620,12 +619,9 @@ def _append_subscription_override_message(
     staged_paths: list[str],
     reason: str,
 ) -> str:
-    marker = re.search(
-        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
-        content,
-    )
-    if marker is None:
-        raise RuntimeError("board lacks Protocol boundary")
+    from board_grammar import message_insert_offset
+
+    marker = message_insert_offset(content)
     body = (
         f"### recorded-subscription-override — {timestamp()}\n\n"
         f"Session: {session.session_uuid}\n\n"
@@ -635,7 +631,7 @@ def _append_subscription_override_message(
         f"Unsubscribed paths: {', '.join(sanitize(path) for path in staged_paths)}\n\n"
         f"Reason: {sanitize(reason)}\n\n"
     )
-    return content[: marker.start()] + body + content[marker.start() :]
+    return content[: marker] + body + content[marker :]
 
 
 def _check_staged_receipt(
@@ -979,7 +975,7 @@ def parse_release_requests(content: str) -> list[ReleaseRequest]:
     a record it cannot fully attribute.
     """
     requests = []
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         match = _fleet_record_line(message.body, _RELEASE_REQUEST_RE)
         if not match:
             continue
@@ -1004,7 +1000,7 @@ def parse_release_requests(content: str) -> list[ReleaseRequest]:
 def parse_release_replies(content: str) -> dict[str, str]:
     """Release-request ids already answered, mapped to their result."""
     replies = {}
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         match = _fleet_record_line(message.body, _RELEASE_REPLY_RE)
         if match:
             replies[match.group(1)] = match.group(2)
@@ -1057,8 +1053,11 @@ def _fleet_moment(value: datetime | None) -> datetime:
 
 
 def _fleet_record_line(body: str, pattern: re.Pattern) -> re.Match | None:
-    for line in body.splitlines():
-        match = pattern.match(line.strip())
+    from board_grammar import message_code_mask
+
+    lines, outside = message_code_mask(body)
+    for line, visible in zip(lines, outside):
+        match = pattern.match(line.strip()) if visible else None
         if match:
             return match
     return None
@@ -1067,7 +1066,7 @@ def _fleet_record_line(body: str, pattern: re.Pattern) -> re.Match | None:
 def fleet_challenges(content: str, target_compact: str) -> list[dict]:
     """Challenge records addressed at one session, oldest first."""
     records = []
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         match = _fleet_record_line(message.body, _FLEET_CHALLENGE_RE)
         if match and match.group(1) == target_compact:
             posted = parse_iso(message.timestamp)
@@ -1088,7 +1087,7 @@ def parked_since(content: str, session: Session) -> datetime | None:
     definition, so it cannot substitute. Unknown parked-since fails closed.
     """
     latest: datetime | None = None
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         match = _fleet_record_line(message.body, _FLEET_PARKED_RE)
         if match and match.group(1) == session.compact_id:
             posted = parse_iso(message.timestamp)
@@ -1100,7 +1099,7 @@ def parked_since(content: str, session: Session) -> datetime | None:
 def overlaps_parked_successors(content: str, parked_compact: str) -> list[dict]:
     """Successor claims annotated overlaps-parked against one parked row."""
     successors = []
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         match = _fleet_record_line(message.body, _FLEET_OVERLAPS_PARKED_RE)
         if match and match.group(2) == parked_compact:
             successors.append({"new": match.group(1), "areas": match.group(3)})
@@ -1453,6 +1452,15 @@ def local_machine_identity() -> tuple[str, str]:
     return label, label
 
 
+def observed_delivery_lanes(*, local_machine: str | None = None, **kwargs) -> dict:
+    """An override may restrict lookup, never manufacture physical locality."""
+    observed, _label = local_machine_identity()
+    hostname = platform.node()
+    if local_machine and local_machine not in {observed, hostname}:
+        return {"bus": {"to": kwargs["compact_id"]}}
+    return delivery_lanes(local_machine=observed, local_hostname=hostname, **kwargs)
+
+
 def resolve_claim_machine(requested_label: str) -> tuple[str, str]:
     """(machine-id, label) for a new or re-claimed row.
 
@@ -1505,28 +1513,24 @@ def replace_table(
         for session in sessions
     )
     block = "\n".join(rendered)
-    # The heading group must not swallow blank lines: with `\s*` it captured
-    # every existing padding line and re-emitted it plus one more, so each
-    # rewrite grew the board by a line (over a thousand on a long-lived board).
-    pattern = re.compile(r"(?ms)(^## Active sessions[ \t]*\n).*?(?=^## Messages\s*$)")
-    if not pattern.search(text):
+    from board_grammar import active_table_frame, message_code_mask
+
+    lines, _visible, start, end = active_table_frame(text)
+    if end == len(lines) or lines[end].strip() != "## Messages":
         raise ValueError("board lacks Active sessions and Messages sections")
-    updated = pattern.sub(lambda match: match.group(1) + "\n" + block + "\n\n", text)
-    if re.search(r"(?m)^Schema:[ \t]*v\d+[ \t]*$", updated):
-        return re.sub(
-            r"(?m)^Schema:[ \t]*v\d+[ \t]*$",
-            f"Schema: v{effective}",
-            updated,
-            count=1,
-        )
-    marker = re.search(r"(?m)^## Active sessions\s*$", updated)
-    if marker is None:
-        raise ValueError("board lacks Active sessions heading")
-    return (
-        updated[: marker.start()]
-        + f"Schema: v{effective}\n\n"
-        + updated[marker.start() :]
-    )
+    # Replace only the actual active table. A quoted table later in a message
+    # is immutable historical body data, never another replacement target.
+    updated = "".join(lines[:start + 1]) + "\n" + block + "\n\n" + "".join(lines[end:])
+    updated_lines, visible = message_code_mask(updated)
+    for i, line in enumerate(updated_lines):
+        if visible[i] and re.fullmatch(r"Schema:[ \t]*v\d+[ \t]*", line.rstrip("\r\n")):
+            ending = "\r\n" if line.endswith("\r\n") else "\n" if line.endswith("\n") else ""
+            updated_lines[i] = f"Schema: v{effective}" + ending
+            return "".join(updated_lines)
+    _lines, _visible, active_start, _end = active_table_frame(updated)
+    marker = sum(map(len, updated_lines[:active_start]))
+    return updated[:marker] + f"Schema: v{effective}\n\n" + updated[marker:]
+
 
 
 BOARD_BACKUPS_KEEP = 200
@@ -2935,13 +2939,10 @@ def command_check_staged(args) -> int:
 
 def append_bus_block(content: str, block: str) -> str:
     """Insert a bus entry before the Protocol boundary, fail-closed."""
-    marker = re.search(
-        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
-        content,
-    )
-    if not marker:
-        raise RuntimeError("board lacks Protocol boundary")
-    return content[: marker.start()] + block + content[marker.start() :]
+    from board_grammar import message_insert_offset
+
+    marker = message_insert_offset(content)
+    return content[: marker] + block + content[marker :]
 
 
 def downgrade_notice_block(
@@ -4181,7 +4182,12 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
     except OSError as exc:
         print(f"coordination narrow refused: board unreadable ({exc})", file=sys.stderr)
         return 10
-    requests = {req.id: req for req in parse_release_requests(before)}
+    try:
+        requests = {req.id: req for req in parse_release_requests(before)}
+        replies = parse_release_replies(before)
+    except ValueError as exc:
+        print(f"coordination narrow refused: board messages unreadable ({exc})", file=sys.stderr)
+        return 10
     req = requests.get(request_id)
     if req is None:
         print(
@@ -4189,7 +4195,7 @@ def _command_narrow_idle_holder(args, holder_selector: str, request_id: str) -> 
             file=sys.stderr,
         )
         return 10
-    if req.id in parse_release_replies(before):
+    if req.id in replies:
         print(
             f"coordination narrow refused: release-request {request_id} "
             "was already answered",
@@ -4719,19 +4725,16 @@ def _caller_owns_record(session: Session, caller: SelfIdentity, seat) -> bool:
 def _append_administrative_release(
     content: str, session: Session, reason: str, caller: str
 ) -> str:
-    marker = re.search(
-        r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
-        content,
-    )
-    if marker is None:
-        raise RuntimeError("board lacks Protocol boundary")
+    from board_grammar import message_insert_offset
+
+    marker = message_insert_offset(content)
     body = (
         f"### recorded-administrative-release — {timestamp()}\n\n"
         f"Target session: {session.session_uuid}\n\n"
         f"Caller identity: {sanitize(caller)}\n\n"
         f"Reason: {sanitize(reason)}\n\n"
     )
-    return content[: marker.start()] + body + content[marker.start() :]
+    return content[: marker] + body + content[marker :]
 
 
 def command_release(args) -> int:
@@ -5071,14 +5074,14 @@ def command_message(args) -> int:
                 delivered["route"] = route
         delivered["recipient"] = recipient_label
         heading = f"### → {recipient_label}, from {sender_label} — {timestamp()}"
+        from board_grammar import validate_message_body
+
+        validate_message_body(body)
         block = f"{heading}\n\n{body.strip()}\n\n"
-        marker = re.search(
-            r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$",
-            content,
-        )
-        if not marker:
-            raise RuntimeError("board lacks Protocol boundary")
-        return content[: marker.start()] + block + content[marker.start() :]
+        from board_grammar import message_insert_offset
+
+        marker = message_insert_offset(content)
+        return content[: marker] + block + content[marker :]
 
     try:
         locked_update(args.board, operation)
@@ -5141,17 +5144,12 @@ def command_resolve(args) -> int:
     sender_compact = ""
     if len(entries) == 1:
         target = matches[0]
-        lanes = delivery_lanes(
+        lanes = observed_delivery_lanes(
             client_ref=target.client_ref,
             compact_id=target.compact_id,
             target_machine=target.machine,
             seat=read_seat(args.board, target.session_uuid),
-            local_machine=(
-                getattr(args, "local_machine", None) or local_machine_identity()[0]
-            ),
-            local_hostname=(
-                platform.node() if not getattr(args, "local_machine", None) else None
-            ),
+            local_machine=getattr(args, "local_machine", None),
             registry=getattr(args, "registry", None),
         )
         direct = sorted(name for name in lanes if name != "bus")
@@ -5394,12 +5392,7 @@ def command_whoami(args) -> int:
             compact_id=row.compact_id,
             target_machine=row.machine,
             seat=seat,
-            local_machine=(
-                getattr(args, "local_machine", None) or local_machine_identity()[0]
-            ),
-            local_hostname=(
-                platform.node() if not getattr(args, "local_machine", None) else None
-            ),
+            local_machine=getattr(args, "local_machine", None),
             registry=getattr(args, "registry", None),
         )
         if row is not None
@@ -5909,6 +5902,7 @@ def command_doctor(args) -> int:
         content = args.board.read_text(encoding="utf-8")
         sessions = rows(content)
         problems = validate_sessions(sessions)
+        _native_messages, historical_messages = administrative_message_scan(content)
     except Exception as exc:
         print(f"FAIL coordination.board: {exc}", file=sys.stderr)
         return 1
@@ -5977,6 +5971,8 @@ def command_doctor(args) -> int:
         print(
             f"WARN coordination.seats: {len(stale_files)} stale schema-1 seat file(s) skipped by strict reads: {names}"
         )
+    if historical_messages:
+        print(f"NOTE coordination.messages: {historical_messages} historical diagnostic block(s), nonauthoritative; inbox scope remains independently checked")
     print(
         f"PASS coordination: schema v{declared}{schema_note}, "
         f"{len(sessions)} session(s){seat_line}{lease_line}"
@@ -6362,7 +6358,7 @@ def parser() -> argparse.ArgumentParser:
         help="Look up only; do not issue the delivery receipt the send gate matches.",
     )
     resolve.add_argument("--registry", type=Path, default=None, help=argparse.SUPPRESS)
-    resolve.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
+    resolve.add_argument("--local-machine", default=None, help="restrict to an independently observed local identity; foreign values permit only the board bus")
     inbox = commands.add_parser(
         "inbox",
         help="Unread board messages addressed to this seat (any identity form) or its project.",
@@ -6380,7 +6376,7 @@ def parser() -> argparse.ArgumentParser:
     )
     whoami.add_argument("--json", action="store_true")
     whoami.add_argument("--registry", type=Path, default=None, help=argparse.SUPPRESS)
-    whoami.add_argument("--local-machine", default=None, help=argparse.SUPPRESS)
+    whoami.add_argument("--local-machine", default=None, help="restrict to an independently observed local identity; foreign values permit only the board bus")
     migrate = commands.add_parser("migrate")
     migrate.add_argument(
         "--team-contract",

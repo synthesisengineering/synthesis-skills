@@ -111,6 +111,23 @@ administrative direction; do not apply automatic release or preemptive claims.
 
 ## Addressing a peer session — resolve, receipt, gate
 
+The board reader uses the single canonical `## Messages` section and its final
+`---` / `## Protocol` boundary. Ordinary level-two headings inside a real message
+remain part of its body. Fenced or indented code examples confer no addressed
+message, release, reply, or handoff authority. An unclosed fence, duplicated or
+missing boundary, or invalid preamble is ambiguous and blocks protective
+consumers. Writers refuse ambiguous unquoted boundaries without rewriting the
+approved body; put literal structural examples inside a closed code block.
+Historical message bodies and unread watermarks are not migrated by this repair.
+
+A direct delivery lane needs independently observed local machine identity and
+current target/seat/native-reference agreement. The `--local-machine` option
+restricts that observation; it cannot declare a remote machine local. Fleet
+display labels never substitute for the observed OS hostname. Receipts are
+rechecked against current authority before a local process is probed or a lane
+is admitted; changed target or seat identity requires a fresh resolution.
+
+
 Three naming systems cover one population of sessions: the board's
 identities (UUIDv7 with compact and speakable aliases), each client's chat
 handles (Claude Code's `local_<uuid>` desktop session ids, Codex thread

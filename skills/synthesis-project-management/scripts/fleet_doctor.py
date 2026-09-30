@@ -191,6 +191,12 @@ def check_parked_coherence(content: str) -> DoctorCheck:
         sessions = _coord.rows(content)
     except ValueError as exc:
         return DoctorCheck(PARKED_CHECK, False, f"board rows unreadable: {exc}")
+    from peer_addressing import administrative_messages
+
+    try:
+        messages = administrative_messages(content)
+    except ValueError as exc:
+        return DoctorCheck(PARKED_CHECK, False, f"board messages unreadable: {exc}")
     problems = []
     by_compact = {session.compact_id: session for session in sessions}
     for session in sessions:
@@ -198,11 +204,12 @@ def check_parked_coherence(content: str) -> DoctorCheck:
             problems.append(
                 f"{session.compact_id}: parked row has no park record"
             )
-    from peer_addressing import parse_messages
+    for message in messages:
+        from board_grammar import message_code_mask
 
-    for message in parse_messages(content):
-        for line in message.body.splitlines():
-            match = _coord._FLEET_OVERLAPS_PARKED_RE.match(line.strip())
+        lines, visible = message_code_mask(message.body)
+        for line, outside in zip(lines, visible):
+            match = _coord._FLEET_OVERLAPS_PARKED_RE.match(line.strip()) if outside else None
             if not match:
                 continue
             new_compact, parked_compact = match.group(1), match.group(2)

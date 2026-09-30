@@ -1312,8 +1312,20 @@ def _distribution_contract(workflow: dict) -> None:
     assert [s["run"] for s in packages["steps"] if "run" in s] == [
         "python -m pip install pytest jsonschema pyyaml",
         "python -B -m pytest skills/synthesis-onboarding/scripts/test_distribution.py -q",
+        "python -B -m pytest -q skills/synthesis-onboarding/scripts/test_bootstrap.py::test_parser_loader_compiles_source_instead_of_a_cached_rule skills/synthesis-onboarding/scripts/test_release_runtime.py::test_policy_loader_ignores_cached_code_with_unchanged_source skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_ignores_cached_helper_code skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_preserves_relative_and_installed_library_imports skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_refuses_sourceless_release_import skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_repeated_contract_activation_retains_prior_roots_without_recursion skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_verified_private_consumer_refuses_sourceless_release",
         "sh -n packages/launcher.sh onboard.sh",
     ]
+    source_steps = [
+        s
+        for s in packages["steps"]
+        if s.get("name") == "Verify source-only execution on the selected interpreter"
+    ]
+    assert len(source_steps) == 1
+    assert source_steps[0] is [s for s in packages["steps"] if "run" in s][2]
+    assert source_steps[0]["env"] == {
+        "SYNTHESIS_RUNTIME_POLICY": "packaged-python-v1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
     arch = jobs["arch-package"]
     assert arch["runs-on"] == "ubuntu-latest"
     assert arch["container"] == "archlinux:base-devel"
@@ -6361,3 +6373,41 @@ def test_hosted_acceptance_follows_all_ordinary_checks():
     assert all(i < acceptance[0] for i, step in enumerate(steps)
                if "run" in step and i != acceptance[0]), \
         "Ordinary hosted checks must precede final acceptance"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing-step", "missing-selector", "policy", "bytecode", "decoy-environment"],
+)
+def test_distribution_contract_requires_source_only_controls(mutation):
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows/distribution.yml")
+    steps = workflow["jobs"]["packages"]["steps"]
+    selected = next(
+        s
+        for s in steps
+        if s.get("name") == "Verify source-only execution on the selected interpreter"
+    )
+    if mutation == "missing-step":
+        steps.remove(selected)
+    elif mutation == "missing-selector":
+        selected["run"] = " ".join(selected["run"].split()[:-1])
+    elif mutation == "policy":
+        selected["env"]["SYNTHESIS_RUNTIME_POLICY"] = "unverified"
+    elif mutation == "bytecode":
+        selected["env"]["PYTHONDONTWRITEBYTECODE"] = "0"
+    else:
+        decoy = next(
+            s
+            for s in steps
+            if s.get("run") == "python -m pip install pytest jsonschema pyyaml"
+        )
+        decoy["name"] = selected["name"]
+        decoy["env"] = dict(selected["env"])
+        selected["name"] = "Renamed source checks"
+        selected["env"] = {
+            "SYNTHESIS_RUNTIME_POLICY": "unverified",
+            "PYTHONDONTWRITEBYTECODE": "0",
+        }
+    with pytest.raises(AssertionError):
+        _distribution_contract(workflow)

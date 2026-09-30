@@ -26,6 +26,11 @@ CLAUDE_ENV = {
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
+    # test_coordination explicitly reloads the canonical owner during collection.
+    # Bind this fixture to that same current owner before observing its identity.
+    monkeypatch.setattr(sys.modules[__name__], "ENGINE", sys.modules["coordination"])
+    monkeypatch.setattr(ENGINE, "local_machine_identity", lambda: ("m1", "m1"))
+    monkeypatch.setattr(ENGINE.platform, "node", lambda: "m1")
     for name in (
         "SYNTHESIS_CLIENT_SESSION_REF",
         "CLAUDE_CODE_HOST_SESSION_ID",
@@ -872,3 +877,92 @@ def test_native_identity_contract_explicit_muse_ref_is_not_reclassified_as_codex
 def test_native_identity_contract_unknown_hook_client_refuses():
     with pytest.raises(ValueError, match="unsupported"):
         PA.identity_from_hook({"session_id": "current"}, {"SYNTHESIS_HOOK_CLIENT": "unrecognized-client"})
+
+# Actual administrative history consumers; strict inbox policy is unchanged.
+import coordination as c  # noqa: E402
+import fleet_handoff as h  # noqa: E402
+import peer_addressing as p  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+def _delivery_history_mixed(body='Historical ordinary prose.', timestamp=''):
+    old = f'### → Client A (session old), from Client B (session prior){timestamp}\n\n{body}\n\n'
+    current = ('### → holder, from requester — 2026-01-02T00:00:00Z\n\n'
+               'release-request id=req holder=holder requester=requester caller=native areas=repo/a reason=fixture\n\n'
+               '### → machine-b, from machine-a — 2026-01-02T00:00:00Z\n\n'
+               'handoff-offer ticket=t from_machine=a to_machine=b readiness=REMOTE_READY session=s seal=x\n\n')
+    return c.template().replace('## Messages\n\n', '## Messages\n\n' + old + current)
+
+
+@pytest.mark.parametrize('timestamp', ['', ' — 2026-01-01 ~17:30 UTC'])
+def test_delivery_repair_mixed_history_does_not_hide_real_admin_records(timestamp):
+    text = _delivery_history_mixed(timestamp=timestamp)
+    assert [r.id for r in c.parse_release_requests(text)] == ['req']
+    assert [o['ticket'] for o in h.find_offers(text)] == ['t']
+    with pytest.raises(ValueError):
+        p.parse_messages(text, strict=True)
+
+
+def test_delivery_repair_doctor_explicitly_reports_non_authoritative_history(tmp_path, capsys):
+    board = tmp_path / 'board.md'
+    board.write_text(_delivery_history_mixed())
+    before = board.read_bytes()
+    assert c.command_doctor(SimpleNamespace(board=board)) == 0
+    assert '1 historical diagnostic' in capsys.readouterr().out
+    assert board.read_bytes() == before
+
+
+@pytest.mark.parametrize('body', ['release-reply id=req result=narrowed', 'handoff-offer malformed', 'fleet-parked target=holder'])
+def test_delivery_repair_untimed_control_bearing_history_refuses(body):
+    with pytest.raises(ValueError):
+        c.parse_release_requests(_delivery_history_mixed(body))
+
+
+@pytest.mark.parametrize('body', ['```\nrelease-reply id=req result=narrowed\n```', '    release-reply id=req result=narrowed'])
+def test_delivery_repair_quoted_historical_records_are_never_authority(body):
+    text = _delivery_history_mixed(body)
+    assert c.parse_release_replies(text) == {}
+    assert [r.id for r in c.open_release_requests(text)] == ['req']
+
+
+def test_delivery_repair_unknown_malformed_header_still_refuses():
+    with pytest.raises(ValueError):
+        c.parse_release_requests(_delivery_history_mixed().replace('### → Client A (session old), from Client B (session prior)', '### → anyone, from ??'))
+
+
+@pytest.mark.parametrize("address_kind", ["compact", "project"])
+def test_delivery_repair_relevant_untimed_history_refuses(tmp_path, address_kind):
+    board = tmp_path / "active-board.md"
+    row = claim(board, "current-project")
+    recipient = row.compact_id if address_kind == "compact" else row.project + " sessions"
+    text = board.read_text().replace("## Messages\n\n", "## Messages\n\n" +
+        f"### → {recipient}, from Prior Client (session old)\n\nOrdinary text.\n\n")
+    with pytest.raises(ValueError, match="relevant malformed"):
+        PA.administrative_messages(text)
+
+
+def _delivery_legacy_history(recipient, body='Ordinary historical prose.'):
+    return c.template().replace('## Messages\n\n', '## Messages\n\n' +
+        f'### → {recipient}, from Codex session B — 2026-07-30 10:54 EDT\n\n{body}\n\n' +
+        '### → holder, from requester — 2026-07-31T00:00:00Z\n\n'
+        'release-request id=req holder=holder requester=requester caller=native areas=repo/a reason=fixture\n\n')
+
+
+@pytest.mark.parametrize('recipient', ['Claude Code session A', 'Codex session B', 'Muse session C'])
+def test_delivery_repair_explicit_legacy_client_session_shape_is_diagnostic(recipient):
+    text = _delivery_legacy_history(recipient)
+    messages, diagnostics = p.administrative_message_scan(text)
+    assert diagnostics == 1 and len(messages) == 1
+    assert [r.id for r in c.parse_release_requests(text)] == ['req']
+    with pytest.raises(ValueError):
+        p.parse_messages(text, strict=True)
+
+
+@pytest.mark.parametrize('recipient', ['all sessions', 'Claude Code sessions', 'Claude Code session anyone', 'Unknown Agent session A'])
+def test_delivery_repair_unknown_or_audience_legacy_still_refuses(recipient):
+    with pytest.raises(ValueError):
+        p.administrative_message_scan(_delivery_legacy_history(recipient))
+
+
+def test_delivery_repair_explicit_legacy_control_still_refuses():
+    with pytest.raises(ValueError):
+        p.administrative_message_scan(_delivery_legacy_history('Claude Code session A', 'release-reply id=req result=narrowed'))

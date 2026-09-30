@@ -47,7 +47,7 @@ exit 0
 
 The universal hook would have caught and BLOCKED on `acme`; the repo-local hook never runs because the universal hook exited with non-zero. Solutions:
 
-1. **Better:** Add an allowlist line to the universal config that captures the legitimate context:
+1. For a Tier-1-only finding, review an allowlist line that captures the legitimate context:
 
    ```yaml
    allowlist_lines:
@@ -56,7 +56,7 @@ The universal hook would have caught and BLOCKED on `acme`; the repo-local hook 
 
    This is the right move for context that's clearly legitimate.
 
-2. **For one-off:** Use `git commit --no-verify` for the specific commit.
+2. A Tier-0 detection-rule false positive requires a scanner-owner correction. Preserve the exact finding and its positive material controls; neither an allowlist nor a path exception can admit it. See [marker rules](marker-rules.md).
 
 The repo-local hook IS NOT a way to override the universal hook — git only runs one pre-commit hook (whichever `core.hooksPath` points at), and the engine chains to the repo-local one ONLY after the universal check passes. You can't suppress a universal-hook trip from a repo-local file.
 

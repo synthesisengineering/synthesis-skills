@@ -20,9 +20,10 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import coordination as MODULE
-import fleet_handoff as HANDOFF
-import fleet_identity as FI
+import coordination as MODULE  # noqa: E402
+import fleet_handoff as HANDOFF  # noqa: E402
+import fleet_identity as FI  # noqa: E402
+import test_coordination as _delivery_coord_tests  # noqa: E402
 
 T0 = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
 
@@ -432,3 +433,66 @@ def test_verify_command_smoke(tmp_path, capsys):
     assert HANDOFF.main(["verify", "--artifact", str(path)]) == 0
     assert "verifies" in capsys.readouterr().out
     assert HANDOFF.main(["verify", "--artifact", str(tmp_path / "nope.json")]) == 1
+
+
+# Coordination delivery: retained causal/consumer regressions.
+
+def test_delivery_repair_fenced_handoff_records_are_not_authority():
+    text = MODULE.template().replace('## Messages\n\n', '## Messages\n\n### → target, from sender — 2026-01-01T00:00:00Z\n\n```\nhandoff-offer ticket=t from_machine=a to_machine=b readiness=REMOTE_READY session=s seal=x\nhandoff-accept ticket=t from_machine=a to_machine=b session=s shas=abc\n```\n\n')
+    assert HANDOFF.find_offers(text) == []
+    assert HANDOFF.find_accepts(text) == []
+
+
+def test_delivery_repair_idle_holder_cannot_ignore_reply_after_body_heading(tmp_path, monkeypatch):
+    board, holder, req, area = _delivery_coord_tests._idle_holder_setup(tmp_path, monkeypatch)
+    reply = f'Message context.\n\n## Requested result\n\n### → requester, from {holder.compact_id} — 2026-01-01T00:00:00Z\n\nrelease-reply id={req.id} result=held dirty=1 unpushed=0\n\n'
+    text = board.read_text().replace('---\n\n## Protocol', reply + '---\n\n## Protocol')
+    board.write_text(text)
+    before = board.read_bytes()
+    assert _delivery_coord_tests._admin_narrow(board, holder.compact_id, req.id) == 10
+    assert board.read_bytes() == before
+    assert _delivery_coord_tests._row_by_project(board, 'project-h').claims == [area]
+
+
+def test_delivery_repair_idle_holder_ambiguous_board_refuses_without_mutation(tmp_path, monkeypatch):
+    board, holder, req, area = _delivery_coord_tests._idle_holder_setup(tmp_path, monkeypatch)
+    board.write_text(board.read_text() + '\n---\n\n## Protocol\n')
+    before = board.read_bytes()
+    try:
+        result = _delivery_coord_tests._admin_narrow(board, holder.compact_id, req.id)
+    except ValueError:
+        result = 10
+    assert result == 10
+    assert board.read_bytes() == before
+    assert _delivery_coord_tests._row_by_project(board, 'project-h').claims == [area]
+
+
+
+# Coordination delivery: retained causal/consumer regressions.
+@pytest.mark.parametrize('indent', ['    ', '\t', '  \t'])
+@pytest.mark.parametrize('record', ['request', 'reply', 'offer', 'accept'])
+def test_delivery_repair_indented_record_is_example_not_authority(indent, record):
+    lines = {
+        'request': 'release-request id=req holder=holder requester=requester caller=native areas=repo/a reason=example',
+        'reply': 'release-reply id=req result=held dirty=1 unpushed=0',
+        'offer': 'handoff-offer ticket=t from_machine=a to_machine=b readiness=REMOTE_READY session=s seal=x',
+        'accept': 'handoff-accept ticket=t from_machine=a to_machine=b session=s shas=abc',
+    }
+    text = MODULE.template().replace('## Messages\n\n', '## Messages\n\n### → target, from sender — 2026-01-01T00:00:00Z\n\nExample:\n\n' + indent + lines[record] + '\n\n')
+    actual = {'request': MODULE.parse_release_requests, 'reply': MODULE.parse_release_replies, 'offer': HANDOFF.find_offers, 'accept': HANDOFF.find_accepts}[record](text)
+    assert not actual
+
+
+
+@pytest.mark.parametrize('indent', ['    ', '\t', '  \t'])
+@pytest.mark.parametrize('record', ['request', 'reply', 'offer', 'accept'])
+def test_delivery_repair_first_line_indented_record_is_example_not_authority(indent, record):
+    lines = {
+        'request': 'release-request id=req holder=holder requester=requester caller=native areas=repo/a reason=example',
+        'reply': 'release-reply id=req result=held dirty=1 unpushed=0',
+        'offer': 'handoff-offer ticket=t from_machine=a to_machine=b readiness=REMOTE_READY session=s seal=x',
+        'accept': 'handoff-accept ticket=t from_machine=a to_machine=b session=s shas=abc',
+    }
+    text = MODULE.template().replace('## Messages\n\n', '## Messages\n\n### → target, from sender — 2026-01-01T00:00:00Z\n\n' + indent + lines[record] + '\n\n')
+    actual = {'request': MODULE.parse_release_requests, 'reply': MODULE.parse_release_replies, 'offer': HANDOFF.find_offers, 'accept': HANDOFF.find_accepts}[record](text)
+    assert not actual

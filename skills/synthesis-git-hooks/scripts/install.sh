@@ -61,6 +61,7 @@ mkdir -p "$(dirname "$CONFIG_PATH")"
 echo "→ Copying engine to $TARGET_DIR/"
 cp -f "$SCRIPT_DIR/pre-commit" "$TARGET_DIR/pre-commit"
 cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
+# The scanner reuses this grammar from captured source, without pyc execution.
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
 cp -f "$SCRIPT_DIR/_scan_staged.py" "$TARGET_DIR/_scan_staged.py"
 cp -f "$COORDINATION_SOURCE/coordination.py" "$TARGET_DIR/coordination.py"

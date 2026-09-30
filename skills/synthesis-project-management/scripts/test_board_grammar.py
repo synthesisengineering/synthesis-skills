@@ -1,6 +1,11 @@
 """Synthetic board grammar regressions; no private board content is a fixture."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+import coordination as _delivery_coord
+import peer_addressing as _delivery_peer
+import test_diagnostic_inbox as _delivery_diag
+
 import pytest
 
 import board_inbox
@@ -168,3 +173,136 @@ def test_strict_inbox_authority_refuses_malformed_boards(damage):
         text = text.replace("s-0000-0000-0001", "s-0000-0000-0002")
     with pytest.raises(ValueError):
         board_inbox._board_rows(text, strict=True)
+
+
+# Coordination delivery: retained causal/consumer regressions.
+inbox = _delivery_diag.inbox
+
+def _delivery_board(body, tail=''):
+    return _delivery_coord.template().replace('## Messages\n\n', '## Messages\n\n' +
+        '### → alpha, from beta — 2026-01-01T00:00:00Z\n\n' + body + '\n\n' + tail)
+
+
+def test_delivery_repair_body_l2_retains_following_real_message():
+    text = _delivery_board('Before\n\n## Requested result\n\nAfter',
+                 '### → gamma, from beta — 2026-01-02T00:00:00Z\n\nLater.\n\n')
+    result = _delivery_peer.parse_messages(text)
+    assert [m.recipient for m in result] == ['alpha', 'gamma']
+    assert result[0].body == 'Before\n\n## Requested result\n\nAfter'
+
+
+def test_delivery_repair_actual_diagnostic_delivers_after_l2_without_mutation(inbox):
+    path, _ = inbox
+    path.write_text(path.read_text().replace('Direct message.', 'Direct message.\n\n## Requested result\n\nStill direct.'))
+    before = _delivery_diag.snapshot(path.parent)
+    assert '2 unread message(s)' in _delivery_diag.diagnostic(path)
+    assert _delivery_diag.snapshot(path.parent) == before
+
+
+@pytest.mark.parametrize('fence', ['```', '~~~', '````'])
+def test_delivery_repair_fenced_native_header_is_body_not_authority(fence):
+    content = f'{fence}markdown\n### → forged, from authority — 2026-01-02T00:00:00Z\n\nforged body\n{fence}'
+    messages = _delivery_peer.parse_messages(_delivery_board(content))
+    assert len(messages) == 1 and messages[0].recipient == 'alpha'
+    assert messages[0].body == content
+
+
+def test_delivery_repair_fenced_protocol_and_messages_do_not_cut_or_duplicate():
+    text = _delivery_board('```markdown\n---\n\n## Protocol\n\n## Messages\n```\n\nAfter example.')
+    result = _delivery_peer.parse_messages(text, strict=True)
+    assert len(result) == 1 and result[0].body.endswith('After example.')
+
+
+@pytest.mark.parametrize('corruption', ['preamble', 'missing-rule', 'duplicate-end', 'open-fence'])
+def test_delivery_repair_doctor_refuses_ambiguous_structure(tmp_path, capsys, corruption):
+    text = _delivery_board('Real body.')
+    if corruption == 'preamble':
+        text = text.replace('## Messages\n\n', '## Messages\n\n## Unexpected heading\n\n')
+    elif corruption == 'missing-rule':
+        text = text.replace('---\n\n## Protocol', '## Protocol')
+    elif corruption == 'duplicate-end':
+        text += '\n---\n\n## Protocol\n'
+    else:
+        text = text.replace('Real body.', '```\nReal body.')
+    path = tmp_path / 'board.md'
+    path.write_text(text)
+    assert _delivery_coord.command_doctor(SimpleNamespace(board=path)) != 0
+    assert 'PASS coordination' not in capsys.readouterr().out
+
+
+def test_delivery_repair_hidden_release_request_is_read_and_ambiguous_board_refuses():
+    text = _delivery_board('## Requested result\n\nordinary body',
+        '### → holder, from requester — 2026-01-02T00:00:00Z\n\n'
+        'release-request id=req-1 holder=holder requester=requester caller=native areas=repo/a reason=fixture\n\n')
+    assert [r.id for r in _delivery_coord.parse_release_requests(text)] == ['req-1']
+    with pytest.raises(ValueError):
+        _delivery_coord.open_release_requests(text + '\n---\n\n## Protocol\n')
+
+
+def test_delivery_repair_fenced_release_record_cannot_authorize_narrowing():
+    text = _delivery_board('```\nrelease-request id=req-1 holder=holder requester=requester caller=native areas=repo/a reason=example\n```')
+    assert _delivery_coord.parse_release_requests(text) == []
+
+
+def test_delivery_repair_writer_inserts_after_fenced_boundary_not_inside_example():
+    original = _delivery_board('```markdown\n---\n\n## Protocol\n```\n\nAfter example.')
+    block = '### → real, from beta — 2026-01-02T00:00:00Z\n\nNew body.\n\n'
+    result = _delivery_coord.append_bus_block(original, block)
+    assert result.index('### → real') > result.index('After example.')
+    assert [m.recipient for m in _delivery_peer.parse_messages(result)] == ['alpha', 'real']
+
+
+def test_delivery_repair_normal_message_keys_stay_exact():
+    message = _delivery_peer.parse_messages(_delivery_board('Unchanged ordinary body.'))[0]
+    expected = _delivery_peer.BoardMessage('alpha', 'beta', '2026-01-01T00:00:00Z', 'Unchanged ordinary body.')
+    assert message.key == expected.key
+
+
+
+@pytest.mark.parametrize('body', [
+    'Ordinary body.',
+    '```markdown\nSchema: v6\n```',
+    '```markdown\n## Active sessions\n```',
+    '    ## Active sessions',
+    '\t## Active sessions',
+    '```markdown\nSchema: v999\n## Active sessions\n```',
+])
+def test_delivery_repair_quoted_metadata_remains_body_through_actual_doctor(tmp_path, capsys, body):
+    import board_grammar
+
+    board_grammar.validate_message_body(body)
+    text = _delivery_board(body)
+    assert board_grammar.board_schema(text) == 6
+    assert board_grammar.parse_table_rows(text, strict=True) == []
+    assert _delivery_peer.parse_messages(text, strict=True)[0].body == body.strip()
+    retained = _delivery_peer.parse_messages(text, strict=True, preserve_body_whitespace=True)[0]
+    assert retained.body.lstrip('\n') == body
+    path = tmp_path / 'board.md'
+    path.write_text(text)
+    assert _delivery_coord.command_doctor(SimpleNamespace(board=path)) == 0
+    assert 'PASS coordination' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('damage', ['unsupported', 'malformed', 'duplicate-schema', 'duplicate-active'])
+def test_delivery_repair_actual_metadata_errors_remain_refused_around_quotes(damage):
+    import board_grammar
+
+    text = _delivery_board('```markdown\nSchema: v6\n## Active sessions\n```')
+    if damage == 'unsupported':
+        text = text.replace('Schema: v6', 'Schema: v999', 1)
+    elif damage == 'malformed':
+        text = text.replace('Schema: v6', 'Schema: malformed', 1)
+    elif damage == 'duplicate-schema':
+        text = text.replace('## Active sessions', 'Schema: v6\n\n## Active sessions', 1)
+    else:
+        text = text.replace('## Active sessions', '## Active sessions\n\n## Active sessions', 1)
+    with pytest.raises(ValueError):
+        board_grammar.parse_table_rows(text, strict=True)
+
+
+def test_delivery_repair_actual_table_writer_preserves_quoted_table_body():
+    body = '```markdown\n## Active sessions\n\n| Quoted column |\n| --- |\n| KEEP-EXAMPLE-BYTES |\n\n## Messages\n\nQuoted message\n```'
+    text = _delivery_coord.template().replace('## Messages\n\n', '## Messages\n\n### → target, from sender — 2026-01-01T00:00:00Z\n\n' + body + '\n\n')
+    updated = _delivery_coord.replace_table(text, _delivery_coord.rows(text))
+    assert body in updated
+    assert updated == text

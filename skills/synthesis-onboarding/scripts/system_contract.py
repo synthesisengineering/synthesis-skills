@@ -42,7 +42,16 @@ TRUTH_PLANES = (
     "live-loaded",
     "outcome-verified",
 )
-TRANSACTION_COMMANDS = {"setup", "enroll", "update", "repair", "workspace-ensure", "uninstall", "activate", "deactivate"}
+TRANSACTION_COMMANDS = {
+    "setup",
+    "enroll",
+    "update",
+    "repair",
+    "workspace-ensure",
+    "uninstall",
+    "activate",
+    "deactivate",
+}
 SAFE_IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -93,7 +102,9 @@ def _json_bytes(value: Any) -> bytes:
 
 
 def json_digest(value: Any) -> str:
-    compact = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    compact = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
     return hashlib.sha256(compact.encode("utf-8")).hexdigest()
 
 
@@ -107,7 +118,9 @@ def file_digest(path: Path) -> str:
 
 def _live_receipt_validator():
     """Load the shared identity contract from this release's skill tree."""
-    scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+    scripts = (
+        Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+    )
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     try:
@@ -161,7 +174,8 @@ def atomic_write_json(path: Path, value: Any, mode: int = 0o600) -> None:
 def safe_identifier(value: Any, label: str = "identifier") -> str:
     if not isinstance(value, str) or not SAFE_IDENTIFIER_RE.fullmatch(value):
         raise ContractError(
-            "%s must contain lowercase letters, numbers, or internal hyphens only" % label
+            "%s must contain lowercase letters, numbers, or internal hyphens only"
+            % label
         )
     return value
 
@@ -252,11 +266,17 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
     safe_identifier(org.get("workspace"), "org.workspace")
 
     ecosystem = _require_mapping(data.get("ecosystem") or {}, "ecosystem")
-    _reject_unknown(ecosystem, {"plugin", "clients", "channel", "version_pin"}, "ecosystem")
+    _reject_unknown(
+        ecosystem, {"plugin", "clients", "channel", "version_pin"}, "ecosystem"
+    )
     if not isinstance(ecosystem.get("plugin", True), bool):
         raise ContractError("ecosystem.plugin must be true or false")
     clients = ecosystem.get("clients", ["claude", "codex"])
-    if not isinstance(clients, list) or not clients or set(clients) - {"claude", "codex"}:
+    if (
+        not isinstance(clients, list)
+        or not clients
+        or set(clients) - {"claude", "codex"}
+    ):
         raise ContractError("ecosystem.clients must contain only claude and codex")
     channel = ecosystem.get("channel", "stable")
     if channel not in ("stable", "edge"):
@@ -267,11 +287,17 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
 
     for index, entry in enumerate(data.get("skills_repos") or []):
         entry = _require_mapping(entry, "skills_repos[%d]" % index)
-        _reject_unknown(entry, {"name", "repository", "capability", "entitlement"}, "skills_repos[%d]" % index)
+        _reject_unknown(
+            entry,
+            {"name", "repository", "capability", "entitlement"},
+            "skills_repos[%d]" % index,
+        )
         safe_identifier(entry.get("name"), "skills_repos[%d].name" % index)
         validate_repository_url(entry.get("repository"))
         if entry.get("capability") != "skills-install":
-            raise ContractError("skills_repos[%d].capability must be skills-install" % index)
+            raise ContractError(
+                "skills_repos[%d].capability must be skills-install" % index
+            )
 
     for index, entry in enumerate(data.get("knowledge_bases") or []):
         entry = _require_mapping(entry, "knowledge_bases[%d]" % index)
@@ -283,15 +309,29 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
         safe_identifier(entry.get("name"), "knowledge_bases[%d].name" % index)
         validate_repository_url(entry.get("repository"))
         branch = entry.get("default_branch", "main")
-        if not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch) or ".." in branch:
+        if (
+            not isinstance(branch, str)
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch)
+            or ".." in branch
+        ):
             raise ContractError("knowledge_bases[%d].default_branch is unsafe" % index)
         if not isinstance(entry.get("local_hooks", False), bool):
-            raise ContractError("knowledge_bases[%d].local_hooks must be boolean" % index)
+            raise ContractError(
+                "knowledge_bases[%d].local_hooks must be boolean" % index
+            )
 
     team = data.get("team_contract")
     if team is not None:
-        if not isinstance(team, dict) or set(team) != {"path", "sha256"} or not isinstance(team["path"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json", team["path"]) or not re.fullmatch(r"[0-9a-f]{64}", str(team["sha256"])):
-            raise ContractError("team_contract must bind a sibling JSON document and SHA-256")
+        if (
+            not isinstance(team, dict)
+            or set(team) != {"path", "sha256"}
+            or not isinstance(team["path"], str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json", team["path"])
+            or not re.fullmatch(r"[0-9a-f]{64}", str(team["sha256"]))
+        ):
+            raise ContractError(
+                "team_contract must bind a sibling JSON document and SHA-256"
+            )
     names = set()
     for key in ("skills_repos", "knowledge_bases"):
         entries = data.get(key) or []
@@ -300,7 +340,9 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
         for entry in entries:
             identity = (key, entry["name"])
             if identity in names:
-                raise ContractError("duplicate organization asset identity before aggregation")
+                raise ContractError(
+                    "duplicate organization asset identity before aggregation"
+                )
             names.add(identity)
             if team is not None:
                 safe_identifier(entry.get("entitlement"), "asset entitlement")
@@ -315,7 +357,9 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
         _reject_unknown(entry, {"path", "required"}, "instruction_sources[%d]" % index)
         safe_relative_path(entry.get("path"), "instruction_sources[%d].path" % index)
         if not isinstance(entry.get("required", True), bool):
-            raise ContractError("instruction_sources[%d].required must be boolean" % index)
+            raise ContractError(
+                "instruction_sources[%d].required must be boolean" % index
+            )
 
     acceptance = _require_mapping(data.get("acceptance") or {}, "acceptance")
     _reject_unknown(acceptance, {"task"}, "acceptance")
@@ -328,7 +372,9 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
     _reject_unknown(welcome, {"title", "try_asking", "docs"}, "welcome")
     for key in ("try_asking", "docs"):
         values = welcome.get(key, [])
-        if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+        if not isinstance(values, list) or not all(
+            isinstance(item, str) for item in values
+        ):
             raise ContractError("welcome.%s must be a list of text" % key)
     result = dict(data)
     result["_path"] = str(path)
@@ -353,14 +399,28 @@ def load_contract_documents(repo_root: Path) -> dict[str, dict[str, Any]]:
     if tuple(capabilities.get("truth_planes") or []) != TRUTH_PLANES:
         raise ContractError("release capabilities truth planes drifted from the engine")
     expected_versions = {
-        "state_schema_version": documents["desired"].get("properties", {}).get("schema_version", {}).get("const"),
-        "observation_schema_version": documents["observation"].get("properties", {}).get("schema_version", {}).get("const"),
-        "invite_schema_version": documents["invite"].get("properties", {}).get("schema_version", {}).get("const"),
-        "instruction_sources_schema_version": documents["instructions"].get("properties", {}).get("schema_version", {}).get("const"),
+        "state_schema_version": documents["desired"]
+        .get("properties", {})
+        .get("schema_version", {})
+        .get("const"),
+        "observation_schema_version": documents["observation"]
+        .get("properties", {})
+        .get("schema_version", {})
+        .get("const"),
+        "invite_schema_version": documents["invite"]
+        .get("properties", {})
+        .get("schema_version", {})
+        .get("const"),
+        "instruction_sources_schema_version": documents["instructions"]
+        .get("properties", {})
+        .get("schema_version", {})
+        .get("const"),
     }
     for field, version in expected_versions.items():
         if capabilities.get(field) != version:
-            raise ContractError("release capabilities %s disagrees with its schema" % field)
+            raise ContractError(
+                "release capabilities %s disagrees with its schema" % field
+            )
     return documents
 
 
@@ -368,7 +428,9 @@ def _iter_tree(root: Path) -> Iterator[tuple[str, os.stat_result, Path]]:
     root = Path(root)
     if not root.is_dir() or root.is_symlink():
         raise ContractError("release root must be a real directory")
-    for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+    for directory, dirnames, filenames in os.walk(
+        root, topdown=True, followlinks=False
+    ):
         current = Path(directory)
         kept_dirs = []
         for name in sorted(dirnames):
@@ -378,9 +440,13 @@ def _iter_tree(root: Path) -> Iterator[tuple[str, os.stat_result, Path]]:
                 continue
             metadata = path.lstat()
             if stat.S_ISLNK(metadata.st_mode):
-                raise ContractError("release tree contains a symbolic link: %s" % relative)
+                raise ContractError(
+                    "release tree contains a symbolic link: %s" % relative
+                )
             if not stat.S_ISDIR(metadata.st_mode):
-                raise ContractError("release tree contains a special object: %s" % relative)
+                raise ContractError(
+                    "release tree contains a special object: %s" % relative
+                )
             kept_dirs.append(name)
             yield relative, metadata, path
         dirnames[:] = kept_dirs
@@ -391,15 +457,21 @@ def _iter_tree(root: Path) -> Iterator[tuple[str, os.stat_result, Path]]:
                 continue
             metadata = path.lstat()
             if stat.S_ISLNK(metadata.st_mode):
-                raise ContractError("release tree contains a symbolic link: %s" % relative)
+                raise ContractError(
+                    "release tree contains a symbolic link: %s" % relative
+                )
             if not stat.S_ISREG(metadata.st_mode):
-                raise ContractError("release tree contains a special object: %s" % relative)
+                raise ContractError(
+                    "release tree contains a special object: %s" % relative
+                )
             yield relative, metadata, path
 
 
 def canonical_tree_digest(root: Path) -> str:
     digest = hashlib.sha256()
-    for relative, metadata, path in sorted(_iter_tree(Path(root)), key=lambda item: item[0]):
+    for relative, metadata, path in sorted(
+        _iter_tree(Path(root)), key=lambda item: item[0]
+    ):
         if stat.S_ISDIR(metadata.st_mode):
             digest.update(b"D\0" + relative.encode("utf-8") + b"\0")
             continue
@@ -432,11 +504,15 @@ def canonical_tracked_tree_digest(root: Path, tracked_files: set[str]) -> str:
         metadata = path.lstat()
         if relative in directories:
             if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-                raise ContractError("tracked release directory is not a real directory: %s" % relative)
+                raise ContractError(
+                    "tracked release directory is not a real directory: %s" % relative
+                )
             digest.update(b"D\0" + relative.encode("utf-8") + b"\0")
             continue
         if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-            raise ContractError("tracked release file is a link or special object: %s" % relative)
+            raise ContractError(
+                "tracked release file is a link or special object: %s" % relative
+            )
         mode = b"755" if metadata.st_mode & stat.S_IXUSR else b"644"
         content_digest = bytes.fromhex(file_digest(path))
         digest.update(
@@ -453,7 +529,11 @@ def canonical_tracked_tree_digest(root: Path, tracked_files: set[str]) -> str:
 
 
 def verify_native_release_inventory(
-    root: Path, source: Path, expected_digest: str, *, source_files: set[str] | None = None,
+    root: Path,
+    source: Path,
+    expected_digest: str,
+    *,
+    source_files: set[str] | None = None,
 ) -> str:
     """Bind native content to an immutable release, including file membership.
 
@@ -462,16 +542,26 @@ def verify_native_release_inventory(
     predicate; no other file, directory, link, or special object is admitted.
     Source verification remains strict and does not inherit cache exceptions.
     """
-    manager_scripts = Path(__file__).resolve().parents[2] / "synthesis-skills-manager" / "scripts"
+    manager_scripts = (
+        Path(__file__).resolve().parents[2] / "synthesis-skills-manager" / "scripts"
+    )
     if str(manager_scripts) not in sys.path:
         sys.path.insert(0, str(manager_scripts))
     try:
         from cache_guardian import GuardianError, IGNORED_ROOTS, _is_ignorable_bytecode
     except ImportError as exc:
-        raise ContractError("native cache integrity policy is unavailable: %s" % exc) from exc
+        raise ContractError(
+            "native cache integrity policy is unavailable: %s" % exc
+        ) from exc
     if source_files is None:
-        source_entries = {relative: metadata for relative, metadata, _path in _iter_tree(source)}
-        files = {relative for relative, metadata in source_entries.items() if stat.S_ISREG(metadata.st_mode)}
+        source_entries = {
+            relative: metadata for relative, metadata, _path in _iter_tree(source)
+        }
+        files = {
+            relative
+            for relative, metadata in source_entries.items()
+            if stat.S_ISREG(metadata.st_mode)
+        }
         source_digest = canonical_tree_digest(source)
     else:
         # A clean publisher checkout also contains Git metadata and build
@@ -486,8 +576,15 @@ def verify_native_release_inventory(
                 if parent != Path("."):
                     source_entries[parent.as_posix()] = (source / parent).lstat()
     if not files or source_digest != expected_digest:
-        raise ContractError("native verification requires the complete immutable source inventory")
-    if not root.is_absolute() or root.is_symlink() or root.resolve() != root or not root.is_dir():
+        raise ContractError(
+            "native verification requires the complete immutable source inventory"
+        )
+    if (
+        not root.is_absolute()
+        or root.is_symlink()
+        or root.resolve() != root
+        or not root.is_dir()
+    ):
         raise ContractError("native plugin root must be a canonical real directory")
 
     def inspect(path: Path) -> bool:
@@ -496,45 +593,67 @@ def verify_native_release_inventory(
         if name in source_entries:
             metadata = path.lstat()
             expected_directory = stat.S_ISDIR(source_entries[name].st_mode)
-            if (stat.S_ISLNK(metadata.st_mode)
-                    or (expected_directory and not stat.S_ISDIR(metadata.st_mode))
-                    or (not expected_directory and not stat.S_ISREG(metadata.st_mode))):
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or (expected_directory and not stat.S_ISDIR(metadata.st_mode))
+                or (not expected_directory and not stat.S_ISREG(metadata.st_mode))
+            ):
                 raise ContractError("native release entry changed type: %s" % name)
             return False
         if len(relative.parts) == 1 and name in IGNORED_ROOTS:
             metadata = path.lstat()
             if stat.S_ISLNK(metadata.st_mode):
-                raise ContractError("native client metadata is a symbolic link: %s" % name)
-            if name == ".codex-marketplace-install.json" and stat.S_ISREG(metadata.st_mode):
+                raise ContractError(
+                    "native client metadata is a symbolic link: %s" % name
+                )
+            if name == ".codex-marketplace-install.json" and stat.S_ISREG(
+                metadata.st_mode
+            ):
                 return True
-            if name == ".git" and (stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)):
+            if name == ".git" and (
+                stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)
+            ):
                 return True
             if name == ".in_use" and stat.S_ISDIR(metadata.st_mode):
-                if any(not stat.S_ISREG(entry.lstat().st_mode) for entry in path.iterdir()):
-                    raise ContractError("native in-use metadata contains an unexpected object")
+                if any(
+                    not stat.S_ISREG(entry.lstat().st_mode) for entry in path.iterdir()
+                ):
+                    raise ContractError(
+                        "native in-use metadata contains an unexpected object"
+                    )
                 return True
-            raise ContractError("native client metadata has an unexpected type: %s" % name)
+            raise ContractError(
+                "native client metadata has an unexpected type: %s" % name
+            )
         try:
             if _is_ignorable_bytecode(path, relative):
                 return False
         except GuardianError as exc:
             raise ContractError(str(exc)) from exc
-        raise ContractError("native plugin contains an unexpected release entry: %s" % name)
+        raise ContractError(
+            "native plugin contains an unexpected release entry: %s" % name
+        )
 
     def unreadable(error: OSError) -> None:
         raise error
 
     try:
-        for directory, dirnames, filenames in os.walk(root, topdown=True, followlinks=False, onerror=unreadable):
+        for directory, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=False, onerror=unreadable
+        ):
             current = Path(directory)
-            dirnames[:] = [name for name in sorted(dirnames) if not inspect(current / name)]
+            dirnames[:] = [
+                name for name in sorted(dirnames) if not inspect(current / name)
+            ]
             for name in sorted(filenames):
                 inspect(current / name)
         digest = canonical_tracked_tree_digest(root, files)
     except OSError as exc:
         raise ContractError("native plugin inventory is unavailable: %s" % exc) from exc
     if digest != expected_digest:
-        raise ContractError("native plugin bytes differ from the immutable release digest")
+        raise ContractError(
+            "native plugin bytes differ from the immutable release digest"
+        )
     return digest
 
 
@@ -582,7 +701,9 @@ def _manifest_version(root: Path) -> str:
         try:
             payload = json.loads((Path(root) / relative).read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            raise ContractError("release manifest %s is unreadable: %s" % (relative, exc))
+            raise ContractError(
+                "release manifest %s is unreadable: %s" % (relative, exc)
+            )
         payload = _require_mapping(payload, "release manifest %s" % relative)
         version = payload.get("version")
         if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
@@ -621,7 +742,10 @@ def release_descriptor_from_checkout(
     if not HEX40_RE.fullmatch(tree):
         raise ContractError("resolved Git tree is invalid")
     tracked = set(filter(None, _git(root, "ls-files").splitlines()))
-    modes = [line.split(None, 1)[0] for line in _git(root, "ls-tree", "-r", "HEAD").splitlines()]
+    modes = [
+        line.split(None, 1)[0]
+        for line in _git(root, "ls-tree", "-r", "HEAD").splitlines()
+    ]
     if any(mode not in ("100644", "100755") for mode in modes):
         raise ContractError("release Git tree contains a link or special object")
     descriptor = {
@@ -694,19 +818,38 @@ def _validate_descriptor_shape(descriptor: Any) -> dict[str, Any]:
 
 def validate_projection(value: Any, source_digest: str) -> dict[str, Any]:
     value = _require_mapping(value, "release projection")
-    if set(value) != {"schema_version", "kind", "content_digest", "source_content_digest", "selection", "files"}:
+    if set(value) != {
+        "schema_version",
+        "kind",
+        "content_digest",
+        "source_content_digest",
+        "selection",
+        "files",
+    }:
         raise ContractError("release projection fields are invalid")
-    if type(value["schema_version"]) is not int or value["schema_version"] != 1 or value["kind"] != "modular":
+    if (
+        type(value["schema_version"]) is not int
+        or value["schema_version"] != 1
+        or value["kind"] != "modular"
+    ):
         raise ContractError("release projection kind is invalid")
-    if value["source_content_digest"] != source_digest or not HEX64_RE.fullmatch(str(value["content_digest"])):
+    if value["source_content_digest"] != source_digest or not HEX64_RE.fullmatch(
+        str(value["content_digest"])
+    ):
         raise ContractError("release projection is not bound to its verified source")
     selection = _require_mapping(value["selection"], "projection selection")
     if set(selection) != {"roots", "skills", "support_skills", "stage_core"}:
         raise ContractError("projection selection fields are invalid")
-    validate_modular_selection({"roots": selection["roots"], "stage_core": selection["stage_core"]})
+    validate_modular_selection(
+        {"roots": selection["roots"], "stage_core": selection["stage_core"]}
+    )
     for field in ("skills", "support_skills"):
         items = selection[field]
-        if not isinstance(items, list) or any(not isinstance(item, str) for item in items) or len(items) != len(set(items)):
+        if (
+            not isinstance(items, list)
+            or any(not isinstance(item, str) for item in items)
+            or len(items) != len(set(items))
+        ):
             raise ContractError("projection skill inventory is invalid")
         for name in items:
             safe_identifier(name, "projection skill")
@@ -719,7 +862,11 @@ def validate_projection(value: Any, source_digest: str) -> dict[str, Any]:
         safe_relative_path(relative, "projection path")
         if not isinstance(entry, dict) or set(entry) != {"sha256", "mode"}:
             raise ContractError("projection file evidence is invalid")
-        if not HEX64_RE.fullmatch(str(entry["sha256"])) or type(entry["mode"]) is not int or entry["mode"] not in {0o644, 0o755}:
+        if (
+            not HEX64_RE.fullmatch(str(entry["sha256"]))
+            or type(entry["mode"]) is not int
+            or entry["mode"] not in {0o644, 0o755}
+        ):
             raise ContractError("projection file hash or mode is invalid")
     return value
 
@@ -745,8 +892,10 @@ DESCRIPTOR_FIELDS = (
 
 
 def descriptor_fields(value: dict[str, Any]) -> dict[str, Any]:
-    return {**{key: value.get(key) for key in DESCRIPTOR_FIELDS},
-            **({"projection": value["projection"]} if "projection" in value else {})}
+    return {
+        **{key: value.get(key) for key in DESCRIPTOR_FIELDS},
+        **({"projection": value["projection"]} if "projection" in value else {}),
+    }
 
 
 def active_release_descriptor() -> dict[str, Any] | None:
@@ -768,9 +917,7 @@ def active_release_descriptor() -> dict[str, Any] | None:
         raise ContractError("active release descriptor is unreadable: %s" % exc)
     if not isinstance(value, dict):
         raise ContractError("active release descriptor must be an object")
-    descriptor = validate_release_descriptor(
-        descriptor_fields(value)
-    )
+    descriptor = validate_release_descriptor(descriptor_fields(value))
     root_value = value.get("release_root")
     if not isinstance(root_value, str) or not root_value:
         raise ContractError("active release descriptor has no release root")
@@ -822,7 +969,10 @@ def verify_release_checkout(root: Path, descriptor: Any) -> None:
         raise ContractError("release commit does not match the descriptor")
     if _git(root, "rev-parse", "HEAD^{tree}") != descriptor["tree"]:
         raise ContractError("release Git tree does not match the descriptor")
-    if _git(root, "rev-parse", "refs/tags/v%s^{commit}" % descriptor["version"]) != descriptor["commit"]:
+    if (
+        _git(root, "rev-parse", "refs/tags/v%s^{commit}" % descriptor["version"])
+        != descriptor["commit"]
+    ):
         raise ContractError("release tag does not match the descriptor")
     if _manifest_version(root) != descriptor["version"]:
         raise ContractError("release manifests do not match the descriptor")
@@ -834,15 +984,27 @@ def verify_release_checkout(root: Path, descriptor: Any) -> None:
 def verify_materialized_release(root: Path, descriptor: Any) -> None:
     descriptor = _validate_descriptor_shape(descriptor)
     if _manifest_version(Path(root)) != descriptor["version"]:
-        raise ContractError("materialized release manifests do not match the descriptor")
+        raise ContractError(
+            "materialized release manifests do not match the descriptor"
+        )
     observed = canonical_tree_digest(Path(root))
     projection = descriptor.get("projection")
-    expected = projection["content_digest"] if projection else descriptor["content_digest"]
+    expected = (
+        projection["content_digest"] if projection else descriptor["content_digest"]
+    )
     if observed != expected:
-        raise ContractError("materialized release content digest does not match the descriptor")
+        raise ContractError(
+            "materialized release content digest does not match the descriptor"
+        )
     if projection:
-        observed_files = {relative: {"sha256": file_digest(path), "mode": 0o755 if metadata.st_mode & stat.S_IXUSR else 0o644}
-                          for relative, metadata, path in _iter_tree(Path(root)) if stat.S_ISREG(metadata.st_mode)}
+        observed_files = {
+            relative: {
+                "sha256": file_digest(path),
+                "mode": 0o755 if metadata.st_mode & stat.S_IXUSR else 0o644,
+            }
+            for relative, metadata, path in _iter_tree(Path(root))
+            if stat.S_ISREG(metadata.st_mode)
+        }
         if observed_files != projection["files"]:
             raise ContractError("materialized projection file membership differs")
 
@@ -854,7 +1016,7 @@ def legacy_launcher_bytes(active_descriptor_path: Path) -> bytes:
         + LAUNCHER_MARK
         + "\nset -eu\nexec python3 -B - "
         + shlex.quote(str(active_descriptor_path))
-        + ' "$@" <<\'PY\'\n'
+        + " \"$@\" <<'PY'\n"
         + "import json, os, stat, sys\n"
         + "from pathlib import Path\n"
         + "descriptor_path = Path(sys.argv[1])\n"
@@ -879,9 +1041,17 @@ def legacy_launcher_bytes(active_descriptor_path: Path) -> bytes:
 def launcher_bytes(active_descriptor_path: Path, pin: dict) -> bytes:
     source = Path(release_runtime.__file__).read_bytes()
     return (
-        ("#!%s -B\n%s\n" % (pin["executable"], LAUNCHER_MARK)).encode()
+        ("#!%s -BIS\n%s\n" % (pin["executable"], LAUNCHER_MARK)).encode()
+        + release_runtime.SOURCE_IMPORT_CONTRACT.encode()
+        + (
+            "\nenable_source_imports(%r)\nimport site\nsite.main()\n"
+            % str(active_descriptor_path.parent)
+        ).encode()
         + source
-        + ("\nif __name__ == '__main__':\n    sys.exit(launcher_main(Path(%r), sys.argv[1:]))\n" % str(active_descriptor_path)).encode()
+        + (
+            "\nif __name__ == '__main__':\n    sys.exit(launcher_main(Path(%r), sys.argv[1:]))\n"
+            % str(active_descriptor_path)
+        ).encode()
     )
 
 
@@ -897,13 +1067,28 @@ def _recover_activation(journal: Path, launcher_path: Path, active_path: Path) -
         return
     try:
         pending = json.loads(raw)
-        if pending.get("schema_version") != 1 or pending.get("launcher_path") != str(launcher_path) or pending.get("active_path") != str(active_path):
+        if (
+            pending.get("schema_version") != 1
+            or pending.get("launcher_path") != str(launcher_path)
+            or pending.get("active_path") != str(active_path)
+        ):
             raise ValueError("activation recovery binding differs")
         restored = []
-        for key, path, mode in (("launcher", launcher_path, 0o755), ("active", active_path, 0o600)):
-            old = base64.b64decode(pending["old_" + key], validate=True) if pending["old_" + key] is not None else None
+        for key, path, mode in (
+            ("launcher", launcher_path, 0o755),
+            ("active", active_path, 0o600),
+        ):
+            old = (
+                base64.b64decode(pending["old_" + key], validate=True)
+                if pending["old_" + key] is not None
+                else None
+            )
             current = _activation_regular_bytes(path)
-            if current != old and (current is None or hashlib.sha256(current).hexdigest() != pending["new_" + key + "_sha256"]):
+            if current != old and (
+                current is None
+                or hashlib.sha256(current).hexdigest()
+                != pending["new_" + key + "_sha256"]
+            ):
                 raise ValueError("activation recovery found unrelated local changes")
             restored.append((path, old, mode))
         for path, old, mode in restored:
@@ -952,18 +1137,34 @@ def _write_activation_receipt(
     )
 
 
-def message_guard_activation_preflight(release_root: Path, *, configuration_path: Path | None = None, state_directory: Path | None = None) -> dict:
+def message_guard_activation_preflight(
+    release_root: Path,
+    *,
+    configuration_path: Path | None = None,
+    state_directory: Path | None = None,
+) -> dict:
     """Refuse engine activation until the existing owner policy is ready.
 
     This read-only check does not enroll broad native dispatch or grant sends.
     It runs both at release preflight and under the CLI activation lock.
     """
-    config = Path(configuration_path if configuration_path is not None else os.environ.get("MESSAGE_GUARD_CONFIG", str(Path.home() / ".synthesis/message-guard/patterns.json"))).absolute()
+    config = Path(
+        configuration_path
+        if configuration_path is not None
+        else os.environ.get(
+            "MESSAGE_GUARD_CONFIG",
+            str(Path.home() / ".synthesis/message-guard/patterns.json"),
+        )
+    ).absolute()
     if not os.path.lexists(config):
         if config.parent.resolve() != config.parent:
-            raise ContractError("message guard migration configuration has an aliased ancestor")
+            raise ContractError(
+                "message guard migration configuration has an aliased ancestor"
+            )
         return {"status": "NOT_CONFIGURED"}
-    engine = Path(release_root) / "skills/synthesis-message-guard/scripts/message_guard.py"
+    engine = (
+        Path(release_root) / "skills/synthesis-message-guard/scripts/message_guard.py"
+    )
     if not engine.is_file() or engine.is_symlink():
         raise ContractError("message guard migration owner is missing from candidate")
     before = hashlib.sha256(engine.read_bytes()).hexdigest()
@@ -974,22 +1175,34 @@ def message_guard_activation_preflight(release_root: Path, *, configuration_path
     env.pop("PYTHONPATH", None)
     env.pop("PYTHONHOME", None)
     try:
-        completed = subprocess.run([sys.executable, "-I", "-B", str(engine), "--migration-preflight"],
-                                   env=env, capture_output=True, text=True, timeout=10)
+        completed = subprocess.run(
+            [sys.executable, "-I", "-B", str(engine), "--migration-preflight"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         if len(completed.stdout) > 1024 * 1024 or len(completed.stderr) > 65536:
             raise ContractError("message guard migration report exceeds its bound")
         report = json.loads(completed.stdout)
-        if (completed.returncode or not isinstance(report, dict)
-                or report.get("status") != "READY_FOR_OWNER_ACTIVATION"
-                or report.get("read_only") is not True
-                or report.get("message_authority_granted") is not False
-                or report.get("required_record", {}).get("engine_sha256") != before
-                or hashlib.sha256(engine.read_bytes()).hexdigest() != before):
-            raise ContractError("message guard migration prerequisites are unsatisfied: " +
-                                json.dumps(report, sort_keys=True)[:8192])
+        if (
+            completed.returncode
+            or not isinstance(report, dict)
+            or report.get("status") != "READY_FOR_OWNER_ACTIVATION"
+            or report.get("read_only") is not True
+            or report.get("message_authority_granted") is not False
+            or report.get("required_record", {}).get("engine_sha256") != before
+            or hashlib.sha256(engine.read_bytes()).hexdigest() != before
+        ):
+            raise ContractError(
+                "message guard migration prerequisites are unsatisfied: "
+                + json.dumps(report, sort_keys=True)[:8192]
+            )
         return report
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        raise ContractError("message guard migration preflight failed: " + str(exc)) from exc
+        raise ContractError(
+            "message guard migration preflight failed: " + str(exc)
+        ) from exc
 
 
 def activate_cli(
@@ -1003,7 +1216,9 @@ def activate_cli(
     verify_materialized_release(release_root, descriptor)
     message_guard_activation_preflight(release_root)
     if os.path.lexists(release_root / ".git"):
-        raise ContractError("execution activation requires a materialized release, not a source checkout")
+        raise ContractError(
+            "execution activation requires a materialized release, not a source checkout"
+        )
     cli = release_root / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
     if not cli.is_file() or cli.is_symlink():
         raise ContractError("release has no trusted synthesis CLI")
@@ -1016,11 +1231,21 @@ def activate_cli(
     active_descriptor_path = Path(active_descriptor_path).absolute()
     launcher = launcher_bytes(active_descriptor_path, pin)
     active = dict(descriptor)
-    active.update(release_root=str(release_root), activated_at=utcnow(), interpreter=pin,
-        launcher={"path": str(launcher_path), "sha256": hashlib.sha256(launcher).hexdigest(), "runtime_schema": release_runtime.RUNTIME_SCHEMA})
+    active.update(
+        release_root=str(release_root),
+        activated_at=utcnow(),
+        interpreter=pin,
+        launcher={
+            "path": str(launcher_path),
+            "sha256": hashlib.sha256(launcher).hexdigest(),
+            "runtime_schema": release_runtime.RUNTIME_SCHEMA,
+        },
+    )
     active_bytes = _json_bytes(active)
     lock_path = active_descriptor_path.with_name(active_descriptor_path.name + ".lock")
-    journal = active_descriptor_path.with_name(active_descriptor_path.name + ".activation-pending.json")
+    journal = active_descriptor_path.with_name(
+        active_descriptor_path.name + ".activation-pending.json"
+    )
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     if lock_path.is_symlink():
         raise ContractError("activation lock must not be a symbolic link")
@@ -1035,41 +1260,71 @@ def activate_cli(
             if not owned and previous is not None:
                 try:
                     receipt = json.loads(previous).get("launcher", {})
-                    owned = (receipt.get("path") == str(launcher_path)
-                        and receipt.get("runtime_schema") == release_runtime.RUNTIME_SCHEMA
+                    owned = (
+                        receipt.get("path") == str(launcher_path)
+                        and receipt.get("runtime_schema")
+                        == release_runtime.RUNTIME_SCHEMA
                         and receipt.get("sha256") == hashlib.sha256(current).hexdigest()
-                        and current.startswith(b"#!") and LAUNCHER_MARK.encode() in current.splitlines()[:2])
+                        and current.startswith(b"#!")
+                        and LAUNCHER_MARK.encode() in current.splitlines()[:2]
+                    )
                 except (ValueError, AttributeError):
                     owned = False
             if not owned:
-                raise ContractError("refusing to replace a user-owned synthesis launcher")
+                raise ContractError(
+                    "refusing to replace a user-owned synthesis launcher"
+                )
         if current == launcher:
             atomic_write_json(active_descriptor_path, active)
             try:
                 _write_activation_receipt(
-                    active_descriptor_path, active, release_root,
-                    hashlib.sha256(launcher).hexdigest(), pin["sha256"])
-            except (OSError, ValueError, KeyError,
-                    release_runtime.RuntimeContractError) as exc:
+                    active_descriptor_path,
+                    active,
+                    release_root,
+                    hashlib.sha256(launcher).hexdigest(),
+                    pin["sha256"],
+                )
+            except (
+                OSError,
+                ValueError,
+                KeyError,
+                release_runtime.RuntimeContractError,
+            ) as exc:
                 # The pointer swap already landed and has no journal to
                 # roll back; a missing receipt only drops per-call checks
                 # to the legacy full digest, which the doctor reports.
-                print("activation receipt not written (%s); per-call "
-                      "verification stays on the full digest" % exc,
-                      file=sys.stderr)
+                print(
+                    "activation receipt not written (%s); per-call "
+                    "verification stays on the full digest" % exc,
+                    file=sys.stderr,
+                )
         else:
-            pending = {"schema_version": 1, "launcher_path": str(launcher_path), "active_path": str(active_descriptor_path),
-                "old_launcher": base64.b64encode(current).decode() if current is not None else None,
-                "old_active": base64.b64encode(previous).decode() if previous is not None else None,
+            pending = {
+                "schema_version": 1,
+                "launcher_path": str(launcher_path),
+                "active_path": str(active_descriptor_path),
+                "old_launcher": (
+                    base64.b64encode(current).decode() if current is not None else None
+                ),
+                "old_active": (
+                    base64.b64encode(previous).decode()
+                    if previous is not None
+                    else None
+                ),
                 "new_launcher_sha256": hashlib.sha256(launcher).hexdigest(),
-                "new_active_sha256": hashlib.sha256(active_bytes).hexdigest()}
+                "new_active_sha256": hashlib.sha256(active_bytes).hexdigest(),
+            }
             atomic_write_json(journal, pending)
             try:
                 atomic_write_bytes(launcher_path, launcher, mode=0o755)
                 atomic_write_json(active_descriptor_path, active)
                 _write_activation_receipt(
-                    active_descriptor_path, active, release_root,
-                    hashlib.sha256(launcher).hexdigest(), pin["sha256"])
+                    active_descriptor_path,
+                    active,
+                    release_root,
+                    hashlib.sha256(launcher).hexdigest(),
+                    pin["sha256"],
+                )
                 journal.unlink()
             except BaseException:
                 _recover_activation(journal, launcher_path, active_descriptor_path)
@@ -1092,7 +1347,11 @@ def default_desired_state(
 ) -> dict[str, Any]:
     if profile not in PROFILE_LAYERS:
         raise ContractError("profile must be full, skills-only or modular")
-    if not isinstance(clients, list) or not clients or set(clients) - {"claude", "codex"}:
+    if (
+        not isinstance(clients, list)
+        or not clients
+        or set(clients) - {"claude", "codex"}
+    ):
         raise ContractError("clients must contain claude and/or codex")
     if channel not in ("stable", "edge"):
         raise ContractError("channel must be stable or edge")
@@ -1106,9 +1365,7 @@ def default_desired_state(
         personal_instruction_source
     )
     if personal_instruction_source is not None and not organization_entries:
-        raise ContractError(
-            "a personal instruction source requires an organization"
-        )
+        raise ContractError("a personal instruction source requires an organization")
     if layers is None:
         selected = set(PROFILE_LAYERS[profile])
         if organization_entries:
@@ -1136,10 +1393,18 @@ def default_desired_state(
 
 def validate_modular_selection(value: Any) -> dict[str, Any]:
     value = _require_mapping(value, "modular selection")
-    if set(value) != {"roots", "stage_core"} or type(value.get("stage_core")) is not bool:
+    if (
+        set(value) != {"roots", "stage_core"}
+        or type(value.get("stage_core")) is not bool
+    ):
         raise ContractError("modular selection needs roots and boolean stage_core")
     roots = value["roots"]
-    if not isinstance(roots, list) or not roots or any(not isinstance(name, str) for name in roots) or len(roots) != len(set(roots)):
+    if (
+        not isinstance(roots, list)
+        or not roots
+        or any(not isinstance(name, str) for name in roots)
+        or len(roots) != len(set(roots))
+    ):
         raise ContractError("modular roots must be a nonempty unique skill list")
     for name in roots:
         safe_identifier(name, "modular skill")
@@ -1150,13 +1415,28 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     """Validate the complete persisted desired-state contract at runtime."""
     value = _require_mapping(value, "desired state")
     allowed = {
-        "schema_version", "enabled", "profile", "clients", "release",
-        "personal_workspace", "personal_configuration", "personal_instruction_source",
-        "layers", "organizations", "modular",
+        "schema_version",
+        "enabled",
+        "profile",
+        "clients",
+        "release",
+        "personal_workspace",
+        "personal_configuration",
+        "personal_instruction_source",
+        "layers",
+        "organizations",
+        "modular",
     }
     required = {
-        "schema_version", "enabled", "profile", "clients", "release",
-        "personal_workspace", "personal_configuration", "layers", "organizations",
+        "schema_version",
+        "enabled",
+        "profile",
+        "clients",
+        "release",
+        "personal_workspace",
+        "personal_configuration",
+        "layers",
+        "organizations",
     }
     _reject_unknown(value, allowed, "desired state")
     missing = sorted(required - set(value))
@@ -1194,9 +1474,7 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     workspace = value.get("personal_workspace")
     if workspace is not None:
         safe_identifier(workspace, "desired state personal workspace")
-    configuration = validate_personal_configuration(
-        value.get("personal_configuration")
-    )
+    configuration = validate_personal_configuration(value.get("personal_configuration"))
     instruction_source = validate_personal_instruction_source(
         value.get("personal_instruction_source")
     )
@@ -1221,12 +1499,14 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         raise ContractError("desired state organizations must be a list")
     if len(organizations) > 1:
         raise ContractError("desired state supports at most one organization")
-    if profile == "modular" and (organizations or workspace is not None or instruction_source is not None):
-        raise ContractError("modular setup does not activate workspace or organization layers")
-    if instruction_source is not None and not organizations:
+    if profile == "modular" and (
+        organizations or workspace is not None or instruction_source is not None
+    ):
         raise ContractError(
-            "a personal instruction source requires an organization"
+            "modular setup does not activate workspace or organization layers"
         )
+    if instruction_source is not None and not organizations:
+        raise ContractError("a personal instruction source requires an organization")
     selected_layers = set(PROFILE_LAYERS[profile])
     if organizations:
         selected_layers.add("organization")
@@ -1239,17 +1519,32 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     for index, entry_value in enumerate(organizations):
         entry = _require_mapping(entry_value, "desired state organizations[%d]" % index)
         fields = {"repository", "manifest_path", "commit_policy", "commit"}
-        _reject_unknown(entry, fields | {"mode", "workspace", "principal_selection"}, "desired state organizations[%d]" % index)
+        _reject_unknown(
+            entry,
+            fields | {"mode", "workspace", "principal_selection"},
+            "desired state organizations[%d]" % index,
+        )
         if not fields <= set(entry):
             raise ContractError("desired state organizations[%d] is incomplete" % index)
         selection = entry.get("principal_selection")
         if selection is not None:
-            if not isinstance(selection, dict) or set(selection) != {"person", "requested", "team_digest"}:
+            if not isinstance(selection, dict) or set(selection) != {
+                "person",
+                "requested",
+                "team_digest",
+            }:
                 raise ContractError("principal_selection fields are incomplete")
             safe_identifier(selection["person"], "principal")
             requested = selection["requested"]
-            if not isinstance(requested, list) or len(requested) > 4096 or any(not isinstance(item, str) for item in requested) or len(set(requested)) != len(requested):
-                raise ContractError("requested entitlements must be unique bounded identifiers")
+            if (
+                not isinstance(requested, list)
+                or len(requested) > 4096
+                or any(not isinstance(item, str) for item in requested)
+                or len(set(requested)) != len(requested)
+            ):
+                raise ContractError(
+                    "requested entitlements must be unique bounded identifiers"
+                )
             for item in requested:
                 safe_identifier(item, "requested entitlement")
             if not re.fullmatch(r"[0-9a-f]{64}", str(selection["team_digest"])):
@@ -1264,9 +1559,13 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
         if "mode" in entry or "workspace" in entry:
             if entry.get("mode") != "additive":
                 raise ContractError("desired state organization mode is invalid")
-            safe_identifier(entry.get("workspace"), "desired state organization workspace")
+            safe_identifier(
+                entry.get("workspace"), "desired state organization workspace"
+            )
             if entry["workspace"] == workspace:
-                raise ContractError("organization workspace collides with personal workspace")
+                raise ContractError(
+                    "organization workspace collides with personal workspace"
+                )
         elif profile == "skills-only":
             raise ContractError("skills-only organization enrollment must be additive")
     return value
@@ -1275,12 +1574,20 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
 def validate_additive_organization(desired, manifest, entry):
     """An organization overlay cannot take over the installation's policy."""
     ecosystem = manifest.get("ecosystem") or {}
-    policy = {"channel": ecosystem.get("channel", "stable"),
-              "version_pin": ecosystem.get("version_pin")}
+    policy = {
+        "channel": ecosystem.get("channel", "stable"),
+        "version_pin": ecosystem.get("version_pin"),
+    }
     if policy != desired["release"]:
-        raise ContractError("organization release policy conflicts with the existing installation")
-    if sorted(ecosystem.get("clients", ["claude", "codex"])) != sorted(desired["clients"]):
-        raise ContractError("organization clients conflict with the existing installation")
+        raise ContractError(
+            "organization release policy conflicts with the existing installation"
+        )
+    if sorted(ecosystem.get("clients", ["claude", "codex"])) != sorted(
+        desired["clients"]
+    ):
+        raise ContractError(
+            "organization clients conflict with the existing installation"
+        )
     if ecosystem.get("plugin", True) is not True:
         raise ContractError("organization cannot disable the existing public plugin")
     workspace = manifest["org"]["workspace"]
@@ -1354,21 +1661,38 @@ def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
         return None
     value = _require_mapping(value, "desired state personal configuration")
     fields = {
-        "display_name", "working_relationship", "timezone", "tone",
-        "avoid_phrases", "git_name", "git_email", "working_hours",
-        "protected_hours", "personal_remote_patterns", "confidential_terms",
+        "display_name",
+        "working_relationship",
+        "timezone",
+        "tone",
+        "avoid_phrases",
+        "git_name",
+        "git_email",
+        "working_hours",
+        "protected_hours",
+        "personal_remote_patterns",
+        "confidential_terms",
         "inbox_cleanup",
     }
-    _reject_unknown(value, fields | {"message_guard"}, "desired state personal configuration")
-    if value.get("message_guard") is not None and not isinstance(value["message_guard"], dict):
+    _reject_unknown(
+        value, fields | {"message_guard"}, "desired state personal configuration"
+    )
+    if value.get("message_guard") is not None and not isinstance(
+        value["message_guard"], dict
+    ):
         raise ContractError("desired message_guard selection must be an object or null")
     missing = sorted(fields - set(value))
     if missing:
         raise ContractError(
-            "desired state personal configuration is missing: %s"
-            % ", ".join(missing)
+            "desired state personal configuration is missing: %s" % ", ".join(missing)
         )
-    for key in ("display_name", "working_relationship", "timezone", "git_name", "git_email"):
+    for key in (
+        "display_name",
+        "working_relationship",
+        "timezone",
+        "git_name",
+        "git_email",
+    ):
         if not isinstance(value.get(key), str):
             raise ContractError(
                 "desired state personal configuration %s must be text" % key
@@ -1387,8 +1711,11 @@ def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
     ):
         raise ContractError("desired state personal Git email is invalid")
     for key in (
-        "tone", "avoid_phrases", "protected_hours",
-        "personal_remote_patterns", "confidential_terms",
+        "tone",
+        "avoid_phrases",
+        "protected_hours",
+        "personal_remote_patterns",
+        "confidential_terms",
     ):
         items = value.get(key)
         if not isinstance(items, list) or any(
@@ -1402,7 +1729,9 @@ def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
     if value["working_hours"] is not None and not isinstance(
         value["working_hours"], dict
     ):
-        raise ContractError("desired state personal working_hours must be an object or null")
+        raise ContractError(
+            "desired state personal working_hours must be an object or null"
+        )
     if not isinstance(value["inbox_cleanup"], bool):
         raise ContractError("desired state personal inbox_cleanup must be boolean")
     return value
@@ -1411,24 +1740,48 @@ def validate_personal_configuration(value: Any) -> dict[str, Any] | None:
 def validate_machine_observation(value: Any) -> dict[str, Any]:
     """Validate the complete persisted observation contract at runtime."""
     value = _require_mapping(value, "machine observation")
-    _reject_unknown(value, {"schema_version", "generation", "transactions"}, "machine observation")
+    _reject_unknown(
+        value, {"schema_version", "generation", "transactions"}, "machine observation"
+    )
     if set(value) != {"schema_version", "generation", "transactions"}:
         raise ContractError("machine observation is incomplete")
     generation = value.get("generation")
     if value.get("schema_version") != OBSERVATION_SCHEMA_VERSION:
         raise ContractError("machine observation schema is unsupported")
-    if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation < 0
+    ):
         raise ContractError("machine observation generation is invalid")
     transactions = value.get("transactions")
     if not isinstance(transactions, list):
         raise ContractError("machine observation transactions must be a list")
     allowed = {
-        "transaction_id", "generation", "previous_active_generation", "state",
-        "command", "desired_digest", "committed_desired_digest", "release",
-        *TRUTH_PLANES, "instruction_receipt", "details", "started_at",
-        "finished_at", "error", "recovery",
+        "transaction_id",
+        "generation",
+        "previous_active_generation",
+        "state",
+        "command",
+        "desired_digest",
+        "committed_desired_digest",
+        "release",
+        *TRUTH_PLANES,
+        "instruction_receipt",
+        "details",
+        "started_at",
+        "finished_at",
+        "error",
+        "recovery",
     }
-    required = {"transaction_id", "generation", "state", "command", "desired_digest", "started_at"}
+    required = {
+        "transaction_id",
+        "generation",
+        "state",
+        "command",
+        "desired_digest",
+        "started_at",
+    }
     for index, transaction_value in enumerate(transactions):
         label = "machine observation transactions[%d]" % index
         transaction = _require_mapping(transaction_value, label)
@@ -1436,10 +1789,16 @@ def validate_machine_observation(value: Any) -> dict[str, Any]:
         missing = sorted(required - set(transaction))
         if missing:
             raise ContractError("%s is missing keys: %s" % (label, ", ".join(missing)))
-        if not re.fullmatch(r"[0-9a-f]{32}", str(transaction.get("transaction_id") or "")):
+        if not re.fullmatch(
+            r"[0-9a-f]{32}", str(transaction.get("transaction_id") or "")
+        ):
             raise ContractError("%s transaction_id is invalid" % label)
         item_generation = transaction.get("generation")
-        if isinstance(item_generation, bool) or not isinstance(item_generation, int) or item_generation < 1:
+        if (
+            isinstance(item_generation, bool)
+            or not isinstance(item_generation, int)
+            or item_generation < 1
+        ):
             raise ContractError("%s generation is invalid" % label)
         previous = transaction.get("previous_active_generation")
         if previous is not None and (
@@ -1451,7 +1810,9 @@ def validate_machine_observation(value: Any) -> dict[str, Any]:
         if transaction.get("command") not in TRANSACTION_COMMANDS:
             raise ContractError("%s command is invalid" % label)
         for field in ("desired_digest", "committed_desired_digest"):
-            if field in transaction and not HEX64_RE.fullmatch(str(transaction.get(field) or "")):
+            if field in transaction and not HEX64_RE.fullmatch(
+                str(transaction.get(field) or "")
+            ):
                 raise ContractError("%s %s is invalid" % (label, field))
         for field in TRUTH_PLANES + ("instruction_receipt", "details"):
             if field in transaction and not isinstance(transaction.get(field), dict):
@@ -1463,7 +1824,9 @@ def validate_machine_observation(value: Any) -> dict[str, Any]:
             for candidate in recovery.values():
                 if candidate is not None:
                     validate_desired_state(candidate)
-            if recovery["prepared_desired"] is not None and json_digest(recovery["prepared_desired"]) != transaction.get("committed_desired_digest"):
+            if recovery["prepared_desired"] is not None and json_digest(
+                recovery["prepared_desired"]
+            ) != transaction.get("committed_desired_digest"):
                 raise ContractError("%s prepared desired digest differs" % label)
         if "release" in transaction:
             validate_release_descriptor(transaction["release"])
@@ -1482,10 +1845,14 @@ class SystemState:
         if home is None:
             home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home())))
             config_base = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
-            state_base = Path(os.environ.get("XDG_STATE_HOME", str(home / ".local" / "state")))
+            state_base = Path(
+                os.environ.get("XDG_STATE_HOME", str(home / ".local" / "state"))
+            )
             cache_base = Path(os.environ.get("XDG_CACHE_HOME", str(home / ".cache")))
             bin_base = Path(
-                os.environ.get("SYNTHESIS_INSTALL_BIN_DIR", str(home / ".local" / "bin"))
+                os.environ.get(
+                    "SYNTHESIS_INSTALL_BIN_DIR", str(home / ".local" / "bin")
+                )
             )
         else:
             home = Path(home)
@@ -1515,7 +1882,10 @@ class SystemState:
         latest = (
             Path(override).expanduser()
             if override
-            else self.synthesis_dir / "agent-conformance" / "live" / "public-sessionstart.json"
+            else self.synthesis_dir
+            / "agent-conformance"
+            / "live"
+            / "public-sessionstart.json"
         )
         return latest.parent / (latest.stem + "-events")
 
@@ -1523,13 +1893,23 @@ class SystemState:
     def locked(self) -> Iterator[None]:
         self.state_dir.mkdir(parents=True, exist_ok=True)
         try:
-            descriptor = os.open(self.lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+            descriptor = os.open(
+                self.lock_path,
+                os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+                0o600,
+            )
         except OSError as exc:
             raise ContractError("onboarding transaction lock is unavailable") from exc
         with os.fdopen(descriptor, "a+b") as lock:
             info = os.fstat(lock.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.getuid():
-                raise ContractError("onboarding transaction lock has a foreign owner or shape")
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or info.st_uid != os.getuid()
+            ):
+                raise ContractError(
+                    "onboarding transaction lock has a foreign owner or shape"
+                )
             deadline = time.monotonic() + 30
             while True:
                 try:
@@ -1537,11 +1917,17 @@ class SystemState:
                     break
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
-                        raise ContractError("onboarding transaction owner is busy; no effect admitted")
+                        raise ContractError(
+                            "onboarding transaction owner is busy; no effect admitted"
+                        )
                     time.sleep(0.02)
             try:
                 current = self.lock_path.lstat()
-                if (current.st_dev, current.st_ino, current.st_mode) != (info.st_dev, info.st_ino, info.st_mode):
+                if (current.st_dev, current.st_ino, current.st_mode) != (
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_mode,
+                ):
                     raise ContractError("onboarding transaction lock identity changed")
                 yield
             finally:
@@ -1560,7 +1946,11 @@ class SystemState:
         try:
             value = json.loads(self.observation_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            return {"schema_version": OBSERVATION_SCHEMA_VERSION, "generation": 0, "transactions": []}
+            return {
+                "schema_version": OBSERVATION_SCHEMA_VERSION,
+                "generation": 0,
+                "transactions": [],
+            }
         except (OSError, ValueError) as exc:
             raise ContractError("machine observation is unreadable: %s" % exc)
         return validate_machine_observation(value)
@@ -1576,14 +1966,23 @@ class SystemState:
         The prepared observation was persisted only after the operation returned.
         """
         observation = self.read_observation()
-        if not observation["transactions"] or observation["transactions"][-1]["transaction_id"] != transaction_id:
+        if (
+            not observation["transactions"]
+            or observation["transactions"][-1]["transaction_id"] != transaction_id
+        ):
             raise ContractError("prepared recovery is not the latest transaction")
         transaction = observation["transactions"][-1]
         recovery = transaction.get("recovery") or {}
         prepared = recovery.get("prepared_desired")
-        if transaction["state"] != "pending" or prepared is None or json_digest(prepared) != transaction.get("committed_desired_digest"):
+        if (
+            transaction["state"] != "pending"
+            or prepared is None
+            or json_digest(prepared) != transaction.get("committed_desired_digest")
+        ):
             raise ContractError("transaction has no complete prepared commit")
-        if observation["generation"] != (transaction.get("previous_active_generation") or 0):
+        if observation["generation"] != (
+            transaction.get("previous_active_generation") or 0
+        ):
             raise ContractError("prepared transaction generation changed")
         current = self.read_desired()
         if current != recovery.get("prior_desired") and current != prepared:
@@ -1609,11 +2008,17 @@ class SystemState:
         except FileNotFoundError:
             return None
         except OSError as exc:
-            raise ContractError("legacy onboarding receipt cannot be inspected: %s" % exc)
+            raise ContractError(
+                "legacy onboarding receipt cannot be inspected: %s" % exc
+            )
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise ContractError("legacy onboarding receipt must be a regular non-symlink file")
+            raise ContractError(
+                "legacy onboarding receipt must be a regular non-symlink file"
+            )
         if metadata.st_size > 4 * 1024 * 1024:
-            raise ContractError("legacy onboarding receipt exceeds the migration size limit")
+            raise ContractError(
+                "legacy onboarding receipt exceeds the migration size limit"
+            )
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
@@ -1648,7 +2053,9 @@ class SystemState:
         layer_choices, layer_choices_valid = choices("layer_choices")
         component_choices, component_choices_valid = choices("component_choices")
         generated_file_count, generated_files_valid = inventory_count("generated_files")
-        adopted_repository_count, adopted_repositories_valid = inventory_count("adopted_repos")
+        adopted_repository_count, adopted_repositories_valid = inventory_count(
+            "adopted_repos"
+        )
         managed_json_entry_count, managed_json_entries_valid = inventory_count(
             "managed_json_entries"
         )
@@ -1668,17 +2075,17 @@ class SystemState:
         raw_policy = value.get("plugin_policy")
         plugin_policy_valid = raw_policy is None
         plugin_policy = None
-        if isinstance(raw_policy, dict) and not set(raw_policy) - {"channel", "version_pin"}:
+        if isinstance(raw_policy, dict) and not set(raw_policy) - {
+            "channel",
+            "version_pin",
+        }:
             channel = raw_policy.get("channel") or "stable"
             version_pin = raw_policy.get("version_pin")
-            plugin_policy_valid = (
-                channel in {"stable", "edge"}
-                and (
-                    version_pin is None
-                    or (
-                        isinstance(version_pin, str)
-                        and VERSION_RE.fullmatch(version_pin) is not None
-                    )
+            plugin_policy_valid = channel in {"stable", "edge"} and (
+                version_pin is None
+                or (
+                    isinstance(version_pin, str)
+                    and VERSION_RE.fullmatch(version_pin) is not None
                 )
             )
             if plugin_policy_valid:
@@ -1760,10 +2167,17 @@ class SystemState:
         lock_context = contextlib.nullcontext() if already_locked else self.locked()
         with lock_context:
             observation = self.read_observation()
-            pending_prepared = [item for item in observation["transactions"] if item["state"] == "pending" and (item.get("recovery") or {}).get("prepared_desired") is not None]
+            pending_prepared = [
+                item
+                for item in observation["transactions"]
+                if item["state"] == "pending"
+                and (item.get("recovery") or {}).get("prepared_desired") is not None
+            ]
             if pending_prepared:
                 if (self.state_dir / "modular/pending.json").exists():
-                    raise ContractError("modular resources require recovery before starting a transaction")
+                    raise ContractError(
+                        "modular resources require recovery before starting a transaction"
+                    )
                 for pending in pending_prepared:
                     self.finalize_prepared(pending["transaction_id"])
                 observation = self.read_observation()
@@ -1776,10 +2190,16 @@ class SystemState:
                     changed_recovery = True
             if changed_recovery:
                 self._save_observation(observation)
-            generation = max(
-                [int(observation.get("generation", 0))]
-                + [int(item.get("generation", 0)) for item in observation["transactions"]]
-            ) + 1
+            generation = (
+                max(
+                    [int(observation.get("generation", 0))]
+                    + [
+                        int(item.get("generation", 0))
+                        for item in observation["transactions"]
+                    ]
+                )
+                + 1
+            )
             transaction = {
                 "transaction_id": uuid.uuid4().hex,
                 "generation": generation,
@@ -1790,7 +2210,10 @@ class SystemState:
                 "command": command,
                 "desired_digest": desired_digest,
                 "started_at": utcnow(),
-                "recovery": {"prior_desired": self.read_desired(), "prepared_desired": None},
+                "recovery": {
+                    "prior_desired": self.read_desired(),
+                    "prepared_desired": None,
+                },
             }
             if not observation["transactions"] and not self.desired_path.exists():
                 legacy = self.legacy_migration_input()
@@ -1798,19 +2221,30 @@ class SystemState:
                     transaction["details"] = {"legacy_migration_input": legacy}
             observation["transactions"].append(transaction)
             self._save_observation(observation)
-            old_desired = self.desired_path.read_bytes() if self.desired_path.exists() else None
+            old_desired = (
+                self.desired_path.read_bytes() if self.desired_path.exists() else None
+            )
             desired_written = False
             try:
                 result = operation(transaction) or {}
                 if not isinstance(result, dict):
                     raise ContractError("transaction operation must return a mapping")
-                unknown = set(result) - set(TRUTH_PLANES) - {"release", "instruction_receipt", "details"}
+                unknown = (
+                    set(result)
+                    - set(TRUTH_PLANES)
+                    - {"release", "instruction_receipt", "details"}
+                )
                 final_desired = result.pop("_desired", desired)
                 unknown.discard("_desired")
                 if unknown:
-                    raise ContractError("transaction result has unknown planes: %s" % ", ".join(sorted(unknown)))
+                    raise ContractError(
+                        "transaction result has unknown planes: %s"
+                        % ", ".join(sorted(unknown))
+                    )
                 if not isinstance(final_desired, dict):
-                    raise ContractError("transaction final desired state must be a mapping")
+                    raise ContractError(
+                        "transaction final desired state must be a mapping"
+                    )
                 validate_desired_state(final_desired)
                 if "details" in result and "details" in transaction:
                     details = dict(transaction["details"])
@@ -1824,8 +2258,12 @@ class SystemState:
                 if modular_journal.exists():
                     journal = json.loads(modular_journal.read_text())
                     if journal.get("transaction_id") != transaction["transaction_id"]:
-                        raise ContractError("prepared operation has a foreign modular recovery journal")
-                    transaction.setdefault("details", {})["modular_receipt_digest"] = json_digest(journal["new"])
+                        raise ContractError(
+                            "prepared operation has a foreign modular recovery journal"
+                        )
+                    transaction.setdefault("details", {})["modular_receipt_digest"] = (
+                        json_digest(journal["new"])
+                    )
                 self._save_observation(observation)
                 atomic_write_json(self.desired_path, final_desired)
                 desired_written = True
@@ -1850,7 +2288,9 @@ class SystemState:
                     else:
                         atomic_write_bytes(self.desired_path, old_desired)
                 transaction["state"] = "aborted"
-                observation["generation"] = transaction["previous_active_generation"] or 0
+                observation["generation"] = (
+                    transaction["previous_active_generation"] or 0
+                )
                 transaction["error"] = str(exc)
                 if rollback is not None:
                     details = dict(transaction.get("details") or {})
@@ -1863,7 +2303,8 @@ class SystemState:
                 self._save_observation(observation)
                 if rollback_error:
                     raise ContractError(
-                        "transaction failed and resource rollback failed: %s" % rollback_error
+                        "transaction failed and resource rollback failed: %s"
+                        % rollback_error
                     ) from exc
                 raise
 
@@ -1875,10 +2316,14 @@ class SystemState:
         with lock_context:
             observation = self.read_observation()
             committed = [
-                item for item in observation["transactions"] if item.get("state") == "committed"
+                item
+                for item in observation["transactions"]
+                if item.get("state") == "committed"
             ]
             if not committed:
-                raise ContractError("no committed synthesis generation can own the outcome")
+                raise ContractError(
+                    "no committed synthesis generation can own the outcome"
+                )
             transaction = committed[-1]
             live = transaction.get("live-loaded")
             if not isinstance(live, dict) or live.get("status") != "verified":
@@ -1887,7 +2332,9 @@ class SystemState:
                 )
             transaction["outcome-verified"] = dict(receipt)
             transaction["outcome-verified"]["generation"] = transaction["generation"]
-            transaction["outcome-verified"]["transaction_id"] = transaction["transaction_id"]
+            transaction["outcome-verified"]["transaction_id"] = transaction[
+                "transaction_id"
+            ]
             transaction["outcome-verified"]["live_loaded_sha256"] = json_digest(live)
             self._save_observation(observation)
             return dict(transaction["outcome-verified"])
@@ -1910,7 +2357,9 @@ class SystemState:
         conformance transcript-binding check.
         """
         registry = (
-            Path(registry_root) if registry_root is not None else self.live_receipt_registry_root()
+            Path(registry_root)
+            if registry_root is not None
+            else self.live_receipt_registry_root()
         )
         if registry.is_symlink() or not registry.is_dir():
             return []
@@ -1921,7 +2370,9 @@ class SystemState:
             desired = self.read_desired()
             observation = self.read_observation()
             committed = [
-                item for item in observation["transactions"] if item.get("state") == "committed"
+                item
+                for item in observation["transactions"]
+                if item.get("state") == "committed"
             ]
             if desired is None or not committed or not desired.get("enabled", True):
                 return []
@@ -1929,16 +2380,25 @@ class SystemState:
             release = transaction.get("release")
             if not isinstance(release, dict):
                 resolved = transaction.get("resolved") or {}
-                release = resolved.get("release") if isinstance(resolved, dict) else None
+                release = (
+                    resolved.get("release") if isinstance(resolved, dict) else None
+                )
             if not isinstance(release, dict):
                 return []
             version = release.get("version")
-            started = _parse_datetime(transaction.get("started_at"), "transaction started_at")
+            started = _parse_datetime(
+                transaction.get("started_at"), "transaction started_at"
+            )
             current = transaction.get("live-loaded")
-            have = dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
+            have = (
+                dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
+            )
             for client in desired.get("clients") or []:
                 existing = have.get(client)
-                if isinstance(existing, dict) and existing.get("plugin_version") == version:
+                if (
+                    isinstance(existing, dict)
+                    and existing.get("plugin_version") == version
+                ):
                     continue
                 client_dir = registry / client
                 if client_dir.is_symlink() or not client_dir.is_dir():
@@ -1983,11 +2443,18 @@ class SystemState:
         def reject(client: str, event: dict[str, Any], reason: str) -> None:
             # Retain the newest eligible failure per client, not every event
             # in a long-lived registry. A valid alternative clears the failure.
-            rejected.setdefault(client, {
-                "client": client, "session_id": str(event["session_id"]), "reason": reason,
-            })
+            rejected.setdefault(
+                client,
+                {
+                    "client": client,
+                    "session_id": str(event["session_id"]),
+                    "reason": reason,
+                },
+            )
 
-        for recorded, client, event in sorted(candidates, key=lambda item: item[0], reverse=True):
+        for recorded, client, event in sorted(
+            candidates, key=lambda item: item[0], reverse=True
+        ):
             if any(item["client"] == client for item in promoted):
                 continue
             transcript_value = event.get("transcript_path")
@@ -1996,7 +2463,11 @@ class SystemState:
                 continue
             try:
                 bound = bool(
-                    binder(Path(transcript_value).expanduser(), client, str(event["session_id"]))
+                    binder(
+                        Path(transcript_value).expanduser(),
+                        client,
+                        str(event["session_id"]),
+                    )
                 )
             except Exception:  # a binder failure is never promotion evidence
                 reject(client, event, "live-load transcript validator could not run")
@@ -2004,7 +2475,9 @@ class SystemState:
             if not bound:
                 try:
                     binding = _live_receipt_validator().transcript_binding_state(
-                        Path(transcript_value).expanduser(), client, str(event["session_id"]),
+                        Path(transcript_value).expanduser(),
+                        client,
+                        str(event["session_id"]),
                     )
                     reason = "live-load transcript binding is %s" % binding
                     if binding == "pending":
@@ -2019,10 +2492,16 @@ class SystemState:
             receipt["transcript_bound_at_promotion"] = True
             try:
                 if self.record_live_load(receipt=receipt, promotion=True):
-                    promoted.append({"client": client, "session_id": str(event["session_id"])})
+                    promoted.append(
+                        {"client": client, "session_id": str(event["session_id"])}
+                    )
                     rejected.pop(client, None)
                 else:
-                    reject(client, event, "live-load receipt no longer matches an enabled selected-client generation")
+                    reject(
+                        client,
+                        event,
+                        "live-load receipt no longer matches an enabled selected-client generation",
+                    )
             except ContractError as exc:
                 reject(client, event, str(exc))
                 continue
@@ -2051,10 +2530,15 @@ class SystemState:
         recorded_at = receipt.get("recorded_at")
         if client not in {"claude", "codex", "muse"}:
             raise ContractError("live-load receipt client is unsupported")
-        if receipt.get("receipt_schema") != 2 or receipt.get("hook_event_name") != "SessionStart":
+        if (
+            receipt.get("receipt_schema") != 2
+            or receipt.get("hook_event_name") != "SessionStart"
+        ):
             raise ContractError("live-load receipt is not a SessionStart event")
         bound_at_record = receipt.get("transcript_bound_at_record") is True
-        bound_at_promotion = promotion and receipt.get("transcript_bound_at_promotion") is True
+        bound_at_promotion = (
+            promotion and receipt.get("transcript_bound_at_promotion") is True
+        )
         if not bound_at_record and not bound_at_promotion:
             raise ContractError("live-load receipt is not transcript-bound")
         if receipt.get("provenance_env") != "%s-transcript" % client:
@@ -2064,7 +2548,9 @@ class SystemState:
             uuid.UUID(str(receipt.get("receipt_event_id")))
         except (ValueError, TypeError, AttributeError):
             raise ContractError("live-load receipt identifiers must be UUIDs")
-        if not isinstance(plugin_version, str) or not VERSION_RE.fullmatch(plugin_version):
+        if not isinstance(plugin_version, str) or not VERSION_RE.fullmatch(
+            plugin_version
+        ):
             raise ContractError("live-load receipt plugin version is invalid")
         if not isinstance(plugin_root, str) or not plugin_root:
             raise ContractError("live-load receipt is incomplete")
@@ -2072,7 +2558,9 @@ class SystemState:
         if not promotion:
             age = (datetime.now(timezone.utc) - observed_time).total_seconds()
             if age < -300 or age > 15 * 60:
-                raise ContractError("live-load receipt is outside the SessionStart freshness window")
+                raise ContractError(
+                    "live-load receipt is outside the SessionStart freshness window"
+                )
         root = Path(plugin_root)
         try:
             root_meta = root.lstat()
@@ -2102,7 +2590,9 @@ class SystemState:
             transcript_meta = transcript.lstat()
         except OSError as exc:
             raise ContractError("live-load transcript is unavailable: %s" % exc)
-        if stat.S_ISLNK(transcript_meta.st_mode) or not stat.S_ISREG(transcript_meta.st_mode):
+        if stat.S_ISLNK(transcript_meta.st_mode) or not stat.S_ISREG(
+            transcript_meta.st_mode
+        ):
             raise ContractError("live-load transcript must be a regular file")
         # Use the same structured, bounded-memory identity proof as the hook
         # and conformance. History length is not a provenance failure, and a
@@ -2118,18 +2608,27 @@ class SystemState:
         else:
             var, default = "CLAUDE_CONFIG_DIR", self.home / ".claude"
         transcript_root = Path(os.environ.get(var, str(default))).expanduser()
-        if not validator.client_root_transcript_path(transcript, client, str(session_id), transcript_root):
-            raise ContractError("live-load transcript is not a canonical client root-session path")
-        binding = validator.transcript_binding_state(transcript, client, str(session_id))
+        if not validator.client_root_transcript_path(
+            transcript, client, str(session_id), transcript_root
+        ):
+            raise ContractError(
+                "live-load transcript is not a canonical client root-session path"
+            )
+        binding = validator.transcript_binding_state(
+            transcript, client, str(session_id)
+        )
         if binding != "bound":
-            raise ContractError("live-load transcript binding is %s, not bound" % binding)
+            raise ContractError(
+                "live-load transcript binding is %s, not bound" % binding
+            )
         if not self.desired_path.is_file() or not self.observation_path.is_file():
             return False
         with self.locked():
             desired = self.read_desired()
             observation = self.read_observation()
             committed = [
-                item for item in observation["transactions"]
+                item
+                for item in observation["transactions"]
                 if item.get("state") == "committed"
             ]
             if desired is None or not committed:
@@ -2142,20 +2641,33 @@ class SystemState:
             release = transaction.get("release")
             if not isinstance(release, dict):
                 resolved = transaction.get("resolved") or {}
-                release = resolved.get("release") if isinstance(resolved, dict) else None
-            if not isinstance(release, dict) or release.get("version") != plugin_version:
+                release = (
+                    resolved.get("release") if isinstance(resolved, dict) else None
+                )
+            if (
+                not isinstance(release, dict)
+                or release.get("version") != plugin_version
+            ):
                 return False
             if promotion:
                 started = _parse_datetime(
                     transaction.get("started_at"), "transaction started_at"
                 )
                 if observed_time < started:
-                    raise ContractError("live-load receipt predates the active generation")
+                    raise ContractError(
+                        "live-load receipt predates the active generation"
+                    )
             release_digest = release.get("content_digest")
             provenance = transaction.get("source-provenance") or {}
-            source_root_value = provenance.get("root") if isinstance(provenance, dict) else None
-            if not isinstance(release_digest, str) or not HEX64_RE.fullmatch(release_digest):
-                raise ContractError("live-load generation has no release content digest")
+            source_root_value = (
+                provenance.get("root") if isinstance(provenance, dict) else None
+            )
+            if not isinstance(release_digest, str) or not HEX64_RE.fullmatch(
+                release_digest
+            ):
+                raise ContractError(
+                    "live-load generation has no release content digest"
+                )
             if not isinstance(source_root_value, str) or not source_root_value:
                 raise ContractError("live-load generation has no immutable source root")
             source_root = Path(source_root_value)
@@ -2165,12 +2677,23 @@ class SystemState:
                 if stat.S_ISREG(metadata.st_mode)
             }
             if not source_files:
-                raise ContractError("live-load generation has no release file inventory")
-            if canonical_tracked_tree_digest(source_root, source_files) != release_digest:
-                raise ContractError("live-load source root drifted from the release digest")
-            plugin_digest = verify_native_release_inventory(root, source_root, release_digest)
+                raise ContractError(
+                    "live-load generation has no release file inventory"
+                )
+            if (
+                canonical_tracked_tree_digest(source_root, source_files)
+                != release_digest
+            ):
+                raise ContractError(
+                    "live-load source root drifted from the release digest"
+                )
+            plugin_digest = verify_native_release_inventory(
+                root, source_root, release_digest
+            )
             current = transaction.get("live-loaded")
-            receipts = dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
+            receipts = (
+                dict(current.get("receipts") or {}) if isinstance(current, dict) else {}
+            )
             receipts[client] = {
                 "client": client,
                 "session_id": session_id,
@@ -2226,8 +2749,13 @@ def validate_invite(invite: Any, now: datetime | None = None) -> dict[str, Any]:
     }
     _reject_unknown(invite, allowed, "invite")
     required = {
-        "schema_version", "repository", "provider", "manifest_path", "nonce",
-        "issued_at", "expires_at",
+        "schema_version",
+        "repository",
+        "provider",
+        "manifest_path",
+        "nonce",
+        "issued_at",
+        "expires_at",
     }
     missing = sorted(required - set(invite))
     if missing:
@@ -2240,15 +2768,20 @@ def validate_invite(invite: Any, now: datetime | None = None) -> dict[str, Any]:
     if invite.get("manifest_path") != ".agents/onboarding.yaml":
         raise ContractError("invite manifest_path must be .agents/onboarding.yaml")
     nonce = invite.get("nonce")
-    if not isinstance(nonce, str) or not re.fullmatch(
-        r"[A-Za-z0-9_-]{16,128}", nonce
-    ):
+    if not isinstance(nonce, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", nonce):
         raise ContractError("invite nonce must be 16-128 URL-safe characters")
     if "auth_help_url" in invite:
         auth = urlsplit(str(invite["auth_help_url"]))
-        if auth.scheme != "https" or not auth.hostname or auth.username or auth.password:
+        if (
+            auth.scheme != "https"
+            or not auth.hostname
+            or auth.username
+            or auth.password
+        ):
             raise ContractError("invite auth_help_url must be credential-free HTTPS")
-    if "repository_commit" in invite and not HEX40_RE.fullmatch(str(invite["repository_commit"])):
+    if "repository_commit" in invite and not HEX40_RE.fullmatch(
+        str(invite["repository_commit"])
+    ):
         raise ContractError("invite repository_commit must be an exact commit")
     issued = _parse_datetime(invite.get("issued_at"), "invite.issued_at")
     expires = _parse_datetime(invite.get("expires_at"), "invite.expires_at")
@@ -2285,6 +2818,7 @@ def consume_invite(
             raise ContractError("invite already consumed")
         consumed.setdefault("digests", {})[digest] = {"consumed_at": utcnow()}
         atomic_write_json(state.invites_path, consumed)
+
     if already_locked:
         record()
     else:
@@ -2298,7 +2832,9 @@ def _tracked_source(
 ) -> tuple[Path, str, str]:
     path = contained_path(root, relative, "instruction source")
     if not path.is_file() or path.is_symlink():
-        raise ContractError("required instruction source is not a regular file: %s" % relative)
+        raise ContractError(
+            "required instruction source is not a regular file: %s" % relative
+        )
     if identity is not None and identity.get("kind") == "release":
         if Path(str(identity.get("root") or "")).resolve() != Path(root).resolve():
             raise ContractError(
@@ -2318,9 +2854,7 @@ def _tracked_source(
     if proc.returncode:
         raise ContractError("instruction source is not Git-tracked: %s" % relative)
     if _git(root, "--no-optional-locks", "status", "--porcelain=v1", "--", relative):
-        raise ContractError(
-            "instruction source has uncommitted changes: %s" % relative
-        )
+        raise ContractError("instruction source has uncommitted changes: %s" % relative)
     commit = _git(root, "rev-parse", "HEAD^{commit}")
     return path, commit, file_digest(path)
 
@@ -2342,8 +2876,13 @@ def _instruction_source_record(value: Any) -> dict[str, str]:
     if not HEX40_RE.fullmatch(commit) or not HEX64_RE.fullmatch(digest):
         raise ContractError("instruction source receipt identity is invalid")
     relative = safe_relative_path(value.get("path"), "instruction source receipt path")
-    return {"role": role, "repository": repository, "commit": commit,
-            "path": relative, "sha256": digest}
+    return {
+        "role": role,
+        "repository": repository,
+        "commit": commit,
+        "path": relative,
+        "sha256": digest,
+    }
 
 
 def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
@@ -2359,7 +2898,9 @@ def verify_instruction_source_receipt(value: Any) -> dict[str, str]:
         git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
         if git_root != root.resolve():
             raise ContractError("instruction source repository root drifted: %s" % role)
-        if _git(root, "--no-optional-locks", "status", "--porcelain=v1", "--", relative):
+        if _git(
+            root, "--no-optional-locks", "status", "--porcelain=v1", "--", relative
+        ):
             raise DriftError("instruction source has uncommitted changes: %s" % role)
     # A matching current file does not prove the recorded commit exists. The
     # same Git-blob/immutable-release reader authenticates every source role.
@@ -2384,13 +2925,16 @@ def _historical_instruction_content(value: Any) -> bytes:
     git_root = _git_optional(root, "rev-parse", "--show-toplevel")
     if git_root and Path(git_root).resolve() == root.resolve():
         if _git(root, "cat-file", "-t", record["commit"]) != "commit":
-            raise DriftError("historical instruction source identity is not a Git commit")
+            raise DriftError(
+                "historical instruction source identity is not a Git commit"
+            )
         entry = _git(root, "ls-tree", record["commit"], "--", record["path"])
         if not entry.startswith(("100644 blob ", "100755 blob ")):
             raise DriftError("historical instruction source is not a regular Git blob")
         result = subprocess.run(
             ["git", "-C", str(root), "show", record["commit"] + ":" + record["path"]],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
         if result.returncode:
             raise DriftError("historical instruction source commit is unavailable")
@@ -2400,13 +2944,19 @@ def _historical_instruction_content(value: Any) -> bytes:
         version = _manifest_version(root)
         descriptor_path = state.state_dir / "releases" / (version + ".json")
         if descriptor_path.is_symlink() or not descriptor_path.is_file():
-            raise DriftError("historical public instruction release proof is unavailable")
+            raise DriftError(
+                "historical public instruction release proof is unavailable"
+            )
         try:
-            descriptor = validate_release_descriptor(json.loads(descriptor_path.read_text()))
+            descriptor = validate_release_descriptor(
+                json.loads(descriptor_path.read_text())
+            )
         except (ValueError, UnicodeError) as exc:
             raise ContractError("historical public release proof is malformed") from exc
-        if (descriptor["commit"] != record["commit"] or
-                root != state.cache_dir / "releases" / descriptor["content_digest"]):
+        if (
+            descriptor["commit"] != record["commit"]
+            or root != state.cache_dir / "releases" / descriptor["content_digest"]
+        ):
             raise DriftError("historical public instruction release identity differs")
         verify_materialized_release(root, descriptor)
         content = path.read_bytes()
@@ -2425,7 +2975,9 @@ def instruction_output_state(workspace: Path, receipt: Any) -> str:
     This does not allow an edited canonical document or extra adapter content.
     """
     workspace = Path(workspace)
-    if not workspace.is_absolute() or any(p.is_symlink() for p in (workspace, *workspace.parents)):
+    if not workspace.is_absolute() or any(
+        p.is_symlink() for p in (workspace, *workspace.parents)
+    ):
         raise DriftError("instruction workspace must be an absolute non-symlink path")
     receipt = _require_mapping(receipt, "instruction receipt")
     if type(receipt.get("schema_version")) is not int or receipt["schema_version"] != 1:
@@ -2439,10 +2991,14 @@ def instruction_output_state(workspace: Path, receipt: Any) -> str:
         output = _require_mapping(outputs[name], "instruction output receipt")
         if output.get("path") != str(target):
             raise DriftError("instruction receipt belongs to a different workspace")
-        if not isinstance(output.get("sha256"), str) or not HEX64_RE.fullmatch(output["sha256"]):
+        if not isinstance(output.get("sha256"), str) or not HEX64_RE.fullmatch(
+            output["sha256"]
+        ):
             raise ContractError("instruction output receipt digest is invalid")
         if target.is_symlink() or not target.is_file():
-            raise DriftError("instruction output is missing or a symbolic link: %s" % name)
+            raise DriftError(
+                "instruction output is missing or a symbolic link: %s" % name
+            )
         contents[name] = target.read_bytes()
     agents_hash = hashlib.sha256(contents["AGENTS.md"]).hexdigest()
     if agents_hash != outputs["AGENTS.md"]["sha256"]:
@@ -2474,8 +3030,14 @@ def instruction_output_state(workspace: Path, receipt: Any) -> str:
         parts.extend(["", "## %s" % role.title(), "", text])
     reconstructed = ("\n".join(parts).rstrip() + "\n").encode("utf-8")
     if reconstructed != contents["AGENTS.md"]:
-        raise DriftError("historical instruction sources do not reproduce canonical output")
-    return "legacy-adapter" if contents["CLAUDE.md"] == CLAUDE_INSTRUCTION_ADAPTER else "legacy-duplicate"
+        raise DriftError(
+            "historical instruction sources do not reproduce canonical output"
+        )
+    return (
+        "legacy-adapter"
+        if contents["CLAUDE.md"] == CLAUDE_INSTRUCTION_ADAPTER
+        else "legacy-duplicate"
+    )
 
 
 def _restore_file(path: Path, previous: tuple[bool, bytes, int]) -> None:
@@ -2500,16 +3062,33 @@ def _instruction_snapshot(path: Path) -> tuple[bool, bytes, int, int, int]:
         raise DriftError("instruction output is not a regular file: %s" % path.name)
     content = path.read_bytes()
     after = path.lstat()
-    mutation_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
-    if any(getattr(metadata, field) != getattr(after, field) for field in mutation_fields):
+    mutation_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if any(
+        getattr(metadata, field) != getattr(after, field) for field in mutation_fields
+    ):
         raise DriftError("instruction output changed while being read: %s" % path.name)
-    return True, content, stat.S_IMODE(metadata.st_mode), metadata.st_dev, metadata.st_ino
+    return (
+        True,
+        content,
+        stat.S_IMODE(metadata.st_mode),
+        metadata.st_dev,
+        metadata.st_ino,
+    )
 
 
 def _verify_instruction_snapshots(targets, expected) -> None:
     for target, snapshot in zip(targets, expected):
         if _instruction_snapshot(target) != snapshot:
-            raise DriftError("instruction output changed concurrently: %s" % target.name)
+            raise DriftError(
+                "instruction output changed concurrently: %s" % target.name
+            )
 
 
 def materialize_instruction_pair(
@@ -2524,7 +3103,11 @@ def materialize_instruction_pair(
 ) -> dict[str, Any]:
     graph = _require_mapping(graph, "instruction graph")
     source_identities = source_identities or {}
-    _reject_unknown(graph, {"schema_version", "sources", "output", "claude_adapter"}, "instruction graph")
+    _reject_unknown(
+        graph,
+        {"schema_version", "sources", "output", "claude_adapter"},
+        "instruction graph",
+    )
     if type(graph.get("schema_version")) is not int or graph["schema_version"] != 1:
         raise ContractError("instruction graph schema_version must be 1")
     if graph.get("output") != "AGENTS.md" or graph.get("claude_adapter") != "CLAUDE.md":
@@ -2533,13 +3116,19 @@ def materialize_instruction_pair(
     if not isinstance(sources, list) or not sources:
         raise ContractError("instruction graph needs at least one source")
     workspace = Path(workspace)
-    if not workspace.is_absolute() or any(p.is_symlink() for p in (workspace, *workspace.parents)):
+    if not workspace.is_absolute() or any(
+        p.is_symlink() for p in (workspace, *workspace.parents)
+    ):
         raise ContractError("workspace must be an absolute non-symlink path")
     targets = [workspace / "AGENTS.md", workspace / "CLAUDE.md"]
     if any(target.is_symlink() for target in targets):
         raise DriftError("instruction output is a symbolic link")
     previous = [_instruction_snapshot(target) for target in targets]
-    prior_state = instruction_output_state(workspace, previous_receipt) if previous_receipt is not None else None
+    prior_state = (
+        instruction_output_state(workspace, previous_receipt)
+        if previous_receipt is not None
+        else None
+    )
     _verify_instruction_snapshots(targets, previous)
 
     parts = [
@@ -2550,7 +3139,9 @@ def materialize_instruction_pair(
     roles_seen = set()
     for index, entry in enumerate(sources):
         entry = _require_mapping(entry, "instruction sources[%d]" % index)
-        _reject_unknown(entry, {"role", "path", "required"}, "instruction sources[%d]" % index)
+        _reject_unknown(
+            entry, {"role", "path", "required"}, "instruction sources[%d]" % index
+        )
         role = entry.get("role")
         if role not in ("public", "organization", "personal"):
             raise ContractError("instruction source role is unsupported")
@@ -2562,7 +3153,9 @@ def materialize_instruction_pair(
         required = entry.get("required", True)
         if root is None:
             if required:
-                raise ContractError("required instruction source root is missing: %s" % role)
+                raise ContractError(
+                    "required instruction source root is missing: %s" % role
+                )
             continue
         try:
             path, commit, digest = _tracked_source(
@@ -2575,7 +3168,9 @@ def materialize_instruction_pair(
         try:
             source_bytes = path.read_bytes()
             if hashlib.sha256(source_bytes).hexdigest() != digest:
-                raise DriftError("instruction source changed during resolution: %s" % role)
+                raise DriftError(
+                    "instruction source changed during resolution: %s" % role
+                )
             text = source_bytes.decode("utf-8").strip()
         except UnicodeError as exc:
             raise ContractError(
@@ -2594,7 +3189,10 @@ def materialize_instruction_pair(
     rendered = ("\n".join(parts).rstrip() + "\n").encode("utf-8")
     rendered_outputs = {"AGENTS.md": rendered, "CLAUDE.md": CLAUDE_INSTRUCTION_ADAPTER}
     output_receipts = {
-        target.name: {"path": str(target), "sha256": hashlib.sha256(rendered_outputs[target.name]).hexdigest()}
+        target.name: {
+            "path": str(target),
+            "sha256": hashlib.sha256(rendered_outputs[target.name]).hexdigest(),
+        }
         for target in targets
     }
     _verify_instruction_snapshots(targets, previous)
@@ -2603,7 +3201,8 @@ def materialize_instruction_pair(
     if previous_receipt:
         expected_outputs = previous_receipt.get("outputs") or {}
         if all(
-            (expected_outputs.get(target.name) or {}).get("sha256") == output_receipts[target.name]["sha256"]
+            (expected_outputs.get(target.name) or {}).get("sha256")
+            == output_receipts[target.name]["sha256"]
             for target in targets
         ):
             unchanged = dict(previous_receipt)
@@ -2617,7 +3216,11 @@ def materialize_instruction_pair(
     try:
         for target in targets:
             with tempfile.NamedTemporaryFile(
-                mode="wb", dir=workspace, prefix=target.name + ".", suffix=".stage", delete=False
+                mode="wb",
+                dir=workspace,
+                prefix=target.name + ".",
+                suffix=".stage",
+                delete=False,
             ) as temporary:
                 temporary.write(rendered_outputs[target.name])
                 temporary.flush()
@@ -2628,12 +3231,16 @@ def materialize_instruction_pair(
             _verify_instruction_snapshots(targets, expected)
             staged = _instruction_snapshot(temporary_paths[index])
             if staged[1] != rendered_outputs[target.name] or staged[2] != 0o600:
-                raise DriftError("staged instruction output differs from verified render")
+                raise DriftError(
+                    "staged instruction output differs from verified render"
+                )
             os.replace(temporary_paths[index], target)
             activated[index] = staged
             expected[index] = staged
             if index == 0 and fail_after_first:
-                raise ContractError("injected failure after first instruction activation")
+                raise ContractError(
+                    "injected failure after first instruction activation"
+                )
         _verify_instruction_snapshots(targets, expected)
         _fsync_directory(workspace)
     except BaseException as activation_error:
@@ -2650,7 +3257,9 @@ def materialize_instruction_pair(
                 except OSError:
                     rollback_errors.append(targets[index].name)
         if rollback_errors:
-            raise ContractError("instruction rollback incomplete: %s" % ", ".join(rollback_errors)) from activation_error
+            raise ContractError(
+                "instruction rollback incomplete: %s" % ", ".join(rollback_errors)
+            ) from activation_error
         raise
     finally:
         for temporary in temporary_paths:
@@ -2684,10 +3293,17 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
         raise ContractError("outcome task is not trusted by this release")
     evidence = _require_mapping(evidence, "outcome evidence")
     if evidence.get("source_class") != task.get("source_class"):
-        raise ContractError("outcome source class does not match the trusted capability")
+        raise ContractError(
+            "outcome source class does not match the trusted capability"
+        )
     if task_id == "first-use-artifact-check":
         from first_run_store import MAX_ARTIFACT_BYTES, read_file
-        if set(evidence) != {"source_class", "artifact", "sha256"} or not isinstance(evidence["artifact"], str) or not HEX64_RE.fullmatch(str(evidence["sha256"])):
+
+        if (
+            set(evidence) != {"source_class", "artifact", "sha256"}
+            or not isinstance(evidence["artifact"], str)
+            or not HEX64_RE.fullmatch(str(evidence["sha256"]))
+        ):
             raise ContractError("first-use artifact evidence is invalid")
         data, identity = read_file(Path(evidence["artifact"]), MAX_ARTIFACT_BYTES)
         try:
@@ -2698,12 +3314,20 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
             raise ContractError("first-use artifact is empty or not text")
         checksum = hashlib.sha256(data).hexdigest()
         if checksum != evidence["sha256"]:
-            raise ContractError("first-use artifact differs from the exact reviewed bytes")
-        return {"task_id": task_id, "capability": task["capability"],
-                "source_class": task["source_class"], "artifact": evidence["artifact"],
-                "artifact_sha256": checksum, "artifact_bytes": len(data),
-                "artifact_identity": identity, "verified_at": utcnow(),
-                "scope": "local artifact custody only; no native execution or quality claim"}
+            raise ContractError(
+                "first-use artifact differs from the exact reviewed bytes"
+            )
+        return {
+            "task_id": task_id,
+            "capability": task["capability"],
+            "source_class": task["source_class"],
+            "artifact": evidence["artifact"],
+            "artifact_sha256": checksum,
+            "artifact_bytes": len(data),
+            "artifact_identity": identity,
+            "verified_at": utcnow(),
+            "scope": "local artifact custody only; no native execution or quality claim",
+        }
     if task_id != "workspace-grounding-check":
         raise ContractError("outcome task has no public verifier")
     workspace_value = evidence.get("workspace")
@@ -2720,15 +3344,24 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
     if not kb_config.is_file() or kb_config.is_symlink():
         raise ContractError("workspace has no tracked knowledge-base declaration")
     config_relative = kb_config.relative_to(workspace).as_posix()
-    if _git_optional(workspace, "ls-files", "--error-unmatch", "--", config_relative) is None:
+    if (
+        _git_optional(workspace, "ls-files", "--error-unmatch", "--", config_relative)
+        is None
+    ):
         raise ContractError("knowledge-base declaration is not Git-tracked")
     if _git(workspace, "status", "--porcelain", "--", config_relative):
         raise ContractError("knowledge-base declaration has uncommitted changes")
-    match = re.search(r"(?m)^bundle_path:\s*([^\s#]+)\s*$", kb_config.read_text(encoding="utf-8"))
+    match = re.search(
+        r"(?m)^bundle_path:\s*([^\s#]+)\s*$", kb_config.read_text(encoding="utf-8")
+    )
     if not match:
         raise ContractError("knowledge-base declaration has no bundle_path")
     bundle_value = match.group(1)
-    if len(bundle_value) >= 2 and bundle_value[0] == bundle_value[-1] and bundle_value[0] in "\"'":
+    if (
+        len(bundle_value) >= 2
+        and bundle_value[0] == bundle_value[-1]
+        and bundle_value[0] in "\"'"
+    ):
         bundle_value = bundle_value[1:-1]
     bundle = contained_path(workspace, bundle_value, "knowledge bundle")
     bundle_relative = bundle.relative_to(workspace).as_posix()
@@ -2747,7 +3380,9 @@ def verify_outcome(task_id: str, evidence: Any, repo_root: Path) -> dict[str, An
     digest = hashlib.sha256()
     for path in files:
         relative = path.relative_to(workspace).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0" + bytes.fromhex(file_digest(path)))
+        digest.update(
+            relative.encode("utf-8") + b"\0" + bytes.fromhex(file_digest(path))
+        )
     return {
         "task_id": task_id,
         "capability": task["capability"],

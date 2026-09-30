@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import json
 import hashlib
 import os
 import re
@@ -19,6 +21,8 @@ MAX_ERROR_BYTES = 1024 * 1024
 MAX_MESSAGE_BYTES = 1024 * 1024
 MAX_REPORT_BYTES = 16 * 1024
 SCAN_SECONDS = 60
+MAX_CONTEXT_BYTES = 32 * 1024 * 1024
+MAX_CONTEXT_FILES = 1024
 HUNK = re.compile(rb"^@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?: .*)?$")
 
 
@@ -46,7 +50,7 @@ def remaining(deadline: float) -> float:
     return value
 
 
-def bounded_git(deadline: float) -> bytes:
+def bounded_git(deadline: float, arguments: list[str] | None = None) -> bytes:
     argv = [
         "git",
         "--no-pager",
@@ -54,6 +58,7 @@ def bounded_git(deadline: float) -> bytes:
         "--cached",
         "--no-ext-diff",
         "--no-textconv",
+        "--text",  # Binary presentation and -diff attributes cannot hide bytes.
         "--no-color",
         "--src-prefix=a/",
         "--dst-prefix=b/",
@@ -62,6 +67,8 @@ def bounded_git(deadline: float) -> bytes:
         "--diff-filter=AMCR",
         "-U0",
     ]
+    if arguments is not None:
+        argv = ["git", "--no-pager", *arguments]
     child = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
     )
@@ -229,11 +236,14 @@ def destination(header: bytes) -> bytes:
     return value[2:]
 
 
-def added_lines(diff: bytes, exclusion: str, deadline: float) -> tuple[bytes, bytes]:
+def added_lines(
+    diff: bytes, exclusion: str, deadline: float, records: list | None = None
+) -> tuple[bytes, bytes]:
     all_lines = bytearray()
     selected = bytearray()
     path = None
     old_left = new_left = 0
+    new_number = 0
     exclude = False
     cache: dict[bytes, bool] = {}
     for line in diff.split(b"\n"):
@@ -253,8 +263,12 @@ def added_lines(diff: bytes, exclusion: str, deadline: float) -> tuple[bytes, by
             if prefix == b"+":
                 # Preserve the leading '+' as the historical scanner did.
                 all_lines.extend(line + b"\n")
+                if records is not None:
+                    records.append((path, new_number, line[1:]))
                 if not exclude:
                     selected.extend(line + b"\n")
+            if prefix != b"-":
+                new_number += 1
             continue
         if line.startswith(b"diff --git "):
             path = None
@@ -281,6 +295,9 @@ def added_lines(diff: bytes, exclusion: str, deadline: float) -> tuple[bytes, by
             match = HUNK.fullmatch(line)
             if path is None or not match:
                 raise ScanError("unbound or malformed Git hunk")
+            new_number = int(
+                line.split(b" +", 1)[1].split(b" ", 1)[0].split(b",", 1)[0]
+            )
             old_left = int(match[1]) if match[1] is not None else 1
             new_left = int(match[2]) if match[2] is not None else 1
         elif line.startswith(b"+"):
@@ -321,27 +338,399 @@ def message_lines(path: str, deadline: float) -> bytes:
     return b"\n".join(line for line in raw.split(b"\n") if not line.startswith(b"#"))
 
 
+# Only these literal vocabulary entries have a syntax-aware interpretation.
+# Every other configured ERE, including duplicates in other groups, keeps its
+# ordinary unconditional matching semantics. This is policy data, not a grant.
+MARKER_NAMES = tuple(
+    "BEGIN " + family + "PRIVATE KEY"
+    for family in ("RSA ", "OPENSSH ", "EC ", "PGP ", "", "ENCRYPTED ")
+)
+
+
+def rule_policy(value: str | None, tier0: str, active: str) -> dict | None:
+    if value is None:
+        return None  # Direct scanner calls remain conservative without typed policy.
+    try:
+        policy = json.loads(value)
+    except (ValueError, TypeError) as exc:
+        raise ScanError("invalid typed marker policy") from exc
+    if (
+        not isinstance(policy, dict)
+        or set(policy)
+        != {"version", "markers", "credentials", "exposure", "tier0", "active"}
+        or type(policy["version"]) is not int
+        or policy["version"] != 1
+        or not isinstance(policy["markers"], list)
+        or any(
+            not isinstance(x, str) or x not in MARKER_NAMES for x in policy["markers"]
+        )
+        or len(policy["markers"]) != len(set(policy["markers"]))
+        or any(
+            not isinstance(policy[x], str)
+            for x in ("credentials", "exposure", "tier0", "active")
+        )
+        or policy["tier0"] != tier0
+        or policy["active"] != active
+    ):
+        raise ScanError("typed marker policy does not bind scanner expressions")
+    return policy
+
+
+def staged_context(index: bytes, records: list, deadline: float) -> dict[bytes, bytes]:
+    """Read content-addressed index blobs, never mutable worktree files."""
+    wanted = {path for path, _, _ in records}
+    if len(wanted) > MAX_CONTEXT_FILES:
+        raise ScanError("marker context exceeded its file bound")
+    objects = {}
+    for entry in index.split(b"\0"):
+        remaining(deadline)
+        if not entry:
+            continue
+        header, sep, path = entry.partition(b"\t")
+        fields = header.split(b" ")
+        if not sep or len(fields) != 3:
+            raise ScanError("malformed staged index evidence")
+        mode, oid, stage = fields
+        if path not in wanted:
+            continue
+        if (
+            stage != b"0"
+            or path in objects
+            or not re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", oid)
+        ):
+            raise ScanError("unmerged or malformed staged context")
+        objects[path] = (mode, oid)
+    if set(objects) != wanted:
+        raise ScanError("staged context path is missing")
+    blobs = {}
+    total = 0
+    for path in sorted(wanted):
+        mode, oid = objects[path]
+        if mode == b"160000":
+            # Gitlink text is a commit identifier, not blob content. Still scan
+            # the original added lines; never classify them as detection rules.
+            blobs[path] = b""
+            continue
+        if mode not in (b"100644", b"100755", b"120000"):
+            raise ScanError("unsupported staged context mode")
+        raw = bounded_git(deadline, ["cat-file", "blob", oid.decode("ascii")])
+        total += len(raw)
+        if total > MAX_CONTEXT_BYTES:
+            raise ScanError("marker context exceeded its byte bound")
+        payload = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+        digest = (
+            hashlib.sha1(payload) if len(oid) == 40 else hashlib.sha256(payload)
+        ).hexdigest()
+        if digest.encode("ascii") != oid:
+            raise ScanError("staged blob does not match its object identity")
+        blobs[path] = raw
+    # Bind every diff line and line number to the captured index object.
+    lines = {path: raw.split(b"\n") for path, raw in blobs.items()}
+    for path, number, raw in records:
+        if objects[path][0] == b"160000":
+            continue
+        if not 1 <= number <= len(lines[path]) or lines[path][number - 1] != raw:
+            raise ScanError("Git diff does not bind captured staged content")
+    return blobs
+
+
+def load_rule_parser(deadline: float):
+    """Reuse the installed config grammar from captured source, without pyc reuse."""
+    remaining(deadline)
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_load_config.py")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024:
+            raise ScanError("rule parser source must be a bounded regular file")
+        raw = bytearray()
+        while len(raw) <= 1024 * 1024:
+            remaining(deadline)
+            part = os.read(fd, 65536)
+            if not part:
+                break
+            raw.extend(part)
+        after = os.fstat(fd)
+
+        def identity(info):
+            return (
+                info.st_dev,
+                info.st_ino,
+                info.st_mode,
+                info.st_nlink,
+                info.st_size,
+                info.st_mtime_ns,
+                info.st_ctime_ns,
+            )
+
+        if (
+            len(raw) != before.st_size
+            or identity(before) != identity(after)
+            or identity(after) != identity(os.lstat(path))
+        ):
+            raise ScanError("rule parser source changed during capture")
+    finally:
+        os.close(fd)
+    namespace = {"__name__": "_captured_marker_rule_parser", "__file__": path}
+    exec(compile(bytes(raw), path, "exec"), namespace)
+    return namespace["parse_simple_yaml"], namespace["ConfigError"]
+
+
+def detection_rule_lines(raw: bytes, markers: list[str], parser) -> set[int]:
+    """Recognize narrow data-only rule syntax, never filenames or quotes alone.
+
+    YAML: a complete private_key_markers sequence at document root or directly
+    inside tier_0_always, containing only exact bare marker strings. Python:
+    a data-only module of raw-string private_key_marker assignments. No parser
+    recovery, arbitrary expression evaluation, aliases, or key-material values.
+    Other content still receives all credential/exposure scans.
+    """
+    try:
+        text = raw.decode("utf-8", "strict")
+    except UnicodeError:
+        return set()
+    if "\0" in text:
+        return set()
+    lines = text.split("\n")
+    allowed = set(markers)
+    accepted = set()
+    parse_yaml, config_error = parser
+    try:
+        document = parse_yaml(text)
+        # Parsing the complete document prevents malformed neighboring bodies
+        # from borrowing a rule-looking key or indentation as an exemption.
+        yaml_valid = isinstance(document, dict)
+    except (config_error, ValueError, RecursionError):
+        yaml_valid = False
+    parents = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        while parents and parents[-1][0] >= indent:
+            parents.pop()
+        header = re.fullmatch(r" *([A-Za-z_][A-Za-z_0-9]*): *(?:#.*)?", line)
+        if not header:
+            continue
+        name = header[1]
+        eligible = (
+            yaml_valid
+            and name == "private_key_markers"
+            and (
+                indent == 0 or (len(parents) == 1 and parents[0][1] == "tier_0_always")
+            )
+        )
+        if eligible:
+            found = []
+            item_indent = None
+            valid = True
+            for offset in range(index + 1, len(lines)):
+                item = lines[offset]
+                if not item.strip() or item.lstrip().startswith("#"):
+                    continue
+                depth = len(item) - len(item.lstrip(" "))
+                if depth <= indent:
+                    break
+                match = re.fullmatch(r"( +)- (['\"])([^'\"\\]+)\2 *(?:#.*)?", item)
+                if not match or match[3] not in allowed:
+                    valid = False
+                    break
+                if item_indent is None:
+                    item_indent = len(match[1])
+                if len(match[1]) != item_indent:
+                    valid = False
+                    break
+                # A second marker in a trailing comment is still material.
+                suffix = item[match.end(3) + 1 :]
+                if any(marker.lower() in suffix.lower() for marker in markers):
+                    valid = False
+                    break
+                found.append(offset + 1)
+            if valid and found:
+                accepted.update(found)
+        parents.append((indent, name))
+    # A Python rule module has one meaning: raw constant declarations only.
+    try:
+        module = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError):
+        return accepted
+    python_lines = set()
+    for node in module.body:
+        if not (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "private_key_marker"
+            and isinstance(node.value, ast.Constant)
+            and node.value.value in allowed
+            and node.lineno == node.end_lineno
+            and re.fullmatch(
+                r" *private_key_marker *= *[rR](['\"])[^'\"\\]+\1 *",
+                lines[node.lineno - 1],
+            )
+        ):
+            return accepted
+        python_lines.add(node.lineno)
+    return accepted | python_lines
+
+
+def marker_view(line: bytes) -> bytes:
+    # Escaped JSON/Python string content remains material. Decoding only ASCII
+    # escapes cannot create a rule exemption; rule syntax is checked on originals.
+    return re.sub(
+        rb"\\(?:u00([0-9a-fA-F]{2})|x([0-9a-fA-F]{2}))",
+        lambda match: bytes([int(match[1] or match[2], 16)]),
+        line,
+    ).lower()
+
+
+def complete_inline_key_regions(line: bytes, markers: list[bytes]) -> bool:
+    """Prove closed regions in one complete JSON value, never by substring.
+
+    An unchanged JSON record can contain a complete escaped multi-line key.
+    Its matching footer closes only that value, not an earlier open raw region.
+    All marker-bearing strings, including object keys, must prove closure.
+    """
+    try:
+        pending = [json.loads(line.decode("utf-8", "strict"))]
+    except (UnicodeError, ValueError, RecursionError):
+        return False
+    found = False
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+        elif isinstance(value, str):
+            encoded = value.lower().encode("utf-8")
+            relevant = [marker for marker in markers if marker in encoded]
+            if not relevant:
+                continue
+            if len(relevant) != 1:
+                return False
+            marker = relevant[0]
+            suffix = b" block" if marker == b"begin pgp private key" else b""
+            header = b"-----" + marker + suffix + b"-----"
+            footer = (
+                b"-----" + marker.replace(b"begin ", b"end ", 1) + suffix + b"-----"
+            )
+            lines = encoded.strip().splitlines()
+            if (
+                len(lines) < 2
+                or lines[0].strip() != header
+                or lines[-1].strip() != footer
+                or any(
+                    b"-----begin " in item or b"-----end " in item
+                    for item in lines[1:-1]
+                )
+            ):
+                return False
+            found = True
+    return found
+
+
+def material_lines(
+    blobs: dict[bytes, bytes], records: list, markers: list[str], deadline: float
+) -> bytes:
+    added = {}
+    for path, number, raw in records:
+        added.setdefault(path, {})[number] = raw
+    hits = []
+    parser = load_rule_parser(deadline)
+    encoded = [value.lower().encode("ascii") for value in markers]
+    for path, changes in added.items():
+        remaining(deadline)
+        raw = blobs[path]
+        rules = detection_rule_lines(raw, markers, parser)
+        opened = []
+        for number, line in enumerate(raw.split(b"\n"), 1):
+            remaining(deadline)
+            view = marker_view(line)
+            found = next((value for value in encoded if value in view), None)
+            # A recognized exact bare scalar is a rule, not a key header. A
+            # neighboring invalid/body-bearing sequence invalidates that proof.
+            inline_complete = found and complete_inline_key_regions(line, encoded)
+            if found and number not in rules and not inline_complete:
+                suffix = b" block" if found == b"begin pgp private key" else b""
+                opened.append(
+                    b"-----" + found.replace(b"begin ", b"end ", 1) + suffix + b"-----"
+                )
+            if number in changes and (opened or (found and number not in rules)):
+                hits.append(b"+" + changes[number] + b"\n")
+            # Bare END words in comments are not an armored footer. A partial
+            # footer keeps the region open, so a later added body cannot escape.
+            if opened:
+                # A quoted example, comment, wrong-family or partial footer is
+                # not evidence that an existing private region has ended.
+                if view.strip() == opened[-1]:
+                    opened.pop()
+        if not raw:  # Gitlink additions retain conservative literal matching.
+            for line in changes.values():
+                if any(value in marker_view(line) for value in encoded):
+                    hits.append(b"+" + line + b"\n")
+    return b"".join(hits)
+
+
 def scan(
-    tier0: str, active: str, allowlist: str, exclusion: str, message: str | None = None, *, mandatory: str = ""
+    tier0: str,
+    active: str,
+    allowlist: str,
+    exclusion: str,
+    message: str | None = None,
+    *,
+    mandatory: str = "",
+    marker_policy: str | None = None,
 ) -> bytes:
     if not tier0 or not active:
         raise ScanError("credential and active patterns must be nonempty")
     deadline = time.monotonic() + SCAN_SECONDS
-    for pattern in (tier0, active, allowlist, exclusion, mandatory):
+    policy = rule_policy(marker_policy, tier0, active)
+    credentials = tier0 if policy is None else policy["credentials"]
+    exposure = active if policy is None else policy["exposure"]
+    markers = [] if policy is None else policy["markers"]
+    for pattern in (
+        tier0,
+        active,
+        allowlist,
+        exclusion,
+        mandatory,
+        credentials,
+        exposure,
+    ):
         if pattern:
             grep(b"", pattern, deadline)
+    records = []
+    index = None
     if message is None:
+        if markers:
+            index = bounded_git(deadline, ["ls-files", "--stage", "-z"])
         raw = bounded_git(deadline)
-        unfiltered, selected = added_lines(raw, exclusion, deadline)
+        unfiltered, selected = added_lines(raw, exclusion, deadline, records)
+        blobs = staged_context(index, records, deadline) if markers else {}
     else:
         unfiltered = selected = message_lines(message, deadline)
-    matches = grep(unfiltered, tier0, deadline)
+        blobs = {b"message": unfiltered}
+        records = [
+            (b"message", number, line)
+            for number, line in enumerate(unfiltered.split(b"\n"), 1)
+        ]
+    matches = grep(unfiltered, credentials, deadline) if credentials else b""
+    if not matches and markers:
+        matches = material_lines(blobs, records, markers, deadline)
     if not matches and mandatory:
         matches = grep(unfiltered, mandatory, deadline)
-    if not matches:
-        matches = grep(selected, active, deadline)
+    if not matches and exposure:
+        matches = grep(selected, exposure, deadline)
         if matches and allowlist:
             matches = grep(matches, allowlist, deadline, invert=True)
+    if (
+        index is not None
+        and bounded_git(deadline, ["ls-files", "--stage", "-z"]) != index
+    ):
+        raise ScanError("staged index changed during marker scan")
     return b"\n".join(matches.split(b"\n")[:20]).rstrip(b"\n")
 
 
@@ -350,11 +739,18 @@ def main() -> int:
     for name in ("tier0", "active", "allowlist", "exclusion"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--message")
+    parser.add_argument("--marker-policy")
     parser.add_argument("--mandatory", default="")
     args = parser.parse_args()
     try:
         matches = scan(
-            args.tier0, args.active, args.allowlist, args.exclusion, args.message, mandatory=args.mandatory
+            args.tier0,
+            args.active,
+            args.allowlist,
+            args.exclusion,
+            args.message,
+            mandatory=args.mandatory,
+            marker_policy=args.marker_policy,
         )
     except (ScanError, OSError, ValueError) as exc:
         print(f"staged scanner failed closed: {exc}", file=sys.stderr)

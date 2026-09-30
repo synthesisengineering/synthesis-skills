@@ -107,12 +107,10 @@ def test_interpreter_drift_or_unpinned_path_refuses(active, field, value):
 def test_active_release_is_verified_and_uses_current_pinned_executable(active):
     pointer, root, _ = active
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, SCRIPT, ["--example"]) == [
-        sys.executable,
-        "-B",
-        str(root / "skills" / SCRIPT),
-        "--example",
-    ]
+    argv = runtime.command(verified, SCRIPT, ["--example"])
+    assert argv[:5] == [sys.executable, "-B", "-I", "-S", "-c"]
+    assert argv[-2:] == [str(root / "skills" / SCRIPT), "--example"]
+    assert argv[6] == str(root)
 
 
 def test_tree_hash_contract_matches_the_existing_release_format(active):
@@ -564,12 +562,10 @@ def test_declared_guard_entrypoint_executes_from_the_verified_release(
     }
     pointer.write_text(json.dumps(data))
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, guard, ["--doctor"]) == [
-        sys.executable,
-        "-B",
-        str(target),
-        "--doctor",
-    ]
+    argv = runtime.command(verified, guard, ["--doctor"])
+    assert argv[:5] == [sys.executable, "-B", "-I", "-S", "-c"]
+    assert argv[-2:] == [str(target), "--doctor"]
+    assert argv[6] == str(root)
     result = runtime.execute(verified, guard, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"guard-ok\n"
@@ -622,12 +618,10 @@ def test_declared_hook_entrypoint_executes_from_the_verified_release(
     }
     pointer.write_text(json.dumps(data))
     verified = runtime.verified_release(pointer)
-    assert runtime.command(verified, hook, ["--doctor"]) == [
-        sys.executable,
-        "-B",
-        str(target),
-        "--doctor",
-    ]
+    argv = runtime.command(verified, hook, ["--doctor"])
+    assert argv[:5] == [sys.executable, "-B", "-I", "-S", "-c"]
+    assert argv[-2:] == [str(target), "--doctor"]
+    assert argv[6] == str(root)
     result = runtime.execute(verified, hook, [], b"{}", timeout=10)
     assert result.returncode == 0
     assert result.stdout == b"hook-ok\n"
@@ -1171,7 +1165,8 @@ def _stop_import_closure(entry):
 
     skills = Path(__file__).resolve().parents[2]
     paths = {
-        p for p in skills.rglob("*.py")
+        p
+        for p in skills.rglob("*.py")
         if not p.name.startswith("test_") and "__pycache__" not in p.parts
     }
     names = {}
@@ -1191,7 +1186,9 @@ def _stop_import_closure(entry):
         if path in seen:
             continue
         seen.add(path)
-        pending.extend(skills / p for p in explicit.get(path.relative_to(skills).as_posix(), ()))
+        pending.extend(
+            skills / p for p in explicit.get(path.relative_to(skills).as_posix(), ())
+        )
         for node in ast.walk(ast.parse(path.read_text())):
             imports = []
             if isinstance(node, ast.Import):
@@ -1220,10 +1217,14 @@ def _stop_release_with_receipt(active):
     pointer, root, data = active
     skills = Path(__file__).resolve().parents[2]
     shutil.copytree(
-        skills, root / "skills", dirs_exist_ok=True,
+        skills,
+        root / "skills",
+        dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".ruff_cache"),
     )
-    data = replace(pointer, data, content_digest=system_contract.canonical_tree_digest(root))
+    data = replace(
+        pointer, data, content_digest=system_contract.canonical_tree_digest(root)
+    )
     write_receipt(pointer, root, data)
     verified = runtime.verified_release(pointer)
     assert verified["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
@@ -1231,7 +1232,9 @@ def _stop_release_with_receipt(active):
 
 
 @pytest.mark.parametrize("entry", STOP_ENTRIES)
-def test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch(active, entry):
+def test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch(
+    active, entry
+):
     import time
 
     pointer, root, verified = _stop_release_with_receipt(active)
@@ -1242,16 +1245,28 @@ def test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch(acti
     for relative in required:
         target = root / "skills" / relative
         before, original = target.stat(), target.read_bytes()
-        offset = next(i for i, value in enumerate(original) if 65 <= value <= 90 or 97 <= value <= 122)
+        offset = next(
+            i
+            for i, value in enumerate(original)
+            if 65 <= value <= 90 or 97 <= value <= 122
+        )
         replacement = b"Q" if original[offset] != ord("Q") else b"R"
-        target.write_bytes(original[:offset] + replacement + original[offset + 1:])
+        target.write_bytes(original[:offset] + replacement + original[offset + 1 :])
         os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
         try:
             assert target.stat().st_ino == before.st_ino
-            assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
+            assert (
+                runtime.stat_walk(root)
+                == json.loads(runtime.activation_receipt_path(pointer).read_text())[
+                    "tree_stat"
+                ]
+            )
             current = runtime.verified_release(pointer)
             assert current["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
-            with pytest.raises(runtime.RuntimeContractError, match="entrypoint bytes drifted since activation"):
+            with pytest.raises(
+                runtime.RuntimeContractError,
+                match="entrypoint bytes drifted since activation",
+            ):
                 runtime.execute(current, entry, ["--help"], b"", timeout=5)
         finally:
             target.write_bytes(original)
@@ -1259,21 +1274,34 @@ def test_stop_every_imported_helper_same_stat_drift_refuses_before_dispatch(acti
         started = time.monotonic()
         assert runtime.command(verified, entry, ["--help"])
         timings.append(time.monotonic() - started)
-    (pointer.parent / (Path(entry).stem + "-dependency-cost.json")).write_text(json.dumps({
-        "helpers": len(required), "command_seconds": timings,
-        "scope": "actual receipt hash validation; excludes interpreter startup and native execution",
-    }, indent=2) + "\n")
+    (pointer.parent / (Path(entry).stem + "-dependency-cost.json")).write_text(
+        json.dumps(
+            {
+                "helpers": len(required),
+                "command_seconds": timings,
+                "scope": "actual receipt hash validation; excludes interpreter startup and native execution",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 @pytest.mark.parametrize("mode", ["--gate", "--combined-stop"])
-@pytest.mark.parametrize("fault", ["none", "coordination", "native_stop", "missing-hash"])
-def test_stop_actual_receipt_cold_consumer_before_effect(active, tmp_path, monkeypatch, mode, fault):
+@pytest.mark.parametrize(
+    "fault", ["none", "coordination", "native_stop", "missing-hash"]
+)
+def test_stop_actual_receipt_cold_consumer_before_effect(
+    active, tmp_path, monkeypatch, mode, fault
+):
     scripts = Path(__file__).resolve().parents[2] / "synthesis-autopilot/scripts"
     monkeypatch.syspath_prepend(str(scripts))
     from test_stop_identity import native_fixture
 
     pointer, root, _ = _stop_release_with_receipt(active)
-    payload, env, _ = native_fixture(tmp_path / "synthetic-native", "claude-code-desktop")
+    payload, env, _ = native_fixture(
+        tmp_path / "synthetic-native", "claude-code-desktop"
+    )
     for key in tuple(os.environ):
         if key.startswith(("SYNTHESIS_", "CLAUDE_", "CODEX_", "MUSE_", "PYTHONPATH")):
             monkeypatch.delenv(key, raising=False)
@@ -1282,8 +1310,11 @@ def test_stop_actual_receipt_cold_consumer_before_effect(active, tmp_path, monke
     monkeypatch.setenv("CLAUDE_CODE_HOST_SESSION_ID", "local_review_runtime")
     monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
     entry = STOP_ENTRIES[0]
-    relative = ("synthesis-autopilot/scripts/native_stop.py" if fault == "native_stop"
-                else "synthesis-project-management/scripts/coordination.py")
+    relative = (
+        "synthesis-autopilot/scripts/native_stop.py"
+        if fault == "native_stop"
+        else "synthesis-project-management/scripts/coordination.py"
+    )
     if fault == "missing-hash":
         receipt = json.loads(runtime.activation_receipt_path(pointer).read_text())
         receipt["entrypoints"].pop(relative, None)
@@ -1291,18 +1322,38 @@ def test_stop_actual_receipt_cold_consumer_before_effect(active, tmp_path, monke
     elif fault != "none":
         target = root / "skills" / relative
         before, original = target.stat(), target.read_bytes()
-        offset = next(i for i, value in enumerate(original) if 65 <= value <= 90 or 97 <= value <= 122)
-        changed = original[:offset] + (b"Q" if original[offset] != ord("Q") else b"R") + original[offset + 1:]
+        offset = next(
+            i
+            for i, value in enumerate(original)
+            if 65 <= value <= 90 or 97 <= value <= 122
+        )
+        changed = (
+            original[:offset]
+            + (b"Q" if original[offset] != ord("Q") else b"R")
+            + original[offset + 1 :]
+        )
         target.write_bytes(changed)
         os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
-        assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
+        assert (
+            runtime.stat_walk(root)
+            == json.loads(runtime.activation_receipt_path(pointer).read_text())[
+                "tree_stat"
+            ]
+        )
     current = runtime.verified_release(pointer)
     assert current["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
     if fault != "none":
-        with pytest.raises(runtime.RuntimeContractError, match="(entrypoint bytes drifted|no activation hash)"):
-            runtime.execute(current, entry, [mode], json.dumps(payload).encode(), timeout=20)
+        with pytest.raises(
+            runtime.RuntimeContractError,
+            match="(entrypoint bytes drifted|no activation hash)",
+        ):
+            runtime.execute(
+                current, entry, [mode], json.dumps(payload).encode(), timeout=20
+            )
     else:
-        result = runtime.execute(current, entry, [mode], json.dumps(payload).encode(), timeout=20)
+        result = runtime.execute(
+            current, entry, [mode], json.dumps(payload).encode(), timeout=20
+        )
         assert result.returncode == 0, result.stderr
         decoded = json.loads(result.stdout)
         if mode == "--gate":
@@ -1339,18 +1390,33 @@ def test_stop_reservation_lazy_loader_verifies_receipt_before_import(
         assert len(body) < len(original)
         target.write_bytes(body + b"#" + b" " * (len(original) - len(body) - 1))
         os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
-        assert runtime.stat_walk(root) == json.loads(runtime.activation_receipt_path(pointer).read_text())["tree_stat"]
-    assert runtime.verified_release(pointer)["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+        assert (
+            runtime.stat_walk(root)
+            == json.loads(runtime.activation_receipt_path(pointer).read_text())[
+                "tree_stat"
+            ]
+        )
+    assert (
+        runtime.verified_release(pointer)["_verification_mode"]
+        == runtime.VERIFICATION_MODE_RECEIPT
+    )
     if tamper:
         error = None
         try:
             runtime._policy_reservation(payload, {}, consume=False)
         except Exception as exc:
             error = exc
-        (tmp_path / "reservation-import-observation.json").write_text(json.dumps({
-            "effect": sentinel.exists(), "error_type": type(error).__name__,
-            "error": str(error),
-        }, indent=2) + "\n")
+        (tmp_path / "reservation-import-observation.json").write_text(
+            json.dumps(
+                {
+                    "effect": sentinel.exists(),
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
         assert not sentinel.exists(), "unverified reservation owner executed"
         assert isinstance(error, runtime.RuntimeContractError)
         assert "entrypoint bytes drifted" in str(error)
@@ -1376,3 +1442,230 @@ def test_stop_legacy_verification_cannot_authorize_later_changed_helper(active):
     os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
     with pytest.raises(runtime.RuntimeContractError, match="content digest drifted"):
         runtime.execute(current, STOP_ENTRIES[0], ["--gate"], b"{}", timeout=5)
+
+
+PEER_DELIVERY_ENTRIES = (
+    "synthesis-project-management/scripts/peer_send_gate.py",
+    "synthesis-project-management/scripts/board_inbox.py",
+)
+
+
+@pytest.mark.parametrize("entry", PEER_DELIVERY_ENTRIES)
+def test_delivery_repair_receipt_covers_actual_peer_closure(entry):
+    required = _stop_import_closure(entry)
+    assert required <= {entry, *runtime.ENTRYPOINT_DEPENDENCIES[entry]}
+    assert required <= set(runtime.RECEIPT_ENTRYPOINTS)
+
+
+@pytest.mark.parametrize("entry", PEER_DELIVERY_ENTRIES)
+@pytest.mark.parametrize("fault", ["bytes", "missing-hash", "symlink"])
+def test_delivery_repair_actual_peer_receipt_refuses_every_helper(active, entry, fault):
+    import shutil
+
+    pointer, root, data = active
+    skills = Path(__file__).resolve().parents[2]
+    # The real command owner needs exactly its declared executable closure,
+    # not unrelated test modules or another copy of the whole release tree.
+    for relative in {entry, *runtime.ENTRYPOINT_DEPENDENCIES[entry]}:
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(skills / relative, target)
+    data = replace(
+        pointer, data, content_digest=system_contract.canonical_tree_digest(root)
+    )
+    write_receipt(pointer, root, data)
+    receipt_path = runtime.activation_receipt_path(pointer)
+    original_receipt = receipt_path.read_bytes()
+    verified = runtime.verified_release(pointer)
+    assert verified["_verification_mode"] == runtime.VERIFICATION_MODE_RECEIPT
+    assert runtime.command(verified, entry, ["--help"])
+    for relative in sorted(_stop_import_closure(entry) - {entry}):
+        target = root / "skills" / relative
+        before, original = target.stat(), target.read_bytes()
+        retained = target.with_suffix(".retained-original")
+        if fault == "bytes":
+            offset = next(
+                i
+                for i, value in enumerate(original)
+                if 65 <= value <= 90 or 97 <= value <= 122
+            )
+            target.write_bytes(
+                original[:offset]
+                + (b"Q" if original[offset] != ord("Q") else b"R")
+                + original[offset + 1 :]
+            )
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            assert runtime.stat_walk(root) == json.loads(original_receipt)["tree_stat"]
+        elif fault == "missing-hash":
+            receipt = json.loads(original_receipt)
+            del receipt["entrypoints"][relative]
+            receipt_path.write_text(json.dumps(receipt))
+        else:
+            target.rename(retained)
+            target.symlink_to(retained.name)
+        try:
+            with pytest.raises(runtime.RuntimeContractError):
+                current = runtime.verified_release(pointer)
+                runtime.command(current, entry, ["--help"])
+        finally:
+            if fault == "symlink":
+                target.unlink()
+                retained.rename(target)
+            elif fault == "bytes":
+                target.write_bytes(original)
+                os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            else:
+                receipt_path.write_bytes(original_receipt)
+        assert runtime.command(runtime.verified_release(pointer), entry, ["--help"])
+
+
+@pytest.mark.parametrize("cache_mode", ["TIMESTAMP", "CHECKED_HASH", "UNCHECKED_HASH"])
+@pytest.mark.parametrize("verification", ["receipt", "full"])
+@pytest.mark.parametrize("route", ["execute", "launcher", "outer-cli"])
+def test_source_contract_ignores_cached_helper_code(
+    active, tmp_path, monkeypatch, cache_mode, verification, route
+):
+    """Synthetic stale-value cache; actual source execution must return source."""
+    import importlib.util
+    import py_compile
+
+    pointer, root, data = active
+    directory = root / "skills/synthesis-repo-guard"
+    helper = directory / "synthetic_helper.py"
+    source = b"VALUE = 'source'\n"
+    helper.write_bytes(b"VALUE = 'cached'\n")
+    stamp = 1700000000000000000
+    os.utime(helper, ns=(stamp, stamp))
+    prefix = tmp_path / "external-cache"
+    old_prefix = sys.pycache_prefix
+    sys.pycache_prefix = str(prefix)
+    try:
+        cache = Path(importlib.util.cache_from_source(str(helper)))
+    finally:
+        sys.pycache_prefix = old_prefix
+    cache.parent.mkdir(parents=True)
+    py_compile.compile(
+        str(helper),
+        cfile=str(cache),
+        doraise=True,
+        invalidation_mode=getattr(py_compile.PycInvalidationMode, cache_mode),
+    )
+    helper.write_bytes(source)
+    os.utime(helper, ns=(stamp, stamp))
+    if cache_mode == "CHECKED_HASH":
+        content = cache.read_bytes()
+        cache.write_bytes(
+            content[:8] + importlib.util.source_hash(source) + content[16:]
+        )
+    target = directory / "repo_sync_check.py"
+    target.write_text("import synthetic_helper\nprint(synthetic_helper.VALUE)\n")
+    if route == "outer-cli":
+        import shutil
+
+        source_root = Path(__file__).resolve().parents[3]
+        for dependency in runtime.ENTRYPOINT_DEPENDENCIES[
+            "synthesis-onboarding/scripts/synthesis_cli.py"
+        ]:
+            origin = source_root / "skills" / dependency
+            destination = root / "skills" / dependency
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origin, destination)
+        target = root / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            "import sys\nsys.path.insert(0, "
+            + repr(str(directory))
+            + ")\nimport synthetic_helper\nprint(synthetic_helper.VALUE)\n"
+        )
+    data = replace(pointer, data, content_digest=runtime.tree_digest(root))
+    launcher, data = managed_fixture((pointer, root, data))
+    if verification == "receipt":
+        write_receipt(pointer, root, data)
+    checked = runtime.verified_release(pointer)
+    assert checked["_verification_mode"] == (
+        runtime.VERIFICATION_MODE_RECEIPT
+        if verification == "receipt"
+        else runtime.VERIFICATION_MODE_FULL
+    )
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(prefix))
+    if route == "execute":
+        result = runtime.execute(checked, SCRIPT, [], b"", timeout=10)
+    else:
+        args = [str(launcher)] + (
+            ["exec-public", SCRIPT] if route == "launcher" else []
+        )
+        result = subprocess.run(args, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == b"source\n"
+    assert helper.read_bytes() == source
+
+
+def test_source_contract_preserves_relative_and_installed_library_imports(active):
+    pointer, root, data = active
+    directory = root / "skills/synthesis-repo-guard"
+    package = directory / "synthetic_package"
+    package.mkdir()
+    (package / "__init__.py").write_text("from .values import VALUE\n")
+    (package / "values.py").write_text("VALUE = 'relative'\n")
+    (directory / "repo_sync_check.py").write_text(
+        "import yaml, synthetic_package, sys\n"
+        "print(yaml.safe_load('message: installed')['message'], synthetic_package.VALUE)\n"
+        "sys.stdout.buffer.flush()\n"
+    )
+    data = replace(pointer, data, content_digest=runtime.tree_digest(root))
+    result = runtime.execute(
+        runtime.verified_release(pointer), SCRIPT, [], b"", timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == b"installed relative\n"
+
+
+def test_source_contract_refuses_sourceless_release_import(active):
+    import py_compile
+
+    pointer, root, data = active
+    directory = root / "skills/synthesis-repo-guard"
+    helper = directory / "source_absence.py"
+    helper.write_text("VALUE = 'cached'\n")
+    py_compile.compile(
+        str(helper), cfile=str(directory / "source_absence.pyc"), doraise=True
+    )
+    helper.rename(directory / "source_absence.retained")
+    (directory / "repo_sync_check.py").write_text(
+        "import source_absence\nprint(source_absence.VALUE)\n"
+    )
+    data = replace(pointer, data, content_digest=runtime.tree_digest(root))
+    result = runtime.execute(
+        runtime.verified_release(pointer), SCRIPT, [], b"", timeout=10
+    )
+    assert result.returncode != 0
+    assert b"requires Python source" in result.stderr
+    assert b"cached" not in result.stdout
+
+
+def test_policy_loader_ignores_cached_code_with_unchanged_source(
+    active, tmp_path, monkeypatch
+):
+    import py_compile
+
+    pointer, root, data = _stop_release_with_receipt(active)
+    helper = root / "skills/synthesis-autopilot/scripts/workflow.py"
+    original = helper.read_bytes()
+    stamp = helper.stat()
+    helper.write_bytes(b"raise RuntimeError('cached fixture selected')\n")
+    cache = Path(
+        py_compile.compile(
+            str(helper),
+            doraise=True,
+            invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH,
+        )
+    )
+    helper.write_bytes(original)
+    os.utime(helper, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    data = replace(pointer, data, content_digest=runtime.tree_digest(root))
+    write_receipt(pointer, root, data)
+    monkeypatch.setenv("SYNTHESIS_ACTIVE_DESCRIPTOR", str(pointer))
+    with pytest.raises(KeyError, match="project"):
+        runtime._policy_reservation({}, {}, consume=False)
+    assert helper.read_bytes() == original
+    assert cache.is_file()

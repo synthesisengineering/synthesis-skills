@@ -37,8 +37,7 @@
 # Override the config path per-invocation:
 #   SYNTHESIS_GIT_HOOK_CONFIG=/path/to/custom.yaml git commit ...
 #
-# Bypass once (last resort; requires explicit approval per CLAUDE.md):
-#   git commit --no-verify
+# Classifier defects require an owner correction with the guard enabled.
 #
 
 set -euo pipefail
@@ -61,8 +60,6 @@ unscanned just because the scanner is broken.
 
 Diagnose:   python3 $SIDECAR --doctor
 Config:     $CONFIG
-Last resort (requires explicit approval per CLAUDE.md):
-            git commit --no-verify
 EOF
     exit 1
 }
@@ -318,7 +315,7 @@ SCANNER="$HOOK_DIR/_scan_staged.py"
 set +e
 MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" --mandatory="${MANDATORY_REGEX:-}" \
     --active="$ACTIVE_REGEX" --allowlist="${ALLOWLIST_REGEX:-}" \
-    --exclusion="${DIFF_EXCLUDE_REGEX:-}")
+    --exclusion="${DIFF_EXCLUDE_REGEX:-}" --marker-policy="${MARKER_SCAN_POLICY:-}")
 SCAN_STATUS=$?
 set -e
 case "$SCAN_STATUS" in
@@ -340,9 +337,9 @@ Config: $CONFIG
 Matched lines:
 $MATCHES
 
-Sanitize the change, or — if this is intentional documentation about
-the patterns themselves — bypass once:
-  git commit --no-verify
+Remove actual sensitive material. If a detection-rule definition was
+misclassified, retain the refusal and repair the scanner through its
+source owner; the ordinary guarded path must remain enabled.
 EOF
     exit 1
 fi

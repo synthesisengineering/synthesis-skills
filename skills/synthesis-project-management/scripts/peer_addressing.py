@@ -681,6 +681,21 @@ def delivery_lanes(
         if seat.schema == 1 and local_hostname:
             expected.add(local_hostname)
         same_machine = seat.machine in expected
+    if seat is not None and same_machine:
+        # A current sidecar cannot contradict the selected row's identity.
+        # Missing legacy host handles confer no extra lane; nonempty handles
+        # must agree before consulting the local harness registry.
+        from board_grammar import active_status
+
+        same_machine = seat.compact_id == compact_id and active_status(seat.status)
+        if client_ref.startswith("ccd:"):
+            same_machine = same_machine and seat.client == CLIENT_CLAUDE and (
+                not seat.host_session_id or client_ref == f"ccd:{seat.host_session_id}"
+            )
+        elif client_ref.startswith("cc:"):
+            same_machine = same_machine and seat.client == CLIENT_CLAUDE and client_ref == f"cc:{seat.harness_session_id}"
+        elif client_ref.startswith("codex:"):
+            same_machine = same_machine and seat.client == CLIENT_CODEX and client_ref == f"codex:{seat.harness_session_id}"
     lanes: dict[str, dict] = {"bus": {"to": compact_id}}
     if same_machine and client_ref.startswith("ccd:"):
         lanes["ccd"] = {"session_id": client_ref[len("ccd:"):]}
@@ -919,6 +934,11 @@ def _unrelated_legacy_recipient(recipient: str, identity_forms: set[str] | None,
     """A narrow structural exclusion, never a guess about an unknown addressee."""
     if not (identity_forms or project) or _mentions_inbox_scope(recipient, identity_forms, project):
         return False
+    return _explicit_legacy_recipient(recipient)
+
+
+def _explicit_legacy_recipient(recipient: str) -> bool:
+    """Known historical address shapes, excluding ambiguous audiences."""
     if re.search(r"\b(?:all|any|every|both|current|this|everyone|anyone|whoever|you|your|our)\b", recipient, re.I):
         return False
     return bool(
@@ -927,33 +947,23 @@ def _unrelated_legacy_recipient(recipient: str, identity_forms: set[str] | None,
         or re.fullmatch(r"(?:[a-z]+-){4}\d{5}", recipient)
         or re.fullmatch(r"[a-z0-9][a-z0-9-]* sessions", recipient)
         or re.fullmatch(r"[A-Za-z][A-Za-z0-9 .-]* \(session [A-Za-z0-9_.:-]+\)", recipient)
+        or re.fullmatch(r"(?:Claude Code|Codex|Muse) session [A-Za-z0-9_.:-]+", recipient)
     )
 
 
 def parse_messages(
-    board_text: str, *, strict: bool = False, identity_forms: set[str] | None = None, project: str = ""
+    board_text: str, *, strict: bool = False, identity_forms: set[str] | None = None,
+    project: str = "", preserve_body_whitespace: bool = False,
 ) -> list[BoardMessage]:
-    """Every addressed message under ``## Messages``, in board order."""
-    lines = board_text.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == "## Messages")
-    except StopIteration:
-        if strict:
-            raise ValueError("coordination board is missing its Messages section")
-        return []
-    if strict and sum(line.strip() == "## Messages" for line in lines) != 1:
-        raise ValueError("coordination board has multiple Messages sections")
-    end = len(lines)
-    for i in range(start + 1, len(lines)):
-        if lines[i].startswith("## "):
-            end = i
-            break
-    if strict:
-        section_lines = [line.strip() for line in lines[start + 1:end] if line.strip()]
-        if end == len(lines) or PROTOCOL_HEADING.fullmatch(lines[end].strip()) is None:
-            raise ValueError("coordination Messages section must end at Protocol, not an unexpected heading")
-        if not section_lines or section_lines[-1] != "---":
-            raise ValueError("coordination Messages section is missing its Protocol separator")
+    """Every addressed message under ``## Messages``, in board order.
+
+    Administrative record readers retain original indentation before interpreting
+    code examples. Inbox display and watermark keys keep their established body
+    normalization; they never acquire authority from those normalized strings.
+    """
+    from board_grammar import message_frame
+
+    lines, outside, start, separator, _end = message_frame(board_text)
     messages: list[BoardMessage] = []
     current: BoardMessage | None = None
     body: list[str] = []
@@ -963,12 +973,14 @@ def parse_messages(
         # is a boundary, not part of the last message.
         while text_lines and text_lines[-1].strip() in {"", "---"}:
             text_lines.pop()
-        return "\n".join(text_lines).strip()
+        joined = "\n".join(text_lines)
+        return joined if preserve_body_whitespace else joined.strip()
 
     heading = DIAGNOSTIC_MESSAGE_HEADING if strict else MESSAGE_HEADING
-    for line in lines[start + 1:end]:
-        match = heading.match(line)
-        candidate = bool(MESSAGE_HEADING_CANDIDATE.match(line))
+    for index in range(start + 1, separator):
+        line = lines[index].rstrip("\r\n")
+        match = heading.match(line) if outside[index] else None
+        candidate = outside[index] and bool(MESSAGE_HEADING_CANDIDATE.match(line))
         if (
             strict and match and identity_forms is None
             and (MESSAGE_HEADING.match(line) is None or parse_iso(match.group("timestamp")) is None)
@@ -1023,6 +1035,57 @@ def parse_messages(
         messages.append(current)
     return messages
 
+
+
+def administrative_message_scan(board_text: str) -> tuple[list[BoardMessage], int]:
+    """Select timed native administrative messages without changing inbox keys.
+
+    Recognized unrelated historical prose is bounded by the same Markdown
+    framing and reported separately. It supplies no administrative authority.
+    Unknown/relevant malformed headers and any unquoted control-like record in
+    a historical block refuse the whole administrative read, including records
+    whose syntax is incomplete. This is not a diagnostic-parser fallback.
+    """
+    from board_grammar import active_status, message_frame, parse_table_rows
+
+    lines, visible, start, separator, _end = message_frame(board_text)
+    current_forms = {
+        value for row in parse_table_rows(board_text)
+        if active_status(row.get("status", ""))
+        for key, value in row.items()
+        if key in {"session uuid", "compact id", "speakable id v1", "legacy id", "id", "project", "machine", "client session ref"}
+        and value not in {"", "—", "-"}
+    }
+    boundaries = [i for i in range(start + 1, separator)
+                  if visible[i] and MESSAGE_HEADING_CANDIDATE.match(lines[i])]
+    messages = []
+    historical = 0
+    for index, begin in enumerate(boundaries):
+        end = boundaries[index + 1] if index + 1 < len(boundaries) else separator
+        heading = lines[begin].rstrip("\r\n")
+        native = MESSAGE_HEADING.fullmatch(heading)
+        body_lines = [line.rstrip("\r\n") for line in lines[begin + 1:end]]
+        if native is not None and parse_iso(native.group("timestamp")) is not None:
+            while body_lines and body_lines[-1].strip() in {"", "---"}:
+                body_lines.pop()
+            messages.append(BoardMessage(native.group("recipient").strip(), native.group("sender").strip(),
+                                         native.group("timestamp").strip(), "\n".join(body_lines)))
+            continue
+        legacy = DIAGNOSTIC_MESSAGE_HEADING.fullmatch(heading) or LEGACY_UNTIMED_HEADING.fullmatch(heading)
+        if (legacy is None or not legacy.group("sender").strip()
+                or re.search(r"\s[-–—]\s", legacy.group("sender"))
+                or not _explicit_legacy_recipient(legacy.group("recipient").strip())
+                or _mentions_inbox_scope(legacy.group("recipient"), current_forms, "")):
+            raise ValueError("administrative message has an ambiguous or relevant malformed header")
+        for i in range(begin + 1, end):
+            if visible[i] and re.match(r"(?:release-|handoff-|fleet-)", lines[i].lstrip()):
+                raise ValueError("historical diagnostic contains an unauthenticated administrative control record")
+        historical += 1
+    return messages, historical
+
+
+def administrative_messages(board_text: str) -> list[BoardMessage]:
+    return administrative_message_scan(board_text)[0]
 
 def durable_recipient(project: str) -> str:
     """The bus recipient label for a durable project-addressed message."""

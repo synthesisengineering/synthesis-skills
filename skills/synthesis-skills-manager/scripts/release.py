@@ -337,6 +337,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "skills/synthesis-chief-of-staff/scripts/",
             "skills/synthesis-repo-guard/",
             "skills/synthesis-decision-packet/scripts/",
+            "skills/synthesis-local-messaging/scripts/",
             "-q",
         ],
     ),

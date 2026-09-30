@@ -56,7 +56,7 @@ Run the same checks required by CI:
 ```bash
 python3 skills/synthesis-agent-conformance/scripts/conformance.py source
 python3 skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
-python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py -q
+python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py skills/synthesis-local-messaging/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
 python3 -m pytest skills/synthesis-project-management/scripts/ -q
 python3 -m pytest skills/synthesis-checkpoint/scripts/ -q

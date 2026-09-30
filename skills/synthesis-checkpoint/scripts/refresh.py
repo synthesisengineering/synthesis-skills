@@ -438,8 +438,14 @@ def feedback(report: dict, selected_campaign: dict | None, board: Path) -> dict:
         result.update(recipient=recipient, recipient_route=route)
         previous = []
         malformed_unrelated = 0
-        for line in content.splitlines():
-            if not line.startswith(MARKER):
+        from board_grammar import message_frame
+
+        try:
+            lines, visible, _start, _separator, _end = message_frame(content)
+        except ValueError as exc:
+            raise RefreshError(str(exc)) from exc
+        for line, outside in zip(lines, visible):
+            if not outside or not line.startswith(MARKER):
                 continue
             try:
                 item = json.loads(line[len(MARKER):].strip(), object_pairs_hook=strict_object)
@@ -476,12 +482,9 @@ def feedback(report: dict, selected_campaign: dict | None, board: Path) -> dict:
         revision = max(revisions, default=0) + 1
         message = {**payload, "report_key": key, "revision": revision, "result_digest": result_digest, "observed_at": report["observed_at"],
                    "delivery_client_ref": report.get("delivery_client_ref", report["client_ref"])}
-        boundary = re.search(r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$", content)
-        if not boundary:
-            raise RefreshError("board lacks Protocol boundary")
         block = f"### → {recipient}, from {coordination.sanitize(canonical_ref)} — {coordination.timestamp()}\n\n{MARKER}{json.dumps(message, sort_keys=True, separators=(',', ':'))}\n\n"
         result.update(outcome="APPENDED", report_key=key, revision=revision, result_digest=result_digest)
-        return content[:boundary.start()] + block + content[boundary.start():]
+        return coordination.append_bus_block(content, block)
 
     coordination.locked_update(board, operation)
     # A successful locked_update returns only after publishing/mirroring the

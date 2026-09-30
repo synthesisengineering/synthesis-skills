@@ -149,10 +149,18 @@ def plain(value: str) -> str:
     return claim_plain(value)
 
 
+def _declared_schema(lines: list[str], visible: list[bool]) -> int | None:
+    for line, authoritative in zip(lines, visible):
+        if authoritative:
+            match = re.fullmatch(r"Schema:[ \t]*v(\d+)[ \t]*", line.rstrip("\r\n"))
+            if match:
+                return int(match.group(1))
+    return None
+
+
 def board_schema(text: str) -> int | None:
-    """Read the declared schema without consuming following blank lines."""
-    match = re.search(r"(?m)^Schema:[ \t]*v(\d+)[ \t]*$", text)
-    return int(match.group(1)) if match else None
+    """Read actual metadata; fenced and indented examples are never authority."""
+    return _declared_schema(*message_code_mask(text))
 
 
 def _cells(line: str) -> list[str]:
@@ -173,6 +181,20 @@ def parse_cells(line: str) -> list[str] | None:
     return cells
 
 
+def active_table_frame(text: str) -> tuple[list[str], list[bool], int, int]:
+    """Locate the sole actual active section without interpreting quoted data."""
+    lines, visible = message_code_mask(text)
+    starts = [i for i, line in enumerate(lines) if visible[i] and line.strip() == "## Active sessions"]
+    if len(starts) != 1:
+        raise ValueError("coordination board must have one Active sessions section")
+    start = starts[0]
+    end = next(
+        (i for i in range(start + 1, len(lines)) if visible[i] and lines[i].strip().startswith("## ")),
+        len(lines),
+    )
+    return lines, visible, start, end
+
+
 def parse_table_rows(text: str, *, strict: bool = False) -> list[dict[str, str]]:
     """Parse one active table; schema and column errors are never ignored.
 
@@ -184,9 +206,10 @@ def parse_table_rows(text: str, *, strict: bool = False) -> list[dict[str, str]]
     # grammar alongside its identity API, without maintaining a second parser.
     from coordination_schema import column_count_error, engine_remedy
 
-    lines = text.splitlines()
-    declared = board_schema(text)
-    declarations = [line for line in lines if line.startswith("Schema:")]
+    raw_lines, visible, start, end = active_table_frame(text)
+    lines = [line.rstrip("\r\n") for line in raw_lines]
+    declared = _declared_schema(lines, visible)
+    declarations = [line for line, authority in zip(lines, visible) if authority and line.startswith("Schema:")]
     if declared is not None and declared > SCHEMA_VERSION:
         raise UnsupportedBoardSchemaError(
             f"board declares schema v{declared}, newer than this engine's "
@@ -196,16 +219,8 @@ def parse_table_rows(text: str, *, strict: bool = False) -> list[dict[str, str]]
         declarations and (len(declarations) != 1 or declared not in _COLUMNS)
     ) or (strict and declared is None):
         raise ValueError("coordination board has an invalid or unsupported schema")
-    starts = [i for i, line in enumerate(lines) if line.strip() == "## Active sessions"]
-    if len(starts) != 1:
-        raise ValueError("coordination board must have one Active sessions section")
-    start = starts[0]
-    end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].strip().startswith("## ")),
-        len(lines),
-    )
     if strict:
-        messages = [i for i, line in enumerate(lines) if line.strip() == "## Messages"]
+        messages = [i for i, line in enumerate(lines) if visible[i] and line.strip() == "## Messages"]
         if len(messages) != 1 or messages[0] != end:
             raise ValueError("coordination board must have one Messages section after Active sessions")
     table = [line for line in lines[start + 1:end] if line.strip()]
@@ -239,3 +254,92 @@ def parse_table_rows(text: str, *, strict: bool = False) -> list[dict[str, str]]
             )
         result.append(dict(zip(columns, (plain(cell) for cell in cells))))
     return result
+
+
+# Bounds apply before splitting/encoding. They cover the board, not an inferred
+# count of addressed messages: hidden or malformed blocks still consume budget.
+MAX_MESSAGE_BOARD_BYTES = 16 * 1024 * 1024
+MAX_MESSAGE_BOARD_LINES = 200_000
+_PROTOCOL = re.compile(r"^## Protocol(?: \([^()\r\n]+\))?$")
+_MESSAGE_CANDIDATE = re.compile(r"^###\s+.*?,\s*from\b")
+
+
+def message_code_mask(text: str) -> tuple[list[str], list[bool]]:
+    """Finite Markdown scan; fence delimiters and fenced lines are data.
+
+    An unterminated fence is ambiguous, not permission to hide the rest of a
+    shared board. Indented code lines are also data, including for record
+    consumers that otherwise strip whitespace before matching. Backtick info strings cannot contain backticks.
+    """
+    if len(text) > MAX_MESSAGE_BOARD_BYTES or text.count("\n") > MAX_MESSAGE_BOARD_LINES:
+        raise ValueError("coordination message framing exceeds finite board limit")
+    if len(text.encode("utf-8")) > MAX_MESSAGE_BOARD_BYTES:
+        raise ValueError("coordination message framing exceeds finite byte limit")
+    lines = text.splitlines(keepends=True)
+    outside = []
+    fence = None
+    for line in lines:
+        value = line.rstrip("\r\n")
+        if fence is not None:
+            outside.append(False)
+            if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(fence[1]) + r",}[ \t]*", value):
+                fence = None
+            continue
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", value)
+        if opening and (opening[1][0] != "`" or "`" not in opening[2]):
+            fence = (opening[1][0], len(opening[1]))
+            outside.append(False)
+        else:
+            outside.append(re.match(r"^(?: {4}| {0,3}\t)", value) is None)
+    if fence is not None:
+        raise ValueError("coordination message framing has an unclosed Markdown fence")
+    return lines, outside
+
+
+def message_frame(text: str) -> tuple[list[str], list[bool], int, int, int]:
+    """Return lines, code mask, Messages index, separator index, Protocol index.
+
+    Only the single canonical, unfenced Protocol heading ends Messages. Body
+    headings remain body bytes. No apparent message after that end is hidden.
+    """
+    lines, outside = message_code_mask(text)
+    starts = [i for i, line in enumerate(lines) if outside[i] and line.strip() == "## Messages"]
+    ends = [i for i, line in enumerate(lines) if outside[i] and _PROTOCOL.fullmatch(line.strip())]
+    if len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
+        raise ValueError("coordination board requires one Messages section and one canonical Protocol boundary")
+    start, end = starts[0], ends[0]
+    separator = end - 1
+    while separator > start and not lines[separator].strip():
+        separator -= 1
+    if separator <= start or not outside[separator] or lines[separator].strip() != "---":
+        raise ValueError("coordination Messages section is missing its Protocol separator")
+    in_block = False
+    for i in range(start + 1, separator):
+        if not outside[i]:
+            continue
+        line = lines[i].rstrip("\r\n")
+        if line.startswith("### "):
+            in_block = True
+        if line.startswith("## "):
+            if not in_block or line.strip() == "## Active sessions":
+                raise ValueError("coordination Messages section has an unexpected or ambiguous heading")
+    if any(outside[i] and _MESSAGE_CANDIDATE.match(lines[i]) for i in range(end + 1, len(lines))):
+        raise ValueError("coordination board has addressed messages after its Protocol boundary")
+    return lines, outside, start, separator, end
+
+
+def message_insert_offset(text: str) -> int:
+    lines, _outside, _start, separator, _end = message_frame(text)
+    return sum(map(len, lines[:separator]))
+
+
+def validate_message_body(body: str) -> None:
+    """Refuse structural impersonation; never rewrite the approved body."""
+    lines, outside = message_code_mask(body)
+    for line, visible in zip(lines, outside):
+        if not visible:
+            continue
+        value = line.rstrip("\r\n")
+        if (_MESSAGE_CANDIDATE.match(value) or value.strip() in {"## Messages", "## Active sessions"}
+                or _PROTOCOL.fullmatch(value.strip())):
+            raise ValueError("message body contains an ambiguous reserved board boundary; use a fenced example")
