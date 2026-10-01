@@ -95,7 +95,7 @@ def test_authenticated_envelope_refuses_invalid_execution(attack):
     with pytest.raises(ValueError):verify(data)
 
 
-@pytest.mark.parametrize('member,contents', [('other.json','{}'),('../candidate-validation.json','{}'),('candidate-validation.json','x'*(h.RECORD_BYTES+1))])
+@pytest.mark.parametrize('member,contents', [('other.json','{}'),('../candidate-validation.json','{}'),('candidate-validation.json','x'*(h.RECORD_BYTES+1))], ids=['unexpected-member','path-traversal','oversized-record'])
 def test_archive_refuses_unexpected_members_without_extraction(member,contents):
     buf=io.BytesIO()
     with zipfile.ZipFile(buf,'w') as archive:archive.writestr(member,contents)
