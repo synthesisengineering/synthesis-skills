@@ -20,7 +20,7 @@ def source_in_target(tmp_path):
     shutil.copytree(SCRIPT.parent.parent / "references", pm / "references")
     conformance = worktree / "skills/synthesis-agent-conformance/scripts"
     conformance.mkdir(parents=True)
-    shutil.copy2(SCRIPT.parents[2] / "synthesis-agent-conformance/scripts/live_receipt.py", conformance / "live_receipt.py")
+    shutil.copy2(SCRIPT.parents[2] / "synthesis-agent-conformance/scripts/native_transcript_identity.py", conformance / "native_transcript_identity.py")
     guard = worktree / "skills/synthesis-repo-guard"
     guard.mkdir()
     shutil.copy2(CHECKPOINT_SCRIPT, guard / "checkpoint_sync.py")
@@ -90,6 +90,7 @@ def test_native_clients_complete_own_source_without_bytecode_side_effects(tmp_pa
     alternate_row = _claim_row(alternate, native, [f"{target} @ feature/demo"], [str(target / "change.txt")])
     env.update(native, SYNTHESIS_COORDINATION_SESSION=alternate_row["compact_id"])
     env.pop("PYTHONDONTWRITEBYTECODE", None)
+    env.pop("PYTHONPYCACHEPREFIX", None)
     cmd[-1] = str(alternate)
     before = board.read_bytes()
     result = capture(tmp_path, "native-retire", cmd, env, clone)
@@ -391,7 +392,7 @@ def test_retained_runtime_covers_all_coordinator_python_imports():
                 if dependency not in sys.stdlib_module_names and dependency != '__future__':
                     assert dependency in modules, (name, dependency)
                     pending.append(dependency)
-    assert 'live_receipt' in visited and 'project_recipient' in visited
+    assert 'native_transcript_identity' in visited and 'project_recipient' in visited
 
 
 def test_admission_reexports_canonical_lock_identity_without_duplicate_implementation():
@@ -406,3 +407,69 @@ def test_admission_reexports_canonical_lock_identity_without_duplicate_implement
     assert all((node.module or '').split('.')[0] in sys.stdlib_module_names | {'__future__'}
                for node in ast.parse(Path(coordination_lock.__file__).read_text()).body
                if isinstance(node, ast.ImportFrom))
+
+
+@pytest.mark.parametrize("damage", ["missing", "symlink", "hardlink", "writable", "fifo"])
+def test_source_storage_detail_refuses_unsafe_member(tmp_path, damage):
+    import retirement_runtime as runtime
+    source = tmp_path / "source"
+    scripts = source / "scripts"
+    scripts.mkdir(parents=True)
+    retained = tmp_path / "retained.py"
+    sentinel = tmp_path / "must-not-execute"
+    retained.write_text(f"from pathlib import Path\nPath({str(sentinel)!r}).write_text('unsafe')\n")
+    target = scripts / "fleet_paths.py"
+    if damage == "symlink":
+        target.symlink_to(retained)
+    elif damage == "hardlink":
+        os.link(retained, target)
+    elif damage == "writable":
+        shutil.copy2(retained, target)
+        target.chmod(0o666)
+    elif damage == "fifo":
+        os.mkfifo(target)
+    with pytest.raises((OSError, ValueError)):
+        runtime.source_storage_detail(source, tmp_path / "worktree", {}, "missing")
+    assert not sentinel.exists()
+
+
+def test_source_storage_detail_retains_canonical_text_and_module_custody(tmp_path):
+    import retirement_runtime as runtime
+    import fleet_paths
+    source = tmp_path / "source"
+    scripts = source / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(SCRIPT.with_name("fleet_paths.py"), scripts / "fleet_paths.py")
+    name = "_synthesis_retirement_storage_owner"
+    previous = object()
+    original = sys.modules.get(name)
+    sys.modules[name] = previous
+    try:
+        path = tmp_path / "missing"
+        entry = {"HEAD": "synthetic", "branch": "fixture"}
+        assert runtime.source_storage_detail(source, path, entry, "missing") == fleet_paths.missing_worktree_detail(path, entry, "missing")
+        assert sys.modules[name] is previous
+        assert not (scripts / "__pycache__").exists()
+    finally:
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+
+
+def test_retirement_wrong_resolved_root_is_structured_refusal(tmp_path, monkeypatch, capsys):
+    import retire_worktree as owner
+    _, clone = build_repo(tmp_path)
+    target = add_feature_worktree(tmp_path, clone)
+    original = owner.run
+    def displaced(cwd, *arguments, **kwargs):
+        result = original(cwd, *arguments, **kwargs)
+        if Path(cwd) == target and arguments == ("rev-parse", "--show-toplevel"):
+            return subprocess.CompletedProcess(result.args, 0, str(clone) + "\n", "")
+        return result
+    monkeypatch.setattr(owner, "run", displaced)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--repository", str(clone), "--worktree", str(target)])
+    before = (target / ".git").read_bytes()
+    assert owner.main() == 2
+    assert "different or unavailable checkout" in capsys.readouterr().err
+    assert target.exists() and (target / ".git").read_bytes() == before

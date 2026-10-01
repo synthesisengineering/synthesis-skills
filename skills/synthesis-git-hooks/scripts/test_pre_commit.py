@@ -1047,6 +1047,8 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "native_git.py",
         "coordination_schema.py",
         "board_grammar.py",
+        "team_contract.py",
+        "native_identity.py",
         "coordination_archive.py",
         "pointer_lock.py",
         "peer_addressing.py",
@@ -1060,7 +1062,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "coordination_process.py",
         "coordination_lock.py",
         "project_recipient.py",
-        "live_receipt.py",
+        "native_transcript_identity.py",
         "source-path",
     }
     assert (

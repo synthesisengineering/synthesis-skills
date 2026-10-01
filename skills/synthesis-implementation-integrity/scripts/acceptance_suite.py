@@ -9,13 +9,26 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
+
+# The release process/inventory owner is shared by both entry points.
+_MANAGER = Path(__file__).resolve().parents[2] / "synthesis-skills-manager" / "scripts"
+_CHECKS_PATH = _MANAGER / "release_check_groups.py"
+if _CHECKS_PATH.resolve() != _CHECKS_PATH or not _CHECKS_PATH.is_file():
+    raise ModuleNotFoundError("required adjacent release_check_groups.py is unavailable")
+_checks_spec = importlib.util.spec_from_file_location(
+    "_synthesis_acceptance_release_check_groups", _CHECKS_PATH
+)
+checks = importlib.util.module_from_spec(_checks_spec)
+_checks_spec.loader.exec_module(checks)
 
 try:
     import yaml  # type: ignore
@@ -23,12 +36,13 @@ except Exception:  # pragma: no cover - exercised only in dependency failure
     yaml = None
 
 
+BATCH_SELECTORS = 8
+CASE_SECONDS = 300
+
 VALID_EXPECTED_STATUSES = {"pass", "fail"}
 VALID_SCHEMAS = {1, 2}
 SCHEMA2_CHANGE_BASE_POLICY = "boundary-supplied-git-diff"
-SCHEMA2_RECEIPT_CONSUMER = (
-    "synthesis-skills-manager.release.consume-acceptance.v1"
-)
+SCHEMA2_RECEIPT_CONSUMER = "synthesis-skills-manager.release.consume-acceptance.v1"
 # Schema 2 requires the manifest to name its consume-acceptance boundary, but
 # the validator no longer hardcodes one repository's boundary as the only
 # legal consumer: any state-changing gate may be named, provided the id keeps
@@ -276,7 +290,9 @@ def validate_manifest(
                 if state == "deleted":
                     surface_file = _bounded_path(root / raw_path, root, f"{label}.path")
                     if os.path.lexists(surface_file):
-                        raise ManifestError(f"{label}.path declares deletion but still exists: {raw_path}")
+                        raise ManifestError(
+                            f"{label}.path declares deletion but still exists: {raw_path}"
+                        )
                 else:
                     surface_file = _bounded_regular_file(
                         root / raw_path, root, f"{label}.path"
@@ -300,7 +316,9 @@ def validate_manifest(
                 errors.append(f"{label}.cases references unknown case {mapped_id}")
             else:
                 mapped_cases.add(mapped_id)
-        surface_records.append({"path": normalized_path, "state": state, "cases": surface_cases})
+        surface_records.append(
+            {"path": normalized_path, "state": state, "cases": surface_cases}
+        )
 
     if schema == 2:
         for case_id in sorted(case_ids - mapped_cases):
@@ -326,9 +344,7 @@ def authoritative_git_evidence(
     """Bind a schema-2 run to the boundary-selected Git change universe."""
 
     if not change_base:
-        raise ManifestError(
-            "schema 2 run requires a boundary-supplied --change-base"
-        )
+        raise ManifestError("schema 2 run requires a boundary-supplied --change-base")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", change_base):
         raise ManifestError("change-base is not a safe Git revision")
     if not transaction_id or not re.fullmatch(
@@ -369,9 +385,7 @@ def authoritative_git_evidence(
     )
     ancestor = _git(root, "merge-base", "--is-ancestor", base_sha, head_sha)
     if ancestor.returncode != 0:
-        raise ManifestError(
-            "boundary-supplied change-base is not an ancestor of HEAD"
-        )
+        raise ManifestError("boundary-supplied change-base is not an ancestor of HEAD")
     head_tree = _git_value(
         root,
         "rev-parse",
@@ -394,18 +408,31 @@ def authoritative_git_evidence(
         raise ManifestError(
             f"authoritative Git change universe could not be established: {detail}"
         )
-    changed_paths = sorted(
-        {path for path in changed.stdout.split("\0") if path}
+    changed_paths = sorted({path for path in changed.stdout.split("\0") if path})
+    deleted = _git(
+        root,
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        "--diff-filter=D",
+        f"{base_sha}..{head_sha}",
+        "--",
     )
-    deleted = _git(root, "diff", "--no-renames", "--name-only", "-z", "--diff-filter=D",
-                   f"{base_sha}..{head_sha}", "--")
     if deleted.returncode != 0:
-        raise ManifestError("authoritative Git deletion evidence could not be established")
+        raise ManifestError(
+            "authoritative Git deletion evidence could not be established"
+        )
     deleted_paths = {path for path in deleted.stdout.split("\0") if path}
-    declared_deleted = {surface["path"] for surface in validated["changed_surfaces"]
-                        if surface.get("state") == "deleted"}
+    declared_deleted = {
+        surface["path"]
+        for surface in validated["changed_surfaces"]
+        if surface.get("state") == "deleted"
+    }
     if deleted_paths != declared_deleted:
-        raise ManifestError("declared deletion surfaces do not equal the authoritative Git deletion set")
+        raise ManifestError(
+            "declared deletion surfaces do not equal the authoritative Git deletion set"
+        )
     declared_paths = sorted(
         {surface["path"] for surface in validated["changed_surfaces"]}
     )
@@ -453,88 +480,368 @@ def validation_receipt(validated: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def case_contract(validated: dict[str, Any], root: Path) -> list[dict]:
+    return [
+        {
+            "id": c["id"],
+            "selector": c["fixture_file"].relative_to(root).as_posix()
+            + "::"
+            + c["fixture_node"],
+            "expected_status": c["expected_status"],
+            "control_class": c["control_class"],
+            "motivating_defect": c["motivating_defect"],
+        }
+        for c in validated["cases"]
+    ]
+
+
+def batch_plan(contract: list[dict]) -> list[dict]:
+    """Give each overlapping selector family one bounded execution owner.
+
+    Every original selector remains a collection requirement. Broader class or
+    function references own their narrower references, so slicing eight owners
+    never repeats an expanded node in a later process.
+    """
+    batches = {}
+    for case in contract:
+        selector = case["selector"]
+        file = selector.split("::", 1)[0]
+        key = file
+        row = batches.setdefault(key, {"id": key, "selectors": []})
+        if selector not in row["selectors"]:
+            row["selectors"].append(selector)
+    result = []
+    for row in batches.values():
+        declared = set(row["selectors"])
+        references = {}
+        for selector in row["selectors"]:
+            # Overlap is delimiter-aware prefix ancestry, not string-prefix
+            # similarity. Pick the first declared ancestor without pairwise
+            # scanning the entire manifest.
+            owner = selector
+            for index, character in enumerate(selector):
+                if character == "[" or selector.startswith("::", index):
+                    prefix = selector[:index]
+                    if prefix in declared:
+                        owner = prefix
+                        break
+            references.setdefault(owner, []).append(selector)
+        owners = [s for s in row["selectors"] if s in references]
+        for offset in range(0, len(owners), BATCH_SELECTORS):
+            execution_selectors = owners[offset : offset + BATCH_SELECTORS]
+            owned = {s for owner in execution_selectors for s in references[owner]}
+            result.append(
+                {
+                    "id": row["id"] + ":" + str(offset // BATCH_SELECTORS),
+                    "selectors": [s for s in row["selectors"] if s in owned],
+                    "execution_selectors": execution_selectors,
+                }
+            )
+    return result
+
+
+def verify_execution(receipt: dict, contract: list[dict]) -> None:
+    """Release independently reconstructs exact case polarity and node coverage."""
+    if (
+        not isinstance(contract, list)
+        or not contract
+        or len(contract) > checks.MAX_TESTS
+        or any(
+            not isinstance(c, dict)
+            or not isinstance(c.get("id"), str)
+            or not c["id"]
+            or c.get("expected_status") not in ("pass", "fail")
+            or not isinstance(c.get("selector"), str)
+            or "::" not in c["selector"]
+            for c in contract
+        )
+        or len({c["id"] for c in contract}) != len(contract)
+    ):
+        raise ValueError("invalid exact case contract")
+    evidence = receipt.get("execution")
+    if (
+        not isinstance(evidence, dict)
+        or evidence.get("schema") != 1
+        or evidence.get("contract") != contract
+        or evidence.get("source_unchanged") is not True
+        or not isinstance(evidence.get("source_sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", evidence["source_sha256"])
+    ):
+        raise ValueError("missing or changed execution contract/source evidence")
+    plan = batch_plan(contract)
+    batches = evidence.get("batches")
+    if not isinstance(batches, list) or len(batches) != len(plan):
+        raise ValueError("incomplete batch evidence")
+    by_selector = {}
+    node_owners = set()
+    for planned, actual in zip(plan, batches):
+        if (
+            not isinstance(actual, dict)
+            or actual.get("id") != planned["id"]
+            or actual.get("selectors") != planned["selectors"]
+            or actual.get("execution_selectors") != planned["execution_selectors"]
+        ):
+            raise ValueError("batch membership changed")
+        expanded, statuses = checks.selection_results(
+            actual.get("inventory"), planned["selectors"]
+        )
+        if node_owners.intersection(statuses):
+            raise ValueError("expanded node has multiple execution owners")
+        node_owners.update(statuses)
+        if (
+            actual.get("process_failure", "missing") is not None
+            or actual.get("returncode") != actual["inventory"]["exitstatus"]
+        ):
+            raise ValueError("native process outcome disagrees with final inventory")
+        for selector, nodes in expanded.items():
+            by_selector[selector] = (
+                nodes,
+                "failed" if any(statuses[n] == "failed" for n in nodes) else "passed",
+            )
+    cases = receipt.get("cases")
+    if not isinstance(cases, list) or len(cases) != len(contract):
+        raise ValueError("case membership changed")
+    for expected, actual in zip(contract, cases):
+        nodes, status = by_selector[expected["selector"]]
+        if (
+            any(actual.get(k) != v for k, v in expected.items())
+            or actual.get("nodes") != nodes
+            or actual.get("status") != status
+            or actual.get("matched") is not True
+            or status
+            != {"pass": "passed", "fail": "failed"}[expected["expected_status"]]
+        ):
+            raise ValueError("case phase evidence or expected polarity disagrees")
+
+
 def execute(
-    validated: dict[str, Any],
-    root: Path,
-    git_evidence: dict[str, Any] | None = None,
+    validated: dict[str, Any], root: Path, git_evidence: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any], int]:
-    document = validated["document"]
-    results: list[dict[str, Any]] = []
-    for case in validated["cases"]:
-        node_id = f"{case['fixture_file']}::{case['fixture_node']}"
-        try:
-            completed = subprocess.run(
-                [
+    started = time.monotonic()
+    deadline = started + checks.ACCEPTANCE_SECONDS - 60
+    contract = case_contract(validated, root)
+    results = {
+        c["id"]: {
+            **c,
+            "fixture": c["selector"],
+            "status": "not_run",
+            "expected_status": c["expected_status"],
+            "matched": False,
+            "nodes": [],
+            "returncode": None,
+            "stdout": "",
+            "stderr": "",
+        }
+        for c in contract
+    }
+    execution = {
+        "schema": 1,
+        "contract": contract,
+        "batches": [],
+        "source_unchanged": False,
+        "source_sha256": None,
+        "whole_suite_seconds": checks.ACCEPTANCE_SECONDS,
+        "per_group_seconds": CASE_SECONDS,
+    }
+    errors = []
+    try:
+        before = checks.source_digest(root)
+        execution["source_sha256"] = before
+        for planned in batch_plan(contract):
+            remaining = deadline - time.monotonic() - 33
+            if remaining <= 0:
+                raise ValueError("acceptance whole-suite deadline exhausted")
+            with checks.retained_group_fixture() as custody:
+                custody_identity = checks.custody_identity(custody.stat())
+                report = custody / "inventory.json"
+                selection = custody / "selection.json"
+                selection.write_text(json.dumps(planned["selectors"]))
+                config = custody / "pytest.ini"
+                config.write_text("[pytest]\n")
+                env = dict(os.environ)
+                env.pop("SYNTHESIS_RELEASE_TEST_GROUP", None)
+                env.update(
+                    {
+                        "SYNTHESIS_ACCEPTANCE_SELECTION": str(selection),
+                        "SYNTHESIS_RELEASE_TEST_REPORT": str(report),
+                        "PYTHONPATH": str(_MANAGER),
+                        "TMPDIR": str(custody),
+                    }
+                )
+                files = list(
+                    dict.fromkeys(s.split("::", 1)[0] for s in planned["selectors"])
+                )
+                command = [
                     sys.executable,
                     "-m",
                     "pytest",
                     "-q",
+                    "-c",
+                    str(config),
+                    "--rootdir",
+                    str(root),
+                    "-o",
+                    "addopts=",
                     "-p",
                     "no:cacheprovider",
-                    node_id,
-                ],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                check=False,
-                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                timeout=300,
-            )
-            status = (
-                "passed"
-                if completed.returncode == 0
-                else "failed"
-                if completed.returncode == 1
-                else "errored"
-            )
-            returncode: int | None = completed.returncode
-            stdout = completed.stdout
-            stderr = completed.stderr
-        except (OSError, subprocess.SubprocessError) as exc:
-            status = "errored"
-            returncode = None
-            stdout = ""
-            stderr = str(exc)
-
-        expected = case["expected_status"]
-        matched = status == {"pass": "passed", "fail": "failed"}[expected]
-        results.append(
-            {
-                "id": case["id"],
-                "control_class": case["control_class"],
-                "motivating_defect": case["motivating_defect"],
-                "fixture": node_id,
-                "status": status,
-                "expected_status": expected,
-                "matched": matched,
-                "returncode": returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-            }
-        )
-
-    terminal = len(results)
-    ok = terminal == len(validated["cases"]) and all(
-        case["matched"] for case in results
-    )
+                    "-p",
+                    "release_check_groups",
+                    *files,
+                ]
+                completed = checks.bounded_run(
+                    command, root, min(CASE_SECONDS, remaining), env
+                )
+                actual = {
+                    **planned,
+                    "returncode": completed.returncode,
+                    "process_failure": completed.failure,
+                    "fixture_custody": str(custody),
+                    "custody_identity": custody_identity,
+                    "process_identity": completed.fixture_identity,
+                    "process_records": completed.custody_records,
+                    "diagnostic_records": {
+                        name: checks.diagnostic_record(
+                            custody / name, deadline, custody_identity
+                        )
+                        for name in (
+                            "selection.json",
+                            "pytest.ini",
+                            "inventory.json",
+                            "inventory.progress.jsonl",
+                        )
+                    },
+                    "process_custody": completed.fixture_custody,
+                    "output_sha256": _sha256_bytes(completed.stdout.encode()),
+                }
+                execution["batches"].append(actual)
+                expanded = {}
+                statuses = {}
+                problem = None
+                try:
+                    actual["inventory"] = checks.read_inventory(report)
+                    expanded, statuses = checks.selection_results(
+                        actual["inventory"], planned["selectors"]
+                    )
+                    if (
+                        completed.failure is not None
+                        or completed.returncode != actual["inventory"]["exitstatus"]
+                    ):
+                        raise ValueError(
+                            "process failed outside complete test lifecycle"
+                        )
+                except (OSError, ValueError, KeyError, TypeError) as exc:
+                    problem = str(exc)
+                    actual["error"] = problem
+                    try:
+                        actual["partial_execution"] = checks.read_progress(
+                            report.with_suffix(".progress.jsonl")
+                        )
+                    except (OSError, ValueError, KeyError, TypeError) as diagnostic:
+                        actual["partial_execution"] = {
+                            "status": "UNAVAILABLE",
+                            "authorizes_success": False,
+                            "error": str(diagnostic),
+                        }
+                observed = set()
+                if problem:
+                    # A failed batch is not evidence that every selected case ran.
+                    partial = actual.get("inventory", {})
+                    try:
+                        expanded = checks.expand_selectors(
+                            partial.get("inventory"), planned["selectors"]
+                        )
+                        observed = set(partial.get("phases", {}))
+                    except (ValueError, TypeError):
+                        events = actual.get("partial_execution", {}).get("events", [])
+                        collections = [
+                            e for e in events if e.get("kind") == "collection"
+                        ]
+                        if collections:
+                            try:
+                                expanded = checks.expand_selectors(
+                                    collections[-1].get("inventory"),
+                                    planned["selectors"],
+                                )
+                            except (ValueError, TypeError):
+                                expanded = {}
+                        observed = {
+                            e.get("nodeid") for e in events if e.get("kind") == "phase"
+                        }
+                for case in contract:
+                    if case["selector"] not in planned["selectors"]:
+                        continue
+                    nodes = expanded.get(case["selector"], [])
+                    status = (
+                        ("errored" if observed.intersection(nodes) else "not_run")
+                        if problem
+                        else (
+                            "failed"
+                            if any(statuses[n] == "failed" for n in nodes)
+                            else "passed"
+                        )
+                    )
+                    result = results[case["id"]]
+                    result.update(
+                        {
+                            "nodes": nodes,
+                            "status": status,
+                            "returncode": completed.returncode,
+                            "matched": status
+                            == {"pass": "passed", "fail": "failed"}[
+                                case["expected_status"]
+                            ],
+                            "batch": planned["id"],
+                            "stderr": problem or "",
+                        }
+                    )
+                    if not result["matched"]:
+                        # Complete bytes live once in owned output.log, never multiplied by case count.
+                        result["stdout"] = (
+                            "Full output retained at "
+                            + str(completed.fixture_custody)
+                            + "/output.log\n"
+                            + completed.stdout[-2048:]
+                        )
+                if problem:
+                    errors.append(problem)
+                    break  # Interruption/custody failure cannot admit another group.
+        execution["source_unchanged"] = before == checks.source_digest(root)
+        if not execution["source_unchanged"]:
+            errors.append("source changed during acceptance")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        errors.append(str(exc))
+    ordered = list(results.values())
+    terminal = sum(c["status"] != "not_run" for c in ordered)
     receipt = validation_receipt(validated)
     if git_evidence:
         receipt.update(git_evidence)
     receipt.update(
         {
-            "ok": ok,
+            "ok": False,
             "coverage": {
-                "declared": len(validated["cases"]),
+                "declared": len(contract),
                 "terminal": terminal,
-                "not_run": len(validated["cases"]) - terminal,
+                "not_run": len(contract) - terminal,
             },
-            "cases": results,
+            "cases": ordered,
+            "execution": execution,
+            "errors": errors,
+            "seconds": time.monotonic() - started,
         }
     )
-    return receipt, 0 if ok else 1
+    if not errors:
+        try:
+            verify_execution(receipt, contract)
+            receipt["ok"] = True
+        except (ValueError, KeyError, TypeError) as exc:
+            errors.append(str(exc))
+    return receipt, 0 if receipt["ok"] else 1
 
 
-def emit(payload: dict[str, Any], as_json: bool) -> None:
+def emit(payload: dict[str, Any], as_json: bool, *, as_receipt: bool = False) -> None:
+    if as_receipt:
+        print(checks.encode_acceptance_receipt(payload))
+        return
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return
@@ -568,7 +875,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("action", choices=("validate", "run"))
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--json", action="store_true")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true")
+    output.add_argument(
+        "--receipt", action="store_true", help="bounded lossless machine receipt"
+    )
     parser.add_argument("--change-base")
     parser.add_argument("--transaction-id")
     return parser.parse_args(argv)
@@ -579,17 +890,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = _canonical_root(args.repo_root)
     except ManifestError as exc:
-        emit({"ok": False, "errors": [str(exc)]}, args.json)
+        emit({"ok": False, "errors": [str(exc)]}, args.json, as_receipt=args.receipt)
         return 2
     manifest_path = Path(args.manifest).expanduser()
     if not manifest_path.is_absolute():
         manifest_path = root / manifest_path
     validated, errors = validate_manifest(manifest_path, root)
     if validated is None:
-        emit({"ok": False, "errors": errors}, args.json)
+        emit({"ok": False, "errors": errors}, args.json, as_receipt=args.receipt)
         return 2
     if args.action == "validate":
-        emit(validation_receipt(validated), args.json)
+        emit(validation_receipt(validated), args.json, as_receipt=args.receipt)
         return 0
     git_evidence = None
     if validated["document"]["schema"] == 2:
@@ -601,10 +912,17 @@ def main(argv: list[str] | None = None) -> int:
                 args.transaction_id,
             )
         except ManifestError as exc:
-            emit({"ok": False, "errors": [str(exc)]}, args.json)
+            emit(
+                {"ok": False, "errors": [str(exc)]}, args.json, as_receipt=args.receipt
+            )
             return 2
     payload, returncode = execute(validated, root, git_evidence)
-    emit(payload, args.json)
+    try:
+        emit(payload, args.json, as_receipt=args.receipt)
+    except ValueError:
+        # No partial frame or data-dependent exception can masquerade as receipt.
+        print("ERROR acceptance receipt transport refused", file=sys.stderr)
+        return 2
     return returncode
 
 

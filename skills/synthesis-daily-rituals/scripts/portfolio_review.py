@@ -33,13 +33,13 @@ Usage:
     portfolio_review.py --index PATH       # one index, skipping discovery
     portfolio_review.py --source ROOT      # a source root (repeatable)
 """
+
 from __future__ import annotations
 
 import argparse
 import datetime
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -64,7 +64,9 @@ def console_config_path() -> Path:
     return home / "console.yaml"
 
 
-def discover_indexes(explicit_index: list[Path], explicit_source: list[Path]) -> list[Path]:
+def discover_indexes(
+    explicit_index: list[Path], explicit_source: list[Path]
+) -> list[Path]:
     """Find every projects/index.yaml this run should read.
 
     Order of preference: an explicit index, then explicit source roots, then the
@@ -93,8 +95,11 @@ def discover_indexes(explicit_index: list[Path], explicit_source: list[Path]) ->
                 # A source with no projects_dir cannot be audited. Skipping it
                 # silently is how a whole repo goes unreviewed, so say so.
                 if root:
-                    print(f"portfolio_review: {root} declares no projects_dir; "
-                          "not reviewed", file=sys.stderr)
+                    print(
+                        f"portfolio_review: {root} declares no projects_dir; "
+                        "not reviewed",
+                        file=sys.stderr,
+                    )
                 continue
             roots.append(Path(root).expanduser() / str(projects_dir))
         found = [r / "index.yaml" for r in roots]
@@ -110,8 +115,18 @@ def discover_indexes(explicit_index: list[Path], explicit_source: list[Path]) ->
     return found
 
 
-def stale_projects(index_path: Path, threshold: int, today: datetime.date) -> list[dict]:
+def stale_projects(
+    index_path: Path, threshold: int, today: datetime.date
+) -> list[dict]:
     try:
+        pm = (
+            Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+        )
+        if str(pm) not in sys.path:
+            sys.path.insert(0, str(pm))
+        import team_contract
+
+        team_contract.require_registry(index_path)
         data = yaml.safe_load(index_path.read_text(encoding="utf-8")) or {}
     except Exception as exc:
         print(f"portfolio_review: {index_path} did not parse: {exc}", file=sys.stderr)
@@ -125,8 +140,13 @@ def stale_projects(index_path: Path, threshold: int, today: datetime.date) -> li
         pid = project.get("id")
         if not pid:
             continue
-        row = {"id": pid, "status": project.get("status"),
-               "index": str(index_path), "age_days": None, "last_session": None}
+        row = {
+            "id": pid,
+            "status": project.get("status"),
+            "index": str(index_path),
+            "age_days": None,
+            "last_session": None,
+        }
         last = project.get("last_session")
         if last is None:
             out.append(row)
@@ -155,9 +175,20 @@ def last_commit(index_path: Path, pid: str) -> str:
     repo = index_path.parent.parent
     try:
         proc = subprocess.run(
-            ["git", "log", "-1", "--pretty=format:%ai %s", "--",
-             f"{index_path.parent.name}/{pid}"],
-            cwd=repo, capture_output=True, text=True, timeout=10, check=False)
+            [
+                "git",
+                "log",
+                "-1",
+                "--pretty=format:%ai %s",
+                "--",
+                f"{index_path.parent.name}/{pid}",
+            ],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
         return proc.stdout.strip()[:90] or "(no commits)"
     except Exception:
         return "(git unavailable)"
@@ -165,11 +196,16 @@ def last_commit(index_path: Path, pid: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--index", type=Path, action="append", default=[])
     ap.add_argument("--source", type=Path, action="append", default=[])
-    ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD_DAYS,
-                    help="days since last_session before a live project is stale")
+    ap.add_argument(
+        "--threshold",
+        type=int,
+        default=DEFAULT_THRESHOLD_DAYS,
+        help="days since last_session before a live project is stale",
+    )
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--all", action="store_true", help="ignore the cap")
     ap.add_argument("--json", action="store_true")
@@ -177,8 +213,10 @@ def main() -> int:
 
     indexes = discover_indexes(args.index, args.source)
     if not indexes:
-        print("portfolio_review: no project index found; nothing to review",
-              file=sys.stderr)
+        print(
+            "portfolio_review: no project index found; nothing to review",
+            file=sys.stderr,
+        )
         return 0
 
     today = datetime.date.today()
@@ -190,33 +228,46 @@ def main() -> int:
     shown = stale if args.all else stale[: args.limit]
 
     if args.json:
-        print(json.dumps({
-            "generated": today.isoformat(),
-            "threshold_days": args.threshold,
-            "indexes": [str(p) for p in indexes],
-            "stale_total": len(stale),
-            "shown": shown,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "generated": today.isoformat(),
+                    "threshold_days": args.threshold,
+                    "indexes": [str(p) for p in indexes],
+                    "stale_total": len(stale),
+                    "shown": shown,
+                },
+                indent=2,
+            )
+        )
         return 0
 
     if not stale:
-        print(f"Portfolio review: nothing claims active while stale "
-              f"(>{args.threshold}d) across {len(indexes)} index(es). "
-              "The record is honest.")
+        print(
+            f"Portfolio review: nothing claims active while stale "
+            f"(>{args.threshold}d) across {len(indexes)} index(es). "
+            "The record is honest."
+        )
         return 0
 
-    print(f"Portfolio review: {len(stale)} project(s) claim active but have not "
-          f"moved in >{args.threshold} days.")
+    print(
+        f"Portfolio review: {len(stale)} project(s) claim active but have not "
+        f"moved in >{args.threshold} days."
+    )
     print(f"Showing {len(shown)}. For each: close it, pause it, or pick it up today.\n")
     for row in shown:
         age = "undated" if row["age_days"] is None else f"{row['age_days']}d"
         print(f"  {row['id']}  [{row['status']}]  stale {age}")
         print(f"    last_session: {row['last_session'] or 'none recorded'}")
         print(f"    last commit:  {last_commit(Path(row['index']), row['id'])}")
-        print("    -> completed (it shipped) | paused (not now) | active (working it today)\n")
+        print(
+            "    -> completed (it shipped) | paused (not now) | active (working it today)\n"
+        )
     if len(stale) > len(shown):
-        print(f"  ...and {len(stale) - len(shown)} more. Three a day clears a large "
-              "backlog in a couple of weeks; --all shows the full picture.")
+        print(
+            f"  ...and {len(stale) - len(shown)} more. Three a day clears a large "
+            "backlog in a couple of weeks; --all shows the full picture."
+        )
     return 0
 
 

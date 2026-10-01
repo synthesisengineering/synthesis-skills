@@ -85,45 +85,64 @@ def _load_yaml(path: Path) -> dict:
         print(f"error: malformed registry {path}: {exc}", file=sys.stderr)
         raise SystemExit(2)
     if not isinstance(payload, dict):
-        print(f"error: malformed registry {path}: top level must be a mapping",
-              file=sys.stderr)
+        print(
+            f"error: malformed registry {path}: top level must be a mapping",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     return payload
 
 
 def load_registry(path: Path) -> Registry:
     if not path.exists():
-        print(f"error: no registry at {path}; run `slack_workspaces.py init`",
-              file=sys.stderr)
+        print(
+            f"error: no registry at {path}; run `slack_workspaces.py init`",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     payload = _load_yaml(path)
     mode = payload.get("mode", "unified")
     if mode not in MODES:
-        print(f"error: unknown mode {mode!r} in {path}; want one of {MODES}",
-              file=sys.stderr)
+        print(
+            f"error: unknown mode {mode!r} in {path}; want one of {MODES}",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     raw_entries = payload.get("workspaces", [])
     if not isinstance(raw_entries, list) or not raw_entries:
-        print(f"error: malformed registry {path}: `workspaces` must be a "
-              f"non-empty list", file=sys.stderr)
+        print(
+            f"error: malformed registry {path}: `workspaces` must be a non-empty list",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     entries = []
     for i, raw in enumerate(raw_entries):
         if not isinstance(raw, dict):
-            print(f"error: malformed registry {path}: entry {i} must be a mapping",
-                  file=sys.stderr)
+            print(
+                f"error: malformed registry {path}: entry {i} must be a mapping",
+                file=sys.stderr,
+            )
             raise SystemExit(2)
         for key in ("name", "domain", "token"):
             if key not in raw or raw[key] is None or str(raw[key]).strip() == "":
-                print(f"error: malformed registry {path}: entry {i} needs "
-                      f"`{key}`", file=sys.stderr)
+                print(
+                    f"error: malformed registry {path}: entry {i} needs `{key}`",
+                    file=sys.stderr,
+                )
                 raise SystemExit(2)
-        entries.append(Entry(name=str(raw["name"]), domain=str(raw["domain"]),
-                             token=str(raw["token"]).strip()))
+        entries.append(
+            Entry(
+                name=str(raw["name"]),
+                domain=str(raw["domain"]),
+                token=str(raw["token"]).strip(),
+            )
+        )
     names = [e.name for e in entries]
     if len(set(names)) != len(names):
-        print(f"error: malformed registry {path}: duplicate workspace name",
-              file=sys.stderr)
+        print(
+            f"error: malformed registry {path}: duplicate workspace name",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     return Registry(mode=mode, entries=entries)
 
@@ -141,8 +160,10 @@ def token_status(token_ref: str) -> tuple[str, str]:
     if _is_placeholder(token_ref):
         return ("placeholder", "no token provided yet")
     if _is_literal_token(token_ref):
-        return ("rejected", "literal tokens are forbidden in the registry; "
-                "use env:, file:, or mcp:")
+        return (
+            "rejected",
+            "literal tokens are forbidden in the registry; use env:, file:, or mcp:",
+        )
     if token_ref.startswith("env:"):
         var = token_ref[4:]
         if not var:
@@ -170,8 +191,10 @@ def token_status(token_ref: str) -> tuple[str, str]:
         server = token_ref[4:]
         if not server:
             return ("missing", "empty mcp: ref")
-        return ("external", f"client-managed MCP server `{server}`; "
-                "proven by the first MCP call")
+        return (
+            "external",
+            f"client-managed MCP server `{server}`; proven by the first MCP call",
+        )
     return ("missing", f"unknown token ref form {token_ref.split(':')[0] + ':'}")
 
 
@@ -198,24 +221,48 @@ def detect_session_workspace(explicit: str | None) -> str | None:
     return None
 
 
-def readable_set(registry: Registry, session_workspace: str) -> list[Entry]:
+def readable_set(
+    registry: Registry, session_workspace: str, *, focus_only=False
+) -> list[Entry]:
     focus = next((e for e in registry.entries if e.name == session_workspace), None)
     if focus is None:
         return []
-    if registry.mode == "isolated":
+    if registry.mode == "isolated" or focus_only:
         return [focus]
-    ready = [e for e in registry.entries
-             if token_status(e.token)[0] in ("ready", "external")]
+    ready = [
+        e for e in registry.entries if token_status(e.token)[0] in ("ready", "external")
+    ]
     ordered = [focus] + [e for e in ready if e.name != focus.name]
     if token_status(focus.token)[0] not in ("ready", "external"):
         return [e for e in ordered if e.name != focus.name]
     return ordered
 
 
+def acquisition_entry(registry, workspace):
+    """Select exactly the requested registered focus without probing foreign secrets."""
+    rows = readable_set(registry, workspace, focus_only=True)
+    if len(rows) != 1 or registry.mode not in MODES:
+        raise ValueError("Slack acquisition workspace is not in this machine registry")
+    entry = rows[0]
+    if (
+        domain_note(entry.domain)
+        or _is_placeholder(entry.token)
+        or _is_literal_token(entry.token)
+    ):
+        raise ValueError(
+            "Slack acquisition registry is not configured with a local reference"
+        )
+    if not entry.token.startswith(("env:", "file:", "mcp:")):
+        raise ValueError("unsupported Slack credential reference")
+    return entry
+
+
 def cmd_init(registry_path: Path, force: bool) -> int:
     if registry_path.exists() and not force:
-        print(f"refusing to overwrite {registry_path} (pass --force to reseed)",
-              file=sys.stderr)
+        print(
+            f"refusing to overwrite {registry_path} (pass --force to reseed)",
+            file=sys.stderr,
+        )
         return 1
     lines = [
         "# Slack workspace registry (synthesis-slack-sync).",
@@ -229,23 +276,31 @@ def cmd_init(registry_path: Path, force: bool) -> int:
         "workspaces:",
     ]
     for name, domain in SEED_WORKSPACES:
-        lines += [f"  - name: {name}", f"    domain: {domain}",
-                  "    token: PLACEHOLDER"]
+        lines += [
+            f"  - name: {name}",
+            f"    domain: {domain}",
+            "    token: PLACEHOLDER",
+        ]
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     registry_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"seeded {registry_path} with {len(SEED_WORKSPACES)} placeholder workspaces")
     return 0
 
 
-def cmd_list(registry_path: Path, as_json: bool,
-             session_workspace: str | None) -> int:
+def cmd_list(registry_path: Path, as_json: bool, session_workspace: str | None) -> int:
     registry = load_registry(registry_path)
     rows = []
     for entry in registry.entries:
         status, detail = token_status(entry.token)
-        rows.append({"name": entry.name, "domain": entry.domain,
-                     "status": status, "detail": detail,
-                     "focus": entry.name == session_workspace})
+        rows.append(
+            {
+                "name": entry.name,
+                "domain": entry.domain,
+                "status": status,
+                "detail": detail,
+                "focus": entry.name == session_workspace,
+            }
+        )
     if as_json:
         print(json.dumps({"mode": registry.mode, "workspaces": rows}, indent=2))
         return 0
@@ -259,15 +314,21 @@ def cmd_list(registry_path: Path, as_json: bool,
 def cmd_doctor(registry_path: Path, session_workspace: str | None) -> int:
     registry = load_registry(registry_path)
     if session_workspace is None:
-        print("error: cannot determine the session workspace: pass "
-              "--session-workspace, set SYNTHESIS_SESSION_WORKSPACE, or run "
-              "from inside ~/workspaces/<name>", file=sys.stderr)
+        print(
+            "error: cannot determine the session workspace: pass "
+            "--session-workspace, set SYNTHESIS_SESSION_WORKSPACE, or run "
+            "from inside ~/workspaces/<name>",
+            file=sys.stderr,
+        )
         return 2
     focus = next((e for e in registry.entries if e.name == session_workspace), None)
     if focus is None:
         known = ", ".join(e.name for e in registry.entries)
-        print(f"error: session workspace {session_workspace!r} is not in the "
-              f"registry (known: {known})", file=sys.stderr)
+        print(
+            f"error: session workspace {session_workspace!r} is not in the "
+            f"registry (known: {known})",
+            file=sys.stderr,
+        )
         return 2
     print(f"mode: {registry.mode}  session workspace: {session_workspace}")
     failed = False
@@ -284,26 +345,35 @@ def cmd_doctor(registry_path: Path, session_workspace: str | None) -> int:
             failed = True
     if failed:
         status, _ = token_status(focus.token)
-        print(f"focus workspace {session_workspace!r} is not readable "
-              f"({status}); mint its token per "
-              f"references/slack-token-guide.md and re-run doctor")
+        print(
+            f"focus workspace {session_workspace!r} is not readable "
+            f"({status}); mint its token per "
+            f"references/slack-token-guide.md and re-run doctor"
+        )
         return 1
     names = [e.name for e in readable_set(registry, session_workspace)]
     print(f"readable from here: {', '.join(names)}")
     return 0
 
 
-def cmd_readable(registry_path: Path, session_workspace: str | None,
-                 as_json: bool) -> int:
+def cmd_readable(
+    registry_path: Path, session_workspace: str | None, as_json: bool
+) -> int:
     registry = load_registry(registry_path)
     if session_workspace is None:
         print("error: cannot determine the session workspace", file=sys.stderr)
         return 2
     entries = readable_set(registry, session_workspace)
     if as_json:
-        print(json.dumps({"mode": registry.mode,
-                          "session_workspace": session_workspace,
-                          "readable": [e.name for e in entries]}))
+        print(
+            json.dumps(
+                {
+                    "mode": registry.mode,
+                    "session_workspace": session_workspace,
+                    "readable": [e.name for e in entries],
+                }
+            )
+        )
         return 0
     print(" ".join(e.name for e in entries))
     return 0
@@ -311,13 +381,17 @@ def cmd_readable(registry_path: Path, session_workspace: str | None,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", default=None,
-                        help="registry path (default: $SYNTHESIS_SLACK_REGISTRY "
-                             "or ~/.synthesis/slack-workspaces.yaml)")
+    parser.add_argument(
+        "--registry",
+        default=None,
+        help="registry path (default: $SYNTHESIS_SLACK_REGISTRY "
+        "or ~/.synthesis/slack-workspaces.yaml)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     p_init = sub.add_parser("init", help="seed a placeholder registry")
-    p_init.add_argument("--force", action="store_true",
-                        help="overwrite an existing registry")
+    p_init.add_argument(
+        "--force", action="store_true", help="overwrite an existing registry"
+    )
     p_init.add_argument("--registry", default=None)
     p_list = sub.add_parser("list", help="list workspaces and token status")
     p_list.add_argument("--json", action="store_true")
@@ -330,8 +404,9 @@ def main(argv: list[str] | None = None) -> int:
     p_read.add_argument("--registry", default=None)
     p_read.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    registry_path = Path(args.registry or os.environ.get(ENV_REGISTRY, "")
-                          or DEFAULT_REGISTRY).expanduser()
+    registry_path = Path(
+        args.registry or os.environ.get(ENV_REGISTRY, "") or DEFAULT_REGISTRY
+    ).expanduser()
     if args.command == "init":
         return cmd_init(registry_path, args.force)
     session_workspace = None

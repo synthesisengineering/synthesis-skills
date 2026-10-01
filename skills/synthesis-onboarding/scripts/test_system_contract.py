@@ -26,10 +26,16 @@ import system_contract  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def isolated_native_roots(monkeypatch, tmp_path):
-    monkeypatch.setenv("MESSAGE_GUARD_CONFIG", str(tmp_path / "message-guard/patterns.json"))
-    monkeypatch.setenv("MESSAGE_GUARD_STATE_DIR", str(tmp_path / "message-guard"))
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    # A synthetic release fixture must not consult the developer's policy.
+    # Full sandbox setup tests provide their own HOME and actual guard config.
+    monkeypatch.setenv(
+        "MESSAGE_GUARD_CONFIG", str(tmp_path / "unselected-guard/patterns.json")
+    )
+    monkeypatch.setenv(
+        "MESSAGE_GUARD_STATE_DIR", str(tmp_path / "unselected-guard/state")
+    )
 
 
 def git(path: Path, *args: str) -> str:
@@ -64,7 +70,9 @@ def release_repo(tmp_path: Path, version: str = "9.8.7") -> Path:
     manifest = json.dumps({"name": "synthesis-skills", "version": version}) + "\n"
     (root / ".claude-plugin" / "plugin.json").write_text(manifest, encoding="utf-8")
     (root / ".codex-plugin" / "plugin.json").write_text(manifest, encoding="utf-8")
-    (root / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py").write_text(
+    (
+        root / "skills" / "synthesis-onboarding" / "scripts" / "synthesis_cli.py"
+    ).write_text(
         "import argparse\nimport os\n\n\n"
         "def build_parser():\n"
         "    parser = argparse.ArgumentParser(prog='synthesis')\n"
@@ -76,6 +84,16 @@ def release_repo(tmp_path: Path, version: str = "9.8.7") -> Path:
         "    print(os.environ.get('SYNTHESIS_ACTIVE_DESCRIPTOR', 'missing'))\n",
         encoding="utf-8",
     )
+    # The installed launcher verifies its declared helper closure before
+    # dispatch, including commands whose synthetic CLI exits immediately.
+    import release_runtime
+
+    for relative in release_runtime.ENTRYPOINT_DEPENDENCIES[
+        "synthesis-onboarding/scripts/synthesis_cli.py"
+    ]:
+        target = root / "skills" / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO_ROOT / "skills" / relative, target)
     git(root, "init", "-q", "-b", "main")
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "fixture")
@@ -88,13 +106,22 @@ def native_transcript(home: Path, client: str, session_id: str) -> Path:
     """Create client-owned structured evidence outside the immutable plugin."""
     if client == "codex":
         transcript = (
-            home / ".codex" / "sessions" / "2030" / "01" / "02"
+            home
+            / ".codex"
+            / "sessions"
+            / "2030"
+            / "01"
+            / "02"
             / ("rollout-" + session_id + ".jsonl")
         )
         binding = {"type": "session_meta", "payload": {"id": session_id}}
     else:
         transcript = (
-            home / ".claude" / "projects" / "-workspace-example" / (session_id + ".jsonl")
+            home
+            / ".claude"
+            / "projects"
+            / "-workspace-example"
+            / (session_id + ".jsonl")
         )
         binding = {"sessionId": session_id}
     transcript.parent.mkdir(parents=True, exist_ok=True)
@@ -103,7 +130,11 @@ def native_transcript(home: Path, client: str, session_id: str) -> Path:
 
 
 def live_receipt(
-    tmp_path: Path, client: str, version: str = "9.8.7", *, home: Path | None = None,
+    tmp_path: Path,
+    client: str,
+    version: str = "9.8.7",
+    *,
+    home: Path | None = None,
 ) -> dict:
     root = tmp_path / ("%s-%s-plugin" % (client, version))
     (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
@@ -117,7 +148,9 @@ def live_receipt(
         encoding="utf-8",
     )
     session_id = str(uuid.uuid4())
-    transcript = native_transcript(home if home is not None else tmp_path, client, session_id)
+    transcript = native_transcript(
+        home if home is not None else tmp_path, client, session_id
+    )
     return {
         "receipt_schema": 2,
         "receipt_event_id": str(uuid.uuid4()),
@@ -155,7 +188,9 @@ def test_shipped_contract_documents_are_valid() -> None:
     assert contracts["capabilities"]["truth_planes"] == list(
         system_contract.TRUTH_PLANES
     )
-    observation_properties = contracts["observation"]["properties"]["transactions"]["items"]["properties"]
+    observation_properties = contracts["observation"]["properties"]["transactions"][
+        "items"
+    ]["properties"]
     assert set(system_contract.TRUTH_PLANES) <= set(observation_properties)
     for document in contracts.values():
         if "$schema" in document:
@@ -167,9 +202,7 @@ def test_json_schemas_and_runtime_share_valid_and_invalid_corpora(
 ) -> None:
     contracts = system_contract.load_contract_documents(REPO_ROOT)
 
-    desired = system_contract.default_desired_state(
-        "skills-only", ["codex"], "stable"
-    )
+    desired = system_contract.default_desired_state("skills-only", ["codex"], "stable")
     Draft202012Validator(contracts["desired"]).validate(desired)
     system_contract.validate_desired_state(desired)
     invalid_desired = dict(desired)
@@ -281,15 +314,15 @@ def test_json_schemas_and_runtime_share_valid_and_invalid_corpora(
 
     source = tmp_path / "source"
     source.mkdir()
-    (source / "instructions.md").write_text("Use grounded evidence.\n", encoding="utf-8")
+    (source / "instructions.md").write_text(
+        "Use grounded evidence.\n", encoding="utf-8"
+    )
     git(source, "init", "-q", "-b", "main")
     git(source, "add", "-A")
     git(source, "commit", "-q", "-m", "fixture")
     graph = {
         "schema_version": 1,
-        "sources": [
-            {"role": "personal", "path": "instructions.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "instructions.md", "required": True}],
         "output": "AGENTS.md",
         "claude_adapter": "CLAUDE.md",
     }
@@ -305,9 +338,7 @@ def test_json_schemas_and_runtime_share_valid_and_invalid_corpora(
     invalid_graphs.append(
         {
             **graph,
-            "sources": [
-                {"role": "personal", "path": "../escape", "required": False}
-            ],
+            "sources": [{"role": "personal", "path": "../escape", "required": False}],
         }
     )
     invalid_graphs.append(
@@ -379,7 +410,15 @@ def test_persisted_state_readers_enforce_closed_runtime_schemas(tmp_path: Path) 
         state.read_desired()
     state.observation_path.parent.mkdir(parents=True, exist_ok=True)
     state.observation_path.write_text(
-        json.dumps({"schema_version": 3, "generation": 0, "transactions": [], "unexpected": True}) + "\n",
+        json.dumps(
+            {
+                "schema_version": 3,
+                "generation": 0,
+                "transactions": [],
+                "unexpected": True,
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     with pytest.raises(system_contract.ContractError, match="unknown keys"):
@@ -452,7 +491,9 @@ def test_live_load_rejects_nonexistent_root_unbound_transcript_and_stale_time(
 
 
 @pytest.mark.parametrize("drift", ["tracked-bytes", "extra-skill", "extra-directory"])
-def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Path, drift: str) -> None:
+def test_live_load_binds_client_root_to_the_release_content_digest(
+    tmp_path: Path, drift: str
+) -> None:
     source_receipt = live_receipt(tmp_path, "codex")
     source = Path(source_receipt["plugin_root"])
     loaded = tmp_path / "loaded-plugin"
@@ -476,9 +517,16 @@ def test_live_load_binds_client_root_to_the_release_content_digest(tmp_path: Pat
     else:
         (loaded / "skills/extra").mkdir(parents=True)
         if drift == "extra-skill":
-            (loaded / "skills/extra/SKILL.md").write_text("Additional unapproved skill.\n")
+            (loaded / "skills/extra/SKILL.md").write_text(
+                "Additional unapproved skill.\n"
+            )
     before = state.observation_path.read_bytes()
-    with pytest.raises(system_contract.ContractError, match="release digest" if drift == "tracked-bytes" else "unexpected release entry"):
+    with pytest.raises(
+        system_contract.ContractError,
+        match=(
+            "release digest" if drift == "tracked-bytes" else "unexpected release entry"
+        ),
+    ):
         state.record_live_load(receipt=receipt)
     assert state.observation_path.read_bytes() == before
 
@@ -498,8 +546,16 @@ def test_live_load_validates_muse_store_bound_sessions(tmp_path: Path) -> None:
     )
     session_id = str(uuid.uuid4())
     log = (
-        tmp_path / ".local" / "share" / "muse" / "sessions"
-        / "2026" / "09" / "17" / session_id / "session.jsonl"
+        tmp_path
+        / ".local"
+        / "share"
+        / "muse"
+        / "sessions"
+        / "2026"
+        / "09"
+        / "17"
+        / session_id
+        / "session.jsonl"
     )
     log.parent.mkdir(parents=True)
     log.write_text(
@@ -526,7 +582,9 @@ def test_live_load_validates_muse_store_bound_sessions(tmp_path: Path) -> None:
         state.record_live_load(receipt=unbound)
 
 
-def test_first_generation_records_bounded_legacy_migration_input(tmp_path: Path) -> None:
+def test_first_generation_records_bounded_legacy_migration_input(
+    tmp_path: Path,
+) -> None:
     legacy = tmp_path / ".synthesis" / "onboarding" / "receipts.json"
     legacy.parent.mkdir(parents=True)
     legacy.write_text(
@@ -585,7 +643,9 @@ def test_component_identifier_rejects_path_escape(value: str) -> None:
         "ssh://user:secret@host/repository.git",
     ],
 )
-def test_repository_transport_rejects_local_or_credential_bearing_urls(url: str) -> None:
+def test_repository_transport_rejects_local_or_credential_bearing_urls(
+    url: str,
+) -> None:
     with pytest.raises(system_contract.ContractError):
         system_contract.validate_repository_url(url)
 
@@ -598,7 +658,9 @@ def test_repository_transport_rejects_local_or_credential_bearing_urls(url: str)
         "git@example.test:team/repository.git",
     ],
 )
-def test_repository_transport_accepts_authenticated_https_or_ssh_shapes(url: str) -> None:
+def test_repository_transport_accepts_authenticated_https_or_ssh_shapes(
+    url: str,
+) -> None:
     assert system_contract.validate_repository_url(url) == url
 
 
@@ -679,11 +741,15 @@ def test_activation_refuses_user_owned_launcher(tmp_path: Path) -> None:
     launcher.parent.mkdir()
     launcher.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
     with pytest.raises(system_contract.ContractError, match="user-owned"):
-        system_contract.activate_cli(root, descriptor, launcher, tmp_path / "active.json")
+        system_contract.activate_cli(
+            root, descriptor, launcher, tmp_path / "active.json"
+        )
     assert launcher.read_text(encoding="utf-8") == "#!/bin/sh\necho mine\n"
 
 
-def test_managed_launcher_dispatches_through_the_atomic_active_pointer(tmp_path: Path) -> None:
+def test_managed_launcher_dispatches_through_the_atomic_active_pointer(
+    tmp_path: Path,
+) -> None:
     root = release_repo(tmp_path)
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
@@ -699,7 +765,9 @@ def test_managed_launcher_dispatches_through_the_atomic_active_pointer(tmp_path:
     assert completed.stdout.strip() == str(active)
 
 
-def test_activation_refuses_launcher_that_spoofs_the_public_marker(tmp_path: Path) -> None:
+def test_activation_refuses_launcher_that_spoofs_the_public_marker(
+    tmp_path: Path,
+) -> None:
     root = release_repo(tmp_path)
     descriptor = system_contract.release_descriptor_from_checkout(
         root, "stable", "stable", "https://example.test/synthesis-skills.git"
@@ -710,7 +778,9 @@ def test_activation_refuses_launcher_that_spoofs_the_public_marker(tmp_path: Pat
     forged = system_contract.LAUNCHER_MARK + "\n#!/bin/sh\necho user-owned\n"
     launcher.write_text(forged, encoding="utf-8")
     with pytest.raises(system_contract.ContractError, match="user-owned"):
-        system_contract.activate_cli(root, descriptor, launcher, tmp_path / "active.json")
+        system_contract.activate_cli(
+            root, descriptor, launcher, tmp_path / "active.json"
+        )
     assert launcher.read_text(encoding="utf-8") == forged
 
 
@@ -740,14 +810,24 @@ def test_activation_failure_cannot_split_launcher_from_active_descriptor(
 
 def materialized_fixture(root, tmp_path):
     import bootstrap
-    generation, _ = bootstrap.materialize_release(root, tmp_path / "generations",
-        channel="stable", ref="stable", source_url="https://example.test/synthesis-skills.git")
+
+    generation, _ = bootstrap.materialize_release(
+        root,
+        tmp_path / "generations",
+        channel="stable",
+        ref="stable",
+        source_url="https://example.test/synthesis-skills.git",
+    )
     return generation
 
 
-def test_activation_rejects_dangling_git_marker_without_replacing_current_pair(tmp_path):
+def test_activation_rejects_dangling_git_marker_without_replacing_current_pair(
+    tmp_path,
+):
     source = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(source, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        source, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(source, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     system_contract.activate_cli(root, descriptor, launcher, active)
@@ -762,8 +842,11 @@ def test_activation_rejects_dangling_git_marker_without_replacing_current_pair(t
 
 def test_activation_writes_a_receipt_that_fast_paths_later_calls(tmp_path):
     import release_runtime
+
     root = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        root, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(root, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     system_contract.activate_cli(root, descriptor, launcher, active)
@@ -778,19 +861,27 @@ def test_activation_writes_a_receipt_that_fast_paths_later_calls(tmp_path):
 
 def runtime_mode(active):
     import release_runtime
+
     data = json.loads(active.read_text())
     return release_runtime.verify_fast(active, data)
 
 
 def test_launcher_records_absolute_pin_and_ignores_hostile_path(tmp_path, monkeypatch):
     root = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        root, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(root, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     system_contract.activate_cli(root, descriptor, launcher, active)
     recorded = json.loads(active.read_text())
-    assert recorded["interpreter"]["version"] == ".".join(map(str, sys.version_info[:3]))
-    assert launcher.read_text().splitlines()[0] == "#!" + recorded["interpreter"]["executable"] + " -B"
+    assert recorded["interpreter"]["version"] == ".".join(
+        map(str, sys.version_info[:3])
+    )
+    assert (
+        launcher.read_text().splitlines()[0]
+        == "#!" + recorded["interpreter"]["executable"] + " -BIS"
+    )
     hostile = tmp_path / "hostile"
     hostile.mkdir()
     fake = hostile / "python3"
@@ -804,7 +895,9 @@ def test_launcher_records_absolute_pin_and_ignores_hostile_path(tmp_path, monkey
 
 def test_exact_legacy_launcher_migrates_and_unknown_edits_refuse(tmp_path):
     root = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        root, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(root, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     launcher.parent.mkdir()
@@ -821,7 +914,9 @@ def test_exact_legacy_launcher_migrates_and_unknown_edits_refuse(tmp_path):
 
 def test_legacy_migration_failure_restores_exact_old_pair(tmp_path, monkeypatch):
     root = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        root, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(root, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     launcher.parent.mkdir()
@@ -831,10 +926,12 @@ def test_legacy_migration_failure_restores_exact_old_pair(tmp_path, monkeypatch)
     launcher.write_bytes(old_launcher)
     active.write_bytes(old_active)
     original = system_contract.atomic_write_json
+
     def failing(path, value):
         if path == active:
             raise OSError("injected pointer failure")
         return original(path, value)
+
     monkeypatch.setattr(system_contract, "atomic_write_json", failing)
     with pytest.raises(OSError, match="injected"):
         system_contract.activate_cli(root, descriptor, launcher, active)
@@ -845,7 +942,9 @@ def test_legacy_migration_failure_restores_exact_old_pair(tmp_path, monkeypatch)
 
 def test_interrupted_migration_refuses_execution_then_recovers(tmp_path):
     root = release_repo(tmp_path)
-    descriptor = system_contract.release_descriptor_from_checkout(root, "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        root, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     root = materialized_fixture(root, tmp_path)
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     launcher.parent.mkdir()
@@ -865,7 +964,20 @@ c.atomic_write_json = interrupt
 c.activate_cli(Path(sys.argv[1]), json.loads(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))
 """
     env = {**os.environ, "PYTHONPATH": str(SCRIPTS)}
-    crashed = subprocess.run([sys.executable, "-B", "-c", program, str(root), json.dumps(descriptor), str(launcher), str(active)], env=env, capture_output=True)
+    crashed = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            program,
+            str(root),
+            json.dumps(descriptor),
+            str(launcher),
+            str(active),
+        ],
+        env=env,
+        capture_output=True,
+    )
     assert crashed.returncode == 73, crashed.stderr
     pending = active.with_name(active.name + ".activation-pending.json")
     assert pending.is_file()
@@ -942,7 +1054,9 @@ def test_pending_transaction_is_aborted_before_reentry(tmp_path: Path) -> None:
     assert observed["transactions"][1]["state"] == "committed"
 
 
-def test_failed_transaction_never_commits_or_advances_desired_state(tmp_path: Path) -> None:
+def test_failed_transaction_never_commits_or_advances_desired_state(
+    tmp_path: Path,
+) -> None:
     state = system_contract.SystemState(home=tmp_path)
     desired = system_contract.default_desired_state(
         profile="full", clients=["claude"], channel="stable"
@@ -958,7 +1072,9 @@ def test_failed_transaction_never_commits_or_advances_desired_state(tmp_path: Pa
     assert not state.desired_path.exists()
 
 
-def test_failed_transaction_invokes_resource_compensation_before_abort(tmp_path: Path) -> None:
+def test_failed_transaction_invokes_resource_compensation_before_abort(
+    tmp_path: Path,
+) -> None:
     state = system_contract.SystemState(home=tmp_path)
     desired = system_contract.default_desired_state(
         profile="skills-only", clients=["codex"], channel="stable"
@@ -993,7 +1109,9 @@ def test_transaction_can_commit_resolved_desired_state_under_the_same_lock(
     )
     assert state.read_desired() == resolved
     assert transaction["desired_digest"] == system_contract.json_digest(request)
-    assert transaction["committed_desired_digest"] == system_contract.json_digest(resolved)
+    assert transaction["committed_desired_digest"] == system_contract.json_digest(
+        resolved
+    )
     assert transaction["previous_active_generation"] is None
     second = state.run_transaction("repair", resolved, lambda _tx: {})
     assert second["previous_active_generation"] == transaction["generation"]
@@ -1003,7 +1121,9 @@ def test_instruction_pair_rolls_back_if_second_activation_fails(tmp_path: Path) 
     source = tmp_path / "source"
     source.mkdir()
     git(source, "init", "-q", "-b", "main")
-    (source / "instructions.md").write_text("Use the tracked source.\n", encoding="utf-8")
+    (source / "instructions.md").write_text(
+        "Use the tracked source.\n", encoding="utf-8"
+    )
     git(source, "add", "instructions.md")
     git(source, "commit", "-q", "-m", "source")
     workspace = tmp_path / "workspace"
@@ -1062,9 +1182,7 @@ def test_instruction_pair_refreshes_source_receipt_when_bytes_are_unchanged(
 ) -> None:
     graph = {
         "schema_version": 1,
-        "sources": [
-            {"role": "personal", "path": "instructions.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "instructions.md", "required": True}],
         "output": "AGENTS.md",
         "claude_adapter": "CLAUDE.md",
     }
@@ -1106,9 +1224,7 @@ def test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources(
     git(source, "commit", "-q", "-m", "source")
     graph = {
         "schema_version": 1,
-        "sources": [
-            {"role": "personal", "path": "instructions.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "instructions.md", "required": True}],
         "output": "AGENTS.md",
         "claude_adapter": "CLAUDE.md",
     }
@@ -1124,9 +1240,7 @@ def test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources(
     untracked.write_text("Untracked.\n", encoding="utf-8")
     untracked_graph = {
         **graph,
-        "sources": [
-            {"role": "personal", "path": "untracked.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "untracked.md", "required": True}],
     }
     with pytest.raises(system_contract.ContractError, match="not Git-tracked"):
         system_contract.materialize_instruction_pair(
@@ -1140,9 +1254,7 @@ def test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources(
     link.symlink_to(tracked.name)
     link_graph = {
         **graph,
-        "sources": [
-            {"role": "personal", "path": "linked.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "linked.md", "required": True}],
     }
     with pytest.raises(system_contract.ContractError, match="symbolic link"):
         system_contract.materialize_instruction_pair(
@@ -1158,9 +1270,7 @@ def test_instruction_pair_rejects_uncommitted_untracked_and_symlink_sources(
     git(source, "commit", "-q", "-m", "binary source")
     binary_graph = {
         **graph,
-        "sources": [
-            {"role": "personal", "path": "binary.md", "required": True}
-        ],
+        "sources": [{"role": "personal", "path": "binary.md", "required": True}],
     }
     with pytest.raises(system_contract.ContractError, match="valid UTF-8"):
         system_contract.materialize_instruction_pair(
@@ -1221,7 +1331,9 @@ def test_outcome_verification_requires_public_capability_and_source_class(
         )
 
 
-def test_outcome_verification_rejects_non_git_and_untracked_evidence(tmp_path: Path) -> None:
+def test_outcome_verification_rejects_non_git_and_untracked_evidence(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "workspace"
     (workspace / ".agents").mkdir(parents=True)
     (workspace / "source").mkdir()

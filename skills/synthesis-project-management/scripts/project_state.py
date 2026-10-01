@@ -17,18 +17,22 @@ import hashlib
 import json
 import math
 import os
+from native_identity import ProjectStateError
 from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
-import uuid
+import time
 from typing import Any, Iterable
 
-_CONTEXT_SCRIPTS = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle" / "scripts"
+_CONTEXT_SCRIPTS = (
+    Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle" / "scripts"
+)
 if str(_CONTEXT_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_CONTEXT_SCRIPTS))
 import record_transaction  # noqa: E402 - sibling owner path
+
 _REPO_GUARD = Path(__file__).resolve().parents[2] / "synthesis-repo-guard"
 if str(_REPO_GUARD) not in sys.path:
     sys.path.insert(0, str(_REPO_GUARD))
@@ -44,12 +48,17 @@ RECEIPT_SCHEMA = 1
 # of tens of thousands of paths while bounding encoded JSON input to 16 MiB.
 MAX_STATE_JSON_BYTES = 16 * 1024 * 1024
 MAX_JSON_DEPTH = 64
+# One shared subtree envelope per dirty inventory, never reset by sibling roots.
+# Entry/byte/depth limits bound memory, hashing and descriptor ancestry; elapsed
+# refusal bounds cooperative filesystem work. Exceeding a bound is UNKNOWN.
+MAX_DIRTY_TREE_ENTRIES = 100_000
+MAX_DIRTY_TREE_BYTES = 1024 * 1024 * 1024
+MAX_DIRTY_TREE_DEPTH = 64
+MAX_DIRTY_TREE_SECONDS = 30.0
 _VERSION_RE = re.compile(r"(?<![0-9])v?(\d+)\.(\d+)\.(\d+)(?![0-9])", re.I)
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
 
 
-class ProjectStateError(RuntimeError):
-    """A required evidence source was unreadable or mutually inconsistent."""
 
 
 @dataclass
@@ -80,13 +89,24 @@ class RecoveryReport:
         return asdict(self)
 
 
-def _run(repo: Path, *args: str, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    repo: Path,
+    *args: str,
+    check: bool = True,
+    input_text: str | None = None,
+    raw_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, input=input_text
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=not raw_output,
+        input=input_text.encode()
+        if raw_output and input_text is not None
+        else input_text,
     )
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "git command failed"
-        raise ProjectStateError(detail)
+        raise ProjectStateError(os.fsdecode(detail))
     return result
 
 
@@ -95,7 +115,11 @@ def _sha_bytes(value: bytes) -> str:
 
 
 def _sha_file(path: Path) -> str:
-    raw = read_json_bytes(path, max_bytes=MAX_STATE_JSON_BYTES) if path.name == STATE_FILE else path.read_bytes()
+    raw = (
+        read_json_bytes(path, max_bytes=MAX_STATE_JSON_BYTES)
+        if path.name == STATE_FILE
+        else path.read_bytes()
+    )
     return _sha_bytes(raw)
 
 
@@ -105,7 +129,9 @@ def _state_json_text(payload: dict[str, Any]) -> str:
     except (ValueError, RecursionError) as exc:
         raise ProjectStateError(f"invalid structured state: {exc}") from exc
     if len(text.encode("utf-8")) > MAX_STATE_JSON_BYTES:
-        raise ProjectStateError(f"structured state exceeds {MAX_STATE_JSON_BYTES}-byte limit")
+        raise ProjectStateError(
+            f"structured state exceeds {MAX_STATE_JSON_BYTES}-byte limit"
+        )
     try:
         _check_json_depth(text)
     except ValueError as exc:
@@ -114,7 +140,11 @@ def _state_json_text(payload: dict[str, Any]) -> str:
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
-    text = _state_json_text(payload) if path.name == STATE_FILE else json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    text = (
+        _state_json_text(payload)
+        if path.name == STATE_FILE
+        else json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(text, encoding="utf-8")
@@ -138,8 +168,14 @@ def read_json_bytes(path: Path, *, max_bytes: int) -> bytes:
         raise ValueError("JSON byte limit must be a positive integer")
 
     def signature(value):
-        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
-                value.st_mtime_ns, value.st_ctime_ns)
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
 
     try:
         initial = path.lstat()
@@ -148,7 +184,9 @@ def read_json_bytes(path: Path, *, max_bytes: int) -> bytes:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(descriptor, "rb") as handle:
             before = os.fstat(handle.fileno())
-            if not stat.S_ISREG(before.st_mode) or signature(initial) != signature(before):
+            if not stat.S_ISREG(before.st_mode) or signature(initial) != signature(
+                before
+            ):
                 raise ValueError("JSON evidence changed before reading")
             if before.st_size > max_bytes:
                 raise ValueError(f"JSON evidence exceeds {max_bytes}-byte limit")
@@ -156,7 +194,9 @@ def read_json_bytes(path: Path, *, max_bytes: int) -> bytes:
             after = os.fstat(handle.fileno())
         if len(raw) > max_bytes:
             raise ValueError(f"JSON evidence exceeds {max_bytes}-byte limit")
-        if signature(before) != signature(after) or signature(after) != signature(path.lstat()):
+        if signature(before) != signature(after) or signature(after) != signature(
+            path.lstat()
+        ):
             raise ValueError("JSON evidence changed during reading")
         return raw
     except (OSError, ValueError) as exc:
@@ -187,6 +227,7 @@ def _check_json_depth(text: str) -> None:
 
 def read_json_object(path: Path, *, max_bytes: int) -> dict[str, Any]:
     """Shared strict object parser; callers choose the evidence-class ceiling."""
+
     def unique_pairs(pairs):
         result = {}
         for key, value in pairs:
@@ -208,8 +249,12 @@ def read_json_object(path: Path, *, max_bytes: int) -> dict[str, Any]:
         raw = read_json_bytes(path, max_bytes=max_bytes)
         text = raw.decode("utf-8")
         _check_json_depth(text)
-        payload = json.loads(text, object_pairs_hook=unique_pairs,
-                             parse_constant=reject_constant, parse_float=finite_float)
+        payload = json.loads(
+            text,
+            object_pairs_hook=unique_pairs,
+            parse_constant=reject_constant,
+            parse_float=finite_float,
+        )
     except (ValueError, RecursionError) as exc:
         raise ProjectStateError(f"unreadable JSON evidence {path}: {exc}") from exc
     if not isinstance(payload, dict):
@@ -245,7 +290,11 @@ def _common_git_dir(repo: Path) -> Path:
 
 
 def _index_entry(text: str, project_id: str) -> str:
-    matches = list(re.finditer(rf"(?m)^\s*-?\s*id:\s*['\"]?{re.escape(project_id)}['\"]?\s*$", text))
+    matches = list(
+        re.finditer(
+            rf"(?m)^\s*-?\s*id:\s*['\"]?{re.escape(project_id)}['\"]?\s*$", text
+        )
+    )
     if len(matches) != 1:
         raise ProjectStateError(
             f"index must contain exactly one project id {project_id!r}; found {len(matches)}"
@@ -257,7 +306,9 @@ def _index_entry(text: str, project_id: str) -> str:
 
 
 @record_transaction.guarded("project", error=ProjectStateError)
-def checkpoint_applicability(project: Path, *, git_runner=None) -> tuple[str, list[str]]:
+def checkpoint_applicability(
+    project: Path, *, git_runner=None
+) -> tuple[str, list[str]]:
     """Determine structured adoption without issuing a receipt or health verdict.
 
     Absence alone is insufficient: current index entries, complete local Git
@@ -268,36 +319,57 @@ def checkpoint_applicability(project: Path, *, git_runner=None) -> tuple[str, li
     project = Path(project).absolute()
     git = git_runner or _run
     if project.parent.name != "projects" or not project.is_dir():
-        raise ProjectStateError("checkpoint requires an existing registered project directory")
+        raise ProjectStateError(
+            "checkpoint requires an existing registered project directory"
+        )
     repo = Path(git(project, "rev-parse", "--show-toplevel").stdout.strip()).resolve()
     if project.parent != repo / "projects":
-        raise ProjectStateError("project registry is not at the verified repository root")
+        raise ProjectStateError(
+            "project registry is not at the verified repository root"
+        )
     index = project.parent / "index.yaml"
     for path in (project, project.parent, index):
         if path.is_symlink():
-            raise ProjectStateError("checkpoint project or registry crosses an unsafe symlink")
-    tracked = git(repo, "ls-files", "--error-unmatch", "--", ":(literal)projects/index.yaml")
+            raise ProjectStateError(
+                "checkpoint project or registry crosses an unsafe symlink"
+            )
+    tracked = git(
+        repo, "ls-files", "--error-unmatch", "--", ":(literal)projects/index.yaml"
+    )
     if not tracked.stdout.strip():
         raise ProjectStateError("checkpoint project registry is not tracked")
     try:
         from project_recipient import registry_entries
+
         entries = registry_entries(index.read_text(encoding="utf-8"))
     except (ImportError, SyntaxError, ValueError) as exc:
-        raise ProjectStateError("checkpoint registry collection cannot be verified") from exc
+        raise ProjectStateError(
+            "checkpoint registry collection cannot be verified"
+        ) from exc
     if project.name not in entries:
-        raise ProjectStateError("checkpoint project is not registered in the project collection")
+        raise ProjectStateError(
+            "checkpoint project is not registered in the project collection"
+        )
     context = project / "CONTEXT.md"
     if context.is_symlink() or not context.is_file():
         raise ProjectStateError("checkpoint project context is missing or unsafe")
     state_path = project / STATE_FILE
     if state_path.exists() or state_path.is_symlink():
         value = _load_json(state_path)
-        if type(value.get("schema_version")) is not int or value["schema_version"] != STATE_SCHEMA or value.get("project_id") != project.name:
-            raise ProjectStateError("current operational state schema or project identity is invalid")
+        if (
+            type(value.get("schema_version")) is not int
+            or value["schema_version"] != STATE_SCHEMA
+            or value.get("project_id") != project.name
+        ):
+            raise ProjectStateError(
+                "current operational state schema or project identity is invalid"
+            )
         return "REQUIRED", ["structured state is present"]
     relative = str(state_path.relative_to(repo))
     if "<!-- synthesis-current-state:" in context.read_text(encoding="utf-8"):
-        return "REQUIRED", ["compiled project context records structured-state adoption"]
+        return "REQUIRED", [
+            "compiled project context records structured-state adoption"
+        ]
     for worktree, _head, _branch in _worktrees(repo, git_runner=git):
         candidate = worktree / relative
         if candidate.exists() or candidate.is_symlink():
@@ -305,13 +377,24 @@ def checkpoint_applicability(project: Path, *, git_runner=None) -> tuple[str, li
         indexed = git(worktree, "ls-files", "--stage", "--", f":(literal){relative}")
         if indexed.stdout.strip():
             return "REQUIRED", ["Git index records structured-state adoption"]
-    historical = git(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}")
+    historical = git(
+        repo,
+        "log",
+        "--all",
+        "--reflog",
+        "-1",
+        "--format=%H",
+        "--",
+        f":(literal){relative}",
+    )
     if historical.stdout.strip():
         return "REQUIRED", ["Git history records structured-state adoption"]
     shallow = git(repo, "rev-parse", "--is-shallow-repository").stdout.strip()
     if shallow != "false":
         raise ProjectStateError("complete local adoption history cannot be verified")
-    return "NOT_APPLICABLE", ["registered project has no structured-state adoption evidence; no checkpoint receipt issued and no recovery/state-health PASS implied"]
+    return "NOT_APPLICABLE", [
+        "registered project has no structured-state adoption evidence; no checkpoint receipt issued and no recovery/state-health PASS implied"
+    ]
 
 
 def _latest_session_date(project: Path) -> str | None:
@@ -319,9 +402,7 @@ def _latest_session_date(project: Path) -> str | None:
     sessions = project / "sessions"
     if sessions.is_dir():
         for path in sessions.glob("*.md"):
-            for line in path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines():
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 if re.match(r"^#{2,6}\s+", line):
                     dates.extend(_DATE_RE.findall(line))
     context = project / "CONTEXT.md"
@@ -342,23 +423,34 @@ def _worktrees(repo: Path, *, git_runner=None) -> list[tuple[Path, str, str | No
             values[key] = value
         if values.get("worktree") and values.get("HEAD"):
             records.append(
-                (Path(values["worktree"]).resolve(), values["HEAD"], values.get("branch"))
+                (
+                    Path(values["worktree"]).resolve(),
+                    values["HEAD"],
+                    values.get("branch"),
+                )
             )
     return records
 
 
 def _project_refs(repo: Path) -> dict[str, str]:
     """Pin candidate names and replacement refs for one read, never across reads."""
-    text = _run(repo, "for-each-ref", "--format=%(refname)%00%(objectname)", "--",
-                "refs/heads", "refs/remotes",
-                os.environ.get("GIT_REPLACE_REF_BASE", "refs/replace/")).stdout
+    text = _run(
+        repo,
+        "for-each-ref",
+        "--format=%(refname)%00%(objectname)",
+        "--",
+        "refs/heads",
+        "refs/remotes",
+        os.environ.get("GIT_REPLACE_REF_BASE", "refs/replace/"),
+    ).stdout
     return dict(line.split("\0", 1) for line in text.splitlines())
 
 
 def _project_history_frontier(repo: Path) -> tuple[tuple[str, str | None], ...]:
     """Git object IDs alone do not pin shallow or grafted history semantics."""
-    paths = _run(repo, "rev-parse", "--git-path", "shallow",
-                 "--git-path", "info/grafts").stdout.splitlines()
+    paths = _run(
+        repo, "rev-parse", "--git-path", "shallow", "--git-path", "info/grafts"
+    ).stdout.splitlines()
     result = []
     for raw in paths:
         path = Path(raw)
@@ -380,7 +472,6 @@ def _tree_at(repo: Path, ref: str, relative: str) -> str | None:
     return value if result.returncode == 0 and value else None
 
 
-
 def _trees_at(repo: Path, heads: Iterable[str], relative: str) -> dict[str, str | None]:
     """Resolve immutable object expressions in finite batches, never a cache.
 
@@ -395,10 +486,14 @@ def _trees_at(repo: Path, heads: Iterable[str], relative: str) -> dict[str, str 
         return {head: _tree_at(repo, head, relative) for head in heads}
     result: dict[str, str | None] = {}
     for offset in range(0, len(heads), 256):
-        batch = heads[offset:offset + 256]
+        batch = heads[offset : offset + 256]
         queries = [f"{head}:{relative}" for head in batch]
-        response = _run(repo, "cat-file", "--batch-check=%(objectname)",
-                        input_text="\n".join(queries) + "\n")
+        response = _run(
+            repo,
+            "cat-file",
+            "--batch-check=%(objectname)",
+            input_text="\n".join(queries) + "\n",
+        )
         lines = response.stdout.splitlines()
         if len(lines) != len(queries):
             raise ProjectStateError("incomplete Git object batch")
@@ -412,7 +507,6 @@ def _trees_at(repo: Path, heads: Iterable[str], relative: str) -> dict[str, str 
     return result
 
 
-
 def _project_metadata_at(
     repo: Path, trees: dict[str, str | None], relative: str
 ) -> dict[str, tuple[str | None, str | None, str]]:
@@ -422,9 +516,11 @@ def _project_metadata_at(
     before mutable worktree inspection or selection; the caller still rechecks
     refs, replacement mappings and history boundaries before accepting results.
     """
+
     def read(head: str) -> tuple[str, tuple[str | None, str | None, str]]:
-        result = _run(repo, "log", "-1", "--format=%H%x00%cI", head,
-                      "--", relative, check=False)
+        result = _run(
+            repo, "log", "-1", "--format=%H%x00%cI", head, "--", relative, check=False
+        )
         changed, _, timestamp = result.stdout.strip().partition("\0")
         return head, (
             changed if result.returncode == 0 and changed else None,
@@ -432,7 +528,9 @@ def _project_metadata_at(
             timestamp if result.returncode == 0 else "",
         )
 
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="project-history") as pool:
+    with ThreadPoolExecutor(
+        max_workers=2, thread_name_prefix="project-history"
+    ) as pool:
         return dict(pool.map(read, sorted(trees)))
 
 
@@ -441,24 +539,414 @@ def _timestamp(repo: Path, ref: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def _dirty_path_name(value: str) -> Path:
+    """Git -z names are literal, repository-relative names, never quoted prose."""
+    if (
+        not value
+        or value.startswith("/")
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
+        raise ProjectStateError("invalid dirty Git path")
+    return Path(value)
+
+
+def _dirty_manifest_path(value: str) -> str | None:
+    """Verify parent/workspace aliases but never resolve the final entry."""
+    path = Path(value)
+    if not path.is_absolute() or ".." in path.parts or str(path) != value:
+        return None
+    fd = None
+    try:
+        parent = path.parent.resolve(strict=False)
+        probe = parent
+        while True:
+            try:
+                initial = probe.lstat()
+                break
+            except FileNotFoundError:
+                probe = probe.parent
+        if not stat.S_ISDIR(initial.st_mode):
+            return None
+        fd = os.open(probe, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        opened = os.fstat(fd)
+        fields = ("st_dev", "st_ino", "st_mode")
+        if any(getattr(initial, key) != getattr(opened, key) for key in fields):
+            return None
+        if path.parent.resolve(strict=False) != parent:
+            return None
+        final = probe.lstat()
+        if any(getattr(opened, key) != getattr(final, key) for key in fields):
+            return None
+        return str(parent / path.name)
+    except (OSError, RuntimeError):
+        return None
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _dirty_tree_bound(
+    budget: dict, *, entries: int = 0, size: int = 0, depth: int = 0
+) -> None:
+    elapsed = budget.get("seconds", 0.0)
+    if "active_started" in budget:
+        elapsed += time.monotonic() - budget["active_started"]
+    budget["entries"] = budget.get("entries", 0) + entries
+    budget["bytes"] = budget.get("bytes", 0) + size
+    if (
+        budget["entries"] > MAX_DIRTY_TREE_ENTRIES
+        or budget["bytes"] > MAX_DIRTY_TREE_BYTES
+        or depth > MAX_DIRTY_TREE_DEPTH
+        or elapsed > MAX_DIRTY_TREE_SECONDS
+    ):
+        raise ProjectStateError(
+            "dirty directory inventory exceeds its finite traversal limit: "
+            f"entries={budget['entries']}/{MAX_DIRTY_TREE_ENTRIES}, "
+            f"bytes={budget['bytes']}/{MAX_DIRTY_TREE_BYTES}, "
+            f"depth={depth}/{MAX_DIRTY_TREE_DEPTH}, "
+            f"seconds={elapsed:.3f}/{MAX_DIRTY_TREE_SECONDS}"
+        )
+
+
+def _dirty_entry_identity(path: Path) -> tuple:
+    """Recheck one recorded entry through no-follow directory ancestry."""
+    fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in path.parent.parts[1:]:
+            child = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
+            )
+            os.close(fd)
+            fd = child
+        info = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_nlink,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+    finally:
+        os.close(fd)
+
+
+def _dirty_leaf_snapshot(
+    path: Path,
+    *,
+    control: bool = False,
+    _tree_budget: dict | None = None,
+    _tree_depth: int = 0,
+    _require_directory: bool = False,
+) -> dict[str, str]:
+    """Hash ordinary bytes or describe a leaf; never dereference evidence links.
+
+    Directory descriptors confine the read. Recheck every ancestor and the leaf
+    after capture. A regular-to-FIFO race is nonblocking and fails its type check.
+    Special entries have typed fingerprints, not fabricated file-content hashes.
+    """
+
+    def signature(info):
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_nlink,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    fd = None
+    ancestors = []
+    owns_tree_clock = False
+    standalone_tree = _tree_budget is None
+
+    def recheck_ancestors():
+        for ancestor, expected in ancestors:
+            info = ancestor.lstat()
+            if (info.st_dev, info.st_ino, info.st_mode) != expected:
+                raise ProjectStateError("dirty path ancestor changed during capture")
+
+    def missing(name):
+        recheck_ancestors()
+        try:
+            os.stat(name, dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return {"kind": "deleted", "sha256": "deleted"}
+        raise ProjectStateError("deleted dirty path appeared during capture")
+
+    try:
+        fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        current = Path(path.anchor)
+        for part in path.parent.parts[1:]:
+            current = current / part
+            try:
+                child = os.open(
+                    part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
+                )
+            except FileNotFoundError:
+                # Git reports tracked deletions even after a whole directory is gone.
+                return missing(part)
+            os.close(fd)
+            fd = child
+            info = os.fstat(fd)
+            ancestors.append((current, (info.st_dev, info.st_ino, info.st_mode)))
+        try:
+            before = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return missing(path.name)
+        if _require_directory and not stat.S_ISDIR(before.st_mode):
+            raise ProjectStateError("dirty Git directory record changed type")
+        if control and not stat.S_ISREG(before.st_mode):
+            raise ProjectStateError(f"project control file is not regular: {path}")
+        if path.name == STATE_FILE and before.st_size > MAX_STATE_JSON_BYTES:
+            raise ProjectStateError(
+                f"state JSON exceeds {MAX_STATE_JSON_BYTES}-byte limit"
+            )
+        if stat.S_ISREG(before.st_mode):
+            if _tree_budget is not None and _tree_depth:
+                _dirty_tree_bound(_tree_budget, size=before.st_size, depth=_tree_depth)
+            leaf = os.open(
+                path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd
+            )
+            try:
+                if signature(os.fstat(leaf)) != signature(before):
+                    raise ProjectStateError("dirty file changed before read")
+                digest = hashlib.sha256()
+                total = 0
+                while True:
+                    if _tree_budget is not None and _tree_depth:
+                        _dirty_tree_bound(_tree_budget, depth=_tree_depth)
+                    body = os.read(leaf, min(1024 * 1024, before.st_size + 1 - total))
+                    if not body:
+                        break
+                    total += len(body)
+                    if total > before.st_size:
+                        raise ProjectStateError("dirty file grew during read")
+                    digest.update(body)
+                if total != before.st_size or signature(os.fstat(leaf)) != signature(
+                    before
+                ):
+                    raise ProjectStateError("dirty file changed during read")
+                row = {"kind": "file", "sha256": digest.hexdigest()}
+            finally:
+                os.close(leaf)
+        elif stat.S_ISLNK(before.st_mode):
+            target = os.readlink(path.name, dir_fd=fd)
+            row = {
+                "kind": "symlink",
+                "target": target,
+                "sha256": _sha_bytes(b"symlink\0" + os.fsencode(target)),
+            }
+        elif stat.S_ISDIR(before.st_mode):
+            budget = _tree_budget if _tree_budget is not None else {}
+            _tree_budget = budget
+            if _tree_depth == 0:
+                budget["active_started"] = time.monotonic()
+                owns_tree_clock = True
+            _dirty_tree_bound(budget, entries=int(_tree_depth == 0), depth=_tree_depth)
+            directory = os.open(
+                path.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
+            )
+            try:
+                if signature(os.fstat(directory)) != signature(before):
+                    raise ProjectStateError("dirty directory changed before read")
+                names = []
+                with os.scandir(directory) as children:
+                    for child in children:
+                        _dirty_tree_bound(budget, entries=1, depth=_tree_depth + 1)
+                        names.append(child.name)
+                digest = hashlib.sha256(b"directory-v1\0")
+                digest.update(f"{stat.S_IMODE(before.st_mode):04o}\0".encode())
+                observed = []
+                for name in sorted(names):
+                    _dirty_tree_bound(budget, depth=_tree_depth + 1)
+                    child_before = os.stat(
+                        name, dir_fd=directory, follow_symlinks=False
+                    )
+                    child = _dirty_leaf_snapshot(
+                        path / name, _tree_budget=budget, _tree_depth=_tree_depth + 1
+                    )
+                    if signature(
+                        os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    ) != signature(child_before):
+                        raise ProjectStateError(
+                            "dirty directory child changed during capture"
+                        )
+                    observed.append((path / name, signature(child_before)))
+                    body = json.dumps(
+                        [name, child],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=True,
+                    ).encode()
+                    digest.update(len(body).to_bytes(8, "big"))
+                    digest.update(body)
+                # Directory mtimes alone do not detect changes to an earlier
+                # child's bytes. Recheck each exact child after the full pass.
+                for child_path, expected in observed:
+                    _dirty_tree_bound(budget, depth=_tree_depth + 1)
+                    if _dirty_entry_identity(child_path) != expected:
+                        raise ProjectStateError(
+                            "dirty directory child changed after capture"
+                        )
+                if signature(os.fstat(directory)) != signature(before):
+                    raise ProjectStateError(
+                        "dirty directory entries changed during capture"
+                    )
+                row = {"kind": "directory", "sha256": digest.hexdigest()}
+                if _tree_depth == 0 and standalone_tree:
+                    # Shared inventories perform this once after every root;
+                    # rescanning prior roots here would make recovery quadratic.
+                    for child_path, expected in budget.get("observed", {}).items():
+                        _dirty_tree_bound(budget)
+                        if _dirty_entry_identity(child_path) != expected:
+                            raise ProjectStateError(
+                                "dirty subtree changed after capture"
+                            )
+            finally:
+                os.close(directory)
+        else:
+            kind = (
+                "fifo"
+                if stat.S_ISFIFO(before.st_mode)
+                else "socket"
+                if stat.S_ISSOCK(before.st_mode)
+                else "directory"
+                if stat.S_ISDIR(before.st_mode)
+                else "special"
+            )
+            row = {
+                "kind": kind,
+                "sha256": _sha_bytes(
+                    f"{kind}:{before.st_mode}:{before.st_rdev}".encode()
+                ),
+            }
+        if signature(os.stat(path.name, dir_fd=fd, follow_symlinks=False)) != signature(
+            before
+        ):
+            raise ProjectStateError("dirty leaf changed during capture")
+        recheck_ancestors()
+        row["mode"] = f"{stat.S_IMODE(before.st_mode):04o}"
+        if _tree_budget is not None and (_tree_depth or row["kind"] == "directory"):
+            _tree_budget.setdefault("observed", {})[path] = signature(before)
+        return row
+    except OSError as exc:
+        raise ProjectStateError(
+            f"unsafe dirty project entry or ancestor changed during capture {path}: {exc}"
+        ) from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if owns_tree_clock:
+            _tree_budget["seconds"] = (
+                _tree_budget.get("seconds", 0.0)
+                + time.monotonic()
+                - _tree_budget.pop("active_started")
+            )
+            _dirty_tree_bound(_tree_budget)
+
+
 def _dirty_project_files(worktree: Path, relative: str) -> list[dict[str, str]]:
+    if not worktree.is_absolute() or ".." in worktree.parts:
+        raise ProjectStateError("dirty inventory requires an absolute worktree")
     result = _run(
         worktree,
         "status",
         "--porcelain=v1",
+        "-z",
         "--untracked-files=all",
         "--",
         relative,
+        raw_output=True,
     )
-    found: list[dict[str, str]] = []
-    for line in result.stdout.splitlines():
-        if len(line) < 4:
-            continue
-        name = line[3:].split(" -> ")[-1]
-        path = (worktree / name).resolve()
-        digest = _sha_file(path) if path.is_file() else "deleted"
-        found.append({"path": str(path), "status": line[:2], "sha256": digest})
-    return sorted(found, key=lambda item: item["path"])
+    raw = result.stdout
+    if not isinstance(raw, bytes) or (raw and not raw.endswith(b"\0")):
+        raise ProjectStateError("invalid NUL-delimited dirty Git inventory")
+    project = _dirty_path_name(relative)
+    fields = raw.split(b"\0")[:-1]
+    found = {}
+    tree_budget = {}
+    offset = 0
+    while offset < len(fields):
+        field = fields[offset]
+        offset += 1
+        if (
+            len(field) < 4
+            or field[2:3] != b" "
+            or any(char not in b" MADRCUT?!" for char in field[:2])
+            or field[:2] == b"  "
+            or (any(char in b"?!" for char in field[:2]) and field[:2] != b"??")
+        ):
+            raise ProjectStateError("invalid dirty Git status record")
+        status = field[:2].decode("ascii")
+        spelling = os.fsdecode(field[3:])
+        directory_record = spelling.endswith("/")
+        if directory_record:
+            if status != "??":
+                raise ProjectStateError(
+                    "directory notation requires an untracked Git record"
+                )
+            spelling = spelling[:-1]
+        name = _dirty_path_name(spelling)
+        paths = [name]
+        if "R" in status or "C" in status:
+            if offset == len(fields):
+                raise ProjectStateError("incomplete dirty Git rename/copy record")
+            original = _dirty_path_name(os.fsdecode(fields[offset]))
+            offset += 1
+            if "R" in status:
+                paths.append(original)
+        scoped = [name for name in paths if name.is_relative_to(project)]
+        if not scoped:
+            raise ProjectStateError("dirty Git record is outside the selected project")
+        for name in scoped:
+            path = worktree / name
+            key = str(path)
+            if key in found:
+                # A rename can recreate its source as an untracked entry.
+                found[key]["status"] += ";" + status
+                continue
+            local = name.relative_to(project)
+            control = len(local.parts) == 1 and local.name in {
+                STATE_FILE,
+                "CONTEXT.md",
+                "REFERENCE.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+            }
+            snapshot = _dirty_leaf_snapshot(
+                path,
+                control=control,
+                _tree_budget=tree_budget,
+                _require_directory=directory_record,
+            )
+            if directory_record and snapshot["kind"] != "directory":
+                raise ProjectStateError("dirty Git directory record changed type")
+            found[key] = {"path": key, "status": status, **snapshot}
+    if tree_budget.get("observed"):
+        tree_budget["active_started"] = time.monotonic()
+        try:
+            for path, expected in tree_budget["observed"].items():
+                _dirty_tree_bound(tree_budget)
+                try:
+                    actual = _dirty_entry_identity(path)
+                except OSError as exc:
+                    raise ProjectStateError(
+                        "dirty subtree changed after inventory"
+                    ) from exc
+                if actual != expected:
+                    raise ProjectStateError("dirty subtree changed after inventory")
+        finally:
+            tree_budget["seconds"] = (
+                tree_budget.get("seconds", 0.0)
+                + time.monotonic()
+                - tree_budget.pop("active_started")
+            )
+            _dirty_tree_bound(tree_budget)
+    return [found[key] for key in sorted(found)]
 
 
 def _manifest_inventory(
@@ -502,15 +990,23 @@ def _manifest_for_dirty(
     for manifest in manifests:
         if manifest.get("_kind") != "manifest":
             continue
-        paths = {str(Path(value).resolve()) for value in manifest.get("paths", []) if isinstance(value, str)}
+        paths = {
+            _dirty_manifest_path(value)
+            for value in manifest.get("paths", [])
+            if isinstance(value, str) and _dirty_manifest_path(value) is not None
+        }
         if not set(dirty_paths).issubset(paths):
             continue
         claimed_hashes = {
-            str(Path(key).resolve()): value
+            _dirty_manifest_path(key): value
             for key, value in (manifest.get("path_hashes") or {}).items()
-            if isinstance(key, str) and isinstance(value, str)
+            if isinstance(key, str)
+            and isinstance(value, str)
+            and _dirty_manifest_path(key) is not None
         }
-        if claimed_hashes and any(claimed_hashes.get(path) != digest for path, digest in dirty_paths.items()):
+        if claimed_hashes and any(
+            claimed_hashes.get(path) != digest for path, digest in dirty_paths.items()
+        ):
             continue
         return str(manifest.get("session_id") or "") or None
     return None
@@ -528,8 +1024,15 @@ def _candidate_from_metadata(
         ref=None,
         head=str(payload.get("head") or payload.get("git_head") or fallback.head),
         project_tree=str(payload.get("project_tree") or fallback.project_tree),
-        timestamp=str(payload.get("updated_at") or payload.get("created_at") or payload.get("_timestamp") or ""),
-        session_id=str(payload.get("session_id")) if payload.get("session_id") else None,
+        timestamp=str(
+            payload.get("updated_at")
+            or payload.get("created_at")
+            or payload.get("_timestamp")
+            or ""
+        ),
+        session_id=str(payload.get("session_id"))
+        if payload.get("session_id")
+        else None,
     )
 
 
@@ -544,10 +1047,13 @@ def _parse_board_rows(path: Path) -> list[dict[str, str]]:
         raise ProjectStateError(f"coordination board invalid: {exc}") from exc
 
 
-def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> str | None:
+def _refresh_coordination_board(
+    path: Path, *, passive_stop: bool = False
+) -> str | None:
     helper = Path(__file__).with_name("coordination.py")
     result = subprocess.run(
-        [sys.executable, str(helper), "--board", str(path), "status", "--json"] + (["--passive-stop"] if passive_stop else []),
+        [sys.executable, str(helper), "--board", str(path), "status", "--json"]
+        + (["--passive-stop"] if passive_stop else []),
         capture_output=True,
         text=True,
         check=False,
@@ -556,7 +1062,9 @@ def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> st
     )
     if result.returncode:
         return "coordination lease refresh failed: " + (
-            result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            result.stderr.strip()
+            or result.stdout.strip()
+            or f"exit {result.returncode}"
         )
     try:
         payload = json.loads(result.stdout)
@@ -565,13 +1073,23 @@ def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> st
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         return f"coordination lease refresh returned invalid evidence: {exc}"
     if problems:
-        return "coordination board is invalid after refresh: " + "; ".join(map(str, problems))
-    passive_hit = passive_stop and lease.get("cache_hit") is True and isinstance(lease.get("age_seconds"), (int, float)) and 0 <= lease["age_seconds"] < 300
+        return "coordination board is invalid after refresh: " + "; ".join(
+            map(str, problems)
+        )
+    passive_hit = (
+        passive_stop
+        and lease.get("cache_hit") is True
+        and isinstance(lease.get("age_seconds"), (int, float))
+        and 0 <= lease["age_seconds"] < 300
+    )
     # Match coordination.require_fresh_board: a valid local-only board has
     # no remote authority to refresh. Declared but missing/unreadable lease
     # configuration is reported by coordination as an error, never local-only.
-    if (type(lease.get("configured")) is not bool or lease.get("error")
-            or (lease["configured"] and not (lease.get("refreshed") is True or passive_hit))):
+    if (
+        type(lease.get("configured")) is not bool
+        or lease.get("error")
+        or (lease["configured"] and not (lease.get("refreshed") is True or passive_hit))
+    ):
         return "coordination lease refresh failed: " + str(
             lease.get("error") or "remote authority was not refreshed"
         )
@@ -579,7 +1097,10 @@ def _refresh_coordination_board(path: Path, *, passive_stop: bool = False) -> st
 
 
 def _is_ancestor(repo: Path, older: str, newer: str) -> bool:
-    return _run(repo, "merge-base", "--is-ancestor", older, newer, check=False).returncode == 0
+    return (
+        _run(repo, "merge-base", "--is-ancestor", older, newer, check=False).returncode
+        == 0
+    )
 
 
 def _safe_fast_forward(
@@ -610,14 +1131,19 @@ def _safe_fast_forward(
         return True, None
     if not _is_ancestor(repo, current, target):
         return False, "canonical checkout cannot fast-forward to selected state"
-    if _run(repo, "diff", "--quiet", check=False).returncode or _run(
-        repo, "diff", "--cached", "--quiet", check=False
-    ).returncode:
+    if (
+        _run(repo, "diff", "--quiet", check=False).returncode
+        or _run(repo, "diff", "--cached", "--quiet", check=False).returncode
+    ):
         return False, "canonical checkout has tracked or staged changes"
-    changed = set(_run(repo, "diff", "--name-only", current, target).stdout.splitlines())
+    changed = set(
+        _run(repo, "diff", "--name-only", current, target).stdout.splitlines()
+    )
     untracked = {
         line[3:]
-        for line in _run(repo, "status", "--porcelain=v1", "--untracked-files=all").stdout.splitlines()
+        for line in _run(
+            repo, "status", "--porcelain=v1", "--untracked-files=all"
+        ).stdout.splitlines()
         if line.startswith("?? ")
     }
     if changed & untracked:
@@ -651,14 +1177,25 @@ def _resolve_project_unlocked(
         entry = _index_entry(index_text, project_id)
         repo = _repository_root(index_path.parent)
     except (OSError, ProjectStateError) as exc:
-        return RecoveryReport(project_id, "UNKNOWN", None, None, None, [], [str(exc)], {"continuity": "UNKNOWN"})
+        return RecoveryReport(
+            project_id,
+            "UNKNOWN",
+            None,
+            None,
+            None,
+            [],
+            [str(exc)],
+            {"continuity": "UNKNOWN"},
+        )
     relative = str((index_path.parent / project_id).resolve().relative_to(repo))
     canonical_project_prefix = str((repo / relative).resolve())
 
     if fetch:
         fetched = _run(repo, "fetch", "--all", "--prune", check=False)
         if fetched.returncode:
-            issues.append(f"fetch failed: {fetched.stderr.strip() or fetched.stdout.strip()}")
+            issues.append(
+                f"fetch failed: {fetched.stderr.strip() or fetched.stdout.strip()}"
+            )
         fetch_succeeded = fetched.returncode == 0
     else:
         fetch_succeeded = False
@@ -666,11 +1203,17 @@ def _resolve_project_unlocked(
     worktree_records = _worktrees(repo)
     ref_snapshot = _project_refs(repo)
     history_frontier = _project_history_frontier(repo)
-    tree_by_commit = _trees_at(repo,
-        [head for _path, head, _branch in worktree_records] +
-        [head for ref, head in ref_snapshot.items()
-         if not ref.endswith("/HEAD") and ref.startswith(("refs/heads/", "refs/remotes/"))],
-        relative)
+    tree_by_commit = _trees_at(
+        repo,
+        [head for _path, head, _branch in worktree_records]
+        + [
+            head
+            for ref, head in ref_snapshot.items()
+            if not ref.endswith("/HEAD")
+            and ref.startswith(("refs/heads/", "refs/remotes/"))
+        ],
+        relative,
+    )
     # Aliases of one immutable Git object share metadata only inside this call.
     # Physical worktrees, dirty hashes, manifests and claims are still read fresh.
     metadata_by_commit = _project_metadata_at(repo, tree_by_commit, relative)
@@ -691,7 +1234,9 @@ def _resolve_project_unlocked(
         for metadata in metadata_root.iterdir():
             marker = metadata / "gitdir"
             if not marker.is_file():
-                issues.append(f"missing worktree registration target for {metadata.name}")
+                issues.append(
+                    f"missing worktree registration target for {metadata.name}"
+                )
                 continue
             target_git = Path(marker.read_text(encoding="utf-8").strip())
             target = target_git.parent.resolve()
@@ -708,7 +1253,16 @@ def _resolve_project_unlocked(
         if not project.is_dir():
             continue
         if not record_transaction.is_managed(project):
-            return RecoveryReport(project_id, "UNKNOWN", None, None, None, [], ["project worktree appeared after managed read admission"], {"continuity": "UNKNOWN"})
+            return RecoveryReport(
+                project_id,
+                "UNKNOWN",
+                None,
+                None,
+                None,
+                [],
+                ["project worktree appeared after managed read admission"],
+                {"continuity": "UNKNOWN"},
+            )
         project_head, tree, timestamp = project_metadata(repository_head)
         if not project_head or not tree:
             continue
@@ -731,7 +1285,9 @@ def _resolve_project_unlocked(
             candidates.append(Candidate(**{**asdict(candidate), "source": "worktree"}))
 
     for ref, repository_head in ref_snapshot.items():
-        if ref.endswith("/HEAD") or not ref.startswith(("refs/heads/", "refs/remotes/")):
+        if ref.endswith("/HEAD") or not ref.startswith(
+            ("refs/heads/", "refs/remotes/")
+        ):
             continue
         project_head, tree, timestamp = project_metadata(repository_head)
         if not project_head or not tree:
@@ -741,7 +1297,16 @@ def _resolve_project_unlocked(
         )
 
     if not authoritative:
-        return RecoveryReport(project_id, "UNKNOWN", None, None, None, candidates, issues + ["no readable project worktree"], {"continuity": "UNKNOWN"})
+        return RecoveryReport(
+            project_id,
+            "UNKNOWN",
+            None,
+            None,
+            None,
+            candidates,
+            issues + ["no readable project worktree"],
+            {"continuity": "UNKNOWN"},
+        )
     fallback = authoritative[0]
     related_sessions = {
         str(payload.get("session_id"))
@@ -750,7 +1315,8 @@ def _resolve_project_unlocked(
         and (
             project_id in json.dumps(payload, sort_keys=True)
             or any(
-                str(Path(path).resolve()).startswith(canonical_project_prefix)
+                (normalized := _dirty_manifest_path(path)) is not None
+                and Path(normalized).is_relative_to(canonical_project_prefix)
                 for path in payload.get("paths", [])
                 if isinstance(path, str)
             )
@@ -758,20 +1324,34 @@ def _resolve_project_unlocked(
     }
     for payload in manifests:
         material = json.dumps(payload, sort_keys=True)
-        paths = [str(value) for value in payload.get("paths", []) if isinstance(value, str)]
+        paths = [
+            str(value) for value in payload.get("paths", []) if isinstance(value, str)
+        ]
         if (
             project_id in material
-            or any(str(Path(path).resolve()).startswith(canonical_project_prefix) for path in paths)
+            or any(
+                (normalized := _dirty_manifest_path(path)) is not None
+                and Path(normalized).is_relative_to(canonical_project_prefix)
+                for path in paths
+            )
             or str(payload.get("session_id")) in related_sessions
         ):
-            candidates.append(_candidate_from_metadata(str(payload["_kind"]), payload, fallback))
+            candidates.append(
+                _candidate_from_metadata(str(payload["_kind"]), payload, fallback)
+            )
 
     if pointer is not None and pointer.exists():
         try:
             payload = _load_json(pointer)
-            target = payload.get("project") or payload.get("project_path") or payload.get("path")
+            target = (
+                payload.get("project")
+                or payload.get("project_path")
+                or payload.get("path")
+            )
             if target and Path(str(target)).resolve().is_dir():
-                candidates.append(_candidate_from_metadata("pointer", payload, fallback))
+                candidates.append(
+                    _candidate_from_metadata("pointer", payload, fallback)
+                )
             else:
                 issues.append(f"active-project pointer is stale: {pointer}")
         except ProjectStateError as exc:
@@ -787,9 +1367,15 @@ def _resolve_project_unlocked(
                 issues.append(refresh_issue)
         try:
             for row in _parse_board_rows(coordination_board):
-                if row.get("status", "").lower() != "active" or row.get("project") != project_id:
+                if (
+                    row.get("status", "").lower() != "active"
+                    or row.get("project") != project_id
+                ):
                     continue
-                payload = {"session_id": row.get("session uuid"), "updated_at": row.get("heartbeat")}
+                payload = {
+                    "session_id": row.get("session uuid"),
+                    "updated_at": row.get("heartbeat"),
+                }
                 candidates.append(_candidate_from_metadata("claim", payload, fallback))
         except ProjectStateError as exc:
             issues.append(str(exc))
@@ -798,10 +1384,16 @@ def _resolve_project_unlocked(
     recorded_match = re.search(r"(?m)^\s*last_session:\s*['\"]?([^'\"\s]+)", entry)
     recorded = recorded_match.group(1) if recorded_match else None
     if latest and recorded and recorded != latest:
-        issues.append(f"index last_session {recorded} is stale; derived value is {latest}")
+        issues.append(
+            f"index last_session {recorded} is stale; derived value is {latest}"
+        )
 
-    dirty_candidates = [candidate for candidate in authoritative if candidate.dirty_files]
-    unattributed = [candidate for candidate in dirty_candidates if not candidate.session_id]
+    dirty_candidates = [
+        candidate for candidate in authoritative if candidate.dirty_files
+    ]
+    unattributed = [
+        candidate for candidate in dirty_candidates if not candidate.session_id
+    ]
     if unattributed:
         issues.append("dirty project files lack an exact attributed manifest")
         status = "CONFLICT"
@@ -812,7 +1404,9 @@ def _resolve_project_unlocked(
         for other in candidates
         if other.source in {"canonical", "worktree", "ref"}
     ):
-        issues.append("attributed dirty project state extends an older head than a newer committed project state")
+        issues.append(
+            "attributed dirty project state extends an older head than a newer committed project state"
+        )
         status = "CONFLICT"
         selected = None
     elif dirty_candidates:
@@ -849,7 +1443,9 @@ def _resolve_project_unlocked(
             status = "PASS"
             target = maximal[0]
             matching_paths = [
-                item for item in authoritative if item.project_tree == target.project_tree
+                item
+                for item in authoritative
+                if item.project_tree == target.project_tree
             ]
             selected = matching_paths[0] if matching_paths else target
         else:
@@ -860,14 +1456,24 @@ def _resolve_project_unlocked(
     # A pinned object is immutable; the selection that named it is not. Reject a
     # moving inventory before reporting success or attempting an optional owner
     # fast-forward. This also prevents cached alias metadata masking a ref race.
-    if (_worktrees(repo) != worktree_records or _project_refs(repo) != ref_snapshot
-            or _project_history_frontier(repo) != history_frontier
-            or str((repo / relative).resolve()) != canonical_project_prefix):
-        issues.append("Git project selection changed during resolution; retry a fresh read")
+    if (
+        _worktrees(repo) != worktree_records
+        or _project_refs(repo) != ref_snapshot
+        or _project_history_frontier(repo) != history_frontier
+        or str((repo / relative).resolve()) != canonical_project_prefix
+    ):
+        issues.append(
+            "Git project selection changed during resolution; retry a fresh read"
+        )
         status = "UNKNOWN"
         selected = None
 
-    if status == "PASS" and fast_forward_canonical and selected is not None and selected.project_path is None:
+    if (
+        status == "PASS"
+        and fast_forward_canonical
+        and selected is not None
+        and selected.project_path is None
+    ):
         if not fetch_succeeded:
             ok, reason = False, "automatic fast-forward requires a successful fetch"
         elif not selected.ref or not selected.ref.startswith("refs/remotes/"):
@@ -882,13 +1488,29 @@ def _resolve_project_unlocked(
             )
         if ok:
             selected = Candidate(
-                "canonical", str((repo / relative).resolve()), str(repo), None,
-                selected.head, selected.project_tree, selected.timestamp,
+                "canonical",
+                str((repo / relative).resolve()),
+                str(repo),
+                None,
+                selected.head,
+                selected.project_tree,
+                selected.timestamp,
             )
         else:
             issues.append(f"automatic fast-forward refused: {reason}")
 
-    if any(issue.startswith(("fetch failed", "unreadable", "coordination board", "coordination lease", "missing worktree")) for issue in issues) and status not in {"CONFLICT", "LOCAL_RECOVERABLE"}:
+    if any(
+        issue.startswith(
+            (
+                "fetch failed",
+                "unreadable",
+                "coordination board",
+                "coordination lease",
+                "missing worktree",
+            )
+        )
+        for issue in issues
+    ) and status not in {"CONFLICT", "LOCAL_RECOVERABLE"}:
         status = "UNKNOWN"
     planes = {"continuity": "PASS" if status == "PASS" else status}
     return RecoveryReport(
@@ -911,26 +1533,55 @@ def _checkout_record_projects(repo: Path) -> set[Path]:
 
 def resolve_project(project_id: str, index_path: Path, **kwargs) -> RecoveryReport:
     from contextlib import ExitStack
-    index_path = Path(index_path).resolve()
+
+    index_path = Path(index_path).absolute()
     try:
+        import team_contract
+
+        team_contract.require_registry(
+            index_path, board=kwargs.get("coordination_board")
+        )
+        index_path = index_path.resolve()
         repo = _repository_root(index_path.parent)
         relative = Path("projects") / project_id
-        readers = {worktree / relative for worktree, _, _ in _worktrees(repo)
-                   if (worktree / relative).is_dir()}
-        writers = (_checkout_record_projects(repo)
-                   if kwargs.get("fast_forward_canonical", False) else set())
+        readers = {
+            worktree / relative
+            for worktree, _, _ in _worktrees(repo)
+            if (worktree / relative).is_dir()
+        }
+        writers = (
+            _checkout_record_projects(repo)
+            if kwargs.get("fast_forward_canonical", False)
+            else set()
+        )
         with ExitStack() as stack:
             for project in sorted(readers | writers, key=str):
-                stack.enter_context(record_transaction.managed(
-                    project, exclusive=project in writers))
+                stack.enter_context(
+                    record_transaction.managed(project, exclusive=project in writers)
+                )
             return _resolve_project_unlocked(project_id, index_path, **kwargs)
-    except (record_transaction.RecordTransactionError, ProjectStateError, OSError) as exc:
-        return RecoveryReport(project_id, "UNKNOWN", None, None, None, [],
-                              [str(exc)], {"continuity": "UNKNOWN"})
+    except (
+        record_transaction.RecordTransactionError,
+        ProjectStateError,
+        OSError,
+        ValueError,
+    ) as exc:
+        return RecoveryReport(
+            project_id,
+            "UNKNOWN",
+            None,
+            None,
+            None,
+            [],
+            [str(exc)],
+            {"continuity": "UNKNOWN"},
+        )
 
 
 def _released_versions(
-    value: str, *, accepted_baseline: bool = False,
+    value: str,
+    *,
+    accepted_baseline: bool = False,
 ) -> list[tuple[int, int, int]]:
     """Read affirmative release assertions, not an arbitrary version maximum.
 
@@ -950,7 +1601,8 @@ def _released_versions(
             # version and must remain attached to it.
             connector = re.search(
                 r",|\s+(?:and|but|whereas|while|with)\s+",
-                statement[previous.end():following.start()], re.I,
+                statement[previous.end() : following.start()],
+                re.I,
             )
             if connector:
                 boundaries.append(previous.end() + connector.end())
@@ -969,15 +1621,21 @@ def _released_versions(
                 r"(?:release(?:d)?|ship(?:ped)?|publish(?:ed)?|deploy(?:ed)?|accept(?:ed)?)\b",
                 lowered,
             )
-            completed = re.search(r"\b(?:released|shipped|published|deployed)\b", lowered)
+            completed = re.search(
+                r"\b(?:released|shipped|published|deployed)\b", lowered
+            )
             candidate = re.search(r"\bcandidate(?:\b|(?=v?\d+\.))", lowered)
             reference = re.search(r"\b(?:example|documentation)\b", lowered)
             affirmative = re.search(
-                r"\b(?:release|released|shipped|published|deployed|accepted)\b", lowered,
+                r"\b(?:release|released|shipped|published|deployed|accepted)\b",
+                lowered,
             )
             status = (
-                -1 if prospective or reference or (candidate and not completed)
-                else 1 if affirmative else 0
+                -1
+                if prospective or reference or (candidate and not completed)
+                else 1
+                if affirmative
+                else 0
             )
             assertions.append((part, status))
         # An unqualified version list can share its explicit release predicate:
@@ -988,8 +1646,10 @@ def _released_versions(
             if status < 0:
                 continue
             remainder = re.sub(
-                r"\b(?:and|but|whereas|while|with)\b", "",
-                _VERSION_RE.sub("", part), flags=re.I,
+                r"\b(?:and|but|whereas|while|with)\b",
+                "",
+                _VERSION_RE.sub("", part),
+                flags=re.I,
             )
             bare_version = not remainder.strip(" \t,.*_`")
             if not (status or accepted_baseline or (shared_release and bare_version)):
@@ -1023,7 +1683,9 @@ def _project_paths(project: Path, pattern: str | None = None) -> Iterable[Path]:
         pending.extend(reversed(children))
 
 
-def _content_hashes(project: Path, controlling_plan: str | None = None) -> dict[str, str]:
+def _content_hashes(
+    project: Path, controlling_plan: str | None = None
+) -> dict[str, str]:
     root = project.resolve()
     root_parts = root.parts
     prefix_size = len(root_parts)
@@ -1069,9 +1731,7 @@ def _is_current_state_label(value: str, *, heading: bool = False) -> bool:
         "current baseline",
         "state as of",
     )
-    if heading and (
-        normalized == "current" or normalized.startswith("current ")
-    ):
+    if heading and (normalized == "current" or normalized.startswith("current ")):
         return True
     for prefix in prefixes:
         if normalized == prefix:
@@ -1144,9 +1804,7 @@ def _uncompiled_current_state_prose(project: Path, context: str) -> list[str]:
                 and re.match(r"^\s{0,3}(?:=+|-+)\s*$", lines[index + 1])
             ):
                 heading_title = line
-            if heading_title and _is_current_state_label(
-                heading_title, heading=True
-            ):
+            if heading_title and _is_current_state_label(heading_title, heading=True):
                 current_lines.append(number)
                 continue
 
@@ -1162,6 +1820,11 @@ def _uncompiled_current_state_prose(project: Path, context: str) -> list[str]:
                 "label other snapshots as history"
             )
     return findings
+
+
+def material_context(project: Path) -> dict[str, Any]:
+    from record_succession import material_context as observe
+    return observe(project)
 
 
 @record_transaction.guarded("project", error=ProjectStateError)
@@ -1181,10 +1844,21 @@ def semantic_issues(project: Path) -> list[str]:
             if state.get("schema_version") != STATE_SCHEMA:
                 issues.append("current operational state schema is unsupported")
             for key in (
-                "project_id", "phase", "status", "controlling_plan", "accepted_baseline",
-                "next_actions", "last_session", "session_id", "content_hashes",
-                "repository", "project_path", "git_head", "project_tree",
-                "source_heads", "updated_at",
+                "project_id",
+                "phase",
+                "status",
+                "controlling_plan",
+                "accepted_baseline",
+                "next_actions",
+                "last_session",
+                "session_id",
+                "content_hashes",
+                "repository",
+                "project_path",
+                "git_head",
+                "project_tree",
+                "source_heads",
+                "updated_at",
             ):
                 if key not in state:
                     issues.append(f"current operational state lacks {key}")
@@ -1205,7 +1879,8 @@ def semantic_issues(project: Path) -> list[str]:
         baseline_text = [str(state.get("accepted_baseline", ""))]
         phase_text = [str(state.get("phase", ""))]
     current_versions = [
-        version for value in baseline_text
+        version
+        for value in baseline_text
         for version in _released_versions(value, accepted_baseline=True)
     ]
     if not current_versions:
@@ -1213,14 +1888,22 @@ def semantic_issues(project: Path) -> list[str]:
             version for value in phase_text for version in _released_versions(value)
         ]
     recorded_versions = _released_versions(context)
-    if current_versions and recorded_versions and max(current_versions) < max(recorded_versions):
+    if (
+        current_versions
+        and recorded_versions
+        and max(current_versions) < max(recorded_versions)
+    ):
         newest = ".".join(str(part) for part in max(recorded_versions))
         current = ".".join(str(part) for part in max(current_versions))
-        issues.append(f"current release {current} is older than later recorded release {newest}")
+        issues.append(
+            f"current release {current} is older than later recorded release {newest}"
+        )
     if state:
         issues.extend(_uncompiled_current_state_prose(project, context))
         if state.get("project_id") != project.name:
-            issues.append("current operational state project id disagrees with its directory")
+            issues.append(
+                "current operational state project id disagrees with its directory"
+            )
         try:
             _required_plan(project, state.get("controlling_plan"))
         except ProjectStateError as exc:
@@ -1231,7 +1914,9 @@ def semantic_issues(project: Path) -> list[str]:
                 if hashes != _content_hashes(
                     project, str(state.get("controlling_plan") or "")
                 ):
-                    issues.append("durable project files changed after current state was written")
+                    issues.append(
+                        "durable project files changed after current state was written"
+                    )
             except ProjectStateError as exc:
                 issues.append(str(exc))
         else:
@@ -1250,7 +1935,9 @@ def semantic_issues(project: Path) -> list[str]:
                 re.escape(marker_start) + r".*?" + re.escape(marker_end), context, re.S
             )
             if not match or match.group(0) != expected:
-                issues.append("compiled current-state block disagrees with operational state")
+                issues.append(
+                    "compiled current-state block disagrees with operational state"
+                )
     return issues
 
 
@@ -1284,8 +1971,12 @@ def build_operational_state(
     plan_ref = _required_plan(project, controlling_plan)
     assert plan_ref.relative_path is not None
     controlling_plan = plan_ref.relative_path
-    if not next_actions or not all(isinstance(item, str) and item.strip() for item in next_actions):
-        raise ProjectStateError("next_actions must contain at least one substantive action")
+    if not next_actions or not all(
+        isinstance(item, str) and item.strip() for item in next_actions
+    ):
+        raise ProjectStateError(
+            "next_actions must contain at least one substantive action"
+        )
     payload: dict[str, Any] = {
         "schema_version": STATE_SCHEMA,
         "project_id": project_id,
@@ -1350,19 +2041,29 @@ def _compiled_context(project: Path, state: dict[str, Any]) -> str:
     block = render_context_current_state(project, state)
     has_start, has_end = start in context, end in context
     if has_start != has_end:
-        raise ProjectStateError("CONTEXT.md has an incomplete current-state marker pair")
+        raise ProjectStateError(
+            "CONTEXT.md has an incomplete current-state marker pair"
+        )
     if has_start:
         updated = re.sub(
-            re.escape(start) + r".*?" + re.escape(end), block, context, count=1, flags=re.S
+            re.escape(start) + r".*?" + re.escape(end),
+            block,
+            context,
+            count=1,
+            flags=re.S,
         )
     else:
         lines = context.splitlines()
         if not lines or not lines[0].startswith("#"):
-            raise ProjectStateError("CONTEXT.md needs a leading heading before compilation")
+            raise ProjectStateError(
+                "CONTEXT.md needs a leading heading before compilation"
+            )
         remaining = lines[1:]
         while remaining and not remaining[0].strip():
             remaining.pop(0)
-        while remaining and re.match(r"^\*\*(Phase|Status|Last session):\*\*", remaining[0], re.I):
+        while remaining and re.match(
+            r"^\*\*(Phase|Status|Last session):\*\*", remaining[0], re.I
+        ):
             remaining.pop(0)
         while remaining and not remaining[0].strip():
             remaining.pop(0)
@@ -1390,22 +2091,38 @@ def _working_digest(project: Path) -> str:
     return _sha_bytes(json.dumps(entries, separators=(",", ":")).encode())
 
 
-def _active_claim(path: Path, session_id: str, project_id: str, project: Path, *, claim_rows: list[dict[str, str]] | None = None) -> dict[str, str]:
+def _active_claim(
+    path: Path,
+    session_id: str,
+    project_id: str,
+    project: Path,
+    *,
+    claim_rows: list[dict[str, str]] | None = None,
+) -> dict[str, str]:
     rows = _parse_board_rows(path) if claim_rows is None else claim_rows
     matches = [
-        row for row in rows
+        row
+        for row in rows
         if row.get("session uuid") == session_id
         and row.get("project") == project_id
         and row.get("status", "").lower() == "active"
     ]
     if len(matches) != 1:
-        raise ProjectStateError("checkpoint requires exactly one active matching session claim")
+        raise ProjectStateError(
+            "checkpoint requires exactly one active matching session claim"
+        )
     row = matches[0]
     workspace = row.get("workspace(s) / branch", "")
     claimed = row.get("claimed areas (advisory lock)", "")
     repo = str(_repository_root(project))
-    if repo not in workspace and str(project) not in claimed and project.name not in claimed:
-        raise ProjectStateError("active session claim does not cover the project worktree")
+    if (
+        repo not in workspace
+        and str(project) not in claimed
+        and project.name not in claimed
+    ):
+        raise ProjectStateError(
+            "active session claim does not cover the project worktree"
+        )
     return row
 
 
@@ -1427,14 +2144,18 @@ def checkpoint_project(
     """Receipt-only API: require adopted state, claim, Git, and hash bindings."""
     applicability, issues = checkpoint_applicability(project)
     if applicability == "NOT_APPLICABLE":
-        raise ProjectStateError("structured checkpoint is not applicable: " + "; ".join(issues))
+        raise ProjectStateError(
+            "structured checkpoint is not applicable: " + "; ".join(issues)
+        )
     project = project.resolve()
     state = _load_json(project / STATE_FILE)
     project_id = str(state.get("project_id") or "")
     if state.get("schema_version") != STATE_SCHEMA or not project_id:
         raise ProjectStateError("current operational state is invalid")
     if state.get("session_id") != session_id:
-        raise ProjectStateError("current operational state belongs to a different session")
+        raise ProjectStateError(
+            "current operational state belongs to a different session"
+        )
     problems = semantic_issues(project)
     current_hashes = _content_hashes(project, str(state.get("controlling_plan") or ""))
     if current_hashes != state.get("content_hashes"):
@@ -1446,6 +2167,7 @@ def checkpoint_project(
     # Receipt creation is an authority boundary even when called directly by
     # the CLI. An observer's cached mirror can never authorize this write.
     from coordination import _check_staged_board_snapshot
+
     try:
         snapshot = _check_staged_board_snapshot(coordination_board.resolve())
     except (RuntimeError, OSError, ValueError) as exc:
@@ -1455,14 +2177,27 @@ def checkpoint_project(
     try:
         claim_rows = parse_table_rows(snapshot)
     except ValueError as exc:
-        raise ProjectStateError(f"checkpoint coordination board invalid: {exc}") from exc
+        raise ProjectStateError(
+            f"checkpoint coordination board invalid: {exc}"
+        ) from exc
     if native_event is not None:
-        fresh_row = row_for_event(claim_rows, native_event, coordination_board.resolve())
+        fresh_row = row_for_event(
+            claim_rows, native_event, coordination_board.resolve()
+        )
         if fresh_row is None or fresh_row.get("session uuid") != session_id:
-            raise ProjectStateError("native lifecycle identity no longer owns the refreshed checkpoint claim")
-    claim = _active_claim(coordination_board.resolve(), session_id, project_id, project, claim_rows=claim_rows)
+            raise ProjectStateError(
+                "native lifecycle identity no longer owns the refreshed checkpoint claim"
+            )
+    claim = _active_claim(
+        coordination_board.resolve(),
+        session_id,
+        project_id,
+        project,
+        claim_rows=claim_rows,
+    )
     _repo, _relative, head, tree = _git_identity(project)
     payload: dict[str, Any] = {
+        "material_context": material_context(project),
         "receipt_schema": RECEIPT_SCHEMA,
         "session_id": session_id,
         "project_id": project_id,
@@ -1477,6 +2212,18 @@ def checkpoint_project(
         "writer_adapter": os.environ.get("SYNTHESIS_LIFECYCLE_ADAPTER", "shared"),
         "validated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if claim.get("person") not in (None, "", "-"):
+        # claim_hash above binds these labels to the same fresh board snapshot.
+        # They do not establish a host ACL or an independent human attestation.
+        payload["writer_attribution"] = {
+            "session": session_id,
+            "person": claim["person"],
+            "native": claim.get("client session ref", ""),
+            "agent": claim.get("agent", ""),
+            "machine": claim.get("machine", ""),
+            "standing_role": claim.get("standing role", ""),
+            "authority": "declared-board-attribution",
+        }
     path = _receipt_path(receipt_root.resolve(), session_id, project_id)
     _atomic_json(path, payload)
     payload["receipt_path"] = str(path)
@@ -1507,13 +2254,18 @@ def validate_checkpoint(
         return "LOCAL_RECOVERABLE", ["no clean checkpoint receipt exists"]
     try:
         receipt = _load_json(path)
-        claim = _active_claim(coordination_board.resolve(), session_id, project_id, project)
+        claim = _active_claim(
+            coordination_board.resolve(), session_id, project_id, project
+        )
     except ProjectStateError as exc:
         return "UNKNOWN", [str(exc)]
     problems: list[str] = []
     if receipt.get("receipt_schema") != RECEIPT_SCHEMA:
         problems.append("checkpoint receipt schema is unsupported")
-    if receipt.get("session_id") != session_id or receipt.get("project_id") != project_id:
+    if (
+        receipt.get("session_id") != session_id
+        or receipt.get("project_id") != project_id
+    ):
         problems.append("checkpoint receipt identity mismatch")
     requested_sources = dict(sorted((source_heads or {}).items()))
     if requested_sources != receipt.get("source_heads", {}):
@@ -1521,7 +2273,9 @@ def validate_checkpoint(
     if _sha_file(project / STATE_FILE) != receipt.get("state_hash"):
         problems.append("current operational state differs from the clean checkpoint")
     try:
-        current_hashes = _content_hashes(project, str(state.get("controlling_plan") or ""))
+        current_hashes = _content_hashes(
+            project, str(state.get("controlling_plan") or "")
+        )
     except (ProjectStateError, OSError, ValueError) as exc:
         problems.append(f"durable project files cannot be verified: {exc}")
     else:
@@ -1529,81 +2283,16 @@ def validate_checkpoint(
             problems.append("durable project files differ from the clean checkpoint")
     if _working_digest(project) != receipt.get("working_digest"):
         problems.append("project working state differs from the clean checkpoint")
-    if _sha_bytes(json.dumps(claim, sort_keys=True).encode()) != receipt.get("claim_hash"):
+    if _sha_bytes(json.dumps(claim, sort_keys=True).encode()) != receipt.get(
+        "claim_hash"
+    ):
         problems.append("coordination claim differs from the clean checkpoint")
     return ("LOCAL_RECOVERABLE", problems) if problems else ("PASS", [])
 
 
-def row_for_event(
-    rows: list[dict[str, str]], payload: dict[str, Any], board: Path | None = None,
-) -> dict[str, str] | None:
-    """Supported entry point (ID-2, 2026-09-21): the private control
-    plane resolves native claims through this helper."""
-    # Delivery selectors and coordination UUIDs are not native identity.
-    # Desktop claims store a host id; their existing sidecar binds that host
-    # to the transcript UUID that Stop receives. Never infer that association
-    # from a caller-supplied ccd: override or a payload task_id.
-    configured = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "").strip()
-    native = payload.get("session_id")
-    if (
-        configured.startswith(("cc:", "codex:", "muse:"))
-        and (not isinstance(native, str) or not native or configured.split(":", 1)[1] != native)
-    ):
-        raise ProjectStateError("native lifecycle identity conflicts with the configured client reference; refusing a foreign checkpoint")
-    if not isinstance(native, str) or not native:
-        return None
-    native_refs = {f"cc:{native}", f"codex:{native}", f"muse:{native}"}
-    matches = []
-    for row in rows:
-        if row.get("status", "").lower() != "active":
-            continue
-        client_ref = row.get("client session ref", "")
-        matched = client_ref in native_refs
-        if matched:
-            client, verified_native = observer_native_identity(payload)
-            scheme = {"claude": "cc", "muse": "muse"}.get(client, "codex")
-            matched = client_ref == f"{scheme}:{verified_native}"
-        if client_ref.startswith("ccd:") and board is not None:
-            from peer_addressing import CLIENT_CLAUDE, read_seat, seat_path
-
-            row_uuid = row.get("session uuid", "")
-            try:
-                uuid.UUID(row_uuid)
-            except (ValueError, TypeError, AttributeError):
-                # A malformed row cannot bind this event, but it must not
-                # abort matching for the remaining rows.
-                continue
-            path = seat_path(board, row_uuid)
-            if path.is_symlink() or path.parent.is_symlink():
-                raise ProjectStateError("Desktop checkpoint identity evidence crosses an unsafe symlink")
-            try:
-                seat = read_seat(board, row.get("session uuid", ""), strict=True)
-            except (OSError, ValueError):
-                # An unverifiable seat disqualifies its own row only. One
-                # stale seat (e.g. pre-migration schema) must never fail the
-                # checkpoint for unrelated sessions. The row cannot match, so
-                # this stays fail-closed per row.
-                continue
-            if seat is not None and seat.harness_session_id == native:
-                client, verified_native = observer_native_identity(payload)
-                matched = (
-                    client == "claude" and verified_native == native
-                    and seat.client == CLIENT_CLAUDE
-                    and seat.compact_id == row.get("compact id")
-                    and f"ccd:{seat.host_session_id}" == client_ref
-                    # Compare the row to the same value the writer
-                    # emitted (Seat.board_machine) — never the label to
-                    # the id. The operand lives on Seat so every
-                    # seat/row comparison shares one implementation.
-                    and (not row.get("machine") or row["machine"] == seat.board_machine)
-                )
-                if not matched:
-                    raise ProjectStateError("Desktop checkpoint identity does not bind the active claim")
-        if matched:
-            matches.append(row)
-    if len(matches) > 1:
-        raise ProjectStateError("lifecycle event matches multiple active coordination seats")
-    return matches[0] if matches else None
+def row_for_event(rows, payload, board=None):
+    from native_identity import row_for_event as resolve_native_row
+    return resolve_native_row(rows, payload, board, _observer=observer_native_identity)
 
 
 # Temporary alias (ID-2, 2026-09-21): the installed private control
@@ -1644,15 +2333,20 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
     # project paths keep the old admission; a phantom nobody claimed is
     # not a candidate.
     existing = sorted(
-        {path.resolve() for path in paths if path.parent.name == "projects"
-         and (path.is_dir() or path in explicit)},
+        {
+            path.resolve()
+            for path in paths
+            if path.parent.name == "projects" and (path.is_dir() or path in explicit)
+        },
         key=lambda item: (len(str(item)), str(item)),
     )
     if len(existing) > 1:
         matching = []
         for path in existing:
             try:
-                if _load_json(path / STATE_FILE).get("session_id") == row.get("session uuid"):
+                if _load_json(path / STATE_FILE).get("session_id") == row.get(
+                    "session uuid"
+                ):
                     matching.append(path)
             except ProjectStateError:
                 continue
@@ -1669,70 +2363,15 @@ def _project_from_claim(row: dict[str, str]) -> Path | None:
 
 def _live_source_heads(state: dict[str, Any]) -> dict[str, str]:
     live: dict[str, str] = {}
-    for raw in (state.get("source_heads") or {}):
+    for raw in state.get("source_heads") or {}:
         root = Path(str(raw)).resolve()
         live[str(raw)] = _run(root, "rev-parse", "HEAD").stdout.strip()
     return live
 
 
 def observer_native_identity(payload: dict[str, Any]) -> tuple[str, str]:
-    """Verify an observer from native transcript evidence, not a read-only flag.
-
-    Supported entry point (ID-2, 2026-09-21): the private control
-    plane resolves native identity through this helper."""
-    native = payload.get("session_id")
-    try:
-        uuid.UUID(native)
-    except (ValueError, TypeError, AttributeError) as exc:
-        raise ProjectStateError("observer Stop requires a valid native session UUID") from exc
-    raw = payload.get("transcript_path")
-    scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    try:
-        from live_receipt import (
-            client_root_transcript_path,
-            muse_sessions_root,
-            resolve_muse_transcript,
-            transcript_binds_session,
-        )
-    except (ImportError, SyntaxError) as exc:
-        raise ProjectStateError("observer native transcript validator is unavailable") from exc
-    if raw is not None and raw != "":
-        if not isinstance(raw, str) or not Path(raw).is_absolute():
-            raise ProjectStateError("observer native transcript path must be absolute")
-        transcript = Path(raw)
-        if transcript.is_symlink() or not transcript.is_file():
-            raise ProjectStateError("observer native transcript is missing or unsafe")
-        matches = []
-        roots = [(client, os.environ.get(variable, str(Path.home() / f".{client}")))
-                 for client, variable in (("claude", "CLAUDE_CONFIG_DIR"), ("codex", "CODEX_HOME"))]
-        roots.append(("muse", str(muse_sessions_root())))
-        for client, raw_home in roots:
-            if not raw_home.strip() or not Path(raw_home).expanduser().is_absolute():
-                continue
-            home = Path(raw_home).expanduser()
-            if not client_root_transcript_path(transcript, client, native, home):
-                continue
-            # Explicit Muse paths must obey the same unique-store selection
-            # as payloads without a path; a second date shard is ambiguous.
-            if client == "muse" and resolve_muse_transcript(native) != transcript:
-                continue
-            if transcript_binds_session(transcript, client, native):
-                matches.append(client)
-        if len(matches) != 1:
-            raise ProjectStateError("observer transcript does not unambiguously bind this native session")
-        return matches[0], native
-    # Muse payloads carry no transcript path: resolve the session log from
-    # the store and require the same unambiguous binding evidence.
-    resolved = resolve_muse_transcript(native)
-    if resolved is None:
-        raise ProjectStateError("observer Stop requires this native session's transcript path")
-    if not client_root_transcript_path(resolved, "muse", native, muse_sessions_root()):
-        raise ProjectStateError("observer transcript does not unambiguously bind this native session")
-    if not transcript_binds_session(resolved, "muse", native):
-        raise ProjectStateError("observer transcript does not unambiguously bind this native session")
-    return "muse", native
+    from native_identity import observer_native_identity as observe
+    return observe(payload)
 
 
 # Temporary alias (ID-2, 2026-09-21): the installed private control
@@ -1744,25 +2383,68 @@ _observer_native_identity = observer_native_identity
 def _observer_git(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     # Keep configured trust (including safe.directory), but never inherit a
     # caller-selected index, object store, worktree, or injected -c parameters.
-    config_environment = {"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}
-    environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith("GIT_") or key in config_environment}
-    environment.update(GIT_OPTIONAL_LOCKS="0", GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1",
-                       GIT_ALLOW_PROTOCOL="", GIT_TERMINAL_PROMPT="0", LC_ALL="C")
-    command = ["git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-C", str(project)]
+    config_environment = {
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_CONFIG_NOSYSTEM",
+    }
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("GIT_") or key in config_environment
+    }
+    environment.update(
+        GIT_OPTIONAL_LOCKS="0",
+        GIT_NO_REPLACE_OBJECTS="1",
+        GIT_NO_LAZY_FETCH="1",
+        GIT_ALLOW_PROTOCOL="",
+        GIT_TERMINAL_PROMPT="0",
+        LC_ALL="C",
+    )
+    command = [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false",
+        "-C",
+        str(project),
+    ]
     if arguments and arguments[0] == "status":
         # Status can invoke a configured clean/process filter even with
         # optional locks disabled. The observer must never run those programs.
-        filters = subprocess.run(command + ["config", "--null", "--name-only", "--get-regexp",
-                                            r"^filter\..*\.(clean|smudge|process)$"],
-                                 capture_output=True, text=True, env=environment, timeout=15)
+        filters = subprocess.run(
+            command
+            + [
+                "config",
+                "--null",
+                "--name-only",
+                "--get-regexp",
+                r"^filter\..*\.(clean|smudge|process)$",
+            ],
+            capture_output=True,
+            text=True,
+            env=environment,
+            timeout=15,
+        )
         if filters.returncode not in {0, 1}:
             raise ProjectStateError("observer Git filter configuration is unverifiable")
-        for prefix in sorted({key.rsplit(".", 1)[0] for key in filters.stdout.split("\0") if key}):
-            for field, value in (("clean", ""), ("smudge", ""), ("process", ""), ("required", "false")):
+        for prefix in sorted(
+            {key.rsplit(".", 1)[0] for key in filters.stdout.split("\0") if key}
+        ):
+            for field, value in (
+                ("clean", ""),
+                ("smudge", ""),
+                ("process", ""),
+                ("required", "false"),
+            ):
                 command.extend(["-c", f"{prefix}.{field}={value}"])
     return subprocess.run(
-        command + list(arguments), capture_output=True, text=True, env=environment, timeout=15,
+        command + list(arguments),
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=15,
     )
 
 
@@ -1770,7 +2452,9 @@ def _observer_checked_git(project: Path, *arguments: str) -> str:
     return _observer_git_runner(project, *arguments).stdout.rstrip("\n")
 
 
-def _observer_git_runner(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+def _observer_git_runner(
+    project: Path, *arguments: str
+) -> subprocess.CompletedProcess[str]:
     done = _observer_git(project, *arguments)
     if done.returncode:
         raise ProjectStateError("observer Git evidence is unavailable")
@@ -1782,12 +2466,24 @@ def _observer_registry_adoption(repo: Path, project_id: str | None = None) -> bo
     try:
         from project_recipient import registry_entries
     except (ImportError, SyntaxError) as exc:
-        raise ProjectStateError("observer project registry reader is unavailable") from exc
-    revisions = _observer_checked_git(repo, "log", "--all", "--reflog", "--max-count=33",
-                                      "--format=%H", "--diff-filter=AM", "--",
-                                      ":(literal)projects/index.yaml").splitlines()
+        raise ProjectStateError(
+            "observer project registry reader is unavailable"
+        ) from exc
+    revisions = _observer_checked_git(
+        repo,
+        "log",
+        "--all",
+        "--reflog",
+        "--max-count=33",
+        "--format=%H",
+        "--diff-filter=AM",
+        "--",
+        ":(literal)projects/index.yaml",
+    ).splitlines()
     for revision in dict.fromkeys(revisions):
-        previous = _observer_checked_git(repo, "show", f"{revision}:projects/index.yaml")
+        previous = _observer_checked_git(
+            repo, "show", f"{revision}:projects/index.yaml"
+        )
         try:
             entries = registry_entries(previous)
         except ValueError:
@@ -1795,7 +2491,9 @@ def _observer_registry_adoption(repo: Path, project_id: str | None = None) -> bo
         if project_id is None or project_id in entries:
             return True
     if len(revisions) >= 33:
-        raise ProjectStateError("observer registry adoption exceeds bounded history verification")
+        raise ProjectStateError(
+            "observer registry adoption exceeds bounded history verification"
+        )
     if _observer_checked_git(repo, "rev-parse", "--is-shallow-repository") != "false":
         raise ProjectStateError("observer registry adoption history is incomplete")
     return False
@@ -1810,7 +2508,9 @@ def _observer_synthesis_evidence(project: Path) -> bool:
     try:
         from project_recipient import registry_entries
     except (ImportError, SyntaxError) as exc:
-        raise ProjectStateError("observer project registry reader is unavailable") from exc
+        raise ProjectStateError(
+            "observer project registry reader is unavailable"
+        ) from exc
 
     def registered(text: str) -> bool:
         try:
@@ -1828,18 +2528,35 @@ def _observer_synthesis_evidence(project: Path) -> bool:
             return True
     identity = _observer_git(project, "rev-parse", "--show-toplevel")
     if identity.returncode:
-        administrative = any((parent / ".git").exists() or (parent / ".git").is_symlink()
-            for parent in (project, *project.parents))
-        if identity.returncode == 128 and "not a git repository" in identity.stderr.lower() and not administrative:
+        administrative = any(
+            (parent / ".git").exists() or (parent / ".git").is_symlink()
+            for parent in (project, *project.parents)
+        )
+        if (
+            identity.returncode == 128
+            and "not a git repository" in identity.stderr.lower()
+            and not administrative
+        ):
             return False
         raise ProjectStateError("observer project Git identity could not be verified")
     repo = Path(identity.stdout.strip()).resolve()
     if project.parent != repo / "projects":
         return False
     relative = str((project / STATE_FILE).relative_to(repo))
-    if _observer_checked_git(repo, "ls-files", "--stage", "--", f":(literal){relative}").strip():
+    if _observer_checked_git(
+        repo, "ls-files", "--stage", "--", f":(literal){relative}"
+    ).strip():
         return True
-    if _observer_checked_git(repo, "log", "--all", "--reflog", "-1", "--format=%H", "--", f":(literal){relative}").strip():
+    if _observer_checked_git(
+        repo,
+        "log",
+        "--all",
+        "--reflog",
+        "-1",
+        "--format=%H",
+        "--",
+        f":(literal){relative}",
+    ).strip():
         return True
     # A deleted registry still identifies an ordinary Synthesis project. Read
     # the last retained registry blob, never infer registration from its name.
@@ -1852,10 +2569,16 @@ def _observer_project(cwd: Path) -> Path | None:
             try:
                 checkpoint_applicability(candidate, git_runner=_observer_git_runner)
             except (OSError, ProjectStateError) as exc:
-                raise ProjectStateError(f"observer project Git state or applicability could not be verified: {exc}") from exc
+                raise ProjectStateError(
+                    f"observer project Git state or applicability could not be verified: {exc}"
+                ) from exc
             return candidate
-        if candidate.parent.name == "projects" and _observer_synthesis_evidence(candidate):
-            applicability, _issues = checkpoint_applicability(candidate, git_runner=_observer_git_runner)
+        if candidate.parent.name == "projects" and _observer_synthesis_evidence(
+            candidate
+        ):
+            applicability, _issues = checkpoint_applicability(
+                candidate, git_runner=_observer_git_runner
+            )
             if applicability == "REQUIRED":
                 return candidate
     return None
@@ -1866,7 +2589,11 @@ def _observer_local_path(raw: Any) -> Path:
         raise ProjectStateError("local handoff evidence requires absolute paths")
     path = Path(raw)
     try:
-        unsafe = str(path) != raw or path.resolve(strict=False) != path or any(part.is_symlink() for part in (path, *path.parents))
+        unsafe = (
+            str(path) != raw
+            or path.resolve(strict=False) != path
+            or any(part.is_symlink() for part in (path, *path.parents))
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         raise ProjectStateError("local handoff path is unverifiable") from exc
     if unsafe:
@@ -1884,15 +2611,27 @@ def _observer_local_file(path: Path) -> tuple[bytes, tuple[int, ...]]:
             raise ProjectStateError("local handoff evidence is not a regular file")
         raw = handle.read()
         after = os.fstat(handle.fileno())
+
     def signature(value):
-        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
-                value.st_mtime_ns, value.st_ctime_ns)
-    if signature(before) != signature(after) or signature(after) != signature(path.lstat()):
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+
+    if signature(before) != signature(after) or signature(after) != signature(
+        path.lstat()
+    ):
         raise ProjectStateError("local handoff evidence changed during verification")
     return raw, signature(after)
 
 
-def _observer_local_json(path: Path) -> tuple[dict[str, Any], tuple[bytes, tuple[int, ...]]]:
+def _observer_local_json(
+    path: Path,
+) -> tuple[dict[str, Any], tuple[bytes, tuple[int, ...]]]:
     snapshot = _observer_local_file(path)
 
     def unique_pairs(pairs):
@@ -1912,8 +2651,11 @@ def _observer_local_json(path: Path) -> tuple[dict[str, Any], tuple[bytes, tuple
     return data, snapshot
 
 
-def _observer_local_source_snapshot(repo: Path, result: dict[str, Any]) -> dict[str, Any]:
+def _observer_local_source_snapshot(
+    repo: Path, result: dict[str, Any]
+) -> dict[str, Any]:
     """Prove each attributed file equals HEAD, even when Git status hides it."""
+
     def git(*arguments: str) -> str:
         return _observer_checked_git(repo, *arguments)
 
@@ -1938,39 +2680,67 @@ def _observer_local_source_snapshot(repo: Path, result: dict[str, Any]) -> dict[
             raise ProjectStateError("local handoff contains structured project records")
         relative = path.relative_to(repo).as_posix()
         if relative == "projects/index.yaml" and _observer_registry_adoption(repo):
-            raise ProjectStateError("local handoff contains an adopted project registry")
+            raise ProjectStateError(
+                "local handoff contains an adopted project registry"
+            )
         literal = f":(top,literal){relative}"
         tree = git("ls-tree", "-z", "HEAD", "--", literal)
         index = git("ls-files", "--stage", "-z", "--", literal)
         if entry.get("state") == "deleted-or-missing":
-            if (entry != {"path": str(path), "state": "deleted-or-missing"}
-                    or path.exists() or tree or index
-                    or not git("log", "-1", "--format=%H", "--diff-filter=D", "HEAD", "--", literal)):
-                raise ProjectStateError("local handoff absence is not a committed deletion")
+            if (
+                entry != {"path": str(path), "state": "deleted-or-missing"}
+                or path.exists()
+                or tree
+                or index
+                or not git(
+                    "log", "-1", "--format=%H", "--diff-filter=D", "HEAD", "--", literal
+                )
+            ):
+                raise ProjectStateError(
+                    "local handoff absence is not a committed deletion"
+                )
             snapshots[str(path)] = entry
             continue
         if entry.get("state") != "present":
-            raise ProjectStateError("local handoff source lacks committed file evidence")
+            raise ProjectStateError(
+                "local handoff source lacks committed file evidence"
+            )
         raw, signature = _observer_local_file(path)
-        evidence = {"path": str(path), "state": "present", "size": len(raw),
-                    "sha256": _sha_bytes(raw), "git_mode": "100755" if signature[2] & 0o111 else "100644"}
+        evidence = {
+            "path": str(path),
+            "state": "present",
+            "size": len(raw),
+            "sha256": _sha_bytes(raw),
+            "git_mode": "100755" if signature[2] & 0o111 else "100644",
+        }
         if evidence != entry:
             raise ProjectStateError("local handoff source content or mode changed")
         fields = tree.removesuffix("\0").split("\t", 1)
         metadata = fields[0].split()
-        if (len(fields) != 2 or fields[1] != relative or len(metadata) != 3
-                or metadata[:2] != [evidence["git_mode"], "blob"]
-                or index != f"{metadata[0]} {metadata[2]} 0\t{relative}\0"
-                or git("hash-object", "--no-filters", "--", relative) != metadata[2]):
-            raise ProjectStateError("local handoff source does not equal a committed regular file")
+        if (
+            len(fields) != 2
+            or fields[1] != relative
+            or len(metadata) != 3
+            or metadata[:2] != [evidence["git_mode"], "blob"]
+            or index != f"{metadata[0]} {metadata[2]} 0\t{relative}\0"
+            or git("hash-object", "--no-filters", "--", relative) != metadata[2]
+        ):
+            raise ProjectStateError(
+                "local handoff source does not equal a committed regular file"
+            )
         snapshots[str(path)] = (evidence, signature)
     if git("branch", "--show-current") != branch or git("rev-parse", "HEAD") != head:
         raise ProjectStateError("local handoff repository changed during verification")
     return {"branch": branch, "head": head, "files": snapshots}
 
 
-def _observer_completed_local_source(payload: dict[str, Any], root: Path, manifest: Path,
-                                     attribution: dict[str, Any], snapshot: tuple) -> bool:
+def _observer_completed_local_source(
+    payload: dict[str, Any],
+    root: Path,
+    manifest: Path,
+    attribution: dict[str, Any],
+    snapshot: tuple,
+) -> bool:
     """Recognize retained local work; never retire it or issue checkpoint authority."""
     if attribution.get("schema_version") != 2 or attribution.get("remote_paths") != []:
         return False
@@ -1979,48 +2749,89 @@ def _observer_completed_local_source(payload: dict[str, Any], root: Path, manife
     if not receipt.exists():
         return False
     data, receipt_snapshot = _observer_local_json(receipt)
-    if (type(data.get("schema_version")) is not int or data["schema_version"] != 1
-            or data.get("session_id") != payload["session_id"]
-            or data.get("pending_manifest") != str(manifest)
-            or data.get("pending_manifest_sha256") != _sha_bytes(snapshot[0])):
-        raise ProjectStateError("local handoff receipt does not bind this native attribution")
+    if (
+        type(data.get("schema_version")) is not int
+        or data["schema_version"] != 1
+        or data.get("session_id") != payload["session_id"]
+        or data.get("pending_manifest") != str(manifest)
+        or data.get("pending_manifest_sha256") != _sha_bytes(snapshot[0])
+    ):
+        raise ProjectStateError(
+            "local handoff receipt does not bind this native attribution"
+        )
     if data.get("readiness") != "LOCAL_READY":
         readiness = data.get("readiness")
-        label = readiness if isinstance(readiness, str) and readiness in {"BLOCKED", "UNKNOWN", "REMOTE_READY"} else "unverified"
+        label = (
+            readiness
+            if isinstance(readiness, str)
+            and readiness in {"BLOCKED", "UNKNOWN", "REMOTE_READY"}
+            else "unverified"
+        )
         raise ProjectStateError(
             f"local handoff identity binding is valid, but readiness is {label}; "
             "inspect the exact-session receipt results and retained path evidence. "
-            "Incomplete readiness does not authorize identity repair, dropping paths, or publication")
+            "Incomplete readiness does not authorize identity repair, dropping paths, or publication"
+        )
     results = data.get("results")
     if not isinstance(results, list) or not results:
         raise ProjectStateError("local handoff receipt has no source evidence")
     covered: list[str] = []
     repositories: dict[Path, dict[str, Any]] = {}
     for result in results:
-        if not isinstance(result, dict) or result.get("action") != "local-ready" or result.get("alert") is not None:
-            raise ProjectStateError("local handoff receipt contains an incomplete result")
+        if (
+            not isinstance(result, dict)
+            or result.get("action") != "local-ready"
+            or result.get("alert") is not None
+        ):
+            raise ProjectStateError(
+                "local handoff receipt contains an incomplete result"
+            )
         repo = _observer_local_path(result.get("repo"))
         entries = result.get("file_evidence")
-        if (repo in repositories or not isinstance(entries, list) or not entries
-                or type(result.get("files")) is not int or result["files"] != len(entries)
-                or any(not isinstance(entry, dict) or not isinstance(entry.get("path"), str) for entry in entries)):
+        if (
+            repo in repositories
+            or not isinstance(entries, list)
+            or not entries
+            or type(result.get("files")) is not int
+            or result["files"] != len(entries)
+            or any(
+                not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
+                for entry in entries
+            )
+        ):
             raise ProjectStateError("local handoff source evidence is invalid")
         repositories[repo] = result
         covered.extend(entry["path"] for entry in entries)
-    if (len(set(covered)) != len(covered) or len(set(attribution["paths"])) != len(attribution["paths"])
-            or set(covered) != set(attribution["paths"])):
-        raise ProjectStateError("local handoff evidence does not cover exactly the attributed paths")
-    observed = {repo: _observer_local_source_snapshot(repo, result) for repo, result in repositories.items()}
+    if (
+        len(set(covered)) != len(covered)
+        or len(set(attribution["paths"])) != len(attribution["paths"])
+        or set(covered) != set(attribution["paths"])
+    ):
+        raise ProjectStateError(
+            "local handoff evidence does not cover exactly the attributed paths"
+        )
+    observed = {
+        repo: _observer_local_source_snapshot(repo, result)
+        for repo, result in repositories.items()
+    }
     # Recheck all repositories, not only the last file; neither Git status nor
     # the receipt writer locks external source edits during this read-only proof.
-    if observed != {repo: _observer_local_source_snapshot(repo, result) for repo, result in repositories.items()}:
+    if observed != {
+        repo: _observer_local_source_snapshot(repo, result)
+        for repo, result in repositories.items()
+    }:
         raise ProjectStateError("local handoff source changed during verification")
-    if _observer_local_file(manifest) != snapshot or _observer_local_file(receipt) != receipt_snapshot:
+    if (
+        _observer_local_file(manifest) != snapshot
+        or _observer_local_file(receipt) != receipt_snapshot
+    ):
         raise ProjectStateError("local handoff attribution changed during verification")
     return True
 
 
-def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> tuple[str, list[str]] | None:
+def _observer_pending_scope(
+    payload: dict[str, Any], repo_guard_root: Path
+) -> tuple[str, list[str]] | None:
     """Known exact-session work remains an obligation regardless of cwd."""
     native = payload.get("session_id")
     if not isinstance(native, str) or not native:
@@ -2028,18 +2839,37 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
     pending = repo_guard_root / "pending"
     own = pending / (_sha_bytes(native.encode()) + ".json")
     if repo_guard_root.is_symlink() or pending.is_symlink() or own.is_symlink():
-        raise ProjectStateError("observer attribution evidence crosses an unsafe symlink")
+        raise ProjectStateError(
+            "observer attribution evidence crosses an unsafe symlink"
+        )
     if pending.exists() and not pending.is_dir():
         raise ProjectStateError("observer attribution directory is unreadable")
     if own.exists():
         observer_native_identity(payload)
         attribution, snapshot = _observer_local_json(own)
-        if attribution.get("session_id") != native or type(attribution.get("schema_version")) is not int or attribution.get("schema_version") not in {1, 2}:
-            raise ProjectStateError("exact native-session pending attribution is invalid; preserve its evidence")
+        if (
+            attribution.get("session_id") != native
+            or type(attribution.get("schema_version")) is not int
+            or attribution.get("schema_version") not in {1, 2}
+        ):
+            raise ProjectStateError(
+                "exact native-session pending attribution is invalid; preserve its evidence"
+            )
         paths = attribution.get("paths")
-        if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or not Path(path).is_absolute() for path in paths):
-            raise ProjectStateError("exact native-session pending attribution has invalid paths")
-        if _observer_completed_local_source(payload, repo_guard_root, own, attribution, snapshot):
+        if (
+            not isinstance(paths, list)
+            or not paths
+            or any(
+                not isinstance(path, str) or not Path(path).is_absolute()
+                for path in paths
+            )
+        ):
+            raise ProjectStateError(
+                "exact native-session pending attribution has invalid paths"
+            )
+        if _observer_completed_local_source(
+            payload, repo_guard_root, own, attribution, snapshot
+        ):
             return "NOT_APPLICABLE", [
                 "exact-session receipt proves committed local source retention, not remote publication; "
                 "remote publication remains unverified; manifest preserved; no checkpoint receipt issued or publication authority granted. "
@@ -2058,16 +2888,24 @@ def _observer_pending_scope(payload: dict[str, Any], repo_guard_root: Path) -> t
     return None
 
 
-def _observer_checkpoint_scope(payload: dict[str, Any], project: Path) -> tuple[str, list[str]]:
+def _observer_checkpoint_scope(
+    payload: dict[str, Any], project: Path
+) -> tuple[str, list[str]]:
     observer_native_identity(payload)
     checkpoint_applicability(project, git_runner=_observer_git_runner)
-    dirty = _observer_git(project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
+    dirty = _observer_git(
+        project, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "."
+    )
     if dirty.returncode:
         raise ProjectStateError("observer project Git state could not be verified")
     if dirty.stdout:
-        return "UNKNOWN", ["unowned structured project has staged, unstaged or untracked changes; absence of native attribution does not prove read-only work"]
+        return "UNKNOWN", [
+            "unowned structured project has staged, unstaged or untracked changes; absence of native attribution does not prove read-only work"
+        ]
     _load_json(project / STATE_FILE)  # a clean Git deletion is still missing evidence
-    return "NOT_APPLICABLE", ["no active checkpoint ownership or native pending attribution; observed Git project subtree is clean; no checkpoint receipt issued and no recovery/state-health PASS implied"]
+    return "NOT_APPLICABLE", [
+        "no active checkpoint ownership or native pending attribution; observed Git project subtree is clean; no checkpoint receipt issued and no recovery/state-health PASS implied"
+    ]
 
 
 def _honor_release_requests_at_stop(
@@ -2088,8 +2926,10 @@ def _honor_release_requests_at_stop(
             return
         cwd = payload.get("cwd")
         from peer_addressing import identity_from_hook
+
         honor_open_requests(
-            board, session_uuid,
+            board,
+            session_uuid,
             Path(str(cwd)).expanduser() if cwd else None,
             caller_identity=identity_from_hook(payload),
         )
@@ -2104,32 +2944,50 @@ def checkpoint_hook(
     receipt_root: Path,
     refresh_coordination: bool = True,
     repo_guard_root: Path | None = None,
+    material_result: dict | None = None,
 ) -> tuple[str, list[str]]:
     """Bind a lifecycle event to its seat and issue an exact clean receipt."""
     try:
         if refresh_coordination:
-            refresh_issue = _refresh_coordination_board(coordination_board.resolve(), passive_stop=payload.get("hook_event_name") == "Stop")
+            refresh_issue = _refresh_coordination_board(
+                coordination_board.resolve(),
+                passive_stop=payload.get("hook_event_name") == "Stop",
+            )
             if refresh_issue:
                 return "FAIL", [refresh_issue]
-        row = row_for_event(_parse_board_rows(coordination_board.resolve()), payload, coordination_board.resolve())
+        row = row_for_event(
+            _parse_board_rows(coordination_board.resolve()),
+            payload,
+            coordination_board.resolve(),
+        )
         if row is not None and payload.get("hook_event_name") == "Stop":
-            _honor_release_requests_at_stop(
-                coordination_board.resolve(), row, payload
-            )
+            _honor_release_requests_at_stop(coordination_board.resolve(), row, payload)
         if row is None:
-            root = repo_guard_root or Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
+            root = (
+                repo_guard_root
+                or Path(
+                    os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))
+                )
+                / "repo-guard"
+            )
             pending_scope = _observer_pending_scope(payload, root)
             if pending_scope is not None and pending_scope[0] != "NOT_APPLICABLE":
                 return pending_scope
             cwd = Path(str(payload.get("cwd") or ".")).resolve()
             project = _observer_project(cwd)
             if project is not None:
+                if material_result is not None:
+                    material_result.update(material_context(project))
                 verdict, issues = _observer_checkpoint_scope(payload, project)
-                return verdict, (pending_scope[1] if pending_scope is not None else []) + issues
+                return verdict, (
+                    pending_scope[1] if pending_scope is not None else []
+                ) + issues
             return pending_scope or ("NOT_APPLICABLE", [])
         project = _project_from_claim(row)
         if project is None:
             return "NOT_APPLICABLE", []
+        if material_result is not None:
+            material_result.update(material_context(project))
         applicability, issues = checkpoint_applicability(project)
         if applicability == "NOT_APPLICABLE":
             return applicability, issues
@@ -2155,33 +3013,60 @@ def checkpoint_hook(
         return "FAIL", [str(exc)]
 
 
-def _checkpoint_publication(payload: dict[str, Any], root: Path | None = None) -> dict[str, Any]:
+def _checkpoint_publication(
+    payload: dict[str, Any], root: Path | None = None
+) -> dict[str, Any]:
     """Observe only exact native identity; never inspect a foreign last receipt."""
     try:
         observer_native_identity(payload)
     except (OSError, ProjectStateError, ValueError, TypeError):
-        return {"status": "UNKNOWN", "owner": publication_receipt.OWNER,
-                "live_remote_rechecked": False, "detail": "Native identity is unverified; publication remains unknown."}
+        return {
+            "status": "UNKNOWN",
+            "owner": publication_receipt.OWNER,
+            "live_remote_rechecked": False,
+            "detail": "Native identity is unverified; publication remains unknown.",
+        }
     if root is None:
-        root = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis"))) / "repo-guard"
+        root = (
+            Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+            / "repo-guard"
+        )
     return publication_receipt.observe(root, payload.get("session_id"))
 
 
-def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, Any],
-                          publication: dict[str, Any] | None = None) -> int:
-    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS",
-              "publication": {"status": "NOT_EVALUATED",
-                              "owner": "checkpoint_sync.py --flush-session",
-                              "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
-                                        "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
-                                        "a retained pending manifest alone does not prove edits are unpublished."}}
-    report["publication"] = publication if publication is not None else _checkpoint_publication(payload)
+def _emit_checkpoint_hook(
+    verdict: str,
+    issues: list[str],
+    payload: dict[str, Any],
+    publication: dict[str, Any] | None = None,
+    material_result: dict | None = None,
+) -> int:
+    report = {
+        "status": verdict,
+        "issues": issues,
+        "checkpoint_accepted": verdict == "PASS",
+        "publication": {
+            "status": "NOT_EVALUATED",
+            "owner": "checkpoint_sync.py --flush-session",
+            "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
+            "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
+            "a retained pending manifest alone does not prove edits are unpublished.",
+        },
+    }
+    if material_result is not None:
+        report["material_context"] = material_result or {"input_coverage": "UNKNOWN", "semantic_review": "UNREVIEWED", "endpoint_recovery": "UNKNOWN", "scope": "No selected project in this event"}
+    report["publication"] = (
+        publication if publication is not None else _checkpoint_publication(payload)
+    )
     if verdict == "NOT_APPLICABLE":
         report["no_receipt_issued"] = True
     # Codex validates Stop stdout against an additionalProperties:false schema.
     # Keep diagnostic fields inside the supported string, separate from native
     # lifecycle control. Both clients can retain the exact verdict for review.
-    output = {"systemMessage": "PROJECT_CHECKPOINT_JSON: " + json.dumps(report, sort_keys=True)}
+    output = {
+        "systemMessage": "PROJECT_CHECKPOINT_JSON: "
+        + json.dumps(report, sort_keys=True)
+    }
     if verdict in {"PASS", "NOT_APPLICABLE"}:
         print(json.dumps(output))
         return 0
@@ -2193,11 +3078,16 @@ def _emit_checkpoint_hook(verdict: str, issues: list[str], payload: dict[str, An
     event = payload.get("hook_event_name")
     if event is None or event == "Stop":
         try:
-            scripts = Path(__file__).resolve().parents[2] / "synthesis-onboarding" / "scripts"
+            scripts = (
+                Path(__file__).resolve().parents[2] / "synthesis-onboarding" / "scripts"
+            )
             if str(scripts) not in sys.path:
                 sys.path.insert(0, str(scripts))
             from release_runtime import stop_failure
-            output = stop_failure(payload, reason, system_message=output["systemMessage"])
+
+            output = stop_failure(
+                payload, reason, system_message=output["systemMessage"]
+            )
         except (ImportError, OSError, SyntaxError, AttributeError):
             # Missing loop protection must not itself create a repair loop.
             output.update({"continue": False, "stopReason": "UNRESOLVED: " + reason})
@@ -2276,8 +3166,10 @@ def _parser() -> argparse.ArgumentParser:
     hook.add_argument(
         "--coordination-board",
         type=Path,
-        default=Path(os.environ.get("SYNTHESIS_COORDINATION_BOARD") or
-                     Path.home() / ".synthesis" / "coordination" / "active-sessions.md"),
+        default=Path(
+            os.environ.get("SYNTHESIS_COORDINATION_BOARD")
+            or Path.home() / ".synthesis" / "coordination" / "active-sessions.md"
+        ),
     )
     hook.add_argument(
         "--receipt-root",
@@ -2308,7 +3200,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.status in {"PASS", "LOCAL_RECOVERABLE"} else 1
     if args.command == "semantic":
         issues = semantic_issues(args.project)
-        print(json.dumps({"status": "PASS" if not issues else "FAIL", "issues": issues}, indent=2))
+        print(
+            json.dumps(
+                {"status": "PASS" if not issues else "FAIL", "issues": issues}, indent=2
+            )
+        )
         return 0 if not issues else 1
     if args.command == "build":
         try:
@@ -2331,10 +3227,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "checkpoint":
         try:
+            material = material_context(args.project)
             applicability, issues = checkpoint_applicability(args.project)
             if applicability == "NOT_APPLICABLE":
-                print(json.dumps({"status": applicability, "issues": issues,
-                    "checkpoint_accepted": False, "no_receipt_issued": True}, indent=2))
+                print(
+                    json.dumps(
+                        {
+                            "status": applicability,
+                            "issues": issues,
+                            "checkpoint_accepted": False,
+                            "no_receipt_issued": True,
+                            "material_context": material,
+                        },
+                        indent=2,
+                    )
+                )
                 return 0
             payload = checkpoint_project(
                 args.project,
@@ -2355,14 +3262,16 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("hook payload is not an object")
         except (json.JSONDecodeError, ValueError) as exc:
             return _emit_checkpoint_hook("UNKNOWN", [str(exc)], {})
+        material = {}
         verdict, issues = checkpoint_hook(
             payload,
+            material_result=material,
             coordination_board=args.coordination_board,
             receipt_root=args.receipt_root,
             repo_guard_root=args.repo_guard_root,
         )
         publication = _checkpoint_publication(payload, args.repo_guard_root)
-        return _emit_checkpoint_hook(verdict, issues, payload, publication=publication)
+        return _emit_checkpoint_hook(verdict, issues, payload, publication=publication, material_result=material)
     verdict, issues = validate_checkpoint(
         args.project,
         session_id=args.session_id,
@@ -2370,12 +3279,19 @@ def main(argv: list[str] | None = None) -> int:
         receipt_root=args.receipt_root,
         source_heads=_source_head_args(args.source_head),
     )
-    report = {"status": verdict, "issues": issues, "checkpoint_accepted": verdict == "PASS",
-              "publication": {"status": "NOT_EVALUATED",
-                              "owner": "checkpoint_sync.py --flush-session",
-                              "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
-                                        "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
-                                        "a retained pending manifest alone does not prove edits are unpublished."}}
+    report = {
+        "status": verdict,
+        "issues": issues,
+        "checkpoint_accepted": verdict == "PASS",
+        "publication": {
+            "status": "NOT_EVALUATED",
+            "owner": "checkpoint_sync.py --flush-session",
+            "detail": "Project checkpoint acceptance verifies record recovery, not remote publication. "
+            "Only an authorized exact-session flush with REMOTE_READY verifies the attributed publication; "
+            "a retained pending manifest alone does not prove edits are unpublished.",
+        },
+    }
+    report["material_context"] = material_context(args.project)
     if verdict == "NOT_APPLICABLE":
         report["no_receipt_issued"] = True
     print(json.dumps(report, indent=2))

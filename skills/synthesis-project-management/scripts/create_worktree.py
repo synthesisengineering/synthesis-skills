@@ -21,6 +21,8 @@ import coordination as C
 from run_admission import bounded_lock
 from coordination_process import run as run_effect
 
+from fleet_paths import require_work_placement
+
 PREFIX = "create:"
 
 
@@ -96,10 +98,11 @@ def _owner(board, sessions, selector):
     return owner
 
 
-def reserve(board, selector, target, repository):
+def reserve(board, selector, target, repository, *, fixture_deadline=None):
     target, repository = Path(target), Path(repository)
     if target.name in {"", ".", ".."} or any(c in str(target) for c in "*?[,;\n\r|"):
         fail("creation target must be an exact path")
+    placement = require_work_placement(target, fixture_deadline=fixture_deadline)
     token = PREFIX + str(target)
     # The board is Markdown: its parser/serializer is the exact authority format.
     # Refuse spellings it would normalize or split before publishing any claim.
@@ -107,8 +110,11 @@ def reserve(board, selector, target, repository):
         fail("creation target cannot be represented exactly on the coordination board")
     with ancestry(target.parent) as verify_parent, ancestry(repository) as verify_repo:
         common = _repository(repository)
+        source_placement = require_work_placement(Path(common), fixture_deadline=fixture_deadline)
 
         def operation(text):
+            require_work_placement(target, fixture_deadline=fixture_deadline)
+            require_work_placement(Path(common), fixture_deadline=fixture_deadline)
             verify_parent()
             verify_repo()
             try:
@@ -134,10 +140,12 @@ def reserve(board, selector, target, repository):
             "target": str(target),
             "repository": str(repository),
             "common": common,
+            "placement": placement,
+            "source_placement": source_placement,
         }
 
 
-def create(board, selector, target, repository, branch, ref="HEAD"):
+def create(board, selector, target, repository, branch, ref="HEAD", *, fixture_deadline=None):
     """Reserve, create, verify, then release only this creation reservation.
 
     There is no retry after native Git begins. A failed/partial creation is
@@ -148,11 +156,12 @@ def create(board, selector, target, repository, branch, ref="HEAD"):
         fail("an explicit new branch is required")
     if not isinstance(ref, str) or not ref or ref.startswith("-"):
         fail("an explicit commit-ish is required")
+    require_work_placement(target, fixture_deadline=fixture_deadline)
     with (
         ancestry(board.parent),
         bounded_lock(board.parent / ".worktree-create.lock", timeout=5),
     ):
-        receipt = reserve(board, selector, target, repository)
+        receipt = reserve(board, selector, target, repository, fixture_deadline=fixture_deadline)
         # Keep local board ownership serialized through creation. Remote lease
         # admission is fenced before the effect, never executed in a CAS callback.
         with bounded_lock(board.parent / ".active-sessions.lock", timeout=5):
@@ -183,10 +192,13 @@ def create(board, selector, target, repository, branch, ref="HEAD"):
                     )
                 # mkdirat pins the write to the admitted parent. Git receives
                 # an empty owned directory; revalidation detects path replacement.
+                require_work_placement(target, fixture_deadline=fixture_deadline)
                 os.mkdir(target.name, 0o700, dir_fd=parent_fd)
                 created = os.stat(target.name, dir_fd=parent_fd, follow_symlinks=False)
                 verify_parent()
                 verify_repo()
+                require_work_placement(target, fixture_deadline=fixture_deadline)
+                require_work_placement(Path(receipt["common"]), fixture_deadline=fixture_deadline)
                 result = _git(
                     repository, "worktree", "add", "-b", branch, str(target), ref
                 )
@@ -244,6 +256,7 @@ def main(argv=None):
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument("--branch", required=True)
     parser.add_argument("--ref", default="HEAD")
+    parser.add_argument("--fixture-deadline", type=float, help="Explicit epoch deadline, at most 900 seconds away, for an ephemeral test fixture; never durable custody")
     args = parser.parse_args(argv)
     try:
         result = create(
@@ -253,6 +266,7 @@ def main(argv=None):
             args.repository,
             args.branch,
             args.ref,
+            fixture_deadline=args.fixture_deadline,
         )
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print("worktree creation REFUSED: " + str(exc), file=sys.stderr)

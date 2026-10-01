@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "profiles": {
+    "editorial": [
+      "principal-objective",
+      "claims",
+      "attribution",
+      "required-content",
+      "rendered-content",
+      "url-identity",
+      "publication"
+    ],
+    "code/control": [
+      "principal-objective",
+      "source",
+      "tests",
+      "security",
+      "runtime",
+      "recovery",
+      "release"
+    ],
+    "research": [
+      "principal-objective",
+      "source-universe",
+      "provenance",
+      "methods",
+      "counterevidence",
+      "uncertainty"
+    ],
+    "operations/compliance": [
+      "principal-objective",
+      "authority",
+      "scope",
+      "effects",
+      "recovery",
+      "disclosure",
+      "handoff"
+    ]
+  },
+  "metrics": [
+    "principal_sittings",
+    "rereads",
+    "duplicate_work",
+    "elapsed_target_seconds",
+    "severity_found",
+    "repair_defects",
+    "omitted_planes"
+  ]
+}

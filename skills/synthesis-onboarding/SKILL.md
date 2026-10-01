@@ -5,17 +5,49 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.9.0"
+  version: "2.10.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Onboarding
 
+## First useful task
+
+For a new user seeking one useful result, use the five product journeys in
+[First-run journeys and local studies](references/first-run-journeys.md).
+Start with `synthesis journey catalog`, then preview the chosen journey with
+`journey plan`; confirm the client and exact plan consent before `journey apply`.
+Portable project is the default. Existing full/catalog installations are inspected
+without resetting them. Have the selected skill produce a user-supplied task's
+artifact, verify its exact bytes and keep user-attested usefulness separate from
+native loading and doctor evidence. Never invent a participant, consent, outcome,
+profile, integration or quality result. `synthesis study protocol` and its local
+recorder require separate participant consent before capture; synthetic rehearsals
+stay labeled. Follow the linked reference for recovery, privacy and retention.
+
+
 One bootstrap and one stable `synthesis` command manage the public synthesis
 work system. The engine is convergent and transactional: it records desired
 state separately from machine observations, stages each mutation, commits only
 after its probes pass, and preserves an aborted receipt when work fails.
+
+## Declared maintenance and campaigns
+
+For whole-machine review, receipt-owned derived-state repair, versioned native
+campaigns, or explicitly selected project upgrades, follow
+[the declared maintenance protocol](references/declared-maintenance.md).
+Review is nonmutating; exact preview consent and existing owner admission are
+required before repair or migration. A campaign notice/report is not execution,
+approval or verified completion. No scheduler or live project migration is
+activated merely by installing this skill.
+
+For organization or multi-person enrollment, follow the mandatory [team contract](../synthesis-project-management/references/team-contract.md); role selection does not grant repository access or native trust.
+
+Before interpreting platform ownership or guiding setup, use the mandatory
+[accessible setup and platform ownership contract](references/platform-ownership.md).
+`synthesis explain` and `synthesis machine platform --json` are read-only guides;
+they grant no hook trust, installation, service or repair authority.
 
 ## Start here
 

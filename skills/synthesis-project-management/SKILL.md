@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.19.0"
+  version: "2.21.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -14,6 +14,7 @@ metadata:
 
 A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
 
+For multi-person work, first read the mandatory [team contract](references/team-contract.md) and [managed workflow requirements](references/team-managed-workflows.md); declared attribution never replaces native identity, leases or host ACLs.
 ## Configuration
 
 These values are user-specific. Update them for your environment.
@@ -24,7 +25,6 @@ These values are user-specific. Update them for your environment.
 | `projects_path` | `projects/` | Directory within the workspace for all project folders |
 | `index_file` | `projects/index.yaml` | Single index file for all projects |
 | `lessons_path` | `lessons/` | Cross-project lessons and patterns directory |
-
 ---
 
 ## Design Principles
@@ -99,7 +99,6 @@ ai-knowledge-{workspace}/
 | **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
 | **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
 | **No patterns.md** | Patterns are lessons with `type: pattern` in front matter. One folder to search. |
-
 ---
 
 ## Project Naming
@@ -124,6 +123,7 @@ Full rationale:
 
 ---
 
+For explicit selected-project upgrades, follow [the migration owner](references/project-migration.md): exact preview consent, source custody and native admission remain mandatory; installation is not migration.
 ## Components
 
 ### 1. Project Index (`index.yaml`)
@@ -193,7 +193,7 @@ and the synthesis-context-lifecycle skill.
 Complete task → Update CONTEXT.md → local receipt → Next task
 ```
 
-**NOT:** task → task → task → (context compaction) → lost details.
+**NOT:** task → task → task → (context compaction) → lost details. Preserve material inputs before dependent work, compaction or handoff using the [material-context protocol](../synthesis-context-lifecycle/references/material-context.md). Retain rationale, temporary conditions, uncertainty and amendments; inspect the shared checkpoint/doctor result even when structured state is NOT_APPLICABLE.
 
 ### Session Start
 
@@ -339,7 +339,7 @@ and refuses overlapping areas, duplicate context owners, and contributor claims
 on canonical context. Sharing one checkout with disjoint areas is granted with
 a banner. Cross-machine simultaneity requires the git-backed lease
 (compare-and-swap on a shared remote, fail-closed when unreachable); retire merged worktrees with
-`scripts/retire_worktree.py`, never by hand. Board file shape:
+`scripts/retire_worktree.py`, never by hand. Apply the [nested retirement, claim binding and temporary-work recovery rules](references/parallel-agent-protocol.md#registered-nested-retirement-and-existing-temporary-work). Board file shape:
 [references/active-sessions-template.md](references/active-sessions-template.md).
 Lease bootstrap and retirement, worktree-retirement mechanics, peer addressing,
 digests, administrative release, and canonical landing:

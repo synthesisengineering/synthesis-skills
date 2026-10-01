@@ -18,7 +18,62 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
-Release **4.150.0** adds recoverable project transactions, explicit obligation
+Release **4.153.0** aligns autonomous execution and verification around completed
+deliverables. Related work shares a delivery candidate; unchanged accepted work
+is reused across gates. Concrete failures and changed inputs reopen affected
+checks, while required release tests, evidence custody and approval boundaries
+remain binding. Checkpoints return to the work instead of recursively triggering
+more checkpoints.
+
+Release **4.153.0** also decodes bounded Claude desktop attachment and
+metadata records as inert context. Autopilot doctor checks the current session's
+transcript and reports its exact inspection window; historical gaps remain explicit.
+Release acceptance carries complete receipts through bounded lossless transport
+while retaining source, transaction, outcome and privacy checks.
+
+Release **4.153.0** adds declared material-context preservation across ordinary
+project editing, checkpoint, doctor and recovery workflows. Autopilot **3.6.1**
+uses the same records to fence incomplete or changed material before new work.
+Facts, rationale, temporary conditions and uncertainty remain linked to their
+retained sources; structural checks do not certify meaning or native outcomes.
+
+Registered nested worktree retirement now verifies bounded Git metadata and
+backlinks before acting. Temporary-storage diagnostics distinguish retained
+work from durable execution homes. Release acceptance executes overlapping
+selectors once and verifies diagnostic export paths and readiness bytes.
+
+Installed runtime verification now binds the complete Stop-hook dependency
+closure, including late imports and held execution descriptors. Desktop Stop
+identity uses the shared authenticated resolver. Release checks retain bounded
+failure details during timeouts and partition native lifecycle controls without
+changing their acceptance limits.
+
+Native execution recovery now reconciles the original recorded intent and
+receipt without replaying dispatched effects. Active cancellation retains
+process cleanup and exact ownership checks. Release acceptance uses bounded
+batches while checking original collection, execution phases and subtest
+evidence at the actual receipt consumer. Native outcome qualification remains
+a separate requirement from these source and fixture checks.
+
+Release **4.152.0** connects declared meeting and Slack acquisition to verified
+local archives and watermarks. Paging contradictions, foreign archive identities
+and incomplete MCP negotiation refuse advancement. Adapter selection remains
+explicit; source text is retained without invented tab identities.
+
+In bounded synthetic runs, 1 KiB–1 MiB document/message bodies were preserved
+exactly while fixed-topology CLI status stayed below 1.3 KiB. These measurements
+cover mechanical output size, not model-token savings or live provider acceptance.
+
+The core update adds native callback and linked-run recovery, explicit team
+enrollment and review, portable evidence, and declared maintenance. Installed
+source and genuine native execution remain separately verified states.
+
+Original-history recovery refreshes appended records before protected commands;
+normal transcript growth retains the same decoder generation. Repository
+diagnostics verify actual Git storage and indexes, while native retirement
+avoids writing bytecode into the source being retired.
+
+This release also adds recoverable project transactions, explicit obligation
 succession and source-bound ritual/acquisition reports. It strengthens Git and
 message guards, exact session coordination and installed runtime verification.
 
@@ -30,7 +85,7 @@ protections or allowing pytest to remove a supplied existing directory.
 
 
 
-Release **4.149.9** adds bounded authenticated journal storage for large
+Bounded authenticated journal storage supports large
 native-history recovery while preserving prior event bytes, ownership and costs.
 Required autopilot checks cover the entire collected suite in bounded groups.
 Release checks reject changed source, inherited test selection and stale bytecode.

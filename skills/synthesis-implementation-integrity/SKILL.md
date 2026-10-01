@@ -5,20 +5,22 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.2"
+  version: "1.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Implementation Integrity
 
-The most dangerous moment in software development is when you believe you're done. That belief shuts down scrutiny exactly when scrutiny matters most.
+Verify that the implementation satisfies the user's outcome through its actual
+consumers. Tests establish only the behavior they exercise; inspect the changed
+data paths, deployment assumptions and required boundaries that those tests do
+not cover. Find and repair concrete gaps, then make an acceptance decision.
 
-This skill is an adversarial self-review protocol. It challenges you — human or AI agent — to systematically prove your implementation is complete rather than assuming it is. The discipline: look for evidence that the work is WRONG, not confirmation that it's right. Confirmation bias is the default mode; this protocol overrides it.
-
-"Tests pass" is not proof of correctness. Tests create their own world — fresh databases, mocked dependencies, controlled inputs. Production is a different world with persistent state, real external services, cached assets, and environment configurations that no test suite reproduces. The gap between "tests pass" and "production works" is where the worst failures live, because everyone has stopped looking.
-
-This protocol exists to keep looking.
+Verification has an endpoint: every applicable required criterion is supported,
+findings are resolved by their proper owner, and any required delivery read-back
+is complete. Passing adequate checks is evidence to use, not a reason to invent
+another round of scrutiny. Preserve failures and unknowns honestly.
 
 For autopilot task contracts, use the owning [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods. Inspect the executed consumer's code and expectation as well as its result; a disconnected or fixed-answer check is a substantive defect. Semantic calibration cannot certify execution, and execution cannot certify that the chosen check answers the user's question.
 
@@ -33,7 +35,7 @@ Run this protocol:
 - **After completing any non-trivial implementation** — before declaring it done
 - **After adding a field, column, or property** that flows through multiple system layers
 - **After implementing the same pattern across multiple components** — the last one gets the least attention
-- **After all tests pass on a schema, config, or deployment change** — for these change types, "all tests pass" should trigger deeper scrutiny, not signal that verification is over
+- **For schema, config, or deployment changes** — verify the actual migration, configuration and target-environment criteria; green unit tests alone do not establish them
 - **When someone (human or AI) says "it's done"** — use this to give an evidence-based answer
 
 Skip for trivial changes (typo fixes, comment updates, single-line config edits).
@@ -52,41 +54,39 @@ Five complementary skills cover verification at different scopes and lifecycle p
 | **synthesis-pr-review** | A change proposed for merge | Every pull request | "Should this change enter the codebase?" |
 | **synthesis-codebase-review** | The entire system | Periodic or at milestones | "Is this system healthy?" |
 
-**The natural flow:** Implement → self-verify (this skill) → quality scan (code-audit) → branch gate (preflight) → peer review (pr-review) → periodic health check (codebase-review).
-
-**When to use both this skill and codebase-review:** After a major feature that touches many system layers. Run this skill to verify the feature itself is complete. Then run relevant sections of codebase-review (security, architecture, testing) to verify the feature doesn't degrade overall system health.
+These are complementary scopes, not five mandatory successive audits. Choose
+checks from the task's risks and explicit repository requirements. One review
+may satisfy several scopes when it actually covers them; consume that evidence
+at the next gate. Broaden to system review when the change creates a concrete
+system risk or the user requested it, not because the smaller review passed.
 
 **The critical difference:** Codebase-review evaluates the system as-is. This skill evaluates the delta between what was and what should now be. Codebase-review might give the system a clean bill of health while this skill reveals that the specific change you just made has a missing link. They catch different classes of problems.
 
 ---
 
-## The Adversarial Mindset
+## Scope and stopping rule
 
-Before running the seven passes, answer this honestly:
+Read the current change and its acceptance criteria. Select the relevant passes
+below, recording genuinely inapplicable ones with a reason. Missing required
+evidence is unresolved, never N/A. Explicit repository and user gates still run.
 
-**Would you stake your professional reputation on this implementation? Would you deploy it at 5 PM on a Friday, confident nothing will page you at 2 AM?**
+Read the implementation and the checks, including actual execution and skipped
+coverage. Exercise real boundary behavior where a mock would hide the relevant
+risk. Use existing tests when they already discriminate correct from defective
+behavior; add tests for uncovered behavior. Compilation, fixture success and
+live delivery establish different facts.
 
-If the answer is "yes, but I haven't actually checked X" — that's not confidence, it's hope. This protocol replaces hope with evidence.
-
-The discipline: **you are not verifying that the work is correct. You are trying to prove it is wrong.** If a genuine adversarial search finds nothing, that's meaningful. A casual glance that finds nothing is just confirmation bias.
-
-Five rules for honest self-review:
-
-1. **Distrust your memory of what you did.** Read the actual files. Your recollection of "I added that column" is not evidence the column exists. Open the file and check.
-
-2. **Distrust passing tests.** Ask what the tests actually exercise. A test that mocks the layer where the real risk lives is not evidence of correctness for that layer.
-
-3. **Distrust the last implementation in a series.** Cognitive fatigue makes the Nth item the most error-prone. It gets the least scrutiny and deserves the most.
-
-4. **Distrust "it compiles."** Compilation proves syntax. It does not prove that data flows to the right place, that schemas are migrated, that configuration is complete, or that the production environment matches your assumptions.
-
-5. **Distrust your own confidence.** The feeling of "this is obviously fine" is a signal to look harder, not to stop looking. Obvious failures don't survive to production — it's the non-obvious ones that do.
-
----
+After a repair, rerun its reproducer and affected checks plus every gate the
+repository requires. Preserve valid evidence for unchanged inputs and consumers.
+Further investigation needs a specific unresolved criterion or counterexample.
+A new reviewer or renewed feeling of uncertainty alone does not reopen accepted
+work. When the required evidence is complete, return the verdict and advance to
+the authorized delivery step.
 
 ## The Seven Integrity Passes
 
-Work through each pass in order. Each targets a specific, well-documented failure mode. Read the description before deciding to skip — the most dangerous gaps are the ones that seem irrelevant.
+These passes are a risk catalog. Apply the relevant ones to the complete changed
+behavior; do not turn every invocation into seven new reports.
 
 ### Pass 1: Chain Completeness
 
@@ -161,7 +161,11 @@ throw new Error("not implemented")
 
 **Step 4: Check test naming vs. test behavior.** A test named `test_create_output_with_timing` that never asserts on a timing value is a false signal. The name implies coverage that doesn't exist.
 
-**Step 5: Apply the suspicion rule.** If all tests pass without any test modifications after a change that affects data storage, external integrations, or system boundaries, the tests almost certainly don't cover the change. A change that's genuinely tested usually requires at least one new assertion.
+**Step 5: Check discrimination.** Determine whether existing assertions would
+catch the relevant defect in the changed path. Unchanged tests can provide valid
+coverage, including a regression test that fails before the fix and passes after
+it. Test-file changes are neither necessary nor sufficient evidence. Add or
+repair assertions only where coverage is missing or dishonest.
 
 **Step 6: Separate skipped from passed.** "X passed, Y skipped, 0 failed" is not the same claim as "tests pass" — it's "the tests that ran didn't fail, and some tests didn't run at all." A skip is an absence of information, not a green light. Read what was actually skipped, not just the aggregate count, and ask specifically: could the skipped set contain the one test that validates the exact property this decision depends on? For a cosmetic or environment-gated test, a skip is usually neutral. For a security, data-integrity, or irreversibility claim, it isn't — if the answer isn't a confident no, go run the skipped test before treating the suite as passing.
 
@@ -259,7 +263,7 @@ For smaller changes that don't warrant all seven passes, run this condensed vers
 4. **Ask:** "If I deploy this to a fresh environment, what would I need to configure for it to work?"
 5. **If this is the Nth implementation in a series:** re-read the Nth one as carefully as the first
 
-If any of these raises a question, run the full seven passes.
+If a check exposes a gap, run the passes and consumer checks that resolve that gap. Broaden when its cause affects more of the system; do not automatically restart every pass.
 
 ---
 
@@ -277,7 +281,7 @@ The most common "tests pass, production breaks" pattern: test databases are crea
 - [ ] Indexes exist for columns used in WHERE, ORDER BY, or JOIN clauses
 - [ ] Migration is idempotent (safe to run more than once)
 - [ ] Rollback path exists or the change is explicitly forward-only
-- [ ] If all tests pass without test modifications after adding a column, ask why — tests probably don't exercise the write path
+- [ ] Existing or new tests exercise the changed write/read path and migration against persistent state; inspect assertions and execution, not whether test files changed
 
 ### API
 
@@ -309,7 +313,7 @@ The most common "tests pass, production breaks" pattern: test databases are crea
 
 ## The Integrity Report
 
-After running the passes, produce this report:
+Record the verdict, applicable coverage, findings and remaining gate in the existing handoff or review record. Use the format below when useful; a second standalone report is unnecessary when that information already exists:
 
 ```
 ## Implementation Integrity Report
@@ -408,7 +412,7 @@ boundary and principal.
 ## Anti-Patterns This Protocol Prevents
 
 ### "Tests Pass, Ship It"
-Treating a green test suite as proof of production-readiness. Tests verify test scenarios. They cannot catch environment gaps, missing migrations, or code paths they don't exercise. A green suite after a schema change with zero test modifications is a warning, not a clearance.
+Treating a green test suite as proof of an environment or consumer it never exercised. Verify the missing required boundary, then accept adequate current evidence; do not demand new tests solely because existing tests passed unchanged.
 
 ### "I Did the First Two Right, So the Third Is Fine"
 Cognitive attention degrades with repetition. The last implementation in a series inherits confidence from earlier successes without inheriting the diligence. The diminishing attention audit catches what familiarity breeds.
@@ -436,7 +440,7 @@ This skill is part of a verification chain. Together these skills cover code qua
 | **synthesis-pr-review** | Change proposed for merge | A peer reviewer | An inspector's acceptance test |
 | **synthesis-codebase-review** | Entire system | An auditor or lead | An annual structural inspection |
 
-**The handoff:** Run this skill after implementing. Then code-audit provides a systematic quality scan across 10 dimensions. Preflight gates the branch (tests, types, audit, commit hygiene). pr-review catches what you missed from an external perspective. Codebase-review catches systemic patterns that no single change reveals.
+**The handoff:** Carry the accepted evidence and unresolved findings into preflight and any required peer review. Preserve distinct independence requirements without rerunning covered checks just to fit another skill's report format. System-wide review follows an actual system-wide risk or requested milestone.
 
 Other related skills:
 

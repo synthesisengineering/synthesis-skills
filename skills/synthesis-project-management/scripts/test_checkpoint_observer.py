@@ -309,7 +309,7 @@ def test_missing_native_validator_fails_closed(observer: SimpleNamespace, monkey
     original = builtins.__import__
 
     def missing(name, *args, **kwargs):
-        if name == "live_receipt":
+        if name == "native_transcript_identity":
             raise ImportError("fixture missing installed dependency")
         return original(name, *args, **kwargs)
 
@@ -645,14 +645,51 @@ def test_real_hook_cli_uses_local_lease_and_actionable_failure(observer: SimpleN
             input=json.dumps(payload), capture_output=True, text=True, timeout=30,
         )
 
+    def assert_material_status(report: dict) -> None:
+        # Validate the added diagnostic contract before the original exact
+        # legacy-envelope assertions. Never discard an unexamined field.
+        material = report.pop("material_context")
+        assert type(material) is dict
+        assert type(material["schema"]) is int
+        assert all(type(material[key]) is bool for key in (
+            "authorization_granted", "completion_established",
+        ))
+        assert all(type(material[key]) is int for key in (
+            "examined_records", "skipped_records", "navigation_examined", "navigation_skipped",
+        ))
+        usage = material.pop("resource_usage")
+        assert type(usage) is dict and type(usage["limits"]) is dict
+        assert all(type(usage[key]) is int for key in ("reference_observations", "charged_bytes"))
+        assert all(type(value) is int for value in usage["limits"].values())
+        elapsed = usage.pop("elapsed_seconds")
+        assert isinstance(elapsed, float) and 0 <= elapsed <= 30
+        assert usage == {
+            "reference_observations": 0, "charged_bytes": 0,
+            "limits": {"references": 1024, "bytes": 16 * 1024 * 1024,
+                       "records": 256, "seconds": 30},
+            "model_usage": "UNKNOWN",
+        }
+        assert material == {
+            "schema": 1, "input_coverage": "UNKNOWN",
+            "record_integrity": "UNKNOWN", "association_reachability": "UNKNOWN",
+            "semantic_review": "UNREVIEWED", "current_authority": "NOT_ASSESSED",
+            "endpoint_recovery": "UNKNOWN", "whole_session_coverage": "UNKNOWN",
+            "historical_coverage": "UNKNOWN", "authorization_granted": False,
+            "completion_established": False, "records": [], "active_items": [],
+            "issues": [], "examined_records": 0, "skipped_records": 0,
+            "navigation_examined": 0, "navigation_skipped": 0,
+        }
+
     clean = cli(event(observer))
     assert clean.returncode == 0, clean.stderr
     _wire, report = native_output(clean.stdout)
+    assert_material_status(report)
     assert report["publication"]["status"] == "UNKNOWN"
     assert {key: value for key, value in report.items() if key != "publication"} == {"status": "NOT_APPLICABLE", "issues": inspect(observer)[1], "checkpoint_accepted": False, "no_receipt_issued": True}
     clean_codex = cli(event(observer, "codex"))
     assert clean_codex.returncode == 0, clean_codex.stderr
     codex_report = native_output(clean_codex.stdout)[1]
+    assert_material_status(codex_report)
     assert {k: v for k, v in codex_report.items() if k != "publication"} == {k: v for k, v in report.items() if k != "publication"}
     assert codex_report["publication"]["status"] == "UNKNOWN"
     (observer.project / "REFERENCE.md").write_text("retained edit\n", encoding="utf-8")

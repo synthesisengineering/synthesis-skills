@@ -7,7 +7,6 @@ column + label + seats-schema-2 shape.
 from __future__ import annotations
 
 import json
-import os
 import socket
 import sys
 from datetime import datetime, timedelta, timezone
@@ -19,11 +18,11 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import board_grammar as GRAMMAR
-import coordination as MODULE
-import coordination_schema as SCHEMA
-import fleet_identity as FI
-import peer_addressing as PA
+import board_grammar as GRAMMAR  # noqa: E402 - source-bound import follows path/bootstrap initialization
+import coordination as MODULE  # noqa: E402 - source-bound import follows path/bootstrap initialization
+import coordination_schema as SCHEMA  # noqa: E402 - source-bound import follows path/bootstrap initialization
+import fleet_identity as FI  # noqa: E402 - source-bound import follows path/bootstrap initialization
+import peer_addressing as PA  # noqa: E402 - source-bound import follows path/bootstrap initialization
 
 
 @pytest.fixture(autouse=True)
@@ -61,11 +60,11 @@ def claim_request(board: Path, *, area: str, workspace: str, machine: str,
     return args(board, **values)
 
 
-def test_template_declares_v5_with_machine_label_column():
+def test_template_declares_current_schema_with_machine_label_column():
     template = MODULE.template()
-    assert "Schema: v5" in template
+    assert f"Schema: v{MODULE.SCHEMA_VERSION}" in template
     assert "| machine label |" in template
-    assert MODULE.TABLE_COLUMNS == MODULE.V5_COLUMNS
+    assert MODULE.TABLE_COLUMNS == MODULE.V6_COLUMNS
 
 
 def test_claim_writes_machine_id_and_label_when_enrolled(tmp_path, monkeypatch):
@@ -106,7 +105,7 @@ def _ticking_clock(monkeypatch, first, second):
 
 
 def test_claim_seat_reuses_row_heartbeat(tmp_path, monkeypatch):
-    machine_id = FI.mint_machine_id()
+    FI.mint_machine_id()
     FI.enroll_self(label="mac-a", role="primary")
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:01990000-0000-7000-8000-000000000001")
     _ticking_clock(monkeypatch, "2026-09-20T06:00:00+00:00", "2026-09-20T06:00:01+00:00")
@@ -123,7 +122,7 @@ def test_claim_seat_reuses_row_heartbeat(tmp_path, monkeypatch):
 
 
 def test_heartbeat_seat_reuses_row_heartbeat(tmp_path, monkeypatch):
-    machine_id = FI.mint_machine_id()
+    FI.mint_machine_id()
     FI.enroll_self(label="mac-a", role="primary")
     monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:01990000-0000-7000-8000-000000000001")
     board = tmp_path / "board.md"
@@ -198,7 +197,7 @@ def test_migrate_maps_local_rows_to_machine_ids(tmp_path):
     board.write_text(MODULE.replace_table(v4, rows, force_schema=4), encoding="utf-8")
     assert MODULE.command_migrate(args(board)) == 0
     text = board.read_text(encoding="utf-8")
-    assert "Schema: v5" in text
+    assert f"Schema: v{MODULE.SCHEMA_VERSION}" in text
     migrated = {row.legacy_id: row for row in MODULE.rows(text)}
     assert migrated["L"].machine == machine_id
     assert migrated["L"].machine_label == local
@@ -242,7 +241,7 @@ def _leased_board(tmp_path: Path, text: str) -> Path:
 
 def test_v4_writer_refuses_v5_board_before_lease_touch(tmp_path, monkeypatch):
     """FLEET-AC-02: named refusal, no fetch, no publish, operation unrun."""
-    board = _leased_board(tmp_path, MODULE.template())
+    board = _leased_board(tmp_path, MODULE.replace_table(MODULE.template(), [], force_schema=5))
     _v4_only_engine(monkeypatch)
 
     def explode(*argc, **kwargs):
@@ -259,7 +258,7 @@ def test_v4_writer_refuses_fetched_v5_board_without_publish(tmp_path, monkeypatc
     """FLEET-AC-02 with a stale mirror: fetch, then refuse before publish."""
     v4_text = MODULE.replace_table(MODULE.template(), [], force_schema=4)
     board = _leased_board(tmp_path, v4_text)
-    v5_text = MODULE.template()
+    v5_text = MODULE.replace_table(MODULE.template(), [], force_schema=5)
     _v4_only_engine(monkeypatch)
     monkeypatch.setattr(
         MODULE, "lease_fetch", lambda config: ("f" * 40, v5_text)
@@ -275,7 +274,7 @@ def test_v4_writer_refuses_fetched_v5_board_without_publish(tmp_path, monkeypatc
 
 def test_v5_writer_accepts_v5_board(tmp_path):
     board = tmp_path / "board.md"
-    board.write_text(MODULE.template(), encoding="utf-8")
+    board.write_text(MODULE.replace_table(MODULE.template(), [], force_schema=5), encoding="utf-8")
     MODULE.locked_update(board, lambda content: content)
     assert "Schema: v5" in board.read_text(encoding="utf-8")
 

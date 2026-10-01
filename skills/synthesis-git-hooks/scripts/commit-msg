@@ -2,8 +2,8 @@
 #
 # synthesis-engineering git-hook engine (commit-msg) — v2.1.
 #
-# Scans the COMMIT MESSAGE against the active pattern set for strict-class
-# repos. This closes the gap the pre-commit hook documents: pre-commit scans
+# Scans credentials in every commit message, with optional exposure checks
+# for strict/public-surface repos. This closes the gap the pre-commit hook documents: pre-commit scans
 # diffs only (git gives it no reliable access to the new message), so
 # commit-message hygiene was previously enforced by discipline alone. A
 # history audit found the only real public-repo confidentiality violations
@@ -12,8 +12,7 @@
 # Fail-closed semantics identical to pre-commit v2: if the policy engine
 # cannot run, the commit is blocked, never passed unscanned.
 #
-# Bypass once (last resort; requires explicit approval per CLAUDE.md):
-#   git commit --no-verify
+# Classifier defects require an owner correction with the guard enabled.
 #
 set -euo pipefail
 
@@ -52,21 +51,28 @@ set -e
 eval "$SIDECAR_OUT"
 [ "${SYNTHESIS_SIDECAR_OK:-0}" = "1" ] || fail_closed "Sidecar output incomplete (missing OK sentinel)."
 
-# Personal-class repos (CHECK_COMMIT_MSG=0): message scanning off by design.
-if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
-    [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+# Optional exposure checks may be disabled. Credential and matched-team
+# rules remain mandatory in every repository class.
+if [ -n "${TIER0_REGEX:-}" ]; then
 
     # Messages scan with MESSAGE_REGEX — the strict-class set, never
     # ledger-reduced. A commit message names the NATURE of an edit, which no
     # published-precedent entry covers, so commit logs stay generic even
     # where the diff may restate published biography.
-    SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
+    if [ "${CHECK_COMMIT_MSG:-0}" = "1" ]; then
+        [ -n "${ACTIVE_REGEX:-}" ] || fail_closed "Active pattern set is empty."
+        SCAN_REGEX="${MESSAGE_REGEX:-$ACTIVE_REGEX}"
+        MARKER_POLICY="${MESSAGE_MARKER_SCAN_POLICY:-}"
+    else
+        SCAN_REGEX="${TIER0_REGEX}"
+        MARKER_POLICY="${CREDENTIAL_MARKER_SCAN_POLICY:-}"
+    fi
     SCANNER="$HOOK_DIR/_scan_staged.py"
     [ -f "$SCANNER" ] || fail_closed "Staged scanner not found at $SCANNER."
     set +e
-    MSG_MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" \
+    MSG_MATCHES=$("$PYBIN" -I -B "$SCANNER" --tier0="${TIER0_REGEX:-}" --mandatory="${MANDATORY_REGEX:-}" \
         --active="$SCAN_REGEX" --allowlist="${ALLOWLIST_REGEX:-}" \
-        --exclusion="" --message "$MSG_FILE")
+        --exclusion="" --marker-policy="$MARKER_POLICY" --message "$MSG_FILE")
     SCAN_STATUS=$?
     set -e
     case "$SCAN_STATUS" in
@@ -88,12 +94,13 @@ $MSG_MATCHES
 
 Commit messages in strict repos must stay generic: no client or
 company names, no financial/HR terms, no internal URLs. Rewrite the
-message (git commit messages are forever), or bypass once with
-explicit approval:
-  git commit --no-verify
+message (git commit messages are forever). Keep the guarded path
+enabled; a classifier defect requires an owner correction.
 EOF
         exit 1
     fi
+else
+    fail_closed "Credential pattern set is empty."
 fi
 
 # Chain to a repo-local commit-msg hook if one exists.

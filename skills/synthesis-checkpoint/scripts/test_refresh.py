@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -711,3 +710,28 @@ def test_recipient_index_home_spelling_expands_to_registry(fixture, spell):
     assert "### → bridge sessions," in args.board.read_text()
     payload = feedback_messages(args.board)[0]
     assert payload["recipient_route"]["registry"] == str(index)
+
+
+# Coordination delivery: retained causal/consumer regressions.
+def test_delivery_repair_actual_checkpoint_feedback_uses_real_boundary(fixture):
+    args, project, live = fixture
+    enable_campaign(args)
+    report, selected = refresh.inspect(args)
+    body = '### → another, from sender — 2026-01-01T00:00:00Z\n\n```markdown\n---\n\n## Protocol\n```\nAfter example.\n\n'
+    args.board.write_text(args.board.read_text().replace('## Messages\n\n', '## Messages\n\n' + body))
+    result = refresh.feedback(report, selected, args.board)
+    text = args.board.read_text()
+    assert result['outcome'] == 'APPENDED'
+    assert text.index(refresh.MARKER) > text.index('After example.')
+    assert body in text
+
+
+def test_delivery_repair_fenced_feedback_marker_cannot_suppress_real_delivery(fixture):
+    args, project, live = fixture
+    enable_campaign(args)
+    report, selected = refresh.inspect(args)
+    assert refresh.feedback(report, selected, args.board)['outcome'] == 'APPENDED'
+    marker = next(line for line in args.board.read_text().splitlines() if line.startswith(refresh.MARKER))
+    text = refresh.coordination.template().replace('## Messages\n\n', '## Messages\n\n### → another, from sender — 2026-01-01T00:00:00Z\n\n```\n' + marker + '\n```\n\n')
+    args.board.write_text(text)
+    assert refresh.feedback(report, selected, args.board)['outcome'] == 'APPENDED'

@@ -1407,6 +1407,45 @@ def sha256_text(text):
 # --------------------------------------------------------------------------
 
 
+def build_grounding_envelope(request):
+    """Assemble mechanical fields around explicit model-supplied judgments.
+
+    The request must contain the final complete tool payload. No send, source
+    reading, voice approval, factual verdict or policy exception is inferred.
+    """
+    if not isinstance(request, dict) or set(request) != {"tool_name", "tool_input", "grounding"}:
+        raise ValueError("envelope requires final tool_name, tool_input and grounding")
+    name, payload, grounding = request["tool_name"], request["tool_input"], request["grounding"]
+    if not isinstance(name, str) or not name or len(name) > 256 or not isinstance(payload, dict) or not payload:
+        raise ValueError("envelope requires a named tool and complete object payload")
+    required = {"channel", "recipient", "is_reply", "claims", "no_factual_claims",
+                "voice_rules_pass", "invented_precision_scan", "recipient_address_check", "ragbot_branding_check"}
+    optional = {"thread_fully_read", "history_searched"}
+    if not isinstance(grounding, dict) or not required <= set(grounding) or set(grounding) - required - optional:
+        raise ValueError("grounding fields are missing or include caller-generated hash/time")
+    for flag in required - {"channel", "recipient", "claims"}:
+        if type(grounding[flag]) is not bool:
+            raise ValueError("judgment flags must be explicit booleans")
+    if not all(isinstance(grounding[key], str) and grounding[key].strip() for key in ("channel", "recipient")):
+        raise ValueError("channel and recipient must be explicit")
+    claims = grounding["claims"]
+    if not isinstance(claims, list) or len(claims) > 4096 or (not claims and not grounding["no_factual_claims"]):
+        raise ValueError("provide bounded claims or explicitly state no factual claims")
+    if claims and grounding["no_factual_claims"]:
+        raise ValueError("claims contradict no_factual_claims")
+    for claim in claims:
+        if not isinstance(claim, dict) or not {"claim", "source"} <= set(claim) or set(claim) - {"claim", "source", "read_at"} or not all(isinstance(claim[key], str) and claim[key].strip() for key in ("claim", "source")):
+            raise ValueError("every claim requires explicit text and source provenance")
+    # The existing gate validates thread freshness, claims, approvals and register.
+    raw = json.dumps(request, allow_nan=False, ensure_ascii=False)
+    if len(raw.encode("utf-8")) > 4 * 1024 * 1024:
+        raise ValueError("grounding envelope input exceeds bound")
+    result = json.loads(json.dumps(grounding, allow_nan=False))
+    result["message_sha256"] = message_digest(name, payload)
+    result["created_at"] = datetime.now(timezone.utc).isoformat()
+    return result
+
+
 def validate_ledger(ledger, text, cfg, tool_name, expected_sha=None):
     """Return list of failure strings; empty list = valid."""
     fails = []
@@ -1523,26 +1562,43 @@ def validate_ledger(ledger, text, cfg, tool_name, expected_sha=None):
 # label is a display string.
 
 
+def _peer_board_owner():
+    """Bind the canonical parser to this source release or its installed payload."""
+    import importlib
+
+    here = Path(__file__).resolve().parent
+    root = here
+    if here.parts[-3:] == ("skills", "synthesis-message-guard", "scripts"):
+        root = here.parents[1] / "synthesis-project-management/scripts"
+    names = ("native_git", "claim_scope", "board_grammar", "coordination_schema")
+    # No home-cache, PATH, or unrelated sys.path fallback can supply authority.
+    for name in names:
+        path = root / (name + ".py")
+        _doctor_regular_bytes(path, limit=4 * 1024 * 1024)
+        cached = sys.modules.get(name)
+        if cached is not None and Path(cached.__file__).resolve() != path:
+            raise ValueError("peer board runtime has a foreign module binding")
+    sys.path.insert(0, str(root))
+    try:
+        modules = [importlib.import_module(name) for name in names]
+        if any(Path(module.__file__).resolve() != root / (name + ".py")
+               for name, module in zip(names, modules)):
+            raise ValueError("peer board runtime module escaped its source")
+        return modules[2]
+    finally:
+        sys.path.remove(str(root))
+
+
 def _board_has_active_ref(content, ref):
-    """Self-contained active-row scan; no cross-skill import at hook time."""
-    terminal = {"released", "complete", "completed", "closed"}
-    in_table = False
-    for line in content.splitlines():
-        if line.strip() == "## Active sessions":
-            in_table = True
-            continue
-        if in_table and line.startswith("## "):
-            break
-        if not in_table or not line.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in line.split("|")[1:-1]]
-        if not cells or cells[0] in {"id", "session uuid"}:
-            continue
-        if set(cells[0]) <= {"-"}:
-            continue
-        if ref in cells and cells[-1].lower() not in terminal:
-            return True
-    return False
+    """Named schema columns and canonical nonterminal status, never prose matches."""
+    if not isinstance(content, str) or len(content.encode("utf-8")) > 4 * 1024 * 1024:
+        raise ValueError("peer board exceeds the bounded parser input")
+    owner = _peer_board_owner()
+    rows = owner.parse_table_rows(content, strict=True)
+    matches = [row for row in rows if row.get("client session ref") == ref]
+    # Two rows asserting the same native identity are ambiguous, even if one
+    # would independently appear eligible.
+    return len(matches) == 1 and owner.active_status(matches[0]["status"])
 
 
 def peer_send_resolution_failures(tool_name, tool_input, cfg):
@@ -1569,17 +1625,13 @@ def peer_send_resolution_failures(tool_name, tool_input, cfg):
         peer.get("board", "~/.synthesis/coordination/active-sessions.md")
     )
     try:
-        with open(board, "r", encoding="utf-8") as fh:
-            content = fh.read()
-    except OSError as exc:
+        content = _doctor_regular_bytes(board, limit=4 * 1024 * 1024).decode("utf-8")
+        if _board_has_active_ref(content, "ccd:" + target) or _board_has_active_ref(content, target):
+            return True, []
+    except (OSError, ValueError, ImportError, AttributeError, RuntimeError) as exc:
         return True, [
-            "coordination board unreadable (%s) so the target cannot be "
-            "verified: %s" % (board, exc)
+            "coordination board unreadable or canonical parser unverifiable (%s): %s" % (board, exc)
         ]
-    if _board_has_active_ref(content, "ccd:" + target) or _board_has_active_ref(
-        content, target
-    ):
-        return True, []
     return True, [
         "target session id %r is not a registered active client ref on the "
         "coordination board (%s). Run coordination.py resolve "
@@ -1837,30 +1889,45 @@ def _doctor_guard_mode(hook):
 
 def _doctor_managed_mode(command):
     """Inspect setup-owned route bindings; the runtime owner still verifies execution."""
+    import ast
+
     if not isinstance(command, str):
         return None
     # This exact expression is emitted by the installer. Never evaluate a shell
     # expression or expand arbitrary command text while diagnosing wiring.
     prefix = '"${SYNTHESIS_INSTALL_BIN_DIR:-$HOME/.local/bin}/synthesis"'
     if command.startswith(prefix + " "):
-        directory = os.environ.get("SYNTHESIS_INSTALL_BIN_DIR") or str(Path.home() / ".local/bin")
+        directory = os.environ.get("SYNTHESIS_INSTALL_BIN_DIR") or str(
+            Path.home() / ".local/bin"
+        )
         if not Path(directory).is_absolute():
             return None
-        command = shlex.quote(str(Path(directory) / "synthesis")) + command[len(prefix):]
+        command = (
+            shlex.quote(str(Path(directory) / "synthesis")) + command[len(prefix) :]
+        )
     if any(c in command for c in ";&|`$<>\n\r"):
         return None
     try:
         args = shlex.split(command)
         script = "synthesis-message-guard/scripts/message_guard.py"
-        if (len(args) != 5 or args[1:4] != ["exec-public", script, "--"]
-                or args[4] not in {"--gate", "--dispatch"}):
+        if (
+            len(args) != 5
+            or args[1:4] != ["exec-public", script, "--"]
+            or args[4] not in {"--gate", "--dispatch"}
+        ):
             return None
         launcher = Path(args[0])
         if not launcher.is_absolute():
             return None
-        pointer = Path(os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR") or
-                       str(Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))) /
-                           "synthesis/active-release.json"))
+        pointer = Path(
+            os.environ.get("SYNTHESIS_ACTIVE_DESCRIPTOR")
+            or str(
+                Path(
+                    os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state"))
+                )
+                / "synthesis/active-release.json"
+            )
+        )
         raw = _doctor_regular_bytes(pointer)
         active = json.loads(raw)
         if not isinstance(active, dict):
@@ -1868,34 +1935,78 @@ def _doctor_managed_mode(command):
         receipt = active.get("launcher", {})
         if not isinstance(receipt, dict):
             return None
-        if (type(active.get("schema_version")) is not int or active["schema_version"] != 1
-                or type(receipt.get("runtime_schema")) is not int or receipt["runtime_schema"] != 1
-                or receipt.get("path") != str(launcher)):
+        if (
+            type(active.get("schema_version")) is not int
+            or active["schema_version"] != 1
+            or type(receipt.get("runtime_schema")) is not int
+            or receipt["runtime_schema"] != 1
+            or receipt.get("path") != str(launcher)
+        ):
             return None
         blob = _doctor_regular_bytes(launcher)
-        if (hashlib.sha256(blob).hexdigest() != receipt.get("sha256")
-                or b"# generated by synthesis-onboarding; managed file" not in blob.splitlines()[:2]
-                or not os.access(launcher, os.X_OK)):
+        if (
+            hashlib.sha256(blob).hexdigest() != receipt.get("sha256")
+            or b"# generated by synthesis-onboarding; managed file"
+            not in blob.splitlines()[:2]
+            or not os.access(launcher, os.X_OK)
+        ):
             return None
         root = Path(active["release_root"])
         if not root.is_absolute() or root.resolve() != root:
             return None
-        runtime = _doctor_regular_bytes(root / "skills/synthesis-onboarding/scripts/release_runtime.py")
+        runtime = _doctor_regular_bytes(
+            root / "skills/synthesis-onboarding/scripts/release_runtime.py"
+        )
         executable = active["interpreter"]["executable"]
         if not isinstance(executable, str) or not Path(executable).is_absolute():
             return None
-        expected = (("#!%s -B\n# generated by synthesis-onboarding; managed file\n" % executable).encode()
-                    + runtime
-                    + ("\nif __name__ == '__main__':\n    sys.exit(launcher_main(Path(%r), sys.argv[1:]))\n" % str(pointer)).encode())
+        # Read the pinned runtime's literal bootstrap without importing or
+        # executing descriptor-selected source. Wiring diagnosis remains a
+        # byte comparison; actual execution belongs to the runtime verifier.
+        assignments = [
+            node
+            for node in ast.parse(runtime).body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "SOURCE_IMPORT_CONTRACT"
+                for target in node.targets
+            )
+        ]
+        if (
+            len(assignments) != 1
+            or len(assignments[0].targets) != 1
+            or not isinstance(assignments[0].value, ast.Constant)
+            or not isinstance(assignments[0].value.value, str)
+        ):
+            return None
+        contract = assignments[0].value.value
+        expected = (
+            (
+                "#!%s -BIS\n# generated by synthesis-onboarding; managed file\n"
+                % executable
+            ).encode()
+            + contract.encode()
+            + (
+                "\nenable_source_imports(%r)\nimport site\nsite.main()\n"
+                % str(pointer.parent)
+            ).encode()
+            + runtime
+            + (
+                "\nif __name__ == '__main__':\n    sys.exit(launcher_main(Path(%r), sys.argv[1:]))\n"
+                % str(pointer)
+            ).encode()
+        )
         if blob != expected:
             return None
         target = root / "skills" / script
-        if _doctor_regular_bytes(target) != _doctor_regular_bytes(Path(__file__).resolve()):
+        if _doctor_regular_bytes(target) != _doctor_regular_bytes(
+            Path(__file__).resolve()
+        ):
             return None
         if raw != _doctor_regular_bytes(pointer):
             return None
         return args[4]
-    except (OSError, ValueError, TypeError, KeyError, RecursionError):
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, SyntaxError):
         return None
 
 
@@ -1955,6 +2066,13 @@ def run_doctor():
         report(False, "config", str(exc))
         print("UNHEALTHY: cannot continue without config.")
         return 2
+
+    if cfg.get("peer_send_resolution"):
+        try:
+            _peer_board_owner()
+            report(True, "canonical peer board parser payload")
+        except (OSError, ValueError, ImportError, AttributeError, RuntimeError) as exc:
+            report(False, "canonical peer board parser payload", str(exc))
 
     policy_status = configuration_preflight(cfg, fresh=False)
     report(policy_status["status"] == "READY_FOR_CONFIGURATION_REVIEW",
@@ -2285,7 +2403,7 @@ def run_tests():
     import subprocess
 
     me = os.path.abspath(__file__)
-    tmp = tempfile.mkdtemp(prefix="msg-guard-test-")
+    tmp = str(Path(tempfile.mkdtemp(prefix="msg-guard-test-")).resolve())
     cfg_src = config_path()
     if not os.path.exists(cfg_src):
         # The suite proves the ENGINE, not one machine's private patterns.
@@ -2421,15 +2539,18 @@ def run_tests():
     # Both faults are fixed here: a board fixture, and the adopted contract.
     board = os.path.join(tmp, "active-sessions.md")
     live_ref = "ccd:local_1111aaaa-0000-4000-8000-000000000001"
+    parser = _peer_board_owner()
+    columns = parser.V6_COLUMNS
+    rows = []
+    for native, status in ((live_ref, "active"),
+            ("ccd:local_1111aaaa-0000-4000-8000-000000000002", "released")):
+        row = {key: "synthetic" for key in columns}
+        row.update({"client session ref": native, "status": status})
+        rows.append("| " + " | ".join(row[key] for key in columns) + " |")
     with open(board, "w", encoding="utf-8") as fh:
-        fh.write(
-            "## Active sessions\n\n"
-            "| id | ref | project | status |\n"
-            "| --- | --- | --- | --- |\n"
-            "| 01 | %s | peer-a | owner |\n"
-            "| 02 | ccd:local_1111aaaa-0000-4000-8000-000000000002 | "
-            "peer-b | released |\n" % live_ref
-        )
+        fh.write("Schema: v6\n\n## Active sessions\n\n| " + " | ".join(columns)
+                 + " |\n| " + " | ".join("---" for _ in columns) + " |\n"
+                 + "\n".join(rows) + "\n\n## Messages\n")
     peer_cfg_path = os.path.join(tmp, "patterns-peer.json")
     with open(cfg_src, "r", encoding="utf-8") as fh:
         peer_cfg = json.load(fh)
@@ -3107,6 +3228,15 @@ def main():
         for n, s in warns:
             print("warn  [%s] %r" % (n, s))
         sys.exit(2 if hits else 0)
+    elif mode == "--build-ledger":
+        try:
+            raw = sys.stdin.read(4 * 1024 * 1024 + 1)
+            if len(raw.encode("utf-8")) > 4 * 1024 * 1024:
+                raise ValueError("grounding envelope input exceeds bound")
+            print(json.dumps(build_grounding_envelope(json.loads(raw)), indent=2))
+        except (ValueError, TypeError, RecursionError) as exc:
+            print("build-ledger: " + str(exc), file=sys.stderr)
+            sys.exit(2)
     elif mode == "--ledger-template":
         print(
             json.dumps(

@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -35,6 +36,19 @@ def chromium():
         if executable:
             return executable
     pytest.fail("whole-page browser acceptance requires SYNTHESIS_TEST_CHROMIUM or Chromium on PATH")
+
+
+def browser_environment(evidence):
+    """Retain private socket custody without exceeding Unix socket path limits.
+
+    Acceptance owners can nest TMPDIR beyond Chromium's socket limit. Keep
+    pages and profiles in the original evidence directory, and link the fresh
+    short socket directory into that custody. Neither directory is pruned here.
+    Browser sandbox flags and all page assertions remain unchanged.
+    """
+    root = Path(tempfile.mkdtemp(prefix="synthesis-browser-", dir=Path("/tmp").resolve()))
+    (evidence / "browser-tmp").symlink_to(root, target_is_directory=True)
+    return dict(os.environ, TMPDIR=str(root), TMP=str(root), TEMP=str(root))
 
 
 def test_missing_browser_is_failed_acceptance(monkeypatch):
@@ -128,7 +142,8 @@ def test_generated_page_dom_and_record_agree(tmp_path, chromium, change):
     command = [chromium, "--headless", "--disable-background-networking", "--no-first-run",
                "--no-default-browser-check", "--disable-extensions",
                "--user-data-dir=" + str(tmp_path / "profile"), "--dump-dom", probe.as_uri()]
-    browser = subprocess.run(command, capture_output=True, text=True, timeout=25)
+    browser = subprocess.run(command, capture_output=True, text=True, timeout=25,
+                             env=browser_environment(tmp_path))
     (tmp_path / "browser-dom.html").write_text(browser.stdout, encoding="utf-8")
     (tmp_path / "browser-stderr.txt").write_text(browser.stderr, encoding="utf-8")
     assert browser.returncode == 0, browser.stderr

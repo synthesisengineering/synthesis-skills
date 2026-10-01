@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.21.0"
+  version: "1.22.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -149,6 +149,13 @@ Scripted edits must use the public context editor and its budget/currency gates.
 
 ## Decision and transfer succession
 
+For material facts, rationale, constraints, temporary conditions or changed
+instructions, follow [material context](references/material-context.md) before
+dependent work, compaction or handoff. Capture the explicit input denominator,
+then associate it through the existing editor. Pending capture, missing material,
+unreachable records and unknown semantic or endpoint coverage remain distinct.
+This applies to ordinary prose projects without autopilot or format enrollment.
+
 Before retiring a decision interface or absorbing transferred ideas, read
 [artifact succession](references/artifact-succession.md). Use the existing
 `context_edit.py review-succession` and `apply-succession` owners. Exact
@@ -218,3 +225,16 @@ spec remains incomplete filing. No check grants action authority.
 
 The complete [context protocol details](references/context-protocol-details.md)
 remain mandatory for the corresponding lifecycle operations.
+
+
+### Durable custody before a session ends
+
+Long-lived worktrees, source copies, environments and sole recovery inputs must
+live in the durable workspace, outside system temp roots and session scratchpads.
+Keep bounded test fixtures separately identified and capture their evidence
+before closure. Temporary retention is policy- and clock-dependent, never a
+universal four-day guarantee. Follow PM's [durable placement and missing-work
+protocol](../synthesis-project-management/references/parallel-agent-protocol.md#durable-work-placement-and-unexplained-loss).
+A vanished `.git` link or tracked file is unresolved loss evidence; retain its
+registration, refs and surviving files. It is not retirement, deletion authority,
+or a reason to discard foreign claims.

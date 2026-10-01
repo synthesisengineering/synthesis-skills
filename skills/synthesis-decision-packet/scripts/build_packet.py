@@ -23,11 +23,15 @@ from a local HTTP server, or as a published artifact.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import datetime
 import hashlib
 import html
 import json
 import math
+import os
+import stat
 import pathlib
 import re
 import sys
@@ -56,6 +60,20 @@ Decision-packet spec (JSON)
       in advance so a rule is judged on   collapsible band under the intro.
       text it was not tuned on"}
   ],
+
+  Rows may additionally declare exact material for review:
+  "revision": "draft-3",                  REQUIRED with review_assets
+  "delivery": {"format": "Plain text", "destinations": ["reader@example.test"],
+               "attachments": ["diagram"]},
+  "review_assets": [
+    {"id": "draft", "title": "Complete draft", "kind": "correspondence",
+     "content": {"text": "Full exact body", "sha256": "SHA-256 of UTF-8 body"}}
+  ]
+  These fields belong to each ROW, not the packet root. They bind every saved
+  choice and returned ruling. See references/review-assets.md for the complete
+  closed text/binary/unresolved union, safe Markdown grammar and byte ceilings.
+  Unavailable assets are visible but cannot carry a selected ruling. External
+  references are never fetched, and records do not authorize any action.
 
   "options": [                            REQUIRED — the default choice set for every row
     {"value": "fix-now",  "label": "Fix it before the next release",
@@ -312,6 +330,227 @@ def _validate_option_set(opts: list, where: str, problems: list[str]) -> None:
             f"{ACCEPTED_LABEL_FORM}")
 
 
+# Review assets are data in the canonical spec, never paths to read or URLs to fetch.
+MAX_REVIEW_ASSETS = 16
+MAX_REVIEW_TEXT_BYTES = 1_048_576
+MAX_REVIEW_BINARY_BYTES = 4_194_304
+MAX_REVIEW_TOTAL_BYTES = 4_194_304
+MAX_PACKET_INPUT_BYTES = 8_388_608
+MAX_GENERATED_HTML_BYTES = 8_388_608
+TEXT_REVIEW_KINDS = {'correspondence', 'plain_text', 'markdown', 'code'}
+BINARY_REVIEW_TYPES = {
+    'image': {'image/png': ('.png',), 'image/jpeg': ('.jpg', '.jpeg'),
+              'image/gif': ('.gif',), 'image/webp': ('.webp',)},
+    'audio': {'audio/mpeg': ('.mp3',), 'audio/wav': ('.wav',), 'audio/ogg': ('.ogg',)},
+    'video': {'video/mp4': ('.mp4',), 'video/webm': ('.webm',)},
+    'document': {'application/pdf': ('.pdf',)},
+}
+
+
+def read_packet_input(path: pathlib.Path | None) -> bytes:
+    """Finite spec input; regular-file identity must remain stable while read."""
+    if path is None:
+        raw = sys.stdin.buffer.read(MAX_PACKET_INPUT_BYTES + 1)
+    else:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_PACKET_INPUT_BYTES:
+                raise ValueError("packet input is not a bounded regular file")
+            with os.fdopen(os.dup(fd), "rb") as stream:
+                raw = stream.read(MAX_PACKET_INPUT_BYTES + 1)
+            def identity(value):
+                return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                        value.st_mtime_ns, value.st_ctime_ns)
+            if identity(before) != identity(os.fstat(fd)) or identity(before) != identity(path.lstat()):
+                raise ValueError("packet input changed during read")
+        finally:
+            os.close(fd)
+    if len(raw) > MAX_PACKET_INPUT_BYTES:
+        raise ValueError("packet input exceeds byte limit")
+    return raw
+
+
+def _review_string(value, limit=4096):
+    return (isinstance(value, str) and bool(value.strip()) and
+            len(value.encode('utf-8')) <= limit and
+            not any(ord(c) < 32 and c not in '\n\r\t' for c in value))
+
+
+def _review_source(value):
+    if not _review_string(value, 2048) or any(c.isspace() for c in value):
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        # External references remain unresolved even when a URL looks valid.
+        # No file://, relative path, credentials, or automatic resource loading.
+        return (parsed.scheme == 'https' and bool(parsed.hostname) and
+                parsed.username is None and parsed.password is None and
+                parsed.port in (None, 443) and '\\' not in value)
+    except ValueError:
+        return False
+
+
+def _review_signature(media, data):
+    if media == 'image/png':
+        return len(data) >= 24 and data.startswith(b'\x89PNG\r\n\x1a\n') and data[12:16] == b'IHDR'
+    if media == 'image/jpeg':
+        return data.startswith(b'\xff\xd8\xff') and data.endswith(b'\xff\xd9')
+    if media == 'image/gif':
+        return len(data) >= 10 and data[:6] in (b'GIF87a', b'GIF89a')
+    if media == 'image/webp':
+        return len(data) >= 16 and data.startswith(b'RIFF') and data[8:12] == b'WEBP'
+    if media == 'audio/wav':
+        return len(data) >= 12 and data.startswith(b'RIFF') and data[8:12] == b'WAVE'
+    if media == 'audio/ogg':
+        return data.startswith(b'OggS')
+    if media == 'audio/mpeg':
+        return data.startswith(b'ID3') or (len(data) >= 2 and data[0] == 255 and data[1] & 224 == 224)
+    if media == 'video/mp4':
+        return len(data) >= 12 and data[4:8] == b'ftyp'
+    if media == 'video/webm':
+        return data.startswith(b'\x1a\x45\xdf\xa3')
+    if media == 'application/pdf':
+        return data.startswith(b'%PDF-')
+    return False
+
+
+def _review_image_dimensions(media, data):
+    """Bound decoded raster size before handing compressed bytes to a browser."""
+    if media == 'image/png' and len(data) >= 24:
+        return int.from_bytes(data[16:20], 'big'), int.from_bytes(data[20:24], 'big')
+    if media == 'image/gif' and len(data) >= 10:
+        return int.from_bytes(data[6:8], 'little'), int.from_bytes(data[8:10], 'little')
+    if media == 'image/webp' and len(data) >= 30:
+        kind = data[12:16]
+        if kind == b'VP8X':
+            return 1 + int.from_bytes(data[24:27], 'little'), 1 + int.from_bytes(data[27:30], 'little')
+        if kind == b'VP8 ' and data[23:26] == b'\x9d\x01\x2a':
+            return int.from_bytes(data[26:28], 'little') & 0x3fff, int.from_bytes(data[28:30], 'little') & 0x3fff
+        if kind == b'VP8L' and data[20] == 0x2f:
+            packed = int.from_bytes(data[21:25], 'little')
+            return 1 + (packed & 0x3fff), 1 + ((packed >> 14) & 0x3fff)
+    if media == 'image/jpeg':
+        offset, end = 2, min(len(data), 131072)
+        while offset + 4 <= end:
+            if data[offset] != 0xff:
+                return 0, 0
+            while offset < end and data[offset] == 0xff:
+                offset += 1
+            if offset + 3 > end:
+                break
+            marker = data[offset]
+            offset += 1
+            length = int.from_bytes(data[offset:offset + 2], 'big')
+            if length < 2 or offset + length > end:
+                break
+            if marker in {0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf} and length >= 7:
+                return int.from_bytes(data[offset + 5:offset + 7], 'big'), int.from_bytes(data[offset + 3:offset + 5], 'big')
+            offset += length
+    return 0, 0
+
+
+def review_assets_ready(row):
+    """Inspectable byte custody, not authorship, principal identity or authority."""
+    return all('unavailable' not in asset['content'] for asset in row.get('review_assets', []))
+
+
+def validate_review_assets(row, where):
+    problems, total = [], 0
+    if 'review_assets' not in row:
+        if 'delivery' in row or 'revision' in row:
+            problems.append(f'{where} delivery/revision requires review_assets')
+        return problems, total
+    assets = row['review_assets']
+    if not isinstance(assets, list) or not 1 <= len(assets) <= MAX_REVIEW_ASSETS:
+        return [f'{where} review_assets needs 1..{MAX_REVIEW_ASSETS} typed assets'], total
+    if not _review_string(row.get('revision'), 256):
+        problems.append(f'{where} review_assets requires a nonempty revision')
+    delivery = row.get('delivery')
+    if (not isinstance(delivery, dict) or set(delivery) != {'format', 'destinations', 'attachments'} or
+            not _review_string(delivery.get('format'), 256) or
+            not isinstance(delivery.get('destinations'), list) or len(delivery['destinations']) > 64 or
+            not all(_review_string(v, 2048) for v in delivery.get('destinations', [])) or
+            not isinstance(delivery.get('attachments'), list)):
+        problems.append(f'{where} review_assets requires exact delivery format/destinations/attachments')
+        delivery = None
+    seen = set()
+    for index, asset in enumerate(assets):
+        at = f'{where} review_assets[{index}]'
+        if not isinstance(asset, dict) or set(asset) - {'id', 'title', 'kind', 'content', 'description', 'filename'}:
+            problems.append(f'{at} has unknown fields or is not an object')
+            continue
+        aid, kind, content = asset.get('id'), asset.get('kind'), asset.get('content')
+        if not isinstance(aid, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', aid) or aid in seen:
+            problems.append(f'{at} requires a unique bounded ASCII id')
+        else:
+            seen.add(aid)
+        if not _review_string(asset.get('title'), 512):
+            problems.append(f'{at} requires a title')
+        if not isinstance(kind, str) or kind not in TEXT_REVIEW_KINDS | BINARY_REVIEW_TYPES.keys():
+            problems.append(f'{at} has an unsupported kind')
+            continue
+        if 'filename' in asset and (kind in TEXT_REVIEW_KINDS or
+                not isinstance(asset['filename'], str) or
+                not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', asset['filename'])):
+            problems.append(f'{at} filename must be a plain bounded binary basename')
+        if 'description' in asset and not _review_string(asset['description'], 4096):
+            problems.append(f'{at} description is invalid')
+        if kind in BINARY_REVIEW_TYPES and not _review_string(asset.get('description'), 4096):
+            problems.append(f'{at} requires an accessible description')
+        if not isinstance(content, dict):
+            problems.append(f'{at} content must be an object')
+            continue
+        if 'unavailable' in content:
+            if (set(content) - {'unavailable', 'source'} or not _review_string(content['unavailable']) or
+                    ('source' in content and not _review_source(content['source']))):
+                problems.append(f'{at} unresolved content needs a reason and optional safe HTTPS source')
+            continue
+        if kind in TEXT_REVIEW_KINDS:
+            if (set(content) != {'text', 'sha256'} or not isinstance(content.get('text'), str) or
+                    'filename' in asset):
+                problems.append(f'{at} text content needs exactly text/sha256 and no filename')
+                continue
+            data = content['text'].encode('utf-8')
+            if not data or len(data) > MAX_REVIEW_TEXT_BYTES or any(ord(c) < 32 and c not in '\r\n\t' for c in content['text']):
+                problems.append(f'{at} text is empty, contains unsupported control bytes, or exceeds byte limit')
+        else:
+            if (set(content) != {'base64', 'sha256', 'size', 'media_type'} or
+                    not isinstance(content.get('base64'), str) or
+                    len(content['base64']) > ((MAX_REVIEW_BINARY_BYTES + 2) // 3) * 4 or
+                    type(content.get('size')) is not int or not 0 < content['size'] <= MAX_REVIEW_BINARY_BYTES or
+                    not isinstance(content.get('media_type'), str) or
+                    content['media_type'] not in BINARY_REVIEW_TYPES[kind]):
+                problems.append(f'{at} binary content has invalid fields/type/byte bounds')
+                continue
+            try:
+                data = base64.b64decode(content['base64'], validate=True)
+            except (ValueError, binascii.Error):
+                problems.append(f'{at} binary content is not strict base64')
+                continue
+            filename = asset.get('filename')
+            if (not isinstance(filename, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', filename) or
+                    not filename.lower().endswith(BINARY_REVIEW_TYPES[kind][content['media_type']])):
+                problems.append(f'{at} needs a plain filename matching the allowed media type')
+            if (len(data) != content['size'] or base64.b64encode(data).decode('ascii') != content['base64'] or
+                    not _review_signature(content['media_type'], data)):
+                problems.append(f'{at} binary size, canonical encoding or media signature differs')
+            if kind == 'image':
+                width, height = _review_image_dimensions(content['media_type'], data)
+                if not (0 < width <= 8192 and 0 < height <= 8192 and width * height <= 16_777_216):
+                    problems.append(f'{at} image dimensions are unavailable or exceed decoded bounds')
+        total += len(data)
+        digest = content.get('sha256')
+        if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest) or hashlib.sha256(data).hexdigest() != digest:
+            problems.append(f'{at} review content digest differs from actual bytes')
+    if delivery:
+        attachments = delivery['attachments']
+        if (len(attachments) > MAX_REVIEW_ASSETS or not all(isinstance(a, str) and a in seen for a in attachments) or
+                len(set(attachments)) != len(attachments)):
+            problems.append(f'{where} delivery attachments must name unique included review assets')
+    return problems, total
+
+
 def validate(spec: dict) -> list[str]:
     """Return a list of problems; empty means the spec is buildable."""
     problems: list[str] = []
@@ -347,10 +586,15 @@ def validate(spec: dict) -> list[str]:
         )
 
     seen: set[str] = set()
+    review_bytes = 0
     for i, r in enumerate(rows):
         if not isinstance(r, dict):
             problems.append(f"rows[{i}] must be an object")
             continue
+        if not _json_shape_problems(r):
+            asset_problems, asset_bytes = validate_review_assets(r, f"rows[{i}]")
+            problems.extend(asset_problems)
+            review_bytes += asset_bytes
         rid = r.get("id")
         if not rid:
             problems.append(f"rows[{i}] missing required field: id")
@@ -453,6 +697,9 @@ def validate(spec: dict) -> list[str]:
         if "tags" in r and (not isinstance(r["tags"], list) or
                              not all(isinstance(tag, str) for tag in r["tags"])):
             problems.append(f"rows[{i}] ({rid}) tags must be a list of strings")
+
+    if review_bytes > MAX_REVIEW_TOTAL_BYTES:
+        problems.append("review_assets exceed aggregate byte limit")
 
     for key in ("subtitle", "intro", "summary_intro", "audience", "scope", "storage_key"):
         if key in spec and not isinstance(spec[key], str):
@@ -670,15 +917,34 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   header .intro { font-size: 14px; }
   .count { min-width: 0; flex: 1 1 88px; padding: 7px 9px; }
   .count b { font-size: 17px; }
-  /* Keep the sticky bar to one compact strip; on a phone it otherwise eats a third
-     of the viewport and hides the row being decided. */
+  /* Keep every control reachable on narrow screens, including long labels. */
   .bar { padding: 9px 11px; }
-  .barhead { flex-wrap: nowrap; gap: 8px; }
+  .barhead { flex-wrap: wrap; gap: 8px; }
   .barhead > b { font-size: 13px; white-space: nowrap; }
-  .bar .actions { gap: 6px; flex-wrap: nowrap; }
+  .bar .actions { gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .bar { max-height: 45vh; overflow: auto; }
   .bar button { padding: 7px 10px; font-size: 13px; }
   #copystatus { flex-basis: 100%; font-size: 12px; }
 }
+
+.review-material { border: 2px solid var(--line); border-radius: 10px; padding: 18px; margin: 16px 0; min-width: 0; }
+.review-material h3 { margin: 0 0 12px; }
+.review-asset { border-top: 1px solid var(--line); padding: 12px 0; min-width: 0; }
+.review-delivery { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 14px; }
+.review-delivery dt { font-weight: 600; } .review-delivery dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-content { font-size: 1rem; line-height: 1.65; overflow-wrap: anywhere; }
+.review-plain { white-space: pre-wrap; } .review-code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; }
+.review-exact textarea { width: 100%; box-sizing: border-box; resize: vertical; font: 0.9rem/1.5 monospace; }
+.review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; }
+.review-hint, .review-digest { font-size: 0.82rem; overflow-wrap: anywhere; } .review-status { width:100%; }
+.review-asset img, .review-asset video { max-width:100%; height:auto; } .review-asset audio { max-width:100%; }
+.review-unavailable { font-weight:600; } .opts button:disabled { cursor:not-allowed; opacity:0.55; }
+.review-material summary, .review-material a { overflow-wrap:anywhere; }
+.review-actions button { font: inherit; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink); background: var(--bg); cursor: pointer; }
+.review-actions a { color: var(--info); }
+.review-material :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.review-exact textarea { color: var(--ink); background: var(--bg); border: 1px solid var(--line-2); padding: 8px; }
+@media (max-width:520px) { .review-material {padding:12px;} .review-delivery {grid-template-columns:1fr;} .review-delivery dd {margin-bottom:6px;} }
 </style>
 </head>
 <body>
@@ -724,6 +990,10 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   var rowsEl = document.getElementById("rows");
   var rowElements = [];
 
+  function assetsReady(row) {
+    return (row.review_assets || []).every(function (a) { return !('unavailable' in a.content); });
+  }
+
   // ---- state -------------------------------------------------------------
   // localStorage can throw outright (private mode, blocked site data), so every
   // access is guarded and the packet stays fully usable with no persistence.
@@ -736,7 +1006,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
         if (!Object.prototype.hasOwnProperty.call(stored, r.id)) return;
         var s = stored[r.id];
         if (!s || typeof s !== "object" || Array.isArray(s)) return;
-        var valid = optionsFor(r).some(function (o) { return o.value === s.choice; });
+        var valid = assetsReady(r) && optionsFor(r).some(function (o) { return o.value === s.choice; });
         state[r.id] = { choice: valid ? s.choice : undefined,
           note: typeof s.note === "string" ? s.note : "",
           bulk: valid && s.choice === r.recommendation && s.bulk === true };
@@ -762,7 +1032,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   }
   function decisionOf(row) {
     var s = get(row.id);
-    return s.choice !== undefined ? s.choice : null;
+    return assetsReady(row) && s.choice !== undefined ? s.choice : null;
   }
   function consequenceFor(row, o) {
     // What pressing this button does, shown under its label. An explicit
@@ -833,6 +1103,133 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     }).join("");
   }
 
+  function element(tag, text, cls) {
+    var node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+  function limitedMarkdown(text, target) {
+    // Deliberately small block grammar. No raw HTML, images, link expansion,
+    // extensions or network access; all content enters through textContent.
+    var lines = text.split(/\\r\\n|\\r|\\n/), paragraph = [], code = null, list = null;
+    function flush() {
+      if (paragraph.length) target.appendChild(element('p', paragraph.join('\\n')));
+      paragraph = []; list = null;
+    }
+    lines.forEach(function (line) {
+      if (/^```/.test(line)) {
+        if (code === null) { flush(); code = []; }
+        else { target.appendChild(element('pre', code.join('\\n'), 'review-code')); code = null; }
+      } else if (code !== null) code.push(line);
+      else if (!line.trim()) flush();
+      else if (/^#{1,6} /.test(line)) { flush(); target.appendChild(element('h4', line.replace(/^#{1,6} /, ''))); }
+      else if (/^[-*] /.test(line)) {
+        if (!list) { flush(); list = element('ul'); target.appendChild(list); }
+        list.appendChild(element('li', line.slice(2)));
+      } else { if (list) flush(); paragraph.push(line); }
+    });
+    flush();
+    if (code !== null) target.appendChild(element('pre', code.join('\\n'), 'review-code'));
+  }
+  function copyExact(ta, status, details, exactText) {
+    if (details) details.open = true;
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+    var manual = ta.value === exactText ?
+      'Copy not confirmed. Exact text is selected; press Cmd+C or Ctrl+C.' :
+      'Copy not confirmed. The browser normalized line endings in the selection; download exact bytes.';
+    status.textContent = 'Exact text selected; requesting copy…';
+    var ok = false;
+    try { if (ta.value === exactText) ok = document.execCommand('copy') === true; } catch (e) {}
+    if (ok) { status.textContent = 'Browser reported copy success.'; return; }
+    var settled = false;
+    var timer = setTimeout(function () { settled = true; status.textContent = manual; }, 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        Promise.resolve(navigator.clipboard.writeText(exactText)).then(function () {
+          if (!settled) { settled = true; clearTimeout(timer); status.textContent = 'Browser reported copy success.'; }
+        }, function () { if (!settled) { settled = true; clearTimeout(timer); status.textContent = manual; } });
+      } else { settled = true; clearTimeout(timer); status.textContent = manual; }
+    } catch (e) { settled = true; clearTimeout(timer); status.textContent = manual; }
+  }
+  function renderReview(row) {
+    var section = element('section', undefined, 'review-material');
+    section.setAttribute('aria-label', 'Material for review: ' + row.label);
+    section.appendChild(element('h3', 'Material for review'));
+    var meta = element('dl', undefined, 'review-delivery');
+    [['Revision', row.revision], ['Delivery format', row.delivery.format],
+      ['Destinations', row.delivery.destinations.join('\\n') || 'None declared'],
+      ['Attachments', row.delivery.attachments.join(', ') || 'None declared']].forEach(function (entry) {
+      meta.appendChild(element('dt', entry[0])); meta.appendChild(element('dd', entry[1]));
+    });
+    section.appendChild(meta);
+    section.appendChild(element('p', 'This material is separate from the recommendation. Byte integrity is not proof of authorship or approval.', 'review-hint'));
+    row.review_assets.forEach(function (asset) {
+      var box = element('section', undefined, 'review-asset');
+      box.dataset.assetId = asset.id;
+      box.setAttribute('aria-label', asset.title);
+      box.appendChild(element('h4', asset.title));
+      box.appendChild(element('p', 'Type: ' + asset.kind + ' · ID: ' + asset.id, 'review-hint'));
+      if (asset.description) box.appendChild(element('p', asset.description));
+      var content = asset.content;
+      if ('unavailable' in content) {
+        var missing = element('p', 'Unresolved material: ' + content.unavailable, 'review-unavailable');
+        missing.setAttribute('role', 'status'); box.appendChild(missing);
+        if (content.source) {
+          var ref = element('a', 'Open external reference (unverified; network only when clicked)');
+          ref.href = content.source; ref.target = '_blank'; ref.rel = 'noopener noreferrer';
+          ref.referrerPolicy = 'no-referrer'; box.appendChild(ref);
+        }
+        box.appendChild(element('p', 'No content was fetched. Row choices are disabled; record a note or rebuild with verified bytes.'));
+      } else {
+        box.appendChild(element('p', 'Bound SHA-256: ' + content.sha256, 'review-digest'));
+        var blob, filename, status = element('span', '', 'review-status');
+        status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+        var actions = element('div', undefined, 'review-actions');
+        if ('text' in content) {
+          var view = element('div', undefined, 'review-content');
+          if (asset.kind === 'markdown') limitedMarkdown(content.text, view);
+          else view.appendChild(element(asset.kind === 'code' ? 'pre' : 'div', content.text,
+            asset.kind === 'code' ? 'review-code' : 'review-plain'));
+          box.appendChild(view);
+          var details = element('details', undefined, 'review-exact');
+          details.appendChild(element('summary', 'Exact source text and manual copy'));
+          var ta = element('textarea'); ta.value = content.text; ta.readOnly = true; ta.rows = 8;
+          ta.setAttribute('aria-label', 'Exact source: ' + asset.title); details.appendChild(ta); box.appendChild(details);
+          var copy = element('button', 'Copy exact text'); copy.type = 'button';
+          copy.addEventListener('click', function () { copyExact(ta, status, details, content.text); }); actions.appendChild(copy);
+          blob = new Blob([content.text], {type: 'text/plain;charset=utf-8'}); filename = asset.id + '.txt';
+        } else {
+          var bytes = atob(content.base64), values = new Uint8Array(bytes.length);
+          for (var i = 0; i < bytes.length; i++) values[i] = bytes.charCodeAt(i);
+          blob = new Blob([values], {type: content.media_type}); filename = asset.filename;
+          box.appendChild(element('p', content.media_type + ' · ' + content.size + ' bytes', 'review-hint'));
+          if (asset.kind !== 'document') {
+            var media = element(asset.kind === 'image' ? 'img' : asset.kind);
+            if (asset.kind === 'image') { media.alt = asset.description; media.loading = 'lazy'; }
+            else { media.controls = true; media.preload = 'none'; media.setAttribute('aria-label', asset.description); }
+            media.src = 'data:' + content.media_type + ';base64,' + content.base64;
+            media.addEventListener('error', function () { status.textContent = 'Preview unavailable in this browser; download the bound bytes to inspect them.'; });
+            box.appendChild(media);
+          } else box.appendChild(element('p', 'Document preview unavailable here. Download the bound PDF and inspect it in a document reader. No embedded document code is executed.', 'review-unavailable'));
+        }
+        try {
+          var url = URL.createObjectURL(blob), download = element('a', 'Download exact bytes');
+          download.href = url; download.download = filename; actions.appendChild(download);
+          if ('text' in content || asset.kind === 'image') {
+            var open = element('a', 'Open bound content'); open.href = url; open.target = '_blank';
+            open.rel = 'noopener noreferrer'; actions.appendChild(open);
+          }
+          window.addEventListener('pagehide', function () { URL.revokeObjectURL(url); }, {once: true});
+        } catch (e) { status.textContent = 'This browser cannot create a download; exact text remains readable where supplied.'; }
+        actions.appendChild(status); box.appendChild(actions);
+      }
+      section.appendChild(box);
+    });
+    return section;
+  }
+
   // ---- rows --------------------------------------------------------------
   function buildRow(row) {
     var el = document.createElement("article");
@@ -881,6 +1278,11 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     if (row.reasoning) head += '<p class="rtext reason">' + esc(row.reasoning) + "</p>";
     el.innerHTML = head;
 
+    if (row.review_assets) {
+      var anchor = el.querySelector(".prior-position") || el.querySelector(".rlabel");
+      el.insertBefore(renderReview(row), anchor.nextSibling);
+    }
+
     var opts = document.createElement("div");
     opts.className = "opts";
     optionsFor(row).forEach(function (o) {
@@ -888,6 +1290,8 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
       b.type = "button";
       b.dataset.tone = o.tone || "info";
       b.dataset.value = o.value;
+      b.disabled = !assetsReady(row);
+      if (b.disabled) b.title = "Resolve unavailable review material before choosing";
       var lab = document.createElement("span");
       lab.className = "olabel"; lab.textContent = o.label;
       b.appendChild(lab);
@@ -1003,7 +1407,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     // affirmative, labelled gesture leaves an honest record, whereas a pre-selected
     // recommendation would make "I agreed" indistinguishable from "I never looked".
     var remaining = SPEC.rows.filter(function (r) {
-      return r.recommendation && decisionOf(r) === null;
+      return r.recommendation && assetsReady(r) && decisionOf(r) === null;
     }).length;
     var bulkBtn = document.getElementById("bulk");
     bulkBtn.hidden = remaining === 0;
@@ -1044,23 +1448,29 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
     if (ok) { status.textContent = "Copied. Paste it back in one message."; return; }
 
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(ta.value).then(function () {
-        status.textContent = "Copied. Paste it back in one message.";
-      }, function () {
-        status.textContent = "This browser blocked copying — the text is selected, so press " +
-          (navigator.platform.indexOf("Mac") >= 0 ? "Cmd+C" : "Ctrl+C") + ".";
-      });
-      return;
+    var settled = false;
+    function blocked() {
+      if (settled) return;
+      settled = true;
+      status.textContent = "Copy not confirmed — the text is selected, so press " +
+        (navigator.platform.indexOf("Mac") >= 0 ? "Cmd+C" : "Ctrl+C") + ".";
     }
-    status.textContent = "This browser blocked copying — the text is selected, so press " +
-      (navigator.platform.indexOf("Mac") >= 0 ? "Cmd+C" : "Ctrl+C") + ".";
+    var timer = setTimeout(blocked, 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        Promise.resolve(navigator.clipboard.writeText(ta.value)).then(function () {
+          if (!settled) { settled = true; clearTimeout(timer); status.textContent = "Copied. Paste it back in one message."; }
+        }, function () { clearTimeout(timer); blocked(); });
+        return;
+      }
+    } catch (e) {}
+    clearTimeout(timer); blocked();
   }
 
   document.getElementById("copy").addEventListener("click", copySummary);
   document.getElementById("bulk").addEventListener("click", function () {
     var pending = SPEC.rows.filter(function (r) {
-      return r.recommendation && decisionOf(r) === null;
+      return r.recommendation && assetsReady(r) && decisionOf(r) === null;
     });
     if (!pending.length) return;
     if (!window.confirm(
@@ -1143,7 +1553,10 @@ def build(spec: dict) -> str:
     head, sep, tail = out.partition("</title>\n")
     if not sep:
         raise RuntimeError("build_packet: template lost its </title> close")
-    return head + sep + marker + tail
+    page = head + sep + marker + tail
+    if len(page.encode("utf-8")) > MAX_GENERATED_HTML_BYTES:
+        raise ValueError("generated packet exceeds the context-doctor file byte limit")
+    return page
 
 
 def assert_active_spec(directory: pathlib.Path, digest: str, spec: dict | None = None) -> None:
@@ -1217,8 +1630,8 @@ def main() -> int:
             return 2
 
     try:
-        raw = sys.stdin.read() if args.spec == "-" else pathlib.Path(args.spec).read_text(encoding="utf-8")
-        spec = strict_json(raw)
+        raw = read_packet_input(None if args.spec == "-" else pathlib.Path(args.spec))
+        spec = strict_json(raw.decode("utf-8"))
     except (OSError, ValueError, UnicodeError) as exc:
         print(f"cannot read valid spec JSON: {exc}", file=sys.stderr)
         return 2

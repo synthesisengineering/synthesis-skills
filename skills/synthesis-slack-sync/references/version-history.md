@@ -5,6 +5,14 @@ release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
 
+## v3.13.0 — Conversation-scoped acquisition and complete paging
+
+v3.13.0 (2026-09-28): the declared read-only API adapter binds the configured
+workspace, conversations and window through acquisition, verified archives and
+watermark advancement. Search pages must agree on totals, order and cardinality.
+Owned archive replay uses exact conversation and parent metadata; quoted message
+text cannot redirect it. Missing or ambiguous legacy metadata remains a gap.
+
 ## v3.11.0 — The registry owns the workspace list; placeholders are first-class
 
 v3.11.0 (2026-09-23) answers the multi-workspace question: one human, several

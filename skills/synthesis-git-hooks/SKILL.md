@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.7.0"
+  version: "2.8.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -103,6 +103,24 @@ The v2.4.0 installer also persists its absolute source directory beside the
 installed engine. Later direct doctor runs use that pointer before documented
 fallback locations; an invalid or missing pointed source is a doctor failure.
 
+## Private-key material and detection-rule syntax
+
+Tier 0 remains mandatory before path exclusions or allowlists, including commit
+messages when optional exposure checks are disabled. Exact supported bare marker
+entries under `tier_0_always.private_key_markers` carry their vocabulary through
+the existing loader/scanner interface. Other configured credential expressions,
+including custom expressions in that group, retain unconditional matching.
+
+The scanner distinguishes bounded, complete detection-rule syntax from key
+material using captured staged blobs and the existing strict policy grammar.
+An unchanged header with a newly added body still refuses. A filename, quote,
+policy-looking key, or valid/invalid cryptographic body grants no exemption.
+The template includes generic and encrypted PKCS#8 as well as RSA, OpenSSH, EC
+and PGP. Existing user configuration is preserved during installation; vocabulary
+updates belong to its source-managed owner and require an explicit reviewed delta.
+See [the precise marker contract](references/marker-rules.md) for accepted syntax,
+limits, closure requirements and discriminating controls.
+
 ## v2.1.2 — Exact-copy migration calibration
 
 v2.1.2 (2026-07-30) recognizes exact copies from already-committed files before
@@ -132,7 +150,7 @@ Three design guarantees, added after a field incident in which the v1 engine sil
 
 | Tier | Patterns | When applied |
 |---|---|---|
-| **Tier 0 — credentials** | API keys (AWS, OpenAI, Anthropic, Google, GitHub, GitLab, Slack), private key markers (RSA, OpenSSH, EC, PGP) | Every repo. Credentials don't belong in git regardless of who reads. |
+| **Tier 0 — credentials** | API keys (AWS, OpenAI, Anthropic, Google, GitHub, GitLab, Slack), private key markers (RSA, OpenSSH, EC, PGP, generic and encrypted PKCS#8) | Every repo. Credentials don't belong in git regardless of who reads. |
 | **Tier 1 — exposure-sensitive** | Financial, HR/employment, confidentiality markers, confidential client/company names, private skill names, internal URLs | Skip when the repo classifies as `personal`. Run in `strict` and `public-surface` repos — in `public-surface`, minus only the exact name patterns the disclosure ledger records as published precedent. |
 
 Classification is derived from `git remote -v` on every commit and follows
@@ -214,11 +232,11 @@ git remote -v | awk '/\(push\)/ {print $2}'
 | Need | Mechanism |
 |---|---|
 | Use a different config file for one invocation | `SYNTHESIS_GIT_HOOK_CONFIG=/path/to/custom.yaml git commit ...` |
-| Skip the hook once (last resort) | `git commit --no-verify` |
-| Add a legitimate match to the allowlist | Add a regex to `allowlist_lines` in the config |
+| Repeated detector-rule false positive | Preserve the refusal and correct the scanner through its source owner |
+| Add a legitimate Tier-1 match to the allowlist | Review a narrow `allowlist_lines` entry; it cannot subtract credentials or team-mandatory rules |
 | Add a new personal org (sole-owner repos there) | Add a regex to `personal_remote_patterns` in the config |
 
-The `--no-verify` escape valve is genuine, but each use weakens the discipline. If a pattern fires repeatedly as a false positive, fix the underlying signal: rename the variable, extend `allowlist_lines`, or — if the repo really is sole-owner — add the right `personal_remote_patterns` entry.
+A recurring false positive requires a source-owner correction with retained controls. Repository classification, path exclusions and line allowlists do not exempt Tier 0. Preserve immutable evidence bytes and use the ordinary guarded path after the correction is verified.
 
 ## Repo-local hooks are additive, not superseded
 

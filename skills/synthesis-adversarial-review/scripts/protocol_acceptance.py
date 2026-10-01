@@ -55,6 +55,8 @@ def require_terms(
 
 def review_errors(text: str) -> list[str]:
     errors: list[str] = []
+    if not re.search(r"Before freezing or accepting[^\n]*mandatory[^\n]*\(references/domain-review-contract\.md\)", text):
+        errors.append("mandatory domain review contract routing is missing")
     order, sections = section_map(text)
     expected = [
         "Purpose",

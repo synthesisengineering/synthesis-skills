@@ -44,10 +44,16 @@ Claim admission uses the shared `scripts/claim_scope.py` conflict predicate.
 Besides physical overlap, the same `projects/` metadata path in registered Git
 worktrees conflicts when their verified Git common directory is identical.
 Disjoint exact files and segment globs remain independent; ordinary source
-paths outside `projects/` remain isolated by checkout. Relative metadata claims
-need one unambiguous workspace context, and missing or ambiguous Git evidence
-refuses a possible logical overlap. Named resources such as release-train claims
-remain a separate namespace, independent of filesystem paths.
+paths outside `projects/` remain isolated by checkout. Every relative filesystem
+claim needs one unambiguous absolute workspace context before admission, even
+with no peer rows. `repo:path` is not a repository selector: use an absolute path
+(or a relative path with one exact workspace). Absolute filenames may contain
+colons. Adding a workspace binds retained relative claims to their original
+checkout and new relative claims to the explicitly requested checkout; ambiguous
+new requests refuse before writing the board. Missing or ambiguous native Git
+evidence still refuses a possible logical metadata overlap. `release-train:<plugin>`
+is a separate mutex and never grants file writes. Creation reservations remain
+exclusive to the worktree-creation owner and never grant edit authority.
 
 Conflict identity does not grant write authority. Check-staged still requires
 the actor's exact physical worktree, branch and staged paths. A currency guard
@@ -70,6 +76,16 @@ Re-claiming merges by default: a `claim --id` call unions the named areas
 and workspaces with what the row already holds, and names what it retained
 and added. Omission never shrinks a claim — a re-claim written from a
 compacted context cannot silently drop the areas it forgot to restate.
+For the same authenticated seat and project, the role also keeps the higher of
+its existing and requested values (`none`, `contributor`, `owner`). A helper
+sharing that identity cannot demote the owner through an incremental claim.
+The command reports a retained role; an explicit `--replace` can change it only
+when the replacement scope passes the ordinary context and ownership checks.
+This does not inherit a role across projects or authorize a foreign session.
+Canonical-context claims are checked against that effective role inside the
+locked, authenticated update, including when a helper repeats an already held
+context path. A new contributor, a cross-project claim, or an explicit role
+replacement cannot borrow the prior owner's authority to bypass this check.
 Shrinking is the explicit `narrow` verb, which names each area or
 workspace to release (`--release`; `--keep` names what to retain and
 releases the held complement instead), refuses targets the row does not
@@ -94,6 +110,23 @@ Coordinate an overlap through the owning session or the user's explicit
 administrative direction; do not apply automatic release or preemptive claims.
 
 ## Addressing a peer session — resolve, receipt, gate
+
+The board reader uses the single canonical `## Messages` section and its final
+`---` / `## Protocol` boundary. Ordinary level-two headings inside a real message
+remain part of its body. Fenced or indented code examples confer no addressed
+message, release, reply, or handoff authority. An unclosed fence, duplicated or
+missing boundary, or invalid preamble is ambiguous and blocks protective
+consumers. Writers refuse ambiguous unquoted boundaries without rewriting the
+approved body; put literal structural examples inside a closed code block.
+Historical message bodies and unread watermarks are not migrated by this repair.
+
+A direct delivery lane needs independently observed local machine identity and
+current target/seat/native-reference agreement. The `--local-machine` option
+restricts that observation; it cannot declare a remote machine local. Fleet
+display labels never substitute for the observed OS hostname. Receipts are
+rechecked against current authority before a local process is probed or a lane
+is admitted; changed target or seat identity requires a fresh resolution.
+
 
 Three naming systems cover one population of sessions: the board's
 identities (UUIDv7 with compact and speakable aliases), each client's chat
@@ -611,3 +644,62 @@ payload whose bytes have changed since the handoff. The queue
 (`resources/handoffs/queue.json`) is written atomically. Reader identity
 comes from `--as` or `SYNTHESIS_HANDOFF_SELF` — with neither, `read` refuses
 rather than guess, because guessing could claim another agent's work.
+
+
+## Durable work placement and unexplained loss
+
+Create long-lived worktrees, source copies, virtual environments and sole
+recovery evidence under the durable workspace, for example
+`~/workspaces/example/.worktrees/feature-review`. System temporary directories
+and session scratchpads have no durable retention contract. Their retention
+varies by OS, administrator policy, storage pressure and file timestamps; never
+promise a universal number of safe days or keep them alive by touching files.
+
+The existing `scripts/create_worktree.py` owner refuses a temporary destination
+before publishing a reservation or creating the target. It checks canonical
+paths and temporary-root aliases while retaining exact native identity, board
+serialization, parent-descriptor verification and ordinary claims. A bounded
+synthetic test may explicitly pass `--fixture-deadline <epoch-seconds>` no more
+than 900 seconds ahead. Its receipt says `ephemeral-test-fixture`; this neither
+grants edit authority nor establishes durable custody. Preserve the test inputs,
+outputs and evidence before closure; the deadline never authorizes deletion.
+Do not label production work a test to bypass durable placement.
+
+`fleet_doctor.py --board <board> --repo <repository>` inspects the selected Git
+registrations, missing linked metadata and vanished tracked paths without
+pruning. Optional repeated `--source-path` and `--venv` flags inspect only the
+declared source/virtual-environment paths, not a whole disk. The doctor reports
+recoverable registered HEAD/branch evidence where available. Missing paths,
+unknown age, or a prunable registration do not prove which cleaner ran, loss of
+all refs, completion, or permission to release anyone's claims. Preserve the
+common Git directory, refs, surviving files and logs before any separately
+authorized recovery. Never prune to make disappearance look like retirement.
+
+`retire_worktree.py` distinguishes unexplained registered-checkout loss from its
+existing exact, verified retirement-intent recovery. The latter still requires
+its own retained identity, manifest and branch proofs. Temporary placement
+alone does not prevent the sanctioned retirement of a verified complete owned
+fixture; missing evidence never authorizes cleanup.
+
+### Registered nested retirement and existing temporary work
+
+Retire a registered nested linked worktree through `retire_worktree.py` with its
+owning repository, including a checkout under `.claude/worktrees/`. The checkpoint
+owner retains the exact native Git/common-directory, checkout and metadata identity
+in the prepared intent and revalidates it immediately before removal. Completion
+checks the surviving repository/common-directory and absent registration against
+that intent. An interrupted removal resumes the same pinned intent; a missing
+nested path without that proof cannot manufacture a successful retirement. Main
+checkouts, aliases, ancestors, dirty/ignored content and foreign or changed state
+still refuse. Durable retirement state and the executing runtime must survive
+the target.
+
+Existing temporary work remains claimable for preservation and recovery. A claim
+is ownership of work, not permission to create new durable work under temporary
+storage. Keep the durable-creation gate. Fleet doctor reports this machine's
+declared workspace exposure even when `--repo` narrows the Git comparison, and
+continues explicit source/venv diagnosis after a repository inspection failure.
+It does not scan the disk, touch files to extend retention, rebuild environments,
+remove registrations, or assert an OS expiration time. Preserve a missing path's
+registration, references and evidence; recover or relocate only with verified
+custody. Venv metadata presence is not proof of package/runtime health.

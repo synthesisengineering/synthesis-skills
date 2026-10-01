@@ -6,16 +6,19 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   conformance:
     runs-on: ubuntu-latest
     steps:
       # PRINCIPAL RULE (controlling plan D4): the event base must exist in the
       # runner repository before the receipt consumer can derive its universe.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: python -m pip install pytest pyyaml jsonschema httpx
@@ -30,29 +33,20 @@ jobs:
           echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
       - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
+      - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py skills/synthesis-local-messaging/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-project-management/scripts/ -q
       - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
+      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native-control
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
       - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
       - run: python -m pytest skills/synthesis-meeting-prep/scripts/ -q
       - run: python -m pytest skills/synthesis-model-tiers/scripts/ -q
       - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
       - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
-      - name: Resolve acceptance change base
-        # The event binds its exact review slice. release.py independently reads
-        # published stable/version refs for the whole-release acceptance base.
-        env:
-          SYNTHESIS_EVENT_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          test -n "$SYNTHESIS_EVENT_REVIEW_BASE"
-          echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$SYNTHESIS_EVENT_REVIEW_BASE" >> "$GITHUB_ENV"
-      - name: Consume transaction-bound R5 acceptance
-        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
       - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
-      - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py -q
       - run: python -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python skills/synthesis-onboarding/scripts/check_capabilities.py .
@@ -62,13 +56,37 @@ jobs:
       # deployed skill directory, where pytest is not guaranteed to be installed.
       - run: python skills/synthesis-meeting-transcripts/test_verify_transcripts.py
       - run: python skills/synthesis-meeting-transcripts/test_transcript_primary.py
-      - run: python -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py -q
+      - run: python -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_acquisition_entry.py skills/synthesis-meeting-transcripts/test_acquisition_repair.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py skills/synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py -q
       - run: sh -n install.sh onboard.sh tests/test_installer.sh
       - run: ./tests/test_installer.sh
       - run: python -m compileall -q skills
       - run: python skills/synthesis-inbox-cleanup/tests/run_poisoned.py
       - run: python skills/synthesis-inbox-cleanup/tests/run_resolver.py
       - run: sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
+      - name: Resolve acceptance change base
+        # The event binds its exact review slice. release.py independently reads
+        # published stable/version refs for the whole-release acceptance base.
+        env:
+          SYNTHESIS_EVENT_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          test -n "$SYNTHESIS_EVENT_REVIEW_BASE"
+          echo "SYNTHESIS_ACCEPTANCE_CHANGE_BASE=$SYNTHESIS_EVENT_REVIEW_BASE" >> "$GITHUB_ENV"
+      - name: Consume transaction-bound R5 acceptance
+        id: acceptance
+        env:
+          SYNTHESIS_ACCEPTANCE_DIAGNOSTICS: ${{ runner.temp }}/synthesis-acceptance-diagnostics
+        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
+      - name: Retain sanitized acceptance diagnostics
+        if: always() && steps.acceptance.outputs.diagnostics_ready == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: acceptance-diagnostics
+          path: |
+            ${{ runner.temp }}/synthesis-acceptance-diagnostics/diagnostics.json
+            ${{ runner.temp }}/synthesis-acceptance-diagnostics/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
 
   onboarding-portability:
     strategy:
@@ -77,14 +95,19 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Establish prescribed macOS framework interpreter
         if: runner.os == 'macOS'
         run: sh .github/scripts/install-ci-python.sh
-      - run: python3 -m pip install pytest pyyaml jsonschema
+      - run: python3 -m pip install pytest pyyaml jsonschema httpx
+      - name: Establish Linux sandbox for installed consumer acceptance
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap zsh
+          python3 .github/scripts/check-ci-sandbox.py
       - run: python3 -m pytest skills/synthesis-onboarding/scripts/ -q
       - run: python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
       - run: python3 skills/synthesis-onboarding/scripts/check_capabilities.py .

@@ -63,7 +63,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from peer_addressing import (  # noqa: E402
     CLIENT_CLAUDE,
-    SelfIdentity,
     append_send_log,
     body_digest,
     broadcast_conflict,
@@ -71,7 +70,6 @@ from peer_addressing import (  # noqa: E402
     iso,
     load_receipts,
     process_alive,
-    receipt_for_address,
     receipts_dir,
     receipts_for_address,
     registry_dir,
@@ -621,13 +619,34 @@ def evaluate(
         target_row = next((row for row in active_rows if row.session_uuid == target_uuid), None)
         if target_row is None:
             return Decision(False, lane, address, f"receipt target {target_uuid} is no longer an active board row; resolve again")
-        if lane == "ccd" and target_row.client_ref != f"ccd:{address}":
-            return Decision(False, lane, address, "the receipt's ccd address no longer matches the target row; resolve again")
-        if lane == "codex" and not (
-            target_row.client_ref == f"codex:{address}"
-            or str(receipt.get("lanes", {}).get("codex", {}).get("thread")) == address
-        ):
-            return Decision(False, lane, address, "the receipt's codex thread no longer matches the target row; resolve again")
+        from coordination import observed_delivery_lanes
+        from peer_addressing import read_seat, seat_path
+
+        expected_target = {
+            "uuid": target_row.session_uuid, "compact": target_row.compact_id,
+            "project": target_row.project, "machine": target_row.machine,
+            "client_ref": target_row.client_ref,
+        }
+        if any(receipt.get("target", {}).get(k) != v for k, v in expected_target.items()):
+            return Decision(False, lane, address, "receipt target identity or machine changed; resolve again")
+        issued = receipt.get("issued_by", {}).get("board", {})
+        if issued.get("uuid") != sender_row.session_uuid or issued.get("compact") != sender_row.compact_id:
+            return Decision(False, lane, address, "receipt sender seat changed; resolve again")
+        current_seat = read_seat(board, target_uuid)
+        if current_seat is None and os.path.lexists(seat_path(board, target_uuid)):
+            return Decision(False, lane, address, "target seat is unreadable; resolve again")
+        if current_seat is not None and current_seat.session_uuid != target_uuid:
+            return Decision(False, lane, address, "target seat identity changed; resolve again")
+        if lane == "harness" and (current_seat is None or current_seat.harness_session_id !=
+                receipt.get("lanes", {}).get("harness", {}).get("harness_session_id")):
+            return Decision(False, lane, address, "receipt harness identity changed; resolve again")
+        current_lanes = observed_delivery_lanes(
+            client_ref=target_row.client_ref, compact_id=target_row.compact_id,
+            target_machine=target_row.machine, seat=current_seat, registry=registry, alive=alive,
+        )
+        field = {"ccd": "session_id", "codex": "thread", "harness": "to"}.get(lane)
+        if field is None or current_lanes.get(lane, {}).get(field) != address:
+            return Decision(False, lane, address, "receipt no longer maps to a verified local lane; resolve again")
         if lane == "harness":
             entry = registry_entry_for_socket(address[len("uds:"):], registry, alive)
             expected = str(receipt.get("lanes", {}).get("harness", {}).get("harness_session_id") or "")

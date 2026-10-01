@@ -1,0 +1,6 @@
+interface:
+  display_name: "Local messaging"
+  short_description: "Review authorized local message windows safely"
+  default_prompt: "Use $synthesis-local-messaging to review an explicitly authorized local message window and retain notes with source pointers."
+policy:
+  allow_implicit_invocation: false

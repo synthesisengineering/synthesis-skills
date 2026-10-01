@@ -10,7 +10,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-code-audit"]
 metadata:
   author: "Emil Peñaló"
-  version: "1.1.0"
+  version: "1.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -31,7 +31,7 @@ A branch can contain perfectly good code and still fail preflight: tests broken,
 | **code-audit** | 10-dimension quality scan of a diff | After implementation — systematic quality measurement |
 | **preflight** (this one) | Branch readiness gate | Before creating a PR — "Is this branch ready?" |
 
-**The natural flow:** Implement → self-verify (implementation-integrity) → quality scan (code-audit) → branch gate (preflight) → create PR → peer review (pr-review).
+**The handoff:** Implement and verify the change, reconcile branch readiness, then create the PR and complete required peer review. These scopes may share evidence; invoking another skill does not require another audit.
 
 Preflight consumes current implementation-integrity and audit evidence. It checks that the evidence covers the exact proposed branch state and required consumers; it does not repeat an unchanged review merely to produce another report. A readiness verdict does not grant merge, release or deployment authority. Apply the shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) and the action owner's existing gate.
 
@@ -66,13 +66,13 @@ A single FAIL or UNKNOWN in a required dimension means the branch is NOT READY. 
 
 ### 3. Test & Type Verification
 
-- Run the project's full test suite. Report pass/fail summary.
-- If the project uses a type checker (TypeScript, mypy, pyright, or equivalent), run it. Report any type errors.
-- These are binary gates. If tests fail or types do not check, the branch is not ready.
+- The default gate is the project's full test suite and configured type checker, plus any additional repository requirements. Consume valid results for the exact candidate, relevant inputs and environment; run missing or invalidated checks. Targeted authoring tests alone do not satisfy the default full-suite gate. A narrower gate requires an explicit governing project or user policy, never an inference from silence.
+- Report actual passed, failed, skipped and not-run coverage. A required check that failed or did not execute blocks readiness.
+- A new preflight invocation alone does not invalidate a completed check.
 
 ### 4. Code Audit
 
-- Run the synthesis-code-audit methodology against the full branch diff (base to HEAD).
+- Confirm current audit evidence covers the full branch diff (base to HEAD). Apply synthesis-code-audit to uncovered changes and affected risks; consume valid coverage instead of commissioning another identical audit.
 - Any FAIL dimension in the audit = preflight FAIL for this gate.
 - WARNING dimensions are surfaced in the preflight report but do not block.
 - A "Clean" audit verdict = PASS for this gate.

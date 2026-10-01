@@ -19,7 +19,7 @@ import re
 import tempfile
 
 import coordination as c
-from peer_addressing import MESSAGE_HEADING, MESSAGE_HEADING_CANDIDATE
+from peer_addressing import MESSAGE_HEADING
 
 MONTH = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])\.md")
 OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
@@ -79,17 +79,13 @@ def aware(value: str) -> datetime | None:
 
 def outside_fences(text: str):
     """Yield top-level line offsets; quoted native headers confer no boundary."""
-    fence = None
+    from board_grammar import message_code_mask
+
+    lines, visible = message_code_mask(text)
     offset = 0
-    for line in text.splitlines(keepends=True):
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\n"))
-        if fence:
-            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
-                fence = None
-        elif marker:
-            fence = marker[1]
-        else:
-            yield offset, line.rstrip("\n")
+    for line, outside in zip(lines, visible):
+        if outside:
+            yield offset, line.rstrip("\r\n")
         offset += len(line)
 
 
@@ -173,11 +169,11 @@ def plan_archive(text: str, months: dict[str, str], *, now: datetime) -> Plan:
         matches = [row for row in known.values() if c.selector_matches(row.identity, label.strip())]
         return len(matches) == 1 and matches[0].id in retired
 
-    message_start = text.index("## Messages") + len("## Messages")
-    boundary = re.search(r"(?m)^---[ \t]*\n\n## Protocol(?:[^\n]*)?$", text[message_start:])
-    if boundary is None:
-        raise ValueError("archive source lacks Protocol boundary")
-    message_end = message_start + boundary.start()
+    from board_grammar import message_frame
+
+    framed_lines, _outside, start, separator, _end = message_frame(text)
+    message_start = sum(map(len, framed_lines[:start])) + len("## Messages")
+    message_end = sum(map(len, framed_lines[:separator]))
     section = text[message_start:message_end]
     candidates = [pos for pos, line in outside_fences(section) if MESSAGE_HEADING.fullmatch(line)]
     kept, count = [section[:candidates[0]]] if candidates else [section], 0

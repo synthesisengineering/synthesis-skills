@@ -886,6 +886,29 @@ def main() -> int:
     if Path(match["worktree"]).resolve() == main_worktree:
         return fail("refusing to retire the repository's main worktree")
 
+    # A surviving registration with missing checkout metadata is evidence of
+    # unexplained loss, not completed removal. Exact retirement recovery stays
+    # above this branch and still requires its recorded verified intent.
+    import stat
+    try:
+        root_info = worktree.lstat()
+        link_info = (worktree / ".git").lstat()
+        if not stat.S_ISDIR(root_info.st_mode) or not stat.S_ISREG(link_info.st_mode):
+            raise ValueError("linked worktree root/metadata is not ordinary")
+    except (OSError, ValueError) as exc:
+        detail = retirement_runtime_owner().source_storage_detail(
+            Path(__file__).resolve().parent.parent, worktree,
+            {**match, "repository": str(repository)}, str(exc))
+        return fail(detail)
+
+    observed_root = run(worktree, "rev-parse", "--show-toplevel")
+    if observed_root.returncode or Path(observed_root.stdout.strip()).resolve() != worktree.resolve():
+        detail = retirement_runtime_owner().source_storage_detail(
+            Path(__file__).resolve().parent.parent, worktree,
+            {**match, "repository": str(repository)},
+            "Git resolves to a different or unavailable checkout")
+        return fail(detail)
+
     cwd = Path.cwd().resolve()
     if cwd == worktree.resolve() or worktree.resolve() in cwd.parents:
         return fail(
@@ -1032,6 +1055,10 @@ def main() -> int:
             if claims_runtime is not None:
                 retirement_runtime.authenticate(intent_data.get("claims_runtime"), RETIREMENT_RUNTIME_DIR, args.board)
 
+            verified_target = run_reconciler(
+                checkpoint_sync, ["--verify-worktree-retirement", str(intent)], lock_fd
+            )
+            reconciler_detail(verified_target)
             removed = run(repository, "worktree", "remove", str(worktree))
             if removed.returncode != 0:
                 return fail(removed.stderr.strip() or "git worktree remove failed")

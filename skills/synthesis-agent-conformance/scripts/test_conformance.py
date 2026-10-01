@@ -18,7 +18,7 @@ MODULE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
-from coordination_schema import identity_from_uuid
+from coordination_schema import identity_from_uuid  # noqa: E402 - source-bound import follows path/bootstrap initialization
 
 
 COORDINATION_HEADER = (
@@ -1007,7 +1007,7 @@ def test_render_treats_required_unknown_as_non_success(capsys) -> None:
 
     assert MODULE.render(checks, as_json=True) == 1
     payload = json.loads(capsys.readouterr().out)
-    assert payload["status"] == "FAIL"
+    assert payload["status"] == "UNKNOWN"
     assert payload["checks"][0]["status"] == "UNKNOWN"
     assert payload["checks"][0]["ok"] is None
 
@@ -2521,3 +2521,11 @@ def test_capability_native_binary_inventory_includes_muse(monkeypatch, tmp_path)
     checks = MODULE.capability_checks(tmp_path, tmp_path / "absent-evidence.json")
     assert clients == ["claude", "codex", "muse"]
     assert any(item.name == "capability.muse-cli.repository" and item.status == "UNKNOWN" for item in checks)
+
+
+@pytest.mark.parametrize("declaration", ["Schema: v60", "Schema: v6oops", "Schema: v6\nSchema: v6"])
+def test_team_schema_rejects_prefix_or_duplicate_declaration(tmp_path, declaration):
+    board = tmp_path / "board.md"
+    board.write_text("# Coordination\n" + declaration + "\n## Active sessions\n" + COORDINATION_HEADER + "\n## Messages\n## Protocol\n")
+    checks = MODULE.coordination_checks(board, local=True)
+    assert not next(c for c in checks if c.name == "coordination.active-table-schema").ok

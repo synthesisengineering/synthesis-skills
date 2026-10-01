@@ -14,7 +14,6 @@ import os
 import shutil
 import subprocess
 import sys
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -100,7 +99,7 @@ def test_public_source_identity_accepts_only_git_or_the_verified_active_release(
     tmp_path: Path, monkeypatch
 ) -> None:
     checkout = release_repo(tmp_path)
-    (checkout / "skills" / "synthesis-onboarding" / "references").mkdir(parents=True)
+    (checkout / "skills" / "synthesis-onboarding" / "references").mkdir(parents=True, exist_ok=True)
     (checkout / "skills" / "synthesis-onboarding" / "references" / "kernel.example.md").write_text(
         "Public baseline.\n", encoding="utf-8"
     )
@@ -138,7 +137,7 @@ def test_instruction_pair_materializes_from_a_verified_release_root(
     tmp_path: Path, monkeypatch
 ) -> None:
     checkout = release_repo(tmp_path)
-    (checkout / "skills" / "synthesis-onboarding" / "references").mkdir(parents=True)
+    (checkout / "skills" / "synthesis-onboarding" / "references").mkdir(parents=True, exist_ok=True)
     (checkout / "skills" / "synthesis-onboarding" / "references" / "kernel.example.md").write_text(
         "Public baseline.\n", encoding="utf-8"
     )

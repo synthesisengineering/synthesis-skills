@@ -59,11 +59,15 @@ tier_0_always:
     - 'glpat-[a-zA-Z0-9_-]{20}'            # GitLab personal access token
     - 'xoxb-[0-9]+-[a-zA-Z0-9]+'           # Slack bot token
     - 'xoxp-[0-9]+-[a-zA-Z0-9]+'           # Slack user token
+  # Exact bare literals in this group support bounded detection-rule syntax.
+  # Custom EREs (including expressions in this group) remain unconditional.
   private_key_markers:
     - 'BEGIN RSA PRIVATE KEY'
     - 'BEGIN OPENSSH PRIVATE KEY'
     - 'BEGIN EC PRIVATE KEY'
     - 'BEGIN PGP PRIVATE KEY'
+    - 'BEGIN PRIVATE KEY'
+    - 'BEGIN ENCRYPTED PRIVATE KEY'
 
 # ─── Tier 1 — exposure-sensitive. Skipped in `personal` repos. ───────────
 # These patterns are LEGITIMATE in repos only you read (personal notes, private

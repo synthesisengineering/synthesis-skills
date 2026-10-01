@@ -32,6 +32,7 @@ import subprocess
 from pathlib import Path
 
 ENV_OVERRIDES = {
+    "hermes": "SYNTHESIS_HERMES_BIN",
     "claude": "SYNTHESIS_CLAUDE_BIN",
     "codex": "SYNTHESIS_CODEX_BIN",
     "muse": "SYNTHESIS_MUSE_BIN",

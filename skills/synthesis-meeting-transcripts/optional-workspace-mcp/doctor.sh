@@ -188,6 +188,9 @@ if command -v curl >/dev/null 2>&1 && [ "$LISTENING" = "1" ]; then
   fi
 fi
 
+# This doctor establishes supervisor/service liveness, never account identity.
+echo "RECORDER: UNKNOWN; use the verified Python acquisition --mode health route for declared account checks."
+
 # -------------------------------------------------------------------- verdict
 say ""
 if [ "$UNKNOWNS" -gt 0 ] && [ "$DEFECTS" -eq 0 ]; then

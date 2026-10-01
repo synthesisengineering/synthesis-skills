@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCRIPT_VERSION = "0.12.0"
+SCRIPT_VERSION = "0.13.0"
 
 SLACK_PERMALINK_RE = re.compile(
     r"https://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Z0-9]+/p(\d{16})(?!\d)"

@@ -1887,13 +1887,809 @@ def test_native_identity_contract_muse_supplied_path_never_falls_back(native_ide
         duplicate.parent.mkdir(parents=True)
         duplicate.write_bytes(path.read_bytes())
     with pytest.raises(state.ProjectStateError):
-        state.observer_native_identity({"session_id": session, "transcript_path": supplied})
+        state.observer_native_identity(
+            {"session_id": session, "transcript_path": supplied}
+        )
 
 
-def test_native_identity_contract_ambiguous_client_roots_refuse(native_identity_contract, monkeypatch):
+def test_native_identity_contract_ambiguous_client_roots_refuse(
+    native_identity_contract, monkeypatch
+):
     session, roots, paths = native_identity_contract
     path = paths["claude"]
-    path.write_text(json.dumps({"sessionId": session, "type": "session_meta", "payload": {"id": session}}) + "\n")
+    path.write_text(
+        json.dumps(
+            {"sessionId": session, "type": "session_meta", "payload": {"id": session}}
+        )
+        + "\n"
+    )
     monkeypatch.setenv("CODEX_HOME", str(roots["claude"]))
     with pytest.raises(state.ProjectStateError, match="unambiguously"):
-        state.observer_native_identity({"session_id": session, "transcript_path": str(path)})
+        state.observer_native_identity(
+            {"session_id": session, "transcript_path": str(path)}
+        )
+
+
+# Dirty inventory records filesystem entries; it never grants target-read authority.
+@pytest.mark.parametrize(
+    "kind", ["self-loop", "two-loop", "dangling", "external", "fifo"]
+)
+def test_dirty_inventory_records_retained_leaf_without_target_read(
+    tmp_path, monkeypatch, kind
+):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "retained"
+    target = tmp_path / "outside-private"
+    target.write_text("must not be read")
+    if kind == "fifo":
+        leaf.write_text("tracked regular")
+        run("git", "add", ".", cwd=repo)
+        run("git", "commit", "-m", "Fixture leaf", cwd=repo)
+        leaf.unlink()
+        os.mkfifo(leaf)
+    else:
+        leaf.symlink_to(
+            {
+                "self-loop": "retained",
+                "two-loop": "second",
+                "dangling": "absent",
+                "external": str(target),
+            }[kind]
+        )
+        if kind == "two-loop":
+            (project / "second").symlink_to("retained")
+    original = Path.read_bytes
+
+    def guarded_read(path):
+        assert path != target, "dirty inventory followed external evidence"
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    row = next(r for r in rows if r["path"] == str(leaf))
+    assert row["kind"] == ("fifo" if kind == "fifo" else "symlink")
+    assert row["sha256"] != "deleted"
+    report = state.resolve_project("alpha", repo / "projects/index.yaml", fetch=False)
+    assert report.status == "CONFLICT"
+    assert any("exact attributed manifest" in i for i in report.issues)
+    assert any(r["path"] == str(leaf) for c in report.candidates for r in c.dirty_files)
+    assert target.read_text() == "must not be read"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        'quote"x.md',
+        "new\nline.md",
+        "carriage\rreturn.md",
+        "literal -> arrow.md",
+        "unicode-é.md",
+        "back\\slash.md",
+    ],
+)
+def test_dirty_inventory_git_nul_preserves_exact_name_and_digest(tmp_path, name):
+    repo, project = init_repo(tmp_path)
+    leaf = project / name
+    leaf.write_bytes(b"actual content")
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    assert [(r["path"], r["sha256"]) for r in rows] == [
+        (str(leaf), hashlib.sha256(b"actual content").hexdigest())
+    ]
+
+
+@pytest.mark.parametrize("rename_name", ["new\nname.md", "new -> name.md"])
+def test_dirty_inventory_rename_retains_both_affected_paths(tmp_path, rename_name):
+    repo, project = init_repo(tmp_path)
+    old = project / "old\nname.md"
+    old.write_text("identity")
+    run("git", "add", ".", cwd=repo)
+    run("git", "commit", "-m", "Fixture rename input", cwd=repo)
+    new = project / rename_name
+    run("git", "mv", str(old), str(new), cwd=repo)
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    by_path = {r["path"]: r for r in rows}
+    assert set(by_path) == {str(old), str(new)}
+    assert by_path[str(old)]["sha256"] == "deleted"
+    assert by_path[str(new)]["sha256"] == hashlib.sha256(b"identity").hexdigest()
+
+
+def test_dirty_inventory_manifest_attributes_leaf_identity_without_dereference(
+    tmp_path,
+):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "retained"
+    leaf.symlink_to("retained")
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    root = tmp_path / "state"
+    pending = root / "pending"
+    pending.mkdir(parents=True)
+    (pending / "own.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "own-fixture",
+                "paths": [str(leaf)],
+                "path_hashes": {r["path"]: r["sha256"] for r in rows},
+            }
+        )
+    )
+    report = state.resolve_project(
+        "alpha", repo / "projects/index.yaml", repo_guard_root=root, fetch=False
+    )
+    assert report.status == "LOCAL_RECOVERABLE"
+    assert report.selected_path == str(project)
+    assert leaf.is_symlink() and os.readlink(leaf) == "retained"
+
+
+@pytest.mark.parametrize("name", ["CONTEXT.md", "CURRENT_STATE.json"])
+def test_dirty_inventory_retains_control_file_refusal(tmp_path, name):
+    repo, project = init_repo(tmp_path)
+    leaf = project / name
+    if leaf.exists():
+        leaf.unlink()
+    leaf.symlink_to(tmp_path / "not-selected")
+    report = state.resolve_project("alpha", repo / "projects/index.yaml", fetch=False)
+    assert report.status == "UNKNOWN" and report.selected_path is None
+    assert leaf.is_symlink()
+
+
+def test_dirty_inventory_refuses_raced_ancestor_without_reading_target(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    folder = project / "evidence"
+    folder.mkdir()
+    (folder / "one").write_text("safe")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "one").write_text("private")
+    original = state._run
+    changed = []
+
+    def status_then_swap(*args, **kwargs):
+        out = original(*args, **kwargs)
+        if "status" in args and not changed:
+            folder.rename(project / "retained-folder")
+            folder.symlink_to(foreign, target_is_directory=True)
+            changed.append(True)
+        return out
+
+    monkeypatch.setattr(state, "_run", status_then_swap)
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_project_files(repo, "projects/alpha")
+    assert (foreign / "one").read_text() == "private"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"?? ../escape\0",
+        b"?? /outside\0",
+        b"?? projects/alpha/no-terminator",
+        b"R  projects/alpha/to\0",
+        b"XX projects/alpha/x\0",
+    ],
+)
+def test_dirty_inventory_rejects_malformed_porcelain(tmp_path, monkeypatch, raw):
+    repo, project = init_repo(tmp_path)
+
+    def malformed(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args, 0, raw if kwargs.get("raw_output") else raw.decode(), ""
+        )
+
+    monkeypatch.setattr(state, "_run", malformed)
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_inventory_deleted_parent_is_recorded(tmp_path):
+    repo, project = init_repo(tmp_path)
+    folder = project / "old"
+    folder.mkdir()
+    leaf = folder / "gone"
+    leaf.write_text("tracked")
+    run("git", "add", ".", cwd=repo)
+    run("git", "commit", "-m", "Fixture removal", cwd=repo)
+    leaf.unlink()
+    folder.rmdir()
+    row = state._dirty_project_files(repo, "projects/alpha")[0]
+    assert (
+        row["path"] == str(leaf)
+        and row["kind"] == "deleted"
+        and row["sha256"] == "deleted"
+    )
+
+
+def test_dirty_inventory_recreated_rename_source_is_not_lost(tmp_path):
+    repo, project = init_repo(tmp_path)
+    old = project / "old"
+    old.write_text("tracked")
+    run("git", "add", ".", cwd=repo)
+    run("git", "commit", "-m", "Fixture rename", cwd=repo)
+    new = project / "new"
+    run("git", "mv", str(old), str(new), cwd=repo)
+    old.write_text("new source content")
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    by_path = {r["path"]: r for r in rows}
+    assert len(rows) == 2 and set(by_path) == {str(old), str(new)}
+    assert (
+        by_path[str(old)]["sha256"] == hashlib.sha256(b"new source content").hexdigest()
+    )
+
+
+def test_dirty_inventory_undecodable_filename_is_not_rewritten(tmp_path, monkeypatch):
+    repo, project = init_repo(tmp_path)
+    leaf = project / os.fsdecode(b"raw-\xff-name")
+    try:
+        leaf.write_bytes(b"bytes")
+    except OSError as exc:
+        import errno
+
+        if exc.errno != errno.EILSEQ:
+            raise
+        # APFS forbids this filename. Exercise the lossless Git protocol seam
+        # without claiming an impossible physical-file acceptance on this host.
+        monkeypatch.setattr(
+            state,
+            "_run",
+            lambda *a, **k: subprocess.CompletedProcess(
+                a, 0, b"?? projects/alpha/raw-\xff-name\0", b""
+            ),
+        )
+
+        def snapshot(path, **_kwargs):
+            assert os.fsencode(path.name) == b"raw-\xff-name"
+            return {"kind": "file", "sha256": hashlib.sha256(b"bytes").hexdigest()}
+
+        monkeypatch.setattr(state, "_dirty_leaf_snapshot", snapshot)
+    row = state._dirty_project_files(repo, "projects/alpha")[0]
+    assert os.fsencode(Path(row["path"]).name) == b"raw-\xff-name"
+    assert row["sha256"] == hashlib.sha256(b"bytes").hexdigest()
+
+
+@pytest.mark.parametrize("replacement", ["symlink", "fifo"])
+def test_dirty_inventory_raced_regular_leaf_refuses_without_target_read(
+    tmp_path, monkeypatch, replacement
+):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "entry"
+    leaf.write_text("original")
+    foreign = tmp_path / "outside"
+    foreign.write_text("private")
+    original = state.os.open
+    changed = []
+
+    def opening(path, flags, *args, **kwargs):
+        if path == "entry" and not changed:
+            leaf.unlink()
+            if replacement == "symlink":
+                leaf.symlink_to(foreign)
+            else:
+                os.mkfifo(leaf)
+            changed.append(True)
+        assert path != foreign
+        return original(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(state.os, "open", opening)
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_project_files(repo, "projects/alpha")
+    assert changed and foreign.read_text() == "private"
+
+
+def test_dirty_inventory_symlink_fingerprint_changes_with_target_not_target_bytes(
+    tmp_path,
+):
+    repo, project = init_repo(tmp_path)
+    outside = tmp_path / "outside"
+    outside.write_text("first")
+    leaf = project / "link"
+    leaf.symlink_to(outside)
+    first = state._dirty_project_files(repo, "projects/alpha")[0]
+    outside.write_text("different bytes")
+    second = state._dirty_project_files(repo, "projects/alpha")[0]
+    assert first == second
+    leaf.unlink()
+    leaf.symlink_to("different-target")
+    third = state._dirty_project_files(repo, "projects/alpha")[0]
+    assert first["sha256"] != third["sha256"] and third["kind"] == "symlink"
+
+
+def test_dirty_inventory_registry_alias_still_refuses(tmp_path):
+    repo, project = init_repo(tmp_path)
+    index = repo / "projects/index.yaml"
+    saved = tmp_path / "foreign-index"
+    saved.write_bytes(index.read_bytes())
+    index.unlink()
+    index.symlink_to(saved)
+    report = state.resolve_project("alpha", index, fetch=False)
+    assert report.status == "UNKNOWN" and report.selected_path is None
+
+
+def test_dirty_inventory_known_fifo_never_opened(tmp_path, monkeypatch):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "pipe"
+    leaf.write_text("tracked")
+    run("git", "add", ".", cwd=repo)
+    run("git", "commit", "-m", "Fixture pipe", cwd=repo)
+    leaf.unlink()
+    os.mkfifo(leaf)
+    original = state.os.open
+
+    def opening(path, flags, *args, **kwargs):
+        assert path != "pipe" and path != leaf
+        return original(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(state.os, "open", opening)
+    assert state._dirty_project_files(repo, "projects/alpha")[0]["kind"] == "fifo"
+
+
+def test_dirty_inventory_preserves_state_size_refusal(tmp_path, monkeypatch):
+    repo, project = init_repo(tmp_path)
+    monkeypatch.setattr(state, "MAX_STATE_JSON_BYTES", 128)
+    (project / state.STATE_FILE).write_bytes(b" " * 129)
+    with pytest.raises(state.ProjectStateError, match="128-byte limit"):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_inventory_mode_changes_semantics_without_changing_content_hash(tmp_path):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "entry"
+    leaf.write_text("baseline")
+    leaf.chmod(0o644)
+    run("git", "add", ".", cwd=repo)
+    run("git", "commit", "-m", "Fixture mode", cwd=repo)
+    leaf.write_text("changed content")
+    first = state._dirty_project_files(repo, "projects/alpha")
+    leaf.chmod(0o755)
+    second = state._dirty_project_files(repo, "projects/alpha")
+    assert first != second
+    assert (
+        first[0]["sha256"]
+        == second[0]["sha256"]
+        == hashlib.sha256(b"changed content").hexdigest()
+    )
+    assert first[0]["mode"] == "0644" and second[0]["mode"] == "0755"
+
+
+def test_dirty_inventory_verified_workspace_alias_attributes_literal_leaf(tmp_path):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "retained"
+    leaf.symlink_to("retained")
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    alias = tmp_path / "workspace-alias"
+    alias.symlink_to(repo, target_is_directory=True)
+    alias_leaf = alias / "projects/alpha/retained"
+    guard = tmp_path / "guard"
+    pending = guard / "pending"
+    pending.mkdir(parents=True)
+    (pending / "own.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "fixture-owner",
+                "paths": [str(alias_leaf)],
+                "path_hashes": {str(alias_leaf): rows[0]["sha256"]},
+            }
+        )
+    )
+    report = state.resolve_project(
+        "alpha", repo / "projects/index.yaml", repo_guard_root=guard, fetch=False
+    )
+    assert report.status == "LOCAL_RECOVERABLE" and report.selected_path == str(project)
+    assert leaf.is_symlink() and os.readlink(leaf) == "retained"
+
+
+def _dirty_directory_fixture(tmp_path):
+    repo, project = init_repo(tmp_path)
+    nested = project / "retained-repository"
+    nested.mkdir()
+    run("git", "init", "--initial-branch=main", cwd=nested)
+    (nested / "ordinary").write_text("original")
+    return repo, project, nested
+
+
+def test_dirty_directory_real_git_nested_repository_is_semantic(tmp_path):
+    repo, project, nested = _dirty_directory_fixture(tmp_path)
+    raw = state._run(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--",
+        "projects/alpha",
+        raw_output=True,
+    ).stdout
+    assert b"?? projects/alpha/retained-repository/\0" in raw
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    first = next(r for r in rows if r["path"] == str(nested))
+    assert first["kind"] == "directory" and first["sha256"] != "deleted"
+    (nested / "ordinary").write_text("changed content")
+    second = next(
+        r
+        for r in state._dirty_project_files(repo, "projects/alpha")
+        if r["path"] == str(nested)
+    )
+    assert second["sha256"] != first["sha256"]
+    report = state.resolve_project("alpha", repo / "projects/index.yaml", fetch=False)
+    assert report.status == "CONFLICT" and report.selected_path is None
+    assert any("exact attributed manifest" in i for i in report.issues)
+
+
+@pytest.mark.parametrize(
+    "change", ["content", "mode", "name", "add", "remove", "link", "empty-directory"]
+)
+def test_dirty_directory_subtree_changes_are_bound(tmp_path, change):
+    repo, _, nested = _dirty_directory_fixture(tmp_path)
+    first = state._dirty_leaf_snapshot(nested)
+    leaf = nested / "ordinary"
+    if change == "content":
+        leaf.write_text("replacement")
+    elif change == "mode":
+        leaf.chmod(0o755)
+    elif change == "name":
+        leaf.rename(nested / 'name\nwith -> quote"')
+    elif change == "add":
+        (nested / "new").write_text("new")
+    elif change == "remove":
+        leaf.unlink()
+    elif change == "link":
+        (nested / "link").symlink_to("unresolved")
+    else:
+        (nested / "empty").mkdir()
+    assert state._dirty_leaf_snapshot(nested)["sha256"] != first["sha256"]
+
+
+def test_dirty_directory_ordinary_git_directory_notation_is_supported(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    folder = project / "ordinary-folder"
+    folder.mkdir()
+    (folder / "inside").write_text("value")
+    raw = state._run(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=normal",
+        "--",
+        "projects/alpha",
+        raw_output=True,
+    ).stdout
+    assert raw == b"?? projects/alpha/ordinary-folder/\0"
+    original = state._run
+
+    def actual_directory_record(*args, **kwargs):
+        if "status" in args:
+            return subprocess.CompletedProcess(args, 0, raw, b"")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(state, "_run", actual_directory_record)
+    row = state._dirty_project_files(repo, "projects/alpha")[0]
+    assert row["path"] == str(folder) and row["kind"] == "directory"
+    assert row["sha256"] == state._dirty_leaf_snapshot(folder)["sha256"]
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        b" M projects/alpha/x/\0",
+        b"?? projects/alpha/x//\0",
+        b"?? projects/alpha/../x/\0",
+    ],
+)
+def test_dirty_directory_notation_is_not_blanket_path_relaxation(
+    tmp_path, monkeypatch, record
+):
+    repo, project = init_repo(tmp_path)
+    (project / "x").mkdir()
+    monkeypatch.setattr(
+        state, "_run", lambda *a, **k: subprocess.CompletedProcess(a, 0, record, b"")
+    )
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_directory_deep_earlier_child_is_rechecked(tmp_path, monkeypatch):
+    folder = tmp_path / "tree"
+    folder.mkdir()
+    first = folder / "a-first"
+    first.mkdir()
+    deep = first / "content"
+    deep.write_text("original")
+    (folder / "z-later").write_text("later")
+    original = state._dirty_leaf_snapshot
+    changed = []
+
+    def after_later(path, **kwargs):
+        row = original(path, **kwargs)
+        if path.name == "z-later" and not changed:
+            deep.write_text("changed after its directory was captured")
+            changed.append(True)
+        return row
+
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", after_later)
+    with pytest.raises(state.ProjectStateError, match="changed"):
+        state._dirty_leaf_snapshot(folder)
+    assert changed
+
+
+@pytest.mark.parametrize("kind", ["self-loop", "external", "fifo", "socket"])
+def test_dirty_directory_special_children_never_follow_or_open(
+    tmp_path, monkeypatch, kind
+):
+    import socket
+
+    folder = tmp_path / "tree"
+    folder.mkdir()
+    leaf = folder / "special"
+    outside = tmp_path / "outside"
+    outside.write_text("private")
+    server = None
+    if kind == "self-loop":
+        leaf.symlink_to("special")
+    elif kind == "external":
+        leaf.symlink_to(outside)
+    elif kind == "fifo":
+        os.mkfifo(leaf)
+    else:
+        server = socket.socket(socket.AF_UNIX)
+        previous = os.open(".", os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.chdir(folder)
+            server.bind("special")
+        finally:
+            os.fchdir(previous)
+            os.close(previous)
+    opening = state.os.open
+
+    def guarded(path, flags, *args, **kwargs):
+        assert path != "special" and path != outside
+        return opening(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(state.os, "open", guarded)
+    try:
+        before = state._dirty_leaf_snapshot(folder)
+        outside.write_text("changed private bytes")
+        assert state._dirty_leaf_snapshot(folder) == before
+    finally:
+        if server is not None:
+            server.close()
+
+
+@pytest.mark.parametrize("limit", ["entries", "bytes", "depth", "time"])
+def test_dirty_directory_finite_capacity_refuses(tmp_path, monkeypatch, limit):
+    folder = tmp_path / "tree"
+    folder.mkdir()
+    (folder / "one").write_bytes(b"12345")
+    (folder / "two").write_bytes(b"45678")
+    nested = folder / "nested"
+    nested.mkdir()
+    (nested / "deep").write_text("depth")
+    if limit == "entries":
+        monkeypatch.setattr(state, "MAX_DIRTY_TREE_ENTRIES", 2)
+    elif limit == "bytes":
+        monkeypatch.setattr(state, "MAX_DIRTY_TREE_BYTES", 4)
+    elif limit == "depth":
+        monkeypatch.setattr(state, "MAX_DIRTY_TREE_DEPTH", 1)
+    else:
+        clock = iter(range(1000))
+        monkeypatch.setattr(state.time, "monotonic", lambda: next(clock))
+        monkeypatch.setattr(state, "MAX_DIRTY_TREE_SECONDS", 0.5)
+    with pytest.raises(state.ProjectStateError, match="finite traversal limit"):
+        state._dirty_leaf_snapshot(folder)
+
+
+def test_dirty_directory_entry_enumeration_stops_at_bound(tmp_path, monkeypatch):
+    folder = tmp_path / "tree"
+    folder.mkdir()
+    for i in range(8):
+        (folder / str(i)).write_text("v")
+    monkeypatch.setattr(state, "MAX_DIRTY_TREE_ENTRIES", 3)
+    original = state.os.scandir
+    seen = []
+
+    class Entries:
+        def __init__(self, fd):
+            self.inner = original(fd)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.inner.close()
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            entry = next(self.inner)
+            seen.append(entry.name)
+            return entry
+
+    monkeypatch.setattr(state.os, "scandir", Entries)
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_leaf_snapshot(folder)
+    assert len(seen) == 3  # Root consumes one, then first excessive child refuses.
+
+
+def test_dirty_directory_roots_share_one_capacity(tmp_path, monkeypatch):
+    repo, project = init_repo(tmp_path)
+    for name in ("first", "second"):
+        folder = project / name
+        folder.mkdir()
+        (folder / "leaf").write_text("value")
+    original = state._run
+
+    def directory_records(*a, **k):
+        if "status" in a:
+            return subprocess.CompletedProcess(
+                a, 0, b"?? projects/alpha/first/\0?? projects/alpha/second/\0", b""
+            )
+        return original(*a, **k)
+
+    monkeypatch.setattr(state, "_run", directory_records)
+    monkeypatch.setattr(state, "MAX_DIRTY_TREE_ENTRIES", 3)
+    with pytest.raises(state.ProjectStateError, match="finite traversal limit"):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_directory_descendant_only_claim_does_not_authorize_aggregate(tmp_path):
+    repo, _, nested = _dirty_directory_fixture(tmp_path)
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    only = nested / "ordinary"
+    manifest = {
+        "_kind": "manifest",
+        "_path": "synthetic",
+        "session_id": "synthetic",
+        "paths": [str(only)],
+        "path_hashes": {str(only): hashlib.sha256(only.read_bytes()).hexdigest()},
+    }
+    assert state._manifest_for_dirty(rows, [manifest]) is None
+    manifest["paths"] = [str(nested)]
+    manifest["path_hashes"] = {row["path"]: row["sha256"] for row in rows}
+    assert state._manifest_for_dirty(rows, [manifest]) == "synthetic"
+
+
+def test_dirty_directory_clock_does_not_charge_unrelated_regular_inventory(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    for name in ("a-dir", "z-dir"):
+        folder = project / name
+        folder.mkdir()
+        (folder / "leaf").write_text("value")
+    (project / "ordinary").write_text("ordinary file")
+    now = [0.0]
+    monkeypatch.setattr(state.time, "monotonic", lambda: now[0])
+    original = state._run
+
+    def records(*a, **k):
+        if "status" in a:
+            return subprocess.CompletedProcess(
+                a,
+                0,
+                b"?? projects/alpha/a-dir/\0?? projects/alpha/ordinary\0?? projects/alpha/z-dir/\0",
+                b"",
+            )
+        return original(*a, **k)
+
+    monkeypatch.setattr(state, "_run", records)
+    snapshot = state._dirty_leaf_snapshot
+
+    def regular_delay(path, **kwargs):
+        if path.name == "ordinary":
+            now[0] += state.MAX_DIRTY_TREE_SECONDS + 1
+        return snapshot(path, **kwargs)
+
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", regular_delay)
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    assert len(rows) == 3 and [r["kind"] for r in rows].count("directory") == 2
+
+
+def test_dirty_directory_retarget_during_enumeration_refuses(tmp_path, monkeypatch):
+    folder = tmp_path / "tree"
+    folder.mkdir()
+    (folder / "entry").write_text("original")
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    (foreign / "entry").write_text("private")
+    original = state.os.scandir
+    changed = []
+
+    def swap(fd):
+        if not changed:
+            folder.rename(tmp_path / "retained-tree")
+            folder.symlink_to(foreign)
+            changed.append(True)
+        return original(fd)
+
+    monkeypatch.setattr(state.os, "scandir", swap)
+    with pytest.raises(state.ProjectStateError):
+        state._dirty_leaf_snapshot(folder)
+    assert changed and (foreign / "entry").read_text() == "private"
+
+
+def test_dirty_directory_forged_regular_record_refuses_before_open(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    leaf = project / "regular"
+    leaf.write_text("data")
+    monkeypatch.setattr(
+        state,
+        "_run",
+        lambda *a, **k: subprocess.CompletedProcess(
+            a, 0, b"?? projects/alpha/regular/\0", b""
+        ),
+    )
+    original = state.os.open
+
+    def opening(path, flags, *a, **k):
+        assert path != "regular"
+        return original(path, flags, *a, **k)
+
+    monkeypatch.setattr(state.os, "open", opening)
+    with pytest.raises(state.ProjectStateError, match="changed type"):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_directory_earlier_tree_is_rechecked_after_other_records(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    folder = project / "tree"
+    folder.mkdir()
+    deep = folder / "earlier"
+    deep.write_text("before")
+    (project / "regular").write_text("regular")
+    original_run = state._run
+
+    def records(*args, **kwargs):
+        if "status" in args:
+            return subprocess.CompletedProcess(
+                args, 0, b"?? projects/alpha/tree/\0?? projects/alpha/regular\0", b""
+            )
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(state, "_run", records)
+    original = state._dirty_leaf_snapshot
+
+    def later(path, **kwargs):
+        row = original(path, **kwargs)
+        if path.name == "regular":
+            deep.write_text("after earlier tree closed")
+        return row
+
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", later)
+    with pytest.raises(state.ProjectStateError, match="changed after inventory"):
+        state._dirty_project_files(repo, "projects/alpha")
+
+
+def test_dirty_directory_multiple_git_roots_have_linear_final_rechecks(
+    tmp_path, monkeypatch
+):
+    repo, project = init_repo(tmp_path)
+    for number in range(6):
+        nested = project / f"retained-{number}"
+        nested.mkdir()
+        run("git", "init", "--initial-branch=main", cwd=nested)
+        (nested / "payload").write_text(f"value-{number}")
+    original = state._dirty_entry_identity
+    calls = {}
+
+    def counted(path):
+        calls[str(path)] = calls.get(str(path), 0) + 1
+        return original(path)
+
+    monkeypatch.setattr(state, "_dirty_entry_identity", counted)
+    rows = state._dirty_project_files(repo, "projects/alpha")
+    assert len(rows) == 6 and all(row["kind"] == "directory" for row in rows)
+    assert calls and max(calls.values()) <= 2
+    # Every root and payload still receives final identity verification.
+    for number in range(6):
+        nested = project / f"retained-{number}"
+        assert calls[str(nested)] == 1
+        assert calls[str(nested / "payload")] == 2

@@ -118,8 +118,12 @@ def acquire_channel(
                 metadata = response.get("response_metadata")
                 if search and isinstance(response.get("messages"), dict):
                     metadata = response["messages"].get("response_metadata", metadata)
-                explicit_terminal = (response.get("has_more") is False or response.get("complete") is True
-                                     or isinstance(metadata, dict) and "next_cursor" in metadata)
+                explicit_terminal = (
+                    response.get("has_more") is False
+                    or response.get("complete") is True
+                    or isinstance(metadata, dict)
+                    and "next_cursor" in metadata
+                )
                 if not explicit_terminal:
                     raise ValueError("pagination completion is not explicitly observed")
                 if response.get("has_more") is True:
@@ -211,10 +215,39 @@ def acquire_channel(
     }
 
 
-def extract_threads(transcript_path: str) -> list[dict]:
+def extract_threads(
+    transcript_path: str | None, *, content=None, strict=False
+) -> list[dict]:
     """Extract parent thread TSes and metadata from a transcript file."""
-    content = Path(transcript_path).read_text()
+    if content is None:
+        content = Path(transcript_path).read_text()
     lines = content.split("\n")
+    # Legacy replay accepts structural headers, never quoted or fenced bodies.
+    # New owned archives are decoded by their owner before reaching this parser.
+    structural = []
+    fence = None
+    for line in lines:
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence is not None:
+            if (
+                marker
+                and marker[1][0] == fence[0]
+                and len(marker[1]) >= len(fence)
+                and not marker[2].strip()
+            ):
+                fence = None
+            structural.append("")
+            continue
+        if marker:
+            fence = marker[1]
+            structural.append("")
+        elif line.lstrip().startswith(">") or line.startswith(("    ", "\t")):
+            structural.append("")
+        else:
+            structural.append(line)
+    if strict and fence is not None:
+        raise ValueError("legacy archive has an unclosed code fence")
+    lines = structural
 
     threads = []
     seen_ts = set()
@@ -241,6 +274,12 @@ def extract_threads(transcript_path: str) -> list[dict]:
     for line in lines:
         m = channel_header_with_id.match(line.strip())
         if m:
+            if (
+                strict
+                and m.group(1) in channel_id_map
+                and channel_id_map[m.group(1)] != m.group(2)
+            ):
+                raise ValueError("legacy archive channel name has ambiguous identity")
             channel_id_map[m.group(1)] = m.group(2)
 
     for i, line in enumerate(lines):
@@ -265,9 +304,15 @@ def extract_threads(transcript_path: str) -> list[dict]:
             ts_matches.append(f"{prefix}.{suffix}")
         if not ts_matches:
             continue
+        if strict and not re.match(r"^####\s+", line):
+            if line.lstrip().startswith(("- ", "> ")):
+                continue
+            raise ValueError("legacy timestamp is not an explicit parent header")
+        if strict and len(set(ts_matches)) != 1:
+            raise ValueError("legacy parent header has ambiguous timestamp")
 
         for ts in ts_matches:
-            if ts in seen_ts:
+            if (current_channel_id, ts) in seen_ts:
                 continue
 
             # Determine if this is a parent message or a reply
@@ -294,7 +339,7 @@ def extract_threads(transcript_path: str) -> list[dict]:
             # Get context
             context = stripped[:100]
 
-            seen_ts.add(ts)
+            seen_ts.add((current_channel_id, ts))
             threads.append(
                 {
                     "ts": ts,
@@ -305,6 +350,8 @@ def extract_threads(transcript_path: str) -> list[dict]:
                 }
             )
 
+    if strict and not threads:
+        raise ValueError("legacy archive has no explicit parent identity")
     return threads
 
 

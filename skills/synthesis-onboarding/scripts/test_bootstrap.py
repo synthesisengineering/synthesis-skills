@@ -27,68 +27,126 @@ def isolated_bootstrap_home(tmp_path, monkeypatch):
     """A release fixture must never consume the invoking machine's selection."""
     for name in tuple(os.environ):
         if name.startswith(("SYNTHESIS_", "XDG_", "GIT_")) or name in {
-            "CODEX_HOME", "CLAUDE_CONFIG_DIR", "PYTHONPATH",
+            "CODEX_HOME",
+            "CLAUDE_CONFIG_DIR",
+            "PYTHONPATH",
         }:
             monkeypatch.delenv(name, raising=False)
     home = tmp_path / "home"
     home.mkdir()
     for name, value in {
-        "HOME": home, "SYNTHESIS_HOME": home,
-        "XDG_CONFIG_HOME": home / ".config", "XDG_STATE_HOME": home / ".local/state",
-        "XDG_CACHE_HOME": home / ".cache", "XDG_DATA_HOME": home / ".local/share",
-        "CODEX_HOME": home / ".codex", "CLAUDE_CONFIG_DIR": home / ".claude",
+        "HOME": home,
+        "SYNTHESIS_HOME": home,
+        "XDG_CONFIG_HOME": home / ".config",
+        "XDG_STATE_HOME": home / ".local/state",
+        "XDG_CACHE_HOME": home / ".cache",
+        "XDG_DATA_HOME": home / ".local/share",
+        "CODEX_HOME": home / ".codex",
+        "CLAUDE_CONFIG_DIR": home / ".claude",
         "SYNTHESIS_BOOTSTRAP_PYTHON": sys.executable,
-        "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
     }.items():
         monkeypatch.setenv(name, str(value))
 
 
-def test_verified_cli_can_use_org_ssh_without_enabling_local_transports(tmp_path, monkeypatch):
+def test_verified_cli_can_use_org_ssh_without_enabling_local_transports(
+    tmp_path, monkeypatch
+):
     checkout = release_repo(tmp_path)
     calls = []
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "https")
     monkeypatch.setenv("GIT_PROTOCOL_FROM_USER", "0")
-    monkeypatch.setattr(bootstrap.subprocess, "call", lambda command, env=None: calls.append((command, env)) or 0)
-    assert bootstrap.main([
-        "--checkout", str(checkout), "--releases-dir", str(tmp_path / "releases"),
-        "--launcher", str(tmp_path / "bin/synthesis"),
-        "--active-descriptor", str(tmp_path / "state/active.json"),
-        "--channel", "stable", "--ref", "stable",
-        "--source-url", "https://example.test/synthesis-skills.git", "--", "update",
-    ]) == 0
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "call",
+        lambda command, env=None: calls.append((command, env)) or 0,
+    )
+    assert (
+        bootstrap.main(
+            [
+                "--checkout",
+                str(checkout),
+                "--releases-dir",
+                str(tmp_path / "releases"),
+                "--launcher",
+                str(tmp_path / "bin/synthesis"),
+                "--active-descriptor",
+                str(tmp_path / "state/active.json"),
+                "--channel",
+                "stable",
+                "--ref",
+                "stable",
+                "--source-url",
+                "https://example.test/synthesis-skills.git",
+                "--",
+                "update",
+            ]
+        )
+        == 0
+    )
     environment = calls[0][1]
     assert environment["GIT_ALLOW_PROTOCOL"] == "https:ssh"
     assert environment["GIT_PROTOCOL_FROM_USER"] == "0"
     assert os.environ["GIT_ALLOW_PROTOCOL"] == "https"
     for forbidden in (checkout.as_uri(), "ext::git --version"):
-        blocked = subprocess.run(["git", "ls-remote", forbidden], env=environment,
-            capture_output=True, text=True)
+        blocked = subprocess.run(
+            ["git", "ls-remote", forbidden],
+            env=environment,
+            capture_output=True,
+            text=True,
+        )
         assert blocked.returncode != 0 and "not allowed" in blocked.stderr
 
 
 @pytest.mark.parametrize("matches", [True, False])
-def test_release_bound_repair_checks_digest_before_launcher_activation(tmp_path, monkeypatch, matches):
+def test_release_bound_repair_checks_digest_before_launcher_activation(
+    tmp_path, monkeypatch, matches
+):
     checkout = release_repo(tmp_path)
     cli = checkout / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
-    cli.write_text(cli.read_text().replace("commands.add_parser(name)",
-        "commands.add_parser(name).add_argument('--expected-release-digest')"))
+    cli.write_text(
+        cli.read_text().replace(
+            "commands.add_parser(name)",
+            "commands.add_parser(name).add_argument('--expected-release-digest')",
+        )
+    )
     git(checkout, "add", ".")
     git(checkout, "commit", "-q", "-m", "Update fixture")
     git(checkout, "branch", "-f", "stable", "HEAD")
     git(checkout, "tag", "-f", "v9.8.7")
-    descriptor = system_contract.release_descriptor_from_checkout(checkout,
-        "stable", "stable", "https://example.test/synthesis-skills.git")
+    descriptor = system_contract.release_descriptor_from_checkout(
+        checkout, "stable", "stable", "https://example.test/synthesis-skills.git"
+    )
     launcher, active = tmp_path / "bin/synthesis", tmp_path / "state/active.json"
     calls = []
-    monkeypatch.setattr(bootstrap.subprocess, "call", lambda *a, **k: calls.append((a, k)) or 0)
+    monkeypatch.setattr(
+        bootstrap.subprocess, "call", lambda *a, **k: calls.append((a, k)) or 0
+    )
     expected = descriptor["content_digest"] if matches else "a" * 64
-    code = bootstrap.main([
-        "--checkout", str(checkout), "--releases-dir", str(tmp_path / "releases"),
-        "--launcher", str(launcher), "--active-descriptor", str(active),
-        "--channel", "stable", "--ref", "stable",
-        "--source-url", "https://example.test/synthesis-skills.git", "--", "repair",
-        "--expected-release-digest", expected])
+    code = bootstrap.main(
+        [
+            "--checkout",
+            str(checkout),
+            "--releases-dir",
+            str(tmp_path / "releases"),
+            "--launcher",
+            str(launcher),
+            "--active-descriptor",
+            str(active),
+            "--channel",
+            "stable",
+            "--ref",
+            "stable",
+            "--source-url",
+            "https://example.test/synthesis-skills.git",
+            "--",
+            "repair",
+            "--expected-release-digest",
+            expected,
+        ]
+    )
     assert code == (0 if matches else 2)
     assert bool(calls) == matches
     assert launcher.exists() == matches
@@ -178,19 +236,34 @@ def test_floating_bootstrap_keeps_a_verified_newer_active_release(
     active = tmp_path / "state" / "active.json"
     system_contract.activate_cli(generation, descriptor, launcher, active)
     calls = []
-    monkeypatch.setattr(bootstrap.subprocess, "call", lambda command, env=None: calls.append((command, env)) or 0)
-    assert bootstrap.main(
-        [
-            "--checkout", str(older),
-            "--releases-dir", str(releases),
-            "--launcher", str(launcher),
-            "--active-descriptor", str(active),
-            "--channel", "stable",
-            "--ref", "stable",
-            "--source-url", "https://example.test/synthesis-skills.git",
-            "--", "update",
-        ]
-    ) == 0
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "call",
+        lambda command, env=None: calls.append((command, env)) or 0,
+    )
+    assert (
+        bootstrap.main(
+            [
+                "--checkout",
+                str(older),
+                "--releases-dir",
+                str(releases),
+                "--launcher",
+                str(launcher),
+                "--active-descriptor",
+                str(active),
+                "--channel",
+                "stable",
+                "--ref",
+                "stable",
+                "--source-url",
+                "https://example.test/synthesis-skills.git",
+                "--",
+                "update",
+            ]
+        )
+        == 0
+    )
     assert json.loads(active.read_text(encoding="utf-8"))["version"] == "9.8.7"
     assert str(generation) in calls[0][0][2]
 
@@ -213,18 +286,29 @@ def test_floating_bootstrap_honors_an_explicit_channel_change(
     active = tmp_path / "state" / "active.json"
     system_contract.activate_cli(stable_generation, stable_descriptor, launcher, active)
     monkeypatch.setattr(bootstrap.subprocess, "call", lambda _command, env=None: 0)
-    assert bootstrap.main(
-        [
-            "--checkout", str(edge),
-            "--releases-dir", str(releases),
-            "--launcher", str(launcher),
-            "--active-descriptor", str(active),
-            "--channel", "edge",
-            "--ref", "main",
-            "--source-url", "https://example.test/synthesis-skills.git",
-            "--", "setup",
-        ]
-    ) == 0
+    assert (
+        bootstrap.main(
+            [
+                "--checkout",
+                str(edge),
+                "--releases-dir",
+                str(releases),
+                "--launcher",
+                str(launcher),
+                "--active-descriptor",
+                str(active),
+                "--channel",
+                "edge",
+                "--ref",
+                "main",
+                "--source-url",
+                "https://example.test/synthesis-skills.git",
+                "--",
+                "setup",
+            ]
+        )
+        == 0
+    )
     selected = json.loads(active.read_text(encoding="utf-8"))
     assert selected["version"] == "9.8.6"
     assert selected["channel"] == "edge"
@@ -241,6 +325,7 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     # Use the real runtime dependency closure, including modular update support.
     # Only the terminal CLI is a recorder; parser-to-projection execution is real.
     import modular
+
     for relative in modular.runtime_files(REPO_ROOT):
         if relative in {".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
             continue  # Keep this fixture's deliberately separate release identity.
@@ -248,7 +333,10 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(REPO_ROOT / relative, target)
         target.chmod((REPO_ROOT / relative).stat().st_mode & 0o777)
-    shutil.copytree(REPO_ROOT / "skills/synthesis-writing-craft", checkout / "skills/synthesis-writing-craft")
+    shutil.copytree(
+        REPO_ROOT / "skills/synthesis-writing-craft",
+        checkout / "skills/synthesis-writing-craft",
+    )
     marker = tmp_path / "cli-argv.json"
     (fixture_scripts / "synthesis_cli.py").write_text(
         "import argparse, json, os, sys\n"
@@ -285,10 +373,16 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     if saved_profile:
         state = system_contract.SystemState(tmp_path / "home")
         state.config_dir.mkdir(parents=True)
-        state.desired_path.write_text(json.dumps(system_contract.default_desired_state(
-            profile=saved_profile, channel="stable", clients=["codex"],
-            modular={"roots": ["synthesis-writing-craft"], "stage_core": False},
-        )))
+        state.desired_path.write_text(
+            json.dumps(
+                system_contract.default_desired_state(
+                    profile=saved_profile,
+                    channel="stable",
+                    clients=["codex"],
+                    modular={"roots": ["synthesis-writing-craft"], "stage_core": False},
+                )
+            )
+        )
     completed = subprocess.run(
         ["sh", str(REPO_ROOT / "onboard.sh"), "update"],
         env=environment,
@@ -303,7 +397,10 @@ def test_onboard_handoff_consumes_resolution_policy_before_update_cli(
     if saved_profile:
         assert active["projection"]["selection"]["roots"] == ["synthesis-writing-craft"]
         assert active["projection"]["selection"]["stage_core"] is False
-        assert (Path(active["release_root"]) / "skills/synthesis-onboarding/scripts/modular.py").is_file()
+        assert (
+            Path(active["release_root"])
+            / "skills/synthesis-onboarding/scripts/modular.py"
+        ).is_file()
     else:
         assert "projection" not in active
 
@@ -332,7 +429,9 @@ def test_existing_corrupt_generation_is_rejected(tmp_path: Path) -> None:
     assert generation == releases / descriptor["content_digest"]
 
 
-def test_ignored_build_artifacts_never_enter_materialized_release(tmp_path: Path) -> None:
+def test_ignored_build_artifacts_never_enter_materialized_release(
+    tmp_path: Path,
+) -> None:
     checkout = release_repo(tmp_path)
     ignored = checkout / "skills" / "synthesis-onboarding" / "scripts" / "__pycache__"
     ignored.mkdir()
@@ -350,4 +449,25 @@ def test_ignored_build_artifacts_never_enter_materialized_release(tmp_path: Path
         ref="stable",
         source_url="https://example.test/synthesis-skills.git",
     )
-    assert not (generation / "skills" / "synthesis-onboarding" / "scripts" / "__pycache__").exists()
+    assert not (
+        generation / "skills" / "synthesis-onboarding" / "scripts" / "__pycache__"
+    ).exists()
+
+
+def test_parser_loader_compiles_source_instead_of_a_cached_rule(tmp_path):
+    import py_compile
+    import os
+
+    checkout = tmp_path / "parser-checkout"
+    cli = checkout / "skills/synthesis-onboarding/scripts/synthesis_cli.py"
+    cli.parent.mkdir(parents=True)
+    source = "import argparse\ndef build_parser():\n    p=argparse.ArgumentParser()\n    p.add_argument('command')\n    p.add_argument('--value',default='source')\n    return p\n"
+    cli.write_text(source.replace("'source'", "'cached'"))
+    stamp = 1700000000000000000
+    os.utime(cli, ns=(stamp, stamp))
+    py_compile.compile(str(cli), doraise=True)
+    cli.write_text(source)
+    os.utime(cli, ns=(stamp, stamp))
+    result = bootstrap._validate_cli_arguments(checkout, ["onboard"])
+    assert result.value == "source"
+    assert cli.read_text() == source

@@ -64,9 +64,7 @@ from pathlib import Path
 import context_currency
 
 _PROJECT_STATE_SCRIPTS = (
-    Path(__file__).resolve().parents[2]
-    / "synthesis-project-management"
-    / "scripts"
+    Path(__file__).resolve().parents[2] / "synthesis-project-management" / "scripts"
 )
 if str(_PROJECT_STATE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_PROJECT_STATE_SCRIPTS))
@@ -74,9 +72,7 @@ import project_state  # noqa: E402
 import record_transaction  # noqa: E402
 
 _CONFORMANCE_SCRIPTS = (
-    Path(__file__).resolve().parents[2]
-    / "synthesis-agent-conformance"
-    / "scripts"
+    Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
 )
 if str(_CONFORMANCE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_CONFORMANCE_SCRIPTS))
@@ -105,6 +101,7 @@ REFERENCE_TOPIC_BUDGET = 300
 REFERENCE_EXPECTED_AFTER_SESSIONS = 2
 
 SEVERITY_ORDER = {"defect": 0, "warning": 1}
+
 
 # Every full run writes its report here (like the repo-guard detector), so
 # surfaces that must stay fast — SessionStart hooks, console pages — can read
@@ -153,6 +150,7 @@ class ProjectAudit:
     # to notice the missing pairing.
     skipped: list[tuple[str, str]] = field(default_factory=list)
     examined: list[str] = field(default_factory=list)
+    material_context: dict = field(default_factory=dict)
 
     def add(self, check: str, severity: str, message: str, remedy: str) -> None:
         self.findings.append(
@@ -564,8 +562,15 @@ LAST_SESSION_HEADER = re.compile(
     r"^\*\*Last session\:\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE
 )
 DATE_IN_TEXT = re.compile(r"(\d{4}-\d{2}-\d{2})")
-COMPLETED_WORDS = ("complete", "completed", "shipped", "closed", "done",
-                   "archived", "superseded")
+COMPLETED_WORDS = (
+    "complete",
+    "completed",
+    "shipped",
+    "closed",
+    "done",
+    "archived",
+    "superseded",
+)
 PAUSED_WORDS = ("paused", "on hold", "parked")
 
 # The canonical project-status vocabulary. Status answers one question -- does
@@ -599,6 +604,7 @@ def project_is_dormant(index_status: str, declared_complete) -> bool:
     if (index_status or "").strip().lower() in DORMANT_STATUSES:
         return True
     return bool(declared_complete)
+
 
 # Retired values, still readable so an unmigrated corpus is diagnosed rather
 # than rejected. The message names what each one should become.
@@ -714,23 +720,80 @@ def parse_date_field(value: object) -> date | None:
 
 
 def session_entry_count(sessions_dir: Path) -> int:
-    """Distinct session dates across the archive.
+    """Count explicit native sessions; retain coarse dates for unattributed history.
 
-    Distinct DATES, not headings: one working day written up as several
-    sub-headings is one session, and counting headings inflated it. Any
-    heading level counts, because archives in the wild use ## and ### and
-    #### interchangeably.
+    A top-level dated entry may carry one ``Session identity:`` JSON object
+    with session/person/native. Nested headings inherit its identity. Old
+    un-attributed history remains one unknown session cohort per date; this
+    reader never invents people, native identities, or past completion.
     """
     if not sessions_dir.is_dir():
         return 0
-    dates: set[str] = set()
+    identities = {}
+    native_owners = {}
+    legacy_dates = set()
     for path in sorted(sessions_dir.glob("*.md")):
         text = read_text(path)
-        for match in re.finditer(
-            r"^#{1,6}\s[^\n]*?(\d{4}-\d{2}-\d{2})", text, re.MULTILINE
-        ):
-            dates.add(match.group(1))
-    return len(dates)
+        headings = list(
+            re.finditer(r"(?m)^(#{1,6})\s[^\n]*?(\d{4}-\d{2}-\d{2})[^\n]*$", text)
+        )
+        if not headings:
+            continue
+        level = min(len(match.group(1)) for match in headings)
+        entries = [match for match in headings if len(match.group(1)) == level]
+        for index, entry in enumerate(entries):
+            end = entries[index + 1].start() if index + 1 < len(entries) else len(text)
+            body = text[entry.end() : end]
+            markers = re.findall(r"(?m)^Session identity:[ \t]*(.+)$", body)
+            if not markers:
+                legacy_dates.add(entry.group(2))
+                continue
+            if len(markers) != 1:
+                raise DoctorError("session entry contains ambiguous identity metadata")
+
+            def unique(pairs):
+                row = {}
+                for key, value in pairs:
+                    if key in row:
+                        raise DoctorError("session identity contains duplicate keys")
+                    row[key] = value
+                return row
+
+            try:
+                row = json.loads(markers[0], object_pairs_hook=unique)
+                if (
+                    not isinstance(row, dict)
+                    or set(row) != {"session", "person", "native"}
+                    or any(
+                        not isinstance(v, str) or not v or len(v) > 200
+                        for v in row.values()
+                    )
+                    or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,95}", row["person"])
+                    or not re.fullmatch(
+                        r"(?:codex|cc|ccd|muse|cursor|copilot):[A-Za-z0-9._:@-]{1,180}",
+                        row["native"],
+                    )
+                ):
+                    raise ValueError("invalid identity shape")
+            except (ValueError, TypeError, RecursionError) as exc:
+                raise DoctorError(
+                    "session identity is malformed; preserve the original entry"
+                ) from exc
+            binding = (row["person"], row["native"])
+            if row["session"] in identities and identities[row["session"]] != binding:
+                raise DoctorError(
+                    "session identity has conflicting principal/native attribution"
+                )
+            if (
+                row["native"] in native_owners
+                and native_owners[row["native"]] != row["session"]
+            ):
+                raise DoctorError(
+                    "one native session is attributed to multiple canonical sessions"
+                )
+            identities[row["session"]] = binding
+            native_owners[row["native"]] = row["session"]
+    return len(identities) + len(legacy_dates)
 
 
 # ---------------------------------------------------------------------------
@@ -766,6 +829,7 @@ CHECKS = [
     "record-unreadable",
     "artifact-cites-missing-script",
     "skill-outputs",
+    "material-context",
 ]
 
 
@@ -836,9 +900,7 @@ def cited_script_findings(project_path: Path) -> list[tuple[Path, str, str]]:
 
 
 INTAKE_NAME = re.compile(r"(intake|brief|directive|catalogue)", re.IGNORECASE)
-ROUTING_MARKER = re.compile(
-    r"^\*\*(Routed|Declined|Superseded):\*\*", re.MULTILINE
-)
+ROUTING_MARKER = re.compile(r"^\*\*(Routed|Declined|Superseded):\*\*", re.MULTILINE)
 
 
 def unrouted_intake_findings(project_path: Path) -> list[str]:
@@ -945,11 +1007,16 @@ def _audit_project_unlocked(
             "then trim CONTEXT.md",
         )
 
+    material = project_state.material_context(project_path)
+    audit.cover('material-context')
+    audit.material_context = material
+
+
     # --- skill-output provenance --------------------------------------------
     # Generator-backed skills mark their outputs; a hand-made lookalike is a
     # defect while it is live (no rulings filed), a warning once it is a
     # closed record. Added 2026-09-20 after a session hand-authored packets.
-    for found in skill_outputs.scan_project(project_path):
+    for found in skill_outputs.scan_project(project_path, material_result=material):
         audit.add("skill-outputs", found.severity, found.message, found.remedy)
 
     entries = session_entry_count(sessions_dir)
@@ -1173,7 +1240,8 @@ def _audit_project_unlocked(
 
     if evidence_gaps and not dormant:
         audit.add(
-            "freshness-unverifiable", "warning",
+            "freshness-unverifiable",
+            "warning",
             "; ".join(evidence_gaps) + "; Git commit dates cannot establish a workday",
             "recover the dated session evidence and resolve coverage gaps; do not "
             "replace workday fields with a commit date",
@@ -1203,7 +1271,8 @@ def _audit_project_unlocked(
             code, _ = git(repo_root, "cat-file", "-e", f"{reviewed}^{{commit}}")
             if code != 0:
                 audit.add(
-                    "post-close-review-unresolvable", "defect",
+                    "post-close-review-unresolvable",
+                    "defect",
                     f"post_close_reviewed_through is {reviewed}, which is not a "
                     "commit in this repository — the acknowledgment cannot be checked",
                     "re-review the post-completion evidence and record its commit, "
@@ -1217,8 +1286,12 @@ def _audit_project_unlocked(
                     repo_root, "log", "-1", "--format=%H", "--", str(project_path)
                 )
                 dirty_code, dirty = git(
-                    repo_root, "status", "--porcelain", "--untracked-files=all",
-                    "--", str(project_path)
+                    repo_root,
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=all",
+                    "--",
+                    str(project_path),
                 )
                 if code == 0 and newest_sha and dirty_code == 0 and not dirty:
                     covered, _ = git(
@@ -1227,21 +1300,30 @@ def _audit_project_unlocked(
                     # The acknowledgment itself lives in index.yaml. Compare
                     # only its dated claims, so recording that acknowledgment
                     # cannot invalidate itself but new index-only evidence can.
-                    index_rel = (projects_root / "index.yaml").resolve().relative_to(repo_root.resolve())
+                    index_rel = (
+                        (projects_root / "index.yaml")
+                        .resolve()
+                        .relative_to(repo_root.resolve())
+                    )
                     index_code, index_text = git(
                         repo_root, "show", f"{reviewed}:{index_rel.as_posix()}"
                     )
                     reviewed_entries = []
                     if index_code == 0:
                         try:
-                            reviewed_entries = parse_mapping_list(index_text, "projects")
+                            reviewed_entries = parse_mapping_list(
+                                index_text, "projects"
+                            )
                             if not reviewed_entries:
                                 reviewed_entries = _root_list_entries(index_text)
                         except DoctorError:
                             pass  # Unreadable review evidence grants no exemption.
-                    matches = [e for e in reviewed_entries if str(e.get("id")) == project_id]
+                    matches = [
+                        e for e in reviewed_entries if str(e.get("id")) == project_id
+                    ]
                     dates_covered = len(matches) == 1 and all(
-                        parse_date_field(matches[0].get(field)) == parse_date_field(entry.get(field))
+                        parse_date_field(matches[0].get(field))
+                        == parse_date_field(entry.get(field))
                         for field in ("last_session", "completed_date")
                     )
                     if covered == 0 and dates_covered and not evidence_gaps:
@@ -1251,7 +1333,8 @@ def _audit_project_unlocked(
         if not acknowledged and anchor and latest_record and latest_record[0] > anchor:
             recorded, source = latest_record
             audit.add(
-                "terminal-project-active", "warning",
+                "terminal-project-active",
+                "warning",
                 f"index.yaml marks this project completed ({anchor_field}: {anchor}), "
                 f"but {source} records a session dated {recorded}; review whether "
                 "the recorded activity changes the completion claim",
@@ -1269,7 +1352,8 @@ def _audit_project_unlocked(
                 if value and value != recorded:
                     relation = "behind" if value < recorded else "ahead of"
                     audit.add(
-                        check, "defect",
+                        check,
+                        "defect",
                         f"{field} is {value}, {relation} the latest dated entry "
                         f"in {source} ({recorded}); the session records disagree",
                         "reconcile the field and dated session narrative from actual "
@@ -1277,7 +1361,8 @@ def _audit_project_unlocked(
                     )
         elif idx_last and ctx_last and idx_last != ctx_last:
             audit.add(
-                "last-session-freshness", "defect",
+                "last-session-freshness",
+                "defect",
                 f"index.yaml last_session is {idx_last}, but CONTEXT.md Last session "
                 f"is {ctx_last}; no dated archive establishes which claim is current",
                 "recover the session evidence and reconcile the conflicting dates",
@@ -1430,16 +1515,36 @@ def _audit_project_unlocked(
     return audit
 
 
-def audit_project(source, project_id, project_path, index_entry, repo_root,
-                  projects_root, readiness="remote"):
+def audit_project(
+    source,
+    project_id,
+    project_path,
+    index_entry,
+    repo_root,
+    projects_root,
+    readiness="remote",
+):
     try:
         with record_transaction.managed(project_path):
-            return _audit_project_unlocked(source, project_id, project_path, index_entry,
-                                           repo_root, projects_root, readiness)
+            return _audit_project_unlocked(
+                source,
+                project_id,
+                project_path,
+                index_entry,
+                repo_root,
+                projects_root,
+                readiness,
+            )
     except record_transaction.RecordTransactionError as exc:
-        audit = ProjectAudit(source=source.name, project_id=project_id, path=project_path)
-        audit.add("record-transaction", "defect", str(exc),
-                  "reconcile the retained transaction through context_edit recover-transaction")
+        audit = ProjectAudit(
+            source=source.name, project_id=project_id, path=project_path
+        )
+        audit.add(
+            "record-transaction",
+            "defect",
+            str(exc),
+            "reconcile the retained transaction through context_edit recover-transaction",
+        )
         return audit
 
 
@@ -1526,6 +1631,23 @@ def audit_source(
 
     index_path = projects_root / "index.yaml"
     index_by_id: dict[str, dict] = {}
+    if index_path.exists() or index_path.is_symlink():
+        try:
+            import team_contract
+
+            team_contract.require_registry(index_path)
+        except (OSError, ValueError, RuntimeError):
+            source_findings.append(
+                Finding(
+                    project="(source)",
+                    source=source.name,
+                    check="team-access",
+                    severity="defect",
+                    message="enrolled registry audience could not be verified; project identities not read",
+                    remedy="ask the exact native owner to verify team enrollment and audience",
+                )
+            )
+            return [], source_findings
 
     has_projects = any(
         child.is_dir() and not child.name.startswith((".", "_"))
@@ -1782,6 +1904,7 @@ def main(argv: list[str] | None = None) -> int:
         "readiness": args.readiness,
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "coverage": coverage_report(audits),
+        "material_context": [{"source": a.source, "project_id": a.project_id, "result": a.material_context} for a in audits],
         "sources": source_count,
         "projects_audited": len(audits),
         "defects": len(defects),

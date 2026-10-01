@@ -42,8 +42,10 @@ boundaries; do not oscillate between strategies on each new message.
 graph must cover every required criterion, have no cycles, and stay inside the
 scope contract. `ready_tasks` returns dependency-ready work in priority order;
 the work-in-progress limit applies when starting a node. A blocked dependency
-does not block independent nodes. Rolling planning expands details when inputs
-arrive without silently expanding the outcome.
+does not block independent nodes. Apply the delivery, batching and wait rules in
+[the execution workflow](../SKILL.md#execute-and-adapt) to the whole remaining
+graph. Nodes and worker briefs need not be separate releases. Rolling planning
+expands details when inputs arrive without silently expanding the outcome.
 
 `workflow.dispatch` requires a typed brief, admitted exact paths, criterion
 references, an integration owner and a resource reservation. It records the

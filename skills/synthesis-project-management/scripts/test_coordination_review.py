@@ -3,6 +3,7 @@
 import os
 import importlib
 import subprocess
+import time
 import sys
 from pathlib import Path
 import pytest
@@ -75,7 +76,7 @@ def test_unrepresentable_creation_token_refuses_without_board_mutation(world, na
     before = board.read_bytes()
     target = repo.parent / name
     with pytest.raises(ValueError):
-        W.reserve(board, own.compact_id, target, repo)
+        W.reserve(board, own.compact_id, target, repo, fixture_deadline=time.time() + 120)
     assert board.read_bytes() == before
     assert not target.exists()
 
@@ -84,7 +85,7 @@ def test_unrepresentable_creation_token_refuses_without_board_mutation(world, na
 def test_representable_reservation_preserves_exact_path(world, name):
     board, own, repo = world
     target = repo.parent / name
-    receipt = W.reserve(board, own.compact_id, target, repo)
+    receipt = W.reserve(board, own.compact_id, target, repo, fixture_deadline=time.time() + 120)
     assert receipt["reservation"] in C.rows(board.read_text())[0].claims
     assert receipt["target"] == str(target)
     assert not target.exists()

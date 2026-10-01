@@ -69,6 +69,11 @@ def hermetic_release_train(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     # repositories must bind their own ancestry; boundary tests set that base
     # explicitly when testing an event. This does not alter the outer runner.
     monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    # These paths belong to the enclosing hosted step or acceptance runner.
+    # Each diagnostic test must explicitly own its output and destination;
+    # inherited paths must never be read, written, or reused by a fixture.
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", raising=False)
     monkeypatch.setenv(
         "SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "absent-board.md")
     )
@@ -503,7 +508,9 @@ def test_acceptance_base_resolves_to_previous_release_tag() -> None:
         for step in steps
         if step.get("name") == "Consume transaction-bound R5 acceptance"
     )
-    assert "env" not in accept
+    assert accept["env"] == {
+        "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS": "${{ runner.temp }}/synthesis-acceptance-diagnostics"
+    }
 
 
 def test_repository_ci_executes_release_wiring_tests() -> None:
@@ -1066,6 +1073,60 @@ def test_release_boundary_consumes_fresh_bound_acceptance_receipt(
     ]
 
 
+def receipt_with_programmed_execution(receipt, repository=None):
+    """Unit boundary fixture; actual consumer tests below execute the real runner."""
+    runner = release._acceptance_runner()
+    contract = [
+        {
+            "id": c["id"],
+            "selector": "test_synthetic.py::test_" + str(i),
+            "expected_status": "pass",
+            "control_class": "acceptance-test",
+            "motivating_defect": "programmed release boundary evidence",
+        }
+        for i, c in enumerate(receipt["cases"])
+    ]
+    cases = []
+    for c in contract:
+        cases.append(
+            {**c, "nodes": [c["selector"]], "status": "passed", "matched": True}
+        )
+    batches = []
+    for plan in runner.batch_plan(contract):
+        nodes = plan["selectors"]
+        batches.append(
+            {
+                **plan,
+                "returncode": 0,
+                "process_failure": None,
+                "inventory": {
+                    "group": "acceptance",
+                    "inventory": nodes,
+                    "selected": nodes,
+                    "errors": [],
+                    "exitstatus": 0,
+                    "subtests": {},
+                    "phases": {
+                        n: {
+                            p: {"outcome": "passed", "duration": 0, "wasxfail": None}
+                            for p in ("setup", "call", "teardown")
+                        }
+                        for n in nodes
+                    },
+                },
+            }
+        )
+    receipt["cases"] = cases
+    receipt["execution"] = {
+        "schema": 1,
+        "contract": contract,
+        "batches": batches,
+        "source_unchanged": True,
+        "source_sha256": release.source_digest(repository) if repository else "f" * 64,
+    }
+    return receipt
+
+
 def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
     expected = {
         "transaction_id": "transaction-a",
@@ -1087,6 +1148,7 @@ def test_release_receipt_validator_rejects_every_binding_mismatch() -> None:
         "cases": [{"id": "one", "matched": True}, {"id": "two", "matched": True}],
     }
 
+    receipt_with_programmed_execution(receipt)
     assert release.validate_acceptance_receipt(receipt, expected)[0]
     for field in expected:
         mutated = dict(receipt)
@@ -1141,12 +1203,315 @@ def test_repository_ci_fetches_authoritative_base_history() -> None:
             encoding="utf-8"
         )
     )
-    checkout = next(
+    checkouts = [
         step
         for step in workflow["jobs"]["conformance"]["steps"]
-        if step.get("uses") == "actions/checkout@v4"
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    assert len(checkouts) == 1
+    assert checkouts[0]["with"]["fetch-depth"] == 0
+
+
+# Official release metadata was verified before updating these reviewed pins.
+# Static contracts below do not attest execution on a hosted Actions runner.
+_HOSTED_ACTION_PINS = {
+    "actions/checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",  # v7.0.1
+    "actions/setup-python": "5fda3b95a4ea91299a34e894583c3862153e4b97",  # v7.0.0
+    "actions/setup-node": "820762786026740c76f36085b0efc47a31fe5020",  # v7.0.0
+    "actions/upload-artifact": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",  # v7.0.1
+    "oven-sh/setup-bun": "0c5077e51419868618aeaa5fe8019c62421857d6",  # v2.2.0
+}
+
+
+def _hosted_workflow(path: Path) -> dict:
+    # BaseLoader keeps the YAML 1.2 `on` key intact; scalar comparisons below
+    # intentionally use strings, including explicit booleans and fetch depth.
+    class UniqueLoader(yaml.BaseLoader):
+        pass
+
+    def mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            assert key not in result, f"ambiguous duplicate workflow key: {key}"
+            result[key] = loader.construct_object(value_node)
+        return result
+
+    UniqueLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping
     )
-    assert checkout["with"]["fetch-depth"] == 0
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueLoader)
+
+
+def _hosted_security_contract(workflow: dict, name: str) -> None:
+    assert workflow["permissions"] == {"contents": "read"}
+    expected_events = {"pull_request", "push"}
+    if name == "distribution.yml":
+        expected_events.add("workflow_dispatch")
+    assert set(workflow["on"]) == expected_events
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    for job_id, job in workflow["jobs"].items():
+        assert job.get("permissions", workflow["permissions"]) == {"contents": "read"}
+        assert job.get("continue-on-error", "false") == "false"
+        if name == "distribution.yml" and job_id == "arch-package":
+            assert job["if"] == "github.event_name == 'workflow_dispatch'"
+        else:
+            assert "if" not in job
+        for step in job["steps"]:
+            assert step.get("continue-on-error", "false") == "false"
+            if step.get("name") == "Establish prescribed macOS framework interpreter":
+                assert name == "validate.yml" and job_id == "onboarding-portability"
+                assert step["if"] == "runner.os == 'macOS'"
+            elif step.get("name") == "Establish Linux sandbox for installed consumer acceptance":
+                assert name == "validate.yml" and job_id == "onboarding-portability"
+                assert set(step) == {"name", "if", "run"}
+                assert step["if"] == "runner.os == 'Linux'"
+                assert step["run"] == 'sudo apt-get update && sudo apt-get install -y bubblewrap zsh\npython3 .github/scripts/check-ci-sandbox.py\n'
+            elif step.get("name") == "Retain sanitized acceptance diagnostics":
+                assert name == "validate.yml" and job_id == "conformance"
+                assert (
+                    step["if"]
+                    == "always() && steps.acceptance.outputs.diagnostics_ready == 'true'"
+                )
+                assert (
+                    step["uses"]
+                    == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+                )
+            else:
+                assert "if" not in step
+            if "uses" in step:
+                owner, ref = step["uses"].rsplit("@", 1)
+                assert owner in _HOSTED_ACTION_PINS
+                assert ref == _HOSTED_ACTION_PINS[owner]
+                assert re.fullmatch(r"[0-9a-f]{40}", ref)
+                assert (
+                    step.get("with", {}).get("allow-unsafe-pr-checkout", "false")
+                    == "false"
+                )
+
+
+def _distribution_contract(workflow: dict) -> None:
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"packages", "arch-package"}
+    packages = jobs["packages"]
+    assert packages["runs-on"] == "${{ matrix.os }}"
+    assert packages["strategy"] == {
+        "fail-fast": "false",
+        "matrix": {
+            "os": ["ubuntu-latest", "macos-latest"],
+            "python": ["3.12", "3.13", "3.14"],
+        },
+    }
+    setup = {
+        s["uses"].split("@")[0]: s.get("with", {})
+        for s in packages["steps"]
+        if "uses" in s
+    }
+    assert [s["uses"].split("@")[0] for s in packages["steps"] if "uses" in s] == [
+        "actions/checkout",
+        "actions/setup-python",
+        "actions/setup-node",
+        "oven-sh/setup-bun",
+    ]
+    assert setup["actions/setup-python"] == {"python-version": "${{ matrix.python }}"}
+    assert setup["actions/setup-node"] == {
+        "node-version": "22",
+        "package-manager-cache": "false",
+    }
+    assert setup["oven-sh/setup-bun"] == {}
+    assert [s["run"] for s in packages["steps"] if "run" in s] == [
+        "python -m pip install pytest jsonschema pyyaml",
+        "python -B -m pytest skills/synthesis-onboarding/scripts/test_distribution.py -q",
+        "python -B -m pytest -q skills/synthesis-onboarding/scripts/test_bootstrap.py::test_parser_loader_compiles_source_instead_of_a_cached_rule skills/synthesis-onboarding/scripts/test_release_runtime.py::test_policy_loader_ignores_cached_code_with_unchanged_source skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_ignores_cached_helper_code skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_preserves_relative_and_installed_library_imports skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_refuses_sourceless_release_import skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_repeated_contract_activation_retains_prior_roots_without_recursion skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_verified_private_consumer_refuses_sourceless_release",
+        "sh -n packages/launcher.sh onboard.sh",
+    ]
+    source_steps = [
+        s
+        for s in packages["steps"]
+        if s.get("name") == "Verify source-only execution on the selected interpreter"
+    ]
+    assert len(source_steps) == 1
+    assert source_steps[0] is [s for s in packages["steps"] if "run" in s][2]
+    assert source_steps[0]["env"] == {
+        "SYNTHESIS_RUNTIME_POLICY": "packaged-python-v1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    arch = jobs["arch-package"]
+    assert arch["runs-on"] == "ubuntu-latest"
+    assert arch["container"] == "archlinux:base-devel"
+    assert arch["if"] == "github.event_name == 'workflow_dispatch'"
+    run_lines = [line for s in arch["steps"] for line in s.get("run", "").splitlines()]
+    for required in (
+        'python -B packages/check_arch.py --source "$GITHUB_WORKSPACE" --output /tmp/arch-package-candidate',
+        "useradd --create-home package-builder",
+        "chown -R package-builder:package-builder /tmp/arch-package-candidate",
+        "runuser -u package-builder -- makepkg --noconfirm",
+        "runuser -u package-builder -- makepkg --printsrcinfo > .SRCINFO",
+        "synthesis --version",
+        "synthesis --help",
+        "test ! -e /root/.synthesis",
+    ):
+        assert required in run_lines
+    upload = arch["steps"][-1]
+    assert upload["uses"].split("@")[0] == "actions/upload-artifact"
+    assert upload["with"] == {
+        "name": "arch-package-evidence",
+        "path": "/tmp/arch-package-candidate/adapters/aur/",
+    }
+
+
+def _repo_guard_contract(workflow: dict) -> None:
+    for event in ("pull_request", "push"):
+        assert set(workflow["on"][event]["paths"]) == {
+            "skills/synthesis-repo-guard/**",
+            ".github/workflows/repo-guard.yml",
+        }
+    assert set(workflow["jobs"]) == {"checkpoint"}
+    job = workflow["jobs"]["checkpoint"]
+    assert job["runs-on"] == "ubuntu-latest"
+    steps = job["steps"]
+    assert [s["uses"].split("@")[0] for s in steps if "uses" in s] == [
+        "actions/checkout",
+        "actions/setup-python",
+    ]
+    assert steps[1]["with"] == {"python-version": "3.12"}
+    assert [s["run"] for s in steps if "run" in s] == [
+        "python -m pip install pytest pyyaml",
+        "python -m pytest skills/synthesis-repo-guard/test_checkpoint_sync.py "
+        "skills/synthesis-repo-guard/test_deleted_paths.py -q",
+    ]
+
+
+def _validate_history_contract(workflow: dict) -> None:
+    assert set(workflow["jobs"]) == {"conformance", "onboarding-portability"}
+    steps = workflow["jobs"]["conformance"]["steps"]
+    checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
+    assert len(checkouts) == 1 and checkouts[0]["with"]["fetch-depth"] == "0"
+    assert workflow["jobs"]["onboarding-portability"]["strategy"] == {
+        "fail-fast": "false",
+        "matrix": {"os": ["ubuntu-latest", "macos-latest"]},
+    }
+
+
+_HOSTED_SPECIFIC_CONTRACTS = {
+    "validate.yml": _validate_history_contract,
+    "distribution.yml": _distribution_contract,
+    "repo-guard.yml": _repo_guard_contract,
+}
+
+
+@pytest.mark.parametrize("name", sorted(_HOSTED_SPECIFIC_CONTRACTS))
+def test_hosted_workflow_execution_and_security_contracts(name: str) -> None:
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows" / name)
+    _hosted_security_contract(workflow, name)
+    _HOSTED_SPECIFIC_CONTRACTS[name](workflow)
+
+
+@pytest.mark.parametrize(
+    "name,old,new",
+    [
+        ("repo-guard.yml", "contents: read", "contents: write"),
+        (
+            "repo-guard.yml",
+            "    runs-on: ubuntu-latest",
+            "    runs-on: ubuntu-latest\n    permissions:\n      contents: write",
+        ),
+        ("repo-guard.yml", "  pull_request:", "  pull_request_target:"),
+        ("repo-guard.yml", "actions/checkout@", "unreviewed/checkout@"),
+        ("repo-guard.yml", _HOSTED_ACTION_PINS["actions/setup-python"], "v7"),
+        (
+            "repo-guard.yml",
+            "    runs-on: ubuntu-latest",
+            "    runs-on: ubuntu-latest\n    if: false",
+        ),
+        (
+            "repo-guard.yml",
+            "      - run: python -m pytest",
+            "      - continue-on-error: true\n        run: python -m pytest",
+        ),
+        (
+            "repo-guard.yml",
+            "      - run: python -m pytest",
+            "      - if: false\n        run: python -m pytest",
+        ),
+        ("repo-guard.yml", " skills/synthesis-repo-guard/test_deleted_paths.py", ""),
+        ("repo-guard.yml", "      - '.github/workflows/repo-guard.yml'\n", ""),
+        (
+            "distribution.yml",
+            "package-manager-cache: false",
+            "package-manager-cache: true",
+        ),
+        ("distribution.yml", "node-version: '22'", "node-version: '24'"),
+        ("distribution.yml", "['3.12', '3.13', '3.14']", "['3.12', '3.13']"),
+        ("distribution.yml", "[ubuntu-latest, macos-latest]", "[ubuntu-latest]"),
+        (
+            "distribution.yml",
+            "if: github.event_name == 'workflow_dispatch'",
+            "if: always()",
+        ),
+        (
+            "distribution.yml",
+            "runuser -u package-builder -- makepkg --noconfirm",
+            "makepkg --noconfirm",
+        ),
+        ("distribution.yml", "          test ! -e /root/.synthesis\n", ""),
+        (
+            "distribution.yml",
+            "test_distribution.py -q",
+            "test_distribution.py -q || true",
+        ),
+        ("distribution.yml", _HOSTED_ACTION_PINS["oven-sh/setup-bun"], "v2"),
+        ("distribution.yml", "name: arch-package-evidence", "name: other-evidence"),
+        ("validate.yml", "fetch-depth: 0", "fetch-depth: 1"),
+        ("validate.yml", "[ubuntu-latest, macos-latest]", "[ubuntu-latest]"),
+    ],
+)
+def test_hosted_workflow_contract_refuses_boundary_mutations(tmp_path, name, old, new):
+    repository = Path(__file__).resolve().parents[3]
+    original = (repository / ".github/workflows" / name).read_text()
+    assert old in original
+    target = tmp_path / name
+    target.write_text(original.replace(old, new, 1))
+    with pytest.raises((AssertionError, KeyError, ValueError)):
+        workflow = _hosted_workflow(target)
+        _hosted_security_contract(workflow, name)
+        _HOSTED_SPECIFIC_CONTRACTS[name](workflow)
+
+
+def test_hosted_workflow_contract_refuses_duplicate_permission_keys(tmp_path):
+    target = tmp_path / "ambiguous.yml"
+    target.write_text("permissions:\n  contents: write\n  contents: read\n")
+    with pytest.raises(AssertionError, match="duplicate workflow key"):
+        _hosted_workflow(target)
+
+
+@pytest.mark.parametrize("mutation", ["wrong-platform", "early-success", "dead-branch", "masked-error", "foreign-job", "foreign-workflow", "uses", "continue"])
+def test_linux_sandbox_condition_is_an_exact_execution_exception(mutation):
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows/validate.yml")
+    step = next(s for s in workflow["jobs"]["onboarding-portability"]["steps"]
+                if s.get("name") == "Establish Linux sandbox for installed consumer acceptance")
+    name = "validate.yml"
+    if mutation == "wrong-platform":
+        step["if"] = "runner.os == 'macOS'"
+    elif mutation == "early-success":
+        step["run"] = "exit 0\n" + step["run"]
+    elif mutation == "dead-branch":
+        step["run"] = "if false; then\n" + step["run"] + "fi\n"
+    elif mutation == "masked-error":
+        step["run"] += "true\n"
+    elif mutation == "foreign-job":
+        workflow["jobs"]["onboarding-portability"]["steps"].remove(step)
+        workflow["jobs"]["conformance"]["steps"].append(step)
+    elif mutation == "foreign-workflow":
+        name = "repo-guard.yml"
+    elif mutation == "uses":
+        step["uses"] = "actions/checkout@" + _HOSTED_ACTION_PINS["actions/checkout"]
+    elif mutation == "continue":
+        step["continue-on-error"] = "true"
+    with pytest.raises((AssertionError, KeyError, ValueError)):
+        _hosted_security_contract(workflow, name)
 
 
 def squash_release_repo(tmp_path: Path) -> tuple[Path, str]:
@@ -1272,6 +1637,7 @@ def accepted_publish_fixture(tmp_path: Path) -> tuple[Path, object]:
         "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
         "cases": [{"id": "fixture", "matched": True}],
     }
+    receipt_with_programmed_execution(receipt, repository)
     boundary, detail = release.acceptance_boundary(repository)
     assert boundary is not None, detail
     return repository, release.AcceptanceAuthority(
@@ -4974,14 +5340,18 @@ def test_cache_transition_cleanup_refuses_unsafe_target(
 
 
 def _fake_muse_binary(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: str, exit_code: int = 0,
-    *, install_only_failure: bool = False,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: str,
+    exit_code: int = 0,
+    *,
+    install_only_failure: bool = False,
 ) -> Path:
     script = tmp_path / "bin" / "muse"
     script.parent.mkdir(parents=True, exist_ok=True)
     # A supported hypothetical native grammar is explicit in these installer
     # fixtures; this is not a claim about the currently installed Muse build.
-    body = "{\"plugins\":[]}" if payload == "{}" else payload
+    body = '{"plugins":[]}' if payload == "{}" else payload
     script.write_text(
         f"#!{sys.executable}\nimport sys\n"
         "a=sys.argv[1:]\n"
@@ -5198,7 +5568,9 @@ def test_muse_refresh_replaces_incomplete_bundle(
 def test_muse_refresh_fails_closed_when_install_command_fails(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _fake_muse_binary(tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True)
+    _fake_muse_binary(
+        tmp_path, monkeypatch, "boom", exit_code=1, install_only_failure=True
+    )
     monkeypatch.setattr(release, "MUSE_BUNDLE_ROOT", tmp_path / "bundles")
 
     result = release.Result()
@@ -5355,7 +5727,9 @@ def test_muse_refresh_refuses_relative_recorded_source(
 def test_muse_refresh_fails_closed_when_record_is_unreadable(
     muse_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"})
+    monkeypatch.setattr(
+        release, "muse_plugin_capability", lambda _: {"status": "AVAILABLE"}
+    )
     monkeypatch.setattr(
         release,
         "resolve_client_binary",
@@ -5523,9 +5897,7 @@ def test_release_boundary_first_release_without_published_authority_refuses(
     assert selected is None and "publication" in detail
 
 
-def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
-    tmp_path, monkeypatch
-):
+def real_acceptance_fixture(tmp_path, monkeypatch, *, receipt_bytes=0):
     repo, git, base, pr_base, _ = boundary_fixture(tmp_path)
     monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", pr_base)
     runner = repo / release.ACCEPTANCE_RUNNER
@@ -5533,6 +5905,24 @@ def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
     shutil.copy2(
         Path(__file__).resolve().parents[3] / release.ACCEPTANCE_RUNNER, runner
     )
+    if receipt_bytes:
+        # A synthetic long evidence field crosses the real producer and both
+        # consumers without changing any receipt/source/transaction validation.
+        text = runner.read_text()
+        anchor = "    payload, returncode = execute(validated, root, git_evidence)\n"
+        assert text.count(anchor) == 1
+        runner.write_text(
+            text.replace(
+                anchor,
+                anchor
+                + f'    payload["synthetic_transport_evidence"] = "x" * {receipt_bytes}\n',
+            )
+        )
+    dependency = (
+        repo / "skills/synthesis-skills-manager/scripts/release_check_groups.py"
+    )
+    dependency.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(Path(__file__).with_name("release_check_groups.py"), dependency)
     fixture = repo / "skills/synthesis-implementation-integrity/test_synthetic.py"
     fixture.write_text("def test_value():\n    assert 2 + 2 == 4\n")
     manifest = repo / release.ACCEPTANCE_MANIFEST
@@ -5566,12 +5956,20 @@ def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
     git("commit", "-qm", "closed evidence")
     accepted = release.consume_acceptance(repo, release.Result(), False)
     assert accepted is not None
+    return repo, git, base, pr_base, accepted
+
+
+def test_release_boundary_actual_runner_covers_whole_release_and_exact_review(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
     assert accepted.expected["change_base"] == base
     assert "feature.py" in accepted.expected["changed_paths"]
     assert accepted.boundary["review_base"] == pr_base
     assert "feature.py" not in accepted.boundary["review_paths"]
     assert release.revalidate_acceptance_authority(repo, accepted)[0]
     # A changed manifest cannot reuse a receipt, even before a new commit.
+    manifest = repo / release.ACCEPTANCE_MANIFEST
     manifest.write_text(manifest.read_text() + "# changed\n")
     assert not release.revalidate_acceptance_authority(repo, accepted)[0]
 
@@ -5643,6 +6041,7 @@ def test_release_boundary_two_real_publication_targets_allow_only_same_accepted_
         "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
         "cases": [{"id": "fixture", "matched": True}],
     }
+    receipt_with_programmed_execution(receipt, repo)
     authority = release.AcceptanceAuthority(base, expected, receipt, boundary)
     assert release.publish(repo, release.Result(), False, authority, "2.0.0")
     for bare in (remote, other):
@@ -5655,3 +6054,752 @@ def test_release_boundary_two_real_publication_targets_allow_only_same_accepted_
 def test_publish_version_must_equal_accepted_boundary(tmp_path):
     repo, authority = accepted_publish_fixture(tmp_path)
     assert not release.publish(repo, release.Result(), True, authority, "3.0.0")
+
+
+def _diagnostic_failure_receipt():
+    return {
+        "cases": [
+            {
+                "id": "ritual-05",
+                "matched": False,
+                "stdout": "Traceback (most recent call last):\n  append_record\nFileNotFoundError: history.jsonl\n1 failed in 0.13s\n",
+                "stderr": "secondary stderr detail\n",
+            },
+            {
+                "id": "other-case",
+                "matched": False,
+                "stdout": "AssertionError: second cause\n1 failed\n",
+                "stderr": "",
+            },
+        ]
+    }
+
+
+def test_all_unmatched_outputs_survive_detail():
+    detail = release._runner_failure_detail(json.dumps(_diagnostic_failure_receipt()))
+    assert "FileNotFoundError: history.jsonl" in detail
+    assert "secondary stderr detail" in detail
+    assert "AssertionError: second cause" in detail
+    assert _diagnostic_failure_receipt()["cases"][0]["stdout"] in detail
+
+
+def test_failed_actual_consumer_retains_traceback(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        release, "acceptance_boundary", lambda repo: ({"change_base": "a" * 40}, "")
+    )
+    monkeypatch.setattr(
+        release, "acceptance_expectation", lambda *a: ({"synthetic": "expected"}, "")
+    )
+    monkeypatch.setattr(
+        release,
+        "bounded_run",
+        lambda *a, **kw: subprocess.CompletedProcess(
+            a,
+            1,
+            json.dumps(_diagnostic_failure_receipt()),
+            "outer runner stderr detail\n",
+        ),
+    )
+    result = release.Result()
+    assert release.consume_acceptance(tmp_path, result, False) is None
+    assert len(result.failed) == 1
+    out = capsys.readouterr().out
+    assert "FileNotFoundError: history.jsonl" in out
+    assert "secondary stderr detail" in out
+    assert "outer runner stderr detail" in out
+
+
+def test_acceptance_consumer_rejects_terminal_flags_without_phase_evidence():
+    expected = {"transaction_id": "synthetic-boundary"}
+    forged = {
+        **expected,
+        "receipt_schema": "acceptance-run-receipt-v1",
+        "receipt_consumer": release.ACCEPTANCE_CONSUMER_ID,
+        "metadata_class": "acceptance-test",
+        "issues_authority_receipt": False,
+        "ok": True,
+        "coverage": {"declared": 1, "terminal": 1, "not_run": 0},
+        "cases": [{"id": "one", "matched": True}],
+    }
+    assert not release.validate_acceptance_receipt(forged, expected)[0]
+    receipt_with_programmed_execution(forged)
+    assert release.validate_acceptance_receipt(forged, expected)[0]
+    forged["execution"]["batches"][0]["inventory"]["phases"][
+        "test_synthetic.py::test_0"
+    ]["teardown"]["outcome"] = "failed"
+    assert not release.validate_acceptance_receipt(forged, expected)[0]
+
+
+@pytest.mark.parametrize(
+    "change", ["source_digest", "duration", "contract", "missing_phase", "source_flag"]
+)
+def test_publication_revalidates_exact_accepted_execution(
+    tmp_path, monkeypatch, change
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    evidence = accepted.receipt["execution"]
+    phase = next(iter(evidence["batches"][0]["inventory"]["phases"].values()))
+    if change == "source_digest":
+        evidence["source_sha256"] = "0" * 64
+    elif change == "duration":
+        phase["call"]["duration"] += 1
+    elif change == "contract":
+        evidence["contract"][0]["motivating_defect"] = "substituted evidence"
+        accepted.receipt["cases"][0]["motivating_defect"] = "substituted evidence"
+    elif change == "missing_phase":
+        phase.pop("call")
+    else:
+        evidence["source_unchanged"] = False
+    assert not release.revalidate_acceptance_authority(repo, accepted)[0]
+
+
+def test_actual_release_consumer_exports_closed_diagnostics_without_authority_change(
+    tmp_path, monkeypatch
+):
+    destination = tmp_path / "sanitized-diagnostics"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert accepted is not None
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert manifest["authorizes_release"] is False and manifest["status"] == "RETAINED"
+    report = json.loads((destination / "diagnostics.json").read_text())
+    assert report["batches"][0]["selectors"] == [
+        "skills/synthesis-implementation-integrity/test_synthetic.py::test_value"
+    ]
+    assert str(tmp_path) not in json.dumps(report)
+    assert git("status", "--porcelain") == ""
+    # A reused explicit destination is refused before any acceptance execution.
+    ordinary_owner = release.bounded_run
+
+    def forbid_test_dispatch(command, **kwargs):
+        assert command[0] == "git", "must not dispatch acceptance tests"
+        return ordinary_owner(command, **kwargs)
+
+    monkeypatch.setattr(release, "bounded_run", forbid_test_dispatch)
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+
+
+def test_configured_diagnostic_refusal_cannot_accept_valid_test_receipt(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "public"))
+    monkeypatch.setattr(
+        release, "capture_acceptance_diagnostics", lambda *a, **k: {"status": "REFUSED"}
+    )
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+
+
+def test_hosted_acceptance_upload_is_exact_always_and_sanitized():
+    root = Path(__file__).resolve().parents[3]
+    document = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    steps = document["jobs"]["conformance"]["steps"]
+    consumer = next(
+        s for s in steps if s.get("name") == "Consume transaction-bound R5 acceptance"
+    )
+    upload = next(
+        s for s in steps if s.get("name") == "Retain sanitized acceptance diagnostics"
+    )
+    assert consumer["env"] == {
+        "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS": "${{ runner.temp }}/synthesis-acceptance-diagnostics"
+    }
+    assert (
+        upload["if"]
+        == "always() && steps.acceptance.outputs.diagnostics_ready == 'true'"
+    )
+    assert (
+        upload["uses"]
+        == "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    )
+    assert upload["with"]["path"].splitlines() == [
+        consumer["env"]["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] + "/diagnostics.json",
+        consumer["env"]["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] + "/manifest.json",
+    ]
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert document["permissions"] == {"contents": "read"}
+
+
+def test_configured_hosted_failure_keeps_raw_exception_out_of_public_stdout(
+    tmp_path, monkeypatch, capsys
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    fixture = repo / "skills/synthesis-implementation-integrity/test_synthetic.py"
+    fixture.write_text(
+        "def test_value(): raise RuntimeError('private-exception-sentinel')\n"
+    )
+    git("add", "-A")
+    git("commit", "-qm", "synthetic failure")
+    output_file = tmp_path / "step-output"
+    output_file.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
+    destination = tmp_path / "public"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+    output = capsys.readouterr().out
+    assert "private-exception-sentinel" not in output
+    assert "acceptance execution failed" in output
+    assert (
+        "private-exception-sentinel"
+        not in (destination / "diagnostics.json").read_text()
+    )
+
+    assert (
+        output_file.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    )
+
+
+def test_diagnostic_step_output_is_fresh_exact_and_cannot_be_replayed(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = release.diagnostic_output_gate()
+    assert output.read_text() == "diagnostics_ready=false\n"
+    release.diagnostic_output_gate(binding, ready=True)
+    assert output.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    with pytest.raises(ValueError, match="changed"):
+        release.diagnostic_output_gate(binding, ready=True)
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "nonempty", "fifo"])
+def test_diagnostic_step_output_rejects_unowned_or_existing_commands(
+    tmp_path, monkeypatch, kind
+):
+    output = tmp_path / "step-output"
+    foreign = tmp_path / "foreign"
+    foreign.write_text("private-output-command")
+    if kind == "symlink":
+        output.symlink_to(foreign)
+    elif kind == "hardlink":
+        os.link(foreign, output)
+    elif kind == "fifo":
+        os.mkfifo(output)
+    else:
+        output.write_text("diagnostics_ready=true\n")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    with pytest.raises((OSError, ValueError)):
+        release.diagnostic_output_gate()
+    assert foreign.read_text() == "private-output-command"
+
+
+def test_actual_consumer_withholds_upload_signal_on_export_refusal(
+    tmp_path, monkeypatch
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "public"))
+    public = tmp_path / "public"
+    original = os.open
+    replaced = []
+
+    def replace_at_manifest(path, flags, *args, **kwargs):
+        if path == "manifest.json" and not replaced:
+            replaced.append(True)
+            (public / "diagnostics.json").rename(tmp_path / "retained-diagnostic.json")
+            (public / "diagnostics.json").write_text("private-late-replacement")
+        return original(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", replace_at_manifest)
+    assert release.consume_acceptance(repo, release.Result(), False) is None
+    assert replaced
+    assert output.read_text() == "diagnostics_ready=false\n"
+
+
+def test_step_output_replacement_after_preparation_never_sets_ready(
+    tmp_path, monkeypatch
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = release.diagnostic_output_gate()
+    original = tmp_path / "retained-output"
+    output.rename(original)
+    output.write_bytes(original.read_bytes())
+    with pytest.raises(ValueError, match="changed"):
+        release.diagnostic_output_gate(binding, ready=True)
+    assert output.read_text() == "diagnostics_ready=false\n"
+
+
+@pytest.mark.parametrize("replacement", ["unchanged", "symlink", "directory"])
+def test_actual_diagnostic_consumer_rejects_replaced_destination_ancestor(
+    tmp_path, monkeypatch, replacement
+):
+    import stat
+
+    repo, _, _, _, _ = real_acceptance_fixture(tmp_path, monkeypatch)
+    holder = tmp_path / "destination-parent"
+    holder.mkdir()
+    destination = holder / "public"
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    original_fsync = os.fsync
+    changed = []
+
+    def final_directory_sync(fd):
+        original_fsync(fd)
+        info = os.fstat(fd)
+        if (
+            replacement != "unchanged"
+            and not changed
+            and stat.S_ISDIR(info.st_mode)
+            and destination.exists()
+            and info.st_ino == destination.stat().st_ino
+            and (destination / "manifest.json").exists()
+        ):
+            holder.rename(tmp_path / "retained-parent")
+            if replacement == "symlink":
+                holder.symlink_to(
+                    tmp_path / "retained-parent", target_is_directory=True
+                )
+            else:
+                holder.mkdir()
+                (tmp_path / "retained-parent/public").rename(destination)
+            changed.append(True)
+
+    monkeypatch.setattr(os, "fsync", final_directory_sync)
+    accepted = release.consume_acceptance(repo, release.Result(), False)
+    if replacement == "unchanged":
+        assert accepted is not None
+        assert output.read_text() == "diagnostics_ready=false\ndiagnostics_ready=true\n"
+    else:
+        assert changed and accepted is None
+        assert output.read_text() == "diagnostics_ready=false\n"
+
+
+@pytest.mark.parametrize("phase", ["initial", "ready", "not-ready"])
+@pytest.mark.parametrize("mutation", ["unchanged", "same-size-content", "mode"])
+def test_output_gate_binds_exact_bytes_at_each_observed_closure(
+    tmp_path, monkeypatch, phase, mutation
+):
+    output = tmp_path / "step-output"
+    output.touch(mode=0o600)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    binding = None if phase == "initial" else release.diagnostic_output_gate()
+    inode = output.stat().st_ino
+    original_fsync = os.fsync
+    changed = []
+
+    def boundary(fd):
+        original_fsync(fd)
+        if mutation != "unchanged" and not changed and os.fstat(fd).st_ino == inode:
+            if mutation == "same-size-content":
+                original = output.read_bytes()
+                forged = original.replace(
+                    b"diagnostics_ready=false\n", b"diagnostics_ready=true\n\n", 1
+                )
+                assert len(original) == len(forged) and forged != original
+                output.write_bytes(forged)
+            else:
+                output.chmod(0o644)
+            changed.append(True)
+
+    monkeypatch.setattr(os, "fsync", boundary)
+    if mutation == "unchanged":
+        result = release.diagnostic_output_gate(binding, ready=phase == "ready")
+        assert result is not None
+        expected = "diagnostics_ready=false\n" + (
+            "diagnostics_ready=true\n" if phase == "ready" else ""
+        )
+        assert output.read_text() == expected
+    else:
+        with pytest.raises(ValueError, match="closure"):
+            release.diagnostic_output_gate(binding, ready=phase == "ready")
+        assert changed
+
+
+def test_hosted_acceptance_follows_all_ordinary_checks():
+    """Diagnose ordinary failures before the transaction acceptance consumer."""
+    root = Path(__file__).resolve().parents[3]
+    workflow = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
+    steps = workflow["jobs"]["conformance"]["steps"]
+    acceptance = [i for i, step in enumerate(steps)
+                  if "--acceptance-only" in step.get("run", "")]
+    assert len(acceptance) == 1
+    assert all(i < acceptance[0] for i, step in enumerate(steps)
+               if "run" in step and i != acceptance[0]), \
+        "Ordinary hosted checks must precede final acceptance"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing-step", "missing-selector", "policy", "bytecode", "decoy-environment"],
+)
+def test_distribution_contract_requires_source_only_controls(mutation):
+    repository = Path(__file__).resolve().parents[3]
+    workflow = _hosted_workflow(repository / ".github/workflows/distribution.yml")
+    steps = workflow["jobs"]["packages"]["steps"]
+    selected = next(
+        s
+        for s in steps
+        if s.get("name") == "Verify source-only execution on the selected interpreter"
+    )
+    if mutation == "missing-step":
+        steps.remove(selected)
+    elif mutation == "missing-selector":
+        selected["run"] = " ".join(selected["run"].split()[:-1])
+    elif mutation == "policy":
+        selected["env"]["SYNTHESIS_RUNTIME_POLICY"] = "unverified"
+    elif mutation == "bytecode":
+        selected["env"]["PYTHONDONTWRITEBYTECODE"] = "0"
+    else:
+        decoy = next(
+            s
+            for s in steps
+            if s.get("run") == "python -m pip install pytest jsonschema pyyaml"
+        )
+        decoy["name"] = selected["name"]
+        decoy["env"] = dict(selected["env"])
+        selected["name"] = "Renamed source checks"
+        selected["env"] = {
+            "SYNTHESIS_RUNTIME_POLICY": "unverified",
+            "PYTHONDONTWRITEBYTECODE": "0",
+        }
+    with pytest.raises(AssertionError):
+        _distribution_contract(workflow)
+
+
+def test_actual_consumer_retains_large_terminal_receipt(tmp_path, monkeypatch):
+    """Real execution, receipt emission, pipe owner, authority and diagnostics."""
+    import release_check_groups as checks
+
+    destination = tmp_path / "public-large-receipt"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    evidence_bytes = checks.OUTPUT_BYTES + 1024
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(
+        tmp_path, monkeypatch, receipt_bytes=evidence_bytes
+    )
+    assert accepted.receipt["synthetic_transport_evidence"] == "x" * evidence_bytes
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    public = json.loads((destination / "diagnostics.json").read_text())
+    assert public["status"] == "RETAINED"
+    assert public["not_admitted_batches"] == 0
+    assert len(public["batches"]) == 1
+    assert public["batches"][0]["process"] == "EXIT_ZERO"
+    assert "synthetic_transport_evidence" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing",
+        "truncation",
+        "base64",
+        "deflate",
+        "length",
+        "digest",
+        "trailing",
+        "concatenated",
+        "json",
+        "decoded-cap",
+        "output-overflow",
+        "stale-transaction",
+        "stale-source",
+        "replay",
+        "nonzero",
+    ],
+)
+def test_actual_consumers_reject_changed_receipt_transport(
+    tmp_path, monkeypatch, mutation
+):
+    """Tamper the synthetic producer; retain real pipe, custody and consumers."""
+    import release_check_groups as checks
+
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    producer = repo / release.ACCEPTANCE_RUNNER
+    text = producer.read_text()
+    anchor = "        print(checks.encode_acceptance_receipt(payload))"
+    assert text.count(anchor) == 1
+    actions = {
+        "missing": "pass",
+        "truncation": "print(wire[:-8])",
+        "base64": "envelope['payload'] = '!private-wire-sentinel!'; print(json.dumps(envelope))",
+        "deflate": "envelope['payload'] = checks.base64.b64encode(packed[:-1]).decode(); print(json.dumps(envelope))",
+        "length": "envelope['payload_bytes'] += 1; print(json.dumps(envelope))",
+        "digest": "envelope['payload_sha256'] = '0' * 64; print(json.dumps(envelope))",
+        "trailing": "envelope['payload'] = checks.base64.b64encode(packed + b'private-wire-sentinel').decode(); print(json.dumps(envelope))",
+        "concatenated": "envelope['payload'] = checks.base64.b64encode(packed + checks.zlib.compress(b'{}')).decode(); print(json.dumps(envelope))",
+        "json": "raw = b'{invalid-private-wire-sentinel'; envelope['payload'] = checks.base64.b64encode(checks.zlib.compress(raw)).decode(); envelope['payload_bytes'] = len(raw); envelope['payload_sha256'] = checks.hashlib.sha256(raw).hexdigest(); print(json.dumps(envelope))",
+        "decoded-cap": "envelope['payload_bytes'] = checks.RECEIPT_BYTES + 1; print(json.dumps(envelope))",
+        "output-overflow": "print('x' * (checks.OUTPUT_BYTES + 1))",
+        "stale-transaction": "payload['transaction_id'] = '0' * 32; print(checks.encode_acceptance_receipt(payload))",
+        "stale-source": "payload['execution']['source_sha256'] = '0' * 64; print(checks.encode_acceptance_receipt(payload))",
+        "replay": "print("
+        + repr(checks.encode_acceptance_receipt(accepted.receipt))
+        + ")",
+        "nonzero": "print(wire)",
+    }
+    replacement = (
+        "        wire = checks.encode_acceptance_receipt(payload)\n"
+        "        envelope = json.loads(wire)\n"
+        "        packed = checks.base64.b64decode(envelope['payload'])\n"
+        "        " + actions[mutation]
+    )
+    text = text.replace(anchor, replacement)
+    if mutation == "nonzero":
+        text = text.replace("    return returncode\n", "    return 1\n")
+    producer.write_text(text)
+    git("add", "-A")
+    git("commit", "-qm", "synthetic transport control")
+    destination = checks.prepare_diagnostics_destination(
+        tmp_path / "public-control", repo
+    )
+    captured = []
+    decoded = []
+    validated = []
+    validator = release.validate_acceptance_receipt
+    owner = release.capture_acceptance_diagnostics
+    decode = release.decode_acceptance_receipt
+
+    def retain(completed, source, plan, binding, _destination, **kwargs):
+        outcome = owner(completed, source, plan, binding, destination, **kwargs)
+        captured.append((completed, outcome))
+        return outcome
+
+    def consume(raw):
+        decoded.append(True)
+        return decode(raw)
+
+    def validate(receipt, expected):
+        validated.append(True)
+        return validator(receipt, expected)
+
+    # Both consumers see the actual captured bytes. Exporting diagnostics here
+    # does not make a diagnostic refusal short-circuit the authority decoder.
+    monkeypatch.setattr(release, "capture_acceptance_diagnostics", retain)
+    monkeypatch.setattr(release, "decode_acceptance_receipt", consume)
+    monkeypatch.setattr(release, "validate_acceptance_receipt", validate)
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    completed, outcome = captured[0]
+    public = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert "private-wire-sentinel" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+    if mutation in {"stale-transaction", "stale-source", "nonzero"}:
+        assert outcome["status"] == "RETAINED"
+    elif mutation == "replay":
+        assert outcome["status"] == "REFUSED"
+    else:
+        assert outcome["status"] == "INCOMPLETE"
+        assert public["reason"] == "RUNNER_RECEIPT_UNAVAILABLE"
+    if mutation in {"nonzero", "output-overflow"}:
+        assert completed.returncode != 0
+        assert not validated  # Failure rendering may decode, never grant authority.
+    else:
+        assert completed.returncode == 0
+        assert decoded == [True]
+    if mutation == "output-overflow":
+        assert completed.failure == "required check output exceeded byte ceiling"
+        assert len(completed.stdout.encode()) == checks.OUTPUT_BYTES + 50
+
+
+def test_receipt_transport_preserves_all_unmatched_failure_details():
+    import release_check_groups as checks
+
+    receipt = _diagnostic_failure_receipt()
+    detail = release._runner_failure_detail(checks.encode_acceptance_receipt(receipt))
+    for case in receipt["cases"]:
+        assert case["stdout"] in detail
+        assert case["stderr"] in detail
+    broken = checks.encode_acceptance_receipt(receipt)[:-4]
+    assert (
+        release._runner_failure_detail(broken)
+        == "acceptance runner receipt transport refused"
+    )
+
+
+@pytest.mark.parametrize("body", [
+    '{"receipt_transport":"x","a":' + '[' * 2000 + '0' + ']' * 2000 + '}',
+    '{"receipt_transport":"x","cases":null}',
+    '{"receipt_transport":"x","value":1e999}',
+])
+def test_failure_rendering_refuses_invalid_bounded_transport(body):
+    assert release._runner_failure_detail(body) == "acceptance runner receipt transport refused"
+
+
+@pytest.mark.parametrize("body", [
+    '{"cases":null}', '{"cases":1}', '{"errors":1}',
+    '{"errors":{"error":"x"}}', '{"cases":[{"matched":false,"stdout":1}]}',
+])
+def test_failure_rendering_keeps_malformed_plain_json_non_authoritative(body):
+    assert isinstance(release._runner_failure_detail(body), str)
+
+
+@pytest.mark.parametrize("number", ["1e999", "-1e999"])
+def test_actual_consumer_rejects_nonfinite_exponent_before_success(
+    tmp_path, monkeypatch, capsys, number
+):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert release.revalidate_acceptance_authority(repo, accepted)[0]
+    runner = repo / release.ACCEPTANCE_RUNNER
+    text = runner.read_text()
+    anchor = "        print(checks.encode_acceptance_receipt(payload))"
+    assert text.count(anchor) == 1
+    replacement = (
+        '        payload["synthetic_measure"] = "SYNTHETIC_EXPONENT"\n'
+        '        raw = json.dumps(payload).replace(\'"SYNTHETIC_EXPONENT"\', '
+        + repr(number) + ').encode()\n'
+        '        envelope = {"receipt_transport": checks.RECEIPT_TRANSPORT, '
+        '"payload_bytes": len(raw), "payload_sha256": checks.hashlib.sha256(raw).hexdigest(), '
+        '"payload": checks.base64.b64encode(checks.zlib.compress(raw)).decode()}\n'
+        '        print(json.dumps(envelope))'
+    )
+    runner.write_text(text.replace(anchor, replacement))
+    git("add", "-A")
+    git("commit", "-qm", "synthetic exponent control")
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(tmp_path / "diagnostics"))
+    capsys.readouterr()
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    output = capsys.readouterr().out
+    assert "PASS checks.acceptance.r5" not in output
+    public = json.loads((tmp_path / "diagnostics/diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert "synthetic_measure" not in json.dumps(public)
+
+
+def test_release_suite_has_no_ambient_diagnostic_destinations():
+    """Ordinary release tests never inherit the enclosing CI step's custody."""
+    assert "GITHUB_OUTPUT" not in os.environ
+    assert "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS" not in os.environ
+
+
+def run_release_fixture_child(command, cwd, env, evidence, timeout):
+    """Use the release owner's bounded group and retain failed-child custody too."""
+    completed = release.bounded_run(command, cwd=cwd, env=env, timeout=timeout)
+    # The owner combines raw stdout/stderr and retains it before returning,
+    # including on timeout. Keep that receipt alongside this test's assertions.
+    (evidence / "child-output.log").write_text(completed.stdout)
+    (evidence / "child-custody.json").write_text(json.dumps({
+        "returncode": completed.returncode,
+        "failure": completed.failure,
+        "process_id": completed.process_id,
+        "fixture_custody": completed.fixture_custody,
+        "fixture_identity": completed.fixture_identity,
+        "custody_records": completed.custody_records,
+    }, sort_keys=True))
+    return completed
+
+
+def test_release_fixture_child_timeout_retains_output_and_reaps_descendant(tmp_path):
+    marker = tmp_path / "descendant.json"
+    script = (
+        "import json,os,signal,sys,time\n"
+        "pid=os.fork()\n"
+        "if pid==0:\n"
+        " signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+        " with open(sys.argv[1],'w') as f:\n"
+        "  json.dump({'pid':os.getpid(),'group':os.getpgrp()},f);f.flush();os.fsync(f.fileno())\n"
+        " print('partial stdout before timeout',flush=True)\n"
+        " print('partial stderr before timeout',file=sys.stderr,flush=True)\n"
+        " time.sleep(30)\n"
+        "else:\n"
+        " time.sleep(30)\n"
+    )
+    completed = run_release_fixture_child(
+        [sys.executable, "-B", "-c", script, str(marker)],
+        tmp_path, dict(os.environ), tmp_path, 2,
+    )
+    assert completed.returncode != 0
+    assert "wall-time ceiling" in completed.failure
+    retained = (tmp_path / "child-output.log").read_text()
+    assert "partial stdout before timeout" in retained
+    assert "partial stderr before timeout" in retained
+    custody = json.loads((tmp_path / "child-custody.json").read_text())
+    assert custody["returncode"] == completed.returncode
+    assert custody["failure"] == completed.failure
+    owner_custody = Path(custody["fixture_custody"])
+    assert (owner_custody / "output.log").read_text() == retained
+    assert json.loads((owner_custody / "result.json").read_text())["returncode"] != 0
+    descendant = json.loads(marker.read_text())
+    assert descendant["group"] == completed.process_id
+    # One observation includes the live test process as a positive control.
+    # Killed orphans may remain as zombies until the platform's init reaps them.
+    observation = subprocess.run(
+        ["ps", "-o", "pid=,stat=", "-p",
+         f"{os.getpid()},{completed.process_id},{descendant['pid']}"],
+        capture_output=True, text=True, timeout=2,
+    )
+    (tmp_path / "terminal-observation.json").write_text(json.dumps({
+        "returncode": observation.returncode, "stdout": observation.stdout,
+        "stderr": observation.stderr, "positive_control": os.getpid(),
+        "parent": completed.process_id, "descendant": descendant,
+    }, sort_keys=True))
+    assert observation.returncode == 0, observation.stderr
+    processes = {int(line.split()[0]): line.split()[1]
+                 for line in observation.stdout.splitlines() if line.strip()}
+    assert os.getpid() in processes and not processes[os.getpid()].startswith("Z")
+    assert completed.process_id not in processes
+    assert (descendant["pid"] not in processes
+            or processes[descendant["pid"]].startswith("Z"))
+
+
+@pytest.mark.parametrize("inherited", ["output-only", "fresh-both", "occupied-both"])
+def test_release_suite_isolates_hosted_diagnostic_environment(tmp_path, inherited):
+    """Execute the real tests under hosted inputs; explicit gate tests still run."""
+    test_file = Path(__file__).resolve()
+    output = tmp_path / "enclosing-step-output"
+    original_output = b"existing-step-command=value\n" if inherited == "occupied-both" else b""
+    output.write_bytes(original_output)
+    output.chmod(0o600)
+    original_stat = output.stat()
+    destination = tmp_path / "enclosing-diagnostics"
+    if inherited == "occupied-both":
+        destination.mkdir(mode=0o700)
+        (destination / "sentinel").write_bytes(b"enclosing diagnostics stay private\n")
+    env = dict(os.environ, GITHUB_OUTPUT=str(output), PYTHONDONTWRITEBYTECODE="1",
+               PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+    for name in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"):
+        env.pop(name, None)
+    if inherited != "output-only":
+        env["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] = str(destination)
+    # This exact selector list excludes this subprocess test, preventing recursive
+    # pytest dispatch. The first four selectors reproduce the hosted ordering;
+    # the rest prove explicit test-owned gate inputs have not been suppressed.
+    selectors = [
+        "test_release_suite_has_no_ambient_diagnostic_destinations",
+        "test_actual_release_consumer_exports_closed_diagnostics_without_authority_change",
+        "test_actual_consumer_retains_large_terminal_receipt",
+        "test_actual_consumer_rejects_nonfinite_exponent_before_success",
+        "test_diagnostic_step_output_is_fresh_exact_and_cannot_be_replayed",
+        "test_diagnostic_step_output_rejects_unowned_or_existing_commands",
+        "test_actual_consumer_withholds_upload_signal_on_export_refusal",
+    ]
+    # The process owner strips ambient hosted destinations. Reintroduce only
+    # these synthetic paths inside its child, before loading the real tests,
+    # so this regression still exercises the fixture's isolation boundary.
+    hosted = {name: env[name] for name in
+              ("GITHUB_OUTPUT", "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS") if name in env}
+    bootstrap = (
+        "import json,os,sys;os.environ.update(json.loads(sys.argv[1]));"
+        "import pytest;raise SystemExit(pytest.main(sys.argv[2:]))"
+    )
+    command = [sys.executable, "-B", "-c", bootstrap, json.dumps(hosted),
+               "-p", "no:cacheprovider",
+               "--basetemp", str(tmp_path / "child-fixtures"), "-q",
+               *[str(test_file) + "::" + name for name in selectors]]
+    completed = run_release_fixture_child(
+        command, test_file.parents[3], env, tmp_path, 120,
+    )
+    # Check the enclosing files even on child failure so test ordering cannot
+    # conceal an accidental write into the actual workflow's output channel.
+    assert output.read_bytes() == original_output
+    after = output.stat()
+    assert (after.st_dev, after.st_ino, after.st_mode, after.st_size,
+            after.st_mtime_ns, after.st_ctime_ns) == (
+        original_stat.st_dev, original_stat.st_ino, original_stat.st_mode,
+        original_stat.st_size, original_stat.st_mtime_ns, original_stat.st_ctime_ns)
+    if inherited == "occupied-both":
+        assert sorted(p.name for p in destination.iterdir()) == ["sentinel"]
+        assert (destination / "sentinel").read_bytes() == b"enclosing diagnostics stay private\n"
+    else:
+        assert not destination.exists()
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert re.search(r"\b11 passed\b", completed.stdout), completed.stdout

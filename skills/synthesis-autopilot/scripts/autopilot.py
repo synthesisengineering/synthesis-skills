@@ -7,7 +7,6 @@ Existing action owners remain responsible for authorization and external I/O.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -29,6 +28,7 @@ def engine():
     import consumer_checks
     import workflow
     import observation_bridge
+    import native_archive
     import controller
     capabilities.register_commands(run_state.register_command)
     workflow.register_commands(run_state.register_command)
@@ -41,6 +41,7 @@ def engine():
     evidence_bridge.register_observers(run_state.register_observer)
     consumer_checks.register_observers(run_state.register_observer)
     observation_bridge.register(run_state)
+    native_archive.register(run_state)
     controller.register(run_state)
     return run_state
 
@@ -69,6 +70,15 @@ def actor_from_hook(payload):
             "native_payload": payload}
 
 
+def _delivery_ref():
+    """Use PM's validated transport hints; these never authenticate ownership."""
+    pm_scripts = HERE.parents[1] / "synthesis-project-management/scripts"
+    if str(pm_scripts) not in sys.path:
+        sys.path.insert(0, str(pm_scripts))
+    from coordination import detect_client_ref
+    return detect_client_ref()
+
+
 def _observer_identity(payload):
     # Combined Stop calls this before engine() or a CLI request decoder has
     # imported PM. Resolve the canonical owner explicitly; import order and
@@ -76,7 +86,11 @@ def _observer_identity(payload):
     scripts = HERE.parents[1] / "synthesis-project-management/scripts"
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
-    from project_state import observer_native_identity
+    _delivery_ref()  # Reject malformed hints even with an explicit surface.
+    from project_state import observer_native_identity, row_for_event
+    # This canonical check rejects conflicting explicit native references even
+    # when no owner index exists. Empty rows grant no seat or mutation authority.
+    row_for_event([], payload)
     return observer_native_identity(payload)
 
 
@@ -88,7 +102,10 @@ def surface_for(payload):
         return explicit if entry and entry["dialect"] in {"claude", "codex", "muse", "cursor", "copilot"} else None
     if os.environ.get("SYNTHESIS_HOOK_CLIENT") == "muse":
         return "muse-cli"
-    native = os.environ.get("SYNTHESIS_CLIENT_SESSION_REF", "")
+    try:
+        native = _delivery_ref()
+    except (ValueError, OSError, ImportError, RuntimeError):
+        return None
     if native.startswith("ccd:"):
         return "claude-code-desktop"
     if native.startswith("cc:"):
@@ -97,6 +114,8 @@ def surface_for(payload):
         return "codex-cli"
     if native.startswith("muse:") or (isinstance(payload, dict) and payload.get("client") == "muse"):
         return "muse-cli"
+    if native:
+        return None  # No Stop dialect is registered for this explicit reference.
     # Discover only a family established by the PM-native transcript validator.
     # Desktop vs CLI capabilities still require an explicit surface observation.
     try:
@@ -188,20 +207,33 @@ def summary(state, context=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("create", "command", "observe", "status", "rebuild", "import", "explain", "doctor", "stop",
-        "start", "next", "record", "checkpoint", "cancel", "recover", "finish"))
+        "start", "next", "record", "checkpoint", "cancel", "recover", "finish", "successor"))
     for name in ("project", "plan", "contract", "profile", "actor", "payload", "legacy"):
         parser.add_argument("--" + name, type=Path)
     for name in ("project-id", "run-id", "command-id", "name", "surface"):
         parser.add_argument("--" + name)
     parser.add_argument("--expected-revision", type=int)
+    parser.add_argument("--replay-limits", type=Path,
+                        help="Exact finite native-validation limits for a protected command/observe request")
     parser.add_argument("--request", help="Strict bounded operation request file, or - for stdin")
     parser.add_argument("--source-mode", choices=("native", "synthetic"), default="native",
                         help="Declared source mode; never proof of native qualification")
+    parser.add_argument("--native-from-byte", type=int, help="Doctor only: explicit native diagnostic interval start")
+    parser.add_argument("--native-physical-byte-budget", type=int,
+                        help="Doctor only: enforce a separate worst-case physical read ceiling")
+    parser.add_argument("--native-byte-budget", type=int, default=4 * 1024 * 1024,
+                        help="Doctor only: bounded native sample size, at most 16 MiB")
     parser.add_argument("--index-legacy", action="store_true",
                         help="Prepare host-local ownership discovery outside Stop; preserve source records")
     args = parser.parse_args(argv)
     try:
-        if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish"}:
+        if (args.native_from_byte is not None or args.native_byte_budget != 4 * 1024 * 1024 or args.native_physical_byte_budget is not None) and args.action != "doctor":
+            raise ValueError("native diagnostic bounds require doctor")
+        if (args.native_from_byte is not None or args.native_byte_budget != 4 * 1024 * 1024 or args.native_physical_byte_budget is not None) and args.actor is None:
+            raise ValueError("native source diagnosis requires --actor")
+        if args.replay_limits is not None and (args.action not in {"command", "observe"} or args.request is not None):
+            raise ValueError("--replay-limits requires a protected low-level command/observe facade")
+        if args.request is not None or args.action in {"start", "next", "record", "checkpoint", "cancel", "recover", "finish", "successor"}:
             import controller
             if args.action not in controller.OPERATIONS or args.project is None or args.request is None:
                 raise ValueError("facade operation requires --project and --request")
@@ -260,6 +292,27 @@ def main(argv=None):
                     if inventory["unattributed"]:
                         output["status"] = "UNKNOWN"
                         output["interpretation"] = "Ownership index prepared; unassignable records require their owning recovery review."
+                if args.actor:
+                    try:
+                        from native_doctor import inspect_source
+                        actor = read_json(args.actor)
+                        client, identity = _observer_identity(actor["native_payload"])
+                        if client == "claude":
+                            output["native_source"] = inspect_source(
+                                actor["native_payload"]["transcript_path"], client=client,
+                                expected_root_session_id=identity, start_offset=args.native_from_byte,
+                                byte_budget=args.native_byte_budget, physical_byte_budget=args.native_physical_byte_budget)
+                        else:
+                            output["native_source"] = {"status": "NOT_APPLICABLE", "client": client,
+                                "scope": "Claude interactive source diagnostic only",
+                                "native_acceptance": "UNKNOWN; use this client's existing conformance checks",
+                                "authority_granted": False}
+                    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as exc:
+                        output["native_source"] = {"status": "FAIL", "authority_granted": False,
+                            "diagnostics": [{"code": "native_identity_or_source_unavailable", "error_class": type(exc).__name__}]}
+                    if output["native_source"]["status"] in {"FAIL", "UNKNOWN"}:
+                        output["status"] = output["native_source"]["status"]
+                    output["scope"] = "module imports, supported schema and applicable bounded source diagnosis"
             elif args.action == "status":
                 if args.project is None or not args.run_id:
                     raise ValueError("status requires --project and --run-id")
@@ -280,6 +333,10 @@ def main(argv=None):
                     if not args.run_id or not args.name or args.expected_revision is None or not args.command_id:
                         raise ValueError("command requires run-id, name, expected-revision and command-id")
                     payload = read_json(args.payload)
+                    import controller
+                    protected_name = "observe:" + args.name if args.action == "observe" else args.name
+                    if args.replay_limits is not None and not controller.protected_command(protected_name, payload):
+                        raise ValueError("--replay-limits cannot authorize an unsupported command")
                     if args.action == "command" and args.name == "workflow.grade":
                         import workflow
                         current = runtime.load_run(args.project, args.run_id)
@@ -296,6 +353,16 @@ def main(argv=None):
                             expected_revision=current["revision"], command_id=args.command_id, actor=actor,
                             runtime_root=default_runtime_root(), request_binding=binding)
                     else:
+                        import controller
+                        command = "observe:" + args.name if args.action == "observe" else args.name
+                        current = runtime.load_run(args.project, args.run_id)
+                        if controller.protected_command(command, payload) and (controller.needs_admission_replay(current) or args.replay_limits is not None):
+                            output = controller.command_with_freshness(args.project, args.run_id, command, payload,
+                                expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,
+                                runtime_root=default_runtime_root(),
+                                replay_limits=read_json(args.replay_limits) if args.replay_limits else None)
+                            print(json.dumps(output, indent=2, sort_keys=True, default=str, allow_nan=False))
+                            return 0
                         mutate = runtime.observe if args.action == "observe" else runtime.apply_command
                         output = mutate(args.project, args.run_id, args.name, payload,
                             expected_revision=args.expected_revision, command_id=args.command_id, actor=actor,
@@ -311,7 +378,7 @@ def main(argv=None):
                         plan=args.plan, contract=read_json(args.contract), profile=read_json(args.profile),
                         actor=actor, command_id=args.command_id, runtime_root=default_runtime_root())
         print(json.dumps(output, indent=2, sort_keys=True, default=str, allow_nan=False))
-        return 0
+        return 2 if args.action == "doctor" and output.get("native_source", {}).get("status") in {"FAIL", "UNKNOWN"} else 0
     except (ValueError, OSError, KeyError, TypeError, ImportError, RuntimeError) as exc:
         if args.action == "stop":
             text = "UNRESOLVED: autopilot runtime failed: " + str(exc)

@@ -1,10 +1,15 @@
 # Run contracts and command interface
 
-For ordinary delegated work, use the eight-operation
+For ordinary delegated work, use the nine-operation
 [execution controller](controller.md). It prepares inputs and invokes the same
 owners described here, retaining exact request prefixes across interruption.
 The lower-level interface remains useful for specialized observations, effects
 and explicit recovery; it does not bypass current workflow constraints.
+
+For a new interval after a terminal run, use the controller’s
+[`successor` operation](successor-transactions.md). It retains the complete
+verified ledger and obligations with one pre/post admission pair, without
+rewriting the predecessor or separately re-registering each item.
 
 Large retained histories use the same owner through [bounded journal storage](journal-storage.md).
 Storage representation does not change command, custody or approval semantics.

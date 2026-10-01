@@ -4,6 +4,31 @@ The file shapes every sync writes and the permalink form every recorded
 message takes. The binding rules are summarized in [SKILL.md](../SKILL.md)
 ("Transcript Files and Permalinks"); this file is the literal format.
 
+## Deterministic acquisition output
+
+The verified acquisition entry retains these same daily paths and uses a
+source-owned reversible raw codec. See [acquisition entries](../../synthesis-daily-rituals/references/acquisition-entry.md).
+Each message and reply has an explicit marker:
+
+```markdown
+**Message ID:** C123:1790560000.000000
+**User ID:** U123
+**Parent ID:** C123:1790560000.000000
+```
+
+DM/group-DM markers use their actual D/G conversation IDs. Exact text stays in a
+length-delimited Markdown fence; full source variants, reactions and attachments
+remain in the raw-metadata footer and original response custody. The renderer
+does not resolve names or invent speaker attribution. It may use a channel-ID
+subheading in a single-channel file so the existing known-thread parser has
+unambiguous identity.
+
+The illustrative hand-maintained shapes below are not proof of acquisition.
+They require the same Message ID markers before the evidence gate can use them.
+Existing non-codec archives remain readable for known-parent discovery; the
+automated publisher refuses to overwrite/merge them until an explicit source
+reconciliation establishes the new exact representation.
+
 ## Transcript File Format
 
 Each file under `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/` follows one of three shapes: per-channel, `_dms.md` aggregator, or `_group-dms.md` aggregator.
@@ -21,10 +46,13 @@ Last synced: ~HH:MM TZ
 ---
 
 ### [Author Name] — [HH:MM TZ]({permalink})
+**Message ID:** [CONVERSATION_ID]:[MESSAGE_TS]
 [Message content]
 **Thread ([N] replies):**
 - [Reply Author] [HH:MM]({reply_permalink}): "[reply text]"
+  **Message ID:** [CONVERSATION_ID]:[REPLY_TS]
 - [Reply Author] [HH:MM]({reply_permalink}): "[reply text]"
+  **Message ID:** [CONVERSATION_ID]:[REPLY_TS]
 **Reactions:** [emoji_name] ([count])
 
 ---
@@ -57,6 +85,7 @@ Last synced: ~HH:MM TZ
 ## DM with [Person Name] (DM_CHANNEL_ID)
 
 ### [Author Name] — [HH:MM TZ]({permalink})
+**Message ID:** [CONVERSATION_ID]:[MESSAGE_TS]
 [Message content]
 
 ---
@@ -75,6 +104,7 @@ Last synced: ~HH:MM TZ
 ## Group DM: [Group Name or Members] (GROUP_DM_ID)
 
 ### [Author Name] — [HH:MM TZ]({permalink})
+**Message ID:** [CONVERSATION_ID]:[MESSAGE_TS]
 [Message content]
 
 ---

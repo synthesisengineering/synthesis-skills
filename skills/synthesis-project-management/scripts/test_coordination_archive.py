@@ -312,3 +312,14 @@ def test_recent_administrative_record_is_never_absorbed_into_old_message():
     plan = a.plan_archive(text, {}, now=NOW)
     assert "retain exact audit" in plan.board and "recorded-administrative-release" in plan.board
     assert plan.messages == 0
+
+
+# Coordination delivery: retained causal/consumer regressions.
+def test_delivery_repair_archive_moves_whole_message_across_fenced_protocol():
+    old = session('old')
+    msg = message(old.label, old.label, body='Before\n```markdown\n---\n\n## Protocol\n```\nAfter\n')
+    original = content([old], msg)
+    plan = a.plan_archive(original, {}, now=NOW)
+    payloads = [v['payload'] for v in a.decode_month('2026-07.md', plan.months['2026-07.md']) if v['kind'] == 'message']
+    assert payloads == [msg]
+    assert 'After' not in plan.board

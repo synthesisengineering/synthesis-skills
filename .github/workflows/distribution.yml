@@ -17,16 +17,30 @@ jobs:
         python: ['3.12', '3.13', '3.14']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: python -m pip install pytest jsonschema pyyaml
       - run: python -B -m pytest skills/synthesis-onboarding/scripts/test_distribution.py -q
+      - name: Verify source-only execution on the selected interpreter
+        env:
+          SYNTHESIS_RUNTIME_POLICY: packaged-python-v1
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: >-
+          python -B -m pytest -q
+          skills/synthesis-onboarding/scripts/test_bootstrap.py::test_parser_loader_compiles_source_instead_of_a_cached_rule
+          skills/synthesis-onboarding/scripts/test_release_runtime.py::test_policy_loader_ignores_cached_code_with_unchanged_source
+          skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_ignores_cached_helper_code
+          skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_preserves_relative_and_installed_library_imports
+          skills/synthesis-onboarding/scripts/test_release_runtime.py::test_source_contract_refuses_sourceless_release_import
+          skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_repeated_contract_activation_retains_prior_roots_without_recursion
+          skills/synthesis-onboarding/scripts/test_source_import_regressions.py::test_verified_private_consumer_refuses_sourceless_release
       - run: sh -n packages/launcher.sh onboard.sh
 
   arch-package:
@@ -37,7 +51,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - run: pacman -Syu --noconfirm git python nodejs npm python-pytest python-jsonschema python-yaml
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Prepare reviewed candidate artifact
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -53,7 +67,7 @@ jobs:
           synthesis --version
           synthesis --help
           test ! -e /root/.synthesis
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arch-package-evidence
           path: /tmp/arch-package-candidate/adapters/aur/

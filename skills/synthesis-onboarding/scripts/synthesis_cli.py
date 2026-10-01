@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import io
 import json
 import os
@@ -16,16 +17,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import onboard
-import modular
-import organization
-import release_runtime
-from reload_guidance import (
+if __name__ == "__main__":
+    import types as _runtime_types
+
+    _runtime_path = Path(__file__).with_name("release_runtime.py")
+    release_runtime = _runtime_types.ModuleType("release_runtime")
+    release_runtime.__file__ = str(_runtime_path)
+    sys.modules["release_runtime"] = release_runtime
+    exec(
+        compile(
+            _runtime_path.read_bytes(), str(_runtime_path), "exec", dont_inherit=True
+        ),
+        release_runtime.__dict__,
+    )
+else:
+    import release_runtime
+release_runtime.enable_source_imports(Path(__file__).resolve().parents[3])
+
+import onboard  # noqa: E402 - source contract must precede release imports
+import modular  # noqa: E402 - source contract must precede release imports
+import organization  # noqa: E402 - source contract must precede release imports
+from reload_guidance import (  # noqa: E402 - source contract must precede release imports
     RECORDED_SESSION_DETAIL,
     RECORDED_SESSION_SCOPE,
     recovery_instruction,
 )
-from enrollment import (
+from enrollment import (  # noqa: E402 - source contract must precede release imports
     EnrollmentJournal,
     recover_enrollments,
     require_settled_enrollments,
@@ -33,7 +50,7 @@ from enrollment import (
     engine_state_root,
     recover_copy_transactions,
 )
-from system_contract import (
+from system_contract import (  # noqa: E402 - source contract must precede release imports
     HEX64_RE,
     descriptor_fields,
     LAUNCHER_MARK,
@@ -56,9 +73,10 @@ from system_contract import (
 )
 
 
-ENGINE_VERSION = "2.9.0"
+ENGINE_VERSION = "2.10.2"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
+    "explain",
     "setup",
     "enroll",
     "stage-core",
@@ -70,10 +88,23 @@ CLI_COMMANDS = (
     "doctor",
     "workspace ensure",
     "outcome verify",
+    "journey",
+    "study",
     "fleet join",
     "onboard",
     "sync",
     "uninstall",
+    "machine platform",
+    "machine review",
+    "machine plan",
+    "machine apply",
+    "machine recover",
+    "campaign status",
+    "campaign report",
+    "project-migrate plan",
+    "project-migrate apply",
+    "project-migrate recover",
+    "project-migrate verify",
 )
 
 
@@ -104,6 +135,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common_output(parser)
     commands = parser.add_subparsers(dest="command", required=True)
+    explain = commands.add_parser(
+        "explain", help="read plain-language setup and trust guidance; changes nothing"
+    )
+    _common_output(explain)
+    import maintenance_cli
+
+    maintenance_cli.register(commands, _common_output)
     execute = commands.add_parser(
         "exec-public", help="execute a declared script from the verified active release"
     )
@@ -181,6 +219,18 @@ def build_parser() -> argparse.ArgumentParser:
     overlay.add_argument("--personal-instruction-source", type=Path)
     overlay.add_argument("--clear-personal-instruction-source", action="store_true")
     enroll.add_argument("--adopt-workspace-instructions", action="store_true")
+    enroll.add_argument(
+        "--team-person", help="explicit principal in the organization declaration"
+    )
+    enroll.add_argument(
+        "--team-digest", help="reviewed SHA-256 of the organization declaration"
+    )
+    enroll.add_argument(
+        "--team-entitlement",
+        action="append",
+        default=None,
+        help="explicit optional entitlement; repeat for additional selections",
+    )
     _common_output(enroll)
 
     for name in ("update", "repair"):
@@ -218,9 +268,62 @@ def build_parser() -> argparse.ArgumentParser:
         "verify", help="run a release-owned outcome verifier"
     )
     verify.add_argument("--task", required=True)
-    verify.add_argument("--workspace", required=True, type=Path)
+    outcome_input = verify.add_mutually_exclusive_group(required=True)
+    outcome_input.add_argument("--workspace", type=Path)
+    outcome_input.add_argument("--artifact", type=Path)
+    verify.add_argument("--sha256")
     verify.add_argument("--source-class", required=True)
     _common_output(verify)
+
+    journey = commands.add_parser(
+        "journey", help="choose and verify a first useful task"
+    )
+    journeys = journey.add_subparsers(dest="journey_command", required=True)
+    _common_output(
+        journeys.add_parser("catalog", help="show five journeys and seven audiences")
+    )
+    jp = journeys.add_parser(
+        "plan", help="preview exact modular components and write consent"
+    )
+    jp.add_argument("--journey", default="portable-project")
+    jp.add_argument("--clients", required=True)
+    jp.add_argument("--no-dormant-core", action="store_true")
+    jp.add_argument("--ttl", type=int, default=3600)
+    _common_output(jp)
+    for action in ("apply", "status", "verify"):
+        item = journeys.add_parser(action)
+        item.add_argument("--id", required=True)
+        if action == "apply":
+            item.add_argument(
+                "--consent", required=True, help="exact approved plan digest"
+            )
+        if action == "verify":
+            item.add_argument("--artifact", type=Path, required=True)
+            item.add_argument("--sha256", required=True)
+            item.add_argument("--confirmed-useful", action="store_true")
+        _common_output(item)
+    study = commands.add_parser("study", help="local consented onboarding observations")
+    studies = study.add_subparsers(dest="study_command", required=True)
+    _common_output(studies.add_parser("protocol"))
+    sb = studies.add_parser("plan")
+    sb.add_argument("--sample", choices=["synthetic", "participant"], required=True)
+    sb.add_argument("--audience", required=True)
+    sb.add_argument("--journey", required=True)
+    sb.add_argument("--retention-days", type=int, required=True)
+    sb.add_argument("--ttl", type=int, default=3600)
+    _common_output(sb)
+    begin = studies.add_parser("begin")
+    begin.add_argument("--plan", required=True, type=Path)
+    begin.add_argument(
+        "--consent", required=True, help="exact approved study plan digest"
+    )
+    _common_output(begin)
+    for action in ("observe", "status", "withdraw", "expire"):
+        item = studies.add_parser(action)
+        item.add_argument("--id", required=True)
+        if action == "observe":
+            item.add_argument("--input", type=Path, required=True)
+        _common_output(item)
 
     fleet = commands.add_parser("fleet", help="enroll this Mac in a personal fleet")
     fleet_commands = fleet.add_subparsers(dest="fleet_command", required=True)
@@ -705,9 +808,11 @@ def _render_doctor(
         _release_label(
             release if isinstance(release, dict) else planes["resolved"].get("release")
         ),
-        "generation %s" % latest.get("generation")
-        if latest
-        else "no committed generation",
+        (
+            "generation %s" % latest.get("generation")
+            if latest
+            else "no committed generation"
+        ),
     )
     print(header)
     print(
@@ -950,9 +1055,7 @@ def _planes(
             "status": (
                 "removed"
                 if disabled and removal_verified
-                else "unverified"
-                if disabled
-                else "verified"
+                else "unverified" if disabled else "verified"
             ),
             "command": command,
         },
@@ -1210,6 +1313,30 @@ def _enroll(args, argv, state, engine_runner):
             and previous["workspace"] != entry["workspace"]
         ):
             raise ContractError("organization workspace changed; refusing replacement")
+        supplied = (
+            args.team_person is not None
+            or args.team_digest is not None
+            or args.team_entitlement is not None
+        )
+        if supplied:
+            if not args.team_person or not args.team_digest:
+                raise ContractError(
+                    "team selection requires both --team-person and --team-digest"
+                )
+            entry["principal_selection"] = {
+                "person": args.team_person,
+                "team_digest": args.team_digest,
+                "requested": args.team_entitlement or [],
+            }
+        elif previous and "principal_selection" in previous:
+            entry["principal_selection"] = copy.deepcopy(
+                previous["principal_selection"]
+            )
+        # The real selection owner checks exact declaration bytes and eligibility
+        # before a transaction, journal, invite consumption, or engine mutation.
+        from team_enrollment import select_manifest
+
+        select_manifest(manifest, entry.get("principal_selection"))
         _validate_additive_organization(base, manifest, entry)
         desired = {
             **base,
@@ -1702,11 +1829,42 @@ def main(
             actual[1:], release_runtime.descriptor_path()
         )
     args = build_parser().parse_args(argv)
+    if args.command == "explain":
+        guidance = {
+            "changes_made": False,
+            "navigation": "Use --help on any command. All choices can be supplied as named arguments with a keyboard; no mouse, colors or animations are required. --json provides structured output.",
+            "desired": "What you chose to install.",
+            "resolved": "The exact release selected for that choice.",
+            "installed": "Files written and verified on this computer.",
+            "source-provenance": "Where those files came from and whether their identity was verified.",
+            "live-loaded": "An actual agent session reported loading this release; installed files alone do not prove this.",
+            "outcome-verified": "The requested operation was checked, not merely installed.",
+            "unknown": "Not yet verified. Unknown or unsupported does not mean success.",
+            "trust": "Only you can grant human-owned hook trust or account access. Diagnostics do not grant permission. Updates, services and study capture require their explicit operations and approval boundaries.",
+        }
+        if args.json:
+            print(json.dumps(guidance, indent=2))
+        else:
+            print("Synthesis setup and trust guide. This command changes nothing.")
+            for key, value in guidance.items():
+                if key != "changes_made":
+                    print(key + ": " + value)
+        return 0
     state = state or SystemState()
     engine_runner = engine_runner or (
         lambda engine_args: _quiet_engine_runner(engine_args, verbose=args.verbose)
     )
     try:
+        if args.command in {"journey", "study"}:
+            import first_run
+
+            payload = first_run.command(
+                args, state, REPO_ROOT, engine_runner=engine_runner
+            )
+            # Journey receipts have transaction IDs but are not generation
+            # summaries; preserve the complete selection and consent preview.
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 1 if payload.get("status") == "STALE" else 0
         _require_expected_release(args)
         _require_expected_desired(args, state)
         if getattr(args, "expected_release_digest", None):
@@ -1739,8 +1897,7 @@ def main(
                 recover_enrollments(state)
                 modular.recover(
                     state,
-                    rollback_engine=lambda prior,
-                    tx: _recover_interrupted_modular_engine(
+                    rollback_engine=lambda prior, tx: _recover_interrupted_modular_engine(
                         state, engine_runner, prior, tx
                     ),
                 )
@@ -1771,6 +1928,12 @@ def main(
                 args.json,
             )
             return 0
+        import maintenance_cli
+
+        maintenance_result = maintenance_cli.dispatch(args, state, REPO_ROOT)
+        if maintenance_result is not None:
+            _render(maintenance_result, args.json)
+            return 0
         current = state.read_desired()
         tool_activation = False
         activating = args.command == "activate"
@@ -1795,12 +1958,14 @@ def main(
             active = _active_release()
             if tool_activation and not current and active:
                 activation_policy = {
-                    "channel": active["channel"]
-                    if active["channel"] in {"stable", "edge"}
-                    else "stable",
-                    "version_pin": active["version"]
-                    if active["channel"] == "pin"
-                    else None,
+                    "channel": (
+                        active["channel"]
+                        if active["channel"] in {"stable", "edge"}
+                        else "stable"
+                    ),
+                    "version_pin": (
+                        active["version"] if active["channel"] == "pin" else None
+                    ),
                 }
             if active and active.get("projection"):
                 return _run_release_bootstrap(
@@ -2028,9 +2193,9 @@ def main(
                         {
                             "repository": repository,
                             "manifest_path": organization.MANIFEST_RELATIVE,
-                            "commit_policy": "pinned"
-                            if expected_commit
-                            else "floating",
+                            "commit_policy": (
+                                "pinned" if expected_commit else "floating"
+                            ),
                             "commit": org_commit,
                         }
                     )
@@ -2365,10 +2530,18 @@ def main(
             with state.locked():
                 receipt = verify_outcome(
                     args.task,
-                    {
-                        "workspace": str(args.workspace),
-                        "source_class": args.source_class,
-                    },
+                    (
+                        {
+                            "artifact": str(args.artifact),
+                            "sha256": args.sha256,
+                            "source_class": args.source_class,
+                        }
+                        if args.artifact is not None
+                        else {
+                            "workspace": str(args.workspace),
+                            "source_class": args.source_class,
+                        }
+                    ),
                     REPO_ROOT,
                 )
                 recorded = state.record_outcome(receipt, already_locked=True)
@@ -2513,7 +2686,7 @@ def main(
         else:
             print("Synthesis failed: %s" % exc, file=sys.stderr)
         return exc.code
-    except (ContractError, OSError, ValueError) as exc:
+    except (ContractError, OSError, ValueError, RuntimeError) as exc:
         if getattr(args, "json", False):
             print(json.dumps({"error": str(exc), "exit": 2}, sort_keys=True))
         else:

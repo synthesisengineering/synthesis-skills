@@ -5,6 +5,7 @@
   "cli": {
     "name": "synthesis",
     "commands": [
+      "explain",
       "setup",
       "enroll",
       "stage-core",
@@ -16,10 +17,23 @@
       "doctor",
       "workspace ensure",
       "outcome verify",
+      "journey",
+      "study",
       "fleet join",
       "onboard",
       "sync",
-      "uninstall"
+      "uninstall",
+      "machine platform",
+      "machine review",
+      "machine plan",
+      "machine apply",
+      "machine recover",
+      "campaign status",
+      "campaign report",
+      "project-migrate plan",
+      "project-migrate apply",
+      "project-migrate recover",
+      "project-migrate verify"
     ]
   },
   "modalities": [
@@ -197,6 +211,11 @@
       "id": "workspace-grounding-check",
       "capability": "workspace-read",
       "source_class": "personal-knowledge"
+    },
+    {
+      "id": "first-use-artifact-check",
+      "capability": "local-first-use",
+      "source_class": "local-user-artifact"
     }
   ],
   "distribution": {
@@ -571,7 +590,102 @@
       "dialect": null,
       "mechanisms": [],
       "terminal_precedence": false,
-      "native_acceptance": "observation-required"
+      "native_acceptance": "observation-required",
+      "pilot_contract": "hermes-cli-shell-v1",
+      "pilot_scope": [
+        "skill-discovery",
+        "read-only-project-recovery",
+        "installed-artifact-guard",
+        "sqlite-source-observation"
+      ]
     }
+  },
+  "first_run": {
+    "default": "portable-project",
+    "journeys": {
+      "portable-project": {
+        "title": "Portable project",
+        "roots": [
+          "synthesis-project-management",
+          "synthesis-context-lifecycle",
+          "synthesis-checkpoint",
+          "synthesis-agent-conformance"
+        ],
+        "task": "Save a project plan and handoff using the project-management resolver. Identify the next action and unresolved evidence. Checkpoint through the project owner; a second client must actually resume before claiming a handoff."
+      },
+      "engineering": {
+        "title": "Engineering",
+        "roots": [
+          "synthesis-project-management",
+          "synthesis-context-lifecycle",
+          "synthesis-checkpoint",
+          "synthesis-agent-conformance",
+          "synthesis-code-planning",
+          "synthesis-preflight",
+          "synthesis-implementation-integrity",
+          "synthesis-pr-review",
+          "synthesis-repo-guard"
+        ],
+        "task": "Use code planning on one user-selected change. Save a concrete implementation plan grounded in the actual source, with acceptance checks, then review it with the user. Installation does not activate repository guards."
+      },
+      "writing": {
+        "title": "Writing",
+        "roots": [
+          "synthesis-project-management",
+          "synthesis-context-lifecycle",
+          "synthesis-checkpoint",
+          "synthesis-agent-conformance",
+          "synthesis-article-writing",
+          "synthesis-link-research",
+          "synthesis-writing-craft",
+          "synthesis-content-quality",
+          "synthesis-voice-profiler"
+        ],
+        "task": "Review one user-supplied draft with the writing skills and save the annotated draft or revision. Keep sourced facts separate from suggestions; ask before collecting a private voice profile or publishing."
+      },
+      "work-management": {
+        "title": "Work management",
+        "roots": [
+          "synthesis-project-management",
+          "synthesis-context-lifecycle",
+          "synthesis-checkpoint",
+          "synthesis-agent-conformance",
+          "synthesis-daily-rituals",
+          "synthesis-catchup-ledger",
+          "synthesis-inbox-cleanup",
+          "synthesis-absence-coordination",
+          "synthesis-chief-of-staff"
+        ],
+        "task": "Save a daily plan from user-supplied priorities using the project and ritual owners. State missing integrations. Do not read an inbox, send messages, schedule work, or change absence policy without the corresponding authorization."
+      },
+      "organization": {
+        "title": "Organization",
+        "roots": [
+          "synthesis-project-management",
+          "synthesis-context-lifecycle",
+          "synthesis-checkpoint",
+          "synthesis-agent-conformance",
+          "synthesis-onboarding",
+          "synthesis-okf",
+          "synthesis-kb-edit",
+          "synthesis-disclosure-policy",
+          "synthesis-agent-guardrails"
+        ],
+        "task": "Inspect a user-supplied organization manifest and save a knowledge/policy onboarding plan. Reuse synthesis enroll for separately authorized enrollment. Do not invent organization data, connector access, shared private skills, or acceptance evidence."
+      }
+    },
+    "audiences": {
+      "software-engineer": "Software engineer",
+      "product-manager": "Product manager",
+      "technical-leader": "Technical leader",
+      "writer": "Writer",
+      "workload-manager": "Workload manager or operations user",
+      "ai-power-user": "ChatGPT or Claude power user",
+      "runtime-author": "Runtime/tool author"
+    },
+    "modular_clients": [
+      "claude",
+      "codex"
+    ]
   }
 }

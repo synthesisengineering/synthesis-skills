@@ -41,7 +41,7 @@ import re
 import secrets
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -328,11 +328,16 @@ def accept_block(
 
 
 def _record_lines(content: str, pattern: re.Pattern) -> list[re.Match]:
-    from peer_addressing import parse_messages
+    from peer_addressing import administrative_messages
 
     matches = []
-    for message in parse_messages(content):
-        for line in message.body.splitlines():
+    for message in administrative_messages(content):
+        from board_grammar import message_code_mask
+
+        lines, visible = message_code_mask(message.body)
+        for line, outside in zip(lines, visible):
+            if not outside:
+                continue
             match = pattern.match(line.strip())
             if match:
                 matches.append(match)
@@ -341,13 +346,18 @@ def _record_lines(content: str, pattern: re.Pattern) -> list[re.Match]:
 
 def find_offers(content: str, *, to_machine: str | None = None) -> list[dict]:
     """Every handoff offer on the board, optionally addressed to one Mac."""
-    from peer_addressing import parse_messages
+    from peer_addressing import administrative_messages
 
     offers = []
-    for message in parse_messages(content):
+    for message in administrative_messages(content):
         header = None
         repos: list[dict] = []
-        for line in message.body.splitlines():
+        from board_grammar import message_code_mask
+
+        lines, visible = message_code_mask(message.body)
+        for line, outside in zip(lines, visible):
+            if not outside:
+                continue
             offer_match = OFFER_RECORD_RE.match(line.strip())
             if offer_match:
                 header = {

@@ -191,6 +191,12 @@ def check_parked_coherence(content: str) -> DoctorCheck:
         sessions = _coord.rows(content)
     except ValueError as exc:
         return DoctorCheck(PARKED_CHECK, False, f"board rows unreadable: {exc}")
+    from peer_addressing import administrative_messages
+
+    try:
+        messages = administrative_messages(content)
+    except ValueError as exc:
+        return DoctorCheck(PARKED_CHECK, False, f"board messages unreadable: {exc}")
     problems = []
     by_compact = {session.compact_id: session for session in sessions}
     for session in sessions:
@@ -198,11 +204,12 @@ def check_parked_coherence(content: str) -> DoctorCheck:
             problems.append(
                 f"{session.compact_id}: parked row has no park record"
             )
-    from peer_addressing import parse_messages
+    for message in messages:
+        from board_grammar import message_code_mask
 
-    for message in parse_messages(content):
-        for line in message.body.splitlines():
-            match = _coord._FLEET_OVERLAPS_PARKED_RE.match(line.strip())
+        lines, visible = message_code_mask(message.body)
+        for line, outside in zip(lines, visible):
+            match = _coord._FLEET_OVERLAPS_PARKED_RE.match(line.strip()) if outside else None
             if not match:
                 continue
             new_compact, parked_compact = match.group(1), match.group(2)
@@ -322,6 +329,47 @@ def check_divergence(repos: list[str | Path], *, git_runner=None) -> DoctorCheck
     return DoctorCheck(DIVERGENCE_CHECK, True, "; ".join(summaries))
 
 
+
+def check_storage(repos, *, source_paths=(), venvs=(), declared_workspaces=()) -> DoctorCheck:
+    """Inspect only declared locations; ownership never grants fresh creation."""
+    import fleet_paths
+    import stat
+
+    issues = []
+    observations = []
+    if len(source_paths) + len(venvs) > 64 or len(declared_workspaces) > 64 or len(repos) > 64:
+        return DoctorCheck("storage-custody", False, "declared storage inventory exceeds its finite input bound")
+    try:
+        rows = fleet_paths.inspect_worktrees([Path(p) for p in repos])
+        for row in rows:
+            issues.extend(row["issues"])
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        issues.append("storage inspection UNKNOWN: " + str(exc))
+    for raw in dict.fromkeys([*source_paths, *venvs, *declared_workspaces]):
+        path = Path(raw).expanduser()
+        placement = fleet_paths.observe_declared_storage(path)
+        observations.append(f"{path}: sampled_at_unix_ns={placement['sampled_at_unix_ns']}; root_metadata={placement['root_metadata']}; {placement['observation']}; content age UNKNOWN")
+        if placement["status"] != "durable-candidate":
+            issues.append(f"{path}: {placement['reason']}; existing work remains claimable for recovery; preserve and verify custody before relocation")
+        try:
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode) or path.resolve() != path.absolute():
+                issues.append(f"{path}: declared storage is aliased or not an ordinary directory; identity UNKNOWN")
+        except (OSError, RuntimeError) as exc:
+            issues.append(f"{path}: declared source/venv/workspace missing or unavailable ({exc}); preserve its record and recovery evidence")
+    for raw in venvs:
+        marker = Path(raw).expanduser() / "pyvenv.cfg"
+        try:
+            info = marker.lstat()
+            if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 65536:
+                raise ValueError("venv metadata is not a bounded nonempty regular file")
+        except (OSError, ValueError) as exc:
+            issues.append(f"{raw}: declared venv metadata unavailable ({exc}); rebuild only from preserved source/dependency evidence")
+    unknown = "retention deadline, unregistered paths and venv package/runtime integrity remain UNKNOWN"
+    return DoctorCheck("storage-custody", not issues,
+                       "; ".join([*issues, *observations, unknown]) if issues or observations else "declared storage and registered worktrees checked; " + unknown)
+
+
 def run_all(
     *,
     board: Path,
@@ -329,6 +377,8 @@ def run_all(
     repos: list[str | Path] | None = None,
     machine_id: str | None = None,
     git_runner=None,
+    source_paths=(),
+    venvs=(),
 ) -> list[DoctorCheck]:
     """Every fleet-doctor check against one board, in gate order."""
     board = Path(board)
@@ -362,6 +412,9 @@ def run_all(
         parked,
         check_artifacts(artifacts_dir),
         check_divergence(scan, git_runner=git_runner),
+        check_storage(scan, source_paths=source_paths, venvs=venvs,
+                      declared_workspaces=repos_for_machine(content, resolved_machine)
+                      if content is not None and resolved_machine else ()),
     ]
 
 
@@ -375,12 +428,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifacts-dir", type=Path, default=None)
     parser.add_argument("--repo", dest="repos", action="append", default=None)
     parser.add_argument("--machine-id", default=None)
+    parser.add_argument("--source-path", action="append", default=[], help="Explicit long-lived source custody path; read-only diagnosis")
+    parser.add_argument("--venv", action="append", default=[], help="Explicit virtual environment record; read-only diagnosis")
     args = parser.parse_args(argv)
     checks = run_all(
         board=args.board,
         artifacts_dir=args.artifacts_dir,
         repos=args.repos,
         machine_id=args.machine_id,
+        source_paths=args.source_path,
+        venvs=args.venv,
     )
     print(format_report(checks))
     return 0 if all(check.ok for check in checks) else 1

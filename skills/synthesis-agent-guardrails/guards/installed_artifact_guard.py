@@ -35,7 +35,10 @@ def verified_shell_parser():
     if spec is None or spec.loader is None:
         raise ValueError("public execution engine cannot be loaded")
     runtime = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(runtime)
+    # Loading a protective helper must not mutate its verified generation.
+    # Compile source bytes directly so the host's bytecode/cache settings cannot
+    # create files in the release or substitute a cached module body.
+    exec(compile(runtime_path.read_bytes(), str(runtime_path), "exec"), runtime.__dict__)
     active = runtime.verified_release()
     parser_path = (Path(active["release_root"])
                    / "skills/synthesis-project-management/scripts/publication_command.py")
@@ -48,7 +51,7 @@ def verified_shell_parser():
     # NamedTuple annotations resolve through the defining module. Register only
     # this newly bound module, without reusing a same-named ambient import.
     sys.modules[parser_spec.name] = parser
-    parser_spec.loader.exec_module(parser)
+    exec(compile(parser_path.read_bytes(), str(parser_path), "exec"), parser.__dict__)
     return parser
 
 

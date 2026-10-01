@@ -47,6 +47,7 @@ import contextlib
 import fcntl
 import hashlib
 import io
+import importlib.util
 import json
 import os
 import re
@@ -63,7 +64,18 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import NamedTuple
 
-from release_check_groups import bounded_run, fixture_root, source_digest
+from release_check_groups import (
+    ACCEPTANCE_SECONDS,
+    DIAGNOSTIC_SECONDS,
+    bounded_run,
+    decode_acceptance_receipt,
+    parse_acceptance_json,
+    OUTPUT_BYTES,
+    fixture_root,
+    source_digest,
+    prepare_diagnostics_destination,
+    capture_acceptance_diagnostics,
+)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(
@@ -212,6 +224,15 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
         ],
     ),
     (
+        "pytest.autopilot.native-control",
+        [
+            "python3",
+            "skills/synthesis-skills-manager/scripts/release_check_groups.py",
+            "--group",
+            "native-control",
+        ],
+    ),
+    (
         "pytest.autopilot.evaluation",
         [
             "python3",
@@ -296,8 +317,12 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "-m",
             "pytest",
             "skills/synthesis-meeting-transcripts/test_acquisition_tools.py",
+            "skills/synthesis-meeting-transcripts/test_acquisition_regressions.py",
+            "skills/synthesis-meeting-transcripts/test_acquisition_entry.py",
+            "skills/synthesis-meeting-transcripts/test_acquisition_repair.py",
             "skills/synthesis-meeting-transcripts/test_extract_commitments.py",
             "skills/synthesis-meeting-transcripts/test_version_parity.py",
+            "skills/synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py",
             "-q",
         ],
     ),
@@ -315,6 +340,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "skills/synthesis-chief-of-staff/scripts/",
             "skills/synthesis-repo-guard/",
             "skills/synthesis-decision-packet/scripts/",
+            "skills/synthesis-local-messaging/scripts/",
             "-q",
         ],
     ),
@@ -367,6 +393,17 @@ class AcceptanceAuthority:
     expected: dict[str, object]
     receipt: dict[str, object]
     boundary: dict[str, object] | None = None
+    receipt_sha256: str = field(init=False)
+
+    def current_receipt_digest(self) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                self.receipt, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
+        ).hexdigest()
+
+    def __post_init__(self):
+        object.__setattr__(self, "receipt_sha256", self.current_receipt_digest())
 
 
 @dataclass(frozen=True)
@@ -697,6 +734,17 @@ def acceptance_expectation(
     }, ""
 
 
+def _acceptance_runner():
+    path = (
+        SCRIPT_DIR.parents[1]
+        / "synthesis-implementation-integrity/scripts/acceptance_suite.py"
+    )
+    spec = importlib.util.spec_from_file_location("release_acceptance_contract", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def validate_acceptance_receipt(
     receipt: object, expected: dict[str, object]
 ) -> tuple[bool, str]:
@@ -740,6 +788,13 @@ def validate_acceptance_receipt(
         )
     ):
         return False, "receipt cases are incomplete or mismatched"
+    try:
+        contract = receipt.get("execution", {}).get("contract")
+        if not isinstance(contract, list) or not contract:
+            raise ValueError("missing exact case execution contract")
+        _acceptance_runner().verify_execution(receipt, contract)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return False, "invalid phase-bound acceptance receipt: " + str(exc)
     return True, "fresh transaction-bound receipt consumed"
 
 
@@ -749,34 +804,121 @@ def _runner_failure_detail(output: str) -> str:
     The runner prints a JSON receipt whose last line is always `}`, so
     reporting the raw tail renders every runner failure as
     `FAIL checks.acceptance.r5: }`. Parse the receipt and name the
-    unmatched cases plus the first error line instead.
+    unmatched cases plus their complete captured stdout/stderr instead. The
+    pytest final summary alone does not preserve the causal exception.
     """
     try:
-        receipt = json.loads(output)
-    except (TypeError, ValueError):
-        lines = (output or "").strip().splitlines()
+        receipt = parse_acceptance_json(output, max_bytes=OUTPUT_BYTES)
+        if isinstance(receipt, dict) and "receipt_transport" in receipt:
+            receipt = decode_acceptance_receipt(output)
+    except (TypeError, ValueError, RecursionError):
+        if isinstance(output, str) and "receipt_transport" in output:
+            return "acceptance runner receipt transport refused"
+        if not isinstance(output, str) or len(output) > OUTPUT_BYTES:
+            return "acceptance runner failed"
+        lines = output.strip().splitlines()
         meaningful = [
             ln.strip() for ln in lines if ln.strip() and set(ln.strip()) - set("{}")
         ]
         return meaningful[-1] if meaningful else "acceptance runner failed"
     if not isinstance(receipt, dict):
         return "acceptance runner failed"
+    cases = receipt.get("cases", [])
+    if not isinstance(cases, list):
+        return "acceptance runner failed"
     bad = [
         case
-        for case in receipt.get("cases", [])
+        for case in cases
         if isinstance(case, dict) and not case.get("matched", False)
     ]
     if bad:
         names = ", ".join(str(case.get("id", "?")) for case in bad)
-        first = (
-            (bad[0].get("stderr") or bad[0].get("stdout") or "").strip().splitlines()
-        )
+        first_stream = next((bad[0][key] for key in ("stderr", "stdout")
+                             if isinstance(bad[0].get(key), str) and bad[0][key]), "")
+        first = first_stream.strip().splitlines()
         err = first[-1].strip() if first else "no runner output"
-        return f"{len(bad)} case(s) unmatched: {names}; first error: {err}"
+        details = [f"{len(bad)} case(s) unmatched: {names}; first error: {err}"]
+        for case in bad:
+            for stream in ("stdout", "stderr"):
+                captured = case.get(stream)
+                if isinstance(captured, str) and captured:
+                    details.append(
+                        f"--- unmatched case {case.get('id', '?')} {stream} ---\n"
+                        + captured
+                    )
+        return "\n".join(details)
     errors = receipt.get("errors")
-    if errors:
+    if isinstance(errors, list) and errors:
         return "; ".join(str(error) for error in errors[:3])
     return "acceptance runner failed"
+
+
+def diagnostic_output_gate(
+    binding: dict | None = None, *, ready: bool = False
+) -> dict | None:
+    """Bind GitHub's current empty step-output file; diagnostics never grant release authority."""
+    name = os.environ.get("GITHUB_OUTPUT") if binding is None else binding["path"]
+    if name is None:
+        return None
+    path = Path(name)
+    if not path.is_absolute() or path.resolve(strict=True) != path:
+        raise ValueError("diagnostic output gate alias")
+    fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
+
+    def identity(info):
+        return [
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            info.st_uid,
+            info.st_gid,
+            info.st_nlink,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        ]
+
+    try:
+        before = os.fstat(fd)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.getuid()
+            or before.st_nlink != 1
+            or before.st_mode & 0o022
+            or identity(before) != identity(path.lstat())
+        ):
+            raise ValueError("diagnostic output gate refused")
+        if binding is None:
+            if ready or before.st_size != 0:
+                raise ValueError("diagnostic output gate is not fresh")
+            payload = b"diagnostics_ready=false\n"
+            expected_bytes = payload
+        else:
+            if (
+                identity(before) != binding["identity"]
+                or os.read(fd, 256) != b"diagnostics_ready=false\n"
+            ):
+                raise ValueError("diagnostic output gate changed")
+            payload = b"diagnostics_ready=true\n" if ready else b""
+            expected_bytes = b"diagnostics_ready=false\n" + payload
+        if payload and os.write(fd, payload) != len(payload):
+            raise OSError("diagnostic output gate incomplete write")
+        os.fsync(fd)
+        after = os.fstat(fd)
+        os.lseek(fd, 0, os.SEEK_SET)
+        observed = os.read(fd, len(expected_bytes) + 1)
+        if (
+            observed != expected_bytes
+            or identity(before)[:6] != identity(after)[:6]
+            or identity(after) != identity(os.fstat(fd))
+            or identity(after) != identity(path.lstat())
+            or path.resolve(strict=True) != path
+            or after.st_size != before.st_size + len(payload)
+        ):
+            raise ValueError("diagnostic output gate changed at closure")
+        return {"path": str(path), "identity": identity(after)}
+    finally:
+        os.close(fd)
 
 
 def consume_acceptance(
@@ -800,7 +942,7 @@ def consume_acceptance(
         result.add("checks.acceptance.r5", False, detail)
         return None
     command = [
-        "python3",
+        sys.executable,
         str(ACCEPTANCE_RUNNER),
         "run",
         "--manifest",
@@ -811,21 +953,105 @@ def consume_acceptance(
         change_base,
         "--transaction-id",
         transaction_id,
-        "--json",
+        "--receipt",
     ]
-    completed = run(command, cwd=repo)
-    if completed.returncode != 0:
-        result.add(
-            "checks.acceptance.r5",
-            False,
-            _runner_failure_detail(completed.stdout or completed.stderr),
+    # One explicit finite suite envelope; each inner group keeps its 300-second
+    # process ceiling. The runner reserves 60 seconds for final source/receipt work.
+    diagnostic_destination = None
+    output_gate = None
+    diagnostic_plan = None
+    diagnostic_path = os.environ.get("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS")
+    if diagnostic_path is not None:
+        try:
+            runner = _acceptance_runner()
+            validated, errors = runner.validate_manifest(
+                repo / ACCEPTANCE_MANIFEST, repo
+            )
+            if validated is None:
+                raise ValueError("; ".join(errors))
+            diagnostic_plan = runner.batch_plan(runner.case_contract(validated, repo))
+            diagnostic_destination = prepare_diagnostics_destination(
+                Path(diagnostic_path), repo
+            )
+            output_gate = diagnostic_output_gate()
+        except (OSError, ValueError, KeyError, TypeError):
+            result.add(
+                "checks.acceptance.diagnostics",
+                False,
+                "configured diagnostic destination or contract refused",
+            )
+            return None
+    diagnostic_deadline = time.monotonic() + ACCEPTANCE_SECONDS
+    completed = bounded_run(command, cwd=repo, timeout=ACCEPTANCE_SECONDS, suite=True)
+    diagnostic_status = None
+    diagnostic_final_deadline = min(
+        diagnostic_deadline, time.monotonic() + DIAGNOSTIC_SECONDS
+    )
+    if getattr(completed, "fixture_custody", None) is not None:
+        try:
+            if diagnostic_plan is None:
+                runner = _acceptance_runner()
+                validated, errors = runner.validate_manifest(
+                    repo / ACCEPTANCE_MANIFEST, repo
+                )
+                if validated is None:
+                    raise ValueError("; ".join(errors))
+                diagnostic_plan = runner.batch_plan(
+                    runner.case_contract(validated, repo)
+                )
+            diagnostic_status = capture_acceptance_diagnostics(
+                completed,
+                repo,
+                diagnostic_plan,
+                expected,
+                diagnostic_destination,
+                deadline=diagnostic_final_deadline,
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            diagnostic_status = {"status": "REFUSED"}
+    if diagnostic_path is not None:
+        if output_gate is not None:
+            try:
+                if time.monotonic() >= diagnostic_final_deadline:
+                    raise ValueError("diagnostic finalization deadline")
+                diagnostic_output_gate(
+                    output_gate,
+                    ready=bool(
+                        diagnostic_status
+                        and diagnostic_status.get("export_closed") is True
+                    ),
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                diagnostic_status = {"status": "REFUSED"}
+        diagnostics_ok = (
+            diagnostic_status is not None and diagnostic_status["status"] == "RETAINED"
         )
+        result.add(
+            "checks.acceptance.diagnostics",
+            diagnostics_ok,
+            "diagnostic custody "
+            + (diagnostic_status or {"status": "UNAVAILABLE"})["status"]
+            + "; never release authority",
+        )
+        if not diagnostics_ok and completed.returncode == 0:
+            return None
+    if completed.returncode != 0:
+        if diagnostic_path is not None:
+            # Hosted stdout is public too. Raw errors stay only in private custody.
+            detail = (
+                "acceptance execution failed; consult sanitized diagnostic artifact"
+            )
+        else:
+            detail = _runner_failure_detail(completed.stdout or completed.stderr)
+            if completed.stdout and completed.stderr:
+                detail += "\n--- acceptance runner stderr ---\n" + completed.stderr
+        result.add("checks.acceptance.r5", False, detail)
         return None
     try:
-        receipt = json.loads(completed.stdout)
-    except (TypeError, json.JSONDecodeError) as exc:
+        receipt = decode_acceptance_receipt(completed.stdout)
+    except (TypeError, ValueError) as exc:
         result.add(
-            "checks.acceptance.r5", False, f"runner receipt is not valid JSON: {exc}"
+            "checks.acceptance.r5", False, f"runner receipt transport is invalid: {exc}"
         )
         return None
     refreshed_boundary, detail = acceptance_boundary(repo)
@@ -853,6 +1079,19 @@ def consume_acceptance(
         )
         return None
     valid, detail = validate_acceptance_receipt(receipt, expected)
+    if valid:
+        try:
+            runner = _acceptance_runner()
+            validated, errors = runner.validate_manifest(
+                repo / ACCEPTANCE_MANIFEST, repo
+            )
+            if validated is None:
+                raise ValueError("; ".join(errors))
+            runner.verify_execution(receipt, runner.case_contract(validated, repo))
+            if receipt["execution"]["source_sha256"] != source_digest(repo):
+                raise ValueError("receipt source tree differs from current source")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            valid, detail = False, str(exc)
     result.add("checks.acceptance.r5", valid, detail)
     if not valid:
         return None
@@ -890,7 +1129,19 @@ def revalidate_acceptance_authority(
         return False, "source worktree state could not be established"
     if status.stdout.strip():
         return False, "source worktree changed before publication"
-    return validate_acceptance_receipt(authority.receipt, authority.expected)
+    try:
+        if authority.current_receipt_digest() != authority.receipt_sha256:
+            return False, "accepted execution evidence changed before publication"
+        valid, detail = validate_acceptance_receipt(
+            authority.receipt, authority.expected
+        )
+        if not valid:
+            return False, detail
+        if authority.receipt["execution"]["source_sha256"] != source_digest(repo):
+            return False, "accepted execution source changed before publication"
+        return True, detail
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return False, "accepted execution evidence unavailable: " + str(exc)
 
 
 def read_manifest_version(path: Path) -> str | None:
@@ -979,8 +1230,13 @@ def muse_plugin_capability(binary: str) -> dict:
     This probes no account, plugin mutation, native session or model. Even a
     supported plugin command does not establish callback loading or trust.
     """
-    result = {"status": "UNAVAILABLE", "native_hooks": "UNVERIFIED",
-              "execution_protocol": "NOT_ASSESSED", "reason": "command contract unavailable"}
+    result = {
+        "status": "UNAVAILABLE",
+        "native_hooks": "UNVERIFIED",
+        "execution_protocol": "NOT_ASSESSED",
+        "reason": "command contract unavailable",
+    }
+
     def commands(raw):
         if not isinstance(raw, str) or len(raw.encode("utf-8")) > 128 * 1024:
             raise ValueError("native help exceeds its bounded grammar")
@@ -990,22 +1246,33 @@ def muse_plugin_capability(binary: str) -> dict:
         match = matches[0] if len(matches) == 1 else None
         if not match:
             return set()
-        section = raw[match.end():]
+        section = raw[match.end() :]
         section = re.split(r"(?m)^\S[^\n]*:\s*$", section, maxsplit=1)[0]
         return set(re.findall(r"(?m)^  ([a-z][a-z0-9-]*)(?:\s|$)", section))
+
     try:
         top = bounded_run([binary, "--help"], cwd=SCRIPT_DIR, timeout=10)
         if top.returncode or "plugins" not in commands(top.stdout):
             result["reason"] = "installed Muse command grammar does not expose plugins"
             return result
         plugin = bounded_run([binary, "plugins", "--help"], cwd=SCRIPT_DIR, timeout=10)
-        if (plugin.returncode or plugin.stdout.strip() == top.stdout.strip()
-                or not {"list", "install", "update"} <= commands(plugin.stdout)
-                or len(re.findall(r"(?m)^Usage:", plugin.stdout)) != 1
-                or not re.search(r"(?m)^Usage:[ \t]+muse[ \t]+plugins(?:[ \t]+[^\n]*)?$", plugin.stdout)):
-            result["reason"] = "Muse plugin subcommand grammar is absent or a top-level fallback"
+        if (
+            plugin.returncode
+            or plugin.stdout.strip() == top.stdout.strip()
+            or not {"list", "install", "update"} <= commands(plugin.stdout)
+            or len(re.findall(r"(?m)^Usage:", plugin.stdout)) != 1
+            or not re.search(
+                r"(?m)^Usage:[ \t]+muse[ \t]+plugins(?:[ \t]+[^\n]*)?$", plugin.stdout
+            )
+        ):
+            result["reason"] = (
+                "Muse plugin subcommand grammar is absent or a top-level fallback"
+            )
             return result
-        result.update(status="AVAILABLE", reason="explicit plugin command grammar observed; native hook acceptance still unverified")
+        result.update(
+            status="AVAILABLE",
+            reason="explicit plugin command grammar observed; native hook acceptance still unverified",
+        )
     except (OSError, subprocess.SubprocessError, UnicodeError, ValueError) as exc:
         result["reason"] = "Muse capability observation failed: " + str(exc)[:300]
     return result
@@ -1020,14 +1287,18 @@ def _muse_install_record(binary: str) -> dict | None:
     missing record is installed fresh. Existence — not enabled state —
     decides, because a disabled record still blocks a fresh install.
     """
-    result = bounded_run([binary, "plugins", "list", "--json"], cwd=SCRIPT_DIR, timeout=30)
+    result = bounded_run(
+        [binary, "plugins", "list", "--json"], cwd=SCRIPT_DIR, timeout=30
+    )
     if result.returncode != 0:
         raise OSError("Muse install inventory command failed")
     try:
         data = _muse_inventory_json(result.stdout)
         return _muse_record_from_list(data)
     except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
-        raise OSError("Muse install inventory is unavailable or ambiguous: " + str(exc)) from exc
+        raise OSError(
+            "Muse install inventory is unavailable or ambiguous: " + str(exc)
+        ) from exc
 
 
 def _muse_inventory_json(raw: str) -> dict:
@@ -1056,8 +1327,12 @@ def _muse_inventory_json(raw: str) -> dict:
             raise ValueError("nonfinite inventory value")
         return value
 
-    return json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite,
-                      parse_float=finite_float)
+    return json.loads(
+        raw,
+        object_pairs_hook=unique,
+        parse_constant=nonfinite,
+        parse_float=finite_float,
+    )
 
 
 def _muse_record_from_list(data: object) -> dict | None:
@@ -1066,8 +1341,11 @@ def _muse_record_from_list(data: object) -> dict | None:
     Unknown rows cannot be ignored: they might represent this installation.
     Only an explicit empty list or a complete foreign inventory proves absence.
     """
-    if (not isinstance(data, dict) or not isinstance(data.get("plugins"), list)
-            or len(data["plugins"]) > 4096):
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("plugins"), list)
+        or len(data["plugins"]) > 4096
+    ):
         raise ValueError("incomplete inventory or unknown schema")
     seen, own = set(), None
     for item in data["plugins"]:
@@ -1075,8 +1353,12 @@ def _muse_record_from_list(data: object) -> dict | None:
             raise ValueError("inventory row lacks a complete record")
         record = item["record"]
         ident = record.get("id")
-        if (not isinstance(ident, str) or not ident or len(ident) > 256
-                or any(ord(c) < 33 or ord(c) == 127 for c in ident)):
+        if (
+            not isinstance(ident, str)
+            or not ident
+            or len(ident) > 256
+            or any(ord(c) < 33 or ord(c) == 127 for c in ident)
+        ):
             raise ValueError("invalid plugin identity")
         if ident in seen:
             raise ValueError("duplicate plugin identity")
@@ -1084,15 +1366,22 @@ def _muse_record_from_list(data: object) -> dict | None:
         if "enabled" in record and type(record["enabled"]) is not bool:
             raise ValueError("invalid enabled state")
         for field_name in ("version", "cache_path"):
-            if field_name in record and (not isinstance(record[field_name], str)
-                                    or len(record[field_name]) > 4096
-                                    or "\x00" in record[field_name]):
+            if field_name in record and (
+                not isinstance(record[field_name], str)
+                or len(record[field_name]) > 4096
+                or "\x00" in record[field_name]
+            ):
                 raise ValueError("invalid plugin " + field_name)
         if ident == PLUGIN_NAME:
             source = record.get("source")
             path = source.get("path") if isinstance(source, dict) else None
-            if (not isinstance(path, str) or not path or len(path) > 4096
-                    or "\x00" in path or not Path(path).is_absolute()):
+            if (
+                not isinstance(path, str)
+                or not path
+                or len(path) > 4096
+                or "\x00" in path
+                or not Path(path).is_absolute()
+            ):
                 raise ValueError("installed plugin has no unambiguous absolute source")
             own = record
     return own

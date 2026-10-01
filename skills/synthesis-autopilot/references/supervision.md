@@ -133,8 +133,14 @@ attribution, manufacture claims, publish, or create another authority database.
 
 ## Native transport and lifecycle evidence boundaries
 
-The implemented transport uses Muse MSP `session/resume`, its native exclusive
-writer lease, and `turn/start` with queue semantics. It binds the actual installed
+Read the [current Muse launch protocol](muse-launch-protocol.md) before preparing
+or consuming a Muse grant. Its owner-derived protocol binding and verified
+handshake are mandatory in addition to every authority and policy gate below.
+
+The implemented transport uses Muse MSP `session/resume` and `turn/start`
+with queue semantics. Resume does not establish a connection-exclusive lease.
+A new queued turn is reconciled through exact `turn/unqueue` custody; missing
+authoritative removal remains unresolved. It binds the actual installed
 versioned binary and refuses changed bytes, a different/forked session, an active
 turn, wrong workspace or pending human request. The fixed launch-argument
 mapping above is enforced; no model, provider, trust or approval reconfiguration

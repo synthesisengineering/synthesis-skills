@@ -50,6 +50,7 @@ https://github.com/synthesisengineering/synthesis-skills.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import locale
@@ -61,6 +62,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
+from urllib.parse import urlsplit
 import uuid
 import warnings
 from pathlib import Path
@@ -82,6 +85,8 @@ COORDINATION_ENGINE_FILES = (
     "native_git.py",
     "coordination_schema.py",
     "board_grammar.py",
+    "team_contract.py",
+    "native_identity.py",
     "coordination_archive.py",
     "pointer_lock.py",
     "peer_addressing.py",
@@ -95,7 +100,7 @@ COORDINATION_ENGINE_FILES = (
     "coordination_process.py",
     "coordination_lock.py",
     "project_recipient.py",
-    "live_receipt.py",
+    "native_transcript_identity.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
@@ -109,6 +114,7 @@ class ConfigError(Exception):
 
 
 # ─── strict YAML-subset parser (stdlib only) ─────────────────────────────
+
 
 def _strip_trailing_comment(text: str) -> str:
     """Remove a trailing ` # comment` that is OUTSIDE any quotes."""
@@ -137,8 +143,7 @@ def _parse_scalar(raw: str, lineno: int) -> Any:
         )
     if s[0] in ("&", "*", "|", ">", "?"):
         raise ConfigError(
-            f"line {lineno}: YAML feature '{s[0]}' is outside the supported "
-            "subset"
+            f"line {lineno}: YAML feature '{s[0]}' is outside the supported " "subset"
         )
     if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
         return s[1:-1].replace("''", "'")
@@ -172,7 +177,7 @@ def _split_key(line: str, lineno: int) -> Tuple[str, str]:
             in_double = not in_double
         elif ch == ":" and not in_single and not in_double:
             key = line[:i].strip()
-            rest = line[i + 1:].strip()
+            rest = line[i + 1 :].strip()
             if not key:
                 raise ConfigError(f"line {lineno}: empty mapping key")
             if key[0] in ("'", '"'):
@@ -209,7 +214,9 @@ def parse_simple_yaml(text: str) -> dict:
         if pending_key is not None:
             p_indent, p_parent, p_key = pending_key
             if indent > p_indent:
-                container: Any = [] if content.startswith("- ") or content == "-" else {}
+                container: Any = (
+                    [] if content.startswith("- ") or content == "-" else {}
+                )
                 p_parent[p_key] = container
                 stack.append((indent, container))
                 pending_key = None
@@ -232,9 +239,7 @@ def parse_simple_yaml(text: str) -> dict:
 
         if content.startswith("- ") or content == "-":
             if not isinstance(cur, list):
-                raise ConfigError(
-                    f"line {lineno}: list item outside a list context"
-                )
+                raise ConfigError(f"line {lineno}: list item outside a list context")
             item_raw = content[1:].strip()
             if not item_raw:
                 raise ConfigError(
@@ -255,6 +260,10 @@ def parse_simple_yaml(text: str) -> dict:
                 "supported subset"
             )
         key, rest = _split_key(content, lineno)
+        if key in cur:
+            raise ConfigError(
+                f"line {lineno}: duplicate mapping key before aggregation"
+            )
         if rest == "":
             pending_key = (indent, cur, key)
         else:
@@ -267,6 +276,7 @@ def parse_simple_yaml(text: str) -> dict:
 
 
 # ─── policy logic (unchanged semantics from v1) ──────────────────────────
+
 
 def get_push_remotes() -> List[str]:
     """Return the URLs of all push remotes for the cwd repo, or []."""
@@ -313,13 +323,11 @@ def classify_repo(config: dict, push_urls: List[str]) -> str:
     their sites, and it left published surfaces with personal remotes
     completely unguarded.
     """
-    if not push_urls:
+    if not push_urls or config.get("_team_mandatory_regex"):
         return "strict"
     strict_patterns = flatten_patterns(config.get("strict_repo_patterns") or [])
     surface_patterns = flatten_patterns(config.get("public_surface_patterns") or [])
-    personal_patterns = flatten_patterns(
-        config.get("personal_remote_patterns") or []
-    )
+    personal_patterns = flatten_patterns(config.get("personal_remote_patterns") or [])
     if strict_patterns and any(_match_any(strict_patterns, u) for u in push_urls):
         return "strict"
     if surface_patterns and all(_match_any(surface_patterns, u) for u in push_urls):
@@ -379,9 +387,7 @@ def load_ledger_allowances(config: dict) -> List[str]:
         raise ConfigError(f"disclosure ledger unparsable ({path}): {exc}")
     entities = ledger.get("entities")
     if not isinstance(entities, dict) or not entities:
-        raise ConfigError(
-            f"disclosure ledger has no entities mapping: {path}"
-        )
+        raise ConfigError(f"disclosure ledger has no entities mapping: {path}")
     # An allowance may only ever subtract an IDENTITY pattern (who), never a
     # topic pattern (what). Without this, a ledger entry could quietly
     # disable NDA, compensation, or internal-URL detection.
@@ -410,8 +416,7 @@ def load_ledger_allowances(config: dict) -> List[str]:
         registers = flatten_patterns(entry.get("registers") or [])
         if not registers:
             raise ConfigError(
-                f"disclosure ledger entity {name!r} declares no registers: "
-                f"{path}"
+                f"disclosure ledger entity {name!r} declares no registers: " f"{path}"
             )
         for register in registers:
             if register not in registers_vocabulary:
@@ -454,9 +459,7 @@ def build_active_regex(config: dict, repo_class: str) -> str:
             if groups
             else tier1
         )
-        parts.extend(
-            p for p in flatten_patterns(selected) if p not in allowed
-        )
+        parts.extend(p for p in flatten_patterns(selected) if p not in allowed)
     seen: set = set()
     deduped: List[str] = []
     for p in parts:
@@ -476,25 +479,24 @@ def build_allowlist_regex(config: dict) -> str:
 # catalog itself. The diff scanner skips these so adding a name to the policy
 # is not flagged as leaking it.
 DEFAULT_DIFF_EXCLUDE_PATHS = (
-    r'(^|/)\.githooks/pre-commit$',
-    r'(^|/)\.githooks/extra-patterns\.ya?ml$',
-    r'^\.synthesis/git-hook-config\.ya?ml$',
-    r'(^|/)git-hook-config\.example\.ya?ml$',
-    r'(^|/)anti-shortcut-catalog\.ya?ml$',
+    r"(^|/)\.githooks/pre-commit$",
+    r"(^|/)\.githooks/extra-patterns\.ya?ml$",
+    r"^\.synthesis/git-hook-config\.ya?ml$",
+    r"(^|/)git-hook-config\.example\.ya?ml$",
+    r"(^|/)anti-shortcut-catalog\.ya?ml$",
     # The disclosure-policy methodology and the hook engine's own docs and
     # tests discuss the pattern system by example — pattern-catalog class.
     # ANCHORED to their real locations: a bare basename anywhere would be a
     # free pass any repo could claim by naming a file conveniently.
-    r'^skills/synthesis-disclosure-policy/',
-    r'^skills/synthesis-git-hooks/',
-    r'^agent-control/git-hook-config\.ya?ml$',
-    r'^agent-control/disclosure/ledger\.ya?ml$',
+    r"^skills/synthesis-disclosure-policy/",
+    r"^skills/synthesis-git-hooks/",
+    r"^agent-control/git-hook-config\.ya?ml$",
+    r"^agent-control/disclosure/ledger\.ya?ml$",
 )
 
 # Tier 0 is never excluded: credentials in any path, in any repo class,
 # always block. Path exclusions exist for pattern-catalog files, whose
 # risk is false positives on Tier 1 vocabulary — never for secrets.
-
 
 
 def build_diff_exclude_regex(config: dict) -> str:
@@ -513,7 +515,9 @@ ALL_PATTERN_KEYS = (
 )
 
 
-def validate_all_patterns(config: dict, grep_executable: Optional[str] = None) -> List[str]:
+def validate_all_patterns(
+    config: dict, grep_executable: Optional[str] = None
+) -> List[str]:
     """Return problems for every configured regex in the policy.
 
     v2.1 validated only the tier patterns. An invalid exclusion or
@@ -523,9 +527,7 @@ def validate_all_patterns(config: dict, grep_executable: Optional[str] = None) -
     problems: List[str] = []
     groups = {
         "tier_0_always": flatten_patterns(config.get("tier_0_always") or {}),
-        "tier_1_strict_only": flatten_patterns(
-            config.get("tier_1_strict_only") or {}
-        ),
+        "tier_1_strict_only": flatten_patterns(config.get("tier_1_strict_only") or {}),
     }
     for key in ALL_PATTERN_KEYS:
         groups[key] = flatten_patterns(config.get(key) or [])
@@ -554,8 +556,11 @@ def validate_all_patterns(config: dict, grep_executable: Optional[str] = None) -
                     re.compile(pattern)
             except re.error as exc:
                 problems.append(f"{key}: rejected by python re: {pattern!r} ({exc})")
-            err = (_grep_validates(pattern, grep_executable)
-                   if grep_executable else _grep_validates(pattern))
+            err = (
+                _grep_validates(pattern, grep_executable)
+                if grep_executable
+                else _grep_validates(pattern)
+            )
             if err:
                 problems.append(f"{key}: rejected by grep -E: {pattern!r} ({err})")
     return problems
@@ -575,9 +580,17 @@ def _validation_file_identity(path: Path) -> dict:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
         after = os.fstat(handle.fileno())
+
     def fields(value):
-        return (value.st_dev, value.st_ino, value.st_size,
-                value.st_mtime_ns, value.st_ctime_ns, value.st_mode)
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+            value.st_mode,
+        )
+
     if fields(before) != fields(after) or fields(after) != fields(resolved.stat()):
         raise OSError("validator dependency changed while reading")
     return {"path": str(resolved), "sha256": digest.hexdigest(), "stat": fields(after)}
@@ -592,20 +605,37 @@ def _validation_binding(config_bytes: bytes) -> Optional[dict]:
         return {
             "config_sha256": hashlib.sha256(config_bytes).hexdigest(),
             "validator": _validation_file_identity(Path(__file__)),
-            "validator_code_sha256": hashlib.sha256(marshal.dumps(tuple(
-                function.__code__ for function in (
-                    parse_simple_yaml, _strip_trailing_comment, _parse_scalar,
-                    _split_key, flatten_patterns, validate_all_patterns, _grep_validates)
-            ))).hexdigest(),
+            "validator_code_sha256": hashlib.sha256(
+                marshal.dumps(
+                    tuple(
+                        function.__code__
+                        for function in (
+                            parse_simple_yaml,
+                            _strip_trailing_comment,
+                            _parse_scalar,
+                            _split_key,
+                            flatten_patterns,
+                            validate_all_patterns,
+                            _grep_validates,
+                        )
+                    )
+                )
+            ).hexdigest(),
             "sidecar_version": SIDECAR_VERSION,
             "grep_lookup": os.path.abspath(grep),
             "grep": _validation_file_identity(Path(grep)),
             "python": _validation_file_identity(Path(sys.executable)),
             "python_version": sys.version,
-            "python_implementation": [sys.implementation.name, sys.implementation.cache_tag],
-            "locale": {key: value for key, value in os.environ.items()
-                       if key.startswith("LC_") or key in (
-                           "LANG", "LANGUAGE", "GREP_OPTIONS", "POSIXLY_CORRECT")},
+            "python_implementation": [
+                sys.implementation.name,
+                sys.implementation.cache_tag,
+            ],
+            "locale": {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("LC_")
+                or key in ("LANG", "LANGUAGE", "GREP_OPTIONS", "POSIXLY_CORRECT")
+            },
             "python_locale": locale.setlocale(locale.LC_CTYPE),
             "python_encoding": locale.getpreferredencoding(False),
         }
@@ -615,16 +645,23 @@ def _validation_binding(config_bytes: bytes) -> Optional[dict]:
 
 
 def _pattern_cache_directory(create: bool) -> int:
-    root = Path(os.environ.get("SYNTHESIS_PATTERN_CACHE_DIR") or (
-        Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
-        / "git-hook-pattern-cache"))
+    root = Path(
+        os.environ.get("SYNTHESIS_PATTERN_CACHE_DIR")
+        or (
+            Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
+            / "git-hook-pattern-cache"
+        )
+    )
     root = Path(os.path.abspath(root))
     descriptor = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY)
     try:
         for index, part in enumerate(root.parts[1:]):
             try:
-                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                                dir_fd=descriptor)
+                child = os.open(
+                    part,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
             except FileNotFoundError:
                 if not create or index != len(root.parts) - 2:
                     raise
@@ -632,8 +669,11 @@ def _pattern_cache_directory(create: bool) -> int:
                     os.mkdir(part, mode=0o700, dir_fd=descriptor)
                 except FileExistsError:
                     pass
-                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                                dir_fd=descriptor)
+                child = os.open(
+                    part,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                    dir_fd=descriptor,
+                )
             os.close(descriptor)
             descriptor = child
         metadata = os.fstat(descriptor)
@@ -650,23 +690,36 @@ def _pattern_cache_hit(binding: dict) -> bool:
     try:
         directory = _pattern_cache_directory(False)
         name = hashlib.sha256(_validation_json(binding)).hexdigest() + ".json"
-        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-                             dir_fd=directory)
+        descriptor = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory
+        )
         with os.fdopen(descriptor, "rb") as handle:
             metadata = os.fstat(handle.fileno())
-            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
-                    or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1
-                    or metadata.st_size > 65536):
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_nlink != 1
+                or metadata.st_size > 65536
+            ):
                 return False
             document = json.loads(handle.read())
-        if not isinstance(document, dict) or set(document) != {"schema", "binding", "valid", "checksum"}:
+        if not isinstance(document, dict) or set(document) != {
+            "schema",
+            "binding",
+            "valid",
+            "checksum",
+        }:
             return False
         checksum = document.pop("checksum")
         # JSON normalizes the stat tuples in the in-memory binding to lists.
-        return (type(document["schema"]) is int and document["schema"] == 1
-                and document["valid"] is True
-                and _validation_json(document["binding"]) == _validation_json(binding)
-                and checksum == hashlib.sha256(_validation_json(document)).hexdigest())
+        return (
+            type(document["schema"]) is int
+            and document["schema"] == 1
+            and document["valid"] is True
+            and _validation_json(document["binding"]) == _validation_json(binding)
+            and checksum == hashlib.sha256(_validation_json(document)).hexdigest()
+        )
     except Exception:
         return False
     finally:
@@ -687,13 +740,22 @@ def _publish_pattern_validation(binding: dict) -> None:
         document = {"schema": 1, "binding": binding, "valid": True}
         document["checksum"] = hashlib.sha256(_validation_json(document)).hexdigest()
         temporary = "." + uuid.uuid4().hex + ".tmp"
-        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                             0o600, dir_fd=directory)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory,
+        )
         with os.fdopen(descriptor, "wb") as handle:
             descriptor = None
             handle.write(_validation_json(document))
-        os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory,
-                follow_symlinks=False)
+        os.link(
+            temporary,
+            name,
+            src_dir_fd=directory,
+            dst_dir_fd=directory,
+            follow_symlinks=False,
+        )
     except Exception:
         pass
     finally:
@@ -714,9 +776,254 @@ def _validated_pattern_problems(config: dict, config_bytes: bytes) -> List[str]:
         return []
     executable = binding["grep"]["path"] if binding is not None else None
     problems = validate_all_patterns(config, executable)
-    if not problems and binding is not None and binding == _validation_binding(config_bytes):
+    if (
+        not problems
+        and binding is not None
+        and binding == _validation_binding(config_bytes)
+    ):
         _publish_pattern_validation(binding)
     return problems
+
+
+def _team_policy_bytes(path: Path) -> bytes:
+    path = path.absolute()
+
+    def identity(st):
+        return (
+            st.st_dev,
+            st.st_ino,
+            st.st_mode,
+            st.st_uid,
+            st.st_nlink,
+            st.st_size,
+            st.st_mtime_ns,
+            st.st_ctime_ns,
+        )
+
+    try:
+        for part in (path, *path.parents):
+            if part.is_symlink():
+                raise ConfigError("team policy path contains a symbolic link")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            before = os.fstat(fd)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_uid != os.getuid()
+                or before.st_mode & 0o022
+                or before.st_size > 1024 * 1024
+            ):
+                raise ConfigError("team policy is unsafe or exceeds the byte bound")
+            with os.fdopen(fd, "rb", closefd=False) as stream:
+                raw = stream.read(1024 * 1024 + 1)
+            if (
+                len(raw) > 1024 * 1024
+                or identity(before) != identity(os.fstat(fd))
+                or identity(before) != identity(path.lstat())
+            ):
+                raise ConfigError("team policy changed during observation")
+            if any(parent.is_symlink() for parent in path.parents):
+                raise ConfigError("team policy ancestor changed to an alias")
+        finally:
+            os.close(fd)
+        return raw
+    except OSError as exc:
+        raise ConfigError("team policy unavailable") from exc
+
+
+def _team_remote_binding(text):
+    """Parse a bounded Git spelling; None means restrictions cannot be excluded.
+
+    This is not an authenticated repository equivalence relation. Different
+    transports or ports on one host stay ambiguous, never an access grant.
+    """
+    if (
+        not isinstance(text, str)
+        or not text
+        or len(text) > 8192
+        or any(ord(c) < 33 or ord(c) == 127 for c in text)
+        or "\\" in text
+        or "%" in text
+    ):
+        return None
+    try:
+        value = text
+        if "://" not in value:
+            match = re.fullmatch(
+                r"(?:([A-Za-z0-9._-]+)@)?(\[[^\]]+\]|[A-Za-z0-9.-]+):(.+)", value
+            )
+            if match is None:
+                return None
+            user, host, path = match.groups()
+            if path.startswith(("/", "~")):
+                return None
+            value = "ssh://" + (user + "@" if user else "") + host + "/" + path
+        url = urlsplit(value)
+        if (
+            url.scheme not in {"https", "ssh"}
+            or not url.hostname
+            or url.password
+            or (url.username and url.scheme != "ssh")
+            or url.query
+            or url.fragment
+            or not url.path.startswith("/")
+            or any(p in {".", ".."} for p in url.path.split("/"))
+            or "//" in url.path
+            or url.hostname.endswith(".")
+        ):
+            return None
+        port = url.port or (443 if url.scheme == "https" else 22)
+        if not 1 <= port <= 65535:
+            return None
+        return url.scheme, url.hostname.lower(), port, url.path
+    except ValueError:
+        return None
+
+
+def _team_remote_applies(prefix, remote):
+    if remote is None:
+        return True
+    scheme, host, port, path = prefix
+    other_scheme, other_host, other_port, other_path = remote
+    if host != other_host:
+        return False
+    if (scheme, port) != (other_scheme, other_port):
+        # Same host but a different service cannot demonstrate disjointness.
+        # Retain restrictions; do not assert the repositories are identical.
+        return True
+    return other_path.startswith(path)
+
+
+def apply_team_policy(config: dict, push_urls: List[str]) -> dict:
+    """Add digest-bound team restrictions without exporting personal exemptions.
+
+    References are explicitly enrolled by the config owner. No files, ACLs or
+    host policy are changed. Unknown repository identity applies every enrolled
+    restriction; it cannot select a weaker policy. Native/host enforcement still
+    requires the ordinary installation and actual protected-host acceptance.
+    """
+    if any(key.startswith("_team_") for key in config):
+        raise ConfigError("internal team policy values cannot be supplied as authority")
+    declarations = config.get("team_policy_files", {})
+    if not isinstance(declarations, dict) or len(declarations) > 32:
+        raise ConfigError("team_policy_files must be a bounded path-to-SHA256 mapping")
+    if declarations and (not isinstance(push_urls, list) or len(push_urls) > 256):
+        raise ConfigError("team repository remote inventory exceeds its bound")
+    remote_bindings = (
+        [_team_remote_binding(url) for url in push_urls] if declarations else []
+    )
+    result = dict(config)
+    mandatory = []
+    strict = flatten_patterns(config.get("strict_repo_patterns") or [])
+    deadline = time.monotonic() + 5
+    pattern_count = 0
+    seen_organizations = set()
+    evidence = []
+
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ConfigError("duplicate team policy member before aggregation")
+            value[key] = item
+        return value
+
+    for name, digest in declarations.items():
+        if (
+            not isinstance(name, str)
+            or not Path(name).is_absolute()
+            or str(Path(name)) != name
+            or ".." in Path(name).parts
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        ):
+            raise ConfigError("team policy requires an exact absolute path and SHA256")
+        raw = _team_policy_bytes(Path(name))
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise ConfigError("team policy differs from its enrolled source digest")
+        try:
+            policy = json.loads(raw, object_pairs_hook=unique)
+        except (ValueError, UnicodeError, RecursionError) as exc:
+            raise ConfigError("team policy is malformed") from exc
+        if (
+            not isinstance(policy, dict)
+            or set(policy)
+            != {"schema", "organization", "repository_prefixes", "mandatory_patterns"}
+            or type(policy["schema"]) is not int
+            or policy["schema"] != 1
+            or not isinstance(policy["organization"], str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,95}", policy["organization"])
+            or policy["organization"] in seen_organizations
+        ):
+            raise ConfigError("team policy shape or organization identity invalid")
+        seen_organizations.add(policy["organization"])
+        for key in ("repository_prefixes", "mandatory_patterns"):
+            values = policy[key]
+            if (
+                not isinstance(values, list)
+                or not 1 <= len(values) <= 4096
+                or any(not isinstance(v, str) or not v or len(v) > 8192 for v in values)
+                or len(set(values)) != len(values)
+            ):
+                raise ConfigError("team policy patterns must be bounded unique strings")
+            # Keep the existing Python and ERE dual-engine contract.
+            pattern_count += len(values)
+            if pattern_count > 256:
+                raise ConfigError("team policy exceeds the aggregate 256-pattern bound")
+            if key == "repository_prefixes":
+                prefix_bindings = []
+                for prefix in values:
+                    binding = _team_remote_binding(prefix)
+                    if (
+                        binding is None
+                        or "://" not in prefix
+                        or not prefix.endswith("/")
+                    ):
+                        raise ConfigError(
+                            "repository prefix must be a credential-free explicit remote directory"
+                        )
+                    if urlsplit(prefix).username:
+                        raise ConfigError(
+                            "repository prefix must not contain login identity"
+                        )
+                    prefix_bindings.append(binding)
+            else:
+                for value in values:
+                    if time.monotonic() >= deadline:
+                        raise ConfigError(
+                            "team policy validation exceeded its time bound"
+                        )
+                    problems = validate_all_patterns({"tier_0_always": [value]})
+                    if problems:
+                        raise ConfigError(
+                            "invalid team pattern: " + "; ".join(problems)
+                        )
+        applies = not remote_bindings or any(
+            _team_remote_applies(prefix, remote)
+            for prefix in prefix_bindings
+            for remote in remote_bindings
+        )
+        if applies:
+            mandatory.extend(policy["mandatory_patterns"])
+            strict.extend(
+                "^" + re.escape(prefix) for prefix in policy["repository_prefixes"]
+            )
+        if hashlib.sha256(_team_policy_bytes(Path(name))).hexdigest() != digest:
+            raise ConfigError("team policy changed before configuration completion")
+        evidence.append(
+            {
+                "organization": policy["organization"],
+                "sha256": digest,
+                "applies": applies,
+            }
+        )
+    if time.monotonic() >= deadline:
+        raise ConfigError("team policy validation exceeded its time bound")
+    result["strict_repo_patterns"] = list(dict.fromkeys(strict))
+    result["_team_mandatory_regex"] = "|".join(dict.fromkeys(mandatory))
+    result["_team_policy_evidence"] = evidence
+    return result
 
 
 def load_config(path: Path) -> dict:
@@ -772,6 +1079,20 @@ def load_config(path: Path) -> dict:
             file=sys.stderr,
         )
         sys.exit(2)
+    try:
+        config = (
+            apply_team_policy(config, get_push_remotes())
+            if "team_policy_files" in config
+            else config
+        )
+    except ConfigError as exc:
+        print(f"synthesis-git-hooks: team policy refused: {exc}", file=sys.stderr)
+        sys.exit(2)
+    config_bytes = (
+        config_bytes
+        + b"\0team-policy-state\0"
+        + json.dumps(config, sort_keys=True).encode("utf-8")
+    )
     problems = _validated_pattern_problems(config, config_bytes)
     if problems:
         print(
@@ -781,6 +1102,37 @@ def load_config(path: Path) -> dict:
         )
         sys.exit(2)
     return config
+
+
+def marker_scan_policy(config: dict, repo_class: str) -> str:
+    """Separate only exact supported literal marker vocabulary, never custom EREs."""
+    known = {
+        "BEGIN " + family + "PRIVATE KEY"
+        for family in ("RSA ", "OPENSSH ", "EC ", "PGP ", "", "ENCRYPTED ")
+    }
+    tier = config.get("tier_0_always") or {}
+    values = (
+        flatten_patterns(tier.get("private_key_markers") or [])
+        if isinstance(tier, dict)
+        else []
+    )
+    markers = sorted(set(values) & known)
+    filtered = copy.deepcopy(config)
+    if markers:
+        filtered["tier_0_always"]["private_key_markers"] = [
+            value for value in values if value not in markers
+        ]
+    return json.dumps(
+        {
+            "version": 1,
+            "markers": markers,
+            "credentials": build_active_regex(filtered, "personal"),
+            "exposure": build_active_regex(filtered, repo_class),
+            "tier0": build_active_regex(config, "personal"),
+            "active": build_active_regex(config, repo_class),
+        },
+        separators=(",", ":"),
+    )
 
 
 def emit_shell_vars(config: dict) -> None:
@@ -820,10 +1172,18 @@ def emit_shell_vars(config: dict) -> None:
     print(f"REPO_CLASS={shlex.quote(repo_class)}")
     print(f"ACTIVE_REGEX={shlex.quote(active)}")
     print(f"MESSAGE_REGEX={shlex.quote(message_regex)}")
+    print(f"MARKER_SCAN_POLICY={shlex.quote(marker_scan_policy(config, repo_class))}")
+    print(
+        f"MESSAGE_MARKER_SCAN_POLICY={shlex.quote(marker_scan_policy(config, 'strict'))}"
+    )
+    print(
+        f"CREDENTIAL_MARKER_SCAN_POLICY={shlex.quote(marker_scan_policy(config, 'personal'))}"
+    )
     # Credentials are scanned across EVERY staged path, exclusions included:
     # a pattern-catalog file is a plausible place for a false positive on
     # Tier-1 vocabulary, never a legitimate place for a secret.
     print(f"TIER0_REGEX={shlex.quote(build_active_regex(config, 'personal'))}")
+    print(f"MANDATORY_REGEX={shlex.quote(config.get('_team_mandatory_regex', ''))}")
     print(f"ALLOWLIST_REGEX={shlex.quote(allowlist)}")
     print(f"DIFF_EXCLUDE_REGEX={shlex.quote(diff_excludes)}")
     print(f"CHECK_COMMIT_MSG={check_msg}")
@@ -832,9 +1192,7 @@ def emit_shell_vars(config: dict) -> None:
         print("COORDINATION_CHECK_STAGED=0")
         print("COORDINATION_BOARD=''")
     else:
-        expanded_board = os.path.expandvars(
-            os.path.expanduser(str(coordination_board))
-        )
+        expanded_board = os.path.expandvars(os.path.expanduser(str(coordination_board)))
         print("COORDINATION_CHECK_STAGED=1")
         print(f"COORDINATION_BOARD={shlex.quote(expanded_board)}")
     # MUST be last: the engine treats its absence as sidecar failure.
@@ -914,9 +1272,7 @@ def delegate_required_control(repo_root: Path) -> Tuple[bool, str]:
     present = delegate.exists() or delegate.is_symlink()
     runnable = delegate.is_file() and os.access(delegate, os.X_OK)
     declared = (
-        marker.exists()
-        or marker.is_symlink()
-        or _marker_listed_in_index(repo_root)
+        marker.exists() or marker.is_symlink() or _marker_listed_in_index(repo_root)
     )
     if not declared:
         prefix = (
@@ -961,6 +1317,7 @@ def delegate_required_control(repo_root: Path) -> Tuple[bool, str]:
 
 # ─── doctor ──────────────────────────────────────────────────────────────
 
+
 def _grep_validates(pattern: str, executable: Optional[str] = None) -> Optional[str]:
     """Return an error string if `grep -E` rejects the pattern, else None."""
     try:
@@ -969,8 +1326,11 @@ def _grep_validates(pattern: str, executable: Optional[str] = None) -> Optional[
             input="",
             capture_output=True,
             text=True,
+            timeout=2,
             **({"executable": executable} if executable else {}),
         )
+    except subprocess.TimeoutExpired:
+        return "grep validation timed out"
     except FileNotFoundError:  # pragma: no cover
         return "grep not found on PATH"
     if proc.returncode > 1:
@@ -991,7 +1351,11 @@ def source_engine_path(path: Path, name: str) -> Path:
         return local
     return (
         path.parents[1]
-        / ("synthesis-agent-conformance" if name == "live_receipt.py" else "synthesis-project-management")
+        / (
+            "synthesis-agent-conformance"
+            if name == "native_transcript_identity.py"
+            else "synthesis-project-management"
+        )
         / "scripts"
         / name
     )
@@ -1160,14 +1524,12 @@ def run_doctor(config_path: Path) -> int:
         problems.append(f"config missing: {config_path}")
     else:
         try:
-            config = parse_simple_yaml(config_path.read_text())
+            config = apply_team_policy(
+                parse_simple_yaml(config_path.read_text()), get_push_remotes()
+            )
             t0 = flatten_patterns((config or {}).get("tier_0_always") or {})
-            t1 = flatten_patterns(
-                (config or {}).get("tier_1_strict_only") or {}
-            )
-            infos.append(
-                f"config OK: {len(t0)} tier-0 + {len(t1)} tier-1 patterns"
-            )
+            t1 = flatten_patterns((config or {}).get("tier_1_strict_only") or {})
+            infos.append(f"config OK: {len(t0)} tier-0 + {len(t1)} tier-1 patterns")
             if not t0:
                 problems.append("tier_0_always is empty — no credential tier")
             version = config.get("config_version")
@@ -1193,10 +1555,11 @@ def run_doctor(config_path: Path) -> int:
                     "coordination check-staged control absent: no "
                     "coordination_board configured"
                 )
-            elif not isinstance(coordination_board, str) or not coordination_board.strip():
-                problems.append(
-                    "coordination_board must be a non-empty path string"
-                )
+            elif (
+                not isinstance(coordination_board, str)
+                or not coordination_board.strip()
+            ):
+                problems.append("coordination_board must be a non-empty path string")
             else:
                 board_path = Path(coordination_board).expanduser()
                 infos.append(f"coordination check-staged configured: {board_path}")
@@ -1291,9 +1654,7 @@ def run_doctor(config_path: Path) -> int:
                 "sync back"
             )
         if not drift_found:
-            infos.append(
-                f"installed engine matches skill source (no drift): {src_dir}"
-            )
+            infos.append(f"installed engine matches skill source (no drift): {src_dir}")
 
     # 5. Disclosure ledger (when configured): must exist, parse, carry
     # evidence, and every allowance must correspond to a real Tier-1
@@ -1301,9 +1662,7 @@ def run_doctor(config_path: Path) -> int:
     if config is not None and config.get("disclosure_ledger"):
         try:
             allowances = load_ledger_allowances(config)
-            tier1 = set(
-                flatten_patterns(config.get("tier_1_strict_only") or {})
-            )
+            tier1 = set(flatten_patterns(config.get("tier_1_strict_only") or {}))
             stale = [a for a in allowances if a not in tier1]
             infos.append(
                 f"disclosure ledger OK: {len(allowances)} allowance(s) "
@@ -1325,9 +1684,7 @@ def run_doctor(config_path: Path) -> int:
         push_urls = get_push_remotes()
         if push_urls:
             cls = classify_repo(config, push_urls)
-            infos.append(
-                f"cwd repo class: {cls} ({len(push_urls)} push remotes)"
-            )
+            infos.append(f"cwd repo class: {cls} ({len(push_urls)} push remotes)")
 
     # 7. delegate-required: the cwd repository's own declaration that its
     # .githooks/pre-commit must run. A repository's opt-in is a fact about
@@ -1370,6 +1727,7 @@ def run_doctor(config_path: Path) -> int:
 
 
 # ─── entry point ─────────────────────────────────────────────────────────
+
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(

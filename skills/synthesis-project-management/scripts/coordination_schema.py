@@ -23,6 +23,7 @@ from board_grammar import (
     V3_COLUMNS,
     V4_COLUMNS,
     V5_COLUMNS,
+    V6_COLUMNS,
     UnsupportedBoardSchemaError as UnsupportedBoardSchemaError,
     parse_table_rows as parse_table_rows,
 )
@@ -340,10 +341,10 @@ def column_count_error(cells: list[str], script_path: Path | str) -> ValueError:
     """
     head = (
         f"active-session row has {len(cells)} columns; expected "
-        f"{len(V5_COLUMNS)}, {len(V4_COLUMNS)}, {len(V3_COLUMNS)}, "
+        f"{len(V6_COLUMNS)}, {len(V5_COLUMNS)}, {len(V4_COLUMNS)}, {len(V3_COLUMNS)}, "
         f"{len(V2_COLUMNS)}, or {len(V1_COLUMNS)}"
     )
-    if len(cells) > len(V5_COLUMNS):
+    if len(cells) > len(V6_COLUMNS):
         return ValueError(
             f"{head}. A wider row than this engine knows means the board was "
             f"written by a newer engine: {engine_remedy(script_path)}"

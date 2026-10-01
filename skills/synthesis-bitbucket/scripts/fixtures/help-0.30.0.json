@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "binary_sha256": "2230c870f6a3944d8a48677e110b96f88d247760685117e1e027856c764fae48",
+  "source": "bkt 0.30.0 local executable help; no provider calls",
+  "commands": {
+    "version": {
+      "argv": [
+        "--version"
+      ],
+      "stdout": "bkt version 0.30.0\n",
+      "stderr": ""
+    },
+    "global": {
+      "argv": [
+        "--help"
+      ],
+      "stdout": "Work seamlessly with Bitbucket Data Center and Cloud from the command line.\n\nCommon flows:\n  bkt auth login https://bitbucket.example.com\n  bkt pr list --mine\n  bkt status pr 123 --json\n\nUsage:\n  bkt [flags]\n  bkt [command]\n\nAvailable Commands:\n  admin       Administrative operations for Bitbucket (DC only)\n  api         Make raw Bitbucket API requests\n  auth        Manage Bitbucket authentication credentials\n  branch      Inspect and manage branches\n  commit      Work with commits\n  completion  Generate the autocompletion script for the specified shell\n  context     Manage Bitbucket CLI contexts\n  extension   Manage bkt CLI extensions\n  help        Help about any command\n  issue       Work with Bitbucket Cloud issues (Cloud only)\n  mcp         Model Context Protocol server for agents\n  perms       Manage Bitbucket permissions (DC only)\n  pipeline    Run and inspect Bitbucket Cloud pipelines (Cloud only)\n  pr          Manage pull requests\n  project     Work with Bitbucket projects (DC only)\n  repo        Work with Bitbucket repositories\n  status      Inspect commit and pull request statuses\n  variable    Manage pipeline variables (Cloud only)\n  webhook     Manage Bitbucket webhooks\n\nFlags:\n  -c, --context string    Active Bitbucket context name\n      --format string     Output format: json or yaml (alias for --json/--yaml)\n  -h, --help              help for bkt\n      --jq string         Apply a jq expression to JSON output (requires --json or --format json)\n      --json              Output in JSON format when supported\n      --template string   Render output using Go templates\n  -v, --version           version for bkt\n      --yaml              Output in YAML format when supported\n\nUse \"bkt [command] --help\" for more information about a command.\n",
+      "stderr": ""
+    },
+    "merge": {
+      "argv": [
+        "pr",
+        "merge",
+        "--help"
+      ],
+      "stdout": "Merge a pull request. The source branch is closed by default (use\n--close-source=false to keep it). An optional merge strategy can be specified\n(e.g. fast_forward, squash) and a custom merge commit message can be provided.\n\nWorks on both Data Center and Cloud. On Data Center, the current PR version\nis used for optimistic locking.\n\nUsage:\n  bkt pr merge <id> [flags]\n\nExamples:\n  # Merge a pull request\n  bkt pr merge 42\n\n  # Merge with a custom commit message\n  bkt pr merge 42 --message \"Release v1.2.0\"\n\n  # Merge using rebase fast-forward strategy and keep source branch\n  bkt pr merge 42 --strategy rebase_fast_forward --close-source=false\n\nFlags:\n      --close-source       Close source branch on merge (default true)\n  -h, --help               help for merge\n      --message string     Merge commit message override\n      --project string     Bitbucket project key override\n      --repo string        Repository slug override\n      --strategy string    Merge strategy ID (e.g., rebase_fast_forward)\n      --workspace string   Bitbucket Cloud workspace override\n\nGlobal Flags:\n  -c, --context string    Active Bitbucket context name\n      --format string     Output format: json or yaml (alias for --json/--yaml)\n      --jq string         Apply a jq expression to JSON output (requires --json or --format json)\n      --json              Output in JSON format when supported\n      --template string   Render output using Go templates\n      --yaml              Output in YAML format when supported\n",
+      "stderr": ""
+    },
+    "pipeline": {
+      "argv": [
+        "pipeline",
+        "run",
+        "--help"
+      ],
+      "stdout": "Trigger a new pipeline run on Bitbucket Cloud for the current repository.\n\nThe pipeline runs against the specified Git ref (branch, tag, or commit). You can\npass custom pipeline variables using the --var flag, which accepts KEY=VALUE pairs\nand can be repeated. This command is available for Bitbucket Cloud contexts only.\n\nUse --wait to poll the triggered pipeline until it completes, with exponential\nbackoff and jitter. Exit codes in --wait mode: 0 = pipeline succeeded,\n1 = pipeline completed unsuccessfully, 8 = timed out while still running.\n\nUsage:\n  bkt pipeline run [flags]\n\nExamples:\n  # Run the pipeline on the default branch\n  bkt pipeline run\n\n  # Run the pipeline on a specific branch\n  bkt pipeline run --ref feature/my-branch\n\n  # Run with custom pipeline variables\n  bkt pipeline run --ref main --var ENV=staging --var DEBUG=true\n\n  # Run against a specific repository\n  bkt pipeline run --workspace myteam --repo backend-api --ref develop\n\n  # Trigger and wait for the result\n  bkt pipeline run --ref main --wait\n\nFlags:\n  -h, --help                    help for run\n      --interval duration       Initial polling interval when using --wait (default 10s)\n      --max-interval duration   Maximum polling interval (backoff cap) (default 2m0s)\n      --ref string              Git ref to run the pipeline on (default \"main\")\n      --repo string             Repository slug override\n      --timeout duration        Maximum time to wait for the pipeline (0 for no timeout) (default 30m0s)\n      --var strings             Pipeline variable in KEY=VALUE form (repeatable)\n      --wait                    Wait for the triggered pipeline to complete\n      --workspace string        Bitbucket Cloud workspace override\n\nGlobal Flags:\n  -c, --context string    Active Bitbucket context name\n      --format string     Output format: json or yaml (alias for --json/--yaml)\n      --jq string         Apply a jq expression to JSON output (requires --json or --format json)\n      --json              Output in JSON format when supported\n      --template string   Render output using Go templates\n      --yaml              Output in YAML format when supported\n",
+      "stderr": ""
+    }
+  }
+}

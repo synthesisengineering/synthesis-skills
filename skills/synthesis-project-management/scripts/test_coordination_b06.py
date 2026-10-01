@@ -123,6 +123,9 @@ def test_resolve_reports_registered_muse_and_only_verified_lanes(
 def test_resolve_never_promises_unverified_direct_lane(
     tmp_path, monkeypatch, capsys, foreign
 ):
+    # Locality is observed independently; the CLI override cannot establish it.
+    monkeypatch.setattr(C, "local_machine_identity", lambda: ("local", "fixture-label"))
+    monkeypatch.setattr(C.platform, "node", lambda: "fixture-host")
     board = tmp_path / "board.md"
     r = row(machine="remote" if foreign else "local")
     board.write_text(C.replace_table(C.template(), [r]))

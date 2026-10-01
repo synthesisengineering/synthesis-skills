@@ -14,6 +14,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -26,7 +27,7 @@ from system_contract import (
 
 
 COMPONENTS = frozenset({"git-hooks", "message-guard", "kernel", "day-end"})
-INTRODUCED_DEPENDENCIES = {'skills/synthesis-git-hooks/scripts/_scan_staged.py': ('skills/synthesis-git-hooks/scripts/pre-commit',
+INTRODUCED_DEPENDENCIES = {"skills/synthesis-project-management/scripts/native_identity.py": ("skills/synthesis-project-management/scripts/coordination.py",), "skills/synthesis-project-management/scripts/team_contract.py": ("skills/synthesis-project-management/scripts/coordination.py",), 'skills/synthesis-git-hooks/scripts/_scan_staged.py': ('skills/synthesis-git-hooks/scripts/pre-commit',
                                                         'skills/synthesis-git-hooks/scripts/commit-msg',
                                                         'skills/synthesis-git-hooks/scripts/_load_config.py'),
  'skills/synthesis-daily-rituals/scripts/ritual_workers.py': ('skills/synthesis-daily-rituals/scripts/day-end',
@@ -45,8 +46,23 @@ INTRODUCED_DEPENDENCIES = {'skills/synthesis-git-hooks/scripts/_scan_staged.py':
                                                             'skills/synthesis-daily-rituals/scripts/day-end-nudge.sh'),
  'skills/synthesis-project-management/scripts/coordination_lock.py': ('skills/synthesis-project-management/scripts/coordination.py',),
  'skills/synthesis-project-management/scripts/project_recipient.py': ('skills/synthesis-project-management/scripts/coordination.py',),
- 'skills/synthesis-agent-conformance/scripts/live_receipt.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-agent-conformance/scripts/native_transcript_identity.py': ('skills/synthesis-project-management/scripts/coordination.py',),
  'skills/synthesis-project-management/scripts/coordination_process.py': ('skills/synthesis-project-management/scripts/coordination.py',)}
+
+MESSAGE_PARSER_DEPENDENCIES = frozenset(
+    "skills/synthesis-project-management/scripts/" + name
+    for name in ("native_git.py", "claim_scope.py", "board_grammar.py", "coordination_schema.py")
+)
+
+
+def _dependency_anchors(entry):
+    # A source may be installed by several components. Adoption authority is
+    # local to the selected component, never borrowed from a sibling target.
+    if entry.component == "message-guard":
+        if entry.source_relative in MESSAGE_PARSER_DEPENDENCIES:
+            return ("skills/synthesis-message-guard/scripts/message_guard.py",)
+        return ()
+    return INTRODUCED_DEPENDENCIES.get(entry.source_relative, ())
 
 
 @dataclass(frozen=True)
@@ -82,11 +98,28 @@ def _regular_file(path):
         raise ContractError("runtime target is not a regular file: %s" % path)
 
 
+def _bounded_payload(path):
+    """Reuse the context owner's descriptor/path verified 8 MiB reader."""
+    folder = Path(__file__).resolve().parents[2] / 'synthesis-context-lifecycle/scripts'
+    if str(folder) not in sys.path:
+        sys.path.insert(0, str(folder))
+    import record_transaction
+    try:
+        return record_transaction._snapshot(Path(path))
+    except record_transaction.RecordTransactionError as exc:
+        raise ContractError('runtime payload identity or read bound refused') from exc
+
+
+def _payload_bytes(path):
+    return _bounded_payload(path)[0]
+
+
 def _fingerprint(path):
     _regular_file(path)
     if not path.exists():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode & 0o777
+    _, meta = _bounded_payload(path)
+    return meta["sha256"], meta["mode"] & 0o777
 
 
 def _git(root, *args, allowed_failure=False):
@@ -113,14 +146,17 @@ def _specs(home, state_dir, components):
         for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py"):
             result.append(("git-hooks", "skills/synthesis-git-hooks/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        for name in ("coordination.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py"):
+        for name in ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py"):
             result.append(("git-hooks", "skills/synthesis-project-management/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/live_receipt.py",
-                       home / ".synthesis/git-hooks/live_receipt.py", 0o755))
+        result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py",
+                       home / ".synthesis/git-hooks/native_transcript_identity.py", 0o755))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",
                        home / ".synthesis/references/session-words-v1.txt.zlib.b85", 0o644))
     if "message-guard" in components:
+        for name in ("native_git.py", "claim_scope.py", "board_grammar.py", "coordination_schema.py"):
+            result.append(("message-guard", "skills/synthesis-project-management/scripts/" + name,
+                           home / ".synthesis/message-guard" / name, 0o755))
         result.append(("message-guard", "skills/synthesis-message-guard/scripts/message_guard.py",
                        home / ".synthesis/message-guard/message_guard.py", 0o755))
     if "kernel" in components:
@@ -143,13 +179,15 @@ def inventory(source_root, home, state_dir, components, *, identity=None, allow_
         _regular_file(source)
         if allow_missing and not source.exists():
             continue
-        content = source.read_bytes()
+        content = _payload_bytes(source)
         if identity.get("kind") == "git":
             tree = _git(root, "ls-tree", identity["commit"], "--", relative).decode()
             if not tree.startswith(("100644 blob ", "100755 blob ")):
                 raise ContractError("runtime source is not a tracked regular file: %s" % relative)
             if _git(root, "show", identity["commit"] + ":" + relative) != content:
                 raise ContractError("runtime source has modified tracked bytes: %s" % relative)
+        if sum(len(entry.content) for entry in entries) + len(content) > 32 * 1024 * 1024:
+            raise ContractError("selected runtime payloads exceed aggregate 32 MiB bound")
         entries.append(Payload(component, relative, target, content, mode, identity["commit"]))
     if "git-hooks" in components:
         entries.append(Payload("git-hooks", "@git-hooks-source-path", home / ".synthesis/git-hooks/source-path",
@@ -176,7 +214,7 @@ def _pointer_matches(content, entries):
                 continue
             source = root / entry.source_relative
             _regular_file(source)
-            if source.read_bytes() != entry.content:
+            if _payload_bytes(source) != entry.content:
                 return False
         return True
     except (OSError, ValueError, ContractError):
@@ -260,7 +298,7 @@ def _git_manifest_version(root, commit):
 def _released_match(entry, before, historical):
     if before is None:
         return False
-    by_relative = {old.source_relative: old for old in historical}
+    by_relative = {old.source_relative: old for old in historical if old.component == entry.component}
     old = by_relative.get(entry.source_relative)
     if old is not None and before == old.fingerprint:
         return True
@@ -272,7 +310,7 @@ def _released_match(entry, before, historical):
         # that authorize introducing each absent dependency.
         if (missing <= set(INTRODUCED_DEPENDENCIES)
                 and all(set(INTRODUCED_DEPENDENCIES[relative]) <= set(by_relative) for relative in missing)):
-            return _pointer_matches(entry.target.read_bytes(), historical)
+            return _pointer_matches(_payload_bytes(entry.target), historical)
     return False
 
 
@@ -352,11 +390,11 @@ def plan(source_root, home, state_dir, components, receipt_data, *, legacy_relea
     for position, entry in enumerate(entries):
         before = _fingerprint(entry.target)
         owned = _owned(entry, records.get(str(entry.target)), before)
-        addition = before is None and not owned and entry.source_relative in INTRODUCED_DEPENDENCIES
+        addition = before is None and not owned and bool(_dependency_anchors(entry))
         if before is None and not owned and not addition:
             raise ContractError("selected runtime payload is missing; restore its verified installation: %s" % entry.target)
         if before is not None and entry.source_relative == "@git-hooks-source-path":
-            content = entry.target.read_bytes()
+            content = _payload_bytes(entry.target)
             if _pointer_matches(content, entries):
                 entry = replace(entry, content=content)
         if before == entry.fingerprint:
@@ -368,10 +406,13 @@ def plan(source_root, home, state_dir, components, receipt_data, *, legacy_relea
         accepted.append(entry)
         snapshots.append(before)
     required_anchors = set()
-    by_relative = {entry.source_relative: position for position, entry in enumerate(accepted)}
+    by_member = {(entry.component, entry.source_relative): position for position, entry in enumerate(accepted)}
+    if len(by_member) != len(accepted):
+        raise ContractError("runtime component source inventory is ambiguous")
     for position in additions:
-        for relative in INTRODUCED_DEPENDENCIES[accepted[position].source_relative]:
-            anchor = by_relative.get(relative)
+        entry = accepted[position]
+        for relative in _dependency_anchors(entry):
+            anchor = by_member.get((entry.component, relative))
             if anchor is None or snapshots[anchor] is None:
                 raise ContractError("new runtime dependency requires its existing released companion anchors")
             required_anchors.add(anchor)
@@ -576,3 +617,35 @@ def apply(runtime_plan, receipts, *, verify_after=None):
         # to roll back a committed generation or overwrite that newer receipt.
         receipts.accept_runtime_write(runtime_plan.receipt_before, receipt_after)
     return {"changed": [str(e.target) for e in changed], "enrolled": len(entries), "journal": str(journal.root)}
+
+
+def platform_ownership(home, state_dir, *, platform=None, environ=None, proc_version=None):
+    """Read-only declared owner map, not proof a service is installed or running."""
+    from onboard import platform_family
+    env = os.environ if environ is None else environ
+    family = platform_family(platform, env, proc_version)
+    catalog_path = Path(__file__).resolve().parents[1] / 'references/platform-ownership-v1.json'
+    raw = _payload_bytes(catalog_path)
+    catalog = json.loads(raw)
+    if catalog.get('schema_version') != 1 or family not in catalog['platforms']:
+        raise ContractError('unsupported platform ownership contract')
+    value = copy.deepcopy(catalog['platforms'][family])
+    value.update(platform=family, contract_sha256=hashlib.sha256(raw).hexdigest(),
+                 mutation_authorized=False, native_service_status='UNKNOWN',
+                 owner=catalog['owner'], console_owner=catalog['console_owner'])
+    if not value['runtime_supported']:
+        value['runtime_paths'] = {}
+        return value
+    roots = {'home': str(home), 'engine_state': str(state_dir),
+             'config': env.get('XDG_CONFIG_HOME') or str(Path(home)/'.config'),
+             'state': env.get('XDG_STATE_HOME') or str(Path(home)/'.local/state'),
+             'data': env.get('XDG_DATA_HOME') or str(Path(home)/'.local/share')}
+    for root in roots.values():
+        p = Path(root)
+        if not p.is_absolute() or '..' in p.parts or str(p) != root:
+            raise ContractError('platform roots must be exact absolute POSIX paths')
+    for key, item in tuple(value.items()):
+        if isinstance(item, str) and '{' in item:
+            value[key] = item.format(**roots)
+    value['runtime_paths'] = {key: val.format(**roots) for key, val in catalog['runtime_paths'].items()}
+    return value

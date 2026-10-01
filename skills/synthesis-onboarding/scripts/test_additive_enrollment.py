@@ -358,7 +358,7 @@ def test_enroll_does_not_pull_or_reconfigure_adopted_kb(box, monkeypatch):
     for key, value in box.env_overrides().items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(cli.onboard, "WORKSPACES_ROOT", box.home / "workspaces")
-    monkeypatch.setattr(cli.onboard, "find_adoptable", lambda *a: elsewhere)
+    monkeypatch.setattr(cli.onboard, "find_adoptable", lambda *a, **kw: elsewhere)
     receipts = cli.onboard.Receipts(box.root / "receipts.json")
     report = cli.onboard.Report(as_json=True)
     calls = []
@@ -371,7 +371,7 @@ def test_enroll_does_not_pull_or_reconfigure_adopted_kb(box, monkeypatch):
     monkeypatch.setattr(cli.onboard, "git", git)
     cli.onboard.phase_kbs(report, manifest, receipts, False, enrolling=True)
     assert report.exit_code() == 0
-    assert receipts.adopted(manifest["knowledge_bases"][0]["name"]) == str(elsewhere)
+    assert receipts.adopted(cli.onboard.organization_asset_key(manifest, manifest["knowledge_bases"][0]["name"])) == str(elsewhere)
 
 
 def test_workspace_dry_run_validates_dirty_source_without_creating_outputs(box):
@@ -517,26 +517,33 @@ def test_removing_entire_org_source_retires_exact_owned_inventory(box):
 
 
 @pytest.mark.parametrize("edited", [False, True])
-def test_legacy_org_copy_adoption_verifies_recorded_source_bytes(box, edited):
+def test_unreceipted_org_copy_is_preserved_until_exact_owner_receipt_recovery(box, edited):
     manifest = box.manifest()
     box.run_engine("install", "--manifest", str(manifest), expect=0)
     receipts_path = box.home / ".synthesis/onboarding/receipts.json"
     receipts = json.loads(receipts_path.read_text())
-    receipts.pop("org_skill_copies")
+    exact_copies = receipts.pop("org_skill_copies")
     receipts_path.write_text(json.dumps(receipts))
     target = box.home / ".agents/skills/example-skill/SKILL.md"
     if edited:
         target.write_text("unreceipted personal addition\n")
     result = box.run_engine("update", "--manifest", str(manifest), "--json")
-    assert result.returncode == (1 if edited else 0), result.stdout
+    assert result.returncode == 1, result.stdout
+    assert "deletion-unit ownership receipt" in result.stdout
+    assert str(target.parent) not in json.loads(receipts_path.read_text()).get("org_skill_copies", {})
     if edited:
         assert target.read_text() == "unreceipted personal addition\n"
-    else:
-        assert str(target.parent) in json.loads(receipts_path.read_text())["org_skill_copies"]
+    # The fixture owner restores the previously recorded exact receipt. The
+    # product does not infer this ownership from matching installation bytes.
+    restored = json.loads(receipts_path.read_text())
+    restored["org_skill_copies"] = exact_copies
+    receipts_path.write_text(json.dumps(restored))
+    after = box.run_engine("update", "--manifest", str(manifest), "--json")
+    assert after.returncode == (1 if edited else 0), after.stdout
 
 
 @pytest.mark.parametrize("edited", [False, True])
-def test_flat_shared_repository_adoption_proves_source_bytes(box, edited):
+def test_unreceipted_flat_shared_source_is_not_deletion_unit_ownership(box, edited):
     import shutil
     source = box.root / "skills-src"
     subprocess.run(["git", "-C", str(source), "mv", "skills/example-skill", "example-skill"],
@@ -556,18 +563,34 @@ def test_flat_shared_repository_adoption_proves_source_bytes(box, edited):
             (target / "SKILL.md").write_text("personal modification\n")
     manifest = box.manifest()
     result = box.run_engine("install", "--manifest", str(manifest), "--json")
-    assert result.returncode == (1 if edited else 0), result.stdout + result.stderr
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "deletion-unit ownership receipt" in result.stdout
     for client in (".claude", ".agents"):
         target = box.home / client / "skills/example-skill"
-        if edited:
-            assert (target / "SKILL.md").read_text() == "personal modification\n"
-        else:
-            receipt = json.loads((box.home / ".synthesis/onboarding/receipts.json").read_text())
-            assert receipt["org_skill_copies"][str(target)]["repository"] == box.skills_url
-    if not edited:
-        box.run_engine("repair", "--manifest", str(manifest), expect=0)
-        box.run_engine("uninstall", expect=0)
-        assert not (box.home / ".agents/skills/example-skill").exists()
+        expected = "personal modification\n" if edited else (source / "example-skill/SKILL.md").read_text()
+        assert (target / "SKILL.md").read_text() == expected
+        receipt_path = box.home / ".synthesis/onboarding/receipts.json"
+        receipt = json.loads(receipt_path.read_text()) if receipt_path.exists() else {}
+        assert str(target) not in receipt.get("org_skill_copies", {})
+
+
+def test_new_flat_shared_repository_install_has_exact_owner_and_lifecycle(box):
+    import yaml
+    source = box.root / "skills-src"
+    subprocess.run(["git", "-C", str(source), "mv", "skills/example-skill", "example-skill"],
+                   env=box.git_env, check=True, capture_output=True, timeout=10)
+    box._commit_all(source, "fixture layout")
+    subprocess.run(["git", "-C", str(source), "push", str(box.skills_remote), "main"],
+                   env=box.git_env, check=True, capture_output=True, timeout=10)
+    manifest = box.manifest()
+    box.run_engine("install", "--manifest", str(manifest), expect=0)
+    org = yaml.safe_load(manifest.read_text())["org"]
+    copies = json.loads((box.home / ".synthesis/onboarding/receipts.json").read_text())["org_skill_copies"]
+    for metadata in copies.values():
+        assert metadata["organization"] == org["id"] and metadata["deletion_unit"] == org["workspace"]
+    box.run_engine("repair", "--manifest", str(manifest), expect=0)
+    box.run_engine("uninstall", expect=0)
+    assert not (box.home / ".agents/skills/example-skill").exists()
 
 
 def test_organization_source_identity_keeps_host_path_and_nondefault_port():
@@ -863,7 +886,7 @@ def test_copy_journal_diagnostic_is_read_only_and_recovery_is_bound(tmp_path):
 
 def test_repair_restores_recorded_org_commit_without_fetch_or_personal_setup(tmp_path):
     from test_synthesis_cli import commit_fixture_repo
-    root = tmp_path / "organizations/config"
+    root = tmp_path / "organizations" / cli.organization.repository_key(REPOSITORY)
     manifest = root / ".agents/onboarding.yaml"
     manifest.parent.mkdir(parents=True)
     manifest.write_text("version: 2\n")

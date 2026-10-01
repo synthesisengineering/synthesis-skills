@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from build_packet import (parse_iso_date, slugify, strict_json, spec_digest,
-                          validate, write_preserved)  # noqa: E402
+                          validate, write_preserved, review_assets_ready, read_packet_input)  # noqa: E402
 
 # The format, literal by literal. test_build_packet.py asserts every entry of
 # JS_FORMAT_LITERALS appears in renderSummary(), so this file and the packet's
@@ -306,6 +306,8 @@ def _selection_state(spec: dict, selections: list) -> dict:
             raise SummaryError(f"row {rid}: unknown option value {choice!r}")
         if not isinstance(note, str) or type(bulk) is not bool:
             raise SummaryError(f"row {rid}: note must be a string and bulk a Boolean")
+        if choice is not None and not review_assets_ready(row):
+            raise SummaryError(f"row {rid}: unresolved review assets cannot carry a selection")
         if bulk and (choice is None or choice != row.get("recommendation")):
             raise SummaryError(f"row {rid}: bulk acceptance must take its recommendation")
         if note != js_trim(note):
@@ -369,6 +371,9 @@ def parse_summary(text: str, spec: dict | None = None) -> dict:
                         "accepted_in_bulk": saved["bulk"],
                         "recommended_label": labels.get(rec) if choice is not None else None,
                         "note": saved["note"] or None,
+                        **({key: json.loads(json.dumps(row[key]))
+                            for key in ("revision", "delivery", "review_assets")}
+                           if "review_assets" in row else {}),
                         **({"prior_position": json.loads(json.dumps(row["prior_position"]))}
                            if "prior_position" in row else {})})
     return {"packet": spec["title"], "decided": sum(r["choice_value"] is not None for r in rulings),
@@ -383,7 +388,7 @@ def _current_spec(path: pathlib.Path | None, directory: pathlib.Path | None, tex
         for candidate in sorted(directory.glob("*-spec.json")) if directory else []:
             if candidate.is_symlink():
                 raise SummaryError(f"refusing symlink spec: {candidate}")
-            data = strict_json(candidate.read_text(encoding="utf-8"))
+            data = strict_json(read_packet_input(candidate).decode("utf-8"))
             if isinstance(data, dict) and data.get("title") == title:
                 candidates.append(candidate)
         if len(candidates) != 1:
@@ -392,7 +397,7 @@ def _current_spec(path: pathlib.Path | None, directory: pathlib.Path | None, tex
         path = candidates[0]
     if path.is_symlink() or not path.is_file():
         raise SummaryError(f"unsafe or missing spec: {path}")
-    raw = path.read_bytes()
+    raw = read_packet_input(path)
     return strict_json(raw.decode("utf-8")), path, hashlib.sha256(raw).hexdigest()
 
 

@@ -208,6 +208,63 @@ def test_malformed_hook_structure_cannot_attest_wiring(tmp_path, value):
     assert guard.hook_config_covers(p, ["fixture.send"]) is False
 
 
+@pytest.mark.parametrize(
+    "change",
+    ["bootstrap", "isolation", "duplicate-contract", "dynamic-contract", "syntax"],
+)
+def test_managed_source_bootstrap_requires_exact_static_bytes(managed_route, change):
+    import hashlib
+    import ast
+
+    pointer, launcher, target = managed_route
+    record = json.loads(pointer.read_text())
+    runtime = (
+        target.parents[3] / "skills/synthesis-onboarding/scripts/release_runtime.py"
+    )
+    event = pointer.parent / "unexpected-execution"
+    if change == "bootstrap":
+        launcher.write_text(launcher.read_text().replace("site.main()", "pass", 1))
+    elif change == "isolation":
+        launcher.write_text(launcher.read_text().replace(" -BIS", " -B", 1))
+    elif change == "duplicate-contract":
+        runtime.write_text(
+            runtime.read_text() + "\nSOURCE_IMPORT_CONTRACT = 'duplicate'\n"
+        )
+    elif change == "dynamic-contract":
+        text = runtime.read_text()
+        node = next(
+            n
+            for n in ast.parse(text).body
+            if isinstance(n, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "SOURCE_IMPORT_CONTRACT"
+                for t in n.targets
+            )
+        )
+        runtime.write_text(
+            text.replace(
+                ast.get_source_segment(text, node),
+                f"SOURCE_IMPORT_CONTRACT = __import__('pathlib').Path({str(event)!r}).write_text('executed')",
+                1,
+            )
+        )
+    else:
+        runtime.write_text("invalid python !!!")
+    record["launcher"]["sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    pointer.write_text(json.dumps(record))
+    command = shlex.join(
+        [
+            str(launcher),
+            "exec-public",
+            "synthesis-message-guard/scripts/message_guard.py",
+            "--",
+            "--gate",
+        ]
+    )
+    assert guard._doctor_guard_mode({"command": command}) is None
+    assert not event.exists()
+
+
 def test_managed_receipt_cannot_turn_arbitrary_launcher_into_owner(managed_route):
     import hashlib
 

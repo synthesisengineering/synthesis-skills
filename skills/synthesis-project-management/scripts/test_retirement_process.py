@@ -88,7 +88,9 @@ else:
  while not Path(READY).exists():
   if time.monotonic()>until:raise RuntimeError('child startup timed out')
   time.sleep(.005)
- Path(PIDFILE).write_text(str(pid))
+ pending = Path(str(PIDFILE) + '.pending')
+ pending.write_text(str(pid))
+ pending.replace(Path(PIDFILE))
  if MODE=='overflow':os.write(1,b'x'*10000)
  if MODE in ('parent-exit','success'):raise SystemExit(0)
  time.sleep(30)
@@ -172,6 +174,33 @@ else:
             process.wait(timeout=2)
         for observer in observers:
             close_observer(observer)
+
+
+@pytest.mark.parametrize(
+    "mode", ["timeout", "overflow", "parent-exit", "success", "SIGINT", "SIGTERM"]
+)
+def test_custody_pid_publication_survives_writer_preemption(tmp_path, monkeypatch, mode):
+    """A visible PID record is complete before the observer consumes it."""
+    original = staged_helper
+
+    def preempted(root, body):
+        pause = """
+_write_text = Path.write_text
+def delayed_pid(self, value, *args, **kwargs):
+ if self.name in ('child.pid', 'child.pid.pending'):
+  with self.open('w') as stream:
+   time.sleep(.12)
+   return stream.write(value)
+ return _write_text(self, value, *args, **kwargs)
+Path.write_text = delayed_pid
+"""
+        assert body.count("from pathlib import Path") == 1
+        return original(root, body.replace("from pathlib import Path", "from pathlib import Path" + pause))
+
+    monkeypatch.setattr(sys.modules[__name__], "staged_helper", preempted)
+    test_retained_invoke_owns_descendants_through_every_terminal_path(
+        tmp_path, monkeypatch, mode
+    )
 
 
 def test_exact_retained_process_owner_ignores_ambient_module_cache(

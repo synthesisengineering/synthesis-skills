@@ -64,7 +64,9 @@ _REGISTRY = {
         "copilot-cloud": _surface("skill-only", "copilot"),
         "opencode-cli": _surface("observation-only", "opencode"),
         "opencode-sdk-v2": _surface("observation-only", "opencode"),
-        "hermes": _surface("prospective", None),
+        "hermes": {**_surface("prospective", None),
+                   "pilot_contract": "hermes-cli-shell-v1",
+                   "pilot_scope": ["skill-discovery", "read-only-project-recovery", "installed-artifact-guard", "sqlite-source-observation"]},
     },
 }
 

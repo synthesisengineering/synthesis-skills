@@ -4,7 +4,152 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [4.150.0] - 2026-09-26
+## [4.153.0] - 2026-09-30
+
+### Changed
+
+- Give autonomous work a finite acceptance endpoint and coherent delivery batches.
+  Reuse valid verification across review, preflight and checkpoints; continue
+  independent work during external waits and investigate missing CI progress.
+- Remove open-ended verification instructions and the assumption that unchanged
+  tests cannot cover a repair. Preserve required gates, failures, evidence,
+  authority and explicit incomplete outcomes.
+
+### Added
+
+- Keep failed material scans and fresh material drift fenced at recovery and
+  work admission. Report malformed retained JSON as incomplete coverage, and
+  retain open candidates when retirement evidence conflicts or changes.
+
+- Preserve declared material inputs, rationale, temporary conditions and
+  uncertainty through the existing context editor and record transaction.
+  Distinguish pending capture, unreachable associations and changed review
+  generations across ordinary checkpoint, doctor and optional recovery capsule
+  consumers. Keep semantic judgment, current authority and endpoint acceptance
+  separate from deterministic custody checks.
+
+### Fixed
+
+- Keep sandboxed browser socket paths within platform limits during nested
+  acceptance checks, with retained fixture custody. Bind the bytecode regression
+  positive control to the same isolated cache namespace as its fixture.
+- Decode bounded desktop attachment and metadata records without granting native
+  authority. Diagnose the bound Claude transcript through the supported doctor,
+  with explicit inspected ranges and unchanged historical coverage limits.
+- Yield complete native records when aggregate page events reach their bound;
+  preserve cursor, cancellation and single-record refusal semantics.
+- Carry complete acceptance receipts through lossless bounded transport to both
+  release and diagnostic consumers. Refuse malformed, oversized, corrupt or stale
+  frames while preserving failed outcomes and private evidence custody.
+
+- Make service-doctor fixtures explicit about their platform and local configuration.
+  Exercise Linux and macOS health paths and preserve failure and unknown classifications.
+  Exclude inherited shell startup files and functions from these synthetic consumers.
+
+## [4.152.0] - 2026-09-28
+
+### Added
+
+- Connect declared Google Docs and Slack read-only adapters to existing source,
+  save, verification and watermark owners. Selection binds account/workspace,
+  folder/conversation scope and finite paging; it never discovers credentials or
+  silently changes transport after a refusal.
+- Retain native tab identities, verbatim transcript/message bodies and exact
+  file receipts. Compact status leaves principal judgment explicit.
+
+### Fixed
+
+- Isolate rapid-redeploy fixtures from operator policy and Git configuration.
+  Verify successful consumption with explicit fixture policy and refusal when
+  that policy is missing or invalid; production enforcement stays fail-closed.
+- Bind nested release checks to their own complete selection and source root.
+  Isolate the registered inventory observer from deliberate fixture injections
+  while retaining failure on actual custody tampering. Refuse inherited outside
+  collection policy by binding owned configuration and in-root fixtures. Run ordinary hosted
+  checks before final transaction acceptance so failures remain diagnosable.
+- Retire registered nested worktrees through their verified native owner. Bind
+  Git markers and backlinks to bounded, no-follow observations, refusing
+  FIFO replacements and changed metadata before destructive operations.
+- Diagnose declared temporary storage and preserve retained work during
+  recovery. Guide long-lived worktrees and environments to durable paths;
+  keep exact claim identity and foreign ownership checks enforced.
+- Execute overlapping acceptance selectors once while retaining every
+  original case and expected result. Bind public diagnostic exports to
+  their directory ancestry and exact readiness bytes at completion.
+
+- Bind Stop-hook dependencies before activation and revalidate late imports and
+  retained execution descriptors before dispatch. Resolve desktop identity through
+  the shared authenticated reader.
+- Retain bounded failure details for setup, execution, teardown, collection and
+  subtests during interrupted release checks. Partition native lifecycle controls
+  without dropping tests or changing execution and acceptance time limits.
+- Reconcile original native intents and retained receipts after interrupted
+ownership, refusing changed plan, claim or execution evidence without replay.
+  Preserve responsive active cancellation and verified descendant cleanup.
+- Batch release acceptance within finite bounds, preserving the original test
+  inventory and all execution phases. Reject hidden collected cases, invalid
+  subtest evidence and altered release receipts at their real consumers.
+- Install the declared HTTP client dependency in the existing macOS and Linux
+  onboarding test lanes; retain their original failing evidence.
+- Observe supported native web page-open and find actions, including text-result
+  thumbnails, without treating page content as authority or task completion.
+  Unknown fields, foreign identities and malformed records still stop coverage.
+- Reject contradictory Slack page totals, order and cardinality before advancing
+  coverage. Replay owned archives by conversation and parent metadata, refusing
+  ambiguous legacy records instead of interpreting quoted prose as authority.
+- Require matching successful MCP initialization, supported protocol and declared
+  tools capability before dispatch. Authentication, HTTP and malformed-response
+  failures remain distinct from verified absence.
+- Verify acquisition entrypoint dependencies through the installed runtime owner;
+  run entry, repair, regression and service-doctor controls in every release lane.
+
+### Measured scope
+
+- With two synthetic documents and 1 KiB–1 MiB bodies, exact saved bytes were
+  verified while CLI status remained 1,256–1,262 bytes. A fixed Slack thread over
+  the same body range produced 1,167–1,173-byte status with full archive custody.
+- Watermark calculations matched explicit 1-, 8- and 365-day intervals; reports
+  grow with target count. Fixed-topology local Git reports remained 581 bytes.
+  A grounding ledger remained 514 bytes while its helper consumed the full body.
+  These are mechanical output measurements, not measured model-token savings,
+  a matched prior-procedure comparison, or native/provider acceptance.
+
+### Skill versions
+
+- Daily rituals 2.44.0; meeting transcripts 0.13.0; Slack sync 3.13.0;
+  onboarding 2.10.1; skills manager 2.8.11; autopilot 3.5.1.
+
+### Core execution and recovery
+
+Recover the original enrolled history through one finite operation and refresh
+normal appends before protected controller and CLI actions. Preserve decoder
+generations, semantic aliases, cancellation, consumed retry budgets and the
+original mutation owner's fresh checks. Authenticate successor batch lookup
+without treating unrelated missing caches as corruption or skipping bad evidence.
+
+Keep active work on durable paths and diagnose the real checkout, common Git
+storage and ordinary or split-index integrity. Reuse one native transcript
+identity reader across consumers and avoid source bytecode writes during
+retirement. Missing, corrupt and unsupported state stays explicit.
+
+Ritual history creation now serializes cooperating writers under the existing bounded deadline and retains file locking, durable readback and path protections. Failed release acceptance preserves every unmatched case diagnostic. Retained-process acceptance publishes complete fixture PID records atomically before observing them; deliberate writer preemption exercises every terminal path.
+
+
+Bind native callbacks to their actual producing connection, context and session.
+Retain complete bounded source histories and recover linked execution intervals
+without replaying effects or resetting prior accounting. Threaded process owners
+preserve cancellation and descendant cleanup.
+
+Add explicit team enrollment, contribution and review boundaries, source-bound
+conformance reports, declared machine maintenance and upgrade campaigns. Keep
+native memory inert at action boundaries and preserve evidence during project
+migration and retirement. Native capability and live-loading reports distinguish
+observed behavior from synthetic fixtures and unsupported provider surfaces.
+
+Display complete, revision-bound review material in decision packets with exact
+downloads and explicit clipboard outcomes. Keep unavailable assets from becoming
+recorded decisions. Preserve the authenticated seat's existing context role when
+it adds claims, while retaining explicit role replacement and foreign-owner checks.
 
 Add recoverable multi-file project transactions and explicit decision/obligation
 succession. Preserve original records, unanswered decisions and exact authority;
@@ -23,11 +168,6 @@ current native lifecycle support remains a separate observation.
 Release validation now retains canonical private temporary files, test inventories
 and command receipts after success or failure, without relaxing production path
 protections or allowing pytest to remove a supplied existing directory.
-
-This release also carries the previously integrated large-journal recovery and
-bounded exhaustive CI changes described in the 4.149.9 source candidate below.
-
-## [4.149.9] - 2026-09-26
 
 Required autopilot checks now cover the entire collected suite in bounded groups.
 Release checks reject changed source, inherited test selection and stale bytecode.

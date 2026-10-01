@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -82,7 +82,7 @@ CLI's own help when adopting another CLI version, and retain refusal controls.
 
 ## Command catalog
 
-Global flags on any command: `--json` · `--jq '<expr>'` (with `--json`) · `--format json|yaml` · `-c <context>`. Context overrides: `--workspace`, `--repo`.
+Global flags on any command: `--json` · `--yaml` · `--template '<Go template>'` · `--jq '<expr>'` (with `--json`) · `--format json|yaml` · `-c <context>`. Context overrides: `--workspace`, `--repo`.
 
 ### Read (safe, use freely)
 
@@ -94,7 +94,11 @@ Global flags on any command: `--json` · `--jq '<expr>'` (with `--json`) · `--f
 
 - `bkt pr create --title <t> --description <d> --source <branch> --target <branch> [--reviewer <user|{UUID}>]… [--with-default-reviewers] [--draft] --repo <repo>`
 - `bkt pr comment <id> --text <msg> [--parent <comment-id>] [--file <path> --to-line <n>] --repo <repo>`
-- `bkt pr edit <id> --repo <repo>` · `bkt pr approve <id> --repo <repo>` · `bkt pr merge <id> --strategy merge_commit|squash|fast_forward --repo <repo>` · `bkt pr decline <id> --repo <repo>` · `bkt pr reopen <id> --repo <repo>`
+- `bkt pr edit <id> --repo <repo>` · `bkt pr approve <id> --repo <repo>` · `bkt pr merge <id> [--strategy <server-supported-id>] --repo <repo>` · `bkt pr decline <id> --repo <repo>` · `bkt pr reopen <id> --repo <repo>`
+
+- `bkt pipeline run --repo <repo> --ref <branch|tag|commit>` — starts a pipeline and can deploy; verify its effects and applicable deployment authorization first.
+
+Merge strategy IDs depend on the server and repository. The CLI accepts a string; its help uses `rebase_fast_forward` as an example, not a universal supported-value list.
 
 ### Escape hatch
 
