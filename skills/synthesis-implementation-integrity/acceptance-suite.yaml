@@ -7011,6 +7011,9 @@ changed_surfaces:
   - desktop-metadata-f204010d08ee06e4
   - desktop-metadata-23848641e65bd50c
   - desktop-metadata-30c8d1f328b21ba4
+  - hosted-isolation-164db595f6136761
+  - hosted-isolation-554326dfa2474e1a
+  - hosted-isolation-timeout-custody-001
 - path: skills/synthesis-implementation-integrity/references/verification-custody.md
   cases:
   - final-0f471cdc3ecc9c3a
@@ -12330,6 +12333,9 @@ changed_surfaces:
   - receipt-review-f781bad75d9c4363
   - receipt-review-38372b04d827b0f8
   - receipt-review-022769d492f5d1a5
+  - hosted-isolation-164db595f6136761
+  - hosted-isolation-554326dfa2474e1a
+  - hosted-isolation-timeout-custody-001
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -19205,3 +19211,18 @@ cases:
   expected_status: pass
   fixture: ../synthesis-autopilot/scripts/test_native_claude_desktop.py::test_large_artifact_metadata_readback_is_inert_and_current
   motivating_defect: New desktop frame-link and artifact monitoring records stopped observation; typed inert context must retain source identity, current-byte checks and all control boundaries.
+- id: hosted-isolation-164db595f6136761
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_suite_has_no_ambient_diagnostic_destinations
+  motivating_defect: Ordinary hosted release tests inherited the enclosing step output and diagnostics destination, contaminating shared output and making subsequent valid consumers refuse. Test-owned paths must exercise real gates without touching enclosing custody.
+- id: hosted-isolation-554326dfa2474e1a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_suite_isolates_hosted_diagnostic_environment
+  motivating_defect: Ordinary hosted release tests inherited the enclosing step output and diagnostics destination, contaminating shared output and making subsequent valid consumers refuse. Test-owned paths must exercise real gates without touching enclosing custody.
+- id: hosted-isolation-timeout-custody-001
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_fixture_child_timeout_retains_output_and_reaps_descendant
+  motivating_defect: A hosted regression timeout discarded partial child output and could leave descendants running. The same bounded process owner must retain stdout and stderr, reap its parent and terminate its owned descendant with a positive-control terminal observation.

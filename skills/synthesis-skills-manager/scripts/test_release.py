@@ -69,6 +69,11 @@ def hermetic_release_train(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     # repositories must bind their own ancestry; boundary tests set that base
     # explicitly when testing an event. This does not alter the outer runner.
     monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_CHANGE_BASE", raising=False)
+    # These paths belong to the enclosing hosted step or acceptance runner.
+    # Each diagnostic test must explicitly own its output and destination;
+    # inherited paths must never be read, written, or reused by a fixture.
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    monkeypatch.delenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", raising=False)
     monkeypatch.setenv(
         "SYNTHESIS_COORDINATION_BOARD", str(tmp_path / "absent-board.md")
     )
@@ -6658,3 +6663,143 @@ def test_actual_consumer_rejects_nonfinite_exponent_before_success(
     public = json.loads((tmp_path / "diagnostics/diagnostics.json").read_text())
     assert public["authorizes_release"] is False
     assert "synthetic_measure" not in json.dumps(public)
+
+
+def test_release_suite_has_no_ambient_diagnostic_destinations():
+    """Ordinary release tests never inherit the enclosing CI step's custody."""
+    assert "GITHUB_OUTPUT" not in os.environ
+    assert "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS" not in os.environ
+
+
+def run_release_fixture_child(command, cwd, env, evidence, timeout):
+    """Use the release owner's bounded group and retain failed-child custody too."""
+    completed = release.bounded_run(command, cwd=cwd, env=env, timeout=timeout)
+    # The owner combines raw stdout/stderr and retains it before returning,
+    # including on timeout. Keep that receipt alongside this test's assertions.
+    (evidence / "child-output.log").write_text(completed.stdout)
+    (evidence / "child-custody.json").write_text(json.dumps({
+        "returncode": completed.returncode,
+        "failure": completed.failure,
+        "process_id": completed.process_id,
+        "fixture_custody": completed.fixture_custody,
+        "fixture_identity": completed.fixture_identity,
+        "custody_records": completed.custody_records,
+    }, sort_keys=True))
+    return completed
+
+
+def test_release_fixture_child_timeout_retains_output_and_reaps_descendant(tmp_path):
+    marker = tmp_path / "descendant.json"
+    script = (
+        "import json,os,signal,sys,time\n"
+        "pid=os.fork()\n"
+        "if pid==0:\n"
+        " signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+        " with open(sys.argv[1],'w') as f:\n"
+        "  json.dump({'pid':os.getpid(),'group':os.getpgrp()},f);f.flush();os.fsync(f.fileno())\n"
+        " print('partial stdout before timeout',flush=True)\n"
+        " print('partial stderr before timeout',file=sys.stderr,flush=True)\n"
+        " time.sleep(30)\n"
+        "else:\n"
+        " time.sleep(30)\n"
+    )
+    completed = run_release_fixture_child(
+        [sys.executable, "-B", "-c", script, str(marker)],
+        tmp_path, dict(os.environ), tmp_path, 2,
+    )
+    assert completed.returncode != 0
+    assert "wall-time ceiling" in completed.failure
+    retained = (tmp_path / "child-output.log").read_text()
+    assert "partial stdout before timeout" in retained
+    assert "partial stderr before timeout" in retained
+    custody = json.loads((tmp_path / "child-custody.json").read_text())
+    assert custody["returncode"] == completed.returncode
+    assert custody["failure"] == completed.failure
+    owner_custody = Path(custody["fixture_custody"])
+    assert (owner_custody / "output.log").read_text() == retained
+    assert json.loads((owner_custody / "result.json").read_text())["returncode"] != 0
+    descendant = json.loads(marker.read_text())
+    assert descendant["group"] == completed.process_id
+    # One observation includes the live test process as a positive control.
+    # Killed orphans may remain as zombies until the platform's init reaps them.
+    observation = subprocess.run(
+        ["ps", "-o", "pid=,stat=", "-p",
+         f"{os.getpid()},{completed.process_id},{descendant['pid']}"],
+        capture_output=True, text=True, timeout=2,
+    )
+    (tmp_path / "terminal-observation.json").write_text(json.dumps({
+        "returncode": observation.returncode, "stdout": observation.stdout,
+        "stderr": observation.stderr, "positive_control": os.getpid(),
+        "parent": completed.process_id, "descendant": descendant,
+    }, sort_keys=True))
+    assert observation.returncode == 0, observation.stderr
+    processes = {int(line.split()[0]): line.split()[1]
+                 for line in observation.stdout.splitlines() if line.strip()}
+    assert os.getpid() in processes and not processes[os.getpid()].startswith("Z")
+    assert completed.process_id not in processes
+    assert (descendant["pid"] not in processes
+            or processes[descendant["pid"]].startswith("Z"))
+
+
+@pytest.mark.parametrize("inherited", ["output-only", "fresh-both", "occupied-both"])
+def test_release_suite_isolates_hosted_diagnostic_environment(tmp_path, inherited):
+    """Execute the real tests under hosted inputs; explicit gate tests still run."""
+    test_file = Path(__file__).resolve()
+    output = tmp_path / "enclosing-step-output"
+    original_output = b"existing-step-command=value\n" if inherited == "occupied-both" else b""
+    output.write_bytes(original_output)
+    output.chmod(0o600)
+    original_stat = output.stat()
+    destination = tmp_path / "enclosing-diagnostics"
+    if inherited == "occupied-both":
+        destination.mkdir(mode=0o700)
+        (destination / "sentinel").write_bytes(b"enclosing diagnostics stay private\n")
+    env = dict(os.environ, GITHUB_OUTPUT=str(output), PYTHONDONTWRITEBYTECODE="1",
+               PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+    for name in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"):
+        env.pop(name, None)
+    if inherited != "output-only":
+        env["SYNTHESIS_ACCEPTANCE_DIAGNOSTICS"] = str(destination)
+    # This exact selector list excludes this subprocess test, preventing recursive
+    # pytest dispatch. The first four selectors reproduce the hosted ordering;
+    # the rest prove explicit test-owned gate inputs have not been suppressed.
+    selectors = [
+        "test_release_suite_has_no_ambient_diagnostic_destinations",
+        "test_actual_release_consumer_exports_closed_diagnostics_without_authority_change",
+        "test_actual_consumer_retains_large_terminal_receipt",
+        "test_actual_consumer_rejects_nonfinite_exponent_before_success",
+        "test_diagnostic_step_output_is_fresh_exact_and_cannot_be_replayed",
+        "test_diagnostic_step_output_rejects_unowned_or_existing_commands",
+        "test_actual_consumer_withholds_upload_signal_on_export_refusal",
+    ]
+    # The process owner strips ambient hosted destinations. Reintroduce only
+    # these synthetic paths inside its child, before loading the real tests,
+    # so this regression still exercises the fixture's isolation boundary.
+    hosted = {name: env[name] for name in
+              ("GITHUB_OUTPUT", "SYNTHESIS_ACCEPTANCE_DIAGNOSTICS") if name in env}
+    bootstrap = (
+        "import json,os,sys;os.environ.update(json.loads(sys.argv[1]));"
+        "import pytest;raise SystemExit(pytest.main(sys.argv[2:]))"
+    )
+    command = [sys.executable, "-B", "-c", bootstrap, json.dumps(hosted),
+               "-p", "no:cacheprovider",
+               "--basetemp", str(tmp_path / "child-fixtures"), "-q",
+               *[str(test_file) + "::" + name for name in selectors]]
+    completed = run_release_fixture_child(
+        command, test_file.parents[3], env, tmp_path, 120,
+    )
+    # Check the enclosing files even on child failure so test ordering cannot
+    # conceal an accidental write into the actual workflow's output channel.
+    assert output.read_bytes() == original_output
+    after = output.stat()
+    assert (after.st_dev, after.st_ino, after.st_mode, after.st_size,
+            after.st_mtime_ns, after.st_ctime_ns) == (
+        original_stat.st_dev, original_stat.st_ino, original_stat.st_mode,
+        original_stat.st_size, original_stat.st_mtime_ns, original_stat.st_ctime_ns)
+    if inherited == "occupied-both":
+        assert sorted(p.name for p in destination.iterdir()) == ["sentinel"]
+        assert (destination / "sentinel").read_bytes() == b"enclosing diagnostics stay private\n"
+    else:
+        assert not destination.exists()
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert re.search(r"\b11 passed\b", completed.stdout), completed.stdout
