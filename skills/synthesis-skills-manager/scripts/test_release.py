@@ -5927,7 +5927,7 @@ def real_acceptance_fixture(tmp_path, monkeypatch, *, receipt_bytes=0):
         # A synthetic long evidence field crosses the real producer and both
         # consumers without changing any receipt/source/transaction validation.
         text = runner.read_text()
-        anchor = "    payload, returncode = execute(validated, root, git_evidence)\n"
+        anchor = "    payload, returncode = execute(validated, root, git_evidence, workers=args.workers)\n"
         assert text.count(anchor) == 1
         runner.write_text(
             text.replace(
