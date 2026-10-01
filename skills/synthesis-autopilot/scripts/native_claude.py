@@ -37,6 +37,9 @@ SUPPORTED_SCHEMAS = (
     "agent-name",
     "mode",
     "atis-latch",
+    "frame-link",
+    "artifact-comment-monitor",
+    "artifact-autoreact-ledger",
 )
 PRINT_SCHEMAS = (
     "system.init",
@@ -305,6 +308,9 @@ _CONTEXT_KINDS = (
         "system",
         "queue-operation",
         "cost-state",
+        "frame-link",
+        "artifact-comment-monitor",
+        "artifact-autoreact-ledger",
     }
 )
 _ENVELOPE_REQUIRED = {
@@ -530,6 +536,33 @@ def _interactive_context(row, mode, locator):
         for key in ("messageId", "snapshotMessageId", "trackingPath"):
             _text(row[key], "file history identity")
         _context_timestamp(row["timestamp"])
+    elif kind == "frame-link":
+        _closed_context(
+            row,
+            {"type", "sessionId", "artifactCount", "timestamp"},
+            "frame link metadata",
+            {"path", "frameUrl", "title"},
+        )
+        for key in ("path", "frameUrl", "title"):
+            if key in row:
+                _context_text(row[key])
+        _typed_context(row, {"artifactCount": int}, "frame link metadata")
+        if row["artifactCount"] < 0:
+            raise DialectError("invalid frame link artifact count")
+        _context_timestamp(row["timestamp"])
+    elif kind in {"artifact-comment-monitor", "artifact-autoreact-ledger"}:
+        fields = {"type", "sessionId", "v", "artifacts"}
+        if kind == "artifact-autoreact-ledger":
+            fields.add("accountUuid")
+        _closed_context(row, fields, "artifact metadata")
+        _typed_context(row, {"v": int, "artifacts": dict}, "artifact metadata")
+        if row["v"] != 1:
+            raise DialectError("unsupported artifact metadata schema")
+        if "accountUuid" in row:
+            _text(row["accountUuid"], "artifact account label")
+        # UI monitoring state is opaque, bounded context. Comment/reaction
+        # bodies and account labels never authenticate a principal or issue
+        # commands, cancellation, effects, permissions or measured usage.
     elif kind == "cost-state":
         _closed_context(row, set(_COST_FIELDS) | {"type", "sessionId"}, "cost metadata")
         _typed_context(row, _COST_FIELDS, "cost metadata")

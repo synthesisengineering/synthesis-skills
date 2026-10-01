@@ -355,3 +355,88 @@ def test_single_record_exceeding_event_capacity_still_fails_closed(tmp_path):
     second = native.read_page(binding, first["cursor"], limits=native.Limits(events=1))
     assert second["gaps"] and not second["events"]
     assert second["cursor"]["first_gap"] == binding["header_length"]
+
+
+@pytest.mark.parametrize("kind", ["frame-link", "artifact-comment-monitor", "artifact-autoreact-ledger"])
+@pytest.mark.parametrize("fault", ["foreign", "child", "missing", "extra", "type", "semantic"])
+def test_artifact_metadata_preserves_closed_shape_and_identity(kind, fault):
+    row = next(deepcopy(x["record"]) for x in CONTEXT if x["record"]["type"] == kind)
+    if fault == "foreign":
+        row["sessionId"] = "foreign"
+    elif fault == "child":
+        row["agentId"] = "foreign-child"
+    elif fault == "missing":
+        del row["sessionId"]
+    elif fault == "extra":
+        row["permission_granted"] = True
+    elif fault == "type":
+        if kind == "frame-link":
+            row["artifactCount"] = True
+        else:
+            row["artifacts"] = []
+    elif kind == "frame-link":
+        row["artifactCount"] = -1
+    else:
+        row["v"] = 2
+    with pytest.raises(adapter.DialectError):
+        adapter.decode_record(row, QUALIFIED, source_locator=LOCATOR)
+
+
+@pytest.mark.parametrize("kind", ["frame-link", "artifact-comment-monitor", "artifact-autoreact-ledger"])
+def test_artifact_metadata_uses_current_byte_readback(tmp_path, kind):
+    assert adapter.supports_record_readback({"type": kind}, QUALIFIED)
+    row = next(deepcopy(x["record"]) for x in CONTEXT if x["record"]["type"] == kind)
+    path, binding, cursor = write_source(tmp_path, [row])
+    batches = drain(binding, cursor)
+    assert not any(batch["gaps"] or batch["diagnostics"] for batch in batches)
+    assert adapter.describe_contract()["supported_schemas"].count(kind) == 1
+    assert all(batch["coverage"]["supported_schemas"].count(kind) == 1 for batch in batches)
+
+
+@pytest.mark.parametrize("fault", ["timestamp", "count-string", "version-bool", "empty-account", "account-type", "path-type", "frame-url-type", "title-type", "large", "nonfinite"])
+def test_artifact_metadata_rejects_malformed_values(fault):
+    kind = "frame-link" if fault in {"timestamp", "count-string", "path-type", "frame-url-type", "title-type"} else "artifact-autoreact-ledger"
+    row = next(deepcopy(x["record"]) for x in CONTEXT if x["record"]["type"] == kind)
+    if fault == "timestamp":
+        row["timestamp"] = "2026-99-01T00:00:00Z"
+    elif fault == "count-string":
+        row["artifactCount"] = "1"
+    elif fault in {"path-type", "frame-url-type", "title-type"}:
+        key = {"path-type": "path", "frame-url-type": "frameUrl", "title-type": "title"}[fault]
+        row[key] = []
+    elif fault == "version-bool":
+        row["v"] = True
+    elif fault == "empty-account":
+        row["accountUuid"] = ""
+    elif fault == "account-type":
+        row["accountUuid"] = []
+    elif fault == "large":
+        row["artifacts"]["body"] = "x" * (1024 * 1024)
+    elif fault == "nonfinite":
+        row["artifacts"]["cost"] = float("inf")
+    with pytest.raises(adapter.DialectError):
+        adapter.decode_record(row, QUALIFIED, source_locator=LOCATOR)
+
+
+@pytest.mark.parametrize("kind", ["artifact-comment-monitor", "artifact-autoreact-ledger"])
+def test_large_artifact_metadata_readback_is_inert_and_current(tmp_path, kind):
+    row = next(deepcopy(x["record"]) for x in CONTEXT if x["record"]["type"] == kind)
+    row["artifacts"]["synthetic-body"] = "SYNTHETIC INERT CONTENT " * 3500
+    path, binding, cursor = write_source(tmp_path, [row])
+    batches = drain(binding, cursor)
+    assert not any(batch["gaps"] or batch["diagnostics"] for batch in batches)
+    events = [event for batch in batches for event in batch["events"]]
+    assert events and all(event["kind"] == "context.metadata" for event in events)
+    assert all(event["data"]["grants_authority"] is False for event in events)
+    assert all(event["data"]["usage_counted"] is False for event in events)
+    assert "SYNTHETIC INERT CONTENT" not in json.dumps(events)
+    assert native.revalidate_observations(
+        binding, events, required_interval=(0, path.stat().st_size)
+    )["status"] == "current"
+    original = path.read_bytes()
+    changed = original.replace(b"SYNTHETIC INERT CONTENT", b"SYNTHETIC OTHER CONTENT", 1)
+    assert len(changed) == len(original) and changed != original
+    path.write_bytes(changed)
+    assert native.revalidate_observations(
+        binding, events, required_interval=(0, path.stat().st_size)
+    )["status"] != "current"

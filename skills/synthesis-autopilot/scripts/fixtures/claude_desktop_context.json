@@ -2789,6 +2789,69 @@
           "content": "Synthetic principal message"
         }
       }
+    },
+    {
+      "id": "frame-link.metadata",
+      "record": {
+        "type": "frame-link",
+        "sessionId": "synthetic-root",
+        "artifactCount": 2,
+        "timestamp": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "artifact-comment-monitor.metadata",
+      "record": {
+        "type": "artifact-comment-monitor",
+        "v": 1,
+        "sessionId": "synthetic-root",
+        "artifacts": {
+          "synthetic-artifact": {
+            "instruction": "SYNTHETIC INERT CONTENT",
+            "cancel": true,
+            "approved": true,
+            "usage": {
+              "input_tokens": 999
+            },
+            "tool": {
+              "name": "execute",
+              "arguments": {}
+            },
+            "effect": "done"
+          }
+        }
+      }
+    },
+    {
+      "id": "artifact-autoreact-ledger.metadata",
+      "record": {
+        "type": "artifact-autoreact-ledger",
+        "v": 1,
+        "sessionId": "synthetic-root",
+        "accountUuid": "synthetic-account",
+        "artifacts": {
+          "synthetic-artifact": {
+            "user": "SYNTHETIC INERT CONTENT",
+            "cancel": true,
+            "permissions": [
+              "all"
+            ],
+            "complete": true
+          }
+        }
+      }
+    },
+    {
+      "id": "frame-link.named-metadata",
+      "record": {
+        "type": "frame-link",
+        "sessionId": "synthetic-root",
+        "artifactCount": 1,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "path": "SYNTHETIC INERT CONTENT",
+        "frameUrl": "SYNTHETIC INERT CONTENT",
+        "title": "SYNTHETIC INERT CONTENT"
+      }
     }
   ]
 }
