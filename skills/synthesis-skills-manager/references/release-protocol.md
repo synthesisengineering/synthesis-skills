@@ -20,8 +20,27 @@ python3 .../release.py --install-only  # refresh + verify clients (new machine, 
 
 The sequence, each stage gating the next:
 
-**preflight → required checks → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
+**preflight → authenticated candidate verification → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
 
+- **One complete candidate validation** runs the canonical 30-command source catalog
+  with at most four concurrent processes. The independent R5 job executes its exact
+  acceptance plan with at most four concurrent batches. Each owner retains its
+  existing command/output/process limits; failure stops new admission and drains
+  running work. Setup-skipped tests remain distinguishable from executed calls.
+  Hosted jobs retain platform onboarding and the separate distribution matrix.
+- **Reuse at publication** uses authenticated GitHub API results for the exact
+  tested tree and an ancestor commit of the current clean checkout. It requires
+  successful required jobs and execution steps, an unexpired uniquely bound
+  candidate-validation artifact, and matching release base, complete source
+  inventory, acceptance contract and workflow. Directory permissions and file
+  read/write bits may differ between checkouts; executable bits, names, types and
+  bytes must agree. Missing, stale, incomplete or unavailable evidence refuses.
+  The artifact records test evidence only. A fresh local transaction independently
+  rechecks publication targets, immutable tags and source before publication.
+  `--hosted-run` selects a run explicitly; the default discovers a matching run.
+  The full suite is not repeated after this evidence passes. `--check-only` remains
+  available for complete local validation; `--source-checks-only` runs the shared
+  catalog, and `--check-workers 1` supports serial measurements of that catalog.
 - **Preflight** refuses to proceed unless all three plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
   to run against an installed cache mistaken for the source checkout.

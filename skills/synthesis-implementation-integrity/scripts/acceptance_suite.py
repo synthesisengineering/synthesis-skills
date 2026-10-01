@@ -644,14 +644,24 @@ def execute(
         "per_group_seconds": CASE_SECONDS,
     }
     errors = []
-    try:
-        before = checks.source_digest(root)
-        execution["source_sha256"] = before
-        for planned in batch_plan(contract):
+    plan = batch_plan(contract)
+    outcomes = [None] * len(plan)
+
+    def run_batch(item, cancel_event):
+        index, planned = item
+        outcome = {"batch": None, "results": {}, "errors": []}
+        # Retain each admitted owner's evidence even when the main thread is
+        # interrupted before bounded_map can deliver its return value.
+        outcomes[index] = outcome
+        if cancel_event.is_set():
+            return outcome
+        try:
             remaining = deadline - time.monotonic() - 33
             if remaining <= 0:
                 raise ValueError("acceptance whole-suite deadline exhausted")
             with checks.retained_group_fixture() as custody:
+                actual = {**planned, "fixture_custody": str(custody)}
+                outcome["batch"] = actual
                 custody_identity = checks.custody_identity(custody.stat())
                 report = custody / "inventory.json"
                 selection = custody / "selection.json"
@@ -689,35 +699,34 @@ def execute(
                     *files,
                 ]
                 completed = checks.bounded_run(
-                    command, root, min(CASE_SECONDS, remaining), env
+                    command, root, min(CASE_SECONDS, remaining), env,
+                    cancel_event=cancel_event,
                 )
-                actual = {
-                    **planned,
+                if completed.failure is not None or completed.returncode not in (0, 1):
+                    cancel_event.set()
+                actual.update({
                     "returncode": completed.returncode,
                     "process_failure": completed.failure,
                     "fixture_custody": str(custody),
                     "custody_identity": custody_identity,
                     "process_identity": completed.fixture_identity,
                     "process_records": completed.custody_records,
-                    "diagnostic_records": {
-                        name: checks.diagnostic_record(
-                            custody / name, deadline, custody_identity
-                        )
-                        for name in (
-                            "selection.json",
-                            "pytest.ini",
-                            "inventory.json",
-                            "inventory.progress.jsonl",
-                        )
-                    },
                     "process_custody": completed.fixture_custody,
                     "output_sha256": _sha256_bytes(completed.stdout.encode()),
-                }
-                execution["batches"].append(actual)
+                })
                 expanded = {}
                 statuses = {}
                 problem = None
                 try:
+                    actual["diagnostic_records"] = {
+                        name: checks.diagnostic_record(
+                            custody / name, deadline, custody_identity
+                        )
+                        for name in (
+                            "selection.json", "pytest.ini", "inventory.json",
+                            "inventory.progress.jsonl",
+                        )
+                    }
                     actual["inventory"] = checks.read_inventory(report)
                     expanded, statuses = checks.selection_results(
                         actual["inventory"], planned["selectors"]
@@ -731,6 +740,7 @@ def execute(
                         )
                 except (OSError, ValueError, KeyError, TypeError) as exc:
                     problem = str(exc)
+                    cancel_event.set()
                     actual["error"] = problem
                     try:
                         actual["partial_execution"] = checks.read_progress(
@@ -780,7 +790,8 @@ def execute(
                             else "passed"
                         )
                     )
-                    result = results[case["id"]]
+                    result = dict(results[case["id"]])
+                    outcome["results"][case["id"]] = result
                     result.update(
                         {
                             "nodes": nodes,
@@ -795,6 +806,8 @@ def execute(
                         }
                     )
                     if not result["matched"]:
+                        cancel_event.set()
+                        outcome["errors"].append("acceptance polarity mismatch: " + case["id"])
                         # Complete bytes live once in owned output.log, never multiplied by case count.
                         result["stdout"] = (
                             "Full output retained at "
@@ -803,13 +816,38 @@ def execute(
                             + completed.stdout[-2048:]
                         )
                 if problem:
-                    errors.append(problem)
-                    break  # Interruption/custody failure cannot admit another group.
+                    outcome["errors"].append(problem)
+        except (OSError, ValueError, KeyError, TypeError, checks.CheckInterrupted) as exc:
+            cancel_event.set()
+            outcome["errors"].append(str(exc))
+            if outcome["batch"] is not None:
+                outcome["batch"]["error"] = str(exc)
+        return outcome
+
+    try:
+        before = checks.source_digest(root)
+        execution["source_sha256"] = before
+        try:
+            checks.bounded_map(
+                enumerate(plan), run_batch, workers=4,
+                stop_when=lambda outcome: bool(outcome["errors"]),
+            )
+        except (checks.CheckInterrupted, KeyboardInterrupt) as exc:
+            errors.append(str(exc) or type(exc).__name__)
         execution["source_unchanged"] = before == checks.source_digest(root)
         if not execution["source_unchanged"]:
             errors.append("source changed during acceptance")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         errors.append(str(exc))
+    # The shared owner has drained every admitted worker before these slots are
+    # consumed. Completion order must never change batch or case membership.
+    for outcome in outcomes:
+        if outcome is None:
+            continue
+        if outcome["batch"] is not None:
+            execution["batches"].append(outcome["batch"])
+        results.update(outcome["results"])
+        errors.extend(outcome["errors"])
     ordered = list(results.values())
     terminal = sum(c["status"] != "not_run" for c in ordered)
     receipt = validation_receipt(validated)

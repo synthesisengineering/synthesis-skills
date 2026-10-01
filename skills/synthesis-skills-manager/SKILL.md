@@ -5,12 +5,18 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.11"
+  version: "2.9.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.9.0** runs the complete source catalog and acceptance batches with
+bounded parallelism. Release verifies authenticated hosted results for the exact
+source tree instead of repeating the full test suite. Current publication
+authority, selected-client installation and complete installed inventory remain
+independently verified. Failed or unavailable candidate evidence blocks shipping.
 
 **Version 2.8.11** runs acquisition entry, repair, regression and optional
 service-doctor controls in both the hosted and gated release catalogs.

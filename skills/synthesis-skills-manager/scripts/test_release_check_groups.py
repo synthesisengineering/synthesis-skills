@@ -195,7 +195,7 @@ def test_release_and_ci_require_each_group():
         )
     )
     ci = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
-    commands = [s.get("run", "") for s in ci["jobs"]["conformance"]["steps"]]
+    commands = [s.get("run", "") for s in ci["jobs"]["source-checks"]["steps"]]
     for group in groups.GROUPS:
         command = [
             "python3",
@@ -204,7 +204,7 @@ def test_release_and_ci_require_each_group():
             group,
         ]
         assert checks["pytest.autopilot." + group] == command
-        assert "python " + " ".join(command[1:]) in commands
+        assert "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only" in commands
     assert groups.GROUP_SECONDS < groups.CHECK_SECONDS == 900
 
 
@@ -895,7 +895,7 @@ def _deadline_after_phase(monkeypatch, marker, readiness_seconds=_PHASE_READY_SE
     real_monotonic = time.monotonic
     observed = {}
 
-    def cutoff(command, cwd, timeout, env):
+    def cutoff(command, cwd, timeout, env, **kwargs):
         started = real_monotonic()
         logical_start = started
         observed.update(phase_reached=False, readiness_expired=False)
@@ -911,7 +911,7 @@ def _deadline_after_phase(monkeypatch, marker, readiness_seconds=_PHASE_READY_SE
 
         with monkeypatch.context() as clock_patch:
             clock_patch.setattr(groups, "time", SimpleNamespace(monotonic=now))
-            result = original(command, cwd, timeout, env)
+            result = original(command, cwd, timeout, env, **kwargs)
         observed.update(result=result, real_seconds=real_monotonic() - started)
         assert observed["real_seconds"] < readiness_seconds + 4
         assert observed["phase_reached"], "fixture phase was not reached before its real readiness deadline"
@@ -1066,8 +1066,8 @@ def test_completed_phase_journal_cannot_replace_required_final_inventory(
     root = synthetic_root(tmp_path)
     original = groups.bounded_run
 
-    def completed_without_inventory(command, cwd, timeout, env):
-        result = original(command, cwd, timeout, env)
+    def completed_without_inventory(command, cwd, timeout, env, **kwargs):
+        result = original(command, cwd, timeout, env, **kwargs)
         assert result.returncode == 0
         report = Path(env["SYNTHESIS_RELEASE_TEST_REPORT"])
         assert report.is_file()

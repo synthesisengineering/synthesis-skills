@@ -12,6 +12,7 @@ import argparse
 import base64
 import binascii
 from contextlib import contextmanager
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import hashlib
 import json
 import math
@@ -24,6 +25,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from types import FunctionType
 import zlib
@@ -282,7 +284,7 @@ def partition(nodeids: list[str]) -> dict[str, list[str]]:
     return groups
 
 
-def source_digest(root: Path) -> str:
+def source_digest(root: Path, *, portable=False) -> str:
     """Hash a descriptor-anchored tree; missing, replaced or unreadable input refuses.
 
     Names are opened relative to verified directory descriptors. Every entry is
@@ -327,7 +329,7 @@ def source_digest(root: Path) -> str:
                 bounded()
                 names.append(entry.name)
         digest.update(
-            json.dumps([relative, stat.S_IMODE(initial.st_mode), "directory"]).encode()
+            json.dumps([relative, 0 if portable else stat.S_IMODE(initial.st_mode), "directory"]).encode()
         )
         for name in sorted(names):
             bounded()
@@ -360,7 +362,7 @@ def source_digest(root: Path) -> str:
                         remaining -= len(chunk)
                     digest.update(
                         json.dumps(
-                            [path, stat.S_IMODE(mode), member.hexdigest()],
+                            [path, (0o755 if mode & 0o111 else 0o644) if portable else stat.S_IMODE(mode), member.hexdigest()],
                             separators=(",", ":"),
                         ).encode()
                     )
@@ -443,6 +445,7 @@ def bounded_run(
     env: dict[str, str] | None = None,
     *,
     suite: bool = False,
+    cancel_event=None,
 ) -> subprocess.CompletedProcess:
     """Own one process group; limit wall time/output and reap on every exit path.
 
@@ -472,8 +475,13 @@ def bounded_run(
         raise CheckInterrupted(f"check interrupted by signal {signum}")
 
     try:
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            old[sig] = signal.signal(sig, interrupted)
+        if threading.current_thread() is threading.main_thread():
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                old[sig] = signal.signal(sig, interrupted)
+        elif cancel_event is None:
+            raise ValueError("parallel checks require an owning cancellation event")
+        if cancel_event is not None and cancel_event.is_set():
+            raise CheckInterrupted("check cancelled before launch")
         child_env = dict(os.environ if env is None else env)
         cache = fixture_root("synthesis-required-check-", child_env)
         custody_fd = os.open(cache, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -506,6 +514,8 @@ def bounded_run(
         with selectors.DefaultSelector() as selector:
             selector.register(process.stdout, selectors.EVENT_READ)
             while selector.get_map():
+                if cancel_event is not None and cancel_event.is_set():
+                    raise CheckInterrupted("check cancelled by parallel owner")
                 remaining = timeout - (time.monotonic() - started)
                 if remaining <= 0:
                     raise TimeoutError(
@@ -523,7 +533,18 @@ def bounded_run(
                             raise ValueError(
                                 "required check output exceeded byte ceiling"
                             )
-            process.wait(timeout=max(0.001, timeout - (time.monotonic() - started)))
+            # Closing output is not process termination. Continue observing the
+            # shared cancellation event while a quiet child remains alive.
+            while process.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise CheckInterrupted("required check cancelled by parallel owner")
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError("required check exceeded its unchanged wall-time ceiling")
+                try:
+                    process.wait(timeout=min(.1, remaining))
+                except subprocess.TimeoutExpired:
+                    pass
     except (
         OSError,
         ValueError,
@@ -618,6 +639,7 @@ def bounded_run(
                 raise OSError("required-check custody pathname changed during receipt")
         except OSError as error:
             code = 1
+            failure = "required-check custody could not be retained: " + str(error)
             text += (
                 "\nFAIL required-check custody could not be retained: "
                 + str(error)
@@ -632,6 +654,60 @@ def bounded_run(
     result.failure = failure
     result.process_id = None if process is None else process.pid
     return result
+
+
+def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None):
+    """Run at most four independent checks; drain owned children on every exit.
+
+    The main thread owns signals. Each worker must pass the shared cancellation
+    event to bounded_run, which retains output and reaps its own process group.
+    Results keep input order; None explicitly identifies work never admitted.
+    """
+    if type(workers) is not int or not 1 <= workers <= 4:
+        raise ValueError("check concurrency must be between one and four")
+    if threading.current_thread() is not threading.main_thread():
+        raise ValueError("parallel checks require a main-thread owner")
+    items = list(items)
+    results = [None] * len(items)
+    cancel = threading.Event()
+    old = {}
+
+    def interrupted(signum, _frame):
+        cancel.set()
+        raise CheckInterrupted(f"parallel checks interrupted by signal {signum}")
+
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            old[sig] = signal.signal(sig, interrupted)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            active = {}
+            next_index = 0
+            try:
+                while active or next_index < len(items):
+                    while not cancel.is_set() and len(active) < workers and next_index < len(items):
+                        active[pool.submit(worker, items[next_index], cancel)] = next_index
+                        next_index += 1
+                    if not active:
+                        break
+                    done, _ = wait(active, timeout=0.1, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        index = active.pop(future)
+                        value = future.result()
+                        results[index] = value
+                        if on_result is not None:
+                            on_result(index, value)
+                        if stop_when is not None and stop_when(value):
+                            cancel.set()
+            finally:
+                cancel.set()
+                # The executor waits for bounded_run cleanup and retained output.
+                for sig in old:
+                    signal.signal(sig, signal.SIG_IGN)
+    finally:
+        cancel.set()
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+    return results
 
 
 DIAGNOSTIC_RECORDS = 2000

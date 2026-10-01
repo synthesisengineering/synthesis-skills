@@ -17,8 +17,8 @@ def test_all_release_contracts_run_the_whole_autopilot_suite():
     commands = dict(ast.literal_eval(checks.value))
     for group in ('state', 'native', 'evaluation', 'core'):
         command = 'skills/synthesis-skills-manager/scripts/release_check_groups.py --group ' + group
-        assert 'python3 ' + command in (ROOT / 'AGENTS.md').read_text()
-        assert 'python ' + command in (ROOT / '.github/workflows/validate.yml').read_text()
+        assert 'python3 skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only' in (ROOT / 'AGENTS.md').read_text()
+        assert 'python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only' in (ROOT / '.github/workflows/validate.yml').read_text()
         assert commands['pytest.autopilot.' + group] == ['python3', *command.split()]
 
 
@@ -37,7 +37,7 @@ def test_ci_sandbox_preflight_is_required_before_consumer_tests():
     import yaml
     root = Path(__file__).resolve().parents[3]
     workflow = yaml.safe_load((root / '.github/workflows/validate.yml').read_text())
-    job = workflow['jobs']['conformance']
+    job = workflow['jobs']['source-checks']
     steps = job['steps']
     setup = next(step for step in steps if step.get('name') == 'Install OS isolation for executable consumer acceptance')
     assert setup['run'].splitlines() == [
@@ -50,11 +50,9 @@ def test_ci_sandbox_preflight_is_required_before_consumer_tests():
         'echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"',
     ]
     assert not setup.get('continue-on-error') and not job.get('continue-on-error')
-    consumers = next(step for step in steps if step.get('run') == 'python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state')
+    consumers = next(step for step in steps if step.get('run') == 'python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only')
     assert steps.index(setup) < steps.index(consumers)
-    browser_consumers = next(step for step in steps
-                             if 'synthesis-decision-packet/scripts/test_*.py' in step.get('run', ''))
-    assert steps.index(setup) < steps.index(browser_consumers)
+
 
 
 def _result(code=0, stdout='', stderr='', **extra):

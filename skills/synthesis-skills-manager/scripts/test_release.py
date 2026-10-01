@@ -282,6 +282,8 @@ def test_required_checks_execute_release_wiring_tests() -> None:
         "-m",
         "pytest",
         "skills/synthesis-skills-manager/scripts/test_release.py",
+        "skills/synthesis-skills-manager/scripts/test_hosted_validation.py",
+        "skills/synthesis-skills-manager/scripts/test_parallel_checks.py",
         "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
         "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
         "skills/synthesis-skills-manager/scripts/test_muse_command_contract.py",
@@ -453,7 +455,7 @@ def test_agents_verification_list_matches_ci_workflow() -> None:
     )
     ci_steps = [
         step["run"].strip()
-        for step in workflow["jobs"]["conformance"]["steps"]
+        for step in workflow["jobs"]["source-checks"]["steps"]
         if "run" in step
         and "pip install" not in step["run"]
         and step.get("name")
@@ -519,16 +521,19 @@ def test_repository_ci_executes_release_wiring_tests() -> None:
         encoding="utf-8"
     )
 
-    assert "python skills/synthesis-onboarding/scripts/check_scaffolds.py ." in workflow
-    assert (
-        "python skills/synthesis-onboarding/scripts/check_capabilities.py ." in workflow
-    )
-    assert "ubuntu-latest, macos-latest" in workflow
-    assert (
-        "python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q"
-        in workflow
-    )
-    assert "python -m pytest skills/synthesis-agent-guardrails/tests/ -q" in workflow
+    checks = dict(release.REQUIRED_CHECKS)
+    assert checks['onboarding.catalog-scaffolds'] == ['python3', 'skills/synthesis-onboarding/scripts/check_scaffolds.py', '.']
+    assert checks['onboarding.capabilities'] == ['python3', 'skills/synthesis-onboarding/scripts/check_capabilities.py', '.']
+    assert 'ubuntu-latest, macos-latest' in workflow
+    assert 'python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only' in workflow
+    assert checks['pytest.release'] == ['python3', '-m', 'pytest',
+        'skills/synthesis-skills-manager/scripts/test_release.py',
+        'skills/synthesis-skills-manager/scripts/test_hosted_validation.py',
+        'skills/synthesis-skills-manager/scripts/test_parallel_checks.py',
+        'skills/synthesis-skills-manager/scripts/test_release_check_groups.py',
+        'skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py',
+        'skills/synthesis-skills-manager/scripts/test_muse_command_contract.py', '-q']
+    assert checks['pytest.guardrails'] == ['python3', '-m', 'pytest', 'skills/synthesis-agent-guardrails/tests/', '-q']
 
 
 @pytest.mark.parametrize("activation_ok", [True, False])
@@ -1174,8 +1179,10 @@ def test_repository_ci_executes_r5_integrity_suite() -> None:
         encoding="utf-8"
     )
     assert (
-        "python -m pytest skills/synthesis-context-lifecycle/scripts/ "
-        "skills/synthesis-implementation-integrity/scripts/ -q" in workflow
+        "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only" in workflow
+        and dict(release.REQUIRED_CHECKS)["pytest.context-lifecycle-integrity"] == [
+            "python3", "-m", "pytest", "skills/synthesis-context-lifecycle/scripts/",
+            "skills/synthesis-implementation-integrity/scripts/", "-q"]
     )
     assert (
         "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only"
@@ -1383,7 +1390,12 @@ def _repo_guard_contract(workflow: dict) -> None:
 
 
 def _validate_history_contract(workflow: dict) -> None:
-    assert set(workflow["jobs"]) == {"conformance", "onboarding-portability"}
+    assert set(workflow["jobs"]) == {"source-checks", "conformance", "onboarding-portability"}
+    for name in ("source-checks", "conformance"):
+        job = workflow["jobs"][name]
+        assert job["timeout-minutes"] == "105"
+        checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@"))
+        assert checkout["with"]["fetch-depth"] == "0"
     steps = workflow["jobs"]["conformance"]["steps"]
     checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
     assert len(checkouts) == 1 and checkouts[0]["with"]["fetch-depth"] == "0"
@@ -1920,7 +1932,7 @@ def test_main_carries_acceptance_authority_to_publish_boundary(
     received: list[object] = []
 
     monkeypatch.setattr(release, "preflight", lambda *_args: "9.9.9")
-    monkeypatch.setattr(release, "run_required_checks", lambda *_args: authority)
+    monkeypatch.setattr(release, "consume_hosted_acceptance", lambda *_args: authority)
 
     def publish(
         candidate: Path,
@@ -4571,19 +4583,25 @@ def test_required_checks_cover_ci_pytest_groups() -> None:
             encoding="utf-8"
         )
     )
-    ci_groups: set[str] = set()
-    for step in workflow["jobs"]["conformance"]["steps"]:
-        run = step.get("run", "")
-        if "-m pytest" in run:
-            ci_groups |= _pytest_group_dirs(run.split())
-    gate_groups: set[str] = set()
-    for _name, command in release.REQUIRED_CHECKS:
-        if "pytest" in command:
-            gate_groups |= _pytest_group_dirs(list(command))
-    missing = sorted(ci_groups - gate_groups)
-    assert not missing, (
-        "CI pytest groups absent from release.py REQUIRED_CHECKS: " + repr(missing)
-    )
+    commands = dict(release.REQUIRED_CHECKS)
+    expected = {
+        'conformance.source', 'conformance.instructions', 'pytest.conformance',
+        'pytest.coordination', 'pytest.checkpoint', 'pytest.autopilot.state',
+        'pytest.autopilot.native', 'pytest.autopilot.native-control',
+        'pytest.autopilot.evaluation', 'pytest.autopilot.core', 'pytest.meeting-prep',
+        'pytest.model-tiers', 'pytest.promotion-gate', 'pytest.context-lifecycle-integrity',
+        'pytest.onboarding', 'onboarding.catalog-scaffolds', 'onboarding.capabilities',
+        'pytest.release', 'pytest.guardrails', 'meeting-transcripts.completeness',
+        'meeting-transcripts.primary', 'pytest.meeting-acquisition',
+        'pytest.rituals-guard-hooks', 'pytest.kb-edit-okf', 'compileall',
+        'installer.syntax', 'installer.tests', 'inbox.poisoned', 'inbox.resolver', 'inbox.installer',
+    }
+    assert set(commands) == expected and len(release.REQUIRED_CHECKS) == len(expected)
+    steps = workflow['jobs']['source-checks']['steps']
+    runner = [step for step in steps if '--source-checks-only' in step.get('run', '')]
+    assert len(runner) == 1 and runner[0]['run'] == (
+        'python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only')
+    assert not runner[0].get('if') and not runner[0].get('continue-on-error')
 
 
 def test_acceptance_expectation_covers_both_rename_paths_and_literal_names(tmp_path):
