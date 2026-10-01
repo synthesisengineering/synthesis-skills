@@ -7169,6 +7169,7 @@ changed_surfaces:
   - desktop-receipt-5152bfbf12f68f61
   - hosted-r5-adjacent-owner-custody-20261001
   - throughput-e9a8ecde6f5df547
+  - throughput-exclusive-scheduling
 - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -12289,6 +12290,7 @@ changed_surfaces:
   - throughput-bc561327ace97324
   - throughput-0280cd09d307664c
   - throughput-fedec9ede7a5f73f
+  - throughput-exclusive-scheduling
 - path: skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py
   cases:
   - acquisition-5ba9a14de5d0d699
@@ -12858,6 +12860,7 @@ changed_surfaces:
   - throughput-bc561327ace97324
   - throughput-0280cd09d307664c
   - throughput-fedec9ede7a5f73f
+  - throughput-exclusive-scheduling
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -19479,3 +19482,8 @@ cases:
   expected_status: pass
   fixture: ../synthesis-implementation-integrity/scripts/test_acceptance_batches.py::test_actual_parallel_assertion_mismatch_stops_later_admission
   motivating_defect: Stop batch admission after an ordinary polarity mismatch while retaining first-wave evidence
+- id: throughput-exclusive-scheduling
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_parallel_checks.py::test_exclusive_check_drains_previous_workers_before_execution
+  motivating_defect: Timing-sensitive protocol fixtures must not compete with CPU-heavy checks on the same runner

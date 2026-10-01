@@ -656,7 +656,8 @@ def bounded_run(
     return result
 
 
-def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None):
+def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None,
+                exclusive_when=None):
     """Run at most four independent checks; drain owned children on every exit.
 
     The main thread owns signals. Each worker must pass the shared cancellation
@@ -668,6 +669,7 @@ def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None):
     if threading.current_thread() is not threading.main_thread():
         raise ValueError("parallel checks require a main-thread owner")
     items = list(items)
+    exclusive = [bool(exclusive_when(item)) if exclusive_when else False for item in items]
     results = [None] * len(items)
     cancel = threading.Event()
     old = {}
@@ -685,8 +687,14 @@ def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None):
             try:
                 while active or next_index < len(items):
                     while not cancel.is_set() and len(active) < workers and next_index < len(items):
+                        # A wall-clock-sensitive protocol fixture must not compete
+                        # with an already admitted CPU-heavy check on this runner.
+                        if active and (exclusive[next_index] or any(exclusive[i] for i in active.values())):
+                            break
                         active[pool.submit(worker, items[next_index], cancel)] = next_index
                         next_index += 1
+                        if exclusive[next_index - 1]:
+                            break
                     if not active:
                         break
                     done, _ = wait(active, timeout=0.1, return_when=FIRST_COMPLETED)

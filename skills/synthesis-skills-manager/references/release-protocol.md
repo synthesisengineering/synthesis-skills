@@ -23,8 +23,10 @@ The sequence, each stage gating the next:
 **preflight → authenticated candidate verification → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
 
 - **One complete candidate validation** runs the canonical 30-command source catalog
-  with at most four concurrent processes. The independent R5 job executes its exact
-  acceptance plan with at most four concurrent batches. Each owner retains its
+  with two concurrent processes by default (maximum four). The independent R5 job
+  executes its exact acceptance plan with two concurrent batches by default
+  (maximum four). Timing-sensitive managed-native owner fixtures run exclusively;
+  their existing deadlines and assertions are unchanged. Each owner retains its
   existing command/output/process limits; failure stops new admission and drains
   running work. Setup-skipped tests remain distinguishable from executed calls.
   Hosted jobs retain platform onboarding and the separate distribution matrix.
@@ -156,7 +158,7 @@ the artifact.** A self-report is a claim, not evidence.
 ### Required autopilot check partitions
 
 The release owner and CI run `release_check_groups.py` for `state`, `native`,
-`evaluation`, and `core`. Each partition collects the entire autopilot directory,
+`native-control`, `evaluation`, and `core`. Each partition collects the entire autopilot directory,
 rejects duplicate node IDs, and derives its domain membership. Newly collected
 files enter the core group unless their name belongs to a declared domain rule;
 no static test-file allowlist can silently exclude them. Collection errors,
@@ -165,8 +167,8 @@ the release. The explicit macOS-only process-isolation control remains
 inapplicable on non-macOS hosts; missing sandbox capability never becomes a pass.
 
 Each check keeps the existing 900-second wall-time ceiling. The inner pytest
-owner has 880 seconds, leaving cleanup and reporting reserve; four sequential
-partitions admit at most four check windows, not an unbounded retry. A slow group
+owner has 880 seconds, leaving cleanup and reporting reserve; five bounded
+partitions admit at most five check windows, not an unbounded retry. A slow group
 fails and requires measured redistribution or implementation correction.
 The runner bounds capture to 8 MiB, the inventory report to 4 MiB, collection to
 20,000 tests, and source fingerprinting to 128 MiB / 20,000 members / 30 seconds.

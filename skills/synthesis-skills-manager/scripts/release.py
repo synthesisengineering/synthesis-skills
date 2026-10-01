@@ -4628,7 +4628,7 @@ def publish(
     return True
 
 
-def run_source_checks(repo: Path, result: Result, dry_run: bool, *, workers=4) -> bool:
+def run_source_checks(repo: Path, result: Result, dry_run: bool, *, workers=2) -> bool:
     """Execute the one exhaustive source-check catalog with bounded concurrency."""
     if dry_run:
         for name, _command in REQUIRED_CHECKS:
@@ -4713,7 +4713,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--source-checks-only", action="store_true",
                         help="run the exhaustive source catalog; no publication or installation")
-    parser.add_argument("--check-workers", type=int, choices=range(1, 5), default=4)
+    parser.add_argument("--check-workers", type=int, choices=range(1, 5), default=2)
     parser.add_argument("--hosted-run", default="auto",
                         help="successful exact-tree Validate run used for release (default: discover)")
     parser.add_argument("--validation-output", type=Path,

@@ -1157,7 +1157,7 @@ def test_actual_parallel_batches_keep_order_polarity_and_four_worker_bound(tmp_p
     root, path, observations = _parallel_corpus(tmp_path, "success")
     validated, errors = module.validate_manifest(path, root)
     assert not errors
-    receipt, status = module.execute(validated, root)
+    receipt, status = module.execute(validated, root, workers=4)
     assert status == 0, receipt["errors"]
     contract = module.case_contract(validated, root)
     plan = module.batch_plan(contract)
@@ -1205,7 +1205,7 @@ def test_actual_parallel_failure_stops_admission_and_retains_every_owner(
         monkeypatch.setattr(module.checks, "bounded_run", damaged_custody)
     validated, errors = module.validate_manifest(path, root)
     assert not errors
-    receipt, status = module.execute(validated, root)
+    receipt, status = module.execute(validated, root, workers=4)
     assert status == 1 and not receipt["ok"]
     assert receipt["errors"]
     assert sorted(p.name for p in observations.iterdir()) == [f"start-{i}.json" for i in range(4)]
@@ -1225,7 +1225,7 @@ def test_actual_parallel_signal_drains_children_and_preserves_failure_receipt(
 ):
     root, path, observations = _parallel_corpus(tmp_path, "signal")
     command = [sys.executable, str(OWNER), "run", "--manifest", str(path),
-               "--repo-root", str(root), "--json"]
+               "--repo-root", str(root), "--workers", "4", "--json"]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         deadline = time.monotonic() + 20
@@ -1265,7 +1265,7 @@ def test_actual_parallel_assertion_mismatch_stops_later_admission(tmp_path):
     path.write_text(yaml.safe_dump(manifest))
     validated, errors = module.validate_manifest(path, root)
     assert not errors
-    receipt, status = module.execute(validated, root)
+    receipt, status = module.execute(validated, root, workers=4)
     assert status == 1 and not receipt["ok"]
     assert receipt["cases"][7]["status"] == "failed"
     assert not receipt["cases"][7]["matched"]

@@ -59,3 +59,20 @@ def test_invalid_concurrency_refused_before_work(workers):
     calls=[]
     with pytest.raises(ValueError):groups.bounded_map([1],lambda *a:calls.append(a),workers=workers)
     assert calls==[]
+
+
+def test_exclusive_check_drains_previous_workers_before_execution(tmp_path):
+    def worker(index, cancel):
+        script = ("import time,json,pathlib; begin=time.monotonic(); time.sleep(.15); "
+                  "pathlib.Path(" + repr(str(tmp_path / (str(index) + '.json')))
+                  + ").write_text(json.dumps([begin,time.monotonic()]))")
+        return groups.bounded_run([sys.executable, '-c', script], tmp_path, timeout=5,
+                                  env=dict(os.environ, TMPDIR=str(tmp_path)), cancel_event=cancel)
+    results = groups.bounded_map(range(5), worker, workers=2, exclusive_when=lambda i: i == 2)
+    assert all(r.returncode == 0 for r in results)
+    import json
+    intervals = [json.loads((tmp_path / (str(i) + '.json')).read_text()) for i in range(5)]
+    assert max(intervals[i][1] for i in (0, 1)) <= intervals[2][0]
+    assert intervals[2][1] <= min(intervals[i][0] for i in (3, 4))
+    assert max(intervals[i][0] for i in (0, 1)) < min(intervals[i][1] for i in (0, 1))
+    assert max(intervals[i][0] for i in (3, 4)) < min(intervals[i][1] for i in (3, 4))

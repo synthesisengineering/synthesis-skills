@@ -615,7 +615,8 @@ def verify_execution(receipt: dict, contract: list[dict]) -> None:
 
 
 def execute(
-    validated: dict[str, Any], root: Path, git_evidence: dict[str, Any] | None = None
+    validated: dict[str, Any], root: Path, git_evidence: dict[str, Any] | None = None,
+    *, workers: int = 2,
 ) -> tuple[dict[str, Any], int]:
     started = time.monotonic()
     deadline = started + checks.ACCEPTANCE_SECONDS - 60
@@ -829,8 +830,12 @@ def execute(
         execution["source_sha256"] = before
         try:
             checks.bounded_map(
-                enumerate(plan), run_batch, workers=4,
+                enumerate(plan), run_batch, workers=workers,
                 stop_when=lambda outcome: bool(outcome["errors"]),
+                exclusive_when=lambda item: any(
+                    selector.split("::", 1)[0].endswith("/test_managed_native_owner.py")
+                    for selector in item[1]["selectors"]
+                ),
             )
         except (checks.CheckInterrupted, KeyboardInterrupt) as exc:
             errors.append(str(exc) or type(exc).__name__)
@@ -920,6 +925,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--change-base")
     parser.add_argument("--transaction-id")
+    parser.add_argument("--workers", type=int, choices=range(1, 5), default=2)
     return parser.parse_args(argv)
 
 
@@ -954,7 +960,7 @@ def main(argv: list[str] | None = None) -> int:
                 {"ok": False, "errors": [str(exc)]}, args.json, as_receipt=args.receipt
             )
             return 2
-    payload, returncode = execute(validated, root, git_evidence)
+    payload, returncode = execute(validated, root, git_evidence, workers=args.workers)
     try:
         emit(payload, args.json, as_receipt=args.receipt)
     except ValueError:

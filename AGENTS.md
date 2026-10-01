@@ -58,7 +58,7 @@ python3 skills/synthesis-skills-manager/scripts/release.py --repo-root . --sourc
 ```
 
 CI and local verification execute the same exhaustive `REQUIRED_CHECKS` catalog
-in `release.py`. Up to four independent checks run concurrently, each with its
+in `release.py`. Two independent checks run concurrently by default (maximum four), each with its
 own retained temporary directory and bounded process group. Source identity is
 checked before and after execution. Failure stops further admission and drains
 running checks; missing checks never count as success. `--check-workers 1`
