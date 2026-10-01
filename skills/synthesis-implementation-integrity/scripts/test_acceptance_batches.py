@@ -223,10 +223,23 @@ def test_receipt_phase_and_inventory_tampering_refuses(tmp_path):
             module.verify_execution(altered, contract)
 
 
-def test_timeout_retains_partial_phases_and_reaps_child(tmp_path, monkeypatch):
+@pytest.mark.parametrize("startup_delay", [0, 2])
+def test_timeout_retains_partial_phases_and_reaps_child(
+    tmp_path, monkeypatch, startup_delay
+):
     module = owner()
+    from test_release_check_groups import _deadline_after_phase
+
     monkeypatch.setattr(module, "CASE_SECONDS", 1.0)
     pid = tmp_path.parent / (tmp_path.name + "-descendant.pid")
+    # Python/pytest startup is not the cleanup behavior under test. The shared
+    # fixture bounds real readiness, then expires the unchanged process owner
+    # only after its actual descendant exists; real wall-clock tests stay intact.
+    _deadline_after_phase(monkeypatch, pid)
+    if startup_delay:
+        (tmp_path / "conftest.py").write_text(
+            f"import time\ntime.sleep({startup_delay})\n"
+        )
     code = (
         "import subprocess,sys,os\nfrom pathlib import Path\ndef test_one():\n"
         ' p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(120)"])\n'
@@ -241,13 +254,30 @@ def test_timeout_retains_partial_phases_and_reaps_child(tmp_path, monkeypatch):
     assert batch["partial_execution"]["authorizes_success"] is False
     assert Path(batch["process_custody"], "result.json").is_file()
     assert pid.is_file(), "fixture must reach the actual descendant before deadline"
-    proc = subprocess.run(
-        ["ps", "-p", pid.read_text(), " -o".strip(), "stat="],
-        capture_output=True,
-        text=True,
-        timeout=5,
+    _assert_reaped(pid.read_text())
+
+
+def _assert_reaped(pid):
+    # A working live-process control is required before absence is evidence.
+    control = subprocess.run(
+        ["ps", "-p", str(os.getpid()), "-o", "stat="],
+        capture_output=True, text=True, timeout=5,
     )
-    assert not proc.stdout.strip() or proc.stdout.strip().startswith("Z")
+    assert control.returncode == 0 and control.stdout.strip() and not control.stderr
+    proc = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "stat="],
+        capture_output=True, text=True, timeout=5,
+    )
+    assert not proc.stderr, "process inspection failed: " + proc.stderr
+    state = proc.stdout.strip()
+    if proc.returncode == 0:
+        assert state.startswith("Z"), "descendant is still running: " + state
+    else:
+        assert proc.returncode == 1 and not state, "invalid process inspection result"
+        # Refuse a silent inspector failure that would otherwise resemble absence.
+        os.kill(os.getpid(), 0)
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(pid), 0)
 
 
 def test_same_filename_different_directories_are_separate_batches(tmp_path):
