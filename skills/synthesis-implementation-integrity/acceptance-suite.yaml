@@ -7115,6 +7115,7 @@ changed_surfaces:
   - desktop-receipt-a5daf5816ba0484e
   - desktop-receipt-f1f8b16078a08897
   - desktop-receipt-5152bfbf12f68f61
+  - hosted-r5-adjacent-owner-custody-20261001
 - path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -7180,6 +7181,9 @@ changed_surfaces:
   - hosted-delivery-f6ac5895061bad2f
   - hosted-delivery-f85283ff08034963
   - hosted-delivery-fbcf7c5c21b2a0a6
+  - hosted-r5-bounded-fixture-identity-20261001
+  - hosted-r5-diagnostic-identity-ceiling-20261001
+  - hosted-r5-adjacent-owner-custody-20261001
 - path: skills/synthesis-implementation-integrity/scripts/test_r5_contract.py
   cases:
   - final-45855475987f2c62
@@ -7758,6 +7762,7 @@ changed_surfaces:
   - messaging-delivery-0b979517c055b445
   - messaging-delivery-e9c8b95905e9f695
   - hosted-sandbox-9a332df8324b3ca5
+  - hosted-r5-bounded-fixture-identity-20261001
 - path: skills/synthesis-local-messaging/scripts/test_messages_boundary.py
   cases:
   - messaging-delivery-699792a09fdbaadb
@@ -19226,3 +19231,18 @@ cases:
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_release_fixture_child_timeout_retains_output_and_reaps_descendant
   motivating_defect: A hosted regression timeout discarded partial child output and could leave descendants running. The same bounded process owner must retain stdout and stderr, reap its parent and terminate its owned descendant with a positive-control terminal observation.
+- id: hosted-r5-bounded-fixture-identity-20261001
+  fixture: scripts/test_acceptance_batches.py::test_oversized_decode_fixture_keeps_actual_acceptance_diagnostics_bounded
+  control_class: acceptance-test
+  motivating_defect: An oversized decoder fixture parameter leaked into its pytest identity and exceeded the unchanged diagnostic identity ceiling
+  expected_status: pass
+- id: hosted-r5-diagnostic-identity-ceiling-20261001
+  fixture: scripts/test_acceptance_batches.py::test_actual_diagnostic_identity_ceiling_stays_fail_closed
+  control_class: acceptance-test
+  motivating_defect: Fixture identity correction must retain exact diagnostic identity limits, privacy and fail-closed refusal
+  expected_status: pass
+- id: hosted-r5-adjacent-owner-custody-20261001
+  fixture: scripts/test_acceptance_batches.py::test_copied_release_owner_closure_and_missing_dependency_refusal
+  control_class: acceptance-test
+  motivating_defect: A copied runner substituted an inherited or cached foreign release owner after its adjacent dependency was removed
+  expected_status: pass

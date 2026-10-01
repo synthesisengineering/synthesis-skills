@@ -355,7 +355,10 @@ def test_safe_plist_string_and_no_object_execution():
         lm.decode_body(None, b"\x80\x04cos\nsystem\n")
 
 
-@pytest.mark.parametrize("blob", [b"x" * (256 * 1024 + 1), b"\x04\x0bstreamtyped", b""])
+@pytest.mark.parametrize(
+    "blob", [b"x" * (256 * 1024 + 1), b"\x04\x0bstreamtyped", b""],
+    ids=["oversized", "unsupported-format", "empty"],
+)
 def test_unsupported_or_oversized_decode(blob):
     with pytest.raises(lm.Refused):
         lm.decode_body(None, blob)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -20,8 +21,14 @@ from typing import Any
 
 # The release process/inventory owner is shared by both entry points.
 _MANAGER = Path(__file__).resolve().parents[2] / "synthesis-skills-manager" / "scripts"
-sys.path.insert(0, str(_MANAGER))
-import release_check_groups as checks  # noqa: E402
+_CHECKS_PATH = _MANAGER / "release_check_groups.py"
+if _CHECKS_PATH.resolve() != _CHECKS_PATH or not _CHECKS_PATH.is_file():
+    raise ModuleNotFoundError("required adjacent release_check_groups.py is unavailable")
+_checks_spec = importlib.util.spec_from_file_location(
+    "_synthesis_acceptance_release_check_groups", _CHECKS_PATH
+)
+checks = importlib.util.module_from_spec(_checks_spec)
+_checks_spec.loader.exec_module(checks)
 
 try:
     import yaml  # type: ignore

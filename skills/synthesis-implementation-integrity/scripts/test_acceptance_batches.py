@@ -228,14 +228,18 @@ def test_timeout_retains_partial_phases_and_reaps_child(
     tmp_path, monkeypatch, startup_delay
 ):
     module = owner()
-    from test_release_check_groups import _deadline_after_phase
+    # This test owns its helper lookup; production dependency loading does not
+    # mutate the process search path merely to make test imports available.
+    monkeypatch.syspath_prepend(str(module._MANAGER))
+    import test_release_check_groups as timing_controls
+    monkeypatch.setattr(timing_controls, "groups", module.checks)
 
     monkeypatch.setattr(module, "CASE_SECONDS", 1.0)
     pid = tmp_path.parent / (tmp_path.name + "-descendant.pid")
     # Python/pytest startup is not the cleanup behavior under test. The shared
     # fixture bounds real readiness, then expires the unchanged process owner
     # only after its actual descendant exists; real wall-clock tests stay intact.
-    _deadline_after_phase(monkeypatch, pid)
+    timing_controls._deadline_after_phase(monkeypatch, pid)
     if startup_delay:
         (tmp_path / "conftest.py").write_text(
             f"import time\ntime.sleep({startup_delay})\n"
@@ -421,7 +425,9 @@ def test_selected_virtualenv_survives_batch_process(tmp_path):
     assert json.loads(completed.stdout)["ok"]
 
 
-def test_copied_release_owner_closure_and_missing_dependency_refusal(tmp_path):
+@pytest.mark.parametrize("foreign_owner", ["pythonpath", "module-cache"])
+@pytest.mark.parametrize("dependency_state", ["missing", "symlink", "parent-symlink", "grandparent-symlink"])
+def test_copied_release_owner_closure_and_missing_dependency_refusal(tmp_path, foreign_owner, dependency_state):
     import shutil
 
     release_root = tmp_path / "verified-release"
@@ -439,6 +445,14 @@ def test_copied_release_owner_closure_and_missing_dependency_refusal(tmp_path):
         OWNER.parents[2] / "synthesis-skills-manager/scripts/release_check_groups.py"
     )
     shutil.copy2(canonical, helper)
+    foreign = tmp_path / "foreign-owner"
+    foreign.mkdir()
+    marker = tmp_path / "foreign-executed"
+    (foreign / "release_check_groups.py").write_text(
+        "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('executed')\n"
+        "raise RuntimeError('foreign release owner')\n"
+    )
+    environment = {**os.environ, "PYTHONPATH": str(foreign), "TMPDIR": str(tmp_path)}
     root = tmp_path / "fixture"
     manifest = corpus(root, "def test_one(): pass\n")
     command = [
@@ -451,12 +465,29 @@ def test_copied_release_owner_closure_and_missing_dependency_refusal(tmp_path):
         str(root),
         "--json",
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=40)
+    if foreign_owner == "module-cache":
+        # An already imported foreign owner must not substitute for the file
+        # that belongs to this copied runner, even when its name is cached.
+        program = "import runpy,sys,types;sys.modules['release_check_groups']=types.ModuleType('release_check_groups');sys.argv=sys.argv[1:];runpy.run_path(sys.argv[0],run_name='__main__')"
+        command[1:1] = ["-c", program]
+    process_owner = owner().checks
+    completed = process_owner.bounded_run(command, root, 40, environment)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert json.loads(completed.stdout)["ok"]
     helper.rename(helper.with_suffix(".retained"))
-    refused = subprocess.run(command, capture_output=True, text=True, timeout=10)
-    assert refused.returncode != 0 and "release_check_groups" in refused.stderr
+    if dependency_state == "symlink":
+        helper.symlink_to(foreign / "release_check_groups.py")
+    elif dependency_state == "parent-symlink":
+        helper.parent.rename(tmp_path / "retained-owner-scripts")
+        helper.parent.symlink_to(foreign, target_is_directory=True)
+    elif dependency_state == "grandparent-symlink":
+        (foreign / "scripts").mkdir()
+        shutil.copy2(foreign / "release_check_groups.py", foreign / "scripts/release_check_groups.py")
+        helper.parent.parent.rename(tmp_path / "retained-owner-manager")
+        helper.parent.parent.symlink_to(foreign, target_is_directory=True)
+    refused = process_owner.bounded_run(command, root, 10, environment)
+    assert refused.returncode != 0 and "release_check_groups" in refused.stdout
+    assert not marker.exists()
     # Neither release authoring nor acceptance acquires installed launcher authority.
     runtime_path = OWNER.parents[2] / "synthesis-onboarding/scripts/release_runtime.py"
     spec = importlib.util.spec_from_file_location(
@@ -471,6 +502,17 @@ def test_copied_release_owner_closure_and_missing_dependency_refusal(tmp_path):
     assert (
         "synthesis-skills-manager/scripts/release.py" not in runtime.PUBLIC_ENTRYPOINTS
     )
+    if dependency_state == "symlink":
+        helper.rename(helper.with_suffix(".retained-symlink"))
+        # The tree digest rejects symlinks by design. Preserve the alias beside
+        # the copied release instead of making it part of this regular-file check.
+        helper.with_suffix(".retained-symlink").rename(tmp_path / "retained-owner-symlink")
+    elif dependency_state == "parent-symlink":
+        helper.parent.rename(tmp_path / "retained-scripts-symlink")
+        (tmp_path / "retained-owner-scripts").rename(helper.parent)
+    elif dependency_state == "grandparent-symlink":
+        helper.parent.parent.rename(tmp_path / "retained-manager-symlink")
+        (tmp_path / "retained-owner-manager").rename(helper.parent.parent)
     before = runtime.tree_digest(release_root)
     helper.write_text("# modified owner\n")
     assert runtime.tree_digest(release_root) != before
@@ -752,6 +794,65 @@ def actual_diagnostic_run(tmp_path, code, cases=None):
     return module, root, completed, plan, target
 
 
+def test_oversized_decode_fixture_keeps_actual_acceptance_diagnostics_bounded(tmp_path):
+    """Run the actual refusal fixture, preserving its large input and all phases."""
+    module = owner()
+    root = OWNER.resolve().parents[3]
+    manifest = root / "skills/synthesis-implementation-integrity/acceptance-suite.yaml"
+    selected = (
+        "skills/synthesis-local-messaging/scripts/test_local_messaging.py"
+        "::test_unsupported_or_oversized_decode"
+    )
+    validated, errors = module.validate_manifest(manifest, root)
+    assert not errors
+    contract = [
+        case for case in module.case_contract(validated, root)
+        if case["selector"] == selected
+    ]
+    assert contract
+    # Execute the real runner on only this fixture family. This targeted
+    # measurement does not claim full-manifest or release authority.
+    program = """
+import importlib.util, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('measured_acceptance_owner', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+root = Path(sys.argv[2])
+validated, errors = module.validate_manifest(Path(sys.argv[3]), root)
+assert not errors
+validated['cases'] = [case for case in validated['cases'] if
+    case['fixture_file'].relative_to(root).as_posix() + '::' + case['fixture_node'] == sys.argv[4]]
+assert validated['cases']
+receipt, code = module.execute(validated, root)
+print(module.checks.encode_acceptance_receipt(receipt))
+raise SystemExit(code)
+"""
+    completed = module.checks.bounded_run(
+        [sys.executable, "-c", program, str(OWNER), str(root), str(manifest), selected],
+        root, 30, {**os.environ, "TMPDIR": str(tmp_path)},
+    )
+    assert completed.returncode == 0, completed.stdout
+    receipt = module.checks.decode_acceptance_receipt(completed.stdout)
+    module.verify_execution(receipt, contract)
+    target = module.checks.prepare_diagnostics_destination(tmp_path / "published", root)
+    result = module.checks.capture_acceptance_diagnostics(
+        completed, root, module.batch_plan(contract), {}, target
+    )
+    assert result["status"] == "RETAINED"
+    public = json.loads((Path(target["path"]) / "diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert len(public["batches"]) == 1
+    assert len(public["batches"][0]["phases"]) == 9
+    nodes = receipt["execution"]["batches"][0]["inventory"]["selected"]
+    assert set(nodes) == {
+        selected + "[oversized]", selected + "[unsupported-format]", selected + "[empty]"
+    }
+    assert all(phase["outcome"] == "passed" for phase in public["batches"][0]["phases"])
+    exported = json.dumps(public)
+    assert str(tmp_path) not in exported and "x" * 256 not in exported
+
+
 def test_actual_runner_diagnostics_keep_private_failure_out_of_public_artifact(
     tmp_path,
 ):
@@ -778,6 +879,26 @@ def test_actual_runner_diagnostics_keep_private_failure_out_of_public_artifact(
         b"private-failure-marker" in item.read_bytes() for item in local.iterdir()
     )
     assert public["authorizes_release"] is False
+
+
+@pytest.mark.parametrize("identity_length", [8192, 8193])
+def test_actual_diagnostic_identity_ceiling_stays_fail_closed(tmp_path, identity_length):
+    identity = "private-value-" + "x" * (identity_length - len("test_cases.py::test_one[]") - len("private-value-"))
+    module, root, completed, plan, target = actual_diagnostic_run(
+        tmp_path,
+        "import pytest\n@pytest.mark.parametrize('value', [1], ids=[" + repr(identity) + "])\ndef test_one(value): assert value == 1\n",
+    )
+    assert completed.returncode == 0
+    receipt = module.checks.decode_acceptance_receipt(completed.stdout)
+    assert len(receipt["execution"]["batches"][0]["inventory"]["selected"][0]) == identity_length
+    result = module.checks.capture_acceptance_diagnostics(completed, root, plan, {}, target)
+    assert result["status"] == ("RETAINED" if identity_length == 8192 else "REFUSED")
+    public = json.loads((Path(target["path"]) / "diagnostics.json").read_text())
+    assert public["authorizes_release"] is False
+    assert identity not in json.dumps(public) and "private-value-" not in json.dumps(public)
+    assert module.checks.DIAGNOSTIC_RECORDS == 2000
+    assert module.checks.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
+    assert module.checks.DIAGNOSTIC_SECONDS == 10
 
 
 @pytest.mark.parametrize(
