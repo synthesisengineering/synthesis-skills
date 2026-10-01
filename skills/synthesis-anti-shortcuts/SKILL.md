@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -48,9 +48,22 @@ Six surface presentations recur across incidents. The underlying behavior is the
 
 Each costume sounds reasonable in isolation. Each is the same shortcut wearing different clothes. The full catalog with rationale per phrase lives in [`references/costume-vocabulary.md`](references/costume-vocabulary.md).
 
+## Delivery is part of completeness
+
+Process can also hide avoidance. Repeated audits, new helper frameworks and
+revision instructions do not substitute for completed deliverables. Complete
+the user's finite assignment, including authorized shipping. Once adequate
+required checks pass, advance to delivery; expand verification only for a
+concrete gap, changed input or explicit gate. Fix defects in the work being
+touched without silently converting the assignment into an unbounded ecosystem
+redesign. Keep new requests visible and route them through the existing plan.
+Limiting duplicate process is not permission to omit requested work, accept a
+known failure, weaken a guard or delete unresolved evidence.
+
 ## The Methodology
 
-Eight procedures, applied in order on non-trivial work. Each is small. Together they catch the pattern before it ships.
+Apply the procedures relevant to the work and its actual decisions. They are
+judgment checks, not eight required new artifacts or sequential review rounds.
 
 ### 1. The Constraint-First Protocol
 

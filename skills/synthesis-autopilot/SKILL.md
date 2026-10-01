@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-fact-checking", "synthesis-writing-craft", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.6.0"
+  version: "3.6.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -94,10 +94,36 @@ and outcome equivalence and unknown provider costs.
 
 ## Execute and adapt
 
-Work on ready dependencies. Continue independent authorized work while another
-node waits. Describe near-term work concretely and elaborate later nodes when
-their inputs become known. Change the approach when evidence warrants it;
-changing promised outcomes or weakening required checks needs the owning
+Maintain one finite delivery plan in the existing project record. For each
+requested deliverable, distinguish implementation, accepted result, authorized
+shipping and target read-back. A review report, revision instruction or passing
+fixture is not the finished article, installed feature or observed outcome.
+Keep required work visible until delivered; do not add optional investigations
+to the completion boundary without the user's direction.
+
+Group related ready changes into coherent candidates that share integration and
+release gates. A worker brief, commit or repaired finding is not automatically a
+release batch. Use focused checks during implementation, then run the complete
+required gates on the integrated candidate. Keep a candidate frozen while its
+checks run; prepare independent work in separately claimed areas. Do not hold a
+ready delivery for unbounded future intake. Split candidates when dependencies,
+risk, authority or the user's priorities require it, and record that reason.
+
+When any node waits, inspect the whole remaining plan for ready work. Continue
+safe authorized work within available capacity; delegate separable packages
+when permitted. Only dependent work waits. Name the actual dependency or
+resource conflict if no other work can proceed. Observe CI step/log advancement
+and configured timeouts, not merely an `in_progress` label; investigate lack of
+progress before calling it healthy. Reconcile a possibly committed effect
+before any retry or cancellation.
+
+At a checkpoint, compare delivered/accepted outcomes and resolved blockers with
+the previous checkpoint. If only reports, helper variants, polls or review
+counts increased, identify the cause and change the execution approach within
+the existing authority and budget. Do not create a new monitor or verifier to
+measure this comparison. A justified external wait stays a wait; it does not
+reset deadlines or costs. Elaborate later nodes as their inputs become known.
+Changing promised outcomes or weakening required checks needs the owning
 approval, a versioned amendment and fresh verification.
 
 Use the thinking framework's [decisive-uncertainty method](../synthesis-thinking-framework/references/decisive-uncertainty.md) for facts that could change the next decision. The controller reports six-family domain requirements and open discriminating observations. Register a task-specific question only when it matters; resolve it with the existing evidence owner, preserve refuted predictions, and continue independent criteria while its dependent work waits. An empty uncertainty register adds no investigation requirement.
@@ -224,8 +250,12 @@ existence is insufficient. Never certify a claim by writing `verified: true`.
 
 Run implementation-integrity or the domain's equivalent before completion.
 Use one complete adversarial review per declared package and fix substantiated
-findings; extra review requires new evidence, changed work or a specific open
-risk. Review satisfaction is not the user's outcome. No recursive control
+findings. Recheck repairs and their affected dependencies; reuse still-valid
+acceptance for unaffected artifacts. Extra review must name a failed criterion,
+changed input or concrete uncovered risk and the observation that resolves it.
+Once required acceptance is satisfied, proceed to authorized delivery. Do not
+restart the full review because a new reviewer, checkpoint or chat turn exists.
+Review satisfaction is not the user's outcome. No recursive control
 construction, policy self-editing, telemetry upload or learning activation
 follows from autopilot. Evaluation and reviewed improvement proposals follow
 [the evaluation contract](references/evaluation.md).

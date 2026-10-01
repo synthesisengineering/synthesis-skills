@@ -1,6 +1,15 @@
 # Verification custody in a shared workspace
 
-Run verification in an isolated copy by default. Pin its source commit and each
+Use one admitted isolated verification workspace by default; reuse it while its
+source identity, ownership and write boundaries remain valid. Isolation does not
+require a fresh full source copy for each command. Reference already retained,
+immutable inputs by identity/hash instead of duplicating their bytes. Retain each
+attempt's unique inputs, outputs, failures and process disposition. Existing
+custody contracts remain binding; no archive deletion or evidence retirement
+follows from reuse. A new archive or verifier needs a recovery or acceptance gap
+that existing custody cannot satisfy.
+
+Pin its source commit and each
 uncommitted input hash; direct temporary outputs, caches, profiles and generated
 stores into a named scratch root. Existing claims and publication gates remain in
 force. A clean source checkout says nothing about an unexamined cache elsewhere.

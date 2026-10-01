@@ -377,7 +377,7 @@ def test_captured_parser_ignores_poisoned_pyc_with_positive_control(
     )
     real = engine / "_load_config.py"
     cache = Path(importlib.util.cache_from_source(str(real)))
-    cache.parent.mkdir()
+    cache.parent.mkdir(parents=True)
     py_compile.compile(str(poison), cfile=str(cache), doraise=True)
     compiled = cache.read_bytes()
     meta = real.stat()
@@ -395,6 +395,9 @@ def test_captured_parser_ignores_poisoned_pyc_with_positive_control(
             "-B",
             "-I",
             "-S",
+            # Isolated mode ignores PYTHONPYCACHEPREFIX. Bind the positive
+            # control to the same cache namespace where the fixture was built.
+            *(["-X", f"pycache_prefix={sys.pycache_prefix}"] if sys.pycache_prefix else []),
             "-c",
             "import importlib.util,sys; "
             "s=importlib.util.spec_from_file_location('poison_positive_control',sys.argv[1]); "

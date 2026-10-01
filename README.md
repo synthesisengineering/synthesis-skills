@@ -18,6 +18,13 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.0** aligns autonomous execution and verification around completed
+deliverables. Related work shares a delivery candidate; unchanged accepted work
+is reused across gates. Concrete failures and changed inputs reopen affected
+checks, while required release tests, evidence custody and approval boundaries
+remain binding. Checkpoints return to the work instead of recursively triggering
+more checkpoints.
+
 Release **4.153.0** also decodes bounded Claude desktop attachment and
 metadata records as inert context. Autopilot doctor checks the current session's
 transcript and reports its exact inspection window; historical gaps remain explicit.
@@ -25,7 +32,7 @@ Release acceptance carries complete receipts through bounded lossless transport
 while retaining source, transaction, outcome and privacy checks.
 
 Release **4.153.0** adds declared material-context preservation across ordinary
-project editing, checkpoint, doctor and recovery workflows. Autopilot **3.6.0**
+project editing, checkpoint, doctor and recovery workflows. Autopilot **3.6.1**
 uses the same records to fence incomplete or changed material before new work.
 Facts, rationale, temporary conditions and uncertainty remain linked to their
 retained sources; structural checks do not certify meaning or native outcomes.

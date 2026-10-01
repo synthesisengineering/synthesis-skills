@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import pytest
+from test_browser_packet import browser_environment
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "skills/synthesis-agent-conformance/scripts"))
@@ -55,7 +56,8 @@ def test_complete_corpus_page_preserves_review_without_publication(tmp_path):
         "--dump-dom",
         path.as_uri(),
     ]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=25)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=25,
+                            env=browser_environment(tmp_path))
     (tmp_path / "browser-dom.html").write_text(result.stdout)
     (tmp_path / "browser-stderr.txt").write_text(result.stderr)
     assert result.returncode == 0, result.stderr

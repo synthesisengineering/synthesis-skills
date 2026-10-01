@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.153.0] - 2026-09-30
 
+### Changed
+
+- Give autonomous work a finite acceptance endpoint and coherent delivery batches.
+  Reuse valid verification across review, preflight and checkpoints; continue
+  independent work during external waits and investigate missing CI progress.
+- Remove open-ended verification instructions and the assumption that unchanged
+  tests cannot cover a repair. Preserve required gates, failures, evidence,
+  authority and explicit incomplete outcomes.
+
 ### Added
 
 - Keep failed material scans and fresh material drift fenced at recovery and
@@ -21,6 +30,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Fixed
 
+- Keep sandboxed browser socket paths within platform limits during nested
+  acceptance checks, with retained fixture custody. Bind the bytecode regression
+  positive control to the same isolated cache namespace as its fixture.
 - Decode bounded desktop attachment and metadata records without granting native
   authority. Diagnose the bound Claude transcript through the supported doctor,
   with explicit inspected ranges and unchanged historical coverage limits.

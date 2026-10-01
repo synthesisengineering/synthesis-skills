@@ -12700,6 +12700,12 @@ changed_surfaces:
   - desktop-receipt-3d6fbeada64f0fdb
   - desktop-receipt-c149863a33fe5899
   - desktop-receipt-a0110b70cbd6580a
+- path: skills/synthesis-anti-shortcuts/SKILL.md
+  cases:
+  - workflow-source-conformance
+- path: skills/synthesis-preflight/SKILL.md
+  cases:
+  - workflow-source-conformance
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -19246,3 +19252,8 @@ cases:
   control_class: acceptance-test
   motivating_defect: A copied runner substituted an inherited or cached foreign release owner after its adjacent dependency was removed
   expected_status: pass
+- id: workflow-source-conformance
+  control_class: diagnostic
+  expected_status: pass
+  fixture: ../synthesis-agent-conformance/scripts/test_yaml_runtime.py::test_clean_python_source_conformance_needs_no_site_packages
+  motivating_defect: Shared workflow skill metadata, dependencies and portable source packaging must remain loadable; semantic instruction behavior is evaluated separately by a bounded forward-use review.

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -124,13 +124,22 @@ or resolved by its recorded decision owner within that owner's authority. New fa
 counterevidence can reopen a locked premise through that owner; retain the prior decision
 and invalidate dependent evidence. The reviewer never silently rewrites the premise.
 
+Once required acceptance is satisfied, close the round and advance the accepted
+artifacts to their authorized next step. Repairs reopen their failed criteria
+and affected dependencies, not every previously accepted artifact. Name the
+changed input, factual counterevidence or uncovered criterion before reopening
+accepted work. Another reviewer's stylistic preference is not a new requirement.
+For corpus work, retain item-level dispositions so one article's repair does not
+restart review of the entire accepted corpus. A revision brief is not a revised
+article when the task requires finished prose.
+
 ## Sidecars, Evidence, and Handoff Topology
 
 Sidecars are claims. A manifest, receipt, verifier output, summary, or acceptance matrix
 has no more authority than the production boundary that consumes it. Verify the claimed
 artifact set and state rather than accepting the sidecar because it is structured.
 
-Every review handoff names:
+Every review handoff names the applicable boundaries below; for a prose-only review, identify the reader-facing artifact and publication authority rather than inventing a receipt service:
 
 - the **production entry point** whose behavior matters;
 - the **enforcing boundary** that can refuse the state-changing action;

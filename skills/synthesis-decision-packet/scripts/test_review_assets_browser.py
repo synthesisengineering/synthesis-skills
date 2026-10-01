@@ -8,7 +8,7 @@ import subprocess
 import pytest
 import build_packet as bp
 import record_rulings as rr
-from test_browser_packet import chromium as chromium_fixture
+from test_browser_packet import browser_environment, chromium as chromium_fixture
 from test_review_assets import review_spec, text_asset, binary_asset
 
 
@@ -87,7 +87,8 @@ def test_actual_asset_reader_and_unavailable_boundary(tmp_path, chromium, width)
         "--dump-dom",
         probe.as_uri(),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=25,
+                            env=browser_environment(tmp_path))
     (tmp_path / "dom.html").write_text(result.stdout)
     (tmp_path / "stderr.log").write_text(result.stderr)
     assert result.returncode == 0, result.stderr

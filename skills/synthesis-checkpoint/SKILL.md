@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.9.0"
+  version: "1.9.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -77,7 +77,18 @@ Invoke synthesis-checkpoint when any of these conditions fire:
 
 ## The Protocol
 
-Steps run in order. Each step is one shell or file operation; total cost is ~6 tool calls.
+Use the full protocol for session recovery, material drift and explicit refresh.
+During continuous work with a verified project identity, check the live facts
+needed for the next claim or mutation and update only changed recovery state.
+A timestamp question requires a current clock; it does not by itself require
+another project audit. A status claim still requires its actual current source.
+Read current ownership before writes. New contradictions trigger full recovery.
+
+Checkpoint work does not recursively trigger another checkpoint. Logging this
+checkpoint, answering its status question or publishing its record belongs to
+the same invocation. Reuse immutable source and retained evidence by reference;
+do not copy or re-review unchanged artifacts merely to make a new checkpoint.
+Then return to the next deliverable or the user's requested safe stop.
 
 ### Step 0 — Read cross-agent coordination
 
@@ -169,7 +180,7 @@ If there's a planning artifact (a plan file, a design doc, a checklist) referenc
 
 ### Step 5 — Reconcile and report
 
-Before reporting, if `synthesis-agent-conformance` is installed, run its
+For a full recovery or explicit runtime-readiness report, if `synthesis-agent-conformance` is installed, run its
 `hook-live`, `catalog`, and `instruction-budget` modes against the current
 source/repository. The unqualified `hook-live` result is current global health.
 If the durable release or handoff record names accepted Claude and Codex
@@ -256,7 +267,7 @@ If discrepancies were found:
 
 ## What Counts as "Substantive Work"
 
-Trigger the checkpoint protocol BEFORE these kinds of work, not after:
+Verify the relevant current facts BEFORE these kinds of work, not after. Use the full protocol when recovery or drift requires it:
 
 - Writing a session-log entry
 - Computing or claiming a time interval ("X days ago", "yesterday", "this week")
