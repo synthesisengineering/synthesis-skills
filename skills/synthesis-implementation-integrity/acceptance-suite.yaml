@@ -12861,6 +12861,9 @@ changed_surfaces:
   - throughput-0280cd09d307664c
   - throughput-fedec9ede7a5f73f
   - throughput-exclusive-scheduling
+- path: skills/synthesis-slack-sync/scripts/test_preflight.py
+  cases:
+  - throughput-slack-ci-membership
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -19487,3 +19490,8 @@ cases:
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_parallel_checks.py::test_exclusive_check_drains_previous_workers_before_execution
   motivating_defect: Timing-sensitive protocol fixtures must not compete with CPU-heavy checks on the same runner
+- id: throughput-slack-ci-membership
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-slack-sync/scripts/test_preflight.py::test_preflight_is_in_the_shared_ci_group
+  motivating_defect: Shared source execution must retain the complete preflight test directory behind the actual hosted owner
