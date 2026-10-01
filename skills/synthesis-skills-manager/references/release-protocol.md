@@ -20,8 +20,29 @@ python3 .../release.py --install-only  # refresh + verify clients (new machine, 
 
 The sequence, each stage gating the next:
 
-**preflight → required checks → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
+**preflight → authenticated candidate verification → publish → activate public CLI → install selected clients → verify → reconcile lifecycle**
 
+- **One complete candidate validation** runs the canonical 30-command source catalog
+  with two concurrent processes by default (maximum four). The independent R5 job
+  executes its exact acceptance plan with two concurrent batches by default
+  (maximum four). Timing-sensitive managed-native owner fixtures run exclusively;
+  their existing deadlines and assertions are unchanged. Each owner retains its
+  existing command/output/process limits; failure stops new admission and drains
+  running work. Setup-skipped tests remain distinguishable from executed calls.
+  Hosted jobs retain platform onboarding and the separate distribution matrix.
+- **Reuse at publication** uses authenticated GitHub API results for the exact
+  tested tree and an ancestor commit of the current clean checkout. It requires
+  successful required jobs and execution steps, an unexpired uniquely bound
+  candidate-validation artifact, and matching release base, complete source
+  inventory, acceptance contract and workflow. Directory permissions and file
+  read/write bits may differ between checkouts; executable bits, names, types and
+  bytes must agree. Missing, stale, incomplete or unavailable evidence refuses.
+  The artifact records test evidence only. A fresh local transaction independently
+  rechecks publication targets, immutable tags and source before publication.
+  `--hosted-run` selects a run explicitly; the default discovers a matching run.
+  The full suite is not repeated after this evidence passes. `--check-only` remains
+  available for complete local validation; `--source-checks-only` runs the shared
+  catalog, and `--check-workers 1` supports serial measurements of that catalog.
 - **Preflight** refuses to proceed unless all three plugin manifests agree, the
   newest CHANGELOG entry matches them, and the tree is clean. It also refuses
   to run against an installed cache mistaken for the source checkout.
@@ -137,7 +158,7 @@ the artifact.** A self-report is a claim, not evidence.
 ### Required autopilot check partitions
 
 The release owner and CI run `release_check_groups.py` for `state`, `native`,
-`evaluation`, and `core`. Each partition collects the entire autopilot directory,
+`native-control`, `evaluation`, and `core`. Each partition collects the entire autopilot directory,
 rejects duplicate node IDs, and derives its domain membership. Newly collected
 files enter the core group unless their name belongs to a declared domain rule;
 no static test-file allowlist can silently exclude them. Collection errors,
@@ -146,8 +167,8 @@ the release. The explicit macOS-only process-isolation control remains
 inapplicable on non-macOS hosts; missing sandbox capability never becomes a pass.
 
 Each check keeps the existing 900-second wall-time ceiling. The inner pytest
-owner has 880 seconds, leaving cleanup and reporting reserve; four sequential
-partitions admit at most four check windows, not an unbounded retry. A slow group
+owner has 880 seconds, leaving cleanup and reporting reserve; five bounded
+partitions admit at most five check windows, not an unbounded retry. A slow group
 fails and requires measured redistribution or implementation correction.
 The runner bounds capture to 8 MiB, the inventory report to 4 MiB, collection to
 20,000 tests, and source fingerprinting to 128 MiB / 20,000 members / 30 seconds.

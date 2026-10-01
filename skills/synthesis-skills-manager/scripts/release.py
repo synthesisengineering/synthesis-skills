@@ -10,7 +10,7 @@ running clients silently behind their own source.
 This script makes that state unreachable by sequencing the whole operation
 behind one command that fails closed:
 
-    preflight -> required checks -> publish -> install selected clients -> verify
+    preflight -> authenticated candidate checks -> publish -> install selected clients -> verify
 
 Configured lifecycle selections define the native targets. Without a configured
 profile, the publisher retains its explicit Claude, Codex, and Muse install flow
@@ -46,6 +46,7 @@ import argparse
 import contextlib
 import fcntl
 import hashlib
+import hosted_validation
 import io
 import importlib.util
 import json
@@ -68,6 +69,8 @@ from release_check_groups import (
     ACCEPTANCE_SECONDS,
     DIAGNOSTIC_SECONDS,
     bounded_run,
+    bounded_map,
+    CheckInterrupted,
     decode_acceptance_receipt,
     parse_acceptance_json,
     OUTPUT_BYTES,
@@ -292,6 +295,8 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "-m",
             "pytest",
             "skills/synthesis-skills-manager/scripts/test_release.py",
+            "skills/synthesis-skills-manager/scripts/test_hosted_validation.py",
+            "skills/synthesis-skills-manager/scripts/test_parallel_checks.py",
             "skills/synthesis-skills-manager/scripts/test_release_check_groups.py",
             "skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py",
             "skills/synthesis-skills-manager/scripts/test_muse_command_contract.py",
@@ -356,6 +361,11 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
         ],
     ),
     ("compileall", ["python3", "-m", "compileall", "-q", "skills"]),
+    ("installer.syntax", ["sh", "-n", "install.sh", "onboard.sh", "tests/test_installer.sh"]),
+    ("installer.tests", ["./tests/test_installer.sh"]),
+    ("inbox.poisoned", ["python3", "skills/synthesis-inbox-cleanup/tests/run_poisoned.py"]),
+    ("inbox.resolver", ["python3", "skills/synthesis-inbox-cleanup/tests/run_resolver.py"]),
+    ("inbox.installer", ["sh", "skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh"]),
 )
 
 
@@ -404,6 +414,11 @@ class AcceptanceAuthority:
 
     def __post_init__(self):
         object.__setattr__(self, "receipt_sha256", self.current_receipt_digest())
+
+
+@dataclass(frozen=True)
+class HostedAcceptanceAuthority(AcceptanceAuthority):
+    """Fresh publication binding supported by authenticated hosted execution."""
 
 
 @dataclass(frozen=True)
@@ -1103,6 +1118,91 @@ def consume_acceptance(
     )
 
 
+def export_hosted_validation(repo: Path, authority: AcceptanceAuthority, destination: Path):
+    """Export only after actual phase-bound acceptance; no private failure bodies."""
+    if os.environ.get("GITHUB_REPOSITORY") != hosted_validation.REPOSITORY:
+        raise ValueError("candidate validation export requires the canonical hosted repository")
+    run_id = int(os.environ["GITHUB_RUN_ID"])
+    attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+    receipt = authority.receipt
+    record = {
+        "schema": 1, "repository": hosted_validation.REPOSITORY,
+        "run_id": run_id, "run_attempt": attempt,
+        "tree": authority.expected["head_tree"], "base": authority.change_base,
+        "manifest_sha256": authority.expected["manifest_sha256"],
+        "source_sha256": source_digest(repo, portable=True),
+        "contract_sha256": hosted_validation.digest(receipt["execution"]["contract"]),
+        "workflow_sha256": _sha256_bytes((repo / hosted_validation.WORKFLOW).read_bytes()),
+        "coverage": receipt["coverage"], "execution_sha256": authority.receipt_sha256,
+        "authorizes_release": False,
+    }
+    # The workflow supplies a new runner-owned destination, outside source.
+    if destination.parent.resolve(strict=True) != destination.parent or destination.is_symlink():
+        raise ValueError("candidate validation destination is aliased")
+    with destination.open("x", encoding="utf-8") as stream:
+        json.dump(record, stream, sort_keys=True)
+        stream.write("\n")
+
+
+def _hosted_candidate(repo: Path, client, run_id: str, expected):
+    if run_id == "auto":
+        listing = client.api(f"repos/{hosted_validation.REPOSITORY}/actions/workflows/validate.yml/runs?per_page=20")
+        candidates = listing.get("workflow_runs", [])
+    else:
+        if not re.fullmatch(r"[1-9][0-9]{0,19}", run_id):
+            raise ValueError("hosted run id is invalid")
+        candidates = [client.api(f"repos/{hosted_validation.REPOSITORY}/actions/runs/{run_id}")]
+    for candidate in candidates:
+        head = candidate.get("head_sha", "")
+        if (candidate.get("status") != "completed" or candidate.get("conclusion") != "success"
+                or not re.fullmatch(r"[0-9a-f]{40}", head)):
+            continue
+        tree, _detail = _git_value(repo, ["rev-parse", "--verify", f"{head}^{{tree}}"])
+        if tree != expected["head_tree"]:
+            continue
+        if run(["git", "merge-base", "--is-ancestor", head, "HEAD"], cwd=repo, timeout=30).returncode == 0:
+            return candidate["id"], head
+    raise ValueError("no successful hosted validation for this exact source tree and ancestry")
+
+
+def _verify_hosted(repo: Path, expected, run_id="auto", candidate=None):
+    client = hosted_validation.GitHub(repo)
+    if candidate is None:
+        run_id, candidate = _hosted_candidate(repo, client, str(run_id), expected)
+    runner = _acceptance_runner()
+    validated, errors = runner.validate_manifest(repo / ACCEPTANCE_MANIFEST, repo)
+    if validated is None:
+        raise ValueError("; ".join(errors))
+    # Reconstruct current changed-surface equality, not merely matching a version.
+    runner.authoritative_git_evidence(validated, repo, expected["change_base"], expected["transaction_id"])
+    return hosted_validation.verify(
+        client.api, int(run_id), expected, source_digest(repo, portable=True),
+        runner.case_contract(validated, repo),
+        _sha256_bytes((repo / hosted_validation.WORKFLOW).read_bytes()), candidate,
+    )
+
+
+def consume_hosted_acceptance(repo: Path, result: Result, run_id="auto"):
+    """Reuse tests, never their publication authority or installation claims."""
+    try:
+        boundary, detail = acceptance_boundary(repo)
+        if boundary is None:
+            raise ValueError(detail)
+        expected, detail = acceptance_expectation(repo, boundary["change_base"], secrets.token_hex(16))
+        if expected is None:
+            raise ValueError(detail)
+        proof = _verify_hosted(repo, expected, run_id)
+        authority = HostedAcceptanceAuthority(boundary["change_base"], expected, proof, boundary)
+        valid, detail = revalidate_acceptance_authority(repo, authority)
+        if not valid:
+            raise ValueError(detail)
+        result.add("checks.hosted", True, f"verified run {proof['run_id']}; exact source tests reused")
+        return authority
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+        result.add("checks.hosted", False, str(error))
+        return None
+
+
 def revalidate_acceptance_authority(
     repo: Path, authority: AcceptanceAuthority
 ) -> tuple[bool, str]:
@@ -1132,6 +1232,12 @@ def revalidate_acceptance_authority(
     try:
         if authority.current_receipt_digest() != authority.receipt_sha256:
             return False, "accepted execution evidence changed before publication"
+        if isinstance(authority, HostedAcceptanceAuthority):
+            proof = _verify_hosted(repo, authority.expected, authority.receipt["run_id"],
+                                   authority.receipt["candidate_commit"])
+            if proof != authority.receipt:
+                return False, "hosted validation changed before publication"
+            return True, "current publication binding and exact hosted execution verified"
         valid, detail = validate_acceptance_receipt(
             authority.receipt, authority.expected
         )
@@ -1140,7 +1246,7 @@ def revalidate_acceptance_authority(
         if authority.receipt["execution"]["source_sha256"] != source_digest(repo):
             return False, "accepted execution source changed before publication"
         return True, detail
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         return False, "accepted execution evidence unavailable: " + str(exc)
 
 
@@ -4522,57 +4628,67 @@ def publish(
     return True
 
 
-def run_required_checks(
-    repo: Path, result: Result, dry_run: bool
-) -> AcceptanceAuthority | None:
-    check_env = None
-    try:
-        if not dry_run and REQUIRED_CHECKS:
-            invocation = fixture_root("synthesis-release-invocation-")
-            check_env = dict(os.environ, TMPDIR=str(invocation))
-            print(f"Required-check invocation custody: {invocation}", flush=True)
-        pinned_source = source_digest(repo) if not dry_run and REQUIRED_CHECKS else None
-    except (OSError, ValueError) as error:
-        result.add("checks.source", False, str(error))
-        return None
-    for name, command in REQUIRED_CHECKS:
-        if dry_run:
+def run_source_checks(repo: Path, result: Result, dry_run: bool, *, workers=2) -> bool:
+    """Execute the one exhaustive source-check catalog with bounded concurrency."""
+    if dry_run:
+        for name, _command in REQUIRED_CHECKS:
             result.add(f"checks.{name}", True, "dry-run")
-            continue
-        try:
+        return True
+    try:
+        if not REQUIRED_CHECKS:
+            return True
+        invocation = fixture_root("synthesis-release-invocation-")
+        check_env = dict(os.environ, TMPDIR=str(invocation))
+        print(f"Required-check invocation custody: {invocation}", flush=True)
+        pinned_source = source_digest(repo)
+
+        def execute(item, cancel):
+            name, command = item
             if source_digest(repo) != pinned_source:
                 raise ValueError("source changed between required checks")
-            completed = bounded_run(command, cwd=repo, env=check_env)
+            completed = bounded_run(command, cwd=repo, env=check_env, cancel_event=cancel)
+            try:
+                completed.source_failure = ("source changed during required check"
+                    if source_digest(repo) != pinned_source else None)
+            except (OSError, ValueError) as error:
+                completed.source_failure = str(error)
+            return completed
+
+        def report(index, completed):
+            name = REQUIRED_CHECKS[index][0]
             custody = getattr(completed, "fixture_custody", None)
             if custody:
                 print(f"Required-check custody ({name}): {custody}", flush=True)
             if completed.returncode != 0:
-                # bounded_run already limits output bytes and owns process cleanup.
-                # Retain its actual failure evidence in the publisher's captured
-                # stream; the last summary line alone loses the failing case/cause.
                 print(f"BEGIN required-check diagnostics: {name}", flush=True)
                 for output in (completed.stdout, completed.stderr):
                     if output:
-                        print(
-                            output,
-                            end="" if output.endswith("\n") else "\n",
-                            flush=True,
-                        )
+                        print(output, end="" if output.endswith("\n") else "\n", flush=True)
                 print(f"END required-check diagnostics: {name}", flush=True)
-            if source_digest(repo) != pinned_source:
-                raise ValueError("source changed during required check")
-        except (OSError, ValueError) as error:
-            result.add(f"checks.{name}", False, str(error))
-            return None
-        passed = completed.returncode == 0
-        tail = (completed.stdout or completed.stderr).strip().splitlines()
-        result.add(
-            f"checks.{name}",
-            passed,
-            "" if passed else (tail[-1] if tail else "failed"),
+            passed = completed.returncode == 0 and completed.source_failure is None
+            tail = (completed.stdout or completed.stderr).strip().splitlines()
+            detail = completed.source_failure or ("" if passed else (tail[-1] if tail else "failed"))
+            result.add(f"checks.{name}", passed, detail)
+
+        completed = bounded_map(
+            REQUIRED_CHECKS, execute, workers=workers,
+            stop_when=lambda value: value.returncode != 0 or value.source_failure is not None, on_result=report,
         )
-        if not passed:
-            return None
+        for index, value in enumerate(completed):
+            if value is None:
+                result.add(f"checks.{REQUIRED_CHECKS[index][0]}", False, "not run after failure/cancellation")
+        if not any(value is not None and value.source_failure for value in completed):
+            if source_digest(repo) != pinned_source:
+                raise ValueError("source changed during required checks")
+        return all(value is not None and value.returncode == 0 and value.source_failure is None for value in completed)
+    except (OSError, ValueError, KeyboardInterrupt, CheckInterrupted) as error:
+        result.add("checks.source", False, str(error))
+        return False
+
+
+def run_required_checks(repo: Path, result: Result, dry_run: bool) -> AcceptanceAuthority | None:
+    if not run_source_checks(repo, result, dry_run):
+        return None
     return consume_acceptance(repo, result, dry_run)
 
 
@@ -4595,7 +4711,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="print the plan; mutate nothing"
     )
+    parser.add_argument("--source-checks-only", action="store_true",
+                        help="run the exhaustive source catalog; no publication or installation")
+    parser.add_argument("--check-workers", type=int, choices=range(1, 5), default=2)
+    parser.add_argument("--hosted-run", default="auto",
+                        help="successful exact-tree Validate run used for release (default: discover)")
+    parser.add_argument("--validation-output", type=Path,
+                        help="hosted acceptance-only output for the candidate-validation artifact")
     args = parser.parse_args(argv)
+    if args.source_checks_only and (args.install_only or args.check_only or args.acceptance_only):
+        parser.error("--source-checks-only cannot be combined with another mode")
+
+    if args.validation_output is not None and (not args.acceptance_only or args.dry_run):
+        parser.error("--validation-output requires actual --acceptance-only execution")
 
     repo = Path(args.repo_root).resolve()
     if "plugins" in repo.parts and "cache" in repo.parts:
@@ -4618,7 +4746,7 @@ def main(argv: list[str] | None = None) -> int:
     clients = ("claude", "codex", "muse")
     state = SystemState()
     expected_selection = None
-    if not args.check_only and not args.acceptance_only:
+    if not args.check_only and not args.acceptance_only and not args.source_checks_only:
         try:
             desired = state.read_desired()
         except (ContractError, OSError, ValueError) as exc:
@@ -4651,20 +4779,31 @@ def main(argv: list[str] | None = None) -> int:
         except (ContractError, OSError, ValueError) as exc:
             return result.add("install.lifecycle-selection", False, str(exc))
 
+    if args.source_checks_only:
+        return 0 if run_source_checks(repo, result, args.dry_run, workers=args.check_workers) else 1
+
     if args.acceptance_only:
         if args.install_only or args.check_only:
             print(
                 "\nRELEASE ABORTED: --acceptance-only cannot be combined with other modes."
             )
             return 2
-        if consume_acceptance(repo, result, args.dry_run) is None:
+        authority = consume_acceptance(repo, result, args.dry_run)
+        if authority is None:
             print("\nACCEPTANCE REFUSED: no release authority was issued.")
             return 1
+        if args.validation_output is not None:
+            try:
+                export_hosted_validation(repo, authority, args.validation_output)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                result.add("checks.validation-export", False, str(error))
+                return 1
         print(f"\nACCEPTANCE CONSUMED for {version}. Nothing published or installed.")
         return 0
 
     if not args.install_only:
-        authority = run_required_checks(repo, result, args.dry_run)
+        authority = (run_required_checks(repo, result, args.dry_run) if args.check_only
+                     else consume_hosted_acceptance(repo, result, args.hosted_run))
         if authority is None:
             print("\nRELEASE ABORTED: required checks failed. Nothing was published.")
             return 1

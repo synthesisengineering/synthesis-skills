@@ -3,9 +3,11 @@
 import importlib.util
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
+import time
 import pytest
 import yaml
 
@@ -753,7 +755,7 @@ def test_module_bounded_eight_selector_partition_is_exhaustive():
 
 def test_current_manifest_module_partition_keeps_every_case_and_polarity():
     module = owner()
-    root = Path(__file__).resolve().parents[3]
+    root = OWNER.resolve().parents[3]
     manifest = root / "skills/synthesis-implementation-integrity/acceptance-suite.yaml"
     validated, errors = module.validate_manifest(manifest, root)
     assert not errors
@@ -1084,3 +1086,191 @@ def test_execution_owner_evidence_cannot_be_removed_or_duplicated(tmp_path):
             batches.append(copy.deepcopy(batches[0]))
         with pytest.raises(ValueError):
             module.verify_execution(forged, forged["execution"]["contract"])
+
+
+def _parallel_corpus(tmp_path, mode):
+    observations = tmp_path / "observations"
+    observations.mkdir()
+    code = f"""import json, os, subprocess, sys, time
+from pathlib import Path
+observations = Path({str(observations)!r})
+mode = {mode!r}
+def observe(batch):
+    child = None
+    if mode != 'success':
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    (observations / f'start-{{batch}}.json').write_text(json.dumps({{
+        'pid': os.getpid(), 'child': None if child is None else child.pid,
+        'time': time.monotonic(),
+    }}))
+    limit = time.monotonic() + 15
+    while batch < 4 and not all((observations / f'start-{{i}}.json').exists() for i in range(4)):
+        assert time.monotonic() < limit, 'four actual batch processes did not overlap'
+        time.sleep(0.01)
+    if mode == 'success':
+        time.sleep([0.4, 0.1, 0.2, 0.3, 0.1, 0.1][batch])
+        (observations / f'end-{{batch}}').write_text(str(time.monotonic()))
+    elif batch == 0 and mode == 'process':
+        print('retained process failure marker', flush=True)
+        os._exit(7)
+    elif batch == 0 and mode == 'custody':
+        print('retained custody failure marker', flush=True)
+    else:
+        child.wait()
+"""
+    cases = []
+    for index in range(48):
+        statement = f"observe({index // 8})" if index % 8 == 0 else "pass"
+        if mode == "success" and index % 8 == 7:
+            statement = "assert False, 'declared negative control'"
+        if index % 8 == 0:
+            code += f"def test_{index}(capfd):\n with capfd.disabled(): {statement}\n"
+        else:
+            code += f"def test_{index}(): {statement}\n"
+        cases.append({
+            "id": str(index), "fixture": f"test_cases.py::test_{index}",
+            "expected_status": "fail" if mode == "success" and index % 8 == 7 else "pass",
+        })
+    root = tmp_path / "source"
+    path = corpus(root, code, cases)
+    return root, path, observations
+
+
+def _assert_parallel_custody(receipt, observations, expected_batches):
+    batches = receipt["execution"]["batches"]
+    assert [b["id"] for b in batches] == [f"test_cases.py:{i}" for i in expected_batches]
+    assert receipt["execution"]["source_unchanged"] is True
+    for index, batch in zip(expected_batches, batches):
+        observed = json.loads((observations / f"start-{index}.json").read_text())
+        process = Path(batch["process_custody"])
+        record = json.loads((process / "result.json").read_text())
+        assert record["process_id"] == observed["pid"]
+        assert batch["process_records"].keys() == {"output.log", "result.json"}
+        assert (process / "output.log").is_file()
+        _assert_reaped(observed["pid"])
+        if observed["child"] is not None:
+            _assert_reaped(observed["child"])
+
+
+def test_actual_parallel_batches_keep_order_polarity_and_four_worker_bound(tmp_path):
+    module = owner()
+    root, path, observations = _parallel_corpus(tmp_path, "success")
+    validated, errors = module.validate_manifest(path, root)
+    assert not errors
+    receipt, status = module.execute(validated, root, workers=4)
+    assert status == 0, receipt["errors"]
+    contract = module.case_contract(validated, root)
+    plan = module.batch_plan(contract)
+    assert [{k: b[k] for k in ("id", "selectors", "execution_selectors")}
+            for b in receipt["execution"]["batches"]] == plan
+    assert [c["id"] for c in receipt["cases"]] == [str(i) for i in range(48)]
+    assert [c["status"] for c in receipt["cases"]] == [
+        "failed" if i % 8 == 7 else "passed" for i in range(48)
+    ]
+    events = []
+    for i in range(6):
+        begin = json.loads((observations / f"start-{i}.json").read_text())["time"]
+        end = float((observations / f"end-{i}").read_text())
+        events.extend([(begin, 1), (end, -1)])
+    active = peak = 0
+    for _, delta in sorted(events):
+        active += delta
+        peak = max(peak, active)
+    assert active == 0 and peak == 4
+    assert float((observations / "end-1").read_text()) < float((observations / "end-0").read_text())
+    assert receipt["execution"]["whole_suite_seconds"] == 6000
+    assert receipt["execution"]["per_group_seconds"] == 300
+    module.verify_execution(receipt, contract)
+    _assert_parallel_custody(receipt, observations, range(6))
+
+
+@pytest.mark.parametrize("failure", ["process", "custody"])
+def test_actual_parallel_failure_stops_admission_and_retains_every_owner(
+    tmp_path, monkeypatch, failure
+):
+    module = owner()
+    root, path, observations = _parallel_corpus(tmp_path, failure)
+    if failure == "custody":
+        real = module.checks.bounded_run
+
+        def damaged_custody(*args, **kwargs):
+            completed = real(*args, **kwargs)
+            report = Path(args[3]["SYNTHESIS_RELEASE_TEST_REPORT"])
+            selected = json.loads(Path(args[3]["SYNTHESIS_ACCEPTANCE_SELECTION"]).read_text())
+            if selected[0] == "test_cases.py::test_0":
+                report.rename(report.with_suffix(".retained.json"))
+                os.mkfifo(report)
+            return completed
+
+        monkeypatch.setattr(module.checks, "bounded_run", damaged_custody)
+    validated, errors = module.validate_manifest(path, root)
+    assert not errors
+    receipt, status = module.execute(validated, root, workers=4)
+    assert status == 1 and not receipt["ok"]
+    assert receipt["errors"]
+    assert sorted(p.name for p in observations.iterdir()) == [f"start-{i}.json" for i in range(4)]
+    assert all(c["status"] == "not_run" for c in receipt["cases"][32:])
+    assert not any(c["matched"] for c in receipt["cases"])
+    _assert_parallel_custody(receipt, observations, range(4))
+    batches = receipt["execution"]["batches"]
+    assert all(b.get("partial_execution", {}).get("authorizes_success") is False for b in batches)
+    raw = Path(batches[0]["process_custody"], "output.log").read_text()
+    assert f"retained {failure} failure marker" in raw
+    assert all("cancelled" in b["process_failure"] for b in batches[1:])
+
+
+@pytest.mark.parametrize("interrupt", [signal.SIGTERM, signal.SIGINT])
+def test_actual_parallel_signal_drains_children_and_preserves_failure_receipt(
+    tmp_path, interrupt
+):
+    root, path, observations = _parallel_corpus(tmp_path, "signal")
+    command = [sys.executable, str(OWNER), "run", "--manifest", str(path),
+               "--repo-root", str(root), "--workers", "4", "--json"]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 20
+        while len(list(observations.glob("start-*.json"))) != 4:
+            assert process.poll() is None, "acceptance owner exited before four children started"
+            assert time.monotonic() < deadline, "actual child readiness exceeded bound"
+            time.sleep(0.02)
+        process.send_signal(interrupt)
+        stdout, stderr = process.communicate(timeout=15)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.communicate(timeout=15)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
+    assert process.returncode == 1, stdout + stderr
+    receipt = json.loads(stdout)
+    assert not receipt["ok"] and any("signal" in e for e in receipt["errors"])
+    assert sorted(p.name for p in observations.iterdir()) == [f"start-{i}.json" for i in range(4)]
+    assert all(c["status"] == "not_run" for c in receipt["cases"][32:])
+    assert not any(c["matched"] for c in receipt["cases"])
+    _assert_parallel_custody(receipt, observations, range(4))
+    assert all("cancelled" in b["process_failure"] for b in receipt["execution"]["batches"])
+
+
+def test_actual_parallel_assertion_mismatch_stops_later_admission(tmp_path):
+    """An ordinary assertion failure is as terminal as a process failure."""
+    module = owner()
+    root, path, observations = _parallel_corpus(tmp_path, "success")
+    source = root / "test_cases.py"
+    source.write_text(source.read_text().replace(
+        "[0.4, 0.1, 0.2, 0.3, 0.1, 0.1]", "[0.01, 0.5, 0.5, 0.5, 0.1, 0.1]"))
+    manifest = yaml.safe_load(path.read_text())
+    manifest["cases"][7]["expected_status"] = "pass"
+    path.write_text(yaml.safe_dump(manifest))
+    validated, errors = module.validate_manifest(path, root)
+    assert not errors
+    receipt, status = module.execute(validated, root, workers=4)
+    assert status == 1 and not receipt["ok"]
+    assert receipt["cases"][7]["status"] == "failed"
+    assert not receipt["cases"][7]["matched"]
+    assert len(receipt["execution"]["batches"]) == 4
+    assert all(c["status"] == "not_run" for c in receipt["cases"][32:])
+    assert not (observations / "start-4.json").exists()
+    assert not (observations / "start-5.json").exists()
+    _assert_parallel_custody(receipt, observations, range(4))

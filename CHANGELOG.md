@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ### Changed
 
+- Run the complete source catalog and acceptance batches with bounded parallelism.
+  Reuse authenticated exact-candidate hosted validation at publication; retain
+  fresh publication, installation and full installed-inventory checks.
+
 - Give autonomous work a finite acceptance endpoint and coherent delivery batches.
   Reuse valid verification across review, preflight and checkpoints; continue
   independent work during external waits and investigate missing CI progress.

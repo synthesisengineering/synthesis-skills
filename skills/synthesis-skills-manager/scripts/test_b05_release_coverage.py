@@ -27,8 +27,8 @@ def test_meeting_prep_is_a_real_release_and_hosted_suite():
         "-q",
     ]
     ci = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
-    assert "python -m pytest skills/synthesis-meeting-prep/scripts/ -q" in [
-        step.get("run", "") for step in ci["jobs"]["conformance"]["steps"]
+    assert "python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only" in [
+        step.get("run", "") for step in ci["jobs"]["source-checks"]["steps"]
     ]
 
 
@@ -69,8 +69,8 @@ def test_acquisition_entry_repair_regression_and_doctor_are_gated():
     assert len(command[3:-1]) == len(expected)
     ci = yaml.safe_load((root / ".github/workflows/validate.yml").read_text())
     hosted = [
-        shlex.split(step.get("run", "")) for step in ci["jobs"]["conformance"]["steps"]
+        shlex.split(step.get("run", "")) for step in ci["jobs"]["source-checks"]["steps"]
     ]
-    assert ["python", *command[1:]] in hosted
+    assert ["python", "skills/synthesis-skills-manager/scripts/release.py", "--repo-root", ".", "--source-checks-only"] in hosted
     agents = (root / "AGENTS.md").read_text()
-    assert " ".join(command) in agents
+    assert "python3 skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only" in agents

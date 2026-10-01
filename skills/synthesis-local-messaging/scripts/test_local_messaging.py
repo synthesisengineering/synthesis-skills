@@ -105,7 +105,7 @@ def test_readonly_probe_requires_explicit_denial_errno(tmp_path, monkeypatch):
     assert error.value is unknown
 
 
-@pytest.mark.parametrize("job_name", ["conformance", "onboarding-portability"])
+@pytest.mark.parametrize("job_name", ["source-checks", "conformance", "onboarding-portability"])
 def test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name):
     import shlex
     import yaml
@@ -116,7 +116,15 @@ def test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name):
     assert not job.get("continue-on-error", False)
     assert job["runs-on"] == "ubuntu-latest" or "ubuntu-latest" in job["strategy"]["matrix"]["os"]
     steps = job["steps"]
-    consumers = [i for i, step in enumerate(steps) if "pytest" in step.get("run", "") and "pip install" not in step.get("run", "")]
+    release_owner = "skills/synthesis-skills-manager/scripts/release.py"
+    expected_consumers = {
+        "source-checks": ["python", release_owner, "--repo-root", ".", "--source-checks-only"],
+        "conformance": ["python", release_owner, "--repo-root", ".", "--acceptance-only",
+                        "--validation-output", "${{ runner.temp }}/candidate-validation.json"],
+        "onboarding-portability": ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"],
+    }
+    consumers = [i for i, step in enumerate(steps)
+                 if shlex.split(step.get("run", ""), comments=True) == expected_consumers[job_name]]
     prerequisites = [
         i for i, step in enumerate(steps)
         if any(
@@ -127,13 +135,14 @@ def test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name):
             for line in step.get("run", "").splitlines()
         )
     ]
-    assert consumers and len(prerequisites) == 1
+    assert len(consumers) == 1 and len(prerequisites) == 1
     index = prerequisites[0]
     assert index < min(consumers)
     step = steps[index]
     assert step.get("if") in (None, "runner.os == 'Linux'")
     assert not step.get("continue-on-error", False)
     assert all(not steps[i].get("continue-on-error", False) for i in consumers)
+    assert all(steps[i].get("if") is None for i in consumers)
     assert "apt-get install -y bubblewrap" in step["run"]
     expected_blocks = {'conformance': ['sudo apt-get update && sudo apt-get install -y bubblewrap zsh',
                      '/bin/zsh --version',
@@ -145,12 +154,13 @@ def test_linux_hosted_jobs_establish_sandbox_before_consumer_tests(job_name):
                      'echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"'],
      'onboarding-portability': ['sudo apt-get update && sudo apt-get install -y bubblewrap zsh',
                                 'python3 .github/scripts/check-ci-sandbox.py']}
+    expected_blocks["source-checks"] = expected_blocks["conformance"]
     assert step["run"].splitlines() == expected_blocks[job_name]
 
 
 
-@pytest.mark.parametrize("job_name", ["conformance", "onboarding-portability"])
-@pytest.mark.parametrize("mutation", ["early-success", "dead-branch", "masked-error", "wrong-platform", "continue", "missing", "late"])
+@pytest.mark.parametrize("job_name", ["source-checks", "conformance", "onboarding-portability"])
+@pytest.mark.parametrize("mutation", ["early-success", "dead-branch", "masked-error", "wrong-platform", "continue", "missing", "late", "consumer-missing", "consumer-masked-error", "consumer-skipped"])
 def test_linux_sandbox_prerequisite_rejects_nonexecution(tmp_path, monkeypatch, job_name, mutation):
     import yaml
 
@@ -173,6 +183,15 @@ def test_linux_sandbox_prerequisite_rejects_nonexecution(tmp_path, monkeypatch, 
         steps.pop(at)
     elif mutation == "late":
         steps.append(steps.pop(at))
+    elif mutation.startswith("consumer-"):
+        consumer = next(s for s in steps if "release.py --repo-root" in s.get("run", "")
+                        or "-m pytest skills/" in s.get("run", ""))
+        if mutation == "consumer-missing":
+            steps.remove(consumer)
+        elif mutation == "consumer-masked-error":
+            consumer["run"] += " || true"
+        else:
+            consumer["if"] = "false"
     path = tmp_path / ".github/workflows/validate.yml"
     path.parent.mkdir(parents=True)
     path.write_text(yaml.safe_dump(workflow))

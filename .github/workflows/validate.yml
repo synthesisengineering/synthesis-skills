@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  conformance:
+  source-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 105
     steps:
       # PRINCIPAL RULE (controlling plan D4): the event base must exist in the
       # runner repository before the receipt consumer can derive its universe.
@@ -31,38 +32,31 @@ jobs:
           test -n "$synthesis_ci_chromium"
           "$synthesis_ci_chromium" --version
           echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"
-      - run: python skills/synthesis-agent-conformance/scripts/conformance.py source
-      - run: python skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
-      - run: python -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py skills/synthesis-local-messaging/scripts/test_*.py -q
-      - run: python -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
-      - run: python -m pytest skills/synthesis-project-management/scripts/ -q
-      - run: python -m pytest skills/synthesis-checkpoint/scripts/ -q
-      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
-      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
-      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group native-control
-      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
-      - run: python skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
-      - run: python -m pytest skills/synthesis-meeting-prep/scripts/ -q
-      - run: python -m pytest skills/synthesis-model-tiers/scripts/ -q
-      - run: python -m pytest skills/synthesis-promotion-gate/scripts/ -q
-      - run: python -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
-      - run: python -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
-      - run: python -m pytest skills/synthesis-onboarding/scripts/ -q
-      - run: python skills/synthesis-onboarding/scripts/check_scaffolds.py .
-      - run: python skills/synthesis-onboarding/scripts/check_capabilities.py .
-      - run: python -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q
-      - run: python -m pytest skills/synthesis-agent-guardrails/tests/ -q
-      # Standalone runner, not pytest: the file must stay executable from inside a
-      # deployed skill directory, where pytest is not guaranteed to be installed.
-      - run: python skills/synthesis-meeting-transcripts/test_verify_transcripts.py
-      - run: python skills/synthesis-meeting-transcripts/test_transcript_primary.py
-      - run: python -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_acquisition_entry.py skills/synthesis-meeting-transcripts/test_acquisition_repair.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py skills/synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py -q
-      - run: sh -n install.sh onboard.sh tests/test_installer.sh
-      - run: ./tests/test_installer.sh
-      - run: python -m compileall -q skills
-      - run: python skills/synthesis-inbox-cleanup/tests/run_poisoned.py
-      - run: python skills/synthesis-inbox-cleanup/tests/run_resolver.py
-      - run: sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
+      - name: Run the complete source catalog concurrently
+        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only
+
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 105
+    steps:
+      # PRINCIPAL RULE (controlling plan D4): the event base must exist in the
+      # runner repository before the receipt consumer can derive its universe.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest pyyaml jsonschema httpx
+      - name: Install OS isolation for executable consumer acceptance
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap zsh
+          /bin/zsh --version
+          python .github/scripts/check-ci-sandbox.py
+          synthesis_ci_chromium="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          test -n "$synthesis_ci_chromium"
+          "$synthesis_ci_chromium" --version
+          echo "SYNTHESIS_TEST_CHROMIUM=$synthesis_ci_chromium" >> "$GITHUB_ENV"
       - name: Resolve acceptance change base
         # The event binds its exact review slice. release.py independently reads
         # published stable/version refs for the whole-release acceptance base.
@@ -75,7 +69,14 @@ jobs:
         id: acceptance
         env:
           SYNTHESIS_ACCEPTANCE_DIAGNOSTICS: ${{ runner.temp }}/synthesis-acceptance-diagnostics
-        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only
+        run: python skills/synthesis-skills-manager/scripts/release.py --repo-root . --acceptance-only --validation-output "${{ runner.temp }}/candidate-validation.json"
+      - name: Retain candidate validation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: candidate-validation
+          path: ${{ runner.temp }}/candidate-validation.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain sanitized acceptance diagnostics
         if: always() && steps.acceptance.outputs.diagnostics_ready == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

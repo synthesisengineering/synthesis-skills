@@ -193,8 +193,21 @@ def test_rituals_take_the_declared_set_from_preflight() -> None:
 
 
 def test_preflight_is_in_the_shared_ci_group() -> None:
+    import ast
+    import yaml
+
     repo_root = SKILLS_ROOT.parent
-    workflow = (repo_root / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
+    workflow = yaml.safe_load((repo_root / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8"))
     agents = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
-    assert "skills/synthesis-slack-sync/scripts/test_*.py" in workflow
-    assert "skills/synthesis-slack-sync/scripts/test_*.py" in agents
+    owner = "skills/synthesis-skills-manager/scripts/release.py"
+    tree = ast.parse((repo_root / owner).read_text(encoding="utf-8"))
+    checks = ast.literal_eval(next(node.value for node in tree.body
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "REQUIRED_CHECKS"))
+    assert any(command[:3] == ["python3", "-m", "pytest"]
+               and "skills/synthesis-slack-sync/scripts/" in command
+               for _, command in checks)
+    consumers = [step for step in workflow["jobs"]["source-checks"]["steps"]
+                 if step.get("run") == f"python {owner} --repo-root . --source-checks-only"]
+    assert len(consumers) == 1
+    assert not consumers[0].get("if") and not consumers[0].get("continue-on-error")
+    assert f"python3 {owner} --repo-root . --source-checks-only" in agents

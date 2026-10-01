@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.0** runs source checks and acceptance batches with bounded
+parallelism. Publication verifies authenticated results for the exact tested
+candidate, then installs and verifies selected clients without repeating the
+full source suite locally.
+
 Release **4.153.0** aligns autonomous execution and verification around completed
 deliverables. Related work shares a delivery candidate; unchanged accepted work
 is reused across gates. Concrete failures and changed inputs reopen affected

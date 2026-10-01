@@ -54,58 +54,23 @@ here, verify it, merge it to `main`, then update the installed plugins.
 Run the same checks required by CI:
 
 ```bash
-python3 skills/synthesis-agent-conformance/scripts/conformance.py source
-python3 skills/synthesis-agent-conformance/scripts/conformance.py instructions --repo-root .
-python3 -m pytest skills/synthesis-daily-rituals/scripts/test_*.py skills/synthesis-bitbucket/scripts/test_*.py skills/synthesis-message-guard/scripts/test_*.py skills/synthesis-git-hooks/scripts/test_*.py skills/synthesis-slack-sync/scripts/test_*.py skills/synthesis-chief-of-staff/scripts/test_*.py skills/synthesis-repo-guard/test_*.py skills/synthesis-decision-packet/scripts/test_*.py skills/synthesis-local-messaging/scripts/test_*.py -q
-python3 -m pytest skills/synthesis-agent-conformance/scripts/test_*.py -q
-python3 -m pytest skills/synthesis-project-management/scripts/ -q
-python3 -m pytest skills/synthesis-checkpoint/scripts/ -q
-python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group state
-python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native
-python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group native-control
-python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group evaluation
-python3 skills/synthesis-skills-manager/scripts/release_check_groups.py --group core
-python3 -m pytest skills/synthesis-meeting-prep/scripts/ -q
-python3 -m pytest skills/synthesis-model-tiers/scripts/ -q
-python3 -m pytest skills/synthesis-promotion-gate/scripts/ -q
-python3 -m pytest skills/synthesis-context-lifecycle/scripts/ skills/synthesis-implementation-integrity/scripts/ -q
-python3 -m pytest skills/synthesis-kb-edit/scripts/test_*.py skills/synthesis-okf/scripts/test_*.py -q
-python3 -m pytest skills/synthesis-onboarding/scripts/ -q
-python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
-python3 skills/synthesis-onboarding/scripts/check_capabilities.py .
-python3 -m pytest skills/synthesis-skills-manager/scripts/test_release.py skills/synthesis-skills-manager/scripts/test_release_check_groups.py skills/synthesis-skills-manager/scripts/test_b05_release_coverage.py skills/synthesis-skills-manager/scripts/test_muse_command_contract.py -q
-python3 -m pytest skills/synthesis-agent-guardrails/tests/ -q
-python3 skills/synthesis-meeting-transcripts/test_verify_transcripts.py
-python3 skills/synthesis-meeting-transcripts/test_transcript_primary.py
-python3 -m pytest skills/synthesis-meeting-transcripts/test_acquisition_tools.py skills/synthesis-meeting-transcripts/test_acquisition_regressions.py skills/synthesis-meeting-transcripts/test_acquisition_entry.py skills/synthesis-meeting-transcripts/test_acquisition_repair.py skills/synthesis-meeting-transcripts/test_extract_commitments.py skills/synthesis-meeting-transcripts/test_version_parity.py skills/synthesis-meeting-transcripts/optional-workspace-mcp/test_doctor.py -q
-sh -n install.sh onboard.sh tests/test_installer.sh
-./tests/test_installer.sh
-python3 -m compileall -q skills
-python3 skills/synthesis-inbox-cleanup/tests/run_poisoned.py
-python3 skills/synthesis-inbox-cleanup/tests/run_resolver.py
-sh skills/synthesis-inbox-cleanup/tests/test_runtime_installer.sh
+python3 skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only
 ```
 
-This fenced list and the `conformance` job in
-`.github/workflows/validate.yml` are held equal (modulo the CI-only
-dependency installation and env-bound acceptance steps) by
-`test_release.py::test_agents_verification_list_matches_ci_workflow` —
-change them together, or CI fails.
+CI and local verification execute the same exhaustive `REQUIRED_CHECKS` catalog
+in `release.py`. Two independent checks run concurrently by default (maximum four), each with its
+own retained temporary directory and bounded process group. Source identity is
+checked before and after execution. Failure stops further admission and drains
+running checks; missing checks never count as success. `--check-workers 1`
+provides a measured sequential comparison without changing the catalog.
 
-The executable autopilot consumers require OS isolation: native macOS sandbox
-or bubblewrap on Linux. CI installs bubblewrap explicitly. Missing isolation is
-a test failure; do not skip or execute the consumers without it.
+Hosted acceptance runs concurrently in its separate job. Its exact-candidate
+result is verified again at publication; installation and live health checks
+remain fresh. Do not manually repeat the catalog after a verified hosted pass.
 
-Ordinary release checks retain a canonical private fixture directory per invocation
-and check, including nested grouped owners. The release log prints those paths;
-keep them until evidence has been verified and explicitly reconciled. Pytest
-basetemps are newly owned per check, never reused or automatically pruned.
-Production path-alias restrictions remain unchanged.
-
-Complete-page decision-packet acceptance requires Chromium on PATH or the
-`SYNTHESIS_TEST_CHROMIUM` executable path. CI binds its available browser before
-running acceptance. A missing browser fails the required checks; HTML parsing
-and DOM behavior cannot be certified by extracted JavaScript tests alone.
+Executable consumers still require native macOS isolation or bubblewrap on
+Linux, and complete-page acceptance requires a verified Chromium executable.
+Missing required capability fails; no test or protection is skipped.
 
 For a cross-client release, also run:
 
@@ -125,7 +90,7 @@ python3 skills/synthesis-agent-conformance/scripts/conformance.py coordination
   (`coordination.py claim ... --area release-train:synthesis-skills`) from
   version authoring through the gated release; `release.py` preflight
   refuses otherwise. Release the claim right after shipping.
-- **Ship with the gated release script**, which runs the required checks,
+- **Ship with the gated release script**, which verifies authenticated complete tests for the exact candidate,
   publishes to every push remote, installs into both clients using each
   client's own commands, and verifies each client twice — its CLI report and
   the manifest at the path it loads:
