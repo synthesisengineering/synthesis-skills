@@ -78,6 +78,7 @@ from release_check_groups import (
     source_digest,
     prepare_diagnostics_destination,
     capture_acceptance_diagnostics,
+    check_diagnostic_capacity,
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -985,6 +986,11 @@ def consume_acceptance(
             if validated is None:
                 raise ValueError("; ".join(errors))
             diagnostic_plan = runner.batch_plan(runner.case_contract(validated, repo))
+            try:
+                check_diagnostic_capacity(diagnostic_plan)
+            except ValueError as exc:
+                result.add("checks.acceptance.diagnostics", False, str(exc))
+                return None
             diagnostic_destination = prepare_diagnostics_destination(
                 Path(diagnostic_path), repo
             )

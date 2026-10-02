@@ -5,12 +5,16 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.9.0"
+  version: "2.9.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.9.1** checks complete diagnostic record capacity before acceptance
+execution. The finite record ceiling is 4,096; the 32 MiB, 10-second and
+privacy limits remain enforced. Test batching and coverage are unchanged.
 
 **Version 2.9.0** runs the complete source catalog and acceptance batches with
 bounded parallelism. Release verifies authenticated hosted results for the exact

@@ -325,10 +325,11 @@ def _bkt_runner(pr_rows, user=ME, pr_rc=0, pr_stderr=""):
     """A stand-in for subprocess.run that answers only bkt, recording argv."""
     def run(cmd, **kwargs):
         run.calls.append(list(cmd))
-        if cmd[:2] == ["bkt", "api"]:
+        if cmd == ["bkt", "api", "/user", "--json"]:
             return type("R", (), {"returncode": 0, "stdout": json.dumps(user), "stderr": ""})()
-        if cmd[:3] == ["bkt", "pr", "list"]:
-            body = json.dumps({"workspace": cmd[4], "repo": cmd[6], "pull_requests": pr_rows})
+        if (cmd[:2] == ["bkt", "api"] and cmd[2].startswith("/repositories/")
+                and cmd[2].endswith("/pullrequests") and cmd[3:6] == ["--method", "GET", "--json"]):
+            body = json.dumps({"values": pr_rows})
             return type("R", (), {"returncode": pr_rc, "stdout": body if pr_rc == 0 else "",
                                   "stderr": pr_stderr})()
         raise AssertionError("unexpected invocation: %r" % (cmd,))
@@ -390,8 +391,10 @@ def test_scan_dispatches_bitbucket_origins_to_the_bitbucket_helper(monkeypatch):
     ]
     assert run.calls == [
         ["bkt", "api", "/user", "--json"],
-        ["bkt", "pr", "list", "--workspace", "team", "--repo", "content-scaling-agents",
-         "--state", "OPEN", "--limit", "0", "--json"],
+        ["bkt", "api", "/repositories/team/content-scaling-agents/pullrequests",
+         "--method", "GET", "--json", "--param", "state=OPEN", "--param", "pagelen=50",
+         "--param", "fields=values.id,values.title,values.state,values.draft,values.created_on,values.author,values.reviewers,next",
+         "--param", "page=1"],
     ]
 
 
@@ -402,8 +405,9 @@ def test_scan_resolves_the_bitbucket_identity_once_for_many_repos(monkeypatch):
         [{"name": "a", "remotes": {"origin": "git@bitbucket.org:team/a.git"}},
          {"name": "b", "remotes": {"origin": "https://bitbucket.org/team/b.git"}}], "ws", None, NOW)
     assert result["scanned"] == ["a", "b"]
-    assert [c[:2] for c in run.calls].count(["bkt", "api"]) == 1
-    assert [c[6] for c in run.calls if c[:3] == ["bkt", "pr", "list"]] == ["a", "b"]
+    assert run.calls.count(["bkt", "api", "/user", "--json"]) == 1
+    assert [c[2] for c in run.calls if c[2] != "/user"] == [
+        "/repositories/team/a/pullrequests", "/repositories/team/b/pullrequests"]
 
 
 def test_scan_reports_a_bitbucket_404_as_unscanned_not_empty(monkeypatch):
@@ -545,3 +549,42 @@ repos:
     assert data["scanned"] == ["csa", "alpha"]
     assert data["login"] == "me"
     assert [i["url"] for i in data["found"]] == ["https://bitbucket.org/team/csa/pull-requests/9"]
+
+
+@pytest.mark.parametrize("missing_reviewers", [False, True])
+def test_bitbucket_caller_requires_complete_reviewer_pages(monkeypatch, missing_reviewers):
+    from urllib.parse import urlencode
+
+    first = {"id": 1, "title": "own", "state": "OPEN", "draft": False,
+             "created_on": "2026-09-01T12:00:00+00:00", "author": ME, "reviewers": []}
+    second = {**first, "id": 2}
+    if missing_reviewers:
+        second.pop("reviewers")
+    calls = []
+
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == ["bkt", "api", "/user", "--json"]:
+            body = ME
+        else:
+            assert cmd[:6] == ["bkt", "api", "/repositories/team/repo/pullrequests",
+                               "--method", "GET", "--json"]
+            assert any("values.reviewers" in item for item in cmd)
+            if "page=1" in cmd:
+                query = dict(value.split("=", 1) for value in cmd[7::2])
+                query["page"] = "2"
+                body = {"values": [first], "next": "https://api.bitbucket.org/2.0/repositories/team/repo/pullrequests?" + urlencode(query)}
+            else:
+                assert "page=2" in cmd
+                body = {"values": [second]}
+        return type("R", (), {"returncode": 0, "stdout": json.dumps(body), "stderr": ""})()
+
+    _inject_bkt_runner(monkeypatch, run)
+    result = mod.scan([{"name": "repo", "remotes": {"origin": "git@bitbucket.org:team/repo.git"}}], "ws", None, NOW)
+    assert len(calls) == 3
+    if missing_reviewers:
+        assert result["scanned"] == [] and result["found"] == []
+        assert len(result["unscanned"]) == 1
+    else:
+        assert result["unscanned"] == [] and result["scanned"] == ["repo"]
+        assert {item["number"] for item in result["found"]} == {1, 2}

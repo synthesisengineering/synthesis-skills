@@ -761,6 +761,7 @@ def test_current_manifest_module_partition_keeps_every_case_and_polarity():
     assert not errors
     contract = module.case_contract(validated, root)
     plan = module.batch_plan(contract)
+    assert 2 + 6 * len(plan) < module.checks.DIAGNOSTIC_RECORDS
     selectors = [s for batch in plan for s in batch["selectors"]]
     assert len(selectors) == len(set(selectors))
     assert set(selectors) == {case["selector"] for case in contract}
@@ -906,7 +907,7 @@ def test_actual_diagnostic_identity_ceiling_stays_fail_closed(tmp_path, identity
     public = json.loads((Path(target["path"]) / "diagnostics.json").read_text())
     assert public["authorizes_release"] is False
     assert identity not in json.dumps(public) and "private-value-" not in json.dumps(public)
-    assert module.checks.DIAGNOSTIC_RECORDS == 2000
+    assert module.checks.DIAGNOSTIC_RECORDS == 4096
     assert module.checks.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
     assert module.checks.DIAGNOSTIC_SECONDS == 10
 
