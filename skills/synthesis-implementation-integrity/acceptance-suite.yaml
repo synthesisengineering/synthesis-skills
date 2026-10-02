@@ -2354,6 +2354,9 @@ changed_surfaces:
   - performance-be9b8734740703dc
   - performance-d08b1e54db3b23d0
   - performance-72933cdc4960dc0d
+  - performance-fedbbf091ca1821e
+  - performance-5396250b265c758f
+  - performance-c1a26d27dd27d526
 - path: skills/synthesis-project-management/scripts/project_state.py
   cases:
   - performance-e3b6de3badda9377
@@ -2434,6 +2437,16 @@ changed_surfaces:
 - path: skills/synthesis-repo-guard/test_prepared_launch_attribution.py
   cases:
   - final-1f205096efbd6ea1
+- path: skills/synthesis-autopilot/scripts/test_operator_status.py
+  cases:
+  - performance-fedbbf091ca1821e
+  - performance-5396250b265c758f
+  - final-565883aaaf984c7d
+- path: skills/synthesis-project-management/scripts/test_claim_scope.py
+  cases: &id001
+  - performance-c1a26d27dd27d526
+- path: skills/synthesis-project-management/scripts/claim_scope.py
+  cases: *id001
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -9943,3 +9956,18 @@ cases:
   expected_status: pass
   fixture: ../synthesis-repo-guard/test_per_path_retirement.py::test_per_path_matching_target_keeps_unmatched_symlink
   motivating_defect: per path matching target keeps unmatched symlink
+- id: performance-fedbbf091ca1821e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_operator_status.py::test_registry_selects_actual_newer_owned_worktree_without_mutation
+  motivating_defect: registry selects actual newer owned worktree without mutation
+- id: performance-5396250b265c758f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_operator_status.py::test_registry_conflict_returns_no_stale_canonical_run
+  motivating_defect: registry conflict returns no stale canonical run
+- id: performance-c1a26d27dd27d526
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_relative_workspace_claim_requires_one_exact_checkout
+  motivating_defect: relative workspace claim requires one exact checkout

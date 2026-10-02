@@ -9,6 +9,19 @@ import claim_scope
 from test_claim_scope_cache import checkouts  # noqa: F401
 
 
+@pytest.mark.parametrize("claim", [".", "./"])
+def test_relative_workspace_claim_requires_one_exact_checkout(tmp_path, claim):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    context = [f"{workspace} @ main"]
+    assert claim_scope.admitted_claim(claim, context) == claim
+    assert claim_scope.admitted_claim(claim, context, canonical=True) == str(workspace.resolve())
+    with pytest.raises(claim_scope.ClaimIdentityError, match="one exact checkout"):
+        claim_scope.admitted_claim(claim, [])
+    with pytest.raises(claim_scope.ClaimIdentityError, match="one exact checkout"):
+        claim_scope.admitted_claim(claim, context + [f"{tmp_path / 'other'} @ main"])
+
+
 def test_plain_cells_preserve_markup_and_glob_grammar_without_regex_for_plain_input(monkeypatch):
     import itertools
     import re
