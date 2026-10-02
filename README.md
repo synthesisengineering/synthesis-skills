@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.2** corrects empty-list parsing in complete detection-rule
+documents. Credential scanning and unsupported-syntax refusals remain enforced.
+
 Release **4.153.1** reduces repeated path and manifest processing during project
 recovery. Publication retains typed ownership evidence across partial flushes;
 continuity diagnostics report timeouts explicitly. Native activity observations

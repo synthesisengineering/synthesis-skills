@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.153.2] - 2026-10-02
+
+### Fixed
+
+- Recognize empty YAML mapping-value sequences in complete detection-rule
+  documents while retaining refusals for credentials, mixed material and
+  unsupported collection syntax.
+
 ## [4.153.1] - 2026-10-02
 
 ### Fixed

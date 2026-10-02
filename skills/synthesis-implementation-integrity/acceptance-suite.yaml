@@ -1,5 +1,5 @@
 schema: 2
-suite: performance-recovery-4-153-1
+suite: scanner-empty-sequence-4-153-2
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy, maintenance and portable
   evidence owners; scoped source acquisition and inert native web observations
@@ -117,6 +117,13 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
 - path: .codex-plugin/plugin.json
   cases:
   - acquisition-262cd95fb5bb0355
@@ -221,6 +228,13 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
 - path: .muse-plugin/plugin.json
   cases:
   - acquisition-262cd95fb5bb0355
@@ -325,6 +339,13 @@ changed_surfaces:
   - final-f88feadb9af1c5c0
   - final-f8b95061897dc3cf
   - final-f8f0939b644079f8
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
 - path: CHANGELOG.md
   cases:
   - guard-fixture-2f7c006d1dfae02c
@@ -645,6 +666,13 @@ changed_surfaces:
   - throughput-bc561327ace97324
   - throughput-0280cd09d307664c
   - throughput-fedec9ede7a5f73f
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
 - path: README.md
   cases:
   - acceptance-execution-0570ed7442e043c2
@@ -930,59 +958,51 @@ changed_surfaces:
   - throughput-bc561327ace97324
   - throughput-0280cd09d307664c
   - throughput-fedec9ede7a5f73f
-- path: skills/synthesis-agent-conformance/scripts/conformance.py
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
+- path: skills/synthesis-git-hooks/SKILL.md
   cases:
-  - performance-c1c70fd926375e6d
-- path: skills/synthesis-agent-conformance/scripts/test_conformance.py
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
+- path: skills/synthesis-git-hooks/references/marker-rules.md
   cases:
-  - performance-c1c70fd926375e6d
-- path: skills/synthesis-autopilot/scripts/native_codex.py
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
+  - marker-rule-vocabulary-subset-20261002
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
   cases:
-  - performance-bea0c80fe351411d
-  - performance-eaae44ddc0a9154c
-- path: skills/synthesis-autopilot/scripts/test_controller.py
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
+- path: skills/synthesis-git-hooks/scripts/test_marker_rules.py
   cases:
-  - final-127fa2104853fc53
-  - final-3348e5775d12b93e
-  - final-03c41d89f1246e4a
-  - final-45280f4c63433997
-  - final-1bbd57942348ad28
-  - final-4121cb277b2d730d
-  - final-567ed97aaadc11b8
-  - final-c64cbf5c4f55fa04
-  - final-9e09d8e7241c34ae
-  - final-77a32a1e8e810724
-  - final-50a62aff7316f531
-  - final-82232ccb06db34e6
-  - final-655e9edf3170ccbd
-  - final-0ce6b0f33090d568
-  - final-b4e2aed8fb2206ee
-  - final-7124103c18290828
-  - final-a856fa26b51d148c
-  - final-b29d21610edab515
-  - final-fc9fe4d9f404786f
-  - final-c8358775a0f97f72
-  - final-b511ffa915f12ba4
-  - final-390889e36321b7dd
-  - final-291127d274a48a28
-  - final-91b4dd3c634ee0e7
-  - final-6ae11e0867ea69b5
-  - final-060a5623c34af461
-  - final-c4664988d020027c
-  - final-ed3a6ac755703216
-  - final-c99924ebb825c8d0
-  - final-fad22da1660e604f
-  - final-53522d3719d24bf4
-  - final-4ed08ef3f1f614a8
-  - final-bd6559d492a63eb1
-  - final-bedad9ef36de692e
-  - final-2a5ad2c6621542ed
-  - final-e74a9e81d42a8fd7
-  - final-e30eb4cc5761a354
-- path: skills/synthesis-autopilot/scripts/test_native_codex.py
-  cases:
-  - performance-bea0c80fe351411d
-  - performance-eaae44ddc0a9154c
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
+  - marker-rule-vocabulary-subset-20261002
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - final-42c5721991f12696
@@ -2357,99 +2377,18 @@ changed_surfaces:
   - performance-fedbbf091ca1821e
   - performance-5396250b265c758f
   - performance-c1a26d27dd27d526
-- path: skills/synthesis-project-management/scripts/project_state.py
-  cases:
-  - performance-e3b6de3badda9377
-  - performance-22ed06daf9d3971c
-  - performance-f0a13a6ec7d8356e
-  - performance-615936bb9206c927
-  - performance-34f0af26535855a7
-  - performance-ee901de52c01c926
-  - performance-bf47b9344679043e
-  - performance-a4de85c17cefd13e
-  - performance-16fc9f3fe0f29514
-  - performance-f3d1e2734e34b56c
-  - performance-040e0077aa4a2da5
-  - performance-c0782c0a5ada0fe1
-  - performance-844a8970502091a5
-  - performance-e41c0ccc11f881b8
-  - performance-1ad7c36166ba428a
-  - performance-2161b6ac2a03ea4b
-  - performance-3927c489eadce602
-  - performance-9f065d4c58877e8c
-  - performance-6359ad347ab8b2c0
-  - performance-2de6428912bebbd5
-  - performance-344a8c5942832118
-  - performance-b07ec149e6fdb8bb
-  - final-bc079d10de8497ec
-  - final-d69c36509811dd4a
-  - final-39325c9f19c371bb
-- path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - performance-e3b6de3badda9377
-  - performance-22ed06daf9d3971c
-  - performance-f0a13a6ec7d8356e
-  - performance-615936bb9206c927
-  - performance-34f0af26535855a7
-  - performance-ee901de52c01c926
-  - performance-bf47b9344679043e
-  - performance-a4de85c17cefd13e
-  - performance-16fc9f3fe0f29514
-  - performance-f3d1e2734e34b56c
-  - performance-040e0077aa4a2da5
-  - performance-c0782c0a5ada0fe1
-  - performance-844a8970502091a5
-  - performance-e41c0ccc11f881b8
-  - performance-1ad7c36166ba428a
-  - performance-2161b6ac2a03ea4b
-  - performance-3927c489eadce602
-  - performance-9f065d4c58877e8c
-  - performance-6359ad347ab8b2c0
-  - performance-2de6428912bebbd5
-  - performance-344a8c5942832118
-  - performance-b07ec149e6fdb8bb
-  - final-bc079d10de8497ec
-  - final-d69c36509811dd4a
-  - final-39325c9f19c371bb
-- path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases:
-  - performance-2b3c8dbd94030aef
-  - performance-1355d02d61586b00
-  - performance-8d811b44acba3063
-  - performance-a898cbb02196008e
-  - performance-ab88569a77ef206b
-  - performance-b2eebb7b193ce92f
-  - performance-be9b8734740703dc
-  - performance-d08b1e54db3b23d0
-  - performance-72933cdc4960dc0d
-  - final-1f205096efbd6ea1
-- path: skills/synthesis-repo-guard/test_per_path_retirement.py
-  cases:
-  - performance-2b3c8dbd94030aef
-  - performance-1355d02d61586b00
-  - performance-8d811b44acba3063
-  - performance-a898cbb02196008e
-  - performance-ab88569a77ef206b
-  - performance-b2eebb7b193ce92f
-  - performance-be9b8734740703dc
-  - performance-d08b1e54db3b23d0
-  - performance-72933cdc4960dc0d
-- path: skills/synthesis-repo-guard/test_prepared_launch_attribution.py
-  cases:
-  - final-1f205096efbd6ea1
-- path: skills/synthesis-autopilot/scripts/test_operator_status.py
-  cases:
-  - performance-fedbbf091ca1821e
-  - performance-5396250b265c758f
-  - final-565883aaaf984c7d
-- path: skills/synthesis-project-management/scripts/test_claim_scope.py
-  cases: &id001
-  - performance-c1a26d27dd27d526
-- path: skills/synthesis-project-management/scripts/claim_scope.py
-  cases: *id001
-- path: skills/synthesis-autopilot/scripts/test_native_large_context.py
-  cases:
+  - empty-sequence-21cfecd91db6
+  - empty-sequence-62f2ef9c3bae
+  - empty-sequence-a23a1a2a2947
+  - empty-sequence-3a202da8b542
+  - empty-sequence-b330a633edef
+  - empty-sequence-aa0bb69bbc45
+  - empty-sequence-169afea0fdf4
   - performance-fd9f4e60a1a7b498
+  - marker-rule-vocabulary-subset-20261002
+- path: skills/synthesis-git-hooks/scripts/_scan_staged.py
+  cases:
+  - marker-rule-vocabulary-subset-20261002
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -9980,3 +9919,51 @@ cases:
   fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_current_decoder_requires_explicit_prior_generation_reconciliation
   motivating_defect: Decoder version 12 must reject prior-generation observation reuse and require explicit
     new enrollment without discarding existing gaps.
+- id: empty-sequence-21cfecd91db6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_mapping_values_preserve_complete_rules
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-62f2ef9c3bae
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_quoted_empty_sequence_remains_string
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-a23a1a2a2947
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_does_not_expand_other_yaml_grammar
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-3a202da8b542
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_rules_do_not_hide_credentials_or_mixed_material
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-b330a633edef
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_old_header_new_body_is_still_material
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-aa0bb69bbc45
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_does_not_remove_overlapping_custom_patterns
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: empty-sequence-169afea0fdf4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_does_not_erase_other_configured_credential_groups
+  motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
+    material.
+- id: marker-rule-vocabulary-subset-20261002
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_supported_rule_vocabulary_is_independent_of_active_subset
+  motivating_defect: Adding supported rule vocabulary under a subset policy must not open false private-key
+    regions; credentials, mixed material and custom expressions remain protected.
