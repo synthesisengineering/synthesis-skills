@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.1] - 2026-10-02
+
+- Resume explicit original-interval replay under the current authenticated seat while preserving historical enrollment, cancellation evidence and foreign-source refusals.
+- Request complete Bitbucket reviewer fields through bounded API pagination; missing fields or incomplete pages produce an unscanned result instead of an incorrect empty-reviewer classification.
+
 ## [4.154.0] - 2026-10-02
 
 - Retain connector observations while refusing Slack attribution from ambiguous rendered messages and Drive inventory completion when the provider completeness flag is missing; declared structured readers remain available.
