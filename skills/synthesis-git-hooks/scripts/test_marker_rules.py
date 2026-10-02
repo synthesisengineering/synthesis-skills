@@ -475,3 +475,120 @@ def test_missing_parser_source_has_no_cache_fallback(tmp_path):
     (tmp_path / "missing-parser.stdout").write_bytes(result.stdout)
     (tmp_path / "missing-parser.stderr").write_bytes(result.stderr)
     assert result.returncode == 2 and b"failed closed" in result.stderr
+
+
+@pytest.mark.parametrize("empty", ["[]", "[ ]", "[    ] # empty configuration list"])
+def test_empty_sequence_mapping_values_preserve_complete_rules(tmp_path, empty):
+    root, config, env = setup(tmp_path)
+    config.write_text(config.read_text() + "diff_exclude_paths: " + empty + "\n")
+    body = (
+        rule() + ("tier_1_strict_only:\n  confidential_names: " + empty + "\n").encode()
+    )
+    parsed = loader("_load_config.py").parse_simple_yaml(body.decode())
+    assert parsed["tier_1_strict_only"]["confidential_names"] == []
+    stage(root, "historical-policy.data", body)
+    assert_status(invoke(root, env), 0)
+    assert_status(invoke(root, env, body), 0)
+
+
+@pytest.mark.parametrize("text", ["'[]'", '"[]"'])
+def test_quoted_empty_sequence_remains_string(text):
+    assert (
+        loader("_load_config.py").parse_simple_yaml("value: " + text)["value"] == "[]"
+    )
+
+
+@pytest.mark.parametrize(
+    "neighbor",
+    [
+        "other: [value]\n",
+        "other: {}\n",
+        "other: [[],]\n",
+        "other: &anchor []\n",
+        "other: *anchor\n",
+        "other: [] trailing\n",
+        "other: [\n]\n",
+        "other: [\t]\n",
+        "other:\n  - []\n",
+        "other: []\n  - value\n",
+        "other: []\nother: []\n",
+    ],
+)
+def test_empty_sequence_does_not_expand_other_yaml_grammar(tmp_path, neighbor):
+    root, _, env = setup(tmp_path)
+    body = rule() + neighbor.encode()
+    parser = loader("_load_config.py")
+    with pytest.raises(parser.ConfigError):
+        parser.parse_simple_yaml(body.decode())
+    stage(root, "policy.yaml", body)
+    assert_status(invoke(root, env), 1)
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        b"secret: " + b"AKIA" + b"ABCDEFGHIJKLMNOP\n",
+        b"secret: CUSTOM_CREDENTIAL_VALUE\n",
+        ("secret: |\n  -----" + MARKERS[0] + "-----\n  " + BODY + "\n").encode(),
+        ("  - '" + BODY + "'\n").encode(),
+    ],
+)
+def test_empty_sequence_rules_do_not_hide_credentials_or_mixed_material(
+    tmp_path, secret
+):
+    root, config, env = setup(tmp_path, personal=True, enabled=False)
+    config.write_text(
+        config.read_text().replace(
+            "  api_keys:\n", "  api_keys:\n    - 'CUSTOM_CREDENTIAL_VALUE'\n"
+        )
+        + "allowlist_lines:\n  - '.*'\ndiff_exclude_paths:\n  - '.*'\n"
+    )
+    body = b"empty: []\n" + rule() + secret
+    stage(root, "policy.yaml", body)
+    assert_status(invoke(root, env), 1)
+    assert_status(invoke(root, env, body), 1)
+
+
+@pytest.mark.parametrize("catalog", [False, True])
+def test_empty_sequence_old_header_new_body_is_still_material(tmp_path, catalog):
+    root, _, env = setup(tmp_path)
+    before = b"empty: []\n" + (
+        rule() if catalog else ("-----" + MARKERS[0] + "-----\n").encode()
+    )
+    stage(root, "policy.yaml", before)
+    git(root, "commit", "-m", "Synthetic empty-list header baseline")
+    body = (("  - '" + BODY + "'\n") if catalog else BODY + "\n").encode()
+    stage(root, "policy.yaml", before + body)
+    patch = git(root, "diff", "--cached", "-U0")
+    assert MARKERS[0].encode() not in patch.split(b"@@")[-1]
+    assert_status(invoke(root, env), 1)
+
+
+@pytest.mark.parametrize("group", ["api_keys", "private_key_markers"])
+def test_empty_sequence_does_not_remove_overlapping_custom_patterns(tmp_path, group):
+    root, config, env = setup(tmp_path)
+    config.write_text(
+        config.read_text().replace(
+            "  " + group + ":\n", "  " + group + ":\n    - 'BEGIN.*PRIVATE KEY'\n"
+        )
+    )
+    stage(root, "policy.yaml", b"empty: []\n" + rule())
+    assert_status(invoke(root, env), 1)
+
+
+@pytest.mark.parametrize("suffix", [b"", b"secret: " + b"AKIA" + b"ABCDEFGHIJKLMNOP\n"])
+def test_empty_sequence_does_not_erase_other_configured_credential_groups(
+    tmp_path, suffix
+):
+    root, config, env = setup(tmp_path)
+    config.write_text(
+        config.read_text().replace(
+            "tier_0_always:\n", "tier_0_always:\n  inactive_group: []\n"
+        )
+        + "tier_1_strict_only:\n  confidential_names: []\n"
+    )
+    parsed = loader("_load_config.py").parse_simple_yaml(config.read_text())
+    active = loader("_load_config.py").build_active_regex(parsed, "strict")
+    assert "AKIA[0-9A-Z]{16}" in active
+    stage(root, "policy.yaml", b"empty: []\n" + rule() + suffix)
+    assert_status(invoke(root, env), 1 if suffix else 0)

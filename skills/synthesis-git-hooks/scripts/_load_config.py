@@ -19,8 +19,8 @@ v2 design changes (fail-closed hardening):
   as its final line. The engine requires it; absence means the sidecar died
   mid-emit and the commit is blocked (fail closed).
 * **Strict parsing.** Anything outside the supported YAML subset (tabs,
-  flow style `[...]`/`{...}`, anchors, multi-line scalars) is a hard error,
-  never a guess. A policy file that cannot be parsed with certainty blocks
+  nonempty flow sequences, flow mappings, anchors, multi-line scalars) is a
+  hard error, never a guess. A policy file that cannot be parsed with certainty blocks
   commits until fixed.
 * **`--doctor`.** Self-check for rituals/bootstrap: config parses, every
   pattern compiles under both Python `re` and `grep -E`, core.hooksPath is
@@ -39,6 +39,7 @@ Supported config subset (see README / SKILL.md):
   - comments (# ...), full-line or trailing outside quotes
   - nested mappings via 2+-space indentation: `key:` / `key: value`
   - string lists: `- item`, `- 'item'`, `- "item"`
+  - empty sequences as mapping values: `key: []` (spaces inside are permitted)
   - scalars: single/double-quoted strings, bare strings, ints, true/false
 
 Exit codes: 0 success · 2 config missing/unparsable/invalid.
@@ -266,6 +267,11 @@ def parse_simple_yaml(text: str) -> dict:
             )
         if rest == "":
             pending_key = (indent, cur, key)
+        elif re.fullmatch(r"\[ *\]", rest):
+            # The only supported flow collection is an empty sequence as a
+            # mapping value. Keep this outside _parse_scalar so list items
+            # cannot introduce nested collections. Comments were stripped above.
+            cur[key] = []
         else:
             cur[key] = _parse_scalar(rest, lineno)
 
