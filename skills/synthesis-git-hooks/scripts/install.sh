@@ -47,6 +47,7 @@ for source in \
     "$COORDINATION_SOURCE/coordination_lock.py" \
     "$COORDINATION_SOURCE/project_recipient.py" \
     "$CONFORMANCE_SOURCE/native_transcript_identity.py" \
+    "$CONFORMANCE_SOURCE/client_binaries.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -85,6 +86,7 @@ cp -f "$COORDINATION_SOURCE/coordination_process.py" "$TARGET_DIR/coordination_p
 cp -f "$COORDINATION_SOURCE/coordination_lock.py" "$TARGET_DIR/coordination_lock.py"
 cp -f "$COORDINATION_SOURCE/project_recipient.py" "$TARGET_DIR/project_recipient.py"
 cp -f "$CONFORMANCE_SOURCE/native_transcript_identity.py" "$TARGET_DIR/native_transcript_identity.py"
+cp -f "$CONFORMANCE_SOURCE/client_binaries.py" "$TARGET_DIR/client_binaries.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -114,7 +116,8 @@ chmod 755 \
     "$TARGET_DIR/coordination_process.py" \
     "$TARGET_DIR/coordination_lock.py" \
     "$TARGET_DIR/project_recipient.py" \
-    "$TARGET_DIR/native_transcript_identity.py"
+    "$TARGET_DIR/native_transcript_identity.py" \
+    "$TARGET_DIR/client_binaries.py"
 chmod 644 "$TARGET_DIR/source-path" "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
 
 if [ -f "$CONFIG_PATH" ]; then

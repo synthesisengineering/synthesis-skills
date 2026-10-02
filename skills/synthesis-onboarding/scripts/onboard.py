@@ -4930,6 +4930,7 @@ def _coordination_probe():
         root / "coordination_lock.py",
         root / "project_recipient.py",
         root / "native_transcript_identity.py",
+        root / "client_binaries.py",
     ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"

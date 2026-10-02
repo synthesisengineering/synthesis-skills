@@ -1320,6 +1320,17 @@ for _entry in (
         )
     )
 
+# The codex delivery lane is offered only after the conformance skill's client
+# binary owner finds a runnable Codex CLI, so every entrypoint that reaches peer
+# addressing carries that owner in its verified closure.
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if "synthesis-project-management/scripts/peer_addressing.py" in {_entry, *_dependencies}:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys(
+                (*_dependencies, "synthesis-agent-conformance/scripts/client_binaries.py")
+            )
+        )
+
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
 )

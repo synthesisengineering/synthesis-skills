@@ -87,7 +87,9 @@ AGENT_ID_RE = re.compile(r"^a[0-9a-f]{16}$")
 # Raw-word fallback, used only for text with no command structure to read: what
 # the shell would reject (an unterminated quote or substitution) or what nests
 # past NESTING_LIMIT. The words alone decide.
-CODEX_QUEUE_RE = re.compile(r"(?<![\w./-])codex\s+queue\b")
+# A path-qualified CLI (``/opt/x/codex queue``) is still a send: the lane
+# prints the exact binary it verified.
+CODEX_QUEUE_RE = re.compile(r"(?<![\w.-])codex\s+queue\b")
 THREAD_RE = re.compile(r"--thread(?:=|\s+)(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
 MESSAGE_RE = re.compile(r"--message(?:=|\s+)(?:\"((?:[^\"\\]|\\.)*)\"|'([^']*)'|(\S+))")
 # Shell structure: what ends a simple command, what redirects, what opens a heredoc.

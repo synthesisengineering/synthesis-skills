@@ -23,8 +23,11 @@ COORDINATION_SCRIPTS = (
     "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py",
     "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py",
 )
+# Stdlib-only modules the coordination closure imports from the conformance skill.
+CONFORMANCE_SCRIPTS = ("native_transcript_identity.py", "client_binaries.py")
 MEMBERS = tuple("scripts/" + name for name in COORDINATION_SCRIPTS) + (
-    "references/session-words-v1.txt.zlib.b85", "scripts/native_transcript_identity.py",
+    "references/session-words-v1.txt.zlib.b85",
+    *("scripts/" + name for name in CONFORMANCE_SCRIPTS),
 )
 MAX_FILE = 4 * 1024 * 1024
 MAX_TOTAL = 16 * 1024 * 1024
@@ -124,7 +127,7 @@ def verify(store, digest, *, snapshot=False):
     if not isinstance(files, dict) or set(files) != set(MEMBERS):
         raise ValueError("retained coordination runtime dependency set changed")
     expected = {"": {"MANIFEST.json", "scripts", "references"},
-                "scripts": set(COORDINATION_SCRIPTS) | {"native_transcript_identity.py"},
+                "scripts": set(COORDINATION_SCRIPTS) | set(CONFORMANCE_SCRIPTS),
                 "references": {"session-words-v1.txt.zlib.b85"}}
     total = 0
     for relative, names in expected.items():
@@ -151,8 +154,9 @@ def verify(store, digest, *, snapshot=False):
 
 
 def source_member(source, relative):
-    if relative == "scripts/native_transcript_identity.py":
-        return source.parent / "synthesis-agent-conformance/scripts/native_transcript_identity.py"
+    name = relative.removeprefix("scripts/")
+    if name in CONFORMANCE_SCRIPTS:
+        return source.parent / "synthesis-agent-conformance/scripts" / name
     return source / relative
 
 
