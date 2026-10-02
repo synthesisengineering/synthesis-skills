@@ -262,6 +262,11 @@ def slack_coverage(e, start, through, now, saved, targets):
             captured.add((channel, ts))
     required = set()
     checked_threads = 0
+    # Whether this capture's search demonstrably covers the window: at least
+    # one channel returned an actual in-window message. Only then can an empty
+    # search for a quiet channel be read as "nothing new" rather than unknown.
+    window_control = False
+    quiet_channels = []
     for channel in channels:
         cid = text(channel.get("id"), "channel id")
         history = channel.get("history", {})
@@ -275,11 +280,13 @@ def slack_coverage(e, start, through, now, saved, targets):
             raise ValueError("channel history window is incomplete")
         parents = set(items(channel.get("known_thread_ids", []), "known thread ids"))
         messages = items(history.get("messages"), "history messages")
+        history_in_window = 0
         for message in messages:
             ts = text(message.get("ts"), "message ts")
             at = slack_ts(ts)
             if lo <= at <= hi:
                 required.add((cid, ts))
+                history_in_window += 1
             if message.get("reply_count", 0):
                 parents.add(ts)
         search = channel.get("reply_search", {})
@@ -302,8 +309,36 @@ def slack_coverage(e, start, through, now, saved, targets):
                 required.add((cid, ts))
                 if hit.get("thread_ts"):
                     parents.add(hit["thread_ts"])
-        if not controls or not set(controls) <= in_window:
-            raise ValueError("Slack coverage is unknown: no in-window positive control")
+        if controls:
+            if not set(controls) <= in_window:
+                raise ValueError(
+                    "Slack coverage is unknown: positive control is not an in-window result"
+                )
+            window_control = True
+        else:
+            # A quiet channel proves itself with positive reads of its own:
+            # history and the search index each returned a real message at or
+            # before the window's end, observed after it closed, and that
+            # newest message predates the window. Nothing in-window returned.
+            quiet = channel.get("quiet_control")
+            if (
+                not isinstance(quiet, dict)
+                or set(quiet) != {"history", "search"}
+                or in_window
+                or history_in_window
+            ):
+                raise ValueError(
+                    "Slack coverage is unknown: no in-window positive control"
+                )
+            for probe in quiet.values():
+                if not isinstance(probe, dict):
+                    raise ValueError("Slack quiet-channel probe is malformed")
+                observed(probe, through, now)
+                if slack_ts(text(probe.get("newest_ts"), "newest ts")) >= lo:
+                    raise ValueError(
+                        "Slack coverage is unknown: the newest-message probe does not predate the window"
+                    )
+            quiet_channels.append(cid)
         threads = items(channel.get("threads"), "threads")
         indexed = {t.get("parent_ts"): t for t in threads}
         if len(indexed) != len(threads) or set(indexed) != parents:
@@ -328,12 +363,18 @@ def slack_coverage(e, start, through, now, saved, targets):
                 if hit.get("thread_ts") == parent and hit["ts"] not in row_ids:
                     raise ValueError("thread pass omitted a discovered in-window reply")
             checked_threads += 1
+    if quiet_channels and not window_control:
+        raise ValueError(
+            "Slack coverage is unknown: no channel in this capture returned an "
+            "in-window search result, so empty searches prove nothing"
+        )
     missing = required - captured
     return {
         "coverage": "gapped" if missing else "complete",
         "can_advance": not missing,
         "checked_threads": checked_threads,
         "required_messages": len(required),
+        "quiet_channels": sorted(quiet_channels),
         "gaps": [{"channel": c, "ts": t} for c, t in sorted(missing)],
     }
 

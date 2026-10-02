@@ -345,6 +345,7 @@ def acquire_window(
     import sync_watermark
     from acquisition_evidence import moment, validate
     from google_read import GoogleRead
+    import workspace_mcp_read
 
     if mode not in {"health", "inventory", "fetch"} or advance and mode != "fetch":
         raise ValueError("invalid acquisition mode or advance intent")
@@ -372,10 +373,16 @@ def acquire_window(
     start = moment(window["from"] or backfill)
     if start > through:
         raise ValueError("invalid acquisition window")
-    # Validate all non-secret contract fields before resolving a credential.
-    adapter = GoogleRead(cfg, None)
-    capture = Capture(capture_root)
-    transport = ReadTransport(cfg["acquisition_adapter"].get("token"), capture)
+    # Validate all non-secret contract fields before resolving a credential
+    # or opening a connector session. The adapter is exactly the declared one.
+    if cfg.get("acquisition_adapter", {}).get("kind") == workspace_mcp_read.KIND:
+        adapter = workspace_mcp_read.WorkspaceMcpRead(cfg, None)
+        capture = Capture(capture_root)
+        transport = workspace_mcp_read.McpTransport(adapter.url, capture)
+    else:
+        adapter = GoogleRead(cfg, None)
+        capture = Capture(capture_root)
+        transport = ReadTransport(cfg["acquisition_adapter"].get("token"), capture)
     adapter.transport = transport
     try:
         readiness = adapter.readiness()
@@ -408,19 +415,11 @@ def acquire_window(
             raise ValueError("archive root must be a physical absolute path")
         receipts = []
         for doc in inventory["documents"]:
-            raw, call = adapter.document(doc["source_id"])
-            selected = select_tabs(
-                json.dumps(raw), transcript_tab_id=cfg["transcript_tab_id"]
-            )
-            if selected["status"] != "transcript":
-                raise ValueError(
-                    "declared transcript unavailable: "
-                    + str(selected["reason"])
-                    + "; raw notes retained in custody"
-                )
+            selected = adapter.transcript(doc["source_id"])
             content = (
                 f"# Meeting source {doc['source_id']}\n\n**Source ID:** google-drive:{doc['source_id']}\n"
-                f"**Transcript tab ID:** {cfg['transcript_tab_id']}\n**Raw response SHA256:** {call.rsplit('#', 1)[1]}\n\n"
+                f"**Transcript tab ID:** {selected['transcript_tab_id']}\n"
+                f"**Raw response SHA256:** {', '.join(selected['raw_sha256'])}\n\n"
                 "## Tool notes — lossy derivative\n\n"
                 + selected["notes"]
                 + "\n\n## Verbatim transcript\n\n"

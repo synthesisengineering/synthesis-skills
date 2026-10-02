@@ -495,6 +495,7 @@ ENTRYPOINT_DEPENDENCIES = {
         "synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py",
         "synthesis-meeting-transcripts/optional-workspace-mcp/document_tabs.py",
         "synthesis-meeting-transcripts/optional-workspace-mcp/google_read.py",
+        "synthesis-meeting-transcripts/optional-workspace-mcp/workspace_mcp_read.py",
     ),
     "synthesis-slack-sync/scripts/acquire.py": (
         "synthesis-daily-rituals/scripts/acquisition_transport.py",
@@ -507,6 +508,7 @@ ENTRYPOINT_DEPENDENCIES = {
         "synthesis-slack-sync/scripts/slack_workspaces.py",
         "synthesis-slack-sync/thread_checker.py",
         "synthesis-slack-sync/scripts/slack_read.py",
+        "synthesis-slack-sync/scripts/connector_replay.py",
     ),
     "synthesis-agent-conformance/scripts/conformance.py": (
         "synthesis-context-lifecycle/scripts/record_succession.py",

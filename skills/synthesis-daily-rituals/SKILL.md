@@ -25,7 +25,7 @@ Version history, the rationale behind each rule, and the incidents that produced
 
 Use the mandatory [mechanical owner map](references/mechanical-extraction.md) for transcript, channel, watermark, repository-state and grounding work; scripts do not replace interpretation or action authority.
 
-Use [declared acquisition entries](references/acquisition-entry.md) for the supported meeting and Slack read adapters, account/source checks, raw custody, safe archives and evidence-bound watermark advancement. Unsupported connector evidence remains UNKNOWN.
+Use [declared acquisition entries](references/acquisition-entry.md) for the supported meeting and Slack read adapters, account/source checks, raw custody, safe archives and evidence-bound watermark advancement. Connector reads count only through the declared connector-replay adapter; any other connector evidence remains UNKNOWN.
 ## Configuration
 
 These values are user-specific. Update them for your environment.
