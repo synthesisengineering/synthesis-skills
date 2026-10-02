@@ -2447,6 +2447,9 @@ changed_surfaces:
   - performance-c1a26d27dd27d526
 - path: skills/synthesis-project-management/scripts/claim_scope.py
   cases: *id001
+- path: skills/synthesis-autopilot/scripts/test_native_large_context.py
+  cases:
+  - performance-fd9f4e60a1a7b498
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -9971,3 +9974,9 @@ cases:
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_claim_scope.py::test_relative_workspace_claim_requires_one_exact_checkout
   motivating_defect: relative workspace claim requires one exact checkout
+- id: performance-fd9f4e60a1a7b498
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_large_context.py::test_current_decoder_requires_explicit_prior_generation_reconciliation
+  motivating_defect: Decoder version 12 must reject prior-generation observation reuse and require explicit
+    new enrollment without discarding existing gaps.
