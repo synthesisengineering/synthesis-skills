@@ -10,7 +10,7 @@ import pytest
 import build_packet as bp
 import record_rulings as rr
 from test_build_packet import compliant_spec
-from test_browser_packet import chromium, PRELUDE, DRIVER
+from test_browser_packet import chromium, PRELUDE, DRIVER, browser_environment
 from test_packet_causal import spec
 from test_spec_binding import rendered_summary, stored_state
 
@@ -91,7 +91,8 @@ def test_complete_browser_clipboard_to_actual_record_cli(tmp_path, chromium):
     instrumented = instrumented.replace('</body>',observer+'</body>',1)
     probe=tmp_path/'probe.html';probe.write_text(instrumented)
     command=[chromium,'--headless','--disable-background-networking','--no-first-run','--no-default-browser-check','--disable-extensions','--user-data-dir='+str(tmp_path/'profile'),'--dump-dom',probe.as_uri()]
-    browser=subprocess.run(command,capture_output=True,text=True,timeout=25)
+    browser=subprocess.run(command,capture_output=True,text=True,timeout=25,
+                           env=browser_environment(tmp_path))
     (tmp_path/'browser-dom.html').write_text(browser.stdout);(tmp_path/'browser-stderr.txt').write_text(browser.stderr)
     assert browser.returncode==0,browser.stderr
     match=re.search(r'<pre id="packet-browser-result">(.*?)</pre>',browser.stdout,re.S);assert match
