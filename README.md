@@ -1501,3 +1501,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Support posture: [SUPPORT.md](SUPPORT.md
 [Rajiv Pant](https://rajiv.com) — technology executive, AI practitioner, and creator of synthesis coding.
 
 Large autopilot journals use authenticated content blocks with finite storage budgets. Recovery retains earlier event bytes, ownership and cost history; incomplete or corrupted records never become completion evidence.
+
+Release **4.153.3** improves retained-evidence recovery, native owner renewal, and decision-note handling.

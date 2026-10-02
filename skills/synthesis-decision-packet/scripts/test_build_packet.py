@@ -736,7 +736,9 @@ def test_summary_format_literals_are_pinned_to_the_packet_javascript():
     assert '"=".repeat(SPEC.title.length)' in js
     assert 'r.id + "  " + r.label' in js
     assert '"    -> " + mark' in js
-    assert '"    note: " + s.note.trim()' in js
+    assert '"    note: " + note' in js
+    assert 'var note = normalizeNote(s.note || "");' in js
+    assert 'note: normalizeNote(s.note || "")' in js
     assert '"Decided " + decided + " of " + SPEC.rows.length + "."' in js
 
 

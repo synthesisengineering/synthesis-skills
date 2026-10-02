@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.153.3] - 2026-10-02
+
+- Inventory retained evidence without opening special files, with explicit bounded scan policies and fewer repeated scans.
+- Recover run ownership from authenticated native question answers and scoped deliveries while preserving action approvals and deadlines.
+- Accept incidental decision-note whitespace without changing decisions or substantive text.
+
 ## [4.153.2] - 2026-10-02
 
 ### Fixed

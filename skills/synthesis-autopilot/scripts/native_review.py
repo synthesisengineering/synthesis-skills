@@ -313,7 +313,10 @@ def parse_codex_question(records, source, title, approve_option):
         if set(source) != {"kind", "call_id", "message_id", "question_index"} or source["kind"] != "native-question":
             return False
         index = source["question_index"]
-        if type(index) is not int or index < 0:
+        if (any(not isinstance(source[key], str) or not 0 < len(source[key]) <= 512
+                for key in ("call_id", "message_id"))
+                or not isinstance(title, str) or not title or not isinstance(approve_option, str) or not approve_option
+                or type(index) is not int or index < 0):
             return False
         calls, acknowledgments, replies = [], [], []
         for position, event in enumerate(records):
@@ -329,23 +332,203 @@ def parse_codex_question(records, source, title, approve_option):
                 replies.append((position, item))
         if len(calls) != 1 or len(acknowledgments) != 1 or len(replies) != 1:
             return False
+        if any(any(records[position].get(key, False) is not False for key in ("isMeta", "isSidechain"))
+               for position, _ in (calls[0], acknowledgments[0], replies[0])):
+            return False
         call = calls[0][1]
         if call.get("name") != "request_user_input_async" or call.get("namespace") not in (None, "functions"):
             return False
-        if not calls[0][0] < acknowledgments[0][0] < replies[0][0] or _json(acknowledgments[0][1]["output"]) != {"accepted": True}:
+        acknowledgment = _json(acknowledgments[0][1]["output"])
+        if (not calls[0][0] < acknowledgments[0][0] < replies[0][0]
+                or not isinstance(acknowledgment, dict) or set(acknowledgment) != {"accepted"}
+                or acknowledgment["accepted"] is not True):
             return False
         question = _json(call["arguments"])["questions"][index]
-        if question.get("title") != title or approve_option not in question.get("options", []):
+        options = question.get("options")
+        if (question.get("title") != title or not isinstance(options, list) or not options
+                or any(not isinstance(option, str) or not option for option in options)
+                or len(set(options)) != len(options) or approve_option not in options):
             return False
         text = _text(replies[0][1].get("content"))
         match = re.fullmatch(r"<send_user_message_question_reply>\s*([\s\S]+?)\s*</send_user_message_question_reply>", text or "")
         if not match:
             return False
-        answers = [row for row in _json(match.group(1)) if
-                   _json(row.get("questionItemId", "null")) == ["request_user_input_async", source["call_id"], index]]
+        rows = _json(match.group(1))
+        if (not isinstance(rows, list) or not rows or len(rows) > 3
+                or any(not isinstance(row, dict) or set(row) != {"questionItemId", "question", "answer"} for row in rows)):
+            return False
+        answers = [row for row in rows if
+                   _json(row["questionItemId"]) == ["request_user_input_async", source["call_id"], index]
+                   and type(_json(row["questionItemId"])[-1]) is int]
         return len(answers) == 1 and answers[0].get("question") == title and answers[0].get("answer") == approve_option
     except (ValueError, TypeError, KeyError, AttributeError, IndexError):
         return False
+
+
+def observe_codex_question(binding, message):
+    """Read an exact question-to-reply window from an already admitted source.
+
+    Enrollment alone is not authentication. The caller must bind this source to
+    its native actor. No peer transcript, sender assertion or delivery claim is
+    accepted here. The returned decision records prose, not action authority.
+    """
+    import native_observations as native
+    from datetime import datetime
+
+    question = message["question"]
+    fields = {"offset", "length", "sha256", "interval_sha256", "call_id", "message_id", "question_index", "title"}
+    if (not isinstance(question, dict) or set(question) != fields
+            or binding["producer"]["client"] != "codex"
+            or type(question["offset"]) is not int or question["offset"] < 0
+            or type(question["length"]) is not int or not 0 < question["length"] <= native.Limits().payload_bytes
+            or any(not isinstance(question[key], str) or not re.fullmatch(r"[0-9a-f]{64}", question[key])
+                   for key in ("sha256", "interval_sha256"))
+            or question["offset"] + question["length"] > message["offset"]):
+        raise ValueError("resume question requires an exact earlier native call locator")
+    length = message["offset"] + message["length"] - question["offset"]
+    if not 0 < length <= MAX_TRANSCRIPT_BYTES:
+        raise ValueError("resume question/reply interval exceeds bounded native coverage")
+    stream, info = native._open(binding["path"], binding)
+    with stream:
+        native._header(stream, binding, info.st_size)
+        identity = (binding["device"], binding["inode"])
+        if question["offset"] and native._stable_read(stream, binding["path"], question["offset"] - 1, 1,
+                identity, info.st_size) != b"\n":
+            raise ValueError("resume question locator is not a native record boundary")
+        raw = native._stable_read(stream, binding["path"], question["offset"], length, identity, info.st_size)
+    call_raw, reply_raw = raw[:question["length"]], raw[-message["length"]:]
+    if (hashlib.sha256(raw).hexdigest() != question["interval_sha256"]
+            or hashlib.sha256(call_raw).hexdigest() != question["sha256"]
+            or hashlib.sha256(reply_raw).hexdigest() != message["sha256"]
+            or any(not part.endswith(b"\n") or part.count(b"\n") != 1 for part in (call_raw, reply_raw))):
+        raise ValueError("resume question or reply bytes/framing changed")
+    lines = raw.splitlines(keepends=True)
+    if len(lines) > 16384:
+        raise ValueError("resume question/reply interval exceeds native record bound")
+    records = [native._json(line) for line in lines]
+    if any(not isinstance(row, dict) for row in records):
+        raise ValueError("resume question interval contains a non-record")
+    source = {"kind": "native-question", **{key: question[key] for key in ("call_id", "message_id", "question_index")}}
+    if (records[0].get("payload", {}).get("call_id") != source["call_id"]
+            or records[-1].get("payload", {}).get("id") != source["message_id"]
+            or not parse_codex_question(records, source, question["title"], message["excerpt"])):
+        raise ValueError("resume answer does not bind the exact native question and selected option")
+    selected = [i for i, row in enumerate(records) if row.get("type") == "response_item"
+                and (row.get("payload", {}).get("call_id") == source["call_id"] or i == len(records) - 1)]
+    times, locators, offset = [], [], question["offset"]
+    for index, (line, row) in enumerate(zip(lines, records)):
+        if index in selected:
+            digest = hashlib.sha256(line).hexdigest()
+            # The existing adapter checks any explicit thread/session identity;
+            # selected native call/output/user rows must not cross sessions.
+            events = native._events(row, binding, offset, len(line), digest, index)
+            if not events:
+                raise ValueError("resume question source has no native event")
+            moment = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+            if moment.tzinfo is None:
+                raise ValueError("resume question source timestamp is not timezone aware")
+            times.append(moment)
+            locators.append({"offset": offset, "length": len(line), "sha256": digest})
+        offset += len(line)
+    if times != sorted(times):
+        raise ValueError("resume question chronology is inconsistent")
+    actual = _json(records[0]["payload"]["arguments"])["questions"][question["question_index"]]
+    return {"source": source, "question": actual, "answer": message["excerpt"],
+            "records": locators, "interval_sha256": hashlib.sha256(raw).hexdigest(),
+            "native_session_id": binding["producer"]["root_session_id"], "authority_granted": False}
+
+
+def _delegation_record(binding, locator):
+    """Read one exact record from the recipient's admitted native source."""
+    import native_observations as native
+    if (not isinstance(locator, dict) or set(locator) != {"offset", "length", "sha256"}
+            or type(locator["offset"]) is not int or locator["offset"] < 0
+            or type(locator["length"]) is not int or not 0 < locator["length"] <= native.Limits().payload_bytes
+            or not isinstance(locator["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", locator["sha256"])):
+        raise ValueError("delegation requires a bounded exact recipient native locator")
+    stream, info = native._open(binding["path"], binding)
+    with stream:
+        native._header(stream, binding, info.st_size)
+        identity = (binding["device"], binding["inode"])
+        if locator["offset"] and native._stable_read(stream, binding["path"], locator["offset"] - 1, 1,
+                identity, info.st_size) != b"\n":
+            raise ValueError("delegation locator is not a native record boundary")
+        raw = native._stable_read(stream, binding["path"], locator["offset"], locator["length"], identity, info.st_size)
+    if hashlib.sha256(raw).hexdigest() != locator["sha256"] or not raw.endswith(b"\n") or raw.count(b"\n") != 1:
+        raise ValueError("delegation source bytes or framing changed")
+    row = native._json(raw)
+    if (not isinstance(row, dict) or any(row.get(key, False) is not False for key in ("isMeta", "isSidechain"))):
+        raise ValueError("delegation source is not a root native record")
+    return row
+
+
+def observe_codex_resume_delegation(binding, spec, scope):
+    """Observe a host-delivered pointer to human evidence, never permission.
+
+    The host's two native receiving records bind source and recipient threads.
+    Assistant prose, forwarded user text and dispatch acknowledgments alone are
+    insufficient. The run owner independently re-reads the human question proof.
+    """
+    import uuid
+    if (binding["producer"]["client"] != "codex" or not isinstance(spec, dict)
+            or set(spec) != {"receipt", "completion"} or not isinstance(scope, dict)):
+        raise ValueError("resume delegation requires the exact recipient-native record pair")
+    receipt = _delegation_record(binding, spec["receipt"])
+    completion = _delegation_record(binding, spec["completion"])
+    value, completed = receipt.get("payload", {}), completion.get("payload", {})
+    metadata = receipt.get("metadata", {})
+    if not all(isinstance(item, dict) for item in (value, completed, metadata)):
+        raise ValueError("resume delegation native payload is malformed")
+    routed = metadata.get("sender_user_messages", {})
+    internal = value.get("internal_chat_message_metadata_passthrough", {})
+    if not isinstance(routed, dict) or not isinstance(internal, dict):
+        raise ValueError("resume delegation host identity link is malformed")
+    message_id = value.get("id")
+    turn_id = internal.get("turn_id")
+    if (receipt.get("type") != "response_item" or value.get("type") != "function_call_output"
+            or value.get("namespace") != "codex_app" or value.get("name") != "send_message_to_thread"
+            or "call_id" in value or metadata.get("client_authored") is not False
+            or not isinstance(message_id, str) or not 0 < len(message_id) <= 512
+            or not isinstance(turn_id, str) or not 0 < len(turn_id) <= 512
+            or routed.get("receiver_message_id") != message_id or routed.get("receiver_turn_id") != turn_id
+            or completion.get("type") != "event_msg" or completed.get("type") != "item_completed"
+            or completed.get("thread_id") != binding["producer"]["thread_id"] or completed.get("turn_id") != turn_id
+            or spec["receipt"]["offset"] + spec["receipt"]["length"] > spec["completion"]["offset"]):
+        raise ValueError("resume delegation does not bind an actual recipient native delivery")
+    item = completed.get("item", {})
+    if (not isinstance(item, dict) or item.get("type") != "FunctionCallOutput" or item.get("id") != message_id
+            or any(item.get(key) != value.get(key) for key in ("name", "namespace", "output"))):
+        raise ValueError("resume delegation receiving records disagree")
+    if not isinstance(value.get("output"), str):
+        raise ValueError("resume delegation host output must be text")
+    for row in (receipt, completion):
+        for value in (row, row.get("payload", {})):
+            if any(key in value and value[key] != binding["producer"]["thread_id"] for key in ("thread_id", "session_id")):
+                raise ValueError("resume delegation record names a different native recipient")
+    value = receipt["payload"]
+    match = re.fullmatch(r"<codex_delegation>\n  <source_thread_id>([^<]+)</source_thread_id>\n  <input>([\s\S]*)</input>\n</codex_delegation>", value.get("output", ""))
+    if not match:
+        raise ValueError("resume delegation has no qualified host routing envelope")
+    uuid.UUID(match[1])
+    try:
+        envelope = _json(match[2])
+    except ValueError as exc:
+        raise ValueError("resume delegation contains prose rather than an exact human-evidence pointer") from exc
+    if not isinstance(envelope, dict) or set(envelope) != {"owner_resume"}:
+        raise ValueError("resume delegation must carry the exact owner-resume evidence pointer")
+    pointer = envelope["owner_resume"]
+    if (not isinstance(pointer, dict) or set(pointer) != {"scope", "source_native_payload", "user_message"}
+            or json.dumps(pointer["scope"], sort_keys=True, allow_nan=False) != json.dumps(scope, sort_keys=True, allow_nan=False)
+            or not isinstance(pointer["source_native_payload"], dict)
+            or set(pointer["source_native_payload"]) != {"session_id", "transcript_path"}
+            or pointer["source_native_payload"]["session_id"] != match[1]
+            or match[1] == binding["producer"]["thread_id"]
+            or not isinstance(pointer["user_message"], dict) or "question" not in pointer["user_message"]
+            or "delegation" in pointer["user_message"]):
+        raise ValueError("resume delegation does not bind this run, recipient and human source")
+    return {"pointer": pointer, "message_id": message_id, "source_thread_id": match[1],
+            "recipient_thread_id": binding["producer"]["thread_id"], "native_timestamp": receipt.get("timestamp"),
+            "completed_at": completion.get("timestamp"), "records": spec, "authority_granted": False}
 
 
 def _registered_json(context, artifact_id):

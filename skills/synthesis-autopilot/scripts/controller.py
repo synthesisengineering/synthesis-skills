@@ -281,10 +281,15 @@ def validate_request(value) -> Request:
             else:
                 raise ValueError("unsupported record kind")
         elif operation == "checkpoint":
-            _object(data, {"reason", "include_pm"})
+            _object(data, {"reason", "include_pm"}, {"inventory_policy_id"})
             _text(data["reason"], "checkpoint reason")
             if type(data["include_pm"]) is not bool:
                 raise ValueError("include_pm must be boolean")
+            if "inventory_policy_id" in data:
+                if not data["include_pm"]:
+                    raise ValueError("inventory policy requires an execution PM checkpoint")
+                if data["inventory_policy_id"] is not None:
+                    _text(data["inventory_policy_id"], "inventory policy input ID", 256)
         elif operation == "explain":
             _object(data, {"view"}, {"diagnostic_id"})
             if data["view"] not in {"run", "capabilities", "coverage", "diagnostic"}:
@@ -884,15 +889,25 @@ def _profile_obligation_reducer(state, prepared, context):
 
 
 def _prepare_checkpoint(context, payload):
-    _object(payload, {"reason", "include_pm"})
+    _object(payload, {"reason", "include_pm"}, {"inventory_policy_id"})
     _text(payload["reason"], "checkpoint reason")
     if type(payload["include_pm"]) is not bool:
         raise ValueError("checkpoint include_pm must be boolean")
+    if "inventory_policy_id" in payload and not payload["include_pm"]:
+        raise ValueError("inventory policy requires an execution PM checkpoint")
     proof = read_admission_observation(context)
     state, project = context["state"], Path(context["project"])
+    import execution_checkpoint
+    previous = state.get("extensions", {}).get("controller", {}).get("checkpoint", {})
+    policy_id = payload.get("inventory_policy_id", previous.get("inventory_policy_id"))
+    # Retain the explicit selection even when this checkpoint omits its PM
+    # proof. Every consumer re-reads the immutable input; null restores defaults.
+    if policy_id is not None:
+        execution_checkpoint._policy(context, policy_id)
     data = {"reason": payload["reason"], "at": context["now"], "revision": state["revision"],
         "missing_or_changed_artifacts": sorted(set(state["artifacts"]) - set(context["artifacts"])),
-        "waits": deepcopy(state["waits"]), "effects": deepcopy(state["effects"]), "pm": None}
+        "waits": deepcopy(state["waits"]), "effects": deepcopy(state["effects"]), "pm": None,
+        "inventory_policy_id": policy_id}
     if payload["include_pm"]:
         import project_state
         paths = [project / "CONTEXT.md", project / project_state.STATE_FILE]
@@ -909,10 +924,9 @@ def _prepare_checkpoint(context, payload):
         project_state.build_operational_state(project, project_id=state["project_id"],
             **{field: adopted[field] for field in fields}, session_id=proof["session_uuid"],
             source_heads=adopted.get("source_heads"))
-        import execution_checkpoint
-        data["pm"] = execution_checkpoint.observe_execution_basis(context)
+        data["pm"] = execution_checkpoint.observe_execution_basis(context, policy_id)
     import profile_evidence
-    data["basis"] = profile_evidence.checkpoint_basis(context)
+    data["basis"] = profile_evidence.checkpoint_basis(context, inventory_policy_id=policy_id)
     import recovery_capsule
     data["recovery_capsule"] = recovery_capsule.capture(context)
     return data

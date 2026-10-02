@@ -115,6 +115,37 @@ def drain(engine, world, state):
     pytest.fail("finite replay drain exhausted")
 
 
+def test_explicit_replay_recovers_failed_snapshot_without_erasing_original_failure(
+    bridge, engine, world, monkeypatch
+):
+    """The supported repair is explicit, preserves the consumed interval and journal."""
+    from test_observation_bridge import reconciliation_spec
+    state = reconcile(engine, world, broken_history(engine, world, monkeypatch))
+    original_cursor = deepcopy(src(state)['cursor'])
+    original_frontier = src(state)['replay']['frontier']
+    append(world, record('custom-title', world['actor']['native_payload']['session_id'],
+                         'synthetic source growth after replay snapshot'))
+    failed = observe(engine, world, state)
+    assert src(failed)['replay']['status'] == 'failed'
+    assert 'source changed during the bounded snapshot' in src(failed)['replay']['failure']['detail']
+    failure_path = engine._home(world['project'], failed['run_id']) / 'events' / f"{failed['revision']:012d}.json"
+    failure_bytes = failure_path.read_bytes()
+    unchanged = reconcile(engine, world, failed)
+    assert src(unchanged)['replay'] == src(failed)['replay']
+    restarted = reconcile(engine, world, unchanged,
+                          reconciliation_spec(src(unchanged), mode='replay'))
+    assert src(restarted)['cursor'] == original_cursor
+    assert src(restarted)['replay']['frontier'] == original_frontier
+    assert src(restarted)['replay']['original_offset'] == original_cursor['enrolled_from']
+    completed = drain(engine, world, restarted)
+    assert src(completed)['replay']['status'] == 'complete'
+    assert src(completed)['cursor']['offset'] == original_frontier
+    assert src(completed)['replay']['pre_enrollment'] == 'UNKNOWN'
+    assert src(completed)['replay']['authority_granted'] is False
+    assert failure_path.read_bytes() == failure_bytes
+    assert completed['effects'] == failed['effects']
+
+
 @pytest.mark.parametrize("steps", [0, 1, 2, 3])
 def test_cold_journal_resume_and_repeated_operation_are_idempotent(
     bridge, engine, world, monkeypatch, steps

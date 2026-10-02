@@ -27,17 +27,24 @@ MAX_SCAN_ENTRIES = 250000
 MAX_SCAN_BYTES = 16 * 1024 * 1024 * 1024
 MAX_SCAN_SECONDS = 120.0
 MAX_SCAN_DEPTH = 128
+# Larger observations require an explicitly selected immutable input. These
+# ceilings bound supported policy values; they do not alter the defaults above.
+POLICY_CEILINGS = {'entries': 4000000, 'bytes': 64 * 1024 * 1024 * 1024,
+                   'seconds': 300, 'depth': 128}
 
 
 class _ScanBudget:
-    def __init__(self):
-        self.deadline = time.monotonic() + MAX_SCAN_SECONDS
+    def __init__(self, policy=None):
+        self.limits = (policy['limits'] if policy else
+                       {'entries': MAX_SCAN_ENTRIES, 'bytes': MAX_SCAN_BYTES,
+                        'seconds': MAX_SCAN_SECONDS, 'depth': MAX_SCAN_DEPTH})
+        self.deadline = time.monotonic() + self.limits['seconds']
         self.entries = self.bytes = 0
 
     def check(self, *, entries=0, size=0):
         self.entries += entries
         self.bytes += size
-        if (self.entries > MAX_SCAN_ENTRIES or self.bytes > MAX_SCAN_BYTES
+        if (self.entries > self.limits['entries'] or self.bytes > self.limits['bytes']
                 or time.monotonic() > self.deadline):
             raise ValueError('execution inventory resource/time budget exhausted; no partial proof')
 
@@ -47,7 +54,7 @@ def _signature(info):
 
 
 def _commit(hasher, value):
-    raw = json.dumps(value, ensure_ascii=True, separators=(',', ':')).encode()
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(',', ':')).encode()
     hasher.update(len(raw).to_bytes(8, 'big'))
     hasher.update(raw)
 
@@ -59,12 +66,14 @@ def _walk(project, budget, *, metadata):
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
 
     def visit(fd, relative, expected, depth):
-        if depth > MAX_SCAN_DEPTH:
+        if depth > budget.limits['depth']:
             raise ValueError('execution inventory directory depth budget exhausted')
         before = os.fstat(fd)
         if _signature(before) != _signature(expected):
             raise ValueError('execution directory changed before observation')
         _commit(metadata, [relative, _signature(before)])
+        if relative:
+            yield relative, before, fd, None
         names = []
         with os.scandir(fd) as entries:
             for entry in entries:
@@ -86,7 +95,8 @@ def _walk(project, budget, *, metadata):
                 _commit(metadata, [child, _signature(info)])
                 yield child, info, fd, name
             else:
-                raise ValueError('execution inventory requires regular files and directories: ' + child)
+                _commit(metadata, [child, _signature(info), info.st_rdev])
+                yield child, info, fd, name
         if _signature(os.fstat(fd)) != _signature(before):
             raise ValueError('execution directory changed during observation')
 
@@ -129,6 +139,48 @@ def _stream_digest(directory_fd, name, expected, budget):
 
 def _hash(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def _custody(directory_fd, name, info):
+    """Observe a retained special member, never open it or follow its target."""
+    kinds = ((stat.S_ISLNK, 'symlink'), (stat.S_ISFIFO, 'fifo'),
+             (stat.S_ISSOCK, 'socket'), (stat.S_ISCHR, 'character-device'),
+             (stat.S_ISBLK, 'block-device'))
+    kind = next((label for predicate, label in kinds if predicate(info.st_mode)), None)
+    if kind is None:
+        raise ValueError('execution inventory has an unsupported member type')
+    target = os.readlink(os.fsencode(name), dir_fd=directory_fd) if kind == 'symlink' else b''
+    after = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    if _signature(after) != _signature(info) or after.st_rdev != info.st_rdev:
+        raise ValueError('execution custody member changed during observation')
+    return [kind, list(_signature(info)), info.st_rdev, _hash(target)]
+
+
+def _policy(context, identity):
+    """Resolve only a journal-owned immutable JSON input, never an ambient flag."""
+    if not isinstance(identity, str) or not identity:
+        raise ValueError('execution inventory policy needs an immutable input ID')
+    state, project = context['state'], Path(context['project'])
+    record = state['artifacts'].get(identity, {})
+    if record.get('managed_input') is not True:
+        raise ValueError('execution inventory policy is not a managed immutable input')
+    import run_state
+    path = safe_path(project / record['path'], project)
+    if path != run_state._home(project, state['run_id']) / 'inputs' / (record['digest'] + '.json'):
+        raise ValueError('execution inventory policy is not digest-addressed')
+    raw = _read(path)
+    if _hash(raw) != record['digest']:
+        raise ValueError('execution inventory policy bytes changed')
+    value = json.loads(raw)
+    if (not isinstance(value, dict) or set(value) != {'schema_version', 'kind', 'limits'}
+            or type(value['schema_version']) is not int or value['schema_version'] != 1
+            or value['kind'] != 'execution-inventory-policy'
+            or not isinstance(value['limits'], dict) or set(value['limits']) != set(POLICY_CEILINGS)
+            or any(type(value['limits'][key]) is not int or not 0 < value['limits'][key] <= ceiling
+                   for key, ceiling in POLICY_CEILINGS.items())):
+        raise ValueError('execution inventory policy is malformed or exceeds supported bounds')
+    return {'input_id': identity, 'path': record['path'], 'digest': record['digest'],
+            'limits': value['limits']}
 
 
 def _read(path):
@@ -187,9 +239,9 @@ def _snapshot_derivation(run_state, path, value):
     return {str(item): _hash(content) for item, content in rendered.items()}
 
 
-def _inventory(context):
+def _inventory(context, policy=None):
     import run_state
-    budget = _ScanBudget()
+    budget = _ScanBudget(policy)
     state, project = context['state'], Path(context['project'])
     home = run_state._home(project, state['run_id'])
     events, derived = [], {}
@@ -228,12 +280,28 @@ def _inventory(context):
                 raise ValueError('immutable execution input changed')
             inputs[str(path.relative_to(project))] = _hash(raw)
     records = {}
-    body = hashlib.sha256(b'synthesis-execution-files-v2\0')
-    file_count = byte_count = 0
+    body = hashlib.sha256(b'synthesis-execution-files-v3\0')
+    _commit(body, ['inventory-policy', policy])
+    file_count = byte_count = directory_count = custody_count = 0
+    # These directories are represented by exact owned journal/input paths.
+    # Their membership may advance only with those verified derivations.
+    owned_directories = {parent for item in [*derived, *(str(project / item) for item in inputs)]
+                         for parent in Path(item).parents if parent.is_relative_to(project)}
     seen_derived = set()
     metadata = hashlib.sha256()
     for relative, info, fd, name in _walk(project, budget, metadata=metadata):
         path = project / relative
+        if stat.S_ISDIR(info.st_mode):
+            if path not in owned_directories:
+                _commit(body, [relative, 'directory', stat.S_IMODE(info.st_mode)])
+                directory_count += 1
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            if str(path) in derived or relative in inputs or path == plan:
+                raise ValueError('execution input or projection requires a regular file')
+            _commit(body, [relative, 'custody-only', _custody(fd, name, info)])
+            custody_count += 1
+            continue
         digest = _stream_digest(fd, name, info, budget)
         if str(path) in derived:
             if digest != derived[str(path)]:
@@ -253,7 +321,7 @@ def _inventory(context):
         if relative in ('CONTEXT.md', project_state.STATE_FILE):
             records[relative] = digest
         if relative != project_state.STATE_FILE:
-            _commit(body, [relative, digest, size])
+            _commit(body, [relative, 'regular', digest, size])
             file_count += 1
             byte_count += size
     if seen_derived != set(derived):
@@ -265,12 +333,13 @@ def _inventory(context):
         pass
     if final_metadata.digest() != metadata.digest():
         raise ValueError('execution inventory changed during its complete observation')
-    files = _file_commitment({'sha256': body.hexdigest(), 'files': file_count, 'bytes': byte_count}, records)
+    files = _file_commitment({'sha256': body.hexdigest(), 'files': file_count, 'bytes': byte_count,
+                             'directories': directory_count, 'custody_only': custody_count}, records)
     return files, inputs, events
 
 
 def _file_commitment(body, records):
-    value = {'schema_version': 2, 'algorithm': 'sha256-framed-dfs-v1',
+    value = {'schema_version': 3, 'algorithm': 'sha256-framed-typed-dfs-v1',
              'body': body, 'records': records}
     return {**value, 'sha256': _hash(json.dumps(value, sort_keys=True, separators=(',', ':')).encode())}
 
@@ -279,8 +348,8 @@ def _validate_file_commitment(value):
     if not isinstance(value, dict) or set(value) != {'schema_version', 'algorithm', 'body', 'records', 'sha256'}:
         raise ValueError('execution file commitment is malformed')
     body, records = value['body'], value['records']
-    if (not isinstance(body, dict) or set(body) != {'sha256', 'files', 'bytes'}
-            or any(type(body[key]) is not int or body[key] < 0 for key in ('files', 'bytes'))
+    if (not isinstance(body, dict) or set(body) != {'sha256', 'files', 'bytes', 'directories', 'custody_only'}
+            or any(type(body[key]) is not int or body[key] < 0 for key in ('files', 'bytes', 'directories', 'custody_only'))
             or not isinstance(records, dict) or set(records) != {'CONTEXT.md', project_state.STATE_FILE}):
         raise ValueError('execution file commitment fields are malformed')
     if any(not isinstance(item, str) or len(item) != 64 or any(c not in '0123456789abcdef' for c in item)
@@ -295,7 +364,7 @@ def _without_pm_state(value):
     return {'body': value['body'], 'context': value['records']['CONTEXT.md']}
 
 
-def _current(context):
+def _current(context, policy=None):
     state, project = context['state'], Path(context['project'])
     proof = _proof(context)
     _read(project / project_state.STATE_FILE)
@@ -316,18 +385,19 @@ def _current(context):
     expected = project_state.render_context_current_state(project, adopted)
     if context_text.count('<!-- synthesis-current-state:start -->') != 1 or context_text.count('<!-- synthesis-current-state:end -->') != 1 or expected not in context_text:
         raise ValueError('compiled PM context does not derive from its structured owner')
-    files, inputs, events = _inventory(context)
+    files, inputs, events = _inventory(context, policy)
     return {'schema_version': 2, 'scope': SCOPE, 'authority_granted': False,
         'bindings': {key: state[key] for key in ('run_id', 'contract_digest', 'profile_digest')},
         'owner': proof, 'project_files': files, 'immutable_inputs': inputs,
         'journal_head': {'revision': events[-1]['revision'], 'digest': events[-1]['digest']},
-        'pm_state': adopted}, events
+        'pm_state': adopted, 'inventory_policy': policy}, events
 
 
-def observe_execution_basis(context):
+def observe_execution_basis(context, inventory_policy_id=None):
     """Capture after the PM builder, inside the admitted checkpoint operation."""
     try:
-        value, _events = _current(context)
+        policy = _policy(context, inventory_policy_id) if inventory_policy_id is not None else None
+        value, _events = _current(context, policy)
         issues = project_state.semantic_issues(Path(context['project']))
     except (project_state.ProjectStateError, subprocess.SubprocessError) as exc:
         raise ValueError(str(exc)) from exc
@@ -336,12 +406,17 @@ def observe_execution_basis(context):
     return value
 
 
-def validate_execution_basis(context, receipt):
+def _validated_current(context, receipt):
     """Verify current bytes and journal descent, including an explicit successor."""
     try:
         if not isinstance(receipt, dict) or receipt.get('scope') != SCOPE or receipt.get('schema_version') != 2 or receipt.get('authority_granted') is not False:
             raise ValueError('invalid execution basis scope')
-        current, events = _current(context)
+        policy = receipt.get('inventory_policy')
+        if policy is not None:
+            if (not isinstance(policy, dict) or _policy(context, policy.get('input_id')) != policy
+                    or receipt.get('immutable_inputs', {}).get(policy['path']) != policy['digest']):
+                raise ValueError('execution inventory policy does not bind the captured immutable input')
+        current, events = _current(context, policy)
         for key in ('bindings', 'owner'):
             if current[key] != receipt.get(key):
                 raise ValueError('execution basis owner or immutable binding changed')
@@ -374,17 +449,22 @@ def validate_execution_basis(context, receipt):
                 source_heads=current['pm_state']['source_heads'])
             if status != 'PASS' or project_state.semantic_issues(project):
                 raise ValueError('terminal whole-project checkpoint is missing or stale: ' + '; '.join(issues))
-        return SCOPE, []
+        return SCOPE, [], current
     except (ValueError, OSError, KeyError, TypeError, project_state.ProjectStateError, subprocess.SubprocessError) as exc:
-        return 'FAIL', [str(exc)]
+        return 'FAIL', [str(exc)], None
+
+
+def validate_execution_basis(context, receipt):
+    """Verify current bytes and journal descent under the captured scan policy."""
+    status, issues, _current_value = _validated_current(context, receipt)
+    return status, issues
 
 
 def current_proof(context, receipt):
     """Name the proof that is current; historical execution bytes are not clean."""
-    status, issues = validate_execution_basis(context, receipt)
+    status, issues, current = _validated_current(context, receipt)
     if status != SCOPE:
         return {'scope': 'UNRESOLVED', 'issues': issues, 'authority_granted': False}
-    current, _events = _current(context)
     result = {'scope': SCOPE, 'bindings': current['bindings'], 'journal_head': current['journal_head'],
               'authority_granted': False, 'issues': []}
     if current['project_files'] != receipt['project_files']:

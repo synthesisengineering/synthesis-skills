@@ -220,6 +220,12 @@ directory has one matching candidate. Multiple versions require an explicit choi
 The recorder refuses a changed spec, duplicate/missing/reordered rows, unknown
 option values, mismatched displayed text and malformed bindings before writing.
 
+Notes use LF line endings and omit trailing whitespace on each line, matching
+common clipboard and editor behavior. Leading indentation inside the note, word
+spacing and paragraph breaks remain significant. This tolerance applies only to
+notes; decisions, row labels and the current-spec binding remain exact. A refused
+paste names the affected row and field without repeating its note contents.
+
 Schema-2 records retain `packet`, `ruled_on`, `decided`, `total`, and per-row
 `id`, `label`, `choice_value`, `choice_label`, recommendation/bulk status and
 `note`. They add the complete canonical spec SHA-256, actual filed-spec byte

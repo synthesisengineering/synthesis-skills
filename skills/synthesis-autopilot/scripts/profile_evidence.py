@@ -56,19 +56,25 @@ def _current_hashes(context, identities):
     return _current_artifacts(context, identities)
 
 
-def checkpoint_basis(context):
+_CURRENT_POLICY = object()
+
+
+def checkpoint_basis(context, *, inventory_policy_id=_CURRENT_POLICY):
     """Stable task/recovery facts; observer input specs are journal bookkeeping."""
-    from execution_checkpoint import _inventory
+    from execution_checkpoint import _inventory, _policy
     state, project = context['state'], Path(context['project'])
     flow = state.get('extensions', {}).get('workflow', {})
     identities = {key for key, row in state['artifacts'].items() if not row.get('managed_input')}
     present = identities & set(context['artifacts'])
-    files, _inputs, _events = _inventory(context)
+    checkpoint = state.get('extensions', {}).get('controller', {}).get('checkpoint', {})
+    if inventory_policy_id is _CURRENT_POLICY:
+        inventory_policy_id = checkpoint.get('inventory_policy_id')
+    policy = _policy(context, inventory_policy_id) if inventory_policy_id is not None else None
+    files, _inputs, _events = _inventory(context, policy)
     records = deepcopy(files['records'])
     # A normal post-terminal PM build can explicitly succeed the execution
     # proof. The original source observation remains reproducible only after
     # that current whole-project owner proves the exact successor.
-    checkpoint = state.get('extensions', {}).get('controller', {}).get('checkpoint', {})
     pm = checkpoint.get('pm')
     if state['status'] == 'completed' and isinstance(pm, dict):
         from execution_checkpoint import current_proof

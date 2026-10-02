@@ -499,8 +499,8 @@ def _command_binding(project, state, actor, command, payload):
     return proof
 
 
-def _resume_user_message(actor, proof, spec, released_at):
-    """Observe a native root-user paragraph; never manufacture an approval.
+def _resume_user_message(actor, proof, spec, released_at, *, resume_scope=None):
+    """Observe native root-user text or a bound UI answer; never manufacture approval.
 
     Source/type/currentness are mechanical facts. Interpreting the user's prose
     remains the admitted agent's responsibility. This observation cannot clear
@@ -530,7 +530,32 @@ def _resume_user_message(actor, proof, spec, released_at):
 
         def handle_comment(self, data):
             self.seen = True
-    _fields(spec, {"offset", "length", "sha256", "excerpt"}, {"offset", "length", "sha256", "excerpt"})
+    if isinstance(spec, dict) and set(spec) == {"delegation"}:
+        from native_review import observe_codex_resume_delegation
+        client, identity = observer_native_identity(actor["native_payload"])
+        if client != "codex" or (client, identity) != (proof["client"], proof["native_session_id"]):
+            raise RunStateError("resume delegation requires this exact native Codex recipient")
+        binding, _ = native.enroll_source(actor["native_payload"]["transcript_path"], client=client,
+            expected_root_session_id=identity, expected_thread_id=identity, source_handle="owner-resume", mode="native")
+        delivery = observe_codex_resume_delegation(binding, spec["delegation"], resume_scope)
+        source = delivery["pointer"]["source_native_payload"]
+        try:
+            source_client, source_id = observer_native_identity(source)
+        except (RuntimeError, OSError, TypeError, AttributeError) as exc:
+            raise RunStateError("resume delegation human source cannot be authenticated") from exc
+        if source_client != "codex" or source_id != delivery["source_thread_id"]:
+            raise RunStateError("resume delegation human source changed native identity")
+        message = _resume_user_message({"native_payload": source},
+            {"client": source_client, "native_session_id": source_id},
+            delivery["pointer"]["user_message"], released_at)
+        if not (_time(message["native_timestamp"]) <= _time(delivery["native_timestamp"])
+                <= _time(delivery["completed_at"]) <= _time(_now())):
+            raise RunStateError("resume delegation must follow the human answer and not be future dated")
+        return {**deepcopy(spec), "path": binding["path"], "generation": binding["generation"],
+            "native_timestamp": message["native_timestamp"], "human_source": message,
+            "delivery": delivery, "scope": "Observed native delivery of exact human evidence; no permission transfer or action grant",
+            "authority_granted": False}
+    _fields(spec, {"offset", "length", "sha256", "excerpt", "question"}, {"offset", "length", "sha256", "excerpt"})
     if (type(spec["offset"]) is not int or spec["offset"] < 0 or type(spec["length"]) is not int
             or not 0 < spec["length"] <= native.Limits().payload_bytes
             or not isinstance(spec["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", spec["sha256"])
@@ -583,6 +608,16 @@ def _resume_user_message(actor, proof, spec, released_at):
         raise RunStateError("native client has no qualified direct-user text reader for owner renewal")
     texts = [content] if isinstance(content, str) else [block["text"] for block in content or []
         if isinstance(block, dict) and block.get("type") in {"text", "input_text"} and isinstance(block.get("text"), str)]
+    if "question" in spec:
+        if client != "codex":
+            raise RunStateError("native client has no qualified asynchronous user-question reader")
+        from native_review import observe_codex_question
+        question = observe_codex_question(binding, spec)
+        return {**deepcopy(spec), "path": binding["path"], "generation": binding["generation"],
+            "native_timestamp": min(times).isoformat(), "event_ids": [event["event_id"] for event in events],
+            "decision": question,
+            "scope": "Native root-user answer to the exact question; interpretation is the admitted agent's recorded judgment",
+            "authority_granted": False}
     paragraphs = []
     for text in texts:
         if any(marker in text for marker in ("<hook_prompt", "<heartbeat", "<send_user_message_question_reply")):
@@ -669,7 +704,12 @@ def _resume_binding(project, state, actor, payload):
             or previous.client_ref != prior["native_ref"] or previous.project != state["project_id"]
             or previous.machine != state["owner"]["machine"]):
         raise RunStateError("previous exact native seat has no current terminal proof")
-    message = _resume_user_message(actor, state["owner"], payload["user_message"], previous.heartbeat)
+    resume_scope = {"run_id": state["run_id"], "project_id": state["project_id"],
+        "recipient_native_ref": state["owner"]["native_ref"],
+        **{key: deepcopy(payload[key]) for key in ("previous_owner", "basis_revision", "basis_digest", "plan_digest")},
+        "restart_wait": deepcopy(payload.get("restart_wait"))}
+    message = _resume_user_message(actor, state["owner"], payload["user_message"], previous.heartbeat,
+        resume_scope=resume_scope)
     restart_wait = payload.get("restart_wait")
     if restart_wait is not None:
         _fields(restart_wait, {"id", "sha256"}, {"id", "sha256"})
@@ -2763,7 +2803,10 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                     {**late_context, "actor": actor, "admission_observation": late_operation})()
             if updated["status"] != state["status"] or updated["terminal"] != state["terminal"]:
                 raise RunStateError("late custody cannot reopen or change the terminal outcome")
-        _command_binding(project, state, actor, command, payload)
+        final_proof = _command_binding(project, state, actor, command, payload)
+        if (command == "owner.resume" and getattr(final_proof, "_owner_resume_observation", None)
+                != getattr(proof, "_owner_resume_observation", None)):
+            raise RunStateError("owner renewal native observation changed before commit")
         if updated["owner"]["session_uuid"] != state["owner"]["session_uuid"]:
             _native_index_update(runtime_root, updated["owner"])
             _index_update(runtime_root, updated["owner"]["session_uuid"], run_id, _index_entry(project, updated, "pending"))

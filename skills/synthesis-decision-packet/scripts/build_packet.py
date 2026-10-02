@@ -1364,6 +1364,13 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 
   // ---- summary -----------------------------------------------------------
   function renderSummary() {
+    // Keep note text stable across clipboard/editor line-ending and trailing-
+    // whitespace transport. Indentation and spacing within a line still matter.
+    function normalizeNote(note) {
+      return note.replace(/\\r\\n?/g, "\\n").split("\\n").map(function (line) {
+        return line.trimEnd();
+      }).join("\\n").trim();
+    }
     var lines = [SPEC.title, "=".repeat(SPEC.title.length), ""];
     var decided = 0;
     SPEC.rows.forEach(function (r) {
@@ -1381,7 +1388,8 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
       }
       lines.push(r.id + "  " + r.label);
       lines.push("    -> " + mark);
-      if ((s.note || "").trim()) lines.push("    note: " + s.note.trim());
+      var note = normalizeNote(s.note || "");
+      if (note) lines.push("    note: " + note);
       lines.push("");
     });
     lines.push("Decided " + decided + " of " + SPEC.rows.length + ".");
@@ -1395,7 +1403,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
       schema_version: 2, spec_sha256: SPEC_DIGEST,
       selections: SPEC.rows.map(function (r) {
         var s = get(r.id);
-        return {id: r.id, choice: decisionOf(r), note: (s.note || "").trim(), bulk: s.bulk === true};
+        return {id: r.id, choice: decisionOf(r), note: normalizeNote(s.note || ""), bulk: s.bulk === true};
       }), storage_blocked: !persists
     }));
     document.getElementById("summary").value = lines.join("\\n");

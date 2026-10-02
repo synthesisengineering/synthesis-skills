@@ -255,10 +255,12 @@ def test_streaming_file_reader_preserves_race_and_partial_refusals(tmp_path, mon
 
 def test_special_file_never_blocks_inventory(engine, world):
     import os
-    state, _ = capture(engine, world)
     os.mkfifo(world['project'] / 'named-pipe')
-    with pytest.raises(ValueError, match='regular files'):
-        checkpoint._inventory(view(engine, world, state))
+    state, receipt = capture(engine, world)
+    assert receipt['project_files']['body']['custody_only'] == 1
+    assert checkpoint.validate_execution_basis(view(engine, world, state), receipt) == ('EXECUTION_BASIS', [])
+    (world['project'] / 'named-pipe').unlink()
+    assert checkpoint.validate_execution_basis(view(engine, world, state), receipt)[0] == 'FAIL'
 
 
 @pytest.mark.parametrize('size', [0, 1024, 256 * 1024])
