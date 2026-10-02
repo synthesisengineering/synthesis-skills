@@ -42,6 +42,8 @@ def _hermetic(monkeypatch):
     monkeypatch.setattr(ENGINE.platform, "node", lambda: "m1")
     for name in (*NATIVE_ENV_KEYS, "SYNTHESIS_PEER_REGISTRY"):
         monkeypatch.delenv(name, raising=False)
+    # No codex lane unless a test provides a runnable CLI (the codex_cli fixture).
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", "")
 
 
 def args(board: Path, **values):
@@ -249,7 +251,7 @@ def test_same_text_to_a_second_session_is_a_broadcast(world, monkeypatch) -> Non
 
 # --- codex lane -----------------------------------------------------------------------------
 
-def test_codex_queue_needs_a_receipt_for_that_thread(world, monkeypatch) -> None:
+def test_codex_queue_needs_a_receipt_for_that_thread(world, monkeypatch, codex_cli) -> None:
     codex = claim(world.board, "project-x", {"SYNTHESIS_CLIENT_SESSION_REF": "codex:0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e"}, monkeypatch, agent="OpenAI Codex")
     monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF")
     for key, value in SENDER_ENV.items():
@@ -499,7 +501,7 @@ def test_message_is_read_from_the_parsed_send_only() -> None:
     assert GATE.message_body("codex", {"command": nested}) == "from s1 (p): inner"
 
 
-def test_nested_send_passes_the_gate_end_to_end_with_a_receipt(world, monkeypatch) -> None:
+def test_nested_send_passes_the_gate_end_to_end_with_a_receipt(world, monkeypatch, codex_cli) -> None:
     codex = claim(world.board, "project-x", {"SYNTHESIS_CLIENT_SESSION_REF": "codex:0a0a0a0a-1b1b-4c1c-8d1d-2e2e2e2e2e2e"}, monkeypatch, agent="OpenAI Codex")
     monkeypatch.delenv("SYNTHESIS_CLIENT_SESSION_REF")
     for key, value in SENDER_ENV.items():
@@ -781,7 +783,7 @@ def observed_world(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('schema', [4, 5, 6])
 @pytest.mark.parametrize('lane', ['ccd', 'harness', 'codex'])
-def test_delivery_repair_real_resolve_receipt_gate_for_observed_machine(observed_world, tmp_path, monkeypatch, capsys, schema, lane):
+def test_delivery_repair_real_resolve_receipt_gate_for_observed_machine(observed_world, tmp_path, monkeypatch, capsys, schema, lane, codex_cli):
     board, registry, machine = observed_world
     target_env = TARGET_ENV if lane != 'codex' else {'SYNTHESIS_CLIENT_SESSION_REF': 'codex:' + TARGET_SID}
     target = claim(board, 'project-t', target_env, monkeypatch, machine='observed-host')

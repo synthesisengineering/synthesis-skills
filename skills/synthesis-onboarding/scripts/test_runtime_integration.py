@@ -35,6 +35,7 @@ GIT_PAYLOADS = {
     **{"skills/synthesis-project-management/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
        for name in ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
     "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py": (".synthesis/git-hooks/native_transcript_identity.py", 0o755),
+    "skills/synthesis-agent-conformance/scripts/client_binaries.py": (".synthesis/git-hooks/client_binaries.py", 0o755),
     "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
         (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
 }

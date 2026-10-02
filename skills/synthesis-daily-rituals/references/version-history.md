@@ -6,6 +6,13 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.45.0 — Connector evidence and partial source coverage
+
+v2.45.0 (2026-10-02): declared connector adapters connect recorded Slack reads
+and workspace document reads to the existing acquisition owners. Quiet coverage
+requires independent history and search controls; incomplete sources keep their
+previous watermarks while proven sources can advance.
+
 ## v2.44.0 — Executable acquisition and verified saved coverage
 
 v2.44.0 (2026-09-28): declared meeting and Slack transports connect the

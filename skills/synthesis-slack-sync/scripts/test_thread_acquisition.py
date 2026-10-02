@@ -103,3 +103,66 @@ def test_unmapped_channel_does_not_inherit_previous_id(tmp_path):
         "## #one (C123)\n#### Message (TS: 1790410000.000001)\n## #two\n#### Message (TS: 1790410001.000001)\n"
     )
     assert M.extract_threads(str(p))[1]["channel_id"] == "?"
+
+
+OLD = f"{int(START.timestamp()) - 500}.000000"
+
+
+def quiet(**overrides):
+    calls, args = adapters()
+    args["read_channel"] = lambda **kw: page([])
+    args["search_replies"] = lambda **kw: page([])
+    args["probe_newest"] = lambda **kw: calls.append(("probe", kw)) or {
+        "ok": True,
+        "newest_ts": OLD,
+        "tool_call_id": "history-probe",
+        "observed_at": END.isoformat(),
+    }
+    args["probe_search_newest"] = lambda **kw: calls.append(("search-probe", kw)) or {
+        "ok": True,
+        "newest_ts": OLD,
+        "tool_call_id": "search-probe",
+    }
+    args.update(overrides)
+    return calls, args
+
+
+def test_quiet_channel_records_both_probes_bounded_at_window_end():
+    calls, args = quiet()
+    result = M.acquire_channel("C123", START, END, **args)
+    assert set(result["quiet_control"]) == {"history", "search"}
+    assert result["quiet_control"]["history"]["observed_at"] == END.isoformat()
+    assert result["quiet_control"]["search"]["tool_call_id"] == "search-probe"
+    latest = str(M.Decimal(str(END.timestamp())))
+    assert [kw["latest"] for kind, kw in calls if "probe" in kind] == [latest, latest]
+
+
+@pytest.mark.parametrize(
+    "kind", ["no-search-probe", "in-window-probe", "empty-probe", "history-in-window", "failed"]
+)
+def test_quiet_channel_negative_controls(kind):
+    overrides = {}
+    if kind == "no-search-probe":
+        overrides["probe_search_newest"] = None
+    if kind == "in-window-probe":
+        overrides["probe_newest"] = lambda **kw: {
+            "ok": True, "newest_ts": T, "tool_call_id": "history-probe"
+        }
+    if kind == "empty-probe":
+        overrides["probe_search_newest"] = lambda **kw: {
+            "ok": True, "newest_ts": None, "tool_call_id": "search-probe"
+        }
+    if kind == "history-in-window":
+        overrides["read_channel"] = lambda **kw: page([{"ts": T}])
+    if kind == "failed":
+        overrides["probe_newest"] = lambda **kw: {"ok": False, "tool_call_id": "x"}
+    _, args = quiet(**overrides)
+    with pytest.raises(ValueError):
+        M.acquire_channel("C123", START, END, **args)
+
+
+def test_replayed_observation_time_requires_an_offset():
+    _, args = adapters()
+    args["read_channel"] = lambda **kw: page([{"ts": T}], observed_at="2026-09-26T10:00:00")
+    with pytest.raises(ValueError, match="offset"):
+        M.acquire_channel("C123", START, END, **args)

@@ -5,7 +5,7 @@ import json
 MAX_BYTES = 8 * 1024 * 1024
 
 
-def select_tabs(raw, *, transcript_tab_id):
+def select_tabs(raw, *, transcript_tab_id=None, transcript_tab_title=None):
     if not isinstance(raw, str) or len(raw.encode("utf-8")) > MAX_BYTES:
         raise ValueError("document exceeds the bounded UTF-8 input")
     try:
@@ -38,7 +38,12 @@ def select_tabs(raw, *, transcript_tab_id):
             "transcript": None,
             "notes": None,
         }
-    if not isinstance(transcript_tab_id, str) or not transcript_tab_id:
+    selector = transcript_tab_id if transcript_tab_title is None else transcript_tab_title
+    if (
+        (transcript_tab_id is None) == (transcript_tab_title is None)
+        or not isinstance(selector, str)
+        or not selector
+    ):
         return {
             "status": "unknown",
             "reason": "transcript-tab-id-not-declared",
@@ -65,6 +70,29 @@ def select_tabs(raw, *, transcript_tab_id):
             walk(tab.get("childTabs", []), depth + 1)
 
     walk(document["tabs"])
+    if transcript_tab_title is not None:
+        # A title selects only within a complete inventory, and only when
+        # exactly one tab carries it; the chosen tab's ID binds everything after.
+        if document.get("tabsComplete") is not True:
+            return {
+                "status": "unknown",
+                "reason": "tab-inventory-incomplete",
+                "transcript": None,
+                "notes": None,
+            }
+        named = [
+            key
+            for key, tab in tabs.items()
+            if tab.get("tabProperties", {}).get("title") == transcript_tab_title
+        ]
+        if len(named) != 1:
+            return {
+                "status": "unknown",
+                "reason": "transcript-tab-title-not-unique" if named else "transcript-tab-title-absent",
+                "transcript": None,
+                "notes": None,
+            }
+        transcript_tab_id = named[0]
 
     def content(tab):
         node = tab.get("documentTab")

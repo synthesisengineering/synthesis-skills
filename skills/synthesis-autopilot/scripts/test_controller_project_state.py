@@ -15,11 +15,11 @@ import project_state
 from run_admission import native_binding
 
 
-def adopt_large_pm(world):
+def adopt_large_pm(world, size=300_000):
     proof = native_binding(world['board'], world['actor']['native_payload'])
     project_state.build_operational_state(world['project'], project_id='alpha', phase='verification',
         status='active', controlling_plan='plan.md',
-        accepted_baseline='Synthetic retained state. ' + 'x' * 300_000,
+        accepted_baseline='Synthetic retained state. ' + 'x' * size,
         next_actions=['Verify the actual checkpoint consumer.'], last_session='Synthetic session',
         session_id=proof['session_uuid'], source_heads={})
     path = world['project'] / project_state.STATE_FILE
@@ -113,3 +113,14 @@ def test_large_requests_keep_request_ceiling(facade, tmp_path):
         facade.read_request(path)
     with pytest.raises(ValueError, match="size bound"):
         facade.decode_request(raw)
+
+
+def test_checkpoint_journals_large_owner_state_above_physical_limit(facade, world):
+    started = invoke(facade, world, start_request(world))
+    adopt_large_pm(world, size=6_270_116)
+    response = invoke(facade, world, request('checkpoint',
+        {'reason': 'Verify complete owner state through journal preparation', 'include_pm': True},
+        state_of(world, started)))
+    assert response['status'] == 'RECORDED', response['diagnostics']
+    state = state_of(world, response)
+    assert state['extensions']['controller']['checkpoint']['pm'] is not None

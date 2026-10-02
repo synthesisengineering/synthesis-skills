@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.0] - 2026-10-02
+
+- Acquire Slack conversation coverage from recorded connector calls and meeting transcripts through a declared workspace MCP adapter, with verified identity, complete pagination and retained source evidence.
+- Advance only proven source intervals, retain incomplete targets, and write each daily archive once per acquisition.
+- Verify the actual Codex executable before offering a delivery lane and include its locator in installed runtime dependencies.
+- Model synthetic storage fixtures consistently on macOS and Linux while retaining temporary-directory, alias and work-placement protections.
+- Journal trusted checkpoint observations through the existing logical capacity while retaining smaller request and physical-file limits.
+
 ## [4.153.4] - 2026-10-02
 
 - Checkpoint and finish autonomous runs with large project state using the project-state reader and its existing safety limits.

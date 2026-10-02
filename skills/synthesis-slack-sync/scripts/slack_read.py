@@ -76,6 +76,72 @@ class SlackRead:
         value, call = self.transport.call("conversations.history", args)
         return {**value, "tool_call_id": call}
 
+    def probe_newest(self, *, channel_id, latest):
+        """Read the one newest message at or before ``latest``, for a quiet channel."""
+        if channel_id not in self.channels:
+            raise ValueError("undeclared Slack history request")
+        value, call = self.transport.call(
+            "conversations.history",
+            {"channel": channel_id, "latest": latest, "inclusive": "true", "limit": 1},
+        )
+        messages = value.get("messages")
+        if not isinstance(messages, list) or len(messages) > 1:
+            raise ValueError("Slack newest-message probe returned an unbounded page")
+        newest = messages[0].get("ts") if messages else None
+        return {"ok": value.get("ok") is True, "newest_ts": newest, "tool_call_id": call}
+
+    def probe_search_newest(self, *, channel_id, latest):
+        """Return the newest search-indexed message at or before ``latest``."""
+        if channel_id not in self.channels:
+            raise ValueError("undeclared Slack search request")
+        upper = datetime.fromtimestamp(float(latest), timezone.utc).date() + timedelta(
+            days=2
+        )
+        for page in range(1, 11):
+            value, call = self.transport.call(
+                "search.messages",
+                {
+                    "query": f"{self.channels[channel_id]} before:{upper}",
+                    "count": 100,
+                    "page": page,
+                    "highlight": "false",
+                    "sort": "timestamp",
+                    "sort_dir": "desc",
+                },
+            )
+            messages = value.get("messages")
+            hits = messages.get("matches") if isinstance(messages, dict) else None
+            paging = messages.get("paging") if isinstance(messages, dict) else None
+            if not isinstance(hits, list) or not isinstance(paging, dict):
+                raise ValueError("Slack newest search probe envelope absent")
+            eligible = []
+            for hit in hits:
+                if (
+                    not isinstance(hit, dict)
+                    or not isinstance(hit.get("channel"), dict)
+                    or hit["channel"].get("id") != channel_id
+                ):
+                    raise ValueError("foreign Slack search match")
+                ts = hit.get("ts")
+                if not isinstance(ts, str) or not re.fullmatch(r"[1-9]\d{9}\.\d{6}", ts):
+                    raise ValueError("invalid Slack search timestamp")
+                if Decimal(ts) <= Decimal(latest):
+                    eligible.append(ts)
+            # Newest-first results: the first page holding an eligible message
+            # holds the newest one at or before the window's end.
+            if eligible:
+                return {
+                    "ok": value.get("ok") is True,
+                    "newest_ts": max(eligible, key=Decimal),
+                    "tool_call_id": call,
+                }
+            pages = paging.get("pages")
+            if type(pages) is not int or pages < 0:
+                raise ValueError("Slack newest search probe pagination malformed")
+            if page >= pages:
+                return {"ok": value.get("ok") is True, "newest_ts": None, "tool_call_id": call}
+        raise ValueError("Slack newest search probe page bound reached")
+
     def read_thread(self, *, channel_id, message_ts, cursor, limit, detail):
         if detail != "detailed" or channel_id not in self.channels:
             raise ValueError("undeclared Slack thread request")
@@ -88,13 +154,15 @@ class SlackRead:
     def search_replies(self, *, channel_id, oldest, latest, cursor, limit, detail):
         if detail != "detailed" or channel_id not in self.channels:
             raise ValueError("undeclared Slack search request")
-        # Search's documented day windows are deliberately wider; local exact
+        # Search's after:/before: days are exclusive and read in the searching
+        # user's time zone, which may sit anywhere from UTC-12 to UTC+14. Two
+        # UTC days on each side cover the window under every zone; local exact
         # timestamp selection is applied after complete provider pagination.
         lower = datetime.fromtimestamp(float(oldest), timezone.utc).date() - timedelta(
-            days=1
+            days=2
         )
         upper = datetime.fromtimestamp(float(latest), timezone.utc).date() + timedelta(
-            days=1
+            days=2
         )
         if type(limit) is not int or limit < 1:
             raise ValueError("invalid Slack search page size")

@@ -18,6 +18,10 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.0** adds evidence-bound Slack connector replay and workspace MCP
+meeting acquisition. It verifies runnable Codex delivery lanes and corrects
+cross-platform storage fixtures while retaining protective checks.
+
 Release **4.153.4** fixes checkpoint and finalization failures for large project
 state. Both consumers use the existing bounded project-state reader.
 

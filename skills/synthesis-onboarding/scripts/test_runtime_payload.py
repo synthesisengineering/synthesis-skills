@@ -26,6 +26,7 @@ SOURCE_FILES = {
            (".synthesis/git-hooks/" + n, 0o755) for n in
            ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
         "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py": (".synthesis/git-hooks/native_transcript_identity.py", 0o755),
+        "skills/synthesis-agent-conformance/scripts/client_binaries.py": (".synthesis/git-hooks/client_binaries.py", 0o755),
         "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85":
             (".synthesis/references/session-words-v1.txt.zlib.b85", 0o644),
     },
@@ -780,7 +781,7 @@ SCANNER_DEPENDENCY = "skills/synthesis-git-hooks/scripts/_scan_staged.py"
 PROCESS_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_process.py"
 
 
-@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py"])
+@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py", "skills/synthesis-agent-conformance/scripts/client_binaries.py"])
 def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace

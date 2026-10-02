@@ -698,16 +698,29 @@ def test_partial_publication_and_idempotent_retry(owners, wire, tmp_path, monkey
         return code, value
 
     holder["handler"] = multi
-    with pytest.raises(ValueError):
-        run_slack(slack, cfg, tmp_path, start, end)
+    # The unavailable conversation stays UNKNOWN at its old watermark; the
+    # conversation that was read completely advances on its own evidence.
+    first = run_slack(slack, cfg, tmp_path, start, end)
+    assert [t["id"] for t in first["unacquired_targets"]] == ["C456"]
+    assert [e["key"] for e in first["watermark"]["entries"]] == ["slack:C123"]
     root = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"]
     saved = list(root.rglob("*.md"))
     assert len(saved) == 1
     before = saved[0].read_bytes()
-    assert not (tmp_path / "state").exists()
     fail["yes"] = False
-    result = run_slack(slack, cfg, tmp_path, start, end)
-    assert result["watermark"]["moved"] and saved[0].read_bytes() == before
+    (tmp_path / "retry").mkdir()
+    result = slack.acquire(
+        cfg,
+        registry(tmp_path),
+        through=end.isoformat(),
+        backfill=start.isoformat(),
+        capture_root=tmp_path / "retry",
+        evidence_path=tmp_path / "retry-evidence.json",
+        advance=True,
+        home=tmp_path / "state",
+    )
+    assert result["watermark"]["moved"] and not result["unacquired_targets"]
+    assert saved[0].read_bytes() == before
 
 
 def test_saved_evidence_recovery_and_late_mutation_refusal(
@@ -1184,3 +1197,189 @@ def test_mcp_compressed_frame_refuses_before_expansion(owners, tmp_path):
         json.loads(Path(capture.calls[0]["path"]).read_bytes())["error"]
         == "INCOMPLETE_RESPONSE"
     )
+
+
+@pytest.fixture
+def mcp_wire(monkeypatch):
+    """A loopback workspace-mcp double speaking the real MCP handshake."""
+    original = httpx.Client
+    state = {"tools": {}}
+    calls = []
+
+    def endpoint(request):
+        body = json.loads(request.read() or b"{}")
+        if body.get("method") == "initialize":
+            value = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "workspace-mcp", "version": "fixture"},
+                },
+            }
+            return httpx.Response(
+                200,
+                headers={"mcp-session-id": "fixture-session"},
+                stream=httpx.ByteStream(json.dumps(value).encode()),
+                request=request,
+            )
+        if body.get("method") == "notifications/initialized":
+            return httpx.Response(202, stream=httpx.ByteStream(b""), request=request)
+        name, arguments = body["params"]["name"], body["params"]["arguments"]
+        calls.append((name, arguments))
+        text = json.dumps({"result": state["tools"][name](arguments)})
+        value = {"jsonrpc": "2.0", "id": body["id"], "result": {"content": [{"type": "text", "text": text}]}}
+        return httpx.Response(200, stream=httpx.ByteStream(json.dumps(value).encode()), request=request)
+
+    def client(*args, **kwargs):
+        return original(*args, transport=httpx.MockTransport(endpoint), **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", client)
+    return state, calls
+
+
+def mcp_meeting_cfg(tmp_path):
+    return {
+        "workspace": "fixture",
+        "google_account": "reader@example.invalid",
+        "transcripts_repo": str(tmp_path / "repository"),
+        "transcripts_path": "transcripts",
+        "transcript_tab_title": "Transcript",
+        "acquisition_adapter": {
+            "kind": "workspace-mcp-v1",
+            "url": "http://127.0.0.1:8765/mcp",
+            "name_contains": "Notes by Gemini",
+            "positive_control_id": "control123",
+            "window_field": "createdTime",
+        },
+    }
+
+
+def mcp_tools(cfg, start, *, fault=None):
+    account = cfg["google_account"]
+    created = (start + timedelta(minutes=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    dialogue = "".join(
+        f"### 00:{i:02}:00\n\nAlice Chen: I will review item {i}.\nBob Smith: Agreed.\n\n" for i in range(10)
+    )
+
+    def row(doc, kind="application/vnd.google-apps.document"):
+        return (
+            f'- Name: "Standup {doc} - Notes by Gemini" (ID: {doc}, Type: {kind}, Size: 10, '
+            f"Created: {created}, Modified: {created}, Last Edited By: Fixture <f@example.invalid>) "
+            f"Link: https://docs.example.invalid/{doc}"
+        )
+
+    def search(args):
+        if "page_token" not in args:
+            kind = "application/vnd.google-apps.spreadsheet" if fault == "foreign" else "application/vnd.google-apps.document"
+            count = 2 if fault == "count" else 1
+            return f"Found {count} files for {account} matching '{args['query']}':\n{row('first', kind)}\nnextPageToken: page-two"
+        return f"Found 1 files for {account} matching '{args['query']}':\n{row('second')}"
+
+    def inspect(args):
+        doc = args["document_id"]
+        tabs = [{"title": "Quick notes", "tab_id": "t.notes"}, {"title": "Transcript", "tab_id": f"t.{doc}"}]
+        if fault == "titles":
+            tabs.append({"title": "Transcript", "tab_id": "t.copy"})
+        if fault == "untitled":
+            tabs = tabs[:1]
+        return f"Document structure analysis for {doc}:\n\n" + json.dumps({"tabs": tabs}, indent=2) + "\n\nLink: https://docs.example.invalid"
+
+    def markdown(args):
+        if args["tab_id"] == "t.notes":
+            return "Lossy notes only."
+        return "" if fault == "empty" else dialogue
+
+    return {
+        "list_calendars": lambda a: (
+            f"Successfully listed 1 calendars for {account}:\n"
+            f'- "x" (Primary) (ID: {"foreign@example.invalid" if fault == "account" else account})'
+        ),
+        "get_drive_file_permissions": lambda a: (
+            "File: Standup - Notes by Gemini\nID: control123\nType: application/vnd.google-apps.document\n"
+            f"Parents: None\nTrashed: {'True' if fault == 'control' else 'False'}\n"
+        ),
+        "search_drive_files": search,
+        "inspect_doc_structure": inspect,
+        "get_doc_as_markdown": markdown,
+    }
+
+
+def test_workspace_mcp_meeting_entry_saves_and_advances(owners, mcp_wire, tmp_path):
+    fetch, _ = owners
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, end = dates()
+    state["tools"] = mcp_tools(cfg, start)
+    result = run_meeting(fetch, cfg, tmp_path, start, end)
+    assert result["watermark"]["moved"] is True
+    assert [name for name, _ in calls][:2] == ["list_calendars", "get_drive_file_permissions"]
+    searches = [args for name, args in calls if name == "search_drive_files"]
+    assert [s.get("page_token") for s in searches] == [None, "page-two"]
+    assert all(s["corpora"] == "user" and s["include_items_from_all_drives"] is False for s in searches)
+    root = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"]
+    for doc in ("first", "second"):
+        body = (root / "meetings" / f"{doc}.md").read_text()
+        # Each Gemini document has its own transcript tab ID; the title found it.
+        assert f"**Transcript tab ID:** t.{doc}" in body
+        assert "Lossy notes only." in body and "Alice Chen: I will review item 9." in body
+    assert len(result["custody"]["raw_receipts"]) == 0 and result["custody"]["calls"] > 10
+
+
+@pytest.mark.parametrize("fault", ["account", "control", "count", "foreign", "titles", "untitled", "empty"])
+def test_workspace_mcp_meeting_refusals_leave_watermark(owners, mcp_wire, tmp_path, fault):
+    fetch, _ = owners
+    state, _ = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, end = dates()
+    state["tools"] = mcp_tools(cfg, start, fault=fault)
+    with pytest.raises(ValueError):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert not (tmp_path / "state").exists()
+
+
+@pytest.mark.parametrize("change", ["remote-url", "fixed-tab-id", "extra-field"])
+def test_workspace_mcp_contract_refuses_before_any_call(owners, mcp_wire, tmp_path, change):
+    fetch, _ = owners
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    if change == "remote-url":
+        cfg["acquisition_adapter"]["url"] = "https://workspace.example.invalid/mcp"
+    if change == "fixed-tab-id":
+        cfg["transcript_tab_id"] = "t.fixed"
+    if change == "extra-field":
+        cfg["acquisition_adapter"]["token"] = "env:SYNTHETIC_ACQUISITION_TOKEN"
+    start, end = dates()
+    state["tools"] = mcp_tools(cfg, start)
+    with pytest.raises(ValueError):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "tabs, expected",
+    [
+        ([("a", "Notes"), ("b", "Transcript")], "transcript"),
+        ([("a", "Notes")], "transcript-tab-title-absent"),
+        ([("a", "Transcript"), ("b", "Transcript")], "transcript-tab-title-not-unique"),
+    ],
+)
+def test_rest_tab_title_selects_one_tab_by_its_own_id(tabs, expected):
+    sys.path.insert(0, str(ROOT / "skills/synthesis-meeting-transcripts/optional-workspace-mcp"))
+    from document_tabs import select_tabs
+
+    def tab(key, title, text):
+        return {
+            "tabProperties": {"tabId": key, "title": title},
+            "documentTab": {"body": {"content": [{"paragraph": {"elements": [{"textRun": {"content": text}}]}}]}},
+        }
+
+    document = {"tabsComplete": True, "tabs": [tab(k, t, f"{t} body") for k, t in tabs]}
+    result = select_tabs(json.dumps(document), transcript_tab_title="Transcript")
+    if expected == "transcript":
+        assert result["transcript_tab_id"] == "b" and result["transcript"] == "Transcript body"
+    else:
+        assert result["status"] == "unknown" and result["reason"] == expected
+    document["tabsComplete"] = False
+    assert select_tabs(json.dumps(document), transcript_tab_title="Transcript")["reason"] == "tab-inventory-incomplete"

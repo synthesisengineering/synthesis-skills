@@ -275,8 +275,8 @@ def test_temporary_classifier_canonical_alias_and_unknown_age(tmp_path, monkeypa
     assert FP.classify_storage(Path("/tmp") / "fixture")["status"] == "temporary"
 
 
-def test_storage_classifier_never_calls_old_age_durable(tmp_path, monkeypatch):
-    monkeypatch.setattr(FP, "temporary_roots", lambda: [tmp_path / "swept"])
+def test_storage_classifier_never_calls_old_age_durable(tmp_path, monkeypatch, synthetic_storage_policy):
+    synthetic_storage_policy([tmp_path / "swept"])
     assert FP.classify_storage(tmp_path / "durable")["status"] == "durable-candidate"
     loop = tmp_path / "loop"
     loop.symlink_to(loop)
@@ -326,3 +326,45 @@ def test_declared_storage_symlink_is_unknown_and_target_unchanged(tmp_path):
     assert result["root_metadata"] is None
     assert result["observation"].startswith("UNKNOWN")
     assert (target / "sentinel").read_text() == "unchanged"
+
+
+@pytest.mark.parametrize("kind", ["T", "C"])
+def test_darwin_aliases_are_temporary_with_unrelated_tmpdir(tmp_path, monkeypatch, kind):
+    target = Path("/private/var/folders/zz/synthetic-other-user") / kind
+    alias = tmp_path / "other-user-temp"
+    alias.symlink_to(target, target_is_directory=True)
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "different-temp"))
+    for path in (target, target / "repo", alias, alias / "repo"):
+        result = FP.classify_storage(path)
+        assert result["status"] == "temporary"
+        assert result["temporary_root"] == str(target)
+        assert result["retention_deadline"] is None
+
+
+@pytest.mark.parametrize("kind", ["T", "C"])
+def test_synthetic_storage_policy_keeps_real_policy_outside_fixture(
+    tmp_path, synthetic_storage_policy, kind
+):
+    synthetic_storage_policy([])
+    assert FP.classify_storage(tmp_path / "durable-model")["status"] == "durable-candidate"
+    target = Path("/private/var/folders/zz/synthetic-other-user") / kind
+    alias = tmp_path / "escape"
+    alias.symlink_to(target, target_is_directory=True)
+    assert FP.classify_storage(alias / "repo")["status"] == "temporary"
+    assert FP.classify_storage(Path("/tmp/another-allocation"))["status"] == "temporary"
+    temporary = tmp_path / "declared-temp"
+    synthetic_storage_policy([temporary])
+    assert FP.classify_storage(temporary / "repo")["status"] == "temporary"
+    assert FP.classify_storage(tmp_path / "durable-model")["status"] == "durable-candidate"
+
+
+def test_synthetic_storage_policy_refuses_foreign_roots(synthetic_storage_policy):
+    with pytest.raises(ValueError, match="this test's allocation"):
+        synthetic_storage_policy([Path("/tmp/foreign-allocation")])
+    assert FP.classify_storage(Path("/tmp/foreign-allocation"))["status"] == "temporary"
+
+
+@pytest.mark.parametrize("component", ["D", "T-sibling", "C-sibling"])
+def test_darwin_temporary_policy_does_not_invent_other_roots(component):
+    path = Path("/private/var/folders/zz/synthetic-other-user") / component
+    assert FP.classify_storage(path)["status"] == "durable-candidate"

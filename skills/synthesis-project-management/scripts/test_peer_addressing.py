@@ -217,13 +217,53 @@ def test_lanes_exist_only_on_the_target_machine_and_only_from_live_truth(tmp_pat
     assert "harness" not in dead and "ccd" in dead
 
 
-def test_codex_lane_is_the_queue_command(tmp_path) -> None:
+def test_codex_lane_is_the_queue_command(tmp_path, codex_cli) -> None:
     lanes = PA.delivery_lanes(
         client_ref="codex:0a0a-1b1b", compact_id="s-1", target_machine="m1",
         seat=None, local_machine="m1", registry=tmp_path / "none",
     )
     assert lanes["codex"]["thread"] == "0a0a-1b1b"
-    assert lanes["codex"]["command"].startswith("codex queue --thread 0a0a-1b1b")
+    # The command names the exact binary that was found runnable.
+    assert lanes["codex"]["cli"] == codex_cli
+    assert lanes["codex"]["command"].startswith(f"{codex_cli} queue --thread 0a0a-1b1b")
+
+
+def test_codex_lane_closes_without_a_runnable_cli(tmp_path, monkeypatch) -> None:
+    """2026-10-01: the resolver called the codex lane verified while its
+    `codex` launcher could not find a binary and exited 127."""
+    common = dict(
+        client_ref="codex:0a0a-1b1b", compact_id="s-1", target_machine="m1",
+        seat=None, local_machine="m1", registry=tmp_path / "none",
+    )
+    assert "codex" not in PA.delivery_lanes(**common, codex_cli=lambda: None)
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", "")
+    assert "codex" not in PA.delivery_lanes(**common)
+    broken = tmp_path / "codex"
+    broken.write_text("#!/bin/sh\nexit 127\n")
+    broken.chmod(0o755)
+    monkeypatch.delenv("SYNTHESIS_CODEX_BIN")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    found = PA.locate_codex_cli()
+    assert found is None or found != str(broken)
+
+
+def test_codex_cli_is_probed_only_after_identity_gates(tmp_path) -> None:
+    calls = []
+    lanes = PA.delivery_lanes(
+        client_ref="codex:0a0a-1b1b", compact_id="s-1", target_machine="other",
+        seat=None, local_machine="m1", registry=tmp_path / "none",
+        codex_cli=lambda: calls.append(1) or "/x/codex",
+    )
+    assert "codex" not in lanes and calls == []
+
+
+def test_codex_lane_quotes_a_cli_path_with_spaces(tmp_path) -> None:
+    lanes = PA.delivery_lanes(
+        client_ref="codex:0a0a-1b1b", compact_id="s-1", target_machine="m1",
+        seat=None, local_machine="m1", registry=tmp_path / "none",
+        codex_cli=lambda: "/Applications/Codex Beta.app/codex",
+    )
+    assert lanes["codex"]["command"].startswith("'/Applications/Codex Beta.app/codex' queue --thread")
 
 
 def test_invocations_never_use_a_display_name_as_the_address(tmp_path) -> None:
@@ -966,3 +1006,17 @@ def test_delivery_repair_unknown_or_audience_legacy_still_refuses(recipient):
 def test_delivery_repair_explicit_legacy_control_still_refuses():
     with pytest.raises(ValueError):
         p.administrative_message_scan(_delivery_legacy_history('Claude Code session A', 'release-reply id=req result=narrowed'))
+
+
+@pytest.mark.parametrize("exit_code", [0, 127])
+def test_codex_lane_requires_explicit_launcher_to_run(tmp_path, monkeypatch, exit_code):
+    cli = tmp_path / "explicit-codex"
+    cli.write_text(f"#!/bin/sh\nexit {exit_code}\n")
+    cli.chmod(0o755)
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", str(cli))
+    lanes = PA.delivery_lanes(
+        client_ref="codex:synthetic-thread", compact_id="s-synthetic", seat=None,
+        target_machine="m1", local_machine="m1",
+        local_hostname="m1", registry=tmp_path / "registry",
+    )
+    assert ("codex" in lanes) is (exit_code == 0)

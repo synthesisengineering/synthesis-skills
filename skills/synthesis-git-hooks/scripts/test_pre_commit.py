@@ -1063,6 +1063,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "coordination_lock.py",
         "project_recipient.py",
         "native_transcript_identity.py",
+        "client_binaries.py",
         "source-path",
     }
     assert (

@@ -5,7 +5,10 @@ The timestamp field is explicitly declared; it is not inferred meeting time.
 """
 
 from datetime import datetime
+import json
 import re
+
+from document_tabs import select_tabs
 
 
 def identifier(value):
@@ -22,7 +25,7 @@ class GoogleRead:
         adapter = cfg.get("acquisition_adapter", {})
         if adapter.get("kind") != "google-rest-v1":
             raise ValueError(
-                "complete structured acquisition requires explicitly selected google-rest-v1; MCP/plain-text has no inferred tab inventory or fallback"
+                "complete structured acquisition requires an explicitly selected google-rest-v1 or workspace-mcp-v1 adapter; plain text has no inferred tab inventory or fallback"
             )
         if set(adapter) != {
             "kind",
@@ -43,7 +46,15 @@ class GoogleRead:
             raise ValueError(
                 "declare the provider inventory window_field: createdTime or modifiedTime"
             )
-        identifier(cfg.get("transcript_tab_id"))
+        # Exactly one transcript selector: a fixed tab ID, or a title that
+        # names one tab within each document's complete tab inventory (a
+        # Gemini document's tab IDs differ from one meeting to the next).
+        if ("transcript_tab_id" in cfg) == ("transcript_tab_title" in cfg):
+            raise ValueError("declare exactly one of transcript_tab_id or transcript_tab_title")
+        if "transcript_tab_id" in cfg:
+            identifier(cfg["transcript_tab_id"])
+        elif not isinstance(cfg["transcript_tab_title"], str) or not cfg["transcript_tab_title"].strip():
+            raise ValueError("declare a nonempty transcript_tab_title")
 
     def readiness(self):
         result, call = self.transport.call(
@@ -140,3 +151,24 @@ class GoogleRead:
             )
         # documents.get(includeTabsContent=true) returns all tabs without paging.
         return {**result, "tabsComplete": True}, call
+
+    def transcript(self, source_id):
+        raw, call = self.document(source_id)
+        selected = select_tabs(
+            json.dumps(raw),
+            transcript_tab_id=self.cfg.get("transcript_tab_id"),
+            transcript_tab_title=self.cfg.get("transcript_tab_title"),
+        )
+        if selected["status"] != "transcript":
+            raise ValueError(
+                "declared transcript unavailable: "
+                + str(selected["reason"])
+                + "; raw notes retained in custody"
+            )
+        return {
+            "transcript": selected["transcript"],
+            "notes": selected["notes"],
+            "transcript_tab_id": selected["transcript_tab_id"],
+            "tab_ids": selected["tab_ids"],
+            "raw_sha256": [call.rsplit("#", 1)[1]],
+        }

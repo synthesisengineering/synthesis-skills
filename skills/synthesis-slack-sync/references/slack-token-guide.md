@@ -14,13 +14,24 @@ needed before installing tokens.
    signed into the workspace.
 2. Create a new app (From scratch), name it after the reader
    (e.g. `synthesis-reader`), pick the workspace.
-3. Under OAuth & Permissions, add the read scopes the sync needs:
-   `channels:history`, `groups:history`, `im:history`,
-   `mpim:history`, `users:read`. (No write scopes: the reader never
-   posts. If the workspace admin must approve the app, this
-   read-only list is the approval case.)
-4. Install the app to the workspace and copy the Bot User OAuth
-   Token (`xoxb-...`).
+3. Under OAuth & Permissions, add these **User Token Scopes** (not
+   Bot Token Scopes): `channels:history`, `groups:history`,
+   `im:history`, `mpim:history`, `channels:read`, `groups:read`,
+   `im:read`, `mpim:read`, `search:read`, `users:read`. (No write
+   scopes: the reader never posts. If the workspace admin must
+   approve the app, this read-only list is the approval case.)
+4. Install the app to the workspace and copy the User OAuth Token
+   (`xoxp-...`).
+
+The acquisition adapter reads as a person, so it needs a user token:
+Slack's `search.messages` accepts only user tokens, and the
+adapter's `auth.test` check refuses a bot identity outright. A bot
+token (`xoxb-...`) cannot advance a Slack watermark.
+
+A workspace that the agent already reads through a client-managed
+Slack connector needs no token at all: set the registry's `token:` to
+`mcp:<server>` and use the connector-replay adapter described in
+[declared acquisition entries](../../synthesis-daily-rituals/references/acquisition-entry.md).
 
 If the workspace already has a reader app (a previous install), reuse
 it: open the app, OAuth & Permissions, copy the token. Nothing
@@ -31,15 +42,17 @@ requires one app per machine.
 Pick one form per workspace and set the registry's `token:` field:
 
 - `env:SLACK_TOKEN_<WORKSPACE>` — export the variable in the shell
-  profile (e.g. `export SLACK_TOKEN_WORK='xoxb-...'` in
+  profile (e.g. `export SLACK_TOKEN_WORK='xoxp-...'` in
   `~/.zshrc`). Best for CLI clients that inherit the shell.
 - `file:/abs/path/to/token` — first line is the token. Best when env
   vars are awkward; keep the file `chmod 600`.
 - `mcp:server-name` — the client manages the credential (OAuth or its
   own secret store) and exposes the workspace through an MCP server
-  with this name. Readiness is proven by the first MCP call.
+  with this name. Readiness is proven by the first MCP call. For
+  Claude Code, the name is the server segment of the connector's
+  tool names (`mcp__<server>__slack_read_channel`).
 
-Never paste a literal `xoxb-` value into the registry: `doctor`
+Never paste a literal token value into the registry: `doctor`
 rejects it. The registry is a synced dotfile; secrets don't live in
 synced dotfiles.
 

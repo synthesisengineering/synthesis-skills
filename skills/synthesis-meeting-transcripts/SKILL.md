@@ -5,10 +5,13 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "0.13.0"
+  version: "0.14.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+
+Version 0.14.0 adds declared workspace MCP acquisition with account verification,
+complete document inventory and transcript selection by title bound to tab ID.
 
 Version 0.13.0 connects declared Google or MCP acquisition to exact transcript
 files, source-bound verification and the existing watermark owner. Google Docs

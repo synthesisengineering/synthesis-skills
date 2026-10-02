@@ -169,7 +169,13 @@ form, and prose must match it.
      the seat's harness session id, only while that process is alive on this
      machine. The registry name is printed for display; it is never the
      address. A bare name, `name [ref]`, or `[ref]` is refused.
-   - *codex*: `codex queue --thread <uuid> --message …` — same machine.
+   - *codex*: `<codex-cli> queue --thread <uuid> --message …` — same machine,
+     and only when this machine has a Codex CLI that actually runs. The
+     resolver finds it through the conformance skill's client-binary owner
+     (`SYNTHESIS_CODEX_BIN`, then PATH, then the documented app locations,
+     each found launcher passing a bounded `--version` probe) and prints that
+     exact binary. A launcher that exists but cannot start its CLI is no
+     lane; the resolver says the codex lane is closed and why.
 3. **The gate enforces it.** `scripts/peer_send_gate.py --gate`, registered
    in the plugin's `hooks/hooks.json` for both clients on `SendMessage`,
    the ccd send tool, and the shell tools (for `codex queue`), admits a

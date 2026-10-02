@@ -355,20 +355,20 @@ def test_fixture_expiry_after_reservation_preserves_evidence(world, monkeypatch)
     assert "create:" + str(target) in C.rows(board.read_text())[0].claims
 
 
-def test_durable_target_cannot_depend_on_temporary_common_git(world, monkeypatch):
+def test_durable_target_cannot_depend_on_temporary_common_git(world, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     board, own, repo, target = world
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [repo])
+    synthetic_storage_policy([repo])
     before = board.read_bytes()
     with pytest.raises(ValueError, match="temporary"):
         W.create(board, own.compact_id, target, repo, "source-risk")
     assert before == board.read_bytes() and not target.exists()
 
 
-def test_durable_creation_positive_keeps_normal_identity_claim_gates(world, monkeypatch):
+def test_durable_creation_positive_keeps_normal_identity_claim_gates(world, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     board, own, repo, target = world
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [target.parent / "declared-temp"])
+    synthetic_storage_policy([target.parent / "declared-temp"])
     result = W.create(board, own.compact_id, target, repo, "durable-fixture")
     assert result["placement"]["purpose"] == "durable-work"
     assert result["source_placement"]["purpose"] == "durable-work"

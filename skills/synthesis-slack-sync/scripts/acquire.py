@@ -15,6 +15,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[1] / "synthesis-daily-rituals/scripts"))
+import connector_replay  # noqa: E402 -- source-relative standalone entry dependencies
 import preflight  # noqa: E402 -- source-relative standalone entry dependencies
 import slack_workspaces  # noqa: E402 -- source-relative standalone entry dependencies
 import thread_checker  # noqa: E402 -- source-relative standalone entry dependencies
@@ -27,7 +28,14 @@ import sync_watermark  # noqa: E402 -- source-relative standalone entry dependen
 
 def raw_records(channel):
     cid = channel["id"]
-    all_rows = channel["history"]["messages"] + channel["reply_search"]["messages"]
+    # A connector's search renders message text differently from its history
+    # and thread reads, so it marks search rows discovery-only; the thread read
+    # each one leads to is what gets archived.
+    all_rows = channel["history"]["messages"] + [
+        row
+        for row in channel["reply_search"]["messages"]
+        if not row.get("discovery_only")
+    ]
     for thread in channel["threads"]:
         all_rows += thread["messages"]
     indexed = {}
@@ -184,9 +192,13 @@ def render(channel):
 
 
 def save_channel(path, channel, *, domain=None, force=False):
+    return save_channels(path, [channel], domain=domain, force=force)
+
+
+def save_channels(path, channels, *, domain=None, force=False):
+    """Merge every conversation bound for one archive file, then publish once."""
     import os
 
-    cid, indexed = raw_records(channel)
     payload = {"schema": 1, "domain": domain, "channels": {}}
     expected = "ABSENT"
     exists = os.path.lexists(path)
@@ -196,21 +208,23 @@ def save_channel(path, channel, *, domain=None, force=False):
         payload = parse_archive(old)
         if payload["domain"] != domain:
             raise ValueError("Slack archive belongs to a different declared workspace")
-    current = payload["channels"].setdefault(cid, {})
-    for ts, variants in indexed.items():
-        if ts in current:
-            # Repeated observations may add metadata, but conflicting bodies or
-            # speaker/parent identities require explicit source reconciliation.
-            for old in current[ts]:
-                for row in variants:
-                    if any(
-                        key in old and key in row and old[key] != row[key]
-                        for key in ("text", "user", "thread_ts")
-                    ):
-                        raise ValueError("conflicting existing same-ID archive content")
-            current[ts] += [row for row in variants if row not in current[ts]]
-        else:
-            current[ts] = variants
+    for channel in channels:
+        cid, indexed = raw_records(channel)
+        current = payload["channels"].setdefault(cid, {})
+        for ts, variants in indexed.items():
+            if ts in current:
+                # Repeated observations may add metadata, but conflicting bodies or
+                # speaker/parent identities require explicit source reconciliation.
+                for old in current[ts]:
+                    for row in variants:
+                        if any(
+                            key in old and key in row and old[key] != row[key]
+                            for key in ("text", "user", "thread_ts")
+                        ):
+                            raise ValueError("conflicting existing same-ID archive content")
+                current[ts] += [row for row in variants if row not in current[ts]]
+            else:
+                current[ts] = variants
     body = render_payload(payload)
 
     def check(target, digest):
@@ -277,8 +291,10 @@ def acquire(
     advance=False,
     force=False,
     home=None,
+    transcripts=(),
+    transcript_root=None,
 ):
-    if mode not in {"health", "fetch"} or advance and mode != "fetch":
+    if mode not in {"health", "fetch", "plan"} or advance and mode != "fetch":
         raise ValueError("invalid Slack acquisition mode or advance intent")
     evidence_path = output_path(evidence_path)
     output_path(capture_root, directory=True)
@@ -324,9 +340,10 @@ def acquire(
     if start > through:
         raise ValueError("invalid Slack acquisition window")
     adapter_cfg = cfg.get("acquisition_adapter", {})
-    if adapter_cfg.get("kind") != "slack-web-api-v1":
+    kind = adapter_cfg.get("kind")
+    if kind not in {"slack-web-api-v1", connector_replay.KIND}:
         raise ValueError(
-            "explicit supported Slack acquisition adapter required; no MCP fallback"
+            "explicit supported Slack acquisition adapter required; no undeclared fallback"
         )
     registry = slack_workspaces.load_registry(Path(registry_path))
     entry = slack_workspaces.acquisition_entry(registry, workspace)
@@ -334,11 +351,63 @@ def acquire(
     if not archive_root.is_absolute() or ".." in archive_root.parts:
         raise ValueError("physical absolute Slack archive root required")
     known = known_threads(cfg, archive_root, ids)
-    adapter = SlackRead(entry, adapter_cfg, None)
-    capture = Capture(capture_root)
-    transport = ReadTransport(entry.token, capture)
-    adapter.transport = transport
+    transport = None
+    if kind == connector_replay.KIND:
+        # The registry's mcp:<server> reference names the one client-managed
+        # connector whose recorded calls count; no token is read or held.
+        server = entry.token[4:] if entry.token.startswith("mcp:") else ""
+        if not server:
+            raise ValueError("connector replay requires the registry's mcp:<server> reference")
+        if not transcripts:
+            raise ValueError("connector replay requires the transcripts that recorded the reads")
+        calls, transcript_receipts = connector_replay.load_calls(
+            transcripts,
+            server=server,
+            root=transcript_root or Path.home() / ".claude" / "projects",
+        )
+        adapter = connector_replay.ConnectorReplay(
+            calls, adapter_cfg, server, through=through
+        )
+    else:
+        if mode == "plan" or transcripts:
+            raise ValueError("call plans and transcripts apply to connector replay only")
+        adapter = SlackRead(entry, adapter_cfg, None)
+        capture = Capture(capture_root)
+        transport = ReadTransport(entry.token, capture)
+        adapter.transport = transport
     try:
+        if mode == "plan":
+            missing, problems = [], {}
+            try:
+                adapter.readiness()
+            except connector_replay.MissingCall as gap:
+                missing.append(gap.call)
+            for target in targets:
+                adapter.describe(target.read_id)
+                try:
+                    need, blocked = connector_replay.plan_channel(
+                        adapter,
+                        target.read_id,
+                        start,
+                        through,
+                        sorted(known[target.read_id]),
+                    )
+                except ValueError as exc:
+                    need, blocked = [], [str(exc)]
+                missing += need
+                if blocked:
+                    problems[target.read_id] = blocked
+            return {
+                "from": start.isoformat(),
+                "through": through.isoformat(),
+                "server": adapter.server,
+                "missing_calls": missing,
+                # Conversations with a problem stay UNKNOWN at their old
+                # watermark; fetch still advances every conversation it proves.
+                "problems": problems,
+                "ready": not missing,
+                "can_advance": False,
+            }
         readiness = adapter.readiness()
         if mode == "health":
             return {
@@ -349,19 +418,29 @@ def acquire(
                 "can_advance": False,
                 "native_acceptance": False,
             }
-        observations, receipts = [], {}
+        observations, receipts, acquired, unacquired, pending = [], {}, [], [], {}
         for target in targets:
             adapter.describe(target.read_id)
-            channel = thread_checker.acquire_channel(
-                target.read_id,
-                start,
-                through,
-                read_channel=adapter.read_channel,
-                read_thread=adapter.read_thread,
-                search_replies=adapter.search_replies,
-                known_thread_ids=sorted(known[target.read_id]),
-            )
+            # One conversation whose coverage cannot be proven stays UNKNOWN at
+            # its old watermark; it never blocks the conversations that can.
+            try:
+                channel = thread_checker.acquire_channel(
+                    target.read_id,
+                    start,
+                    through,
+                    read_channel=adapter.read_channel,
+                    read_thread=adapter.read_thread,
+                    search_replies=adapter.search_replies,
+                    known_thread_ids=sorted(known[target.read_id]),
+                    probe_newest=adapter.probe_newest,
+                    probe_search_newest=adapter.probe_search_newest,
+                )
+                raw_records(channel)
+            except ValueError as exc:
+                unacquired.append({"id": target.read_id, "reason": str(exc)})
+                continue
             observations.append(channel)
+            acquired.append(target.read_id)
             day = through.astimezone().date().isoformat()
             if target.kind == "channel":
                 name = target.name.lstrip("#")
@@ -372,12 +451,43 @@ def acquire(
                 filename = name + ".md"
             else:
                 filename = "_dms.md" if target.kind == "dm" else "_group-dms.md"
-            name = f"slack/{day}/{filename}"
-            saved = save_channel(
-                archive_root / name, channel, domain=entry.domain, force=force
+            # DMs and group DMs share one daily file; publish each file once
+            # per run so a run's own intermediate bytes are never backed up.
+            pending.setdefault(f"slack/{day}/{filename}", []).append(channel)
+        if not acquired:
+            raise ValueError(
+                "no declared conversation has provable coverage: "
+                + json.dumps(unacquired, sort_keys=True)
+            )
+        for name, channels in pending.items():
+            saved = save_channels(
+                archive_root / name, channels, domain=entry.domain, force=force
             )
             receipts[name] = {"path": name, "sha256": saved["sha256"]}
         receipts = list(receipts.values())
+        if transport is None:
+            custody = {
+                "kind": connector_replay.KIND,
+                "server": adapter.server,
+                "transcripts": transcript_receipts,
+                "calls": [
+                    {
+                        "tool_call_id": call.call_id,
+                        "tool": call.tool,
+                        "input": call.arguments,
+                        "observed_at": call.observed_at.isoformat(),
+                        "transcript": call.source,
+                        "result_sha256": hashlib.sha256(call.text.encode()).hexdigest(),
+                    }
+                    for call in calls
+                    if call.call_id in adapter.used
+                ],
+            }
+            custody["receipt"] = publish_json(
+                Path(capture_root) / "connector-calls.json", custody
+            )
+        else:
+            custody = capture.summary()
         evidence = {
             "schema": 1,
             "workspace": workspace,
@@ -386,23 +496,31 @@ def acquire(
             "through": through.isoformat(),
             "archive_root": str(archive_root),
             "archives": receipts,
-            "declared_targets": ids,
+            "declared_targets": acquired,
+            "unacquired_targets": unacquired,
             "channels": observations,
             "readiness": readiness,
-            "custody": capture.summary(),
+            "custody": custody,
             "provider_limitations": [
                 "Slack search is affected by user filters and may suppress nearby matches; this proves the declared returned corpus, not undiscoverable provider content."
             ],
         }
+        if transport is None:
+            evidence["provider_limitations"].append(
+                "Connector reads are replayed from the client's own session transcript; "
+                "their authenticity rests on that transcript, and the connector's "
+                "rendered text stands in for Slack's raw message bodies."
+            )
         result = validate(
-            evidence, workspace=workspace, surface="slack", through=through, targets=ids
+            evidence, workspace=workspace, surface="slack", through=through, targets=acquired
         )
         receipt = publish_json(evidence_path, evidence)
         output = {
             "coverage": result,
             "evidence": receipt,
             "saved_files": receipts,
-            "custody": capture.summary(include_receipts=False),
+            "unacquired_targets": unacquired,
+            "custody": custody if transport is None else capture.summary(include_receipts=False),
             "native_acceptance": False,
         }
         if advance:
@@ -410,27 +528,34 @@ def acquire(
                 workspace,
                 "slack",
                 through.isoformat(),
-                targets=ids,
+                targets=acquired,
                 acquisition=evidence,
                 home=home,
                 now=datetime.now().astimezone(),
             )
         return output
     finally:
-        transport.close()
+        if transport is not None:
+            transport.close()
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", required=True)
     p.add_argument("--registry", required=True)
-    p.add_argument("--mode", choices=["health", "fetch"], default="fetch")
+    p.add_argument("--mode", choices=["health", "fetch", "plan"], default="fetch")
     p.add_argument("--through", required=True)
     p.add_argument("--backfill-from", required=True)
     p.add_argument("--capture-dir", required=True)
     p.add_argument("--evidence", required=True)
     p.add_argument("--advance", action="store_true")
     p.add_argument("--force", action="store_true")
+    p.add_argument(
+        "--transcript",
+        action="append",
+        default=[],
+        help="Claude Code session transcript (.jsonl) holding the recorded connector reads; repeat for subagents",
+    )
     a = p.parse_args(argv)
     try:
         result = acquire(
@@ -443,6 +568,7 @@ def main(argv=None):
             evidence_path=a.evidence,
             advance=a.advance,
             force=a.force,
+            transcripts=a.transcript,
         )
         print(json.dumps(result, ensure_ascii=False))
         return 0

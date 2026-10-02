@@ -338,3 +338,78 @@ def test_duplicate_json_and_size_limits(tmp_path):
     p.write_bytes(b" " * (A.MAX_BYTES + 1))
     with pytest.raises(ValueError):
         A.read_json(p)
+
+
+def with_quiet(tmp_path):
+    e = slack(tmp_path)
+    before = f"{int(START.timestamp()) - 3600}.000000"
+    probe = {"newest_ts": before, "tool_call_id": "probe-call", "observed_at": NOW.isoformat()}
+    e["declared_targets"].append("C456")
+    e["channels"].append(
+        {
+            "id": "C456",
+            "known_thread_ids": [],
+            "history": {
+                **observation(),
+                "detail": "detailed",
+                "from": START.isoformat(),
+                "through": END.isoformat(),
+                "messages": [],
+            },
+            "reply_search": {
+                **observation(),
+                "from": START.isoformat(),
+                "through": END.isoformat(),
+                "positive_control_ids": [],
+                "messages": [],
+            },
+            "threads": [],
+            "quiet_control": {"history": dict(probe), "search": dict(probe)},
+        }
+    )
+    return e
+
+
+def test_quiet_channel_passes_beside_a_genuine_window_control(tmp_path):
+    r = validate(with_quiet(tmp_path), targets=["C123", "C456"])
+    assert r["can_advance"] and r["quiet_channels"] == ["C456"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "alone",
+        "no-search-probe",
+        "probe-in-window",
+        "probe-before-window-end",
+        "probe-without-call",
+        "history-in-window",
+        "search-in-window",
+        "extra-probe",
+    ],
+)
+def test_quiet_channel_negative_controls(tmp_path, mutation):
+    e = with_quiet(tmp_path)
+    targets = ["C123", "C456"]
+    q = e["channels"][1]
+    probes = q["quiet_control"]
+    inside = f"{int(START.timestamp()) + 30}.000000"
+    if mutation == "alone":
+        e["channels"] = e["channels"][1:]
+        e["declared_targets"] = targets = ["C456"]
+    if mutation == "no-search-probe":
+        del probes["search"]
+    if mutation == "probe-in-window":
+        probes["history"]["newest_ts"] = inside
+    if mutation == "probe-before-window-end":
+        probes["search"]["observed_at"] = START.isoformat()
+    if mutation == "probe-without-call":
+        del probes["history"]["tool_call_id"]
+    if mutation == "history-in-window":
+        q["history"]["messages"] = [{"ts": inside}]
+    if mutation == "search-in-window":
+        q["reply_search"]["messages"] = [{"ts": inside}]
+    if mutation == "extra-probe":
+        probes["other"] = dict(probes["history"])
+    with pytest.raises(ValueError):
+        validate(e, targets=targets)

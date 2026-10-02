@@ -5164,6 +5164,12 @@ def command_resolve(args) -> int:
             if direct
             else "board message bus; no verified direct lane"
         )
+        if target.client_ref.startswith("codex:") and "codex" not in lanes:
+            # Say why, so a missing CLI is never mistaken for a missing peer.
+            entries[0]["delivery"] += (
+                "; codex lane closed: it needs the target's own machine and a Codex CLI "
+                "that runs here (set SYNTHESIS_CODEX_BIN when it is installed elsewhere)"
+            )
         sender = self_identity()
         own_seat = seat_for_identity(args.board, sender)
         sender_row = next(
