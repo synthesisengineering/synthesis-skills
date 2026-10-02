@@ -764,7 +764,15 @@ def test_current_manifest_module_partition_keeps_every_case_and_polarity():
     selectors = [s for batch in plan for s in batch["selectors"]]
     assert len(selectors) == len(set(selectors))
     assert set(selectors) == {case["selector"] for case in contract}
-    assert all(len(batch["selectors"]) <= 8 for batch in plan)
+    # The owner bounds execution families. A declared function owns all of its
+    # declared parameter references, which must remain collection requirements.
+    assert all(len(batch["execution_selectors"]) <= 8 for batch in plan)
+    assert all(
+        any(selector == execution or selector.startswith(execution + "[")
+            or selector.startswith(execution + "::")
+            for execution in batch["execution_selectors"])
+        for batch in plan for selector in batch["selectors"]
+    )
     assert all(
         len({s.split("::")[0] for s in batch["selectors"]}) == 1 for batch in plan
     )
@@ -1274,3 +1282,18 @@ def test_actual_parallel_assertion_mismatch_stops_later_admission(tmp_path):
     assert not (observations / "start-4.json").exists()
     assert not (observations / "start-5.json").exists()
     _assert_parallel_custody(receipt, observations, range(4))
+
+
+def test_many_parameter_references_keep_one_execution_owner_and_all_requirements():
+    module = owner()
+    selectors = ["test_cases.py::test_family"] + [
+        f"test_cases.py::test_family[case-{i}]" for i in range(12)
+    ]
+    contract = [
+        {"id": f"case-{i}", "selector": selector, "expected_status": "pass"}
+        for i, selector in enumerate(selectors)
+    ]
+    plan = module.batch_plan(contract)
+    assert len(plan) == 1
+    assert plan[0]["execution_selectors"] == [selectors[0]]
+    assert plan[0]["selectors"] == selectors

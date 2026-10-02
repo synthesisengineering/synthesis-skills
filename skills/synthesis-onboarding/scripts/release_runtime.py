@@ -495,6 +495,7 @@ ENTRYPOINT_DEPENDENCIES = {
         "synthesis-meeting-transcripts/optional-workspace-mcp/mcp_client.py",
         "synthesis-meeting-transcripts/optional-workspace-mcp/document_tabs.py",
         "synthesis-meeting-transcripts/optional-workspace-mcp/google_read.py",
+        "synthesis-meeting-transcripts/optional-workspace-mcp/workspace_mcp_read.py",
     ),
     "synthesis-slack-sync/scripts/acquire.py": (
         "synthesis-daily-rituals/scripts/acquisition_transport.py",
@@ -507,6 +508,7 @@ ENTRYPOINT_DEPENDENCIES = {
         "synthesis-slack-sync/scripts/slack_workspaces.py",
         "synthesis-slack-sync/thread_checker.py",
         "synthesis-slack-sync/scripts/slack_read.py",
+        "synthesis-slack-sync/scripts/connector_replay.py",
     ),
     "synthesis-agent-conformance/scripts/conformance.py": (
         "synthesis-context-lifecycle/scripts/record_succession.py",
@@ -1319,6 +1321,17 @@ for _entry in (
             )
         )
     )
+
+# The codex delivery lane is offered only after the conformance skill's client
+# binary owner finds a runnable Codex CLI, so every entrypoint that reaches peer
+# addressing carries that owner in its verified closure.
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if "synthesis-project-management/scripts/peer_addressing.py" in {_entry, *_dependencies}:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
+            dict.fromkeys(
+                (*_dependencies, "synthesis-agent-conformance/scripts/client_binaries.py")
+            )
+        )
 
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}

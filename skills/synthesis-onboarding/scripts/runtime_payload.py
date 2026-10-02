@@ -47,6 +47,7 @@ INTRODUCED_DEPENDENCIES = {"skills/synthesis-project-management/scripts/native_i
  'skills/synthesis-project-management/scripts/coordination_lock.py': ('skills/synthesis-project-management/scripts/coordination.py',),
  'skills/synthesis-project-management/scripts/project_recipient.py': ('skills/synthesis-project-management/scripts/coordination.py',),
  'skills/synthesis-agent-conformance/scripts/native_transcript_identity.py': ('skills/synthesis-project-management/scripts/coordination.py',),
+ 'skills/synthesis-agent-conformance/scripts/client_binaries.py': ('skills/synthesis-project-management/scripts/peer_addressing.py',),
  'skills/synthesis-project-management/scripts/coordination_process.py': ('skills/synthesis-project-management/scripts/coordination.py',)}
 
 MESSAGE_PARSER_DEPENDENCIES = frozenset(
@@ -151,6 +152,8 @@ def _specs(home, state_dir, components):
                            home / ".synthesis/git-hooks" / name, 0o755))
         result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py",
                        home / ".synthesis/git-hooks/native_transcript_identity.py", 0o755))
+        result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/client_binaries.py",
+                       home / ".synthesis/git-hooks/client_binaries.py", 0o755))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",
                        home / ".synthesis/references/session-words-v1.txt.zlib.b85", 0o644))
     if "message-guard" in components:

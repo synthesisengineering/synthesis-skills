@@ -2783,7 +2783,10 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                         "command_id": command_id, "command_digest": digest, "runtime_root": _runtime(runtime_root)}
                     observer_context["criterion_report"] = lambda: criterion_report(state, context)
                     prepared = _PREPARERS[command](observer_context, prepared)
-                    if not isinstance(prepared, dict) or len(_json(prepared)) > MAX_JSON_BYTES:
+                    # Trusted owner observations use the journal's logical bound;
+                    # MAX_JSON_BYTES limits physical files, not decoded records.
+                    if (not isinstance(prepared, dict)
+                            or len(_json(prepared)) + 1 > journal_storage.MAX_LOGICAL_BYTES):
                         raise RunStateError("command preparer returned invalid or oversized data")
                 updated = reducer(updated, prepared, context)
                 if not isinstance(updated, dict) or {k: v for k, v in updated.items() if k != "extensions"} != {k: v for k, v in state.items() if k != "extensions"} or not isinstance(updated.get("extensions"), dict):

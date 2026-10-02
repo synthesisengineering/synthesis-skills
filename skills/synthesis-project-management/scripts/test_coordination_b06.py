@@ -121,7 +121,7 @@ def test_resolve_reports_registered_muse_and_only_verified_lanes(
 
 @pytest.mark.parametrize("foreign", [False, True])
 def test_resolve_never_promises_unverified_direct_lane(
-    tmp_path, monkeypatch, capsys, foreign
+    tmp_path, monkeypatch, capsys, foreign, codex_cli
 ):
     # Locality is observed independently; the CLI override cannot establish it.
     monkeypatch.setattr(C, "local_machine_identity", lambda: ("local", "fixture-label"))
@@ -141,8 +141,27 @@ def test_resolve_never_promises_unverified_direct_lane(
         local_machine="local",
     )
     assert C.command_resolve(args) == 0
-    result = json.loads(capsys.readouterr().out)
-    assert ("codex" in result["matches"][0]["delivery"]) == (not foreign)
+    delivery = json.loads(capsys.readouterr().out)["matches"][0]["delivery"]
+    assert ("verified direct lanes: codex" in delivery) == (not foreign)
+    assert ("codex lane closed" in delivery) == foreign
+
+
+def test_resolve_names_a_missing_codex_cli_instead_of_a_lane(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(C, "local_machine_identity", lambda: ("local", "fixture-label"))
+    monkeypatch.setattr(C.platform, "node", lambda: "fixture-host")
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", "")
+    board = tmp_path / "board.md"
+    r = row(machine="local")
+    board.write_text(C.replace_table(C.template(), [r]))
+    monkeypatch.setattr(C, "require_fresh_board", lambda _: None)
+    args = SimpleNamespace(
+        board=board, to=r.compact_id, include_released=False, role=None,
+        stale_after_minutes=60, json=True, no_receipt=True, local_machine="local",
+    )
+    assert C.command_resolve(args) == 0
+    delivery = json.loads(capsys.readouterr().out)["matches"][0]["delivery"]
+    assert delivery.startswith("board message bus; no verified direct lane")
+    assert "codex lane closed" in delivery and "SYNTHESIS_CODEX_BIN" in delivery
 
 
 @pytest.mark.parametrize(

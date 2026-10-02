@@ -389,7 +389,7 @@ def test_doctor_preserves_missing_registered_worktree_evidence(tmp_path):
 
 
 
-def test_doctor_reports_vanished_tracked_material_without_pruning(tmp_path, monkeypatch):
+def test_doctor_reports_vanished_tracked_material_without_pruning(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
@@ -398,29 +398,29 @@ def test_doctor_reports_vanished_tracked_material_without_pruning(tmp_path, monk
     names = git("ls-files", cwd=target).splitlines()
     assert names
     (target / names[0]).unlink()
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     result = DOCTOR.check_storage([local])
     assert not result.ok and "vanished tracked path" in result.detail
     assert "intentional deletion versus loss is UNKNOWN" in result.detail
     assert "fixture-missing-source" in git("branch", "--list", cwd=local)
 
 
-def test_doctor_valid_durable_registration_positive(tmp_path, monkeypatch):
+def test_doctor_valid_durable_registration_positive(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
     target = tmp_path / "worktree"
     git("worktree", "add", "-b", "fixture-healthy", str(target), cwd=local)
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     before = git("worktree", "list", "--porcelain", cwd=local)
     result = DOCTOR.check_storage([local])
     assert result.ok, result.detail
     assert before == git("worktree", "list", "--porcelain", cwd=local)
 
 
-def test_doctor_only_declared_venv_and_source_paths(tmp_path, monkeypatch):
+def test_doctor_only_declared_venv_and_source_paths(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     venv = tmp_path / "venv"
     venv.mkdir()
     (venv / "pyvenv.cfg").write_text("home = synthetic\n")
@@ -439,7 +439,7 @@ def test_doctor_refuses_input_that_git_would_resolve_to_enclosing_repository(tmp
     assert not result.ok and "exact Git checkout root" in result.detail
 
 
-def test_doctor_metadata_reads_do_not_execute_local_fsmonitor(tmp_path, monkeypatch):
+def test_doctor_metadata_reads_do_not_execute_local_fsmonitor(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
@@ -448,7 +448,7 @@ def test_doctor_metadata_reads_do_not_execute_local_fsmonitor(tmp_path, monkeypa
     helper.write_text("#!/bin/sh\ntouch '" + str(marker) + "'\n")
     helper.chmod(0o700)
     git("config", "core.fsmonitor", str(helper), cwd=local)
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     result = DOCTOR.check_storage([local])
     assert result.ok, result.detail
     assert not marker.exists()
@@ -456,7 +456,7 @@ def test_doctor_metadata_reads_do_not_execute_local_fsmonitor(tmp_path, monkeypa
 
 @pytest.mark.parametrize("linked", [False, True])
 @pytest.mark.parametrize("damage", ["none", "missing", "corrupt", "symlink"])
-def test_actual_worktree_index_custody(tmp_path, monkeypatch, linked, damage):
+def test_actual_worktree_index_custody(tmp_path, monkeypatch, linked, damage, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
@@ -475,7 +475,7 @@ def test_actual_worktree_index_custody(tmp_path, monkeypatch, linked, damage):
             index.write_bytes(b"broken index")
         if damage == "symlink":
             index.symlink_to(preserved)
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     refs = git("show-ref", cwd=local)
     result = DOCTOR.check_storage([target])
     assert result.ok is (damage == "none"), result.detail
@@ -488,12 +488,12 @@ def test_actual_worktree_index_custody(tmp_path, monkeypatch, linked, damage):
         assert index.is_symlink() and "index" in result.detail
 
 
-def test_changed_index_during_storage_observation_refuses(tmp_path, monkeypatch):
+def test_changed_index_during_storage_observation_refuses(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
     index = local / ".git/index"
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     original = fleet_paths._storage_git
     changed = []
     def race(repository, arguments, *, timeout):
@@ -510,7 +510,7 @@ def test_changed_index_during_storage_observation_refuses(tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("linked", [False, True])
-def test_temporary_actual_common_git_is_not_healthy(tmp_path, monkeypatch, linked):
+def test_temporary_actual_common_git_is_not_healthy(tmp_path, monkeypatch, linked, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
@@ -519,7 +519,7 @@ def test_temporary_actual_common_git_is_not_healthy(tmp_path, monkeypatch, linke
         target = tmp_path / "linked"
         git("worktree", "add", "--detach", str(target), cwd=local)
     common = local / ".git"
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [common])
+    synthetic_storage_policy([common])
     assert fleet_paths.classify_storage(target)["status"] == "durable-candidate"
     before = git("worktree", "list", "--porcelain", cwd=local)
     result = DOCTOR.check_storage([target])
@@ -531,7 +531,7 @@ def test_temporary_actual_common_git_is_not_healthy(tmp_path, monkeypatch, linke
 @pytest.mark.parametrize("algorithm", ["sha1", "sha256"])
 @pytest.mark.parametrize("linked", [False, True])
 @pytest.mark.parametrize("split", [False, True])
-def test_doctor_actual_index_formats(tmp_path, monkeypatch, algorithm, linked, split, version):
+def test_doctor_actual_index_formats(tmp_path, monkeypatch, algorithm, linked, split, version, synthetic_storage_policy):
     import fleet_paths
     local = tmp_path / "repo"
     local.mkdir()
@@ -554,14 +554,14 @@ def test_doctor_actual_index_formats(tmp_path, monkeypatch, algorithm, linked, s
         git("update-index", "--split-index", cwd=target)
         shared = Path(git("rev-parse", "--path-format=absolute", "--shared-index-path", cwd=target))
         assert shared.is_absolute() and shared.is_file()
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     result = DOCTOR.check_storage([target])
     assert result.ok, result.detail
 
 
 @pytest.mark.parametrize("split", [False, True])
 @pytest.mark.parametrize("damage", ["checksum", "zero", "missing", "symlink", "fifo"])
-def test_index_integrity_refusals_preserve_metadata(tmp_path, monkeypatch, split, damage):
+def test_index_integrity_refusals_preserve_metadata(tmp_path, monkeypatch, split, damage, synthetic_storage_policy):
     import hashlib
     import os
     import fleet_paths
@@ -584,7 +584,7 @@ def test_index_integrity_refusals_preserve_metadata(tmp_path, monkeypatch, split
         if damage == "fifo":
             os.mkfifo(index)
     before = None if damage in {"missing", "symlink", "fifo"} else hashlib.sha256(index.read_bytes()).hexdigest()
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     result = DOCTOR.check_storage([local])
     assert not result.ok and "index" in result.detail and "UNKNOWN" in result.detail, result.detail
     if before:
@@ -639,13 +639,13 @@ def test_index_unsupported_format_deadline_and_directory_alias_refuse(tmp_path, 
         fleet_paths._index_witness(alias / "index", "sha1", time.monotonic() + 5)
 
 
-def test_split_index_dependency_replacement_refuses(tmp_path, monkeypatch):
+def test_split_index_dependency_replacement_refuses(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     remote = seed_repo(tmp_path / "origin.git")
     local = clone(remote, tmp_path / "local")
     git("update-index", "--split-index", cwd=local)
     shared = Path(git("rev-parse", "--path-format=absolute", "--shared-index-path", cwd=local))
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     original = fleet_paths._storage_git
     changed = []
     def query(repository, arguments, *, timeout):
@@ -681,7 +681,7 @@ def test_split_locator_exact_extension_and_entry_bounds(width):
             fleet_paths._index_link(body, width)
 
 
-def test_split_unsafe_dependency_refuses_before_git_reads_it(tmp_path, monkeypatch):
+def test_split_unsafe_dependency_refuses_before_git_reads_it(tmp_path, monkeypatch, synthetic_storage_policy):
     import fleet_paths
     import os
     remote = seed_repo(tmp_path / "origin.git")
@@ -697,6 +697,6 @@ def test_split_unsafe_dependency_refuses_before_git_reads_it(tmp_path, monkeypat
         called.append(arguments)
         return original(repository, arguments, timeout=timeout)
     monkeypatch.setattr(fleet_paths, "_storage_git", query)
-    monkeypatch.setattr(fleet_paths, "temporary_roots", lambda: [])
+    synthetic_storage_policy([])
     result = DOCTOR.check_storage([local])
     assert called and not result.ok and "ordinary file" in result.detail

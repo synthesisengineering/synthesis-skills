@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_transcripts
 
-SCRIPT_VERSION = "0.13.0"
+SCRIPT_VERSION = "0.14.0"
 
 _TS_IN_BRACKET = re.compile(r"\[\s*(\d{1,2}:\d{2}(?::\d{2})?)")
 

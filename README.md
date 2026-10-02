@@ -18,6 +18,12 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.0** verifies runnable Codex delivery lanes and corrects
+cross-platform storage fixtures. Acquisition preserves recorded connector
+responses but refuses Slack attribution from ambiguous rendered text and Drive
+interval completion without the provider completeness flag. The declared
+structured readers retain their existing acquisition and watermark checks.
+
 Release **4.153.4** fixes checkpoint and finalization failures for large project
 state. Both consumers use the existing bounded project-state reader.
 

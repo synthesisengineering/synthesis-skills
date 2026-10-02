@@ -102,6 +102,7 @@ COORDINATION_ENGINE_FILES = (
     "coordination_lock.py",
     "project_recipient.py",
     "native_transcript_identity.py",
+    "client_binaries.py",
 )
 ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
@@ -1359,7 +1360,7 @@ def source_engine_path(path: Path, name: str) -> Path:
         path.parents[1]
         / (
             "synthesis-agent-conformance"
-            if name == "native_transcript_identity.py"
+            if name in {"native_transcript_identity.py", "client_binaries.py"}
             else "synthesis-project-management"
         )
         / "scripts"

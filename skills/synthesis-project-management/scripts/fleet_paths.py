@@ -196,6 +196,17 @@ def temporary_roots() -> list[Path]:
     return list(dict.fromkeys(Path(value) for value in values if value and Path(value).is_absolute()))
 
 
+def _temporary_storage_root(canonical: Path) -> str | None:
+    """Return the known temporary root for an already canonical path."""
+    roots = [root.resolve(strict=False) for root in temporary_roots()]
+    # Other user-specific Darwin temporary/cache directories are not
+    # necessarily represented by this process's TMPDIR.
+    parts = canonical.parts
+    darwin_temp = len(parts) >= 7 and parts[:4] == ("/", "private", "var", "folders") and parts[6] in {"T", "C"}
+    found = next((str(root) for root in roots if canonical == root or root in canonical.parents), None)
+    return found or (str(Path(*parts[:7])) if darwin_temp else None)
+
+
 def classify_storage(path: Path) -> dict:
     """Classify one declared path, including aliases; never scan for work."""
     raw = Path(path).expanduser()
@@ -206,14 +217,9 @@ def classify_storage(path: Path) -> dict:
             raise ValueError("absolute path without traversal required")
         canonical = raw.resolve(strict=False)
         result["canonical"] = str(canonical)
-        roots = [root.resolve(strict=False) for root in temporary_roots()]
-        # Other user-specific Darwin temporary/cache directories are not
-        # necessarily represented by this process's TMPDIR.
-        parts = canonical.parts
-        darwin_temp = len(parts) >= 7 and parts[:4] == ("/", "private", "var", "folders") and parts[6] in {"T", "C"}
-        found = next((str(root) for root in roots if canonical == root or root in canonical.parents), None)
-        if found or darwin_temp:
-            result.update(status="temporary", reason="temporary storage has no durable retention contract", temporary_root=found or str(Path(*parts[:7])))
+        temporary_root = _temporary_storage_root(canonical)
+        if temporary_root:
+            result.update(status="temporary", reason="temporary storage has no durable retention contract", temporary_root=temporary_root)
         else:
             result.update(status="durable-candidate", reason="outside known temporary roots; backup and custody still required")
     except (OSError, RuntimeError, ValueError) as exc:

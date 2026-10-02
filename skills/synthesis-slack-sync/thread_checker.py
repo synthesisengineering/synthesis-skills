@@ -33,14 +33,25 @@ def acquire_channel(
     known_thread_ids=(),
     clock=None,
     max_pages=100,
+    probe_newest=None,
+    probe_search_newest=None,
 ):
     """Collect detailed history, full threads and an in-window search control.
 
     Callables are owner-selected, read-only connector adapters with their own
     finite request timeouts. They return {ok, messages, response_metadata,
-    tool_call_id}; search may use Slack's messages.matches envelope. This
+    tool_call_id}; search may use Slack's messages.matches envelope. A replay
+    adapter may also return the provider call's own ``observed_at``. This
     function neither sends nor writes, and never supplies oldest to threads.
     Raw response custody and account authorization remain with the adapter.
+
+    A channel with no in-window search hit can only be recorded as quiet when
+    two positive reads of its own, each bounded at the window's end, return a
+    real message that predates the window: ``probe_newest`` (channel history)
+    and ``probe_search_newest`` (the search index, newest first). History must
+    also hold nothing in the window. The evidence validator still requires
+    another channel's genuine in-window search control before it trusts an
+    empty search.
     """
     if not (
         isinstance(channel_id, str) and re.fullmatch(r"[A-Z][A-Z0-9]+", channel_id)
@@ -58,6 +69,20 @@ def acquire_channel(
         if not isinstance(value, str) or not re.fullmatch(r"[1-9]\d{9}\.\d{6}", value):
             raise ValueError("invalid provider timestamp")
         return Decimal(value)
+
+    def observed_at(response):
+        # A replayed call keeps the moment the provider actually answered; a
+        # live adapter is observed now. Either way the time is offset-bearing.
+        value = response.get("observed_at")
+        if value is None:
+            return clock().isoformat()
+        try:
+            stamp = datetime.fromisoformat(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid provider observation time") from exc
+        if stamp.tzinfo is None:
+            raise ValueError("provider observation time lacks an offset")
+        return stamp.isoformat()
 
     def pages(call, arguments, search=False):
         rows = []
@@ -131,7 +156,7 @@ def acquire_channel(
                 return rows, {
                     "complete": True,
                     "next_cursor": None,
-                    "observed_at": clock().isoformat(),
+                    "observed_at": observed_at(response),
                     "tool_call_id": calls[-1],
                     "tool_call_ids": calls,
                 }
@@ -162,8 +187,11 @@ def acquire_channel(
     )
     parents = set(known_thread_ids)
     controls = []
+    in_window_history = 0
     for row in history:
-        ts(row.get("ts"))
+        value = ts(row.get("ts"))
+        if lo <= value <= hi:
+            in_window_history += 1
         if row.get("reply_count", 0):
             parents.add(row["ts"])
     for row in hits:
@@ -172,8 +200,33 @@ def acquire_channel(
             controls.append(row["ts"])
             if row.get("thread_ts"):
                 parents.add(row["thread_ts"])
+    quiet = None
     if not controls:
-        raise ValueError("no in-window positive control; absence remains unknown")
+        # An empty search alone never proves an empty channel. A quiet channel
+        # needs positive reads of its own: history and the search index must
+        # each return a real message at or before the window's end, and that
+        # newest message must predate the window.
+        if probe_newest is None or probe_search_newest is None or in_window_history:
+            raise ValueError("no in-window positive control; absence remains unknown")
+        quiet = {}
+        for key, probe in (("history", probe_newest), ("search", probe_search_newest)):
+            response = probe(channel_id=channel_id, latest=str(hi))
+            if not isinstance(response, dict) or response.get("ok") is not True:
+                raise ValueError("newest-message probe failed; absence remains unknown")
+            call_id = response.get("tool_call_id")
+            if not isinstance(call_id, str) or not call_id:
+                raise ValueError("raw tool-call provenance missing")
+            newest = response.get("newest_ts")
+            if newest is None or ts(newest) >= lo:
+                raise ValueError(
+                    "no in-window positive control and the newest-message probe does "
+                    "not predate the window; absence remains unknown"
+                )
+            quiet[key] = {
+                "newest_ts": newest,
+                "tool_call_id": call_id,
+                "observed_at": observed_at(response),
+            }
     threads = []
     for parent in sorted(parents):
         ts(parent)
@@ -194,7 +247,7 @@ def acquire_channel(
         ):
             raise ValueError("thread pass missed an in-window search reply")
         threads.append({**proof, "parent_ts": parent, "messages": rows})
-    return {
+    result = {
         "id": channel_id,
         "known_thread_ids": list(known_thread_ids),
         "history": {
@@ -213,6 +266,9 @@ def acquire_channel(
         },
         "threads": threads,
     }
+    if quiet is not None:
+        result["quiet_control"] = quiet
+    return result
 
 
 def extract_threads(

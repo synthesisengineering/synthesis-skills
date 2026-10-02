@@ -20,7 +20,8 @@ def source_in_target(tmp_path):
     shutil.copytree(SCRIPT.parent.parent / "references", pm / "references")
     conformance = worktree / "skills/synthesis-agent-conformance/scripts"
     conformance.mkdir(parents=True)
-    shutil.copy2(SCRIPT.parents[2] / "synthesis-agent-conformance/scripts/native_transcript_identity.py", conformance / "native_transcript_identity.py")
+    for name in ("native_transcript_identity.py", "client_binaries.py"):
+        shutil.copy2(SCRIPT.parents[2] / "synthesis-agent-conformance/scripts" / name, conformance / name)
     guard = worktree / "skills/synthesis-repo-guard"
     guard.mkdir()
     shutil.copy2(CHECKPOINT_SCRIPT, guard / "checkpoint_sync.py")

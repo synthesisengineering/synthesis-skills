@@ -5,6 +5,13 @@ release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
 
+## v3.14.0 — Recorded connector acquisition
+
+v3.14.0 (2026-10-02): acquire complete conversation and thread coverage from
+recorded connector calls, with account identity, pagination and raw custody.
+Advance proven conversations independently, retain unknown targets, and publish
+each daily archive once per acquisition.
+
 ## v3.13.0 — Conversation-scoped acquisition and complete paging
 
 v3.13.0 (2026-09-28): the declared read-only API adapter binds the configured

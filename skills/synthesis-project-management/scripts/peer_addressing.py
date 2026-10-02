@@ -31,6 +31,7 @@ import json
 import os
 import sys
 import re
+import shlex
 import socket
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
@@ -640,6 +641,30 @@ def harness_address(entry: dict) -> str:
 # Lanes: exact per-client delivery addresses for one resolved target
 # --------------------------------------------------------------------------
 
+def locate_codex_cli() -> str | None:
+    """The Codex CLI this machine can actually run, or None.
+
+    Discovery belongs to the conformance skill's client-binary owner: an
+    explicit SYNTHESIS_CODEX_BIN override, then PATH, then documented vendor
+    locations, each discovered candidate passing a bounded local --version
+    probe. A launcher that exists but cannot start its CLI is not a lane.
+    """
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-agent-conformance" / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        from client_binaries import resolve_client_binary, _codex_launcher_works
+    except ImportError:
+        return None
+    cli = resolve_client_binary("codex")
+    # Explicit overrides select one installation without fallback. Discovery
+    # intentionally does not probe those overrides, but a delivery lane still
+    # requires actual launch capability from the same bounded probe owner.
+    if cli and "SYNTHESIS_CODEX_BIN" in os.environ:
+        return cli if _codex_launcher_works(Path(cli)) is True else None
+    return cli
+
+
 def delivery_lanes(
     *,
     client_ref: str,
@@ -650,6 +675,7 @@ def delivery_lanes(
     local_hostname: str | None = None,
     registry: Path | None = None,
     alive=process_alive,
+    codex_cli=None,
 ) -> dict[str, dict]:
     """Every exact way to reach one target from this machine.
 
@@ -657,7 +683,8 @@ def delivery_lanes(
     machine and only while live truth confirms them: the ccd lane needs the
     row's ``ccd:`` ref, the harness lane needs the registry to still map the
     seat's harness session id to a running process, the codex lane needs a
-    ``codex:`` ref. A name never appears as an address.
+    ``codex:`` ref and a Codex CLI on this machine that actually runs; its
+    command names that exact binary. A name never appears as an address.
 
     On v5 boards ``target_machine``/``local_machine`` are fleet machine-ids;
     on legacy rows they are hostnames. Either way the same-machine gate is
@@ -713,10 +740,14 @@ def delivery_lanes(
     elif seat is not None and seat.client == CLIENT_CODEX and seat.harness_session_id:
         codex_thread = seat.harness_session_id
     if same_machine and codex_thread:
-        lanes["codex"] = {
-            "thread": codex_thread,
-            "command": f"codex queue --thread {codex_thread} --message <text>",
-        }
+        # Only probe for the CLI when every identity gate already passed.
+        cli = (codex_cli or locate_codex_cli)()
+        if cli:
+            lanes["codex"] = {
+                "thread": codex_thread,
+                "cli": cli,
+                "command": f"{shlex.quote(cli)} queue --thread {codex_thread} --message <text>",
+            }
     return lanes
 
 

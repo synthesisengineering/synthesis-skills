@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.13.0"
+  version: "3.14.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -184,7 +184,7 @@ slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="
 - **Every declared target is read every sync**, including targets read earlier the same day — the window simply starts where the last read stopped.
 - Note the **reply count** on every message that has threads. These will be re-read in Step 2.
 
-Use `synthesis exec-public synthesis-slack-sync/scripts/acquire.py` for the explicitly declared credential-local read adapter, following [declared acquisition entries](../synthesis-daily-rituals/references/acquisition-entry.md). It consumes preflight and the current registry; it never discovers targets or falls back between MCP and direct credentials. Keep unsupported connector coverage UNKNOWN.
+Use `synthesis exec-public synthesis-slack-sync/scripts/acquire.py` with the explicitly declared structured Web API adapter, following [declared acquisition entries](../synthesis-daily-rituals/references/acquisition-entry.md). Recorded connector calls remain source custody, but their rendered message strings cannot prove author or message boundaries. Connector replay therefore reports a blocking problem and refuses attributable archives or watermark advancement; repeating those same reads cannot repair that limitation. The owner consumes preflight and the current registry and never discovers targets or falls back to direct credentials. Keep unsupported connector coverage UNKNOWN.
 
 Before advancing a Slack watermark, read the mandatory [acquisition evidence contract](../synthesis-daily-rituals/references/acquisition-evidence.md). Use detailed channel/DM reads with complete pagination, independently search within the declared window for replies (including old parents), and follow the union of local known threads, history indicators, and search parents. `thread_checker.acquire_channel` provides this bounded read-only adapter flow. Retain actual in-window positive controls and raw call references; historical controls or empty/concise reads cannot establish absence. Save exact message IDs and bytes, then pass the complete receipt to `sync_watermark.py advance --acquisition-evidence`. If a connector lacks required detail or pagination, report unknown coverage and keep the watermark.
 

@@ -615,3 +615,63 @@ def test_second_decode_never_reuses_a_previously_verified_leaf(tmp_path):
     leaf.write_bytes(b'["leaf", "tampered"]\n')
     with pytest.raises(ValueError, match='digest'):
         storage.decode(path, descriptor)
+
+
+# Trusted owner observations may exceed the physical snapshot-file bound.
+def test_prepared_owner_state_commits_above_physical_file_limit(engine, world):
+    state = create(engine, world)
+    pm_state = {'schema_version': 1, 'items': [
+        {'id': index, 'evidence': 'retained-' + 'x' * 2000}
+        for index in range(3100)]}
+    prepared = {'pm_state': pm_state}
+    assert engine.MAX_JSON_BYTES < len(engine._json(prepared)) < storage.MAX_LOGICAL_BYTES
+    calls = []
+    def prepare(context, payload):
+        calls.append(context['journal_head']['revision'])
+        return prepared
+    def reduce(state, payload, context):
+        state['extensions']['owner_state'] = payload['pm_state']
+        return state
+    engine.register_command('fixture.owner-state', reduce, allowed_fields=('extensions',))
+    engine.register_preparer('fixture.owner-state', prepare)
+    changed = command(engine, world, state, 'fixture.owner-state', {}, command_id='owner-state')
+    assert changed['extensions']['owner_state'] == pm_state
+    assert engine.load_run(world['project'], state['run_id']) == changed
+    assert command(engine, world, state, 'fixture.owner-state', {}, command_id='owner-state') == changed
+    assert calls == [state['revision']]
+
+
+@pytest.mark.parametrize('fault', ['logical_capacity', 'invalid_shape', 'protected_core'])
+def test_prepared_owner_refusals_leave_journal_unchanged(engine, world, monkeypatch, fault):
+    state = create(engine, world)
+    home = engine._home(world['project'], state['run_id'])
+    before = {p.name: p.read_bytes() for p in (home / 'events').iterdir()}
+    projection = (home / 'current.json').read_bytes()
+    seen = []
+    def prepare(context, payload):
+        seen.append('prepare')
+        if fault == 'invalid_shape':
+            return []
+        return {'pm_state': 'x' * 6000}
+    def reduce(state, payload, context):
+        seen.append('reduce')
+        if fault == 'protected_core':
+            state['status'] = 'completed'
+        return state
+    engine.register_command('fixture.owner-refusal', reduce, allowed_fields=('extensions',))
+    engine.register_preparer('fixture.owner-refusal', prepare)
+    original_capacity = storage.MAX_LOGICAL_BYTES
+    if fault == 'logical_capacity':
+        monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', 6000)
+    payload = {}
+    with pytest.raises(ValueError):
+        command(engine, world, state, 'fixture.owner-refusal', payload)
+    if fault in {'logical_capacity', 'invalid_shape'}:
+        assert seen == ['prepare']
+    else:
+        assert seen == ['prepare', 'reduce']
+    assert {p.name: p.read_bytes() for p in (home / 'events').iterdir()} == before
+    assert (home / 'current.json').read_bytes() == projection
+    if fault == 'logical_capacity':
+        monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', original_capacity)
+    assert engine.load_run(world['project'], state['run_id']) == state

@@ -106,7 +106,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.10.2"
+ENGINE_VERSION = "2.10.3"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -4930,6 +4930,7 @@ def _coordination_probe():
         root / "coordination_lock.py",
         root / "project_recipient.py",
         root / "native_transcript_identity.py",
+        root / "client_binaries.py",
     ]
     if not all(path.is_file() for path in required):
         return False, "stable coordination runtime is missing"
