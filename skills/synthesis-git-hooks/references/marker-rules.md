@@ -16,7 +16,10 @@ strict config grammar, including empty mapping-value sequences (`key: []` or
 or nonempty flow syntax. Quoted `"[]"` remains a string. A complete
 `private_key_markers` sequence at document root,
 or directly inside `tier_0_always`, must contain only exact supported bare-marker
-scalars. Mixed body values, aliases, malformed syntax and unsupported nesting do
+scalars. Rule syntax uses the engine's complete supported vocabulary, even when
+the active policy selects only a subset. This allows adding supported detection
+rules without classifying unchanged catalog entries as an open key. It does not
+change the active material patterns or custom expressions. Mixed body values, aliases, malformed syntax and unsupported nesting do
 not establish a rule. A Python data-only module may contain raw-string
 `private_key_marker` assignments with those exact values. Expressions, function
 calls, concatenated material and arbitrary quotes are insufficient. Unknown

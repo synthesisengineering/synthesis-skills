@@ -983,6 +983,7 @@ changed_surfaces:
   - empty-sequence-b330a633edef
   - empty-sequence-aa0bb69bbc45
   - empty-sequence-169afea0fdf4
+  - marker-rule-vocabulary-subset-20261002
 - path: skills/synthesis-git-hooks/scripts/_load_config.py
   cases:
   - empty-sequence-21cfecd91db6
@@ -1001,6 +1002,7 @@ changed_surfaces:
   - empty-sequence-b330a633edef
   - empty-sequence-aa0bb69bbc45
   - empty-sequence-169afea0fdf4
+  - marker-rule-vocabulary-subset-20261002
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - final-42c5721991f12696
@@ -2383,6 +2385,10 @@ changed_surfaces:
   - empty-sequence-aa0bb69bbc45
   - empty-sequence-169afea0fdf4
   - performance-fd9f4e60a1a7b498
+  - marker-rule-vocabulary-subset-20261002
+- path: skills/synthesis-git-hooks/scripts/_scan_staged.py
+  cases:
+  - marker-rule-vocabulary-subset-20261002
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -9955,3 +9961,9 @@ cases:
   fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_empty_sequence_does_not_erase_other_configured_credential_groups
   motivating_defect: Empty sequence grammar must accept complete rule definitions without hiding protected
     material.
+- id: marker-rule-vocabulary-subset-20261002
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_supported_rule_vocabulary_is_independent_of_active_subset
+  motivating_defect: Adding supported rule vocabulary under a subset policy must not open false private-key
+    regions; credentials, mixed material and custom expressions remain protected.

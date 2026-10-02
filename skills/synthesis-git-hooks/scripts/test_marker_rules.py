@@ -592,3 +592,41 @@ def test_empty_sequence_does_not_erase_other_configured_credential_groups(
     assert "AKIA[0-9A-Z]{16}" in active
     stage(root, "policy.yaml", b"empty: []\n" + rule() + suffix)
     assert_status(invoke(root, env), 1 if suffix else 0)
+
+
+@pytest.mark.parametrize(
+    "variant", ["catalog", "mixed", "armored", "credential", "custom", "comment"]
+)
+def test_supported_rule_vocabulary_is_independent_of_active_subset(tmp_path, variant):
+    root, config, env = setup(tmp_path, personal=True)
+    # The installed policy selects four families; the staged catalog adds two
+    # supported families. The prior entries are unchanged context, not material.
+    configured = config.read_text()
+    for marker in MARKERS[4:]:
+        configured = configured.replace("    - '" + marker + "'\n", "")
+    config.write_text(configured)
+    before = b"empty: []\nprivate_key_markers:\n" + b"".join(
+        ("  - '" + marker + "'\n").encode() for marker in MARKERS[:4]
+    )
+    stage(root, "catalog.data", before)
+    git(root, "commit", "-m", "Synthetic rule baseline")
+    after = before + b"".join(
+        ("  - '" + marker + "'\n").encode() for marker in MARKERS[4:]
+    )
+    if variant == "mixed":
+        after += ("  - '" + BODY + "'\n").encode()
+    elif variant == "armored":
+        after += ("material: |\n  -----" + MARKERS[0] + "-----\n  " + BODY + "\n").encode()
+    elif variant == "credential":
+        after += b"secret: " + b"AKIA" + b"ABCDEFGHIJKLMNOP\n"
+    elif variant == "custom":
+        config.write_text(configured.replace(
+            "  api_keys:\n", "  api_keys:\n    - 'BEGIN.*PRIVATE KEY'\n"
+        ))
+    elif variant == "comment":
+        after = after.replace(
+            (MARKERS[-1] + "'\n").encode(),
+            (MARKERS[-1] + "' # " + MARKERS[0] + "\n").encode(),
+        )
+    stage(root, "catalog.data", after)
+    assert_status(invoke(root, env), 0 if variant == "catalog" else 1)

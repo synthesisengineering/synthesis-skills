@@ -492,7 +492,10 @@ def detection_rule_lines(raw: bytes, markers: list[str], parser) -> set[int]:
     if "\0" in text:
         return set()
     lines = text.split("\n")
-    allowed = set(markers)
+    # Rule syntax recognizes the engine's complete literal vocabulary. The
+    # active policy still selects which material families are scanned; adding
+    # a supported rule cannot turn unchanged catalog entries into open keys.
+    allowed = set(MARKER_NAMES)
     accepted = set()
     parse_yaml, config_error = parser
     try:
@@ -543,7 +546,7 @@ def detection_rule_lines(raw: bytes, markers: list[str], parser) -> set[int]:
                     break
                 # A second marker in a trailing comment is still material.
                 suffix = item[match.end(3) + 1 :]
-                if any(marker.lower() in suffix.lower() for marker in markers):
+                if any(marker.lower() in suffix.lower() for marker in MARKER_NAMES):
                     valid = False
                     break
                 found.append(offset + 1)
