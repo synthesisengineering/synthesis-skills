@@ -20,19 +20,17 @@ decide ownership.
 
 Design rules:
 
-  - **The repository slug is passed to bkt on its own.** `--workspace <ws>
-    --repo <slug>`; a slug carrying a `/` is refused before any command runs,
-    because `--repo team/name` is exactly the form that 404s.
-  - **A failed query is an `unscanned` record, never an empty queue.** A 404, a
-    non-zero exit, a timeout, an unparseable body, or an identity that cannot be
-    resolved all return `{"status": "unscanned", "reason": ...}` with no
-    `items` key at all, so a caller cannot mistake it for a clean result.
-  - **An empty queue is a scanned record, never a failure.** bkt writes
-    `{"pull_requests": null, ...}` — null, not `[]` — for a repository with no
-    open pull requests. Either spelling is a queue that was read and found
-    empty. A body with no `pull_requests` key, or one whose value is neither
-    null nor a list, is unscanned with the shape it saw named in the reason.
-  - **Read-only.** `bkt pr list` and `bkt api /user` are the only commands.
+  - **Explicit repository binding.** The bkt API path contains both workspace
+    and repository; neither a shared context nor a response URL selects it.
+  - **Explicit reviewer custody.** bkt's ordinary PR list omits reviewers.
+    Request them through the authenticated API instead of treating omissions
+    as proof that nobody was asked to review.
+  - **Complete bounded pagination.** Every page must pass before classifying
+    any rows. Missing reviewer fields, malformed pages, duplicate PR IDs,
+    changed pagination scope, the page cap or the total deadline produce an
+    unscanned record without partial items. An explicit empty values list on
+    the terminal page is a scanned empty queue.
+  - **Read-only.** Only bkt API GET operations run; no per-PR detail loop.
   - **No network in tests.** Every entry point takes a `runner` with the
     signature of `subprocess.run`.
 
@@ -46,10 +44,17 @@ from __future__ import annotations
 import datetime
 import json
 import subprocess
+import re
+import time
+from urllib.parse import parse_qs, urlsplit
 
 PER_REPO_TIMEOUT_S = 20
 IDENTITY_TIMEOUT_S = 15
 IDENTITY_KEYS = ("uuid", "account_id")
+PAGE_SIZE = 50
+MAX_PAGES = 100
+FIELDS = ("values.id,values.title,values.state,values.draft,values.created_on,"
+          "values.author,values.reviewers,next")
 
 
 def age_days(iso: str, now: datetime.datetime) -> int:
@@ -60,7 +65,9 @@ def age_days(iso: str, now: datetime.datetime) -> int:
     """
     try:
         created = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    except ValueError:
+    except (ValueError, TypeError):
+        return 0
+    if created.tzinfo is None:
         return 0
     return max(0, (now - created).days)
 
@@ -96,50 +103,109 @@ def bkt_identity(runner=subprocess.run) -> tuple[dict | None, str | None]:
 
 def _keys(user: dict | None) -> set[str]:
     """The unique identifiers a Bitbucket user object carries."""
-    return {str(v) for k in IDENTITY_KEYS for v in [(user or {}).get(k)] if v}
-
-
-def _reviewers(pr: dict) -> list[dict]:
-    """Requested reviewers: the `reviewers` list, else participants with role REVIEWER.
-
-    The REST pull-request object carries both; the list form bkt emits carries
-    `reviewers`, while a raw object read elsewhere may carry only
-    `participants`. Either names the same people.
-    """
-    if pr.get("reviewers") is not None:
-        return [r for r in pr["reviewers"] if isinstance(r, dict)]
-    return [
-        (p.get("user") or {}) for p in (pr.get("participants") or [])
-        if isinstance(p, dict) and p.get("role") == "REVIEWER"
-    ]
+    if not isinstance(user, dict):
+        return set()
+    return {v for k in IDENTITY_KEYS for v in [user.get(k)]
+            if isinstance(v, str) and v}
 
 
 def _unscanned(workspace: str, repo_slug: str, reason: str) -> dict:
     return {"workspace": workspace, "repo": repo_slug, "status": "unscanned", "reason": reason}
 
 
-def _rows(data) -> tuple[list | None, str | None]:
-    """The pull-request rows in a parsed `bkt pr list --json` body. (rows, reason).
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON field")
+        result[key] = value
+    return result
 
-    bkt wraps the rows in `{"workspace", "repo", "pull_requests"}` and writes
-    `pull_requests: null` — not `[]` — when the repository has no open pull
-    requests, so null is an empty queue that was read. A bare list is taken as
-    the rows themselves. Anything else is a body this module does not
-    understand, reported with the shape it saw.
-    """
-    if isinstance(data, list):
-        return data, None
-    if not isinstance(data, dict):
-        return None, "bkt returned %s, not a pull_requests envelope" % type(data).__name__
-    if "pull_requests" not in data:
-        return None, "bkt returned JSON without a pull_requests list"
-    rows = data["pull_requests"]
-    if rows is None:
-        return [], None
-    if not isinstance(rows, list):
-        return None, "bkt returned pull_requests as %s, not a list" % type(rows).__name__
+
+def _identity_present(user) -> bool:
+    return isinstance(user, dict) and any(
+        isinstance(user.get(k), str) and user[k] for k in IDENTITY_KEYS)
+
+
+def _rows(data) -> tuple[list | None, str | None]:
+    """Validate the explicitly projected API page before accepting any rows."""
+    if not isinstance(data, dict) or not isinstance(data.get("values"), list):
+        return None, "bkt API returned no values list"
+    rows = data["values"]
+    if len(rows) > PAGE_SIZE:
+        return None, "bkt API exceeded the requested page size"
+    for row in rows:
+        if (not isinstance(row, dict) or type(row.get("id")) is not int
+                or row["id"] <= 0 or row.get("state") != "OPEN"
+                or not isinstance(row.get("title"), str)
+                or not isinstance(row.get("created_on"), str)
+                or type(row.get("draft")) is not bool
+                or not _identity_present(row.get("author"))):
+            return None, "bkt API returned an incomplete or invalid open PR"
+        if (not isinstance(row.get("reviewers"), list)
+                or any(not _identity_present(user) for user in row["reviewers"])):
+            return None, "bkt API did not provide complete reviewer identities"
     return rows, None
 
+
+def _list_rows(workspace, repo_slug, runner):
+    endpoint = "/repositories/%s/%s/pullrequests" % (workspace, repo_slug)
+    deadline = time.monotonic() + PER_REPO_TIMEOUT_S
+    rows, seen = [], set()
+    for page in range(1, MAX_PAGES + 1):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None, "timed out after %ds" % PER_REPO_TIMEOUT_S
+        params = {"state": "OPEN", "pagelen": str(PAGE_SIZE),
+                  "fields": FIELDS, "page": str(page)}
+        cmd = ["bkt", "api", endpoint, "--method", "GET", "--json"]
+        for key, value in params.items():
+            cmd.extend(["--param", key + "=" + value])
+        try:
+            out = runner(cmd, capture_output=True, text=True, timeout=remaining)
+        except subprocess.TimeoutExpired:
+            return None, "timed out after %ds" % PER_REPO_TIMEOUT_S
+        except OSError as exc:
+            return None, "could not run bkt: %s" % exc
+        if time.monotonic() >= deadline:
+            return None, "timed out after %ds" % PER_REPO_TIMEOUT_S
+        if out.returncode != 0:
+            return None, _failure(out, "bkt")
+        try:
+            if len(out.stdout or "") > 4 * 1024 * 1024:
+                return None, "bkt API page exceeds the response limit"
+            data = json.loads(out.stdout or "", object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            return None, "bkt returned unparseable JSON"
+        values, reason = _rows(data)
+        if reason:
+            return None, reason
+        for row in values:
+            if row["id"] in seen:
+                return None, "bkt API repeated a PR across the inventory"
+            seen.add(row["id"])
+            rows.append(row)
+        if time.monotonic() >= deadline:
+            return None, "timed out after %ds" % PER_REPO_TIMEOUT_S
+        next_url = data.get("next")
+        if next_url is None:
+            return rows, None
+        if not isinstance(next_url, str) or not values:
+            return None, "bkt API returned invalid pagination"
+        try:
+            parsed = urlsplit(next_url)
+            query = parse_qs(parsed.query, strict_parsing=True)
+        except ValueError:
+            return None, "bkt API returned invalid pagination"
+        expected = {key: [value] for key, value in params.items()}
+        expected["page"] = [str(page + 1)]
+        if (parsed.scheme != "https" or parsed.netloc != "api.bitbucket.org"
+                or parsed.path != "/2.0" + endpoint or parsed.fragment
+                or query != expected):
+            return None, "bkt API pagination changed the repository or query scope"
+        # Construct the next request from the verified scope; never execute or
+        # send credentials to a response-provided URL.
+    return None, "bkt API pagination exceeded %d pages" % MAX_PAGES
 
 def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
                   identity: dict | None = None,
@@ -165,6 +231,10 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
             "workspace, e.g. 'content-scaling-agents'), with --workspace carrying the workspace"
             % repo_slug)
 
+    if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value)
+           or value in {".", ".."} for value in (workspace, repo_slug)):
+        raise ValueError("workspace and repository must be literal slugs")
+
     if identity is None:
         identity, err = bkt_identity(runner)
         if err:
@@ -175,23 +245,7 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
             workspace, repo_slug,
             "identity carries neither uuid nor account_id; cannot tell which pull requests are yours")
 
-    cmd = [
-        "bkt", "pr", "list", "--workspace", workspace, "--repo", repo_slug,
-        "--state", "OPEN", "--limit", "0", "--json",
-    ]
-    try:
-        out = runner(cmd, capture_output=True, text=True, timeout=PER_REPO_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        return _unscanned(workspace, repo_slug, "timed out after %ds" % PER_REPO_TIMEOUT_S)
-    except OSError as exc:
-        return _unscanned(workspace, repo_slug, "could not run bkt: %s" % exc)
-    if out.returncode != 0:
-        return _unscanned(workspace, repo_slug, _failure(out, "bkt"))
-    try:
-        data = json.loads(out.stdout or "")
-    except json.JSONDecodeError:
-        return _unscanned(workspace, repo_slug, "bkt returned unparseable JSON")
-    rows, reason = _rows(data)
+    rows, reason = _list_rows(workspace, repo_slug, runner)
     if reason:
         return _unscanned(workspace, repo_slug, reason)
 
@@ -202,7 +256,7 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
         if not isinstance(pr, dict):
             continue
         reviewers: set[str] = set()
-        for reviewer in _reviewers(pr):
+        for reviewer in pr["reviewers"]:
             reviewers |= _keys(reviewer)
         author = _keys(pr.get("author"))
         if mine & reviewers:
@@ -214,8 +268,9 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
         else:
             continue
         number = pr.get("id")
-        url = (((pr.get("links") or {}).get("html") or {}).get("href")
-               or "https://bitbucket.org/%s/pull-requests/%s" % (display, number))
+        # Both the repository and positive integer ID were validated above.
+        # Optional provider link metadata cannot redirect or break the scan.
+        url = "https://bitbucket.org/%s/pull-requests/%s" % (display, number)
         items.append({
             "repo": display,
             "number": number,

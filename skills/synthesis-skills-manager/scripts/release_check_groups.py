@@ -718,9 +718,24 @@ def bounded_map(items, worker, *, workers=4, stop_when=None, on_result=None,
     return results
 
 
-DIAGNOSTIC_RECORDS = 2000
+DIAGNOSTIC_RECORDS = 4096
 DIAGNOSTIC_BYTES = 32 * 1024 * 1024
 DIAGNOSTIC_SECONDS = 10
+
+
+def check_diagnostic_capacity(plan: list[dict]) -> int:
+    """Refuse an impossible complete capture before running acceptance tests.
+
+    Two outer records and six per batch are retained, including missing-record
+    metadata. Finalization also checks the ceiling, so leave one slot unused.
+    The independent byte, time, identity and privacy limits still apply.
+    """
+    required = 2 + 6 * len(plan)
+    if required >= DIAGNOSTIC_RECORDS:
+        raise ValueError(
+            f"diagnostic capacity: {required} planned records must be below {DIAGNOSTIC_RECORDS}"
+        )
+    return required
 
 
 def custody_identity(info):

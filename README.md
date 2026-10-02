@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.1** checks replay ownership against the current authenticated
+enrollment after a same-session seat transition, retaining the original history
+and cancellation evidence. Bitbucket queue scans request reviewer fields
+explicitly and complete bounded pagination before classifying pull requests.
+
 Release **4.154.0** verifies runnable Codex delivery lanes and corrects
 cross-platform storage fixtures. Acquisition preserves recorded connector
 responses but refuses Slack attribution from ambiguous rendered text and Drive

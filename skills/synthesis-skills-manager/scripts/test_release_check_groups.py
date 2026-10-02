@@ -2052,3 +2052,70 @@ def test_acceptance_transport_nesting_is_bounded_without_counting_quoted_braces(
         nested = {"child": nested}
     with pytest.raises(ValueError, match="depth"):
         groups.encode_acceptance_receipt(nested)
+
+
+def test_diagnostic_capture_above_two_thousand_records(tmp_path):
+    """Synthetic pinned records exercise real custody, not test/release authority."""
+    root = tmp_path / "source"
+    root.mkdir()
+    program = r"""
+import hashlib, json, os, sys, time
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import release_check_groups as g
+parent = Path(os.environ['TMPDIR']).resolve()
+batches = []
+for index in range(336):
+    group = parent / ('synthesis-release-check-' + str(index))
+    group.mkdir(mode=0o700)
+    process = group / 'synthesis-required-check-synthetic'
+    process.mkdir(mode=0o700)
+    selectors = ['test_public.py::test_one']
+    events = [{'sequence': 0, 'kind': 'start'}] + [
+        {'sequence': i + 1, 'kind': 'phase', 'nodeid': selectors[0],
+         'when': when, 'outcome': 'passed', 'duration': 0.001}
+        for i, when in enumerate(('setup', 'call', 'teardown'))]
+    contents = {
+        group / 'selection.json': json.dumps(selectors),
+        group / 'pytest.ini': '[pytest]\n',
+        group / 'inventory.json': '{}',
+        group / 'inventory.progress.jsonl': ''.join(json.dumps(e) + '\n' for e in events),
+        process / 'output.log': 'private-output-sentinel',
+        process / 'result.json': '{}',
+    }
+    for path, data in contents.items():
+        path.write_text(data)
+        path.chmod(0o600)
+    identity = g.custody_identity(group.stat())
+    process_identity = g.custody_identity(process.stat())
+    pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, identity)
+            for path in contents if path.parent == group}
+    process_pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, process_identity)
+                    for path in contents if path.parent == process}
+    batches.append({'id': str(index), 'selectors': selectors,
+        'fixture_custody': str(group), 'process_custody': str(process),
+        'custody_identity': identity, 'process_identity': process_identity,
+        'diagnostic_records': pins, 'process_records': process_pins,
+        'output_sha256': hashlib.sha256(b'private-output-sentinel').hexdigest(),
+        'returncode': 0})
+print(g.encode_acceptance_receipt({'execution': {'batches': batches}}))
+"""
+    completed = groups.bounded_run(
+        [sys.executable, "-c", program, str(Path(groups.__file__).parent)], root, 30
+    )
+    assert completed.returncode == 0, completed.stdout
+    plan = [{"id": str(i), "selectors": ["test_public.py::test_one"]} for i in range(336)]
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    started = time.monotonic()
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, target)
+    assert receipt["status"] == "RETAINED", receipt
+    assert time.monotonic() - started < 10
+    document = json.loads((Path(target["path"]) / "diagnostics.json").read_text())
+    assert len(document["records"]) == 2018
+    assert len(document["batches"]) == 336
+    assert all(len(batch["phases"]) == 3 for batch in document["batches"])
+    assert document["authorizes_release"] is False
+    assert "private-output-sentinel" not in json.dumps(document)
+    assert str(tmp_path) not in json.dumps(document)
+    assert groups.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
+    assert groups.DIAGNOSTIC_SECONDS == 10

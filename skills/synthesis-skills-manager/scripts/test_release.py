@@ -6821,3 +6821,24 @@ def test_release_suite_isolates_hosted_diagnostic_environment(tmp_path, inherite
         assert not destination.exists()
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert re.search(r"\b11 passed\b", completed.stdout), completed.stdout
+
+
+def test_diagnostic_capacity_refuses_before_actual_test_dispatch(tmp_path, monkeypatch):
+    import release_check_groups
+
+    repo, _, _, _, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    assert accepted is not None  # actual successful consumer is the positive control
+    monkeypatch.setattr(release_check_groups, "DIAGNOSTIC_RECORDS", 8)
+    destination = tmp_path / "public"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    ordinary = release.bounded_run
+
+    def forbid_test_dispatch(command, **kwargs):
+        assert command[0] == "git", "capacity must be checked before test dispatch"
+        return ordinary(command, **kwargs)
+
+    monkeypatch.setattr(release, "bounded_run", forbid_test_dispatch)
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    assert [step.name for step in result.failed] == ["checks.acceptance.diagnostics"]
+    assert not destination.exists()

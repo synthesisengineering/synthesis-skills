@@ -299,6 +299,14 @@ def _worker_source(context, handle):
 
 def _admitted_source(context, handle, source):
     proof, client, root, current_path = _root(context)
+    if source.get("replay", {}).get("status") in {"pending", "failed"}:
+        # Explicit reconciliation enrolls the current owner in replay.fresh.
+        # The outer enrollment remains historical custody until replay finishes;
+        # it must neither authorize the new seat nor be rewritten to impersonate it.
+        fresh = source["replay"]["fresh"]
+        if _replay_identity(source["binding"]) != _replay_identity(fresh["binding"]):
+            raise ValueError("replay enrollment differs from its retained source identity")
+        source = fresh
     if handle.startswith("worker:"):
         owner, client, session, _, _, _, path, custody = _worker_source(context, handle)
         if (
