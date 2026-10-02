@@ -1660,6 +1660,7 @@ changed_surfaces:
   - owner-reviewer-6582ece7c34043af
   - owner-reviewer-f125f7d7aae67070
   - owner-reviewer-0e0cbbe2409e4516
+  - owner-reviewer-6d52d6432fd58e7e
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -3209,6 +3210,7 @@ changed_surfaces:
   - owner-reviewer-6582ece7c34043af
   - owner-reviewer-f125f7d7aae67070
   - owner-reviewer-0e0cbbe2409e4516
+  - owner-reviewer-6d52d6432fd58e7e
 - path: skills/synthesis-bitbucket/scripts/pr_queue.py
   cases:
   - final-42f3ed91c3dc6cc9
@@ -3247,6 +3249,7 @@ changed_surfaces:
   - owner-reviewer-6582ece7c34043af
   - owner-reviewer-f125f7d7aae67070
   - owner-reviewer-0e0cbbe2409e4516
+  - owner-reviewer-6d52d6432fd58e7e
 - path: skills/synthesis-bitbucket/scripts/test_pr_queue.py
   cases:
   - final-42f3ed91c3dc6cc9
@@ -3285,6 +3288,7 @@ changed_surfaces:
   - owner-reviewer-6582ece7c34043af
   - owner-reviewer-f125f7d7aae67070
   - owner-reviewer-0e0cbbe2409e4516
+  - owner-reviewer-6d52d6432fd58e7e
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: *id001
 cases:
@@ -12083,3 +12087,8 @@ cases:
   expected_status: pass
   fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_repository_path_cannot_be_redirected_by_input
   motivating_defect: repository path cannot be redirected by input
+- id: owner-reviewer-6d52d6432fd58e7e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-bitbucket/scripts/test_pr_queue.py::test_queue_url_uses_validated_repository_and_id
+  motivating_defect: Malformed optional provider links crashed the portfolio scan or emitted a non-URL.

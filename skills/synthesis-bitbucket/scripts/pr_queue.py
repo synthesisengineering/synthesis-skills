@@ -54,7 +54,7 @@ IDENTITY_KEYS = ("uuid", "account_id")
 PAGE_SIZE = 50
 MAX_PAGES = 100
 FIELDS = ("values.id,values.title,values.state,values.draft,values.created_on,"
-          "values.author,values.reviewers,values.links.html,next")
+          "values.author,values.reviewers,next")
 
 
 def age_days(iso: str, now: datetime.datetime) -> int:
@@ -268,8 +268,9 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
         else:
             continue
         number = pr.get("id")
-        url = (((pr.get("links") or {}).get("html") or {}).get("href")
-               or "https://bitbucket.org/%s/pull-requests/%s" % (display, number))
+        # Both the repository and positive integer ID were validated above.
+        # Optional provider link metadata cannot redirect or break the scan.
+        url = "https://bitbucket.org/%s/pull-requests/%s" % (display, number)
         items.append({
             "repo": display,
             "number": number,

@@ -97,6 +97,18 @@ def test_list_open_prs_buckets_by_uuid():
     assert mine["url"] == "https://bitbucket.org/team/repo/pull-requests/2"
 
 
+@pytest.mark.parametrize("links", [None, {}, "broken", ["broken"],
+    {"html": "broken"}, {"html": ["broken"]}, {"html": {"href": 123}},
+    {"html": {"href": "https://foreign.invalid/another-repository"}}])
+def test_queue_url_uses_validated_repository_and_id(links):
+    rows = json.loads(json.dumps(PR_LIST_JSON))
+    rows["values"][0]["links"] = links
+    rec = mod.list_open_prs("team", "repo", runner=fake_bkt(pr_list=rows), identity=ME, now=NOW)
+    assert rec["status"] == "scanned"
+    assert {item["number"] for item in rec["items"]} == {1, 2, 4}
+    assert rec["items"][0]["url"] == "https://bitbucket.org/team/repo/pull-requests/1"
+
+
 def test_list_open_prs_matches_identity_by_account_id_when_reviewer_has_no_uuid():
     rows = {"workspace": "team", "repo": "repo", "values": [
         {"id": 7, "title": "awaiting me by account id", "state": "OPEN", "draft": False,
