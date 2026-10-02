@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.0] - 2026-10-02
 
-- Acquire Slack conversation coverage from recorded connector calls and meeting transcripts through a declared workspace MCP adapter, with verified identity, complete pagination and retained source evidence.
+- Retain connector observations while refusing Slack attribution from ambiguous rendered messages and Drive inventory completion when the provider completeness flag is missing; declared structured readers remain available.
 - Advance only proven source intervals, retain incomplete targets, and write each daily archive once per acquisition.
 - Verify the actual Codex executable before offering a delivery lane and include its locator in installed runtime dependencies.
 - Model synthetic storage fixtures consistently on macOS and Linux while retaining temporary-directory, alias and work-placement protections.

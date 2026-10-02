@@ -1590,6 +1590,40 @@ changed_surfaces:
   - prepared-owner-a868598c18bbfa5f
   - prepared-owner-e6b7148cc44ca585
   - prepared-owner-04cf1a7e673cfd70
+  - connector-repair-482d92d2c2f3c8de
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
+  - connector-repair-b360e202dc849bf7
+  - connector-repair-c7674da2b436f5f7
+  - connector-repair-4f181da29c3462b4
+  - connector-repair-8c61391b37fce9d1
+  - connector-repair-8420b9810c2fee04
+  - connector-repair-ffe4b5081f00298d
+  - connector-repair-c9eb5010503d4da5
+  - connector-repair-6abf8ceaf045caff
+  - connector-repair-c58313eec5276599
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -2174,6 +2208,30 @@ changed_surfaces:
   - connector-lane-f1615ca3cfe135b5
   - connector-lane-f1041819259d9976
   - connector-lane-2b9a9aa121c7024a
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-daily-rituals/references/acquisition-evidence.md
   cases:
   - final-a30b9aa9dc3f4e82
@@ -2587,6 +2645,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/document_tabs.py
   cases:
   - final-7844bc6ad33f6ead
@@ -2646,6 +2725,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py
   cases:
   - final-7844bc6ad33f6ead
@@ -2705,6 +2805,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/google_read.py
   cases:
   - final-7844bc6ad33f6ead
@@ -2764,6 +2885,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-meeting-transcripts/optional-workspace-mcp/workspace_mcp_read.py
   cases:
   - final-7844bc6ad33f6ead
@@ -2823,6 +2965,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-meeting-transcripts/test_acquisition_entry.py
   cases:
   - final-7844bc6ad33f6ead
@@ -2882,6 +3045,27 @@ changed_surfaces:
   - connector-lane-c6059db12dbe0802
   - connector-lane-cf0d2290da7c261b
   - connector-lane-30398e573b7b46f2
+  - connector-repair-d1c50e07747d96d2
+  - connector-repair-df4a47559ed88b0b
+  - connector-repair-fd49506caa64b423
+  - connector-repair-898559fd6756139f
+  - connector-repair-f841b5841b106275
+  - connector-repair-0d78355428b9834c
+  - connector-repair-adab2e731c281bc5
+  - connector-repair-a8921a4c5d3dbaa7
+  - connector-repair-c3b669e3237520a1
+  - connector-repair-d1c5fcaebb7abbca
+  - connector-repair-259bd77753f251dc
+  - connector-repair-8a6bb0869866e589
+  - connector-repair-7eeed73fffca0dd5
+  - connector-repair-3442a1f8b630898e
+  - connector-repair-31bca516f526fafe
+  - connector-repair-b5564ef506bd285c
+  - connector-repair-0cf9b79cda001c32
+  - connector-repair-115de605907ed935
+  - connector-repair-f1bcd078e9286b0d
+  - connector-repair-65fbcac4347003d9
+  - connector-repair-bb6a54f097f9efbf
 - path: skills/synthesis-onboarding/SKILL.md
   cases:
   - final-ac2dd495bd377708
@@ -3088,6 +3272,15 @@ changed_surfaces:
   - stop-deadline-828bc42a2503d3b6
   - stop-deadline-727c6efe86cd123b
   - doctor-runtime-ed5a2d554e9bd15a
+  - connector-repair-b360e202dc849bf7
+  - connector-repair-c7674da2b436f5f7
+  - connector-repair-4f181da29c3462b4
+  - connector-repair-8c61391b37fce9d1
+  - connector-repair-8420b9810c2fee04
+  - connector-repair-ffe4b5081f00298d
+  - connector-repair-c9eb5010503d4da5
+  - connector-repair-6abf8ceaf045caff
+  - connector-repair-c58313eec5276599
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
   - final-ac2dd495bd377708
@@ -6111,6 +6304,15 @@ changed_surfaces:
   - connector-lane-74baabf28d52d50b
   - connector-lane-68a162723b99d7f2
   - connector-lane-05986ef600cba3b9
+  - connector-repair-b360e202dc849bf7
+  - connector-repair-c7674da2b436f5f7
+  - connector-repair-4f181da29c3462b4
+  - connector-repair-8c61391b37fce9d1
+  - connector-repair-8420b9810c2fee04
+  - connector-repair-ffe4b5081f00298d
+  - connector-repair-c9eb5010503d4da5
+  - connector-repair-6abf8ceaf045caff
+  - connector-repair-c58313eec5276599
 - path: skills/synthesis-project-management/scripts/retirement_runtime.py
   cases:
   - final-a60cef2b128bf59f
@@ -8722,6 +8924,15 @@ changed_surfaces:
   - connector-lane-74baabf28d52d50b
   - connector-lane-68a162723b99d7f2
   - connector-lane-05986ef600cba3b9
+  - connector-repair-b360e202dc849bf7
+  - connector-repair-c7674da2b436f5f7
+  - connector-repair-4f181da29c3462b4
+  - connector-repair-8c61391b37fce9d1
+  - connector-repair-8420b9810c2fee04
+  - connector-repair-ffe4b5081f00298d
+  - connector-repair-c9eb5010503d4da5
+  - connector-repair-6abf8ceaf045caff
+  - connector-repair-c58313eec5276599
 - path: skills/synthesis-project-management/scripts/test_retirement_runtime.py
   cases:
   - final-a60cef2b128bf59f
@@ -9154,6 +9365,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/references/slack-token-guide.md
   cases:
   - final-43c19118a0d300c0
@@ -9213,6 +9427,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/references/version-history.md
   cases:
   - final-43c19118a0d300c0
@@ -9272,6 +9489,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/acquire.py
   cases:
   - final-43c19118a0d300c0
@@ -9331,6 +9551,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/connector_replay.py
   cases:
   - final-43c19118a0d300c0
@@ -9390,6 +9613,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/slack_read.py
   cases:
   - final-43c19118a0d300c0
@@ -9449,6 +9675,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/test_connector_replay.py
   cases:
   - final-43c19118a0d300c0
@@ -9508,6 +9737,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/test_slack_read.py
   cases:
   - final-43c19118a0d300c0
@@ -9567,6 +9799,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/scripts/test_thread_acquisition.py
   cases:
   - final-43c19118a0d300c0
@@ -9626,6 +9861,9 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
 - path: skills/synthesis-slack-sync/thread_checker.py
   cases:
   - final-43c19118a0d300c0
@@ -9685,6 +9923,69 @@ changed_surfaces:
   - connector-lane-3105de1e1258a0ec
   - connector-lane-651b5ae613117c37
   - connector-lane-ff1ff98847243f9d
+  - connector-repair-c074e426c7fe85ed
+  - connector-repair-eb618ace9f12a69a
+  - connector-repair-053b912e176a3bc0
+- path: skills/synthesis-implementation-integrity/scripts/test_acceptance_batches.py
+  cases:
+  - acceptance-execution-e4acc58094590eae
+  - acceptance-execution-0f49810f8d8ee377
+  - acceptance-execution-e94f1c2213c0b44a
+  - acceptance-execution-b83c461292895c9a
+  - acceptance-execution-4eca95ef05437407
+  - acceptance-execution-9bf6b3dcdaef7609
+  - acceptance-execution-dd31288b7f240849
+  - acceptance-execution-ce7b0bd8209f6bcf
+  - acceptance-execution-9273f3aa9948b32c
+  - acceptance-execution-8d8e3b65dd95865d
+  - acceptance-execution-cd202e3be0bc4110
+  - acceptance-execution-b56bed56e6c194fc
+  - acceptance-execution-de4280126c46b307
+  - acceptance-execution-3af75df8ea4b58c8
+  - acceptance-execution-961d187f3b30cb8f
+  - acceptance-execution-7acd3d1e34cf68de
+  - acceptance-execution-833571f5894f7dee
+  - acceptance-execution-64618435de740577
+  - acceptance-execution-cbc0ce3b917abb06
+  - acceptance-execution-700474b3acbfaae6
+  - acceptance-execution-b78df97eb749f062
+  - acceptance-execution-0570ed7442e043c2
+  - acceptance-execution-a6e89e38dbe20116
+  - acceptance-execution-3af223ab82c149f9
+  - hosted-delivery-f85283ff08034963
+  - hosted-delivery-dd5d68552c500f2d
+  - hosted-delivery-71e8ce59cedb4cfe
+  - hosted-delivery-273d869e75b13f03
+  - hosted-delivery-41a392dd76af006a
+  - hosted-delivery-13931c9f6162e60a
+  - hosted-delivery-40f2af9d99de668e
+  - hosted-delivery-b28b2a2554f45f5a
+  - hosted-delivery-3607a784a48ee088
+  - hosted-delivery-40a9a41511595e5f
+  - hosted-r5-bounded-fixture-identity-20261001
+  - hosted-r5-diagnostic-identity-ceiling-20261001
+  - hosted-r5-adjacent-owner-custody-20261001
+  - throughput-bc561327ace97324
+  - throughput-0280cd09d307664c
+  - throughput-fedec9ede7a5f73f
+  - throughput-e9a8ecde6f5df547
+  - connector-repair-482d92d2c2f3c8de
+- path: skills/synthesis-meeting-transcripts/extract_commitments.py
+  cases:
+  - final-87e862146905fbb2
+  - acquisition-87e862146905fbb2
+- path: skills/synthesis-meeting-transcripts/transcript_primary.py
+  cases:
+  - final-87e862146905fbb2
+  - acquisition-87e862146905fbb2
+- path: skills/synthesis-meeting-transcripts/verify_transcripts.py
+  cases:
+  - final-87e862146905fbb2
+  - acquisition-87e862146905fbb2
+- path: skills/synthesis-onboarding/scripts/synthesis_cli.py
+  cases:
+  - final-d0b879b27cec94ff
+  - acquisition-d0b879b27cec94ff
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -18100,3 +18401,204 @@ cases:
   fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_checkpoint_journals_large_owner_state_above_physical_limit
   motivating_defect: Owner-produced PM state above the physical file bound must commit through the journal while
     preserving logical capacity, request and protected-field refusals.
+- id: connector-repair-482d92d2c2f3c8de
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_batches.py::test_many_parameter_references_keep_one_execution_owner_and_all_requirements
+  motivating_defect: Declared selector references retain their exact execution owner and polarity.
+- id: connector-repair-d1c50e07747d96d2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_inventory_never_advances[tabsComplete-False]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-df4a47559ed88b0b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_inventory_never_advances[truncated-True]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-fd49506caa64b423
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_inventory_never_advances[nextPageToken-remaining]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-898559fd6756139f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_inventory_never_advances[children-value3]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-f841b5841b106275
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_inventory_never_advances[childTabs-value4]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-0d78355428b9834c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_empty_inventory_does_not_prove_completeness[No
+    files found for 'query'.]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-adab2e731c281bc5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_empty_inventory_does_not_prove_completeness[Found
+    0 files for reader@example.invalid matching query:]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-a8921a4c5d3dbaa7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_transcript_refusals_reach_tab_consumer[titles]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-c3b669e3237520a1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_transcript_refusals_reach_tab_consumer[untitled]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-d1c5fcaebb7abbca
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_transcript_refusals_reach_tab_consumer[empty]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-259bd77753f251dc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_tabs_reach_tab_consumer[tabsComplete-False]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-8a6bb0869866e589
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_tabs_reach_tab_consumer[truncated-True]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-7eeed73fffca0dd5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_tabs_reach_tab_consumer[nextPageToken-remaining]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-3442a1f8b630898e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_tabs_reach_tab_consumer[children-value3]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-31bca516f526fafe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_incomplete_tabs_reach_tab_consumer[childTabs-value4]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-b5564ef506bd285c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_workspace_mcp_tab_read_preserves_both_tabs_without_interval_claim
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-0cf9b79cda001c32
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_rest_inventory_requires_explicit_false_before_advancing[absent]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-115de605907ed935
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_rest_inventory_requires_explicit_false_before_advancing[True]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-f1bcd078e9286b0d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_rest_inventory_requires_explicit_false_before_advancing[None]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-65fbcac4347003d9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_rest_inventory_requires_explicit_false_before_advancing[false]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-bb6a54f097f9efbf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-meeting-transcripts/test_acquisition_entry.py::test_rest_inventory_requires_explicit_false_before_advancing[0]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-b360e202dc849bf7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_renamed_queue_launcher_still_requires_receipt[alternate-cli]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-c7674da2b436f5f7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_renamed_queue_launcher_still_requires_receipt[/tmp/alternate-cli]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-4f181da29c3462b4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_renamed_queue_launcher_still_requires_receipt[/tmp/echo]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-8c61391b37fce9d1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_queue_shaped_literal_operands_remain_data[echo
+    queue --thread synthetic --message sample]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-8420b9810c2fee04
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_queue_shaped_literal_operands_remain_data[printf
+    queue --thread synthetic --message sample]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-ffe4b5081f00298d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_queue_shaped_literal_operands_remain_data[/bin/echo
+    queue --thread synthetic --message sample]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-c9eb5010503d4da5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_queue_shaped_literal_operands_remain_data[/usr/bin/printf
+    queue --thread synthetic --message sample]
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-6abf8ceaf045caff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_queue_shaped_literal_operands_remain_data[printf
+    '%s' 'alternate-cli queue --thread synthetic --message sample']
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-c58313eec5276599
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_peer_send_gate.py::test_renamed_queue_in_printed_command_substitution_remains_execution
+  motivating_defect: Renamed queue execution requires delivery custody while quoted literal operands remain data.
+- id: connector-repair-c074e426c7fe85ed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-slack-sync/scripts/test_connector_replay.py::test_rendered_message_boundaries_cannot_create_attributed_records[channel]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-eb618ace9f12a69a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-slack-sync/scripts/test_connector_replay.py::test_rendered_message_boundaries_cannot_create_attributed_records[thread]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.
+- id: connector-repair-053b912e176a3bc0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-slack-sync/scripts/test_connector_replay.py::test_rendered_message_boundaries_cannot_create_attributed_records[search]
+  motivating_defect: Lossy connector inventory or message framing cannot authenticate complete intervals; complete
+    structured and direct-tab controls preserve supported behavior.

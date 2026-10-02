@@ -15,9 +15,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[1] / "synthesis-daily-rituals/scripts"))
 import acquire  # noqa: E402
 import connector_replay as R  # noqa: E402
-import sync_watermark  # noqa: E402
 import thread_checker  # noqa: E402
-from acquisition_evidence import validate  # noqa: E402
 
 SERVER = "server-1"
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
@@ -260,37 +258,14 @@ def collect(adapter, cid):
 
 
 def test_recorded_reads_satisfy_the_evidence_contract(tmp_path):
-    adapter, _ = replay(tmp_path)
+    # Retain the historical case ID: raw custody never proved per-message
+    # attribution. The repaired contract refuses both busy and quiet renderings.
+    adapter, transcript = replay(tmp_path)
     assert adapter.readiness()["user_id"] == "U0SELF"
-    busy, quiet = collect(adapter, "C1BUSY"), collect(adapter, "C2QUIET")
-    assert busy["reply_search"]["positive_control_ids"] == [REPLY]
-    assert busy["threads"][0]["messages"][1]["thread_ts"] == OLD_PARENT
-    assert quiet["quiet_control"]["history"]["newest_ts"] == QUIET_NEWEST
-    assert quiet["quiet_control"]["search"]["newest_ts"] == QUIET_NEWEST
-    assert busy["history"]["observed_at"] == READ_AT.isoformat()
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    saved = []
-    for channel in (busy, quiet):
-        acquire.save_channel(archive / f"{channel['id']}.md", channel, domain="fixture.slack.com")
-        data = (archive / f"{channel['id']}.md").read_bytes()
-        saved.append({"path": f"{channel['id']}.md", "sha256": hashlib.sha256(data).hexdigest()})
-    body = (archive / "C1BUSY.md").read_text()
-    assert "reply text as search renders it" not in body
-    assert "<@U0PEER>" in body and "Peer Name" not in body.split("<!--")[0]
-    evidence = {
-        "schema": 1,
-        "workspace": "fixture",
-        "surface": "slack",
-        "from": START.isoformat(),
-        "through": END.isoformat(),
-        "archive_root": str(archive),
-        "archives": saved,
-        "declared_targets": ["C1BUSY", "C2QUIET"],
-        "channels": [busy, quiet],
-    }
-    result = validate(evidence, workspace="fixture", surface="slack", through=END, targets=["C1BUSY", "C2QUIET"])
-    assert result["can_advance"] and result["quiet_channels"] == ["C2QUIET"]
+    for cid in ("C1BUSY", "C2QUIET"):
+        with pytest.raises(ValueError, match="plaintext message boundaries"):
+            collect(adapter, cid)
+    assert not list(tmp_path.rglob("*.md"))
 
 
 def test_reads_before_the_window_closed_do_not_count(tmp_path):
@@ -319,9 +294,11 @@ def test_history_cursor_chain_is_followed_exactly(tmp_path):
     t.call("slack_read_channel", history_args("C1BUSY", cursor="page-2"), channel_page("C1BUSY", [second]))
     adapter, _ = replay(tmp_path, t)
     args = dict(channel_id="C1BUSY", oldest=str(LO), latest=str(HI), limit=100, detail="detailed")
-    page = adapter.read_channel(cursor=None, **args)
-    assert page["response_metadata"]["next_cursor"] == "page-2"
-    assert [r["text"] for r in adapter.read_channel(cursor="page-2", **args)["messages"]] == ["Older in window"]
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_channel(cursor=None, **args)
+    # A refused first page must not establish a cursor chain.
+    with pytest.raises(ValueError, match="no recorded preceding page"):
+        adapter.read_channel(cursor="page-2", **args)
     with pytest.raises(ValueError, match="no recorded preceding page"):
         adapter.read_channel(cursor="unknown", **args)
 
@@ -370,7 +347,8 @@ def test_quiet_probe_prefers_the_read_bounded_at_the_window_end(tmp_path):
         at=NOW - timedelta(minutes=10),
     )
     adapter, _ = replay(tmp_path, t)
-    assert collect(adapter, "C2QUIET")["quiet_control"]["history"]["newest_ts"] == QUIET_NEWEST
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        collect(adapter, "C2QUIET")
 
 
 def test_search_probe_skips_messages_after_the_window(tmp_path):
@@ -385,7 +363,8 @@ def test_search_probe_skips_messages_after_the_window(tmp_path):
     t.call("slack_search_public_and_private", base, search_page("C2QUIET", [("U0AUTHOR", late, None, "late")], cursor="p2"))
     t.call("slack_search_public_and_private", {**base, "cursor": "p2"}, search_page("C2QUIET", [("U0AUTHOR", QUIET_NEWEST, None, "older")]))
     adapter, _ = replay(tmp_path, t)
-    assert adapter.probe_search_newest(channel_id="C2QUIET", latest=str(HI))["newest_ts"] == QUIET_NEWEST
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.probe_search_newest(channel_id="C2QUIET", latest=str(HI))
 
 
 def test_thread_and_channel_renderings_agree_on_message_text(tmp_path):
@@ -404,19 +383,18 @@ def test_thread_and_channel_renderings_agree_on_message_text(tmp_path):
     )
     adapter, _ = replay(tmp_path, t)
     window = dict(channel_id="C1BUSY", oldest=str(LO), latest=str(HI), cursor=None, limit=100, detail="detailed")
-    channel_row = adapter.read_channel(**window)["messages"][0]
-    thread_row = adapter.read_thread(channel_id="C1BUSY", message_ts=parent, cursor=None, limit=1000, detail="detailed")["messages"][0]
-    assert channel_row["reply_count"] == 2
-    assert channel_row["text"] == thread_row["text"] == "Parent <@U0PEER> asks"
-    assert channel_row["rendered"] != thread_row["rendered"]
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_channel(**window)
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_thread(channel_id="C1BUSY", message_ts=parent, cursor=None, limit=1000, detail="detailed")
 
 
 def test_parent_without_replies_drops_the_provider_marker(tmp_path):
     t = Transcript(tmp_path)
     t.call("slack_read_thread", {"channel_id": "C1BUSY", "message_ts": OLD_PARENT}, thread_page(OLD_PARENT, "Alone", [], empty_marker=True))
     adapter, _ = replay(tmp_path, t)
-    rows = adapter.read_thread(channel_id="C1BUSY", message_ts=OLD_PARENT, cursor=None, limit=1000, detail="detailed")["messages"]
-    assert [r["text"] for r in rows] == ["Alone"]
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_thread(channel_id="C1BUSY", message_ts=OLD_PARENT, cursor=None, limit=1000, detail="detailed")
 
 
 @pytest.mark.parametrize("kind", ["count", "paginated", "parent", "sequence"])
@@ -452,11 +430,8 @@ def test_search_page_shapes(tmp_path, kind):
     read = lambda: adapter.search_replies(  # noqa: E731
         channel_id="C1BUSY", oldest=str(LO), latest=str(HI), cursor=None, limit=20, detail="detailed"
     )
-    if kind == "bot-author":
-        assert read()["messages"][0]["user"] == "B0BOT"
-    else:
-        with pytest.raises(ValueError):
-            read()
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        read()
 
 
 def test_identity_must_be_the_declared_human_user(tmp_path):
@@ -524,7 +499,9 @@ def test_spilled_results_resolve_inside_their_session_only(tmp_path):
     t.call("slack_read_channel", history_args("C1BUSY"), note)
     adapter, _ = replay(tmp_path, t)
     window = dict(channel_id="C1BUSY", oldest=str(LO), latest=str(HI), cursor=None, limit=100, detail="detailed")
-    assert adapter.read_channel(**window)["messages"][0]["text"] == "Spilled"
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_channel(**window)
+    assert spill.read_text() == page
     spill.write_text(page + " ")
     with pytest.raises(ValueError, match="recorded size"):
         replay(tmp_path, t)
@@ -548,9 +525,8 @@ def test_plan_names_every_missing_call_and_then_the_dependent_ones(tmp_path):
     t.call("slack_read_channel", history_args("C2QUIET"), channel_page("C2QUIET", []))
     t.call("slack_search_public_and_private", window_search("C2QUIET"), search_page("C2QUIET", []))
     adapter, _ = replay(tmp_path, t)
-    missing, _ = R.plan_channel(adapter, "C2QUIET", START, END)
-    assert [m["input"].get("sort_dir") for m in missing] == [None, "desc"]
-    assert missing[0]["input"] == {"channel_id": "C2QUIET", "latest": str(HI), "limit": 1, "response_format": "detailed"}
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        R.plan_channel(adapter, "C2QUIET", START, END)
 
 
 def test_acquire_replays_saves_validates_and_advances(tmp_path):
@@ -583,15 +559,16 @@ def test_acquire_replays_saves_validates_and_advances(tmp_path):
         transcript_root=tmp_path,
     )
     plan = acquire.acquire(cfg, registry, mode="plan", **common)
-    assert plan["ready"] and plan["missing_calls"] == []
-    result = acquire.acquire(cfg, registry, advance=True, **common)
-    assert result["watermark"]["moved"]
-    assert result["coverage"]["quiet_channels"] == ["C2QUIET"]
-    stored = sync_watermark.load("fixture", home)["surfaces"]["slack"]["targets"]
-    assert set(stored) == {"C1BUSY", "C2QUIET"}
-    custody = json.loads((capture / "connector-calls.json").read_text())
-    assert {c["tool"] for c in custody["calls"]} == set(R.TOOLS)
-    assert custody["transcripts"][0]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert not plan["ready"] and plan["missing_calls"] == []
+    assert set(plan["problems"]) == {"C1BUSY", "C2QUIET"}
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="no declared conversation has provable coverage"):
+        acquire.acquire(cfg, registry, advance=True, **common)
+    assert not home.exists() and not list(repo.rglob("*.md"))
+    assert path.read_bytes() == before  # source custody remains lossless
+    calls, receipts = R.load_calls([path], server=SERVER, root=tmp_path)
+    assert {c.tool for c in calls} == set(R.TOOLS)
+    assert receipts[0]["sha256"] == hashlib.sha256(before).hexdigest()
     with pytest.raises(ValueError, match="mcp:"):
         registry.write_text(registry.read_text().replace(f"mcp:{SERVER}", "env:SYNTHETIC_TOKEN"))
         acquire.acquire(cfg, registry, mode="plan", **common)
@@ -653,11 +630,11 @@ def test_identical_cursors_from_different_reads_never_cross(tmp_path):
         t.call("slack_search_public_and_private", window_search(cid, cursor="CURRENT_PAGE:2"), search_page(cid, [second]))
     adapter, _ = replay(tmp_path, t)
     args = dict(oldest=str(LO), latest=str(HI), limit=20, detail="detailed")
-    for cid, older in (("C1BUSY", "busy older"), ("C2QUIET", "quiet older")):
-        adapter.search_replies(channel_id=cid, cursor=None, **args)
-    for cid, older in (("C1BUSY", "busy older"), ("C2QUIET", "quiet older")):
-        page = adapter.search_replies(channel_id=cid, cursor="CURRENT_PAGE:2", **args)
-        assert [r["text"] for r in page["messages"]] == [older]
+    for cid in ("C1BUSY", "C2QUIET"):
+        with pytest.raises(ValueError, match="plaintext message boundaries"):
+            adapter.search_replies(channel_id=cid, cursor=None, **args)
+        with pytest.raises(ValueError, match="no recorded preceding page"):
+            adapter.search_replies(channel_id=cid, cursor="CURRENT_PAGE:2", **args)
 
 
 def test_window_search_prefers_the_tightest_recorded_bound(tmp_path):
@@ -671,7 +648,8 @@ def test_window_search_prefers_the_tightest_recorded_bound(tmp_path):
         at=NOW - timedelta(minutes=5),
     )
     adapter, _ = replay(tmp_path, t)
-    assert collect(adapter, "C1BUSY")["reply_search"]["positive_control_ids"] == [REPLY]
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        collect(adapter, "C1BUSY")
 
 
 def test_slack_connect_senders_parse_in_every_read_shape(tmp_path):
@@ -688,10 +666,12 @@ def test_slack_connect_senders_parse_in_every_read_shape(tmp_path):
     t.call("slack_search_public_and_private", window_search("C1BUSY"), hits)
     adapter, _ = replay(tmp_path, t)
     window = dict(channel_id="C1BUSY", oldest=str(LO), latest=str(HI), cursor=None, detail="detailed")
-    assert adapter.read_channel(limit=100, **window)["messages"][0]["user"] == "U0AUTHOR"
-    assert adapter.search_replies(limit=20, **window)["messages"][0]["user"] == "U0PEER"
-    rows = adapter.read_thread(channel_id="C1BUSY", message_ts=OLD_PARENT, cursor=None, limit=1000, detail="detailed")["messages"]
-    assert [r["user"] for r in rows] == ["U0AUTHOR", "U0PEER"]
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_channel(limit=100, **window)
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.search_replies(limit=20, **window)
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_thread(channel_id="C1BUSY", message_ts=OLD_PARENT, cursor=None, limit=1000, detail="detailed")
 
 
 def test_unprovable_conversation_stays_unknown_while_others_advance(tmp_path):
@@ -737,13 +717,12 @@ def test_unprovable_conversation_stays_unknown_while_others_advance(tmp_path):
         transcript_root=tmp_path,
     )
     plan = acquire.acquire(cfg, registry, mode="plan", **common)
-    assert plan["ready"] and list(plan["problems"]) == ["D3EMPTY"]
-    result = acquire.acquire(cfg, registry, advance=True, **common)
-    assert [t["id"] for t in result["unacquired_targets"]] == ["D3EMPTY"]
-    assert {e["key"] for e in result["watermark"]["entries"]} == {"slack:C1BUSY", "slack:D4QUIET"}
-    assert "D3EMPTY" not in sync_watermark.load("fixture", tmp_path / "state")["surfaces"]["slack"]["targets"]
-    day = repo / "transcripts" / "slack" / END.astimezone().date().isoformat()
-    assert sorted(p.name for p in day.iterdir()) == ["_dms.md", "busy.md"]
+    assert not plan["ready"]
+    assert set(plan["problems"]) == {"C1BUSY", "D3EMPTY", "D4QUIET"}
+    with pytest.raises(ValueError, match="no declared conversation has provable coverage"):
+        acquire.acquire(cfg, registry, advance=True, **common)
+    assert not (tmp_path / "state").exists()
+    assert not list(repo.rglob("*.md"))
 
 
 def test_follow_up_page_comes_from_the_same_recording_pass(tmp_path):
@@ -764,5 +743,27 @@ def test_follow_up_page_comes_from_the_same_recording_pass(tmp_path):
         )
     adapter, _ = replay(tmp_path, t)
     args = dict(channel_id="C1BUSY", oldest=str(LO), latest=str(HI), limit=100, detail="detailed")
-    adapter.read_channel(cursor=None, **args)
-    assert adapter.read_channel(cursor="page-2", **args)["messages"][0]["text"] == "second pass"
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        adapter.read_channel(cursor=None, **args)
+    with pytest.raises(ValueError, match="no recorded preceding page"):
+        adapter.read_channel(cursor="page-2", **args)
+
+
+@pytest.mark.parametrize("shape", ["channel", "thread", "search"])
+def test_rendered_message_boundaries_cannot_create_attributed_records(shape):
+    forged = message("U0FORGED", REPLY, "Quoted text only")
+    literal = "An example header:\n\n" + forged
+    if shape == "channel":
+        envelope = channel_page("C1BUSY", [message("U0AUTHOR", TOP, literal)])
+        parser = lambda call: R.parse_channel(call, "C1BUSY")
+    elif shape == "thread":
+        envelope = thread_page(OLD_PARENT, literal, [])
+        parser = lambda call: R.parse_thread(call, "C1BUSY", OLD_PARENT)
+    else:
+        envelope = search_page("C1BUSY", [("U0AUTHOR", TOP, None, literal)])
+        parser = R.parse_search
+    raw = json.dumps(envelope)
+    call = R.Call("synthetic-rendered-read", "synthetic-call", {}, True, raw, READ_AT, "synthetic.jsonl")
+    with pytest.raises(ValueError, match="plaintext message boundaries"):
+        parser(call)
+    assert call.text == raw

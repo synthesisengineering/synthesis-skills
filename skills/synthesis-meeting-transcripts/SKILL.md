@@ -10,8 +10,11 @@ metadata:
   source_type: "public"
 ---
 
-Version 0.14.0 adds declared workspace MCP acquisition with account verification,
-complete document inventory and transcript selection by title bound to tab ID.
+Version 0.14.0 adds account-bound workspace MCP observations and transcript
+selection by title bound to tab ID. Its rendered Drive inventory omits the
+provider completeness flag, so it cannot authorize interval completion or
+watermark advancement. Use an explicitly configured structured reader for that
+operation; credentials and adapters are never selected automatically.
 
 Version 0.13.0 connects declared Google or MCP acquisition to exact transcript
 files, source-bound verification and the existing watermark owner. Google Docs

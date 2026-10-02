@@ -14,7 +14,7 @@ that on every direct lane the plugin knows:
   harness registry still maps it to the receipt's session.
 - ``mcp__ccd_session_mgmt__send_message``: the ``session_id`` must equal the
   ccd address on a live receipt, and the board row must still be active.
-- shell tools: a ``codex queue --thread`` command needs a receipt naming
+- shell tools: a ``queue --thread`` send shape, including renamed Codex launchers, needs a receipt naming
   that thread; every other command passes untouched. The gate parses the
   tool call's command text the way the shell would and judges what runs:
   ``codex queue`` as a command's own argv, directly, behind ``env``,
@@ -485,8 +485,20 @@ def executed_command(command: Command, depth: int = 0) -> list[str] | None:
     if not words:
         return None
     head = words[0]
-    if head.rsplit("/", 1)[-1] == "codex":
-        return words if words[1:2] == ["queue"] else None
+    # These shell builtins and canonical system utilities only print their
+    # operands. An arbitrary executable with the same basename is not exempt.
+    if head in {"echo", "printf", "/bin/echo", "/bin/printf", "/usr/bin/echo", "/usr/bin/printf"}:
+        return None
+    if words[1:2] == ["queue"] and (
+        head.rsplit("/", 1)[-1] == "codex"
+        or any(word == "--thread" or word.startswith("--thread=")
+               or word == "--message" or word.startswith("--message=") for word in words[2:])
+    ):
+        # A resolver-selected launcher may have any basename, and its override
+        # need not survive into the sending hook process. The queue send shape
+        # still requires the existing exact-target receipt; it cannot become an
+        # unclassified shell action merely by renaming its executable.
+        return words
     if head in NESTED_SHELLS:
         nested = shell_program(words, command.stdin)
     elif head == "eval":
@@ -517,7 +529,10 @@ def peer_send(command: str) -> PeerSend | None:
     try:
         argv = next((send for send in (executed_command(run) for run in shell_commands(command)) if send), None)
     except ValueError:
-        if not CODEX_QUEUE_RE.search(command):
+        if not CODEX_QUEUE_RE.search(command) and not (
+            re.search(r"\bqueue\b", command)
+            and (THREAD_RE.search(command) or MESSAGE_RE.search(command))
+        ):
             return None
         return PeerSend(first_group(THREAD_RE.search(command)), first_group(MESSAGE_RE.search(command)))
     if argv is None:

@@ -871,3 +871,27 @@ def test_delivery_repair_foreign_identity_and_display_collision_never_probe_loca
     )
     assert not decision.allow
     assert probes == []
+
+
+@pytest.mark.parametrize("launcher", ["alternate-cli", "/tmp/alternate-cli", "/tmp/echo"])
+def test_renamed_queue_launcher_still_requires_receipt(world, monkeypatch, launcher):
+    monkeypatch.delenv("SYNTHESIS_CODEX_BIN", raising=False)
+    command = f"{launcher} queue --thread synthetic --message sample"
+    assert GATE.peer_send(command) is not None
+    decision = evaluate(world, payload("Bash", {"command": command}))
+    assert not decision.allow
+
+
+@pytest.mark.parametrize("command", [
+    "echo queue --thread synthetic --message sample",
+    "printf queue --thread synthetic --message sample",
+    "/bin/echo queue --thread synthetic --message sample",
+    "/usr/bin/printf queue --thread synthetic --message sample",
+    "printf '%s' 'alternate-cli queue --thread synthetic --message sample'",
+])
+def test_queue_shaped_literal_operands_remain_data(command):
+    assert GATE.peer_send(command) is None
+
+
+def test_renamed_queue_in_printed_command_substitution_remains_execution():
+    assert GATE.peer_send('echo "$(alternate-cli queue --thread synthetic --message sample)"') is not None

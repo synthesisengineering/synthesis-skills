@@ -4,9 +4,9 @@ The server already holds the account's Google grant, so acquisition adds no
 credential. This process makes every call itself over the loopback MCP
 endpoint and retains each raw response in custody; nothing is replayed from
 agent-written text. Identity is the account's own primary calendar, the
-inventory is a complete paged Drive search in the user corpus, and the
-transcript tab is the one tab whose title matches the declared title within
-the document's complete tab list, bound thereafter by that tab's ID.
+rendered Drive inventory omits the provider completeness flag and therefore
+cannot authorize interval completion. Transcript reads remain bound to the
+selected tab ID; callers need a structured inventory owner for acquisition.
 """
 
 import datetime as dt
@@ -20,10 +20,7 @@ KIND = "workspace-mcp-v1"
 DOC = "application/vnd.google-apps.document"
 LOOPBACK = re.compile(r"http://(?:127\.0\.0\.1|localhost|\[::1\]):\d{2,5}/mcp")
 FIELDS = {"kind", "url", "name_contains", "positive_control_id", "window_field"}
-FILE_ROW = re.compile(
-    r'^- Name: "(?P<name>[^"\n]*)" \(ID: (?P<id>[A-Za-z0-9_-]+), Type: (?P<type>[^,\n]+), '
-    r"Size: [^,\n]*, Created: (?P<created>[^,\n]+), Modified: (?P<modified>[^,)\n]+)[,)]"
-)
+
 
 
 def identifier(value):
@@ -139,8 +136,6 @@ class WorkspaceMcpRead:
     def list_documents(self, *, source, account, oldest, latest, cursor, limit):
         if source != "google-drive" or account != self.account:
             raise ValueError("foreign Google inventory request")
-        # One user corpus without shared-drive items: Drive reports an
-        # incomplete search only across several corpora, which this excludes.
         query = (
             f"name contains '{self.name}' and mimeType = '{DOC}' and trashed = false "
             f"and {self.field} >= '{utc(oldest)}' and {self.field} <= '{utc(latest)}'"
@@ -155,42 +150,15 @@ class WorkspaceMcpRead:
         }
         if cursor is not None:
             arguments["page_token"] = cursor
-        text, call = self.transport.call("search_drive_files", arguments)
-        lines = text.split("\n")
-        found = re.fullmatch(rf"Found (\d+) files for {re.escape(self.account)} matching .*:", lines[0])
-        empty = len(lines) == 1 and re.fullmatch(r"No files found for '.*'\.", lines[0])
-        if not found and not empty:
-            raise ValueError("Google inventory response is not a declared-account file listing")
-        rows, token = [], None
-        for line in lines[1:]:
-            if line.startswith("nextPageToken: ") and token is None:
-                token = line[len("nextPageToken: ") :].strip()
-                continue
-            match = FILE_ROW.match(line)
-            if match is None:
-                if line.strip():
-                    raise ValueError("unparsed line in a Google inventory page")
-                continue
-            if match["type"] != DOC or self.name not in match["name"]:
-                raise ValueError("foreign document in Google inventory")
-            rows.append(
-                {
-                    "source_id": identifier(match["id"]),
-                    "occurred_at": dt.datetime.fromisoformat(
-                        match["created" if self.field == "createdTime" else "modified"]
-                    ).isoformat(),
-                    "provider_time_field": self.field,
-                }
-            )
-        if (int(found[1]) if found else 0) != len(rows):
-            raise ValueError("Google inventory page does not hold the files it reports")
-        return {
-            "ok": True,
-            "documents": rows,
-            "next_cursor": token,
-            "complete": not token,
-            "tool_call_id": call,
-        }
+        # Retain the actual response, including an empty listing, before refusing.
+        # Pagination exhaustion is not evidence that Drive completed the search:
+        # this tool's renderer does not return files.list.incompleteSearch.
+        self.transport.call("search_drive_files", arguments)
+        raise ValueError(
+            "Google inventory completeness unavailable: workspace-mcp omits "
+            "incompleteSearch; select the declared google-rest-v1 reader with "
+            "authorized credentials, or a provider that preserves this evidence"
+        )
 
     def transcript(self, source_id):
         identifier(source_id)
@@ -201,8 +169,32 @@ class WorkspaceMcpRead:
         head = f"Document structure analysis for {source_id}:\n\n"
         body = text[len(head) :].rsplit("\n\nLink: ", 1)[0] if text.startswith(head) else ""
         try:
-            tabs = json.loads(body).get("tabs")
-        except (ValueError, AttributeError) as exc:
+            def unique(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate document inventory field")
+                    result[key] = value
+                return result
+            inventory = json.loads(body, object_pairs_hook=unique)
+            pending = [(inventory, 0)]
+            examined = 0
+            while pending:
+                node, depth = pending.pop()
+                examined += 1
+                if depth > 12 or examined > 10000:
+                    raise ValueError("Google document inventory exceeds its bound")
+                if isinstance(node, dict):
+                    if ("tabsComplete" in node and node["tabsComplete"] is not True
+                            or "truncated" in node and node["truncated"] is not False
+                            or node.get("nextPageToken")
+                            or node.get("childTabs") or node.get("children")):
+                        raise ValueError("Google document tab inventory is incomplete or nested")
+                    pending.extend((value, depth + 1) for value in node.values())
+                elif isinstance(node, list):
+                    pending.extend((value, depth + 1) for value in node)
+            tabs = inventory.get("tabs")
+        except (ValueError, AttributeError, RecursionError) as exc:
             raise ValueError("Google document tab inventory unavailable") from exc
         if (
             not isinstance(tabs, list)

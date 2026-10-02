@@ -6,8 +6,9 @@ records each call's exact input, raw result and completion time in the session
 transcript. This adapter answers ``thread_checker.acquire_channel`` only from
 those recorded calls, so every observation cites a real tool_use id rather than
 agent-written custody. A read the transcripts do not hold raises MissingCall,
-naming the exact call to make; nothing is synthesized, and an ambiguous or
-malformed recording refuses rather than guessing.
+naming the exact call to make. Rendered message strings do not preserve source
+boundaries, so this adapter retains call custody but refuses attributable
+reconstruction and interval advancement. Structured Web API reads use SlackRead.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ import json
 import math
 import re
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 KIND = "claude-code-connector-replay-v1"
 TOOLS = (
@@ -31,8 +31,6 @@ TOOLS = (
 )
 TS = r"[1-9]\d{9}\.\d{6}"
 ID = r"[A-Z][A-Z0-9]+"
-# A Slack Connect sender carries its organization after the ID.
-EXTERNAL = r"(?:, external: [^)\n]*)?"
 MAX_LINE = 64 * 1024 * 1024
 MAX_PROBE_PAGES = 10
 DAY = timedelta(days=1)
@@ -41,35 +39,6 @@ SPILL = re.compile(
     r"Error: result \(([\d,]+) characters across [\d,]+ lines\) exceeds maximum "
     r"allowed tokens\. Output has been saved to (/\S+)\.\n"
 )
-CHANNEL_HEAD = re.compile(rf"Channel: [^\n]*\(({ID})\)")
-MESSAGE_HEAD = re.compile(
-    rf"^=== Message from [^\n]* \(({ID}){EXTERNAL}\) at \d{{4}}-\d\d-\d\d \d\d:\d\d:\d\d "
-    rf"[A-Z]{{2,5}} === ?\n",
-    re.M,
-)
-MESSAGE_TS = re.compile(rf"Message TS: ({TS})(?:\n|$)")
-PARENT_HEAD = re.compile(
-    rf"=== THREAD PARENT MESSAGE ===\nFrom: [^\n]* \(({ID}){EXTERNAL}\)\nTime: [^\n]*\n"
-    rf"Message TS: ({TS})(?:\n|$)"
-)
-REPLIES_HEAD = re.compile(r"\n\n=== THREAD REPLIES \((\d+) total\) ===\n")
-REPLY_HEAD = re.compile(
-    rf"\n\n--- Reply (\d+) of (\d+) ---\nFrom: [^\n]* \(({ID}){EXTERNAL}\)\nTime: [^\n]*\n"
-    rf"Message TS: ({TS})(?:\n|$)"
-)
-REACTION = r"[a-z0-9_+'-]+(?:::skin-tone-\d)? \(\d+\)"
-# Provider-rendered metadata that changes between reads of one message, or that
-# only one read shape renders. It stays in "rendered"; "text" omits it.
-VOLATILE = re.compile(
-    r"Thread: \d+ repl(?:y|ies) \(latest: \d{4}-\d\d-\d\d \d\d:\d\d:\d\d [A-Z]{2,5}\)"
-    rf"|Reactions: {REACTION}(?:, {REACTION})*"
-)
-THREAD_LINE = re.compile(r"^Thread: (\d+) repl(?:y|ies) \(latest: ", re.M)
-# The connector labels user mentions with the person's current display name,
-# which changes; Slack's own message text carries the bare <@ID> form.
-MENTION = re.compile(rf"<@({ID})\|[^>\n]*>")
-# Provider's literal marker (sic) for a thread read whose parent has no replies.
-NO_REPLIES = "\n\nNo thread messsages"
 CHANNEL_END = "There are no more messages available.\n"
 CHANNEL_MORE = re.compile(
     r"There are more messages available\. To view the next page, use cursor: `([^`\s]+)`\n"
@@ -273,147 +242,31 @@ def _envelope(call, key):
     return value[key], value.get("pagination_info", "")
 
 
-def _row(channel_id, ts, user, rendered, parent=None):
-    text = "\n".join(
-        line for line in rendered.split("\n") if not VOLATILE.fullmatch(line)
-    ).rstrip("\n")
-    text = MENTION.sub(r"<@\1>", text)
-    row = {"ts": ts, "user": user, "channel": channel_id, "text": text, "rendered": rendered}
-    if parent is not None and parent != ts:
-        row["thread_ts"] = parent
-    replies = THREAD_LINE.search(rendered)
-    if replies:
-        row["reply_count"] = int(replies[1])
-    return row
+def _refuse_rendered_records(call, key):
+    # The source renderer does not escape message bodies or authenticate the
+    # separators. One body quoting a header and two actual source messages can
+    # have identical bytes. Retaining the raw call cannot restore lost boundaries.
+    _envelope(call, key)
+    raise ValueError(
+        "Slack plaintext message boundaries are unavailable; no attributable "
+        "records or complete interval can be reconstructed. Use the explicitly "
+        "declared slack-web-api-v1 structured reader with authorized credentials."
+    )
 
 
 def parse_channel(call, channel_id):
-    """Rows of one detailed slack_read_channel page, and its next cursor."""
-    body, info = _envelope(call, "messages")
-    if info == CHANNEL_END:
-        cursor = None
-    else:
-        more = CHANNEL_MORE.fullmatch(info)
-        if more is None:
-            raise ValueError("unknown channel pagination; coverage unknown")
-        cursor = more[1]
-    first, _, rest = body.partition("\n")
-    head = CHANNEL_HEAD.fullmatch(first)
-    if head is None or head[1] != channel_id:
-        raise ValueError("recorded channel read belongs to another conversation")
-    heads = list(MESSAGE_HEAD.finditer(body))
-    lead = body[len(first) : heads[0].start()] if heads else rest
-    if lead.strip("\n"):
-        raise ValueError("unparsed content in a recorded channel read")
-    rows = []
-    for index, match in enumerate(heads):
-        last = index + 1 == len(heads)
-        block = body[match.end() : len(body) if last else heads[index + 1].start()]
-        ts = MESSAGE_TS.match(block)
-        if ts is None:
-            raise ValueError("recorded channel message lacks its timestamp")
-        rendered = block[ts.end() :]
-        if not last:
-            if not rendered.endswith("\n\n") and rendered != "\n":
-                raise ValueError("recorded channel messages are not separated")
-            rendered = rendered[:-2] if rendered.endswith("\n\n") else ""
-        rows.append(_row(channel_id, ts[1], match[1], rendered))
-    return rows, cursor
+    """Refuse lossy rendered channel records, including apparent empty pages."""
+    return _refuse_rendered_records(call, "messages")
 
 
 def parse_thread(call, channel_id, parent):
-    """Every row of one complete detailed slack_read_thread read."""
-    body, info = _envelope(call, "messages")
-    if info != THREAD_END:
-        raise ValueError("recorded thread read is paginated; read it again with limit 1000")
-    head = PARENT_HEAD.match(body)
-    if head is None or head[2] != parent:
-        raise ValueError("recorded thread read lacks its parent")
-    section = REPLIES_HEAD.search(body, head.end())
-    end = section.start() if section else len(body)
-    if section is None and body.rstrip("\n").endswith(NO_REPLIES):
-        end = len(body.rstrip("\n")) - len(NO_REPLIES)
-    rows = [_row(channel_id, parent, head[1], body[head.end() : end], parent)]
-    total = int(section[1]) if section else 0
-    replies = list(REPLY_HEAD.finditer(body, end)) if section else []
-    if section and body[section.end() : replies[0].start() if replies else len(body)].strip("\n"):
-        raise ValueError("unparsed content in a recorded thread read")
-    for index, match in enumerate(replies):
-        if int(match[1]) != index + 1 or int(match[2]) != total:
-            raise ValueError("recorded thread replies are out of sequence")
-        last = index + 1 == len(replies)
-        rendered = body[match.end() : len(body) if last else replies[index + 1].start()]
-        rows.append(_row(channel_id, match[4], match[3], rendered, parent))
-    if len(replies) != total:
-        raise ValueError("recorded thread read does not hold every reply it reports")
-    return rows
-
-
-def _field(header, pattern):
-    found = re.findall(pattern, header, re.M)
-    if len(found) != 1:
-        raise ValueError("recorded search result field is missing or repeated")
-    return found[0]
+    """Refuse lossy rendered thread records; quoted reply headers are ambiguous."""
+    return _refuse_rendered_records(call, "messages")
 
 
 def parse_search(call):
-    """Rows of one detailed message-search page, and its next cursor."""
-    body, info = _envelope(call, "results")
-    if info.endswith("\\n"):
-        info = info[:-2] + "\n"
-    if info == SEARCH_END:
-        cursor = None
-    else:
-        more = SEARCH_MORE.fullmatch(info)
-        if more is None:
-            raise ValueError("unknown search pagination; coverage unknown")
-        cursor = more[1]
-    if not body.startswith("# Search Results for: "):
-        raise ValueError("recorded search result is not a message search")
-    _, _, rest = body.partition("\n")
-    if rest == "\nNo results found.\n":
-        return [], cursor
-    section = re.match(r"\n## Messages \((\d+) results?\)\n", rest)
-    if section is None:
-        raise ValueError("recorded search result holds no message section")
-    listing = rest[section.end() :]
-    if listing.endswith("\n\n---\n\n"):
-        listing = listing[: -len("\n\n---\n\n")]
-    blocks = re.split(r"(?:^|\n\n---\n\n)### Result (\d+) of (\d+)\n", listing)
-    if blocks[0] or len(blocks) % 3 != 1:
-        raise ValueError("unparsed content in a recorded search result")
-    rows = []
-    count = (len(blocks) - 1) // 3
-    if count != int(section[1]):
-        raise ValueError("recorded search page does not hold the results it reports")
-    for index in range(count):
-        number, total, block = blocks[1 + 3 * index : 4 + 3 * index]
-        if int(number) != index + 1 or int(total) != count:
-            raise ValueError("recorded search results are out of sequence")
-        header, marker, text = block.partition("\nText: \n")
-        if not marker:
-            raise ValueError("recorded search result lacks its text")
-        cid = _field(header, rf"^Channel: [^\n]*\(ID: ({ID})\)$")
-        user = _field(header, rf"^From: [^\n]*\(ID: ({ID}){EXTERNAL}\)(?: +\[BOT\])? *$")
-        ts = _field(header, rf"^Message_ts: ({TS})$")
-        link = urlparse(_field(header, r"^Permalink: \[link\]\((https://[^)\s]+)\)$"))
-        parents = parse_qs(link.query).get("thread_ts", [])
-        if len(parents) > 1 or parents and not re.fullmatch(TS, parents[0]):
-            raise ValueError("recorded search permalink carries a malformed parent")
-        text = re.split(r"\n(?:Context before|Context after): \n", text, maxsplit=1)[0]
-        row = {
-            "ts": ts,
-            "user": user,
-            "channel": cid,
-            "text": text.rstrip("\n"),
-            # Search renders text differently from history and thread reads.
-            # It discovers threads; the thread read is what gets archived.
-            "discovery_only": True,
-        }
-        if parents and parents[0] != ts:
-            row["thread_ts"] = parents[0]
-        rows.append(row)
-    return rows, cursor
+    """Refuse lossy rendered search records; they cannot authenticate authors."""
+    return _refuse_rendered_records(call, "results")
 
 
 def parse_profile(call):

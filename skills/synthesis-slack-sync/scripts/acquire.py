@@ -405,7 +405,7 @@ def acquire(
                 # Conversations with a problem stay UNKNOWN at their old
                 # watermark; fetch still advances every conversation it proves.
                 "problems": problems,
-                "ready": not missing,
+                "ready": not missing and any(t.read_id not in problems for t in targets),
                 "can_advance": False,
             }
         readiness = adapter.readiness()

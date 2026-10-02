@@ -1307,24 +1307,21 @@ def mcp_tools(cfg, start, *, fault=None):
 
 
 def test_workspace_mcp_meeting_entry_saves_and_advances(owners, mcp_wire, tmp_path):
+    # Historical name retained in acceptance membership. The original positive
+    # was invalid: the rendered search never established provider completeness.
     fetch, _ = owners
     state, calls = mcp_wire
     cfg = mcp_meeting_cfg(tmp_path)
     start, end = dates()
     state["tools"] = mcp_tools(cfg, start)
-    result = run_meeting(fetch, cfg, tmp_path, start, end)
-    assert result["watermark"]["moved"] is True
-    assert [name for name, _ in calls][:2] == ["list_calendars", "get_drive_file_permissions"]
-    searches = [args for name, args in calls if name == "search_drive_files"]
-    assert [s.get("page_token") for s in searches] == [None, "page-two"]
-    assert all(s["corpora"] == "user" and s["include_items_from_all_drives"] is False for s in searches)
-    root = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"]
-    for doc in ("first", "second"):
-        body = (root / "meetings" / f"{doc}.md").read_text()
-        # Each Gemini document has its own transcript tab ID; the title found it.
-        assert f"**Transcript tab ID:** t.{doc}" in body
-        assert "Lossy notes only." in body and "Alice Chen: I will review item 9." in body
-    assert len(result["custody"]["raw_receipts"]) == 0 and result["custody"]["calls"] > 10
+    with pytest.raises(ValueError, match="omits incompleteSearch"):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert [name for name, _ in calls] == [
+        "list_calendars", "get_drive_file_permissions", "search_drive_files"
+    ]
+    assert not (tmp_path / "state").exists()
+    assert not list(Path(cfg["transcripts_repo"]).rglob("*.md"))
+    assert list((tmp_path / "capture").rglob("*")), "actual response custody retained"
 
 
 @pytest.mark.parametrize("fault", ["account", "control", "count", "foreign", "titles", "untitled", "empty"])
@@ -1383,3 +1380,137 @@ def test_rest_tab_title_selects_one_tab_by_its_own_id(tabs, expected):
         assert result["status"] == "unknown" and result["reason"] == expected
     document["tabsComplete"] = False
     assert select_tabs(json.dumps(document), transcript_tab_title="Transcript")["reason"] == "tab-inventory-incomplete"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("tabsComplete", False), ("truncated", True), ("nextPageToken", "remaining"),
+    ("children", [{"tab_id": "t.hidden", "title": "Transcript"}]),
+    ("childTabs", [{"tab_id": "t.hidden", "title": "Transcript"}]),
+])
+def test_workspace_mcp_incomplete_inventory_never_advances(owners, mcp_wire, tmp_path, field, value):
+    fetch, _ = owners
+    state, _ = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, end = dates()
+    tools = mcp_tools(cfg, start)
+    original = tools["inspect_doc_structure"]
+    def incomplete(arguments):
+        text = original(arguments)
+        prefix, body = text.split("\n\n", 1)
+        raw, suffix = body.rsplit("\n\nLink: ", 1)
+        inventory = json.loads(raw)
+        inventory[field] = value
+        return prefix + "\n\n" + json.dumps(inventory) + "\n\nLink: " + suffix
+    tools["inspect_doc_structure"] = incomplete
+    state["tools"] = tools
+    with pytest.raises(ValueError):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert not (tmp_path / "state").exists()
+
+
+@pytest.mark.parametrize("listing", ["No files found for 'query'.", "Found 0 files for reader@example.invalid matching query:"])
+def test_workspace_mcp_empty_inventory_does_not_prove_completeness(owners, mcp_wire, tmp_path, listing):
+    fetch, _ = owners
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, end = dates()
+    tools = mcp_tools(cfg, start)
+    tools["search_drive_files"] = lambda arguments: listing
+    state["tools"] = tools
+    with pytest.raises(ValueError, match="omits incompleteSearch"):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert not (tmp_path / "state").exists()
+    assert not list(Path(cfg["transcripts_repo"]).rglob("*.md"))
+    assert calls[-1][0] == "search_drive_files"
+
+
+@pytest.mark.parametrize("fault", ["titles", "untitled", "empty"])
+def test_workspace_mcp_transcript_refusals_reach_tab_consumer(owners, mcp_wire, tmp_path, fault):
+    # Inventory now refuses earlier. Exercise the independent tab reader directly
+    # so the search refusal cannot mask a regression in these existing controls.
+    from workspace_mcp_read import McpTransport, WorkspaceMcpRead
+    from acquisition_transport import Capture
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, _ = dates()
+    state["tools"] = mcp_tools(cfg, start, fault=fault)
+    transport = McpTransport(cfg["acquisition_adapter"]["url"], Capture(tmp_path / "raw"))
+    try:
+        with pytest.raises(ValueError):
+            WorkspaceMcpRead(cfg, transport).transcript("first")
+    finally:
+        transport.close()
+    assert calls[0][0] == "inspect_doc_structure"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("tabsComplete", False), ("truncated", True), ("nextPageToken", "remaining"),
+    ("children", [{"tab_id": "t.hidden", "title": "Transcript"}]),
+    ("childTabs", [{"tab_id": "t.hidden", "title": "Transcript"}]),
+])
+def test_workspace_mcp_incomplete_tabs_reach_tab_consumer(owners, mcp_wire, tmp_path, field, value):
+    from workspace_mcp_read import McpTransport, WorkspaceMcpRead
+    from acquisition_transport import Capture
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, _ = dates()
+    tools = mcp_tools(cfg, start)
+    original = tools["inspect_doc_structure"]
+    def incomplete(arguments):
+        text = original(arguments)
+        prefix, body = text.split("\n\n", 1)
+        raw, suffix = body.rsplit("\n\nLink: ", 1)
+        inventory = json.loads(raw)
+        inventory[field] = value
+        return prefix + "\n\n" + json.dumps(inventory) + "\n\nLink: " + suffix
+    tools["inspect_doc_structure"] = incomplete
+    state["tools"] = tools
+    transport = McpTransport(cfg["acquisition_adapter"]["url"], Capture(tmp_path / "raw"))
+    try:
+        with pytest.raises(ValueError, match="inventory unavailable"):
+            WorkspaceMcpRead(cfg, transport).transcript("first")
+    finally:
+        transport.close()
+    assert [name for name, _ in calls] == ["inspect_doc_structure"]
+
+
+def test_workspace_mcp_tab_read_preserves_both_tabs_without_interval_claim(owners, mcp_wire, tmp_path):
+    from workspace_mcp_read import McpTransport, WorkspaceMcpRead
+    from acquisition_transport import Capture
+    state, calls = mcp_wire
+    cfg = mcp_meeting_cfg(tmp_path)
+    start, _ = dates()
+    state["tools"] = mcp_tools(cfg, start)
+    transport = McpTransport(cfg["acquisition_adapter"]["url"], Capture(tmp_path / "raw"))
+    try:
+        result = WorkspaceMcpRead(cfg, transport).transcript("first")
+    finally:
+        transport.close()
+    assert result["transcript_tab_id"] == "t.first"
+    assert result["tab_ids"] == ["t.notes", "t.first"]
+    assert "Lossy notes only." in result["notes"]
+    assert "Alice Chen: I will review item 9." in result["transcript"]
+    assert len(result["raw_sha256"]) == 3
+    assert not (tmp_path / "state").exists()
+
+
+@pytest.mark.parametrize("marker", ["absent", True, None, "false", 0])
+def test_rest_inventory_requires_explicit_false_before_advancing(owners, wire, tmp_path, marker):
+    fetch, _ = owners
+    holder, calls = wire
+    cfg = meeting_cfg(tmp_path)
+    start, end = dates()
+    original = google_handler(cfg, start, end)
+    def incomplete(request):
+        code, payload = original(request)
+        if request.url.path.endswith("/files"):
+            if marker == "absent":
+                payload.pop("incompleteSearch", None)
+            else:
+                payload["incompleteSearch"] = marker
+        return code, payload
+    holder["handler"] = incomplete
+    with pytest.raises(ValueError, match="completeness unavailable"):
+        run_meeting(fetch, cfg, tmp_path, start, end)
+    assert not (tmp_path / "state").exists()
+    assert not list(Path(cfg["transcripts_repo"]).rglob("*.md"))

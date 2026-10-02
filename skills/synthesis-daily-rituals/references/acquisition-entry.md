@@ -64,7 +64,7 @@ A workspace that already runs workspace-mcp needs no Google token: the server
 holds the account's grant, and the fetcher calls it directly over loopback.
 Every response is retained in custody before it is read.
 
-{F}yaml
+```yaml
 google_account: reader@example.invalid
 transcript_tab_title: Transcript
 acquisition_adapter:
@@ -73,18 +73,18 @@ acquisition_adapter:
   name_contains: Notes by Gemini
   positive_control_id: known-document-the-name-filter-matches
   window_field: createdTime
-{F}
+```
 
 - Identity: `list_calendars` must name the declared account as the primary
   calendar's ID.
 - Positive control: `get_drive_file_permissions` must show the declared
   control as a live Google Doc whose name contains the filter.
-- Inventory: `search_drive_files` for Docs whose name contains the filter
-  inside the window, in the user corpus without shared-drive items, following
-  every `nextPageToken`. Each page must hold exactly the files it reports.
-  Drive reports an incomplete search only across several corpora, which this
-  query excludes; the tool does not echo that flag, so this remains a stated
-  basis rather than an observed one.
+- Inventory: `search_drive_files` returns rendered rows without Drive's
+  `incompleteSearch` result. A user-corpus query, an empty listing, or exhausted
+  pagination cannot substitute for that missing evidence. The adapter retains
+  the response and refuses inventory completion, fetch and watermark advance.
+  An explicitly configured `google-rest-v1` reader validates the actual flag;
+  acquisition never switches credentials or adapters automatically.
 - Content: `inspect_doc_structure` lists the tabs; the transcript tab is
   selected by title as above, and every tab is read by ID with
   `get_doc_as_markdown`. An empty transcript tab refuses for owner review.
@@ -111,8 +111,9 @@ old bytes first.
 
 The MCP one-off title lookup is separate. Its `get_doc_content` plain text
 cannot establish tab identity or a complete tab inventory, so it never
-satisfies complete-window acquisition; the `workspace-mcp-v1` adapter above
-does, through the structure and per-tab reads. The bounded MCP capture hook
+satisfies complete-window acquisition. The `workspace-mcp-v1` tab reader can
+retain individual document content, but its rendered search inventory also
+cannot establish complete-window acquisition. The bounded MCP capture hook
 preserves success/error bodies and labels incomplete failure prefixes. HTTP
 health and credential presence are not authenticated coverage.
 
@@ -179,74 +180,24 @@ conflicting content, HTTP/auth/rate limits and partial coverage prevent advance.
 
 ### Connector replay (Claude Code)
 
-A workspace the agent already reads through a client-managed Slack connector
-can advance without any token. The agent makes ordinary connector reads; Claude
-Code records each call's exact input, raw result and completion time in its
-session transcript. `acquire.py` then serves the thread owner only from those
-recorded calls, so every observation cites a real `tool_use` id rather than
-agent-written custody.
+Claude Code records connector calls and raw responses in its native transcript.
+`claude-code-connector-replay-v1` can inspect that custody and identify missing
+calls. The current connector renders multiple source messages into one string
+without unambiguous boundaries. A message quoting another message's header can
+produce the same bytes as two separate messages. Raw-response hashes preserve
+that text but cannot establish per-message authorship.
 
-```yaml
-acquisition_adapter:
-  kind: claude-code-connector-replay-v1
-  user_id: U123
-```
+Channel, thread and search renderings therefore refuse reconstruction, including
+apparently empty pages. A plan with only such targets is not ready, and fetch
+cannot create attributed archives or advance their watermarks. No additional
+read of the same representation resolves this limitation. Preserve the native
+transcript and report the source boundary that remains unavailable.
 
-```yaml
-# Registry entry: <server> is the segment in the connector's mcp__<server>__slack_* tool names
-  - name: example
-    domain: example.slack.com
-    token: mcp:<server>
-```
-
-Run `--mode plan` first with every transcript that may hold the reads: the
-session file and each `subagents/agent-*.jsonl` that made calls, one
-`--transcript` per file. The plan lists every missing call with its exact
-input. Make those calls, then plan again: threads a search finds and the
-quiet-channel probes surface on the second pass. When the plan reports
-`ready`, run `--mode fetch` with the same transcripts and `--advance`.
-`problems` names conversations whose coverage cannot be proven, such as a DM
-with no message at all. Fetch reports each one under `unacquired_targets` with
-its reason and leaves its watermark unchanged, while every proven conversation
-advances. A run that proves no conversation refuses outright. This applies to
-the direct adapter too.
-
-```text
-synthesis exec-public synthesis-slack-sync/scripts/acquire.py --mode plan --config /absolute/slack-sync.yaml --registry /absolute/slack-workspaces.yaml --through 2026-09-28T00:00:00Z --backfill-from 2026-09-27T00:00:00Z --capture-dir /absolute/private-capture/run-003 --evidence /absolute/private-capture/run-003-evidence.json --transcript /absolute/.claude/projects/<project>/<session>.jsonl --transcript /absolute/.claude/projects/<project>/<session>/subagents/agent-1.jsonl
-```
-
-What counts as a recorded read:
-
-- Only calls to the registry's server whose result arrived at or after the
-  window end. Failed calls, other servers and other tools never count.
-- History: a detailed `slack_read_channel` whose `oldest` and `latest`
-  strictly enclose the window, because the provider's boundary inclusivity is
-  not observable. Cursor pages follow through recorded calls with the same
-  input.
-- Search: `slack_search_public_and_private` with exactly `in:<#ID>`, no
-  keywords or semantic query, `include_bots: true`, and bounds enclosing the
-  window: the connector's `after`/`before` Unix-timestamp parameters strictly
-  (verified exact on 2026-10-01), or `after:`/`before:` day filters with two
-  UTC days of margin. Search rows are discovery-only and never archived,
-  because the search renders text differently from history and threads.
-- Threads: a detailed `slack_read_thread` without `oldest`, `latest` or
-  cursor that holds the parent and every reply it reports. A paginated thread
-  read refuses; read it again with `limit: 1000`.
-- Identity: `slack_read_user_profile` without `user_id`, so it names the
-  connector's own user, matching the declared `user_id` and not a bot.
-
-Archived text drops what varies between reads of one message: the `Thread:`
-and `Reactions:` metadata lines, and mention display names (`<@U123|Name>`
-becomes Slack's own `<@U123>`). The full rendering stays in each row's
-`rendered` field inside the raw footer. A spilled result resolves only from the
-same session's `tool-results` directory and must match its recorded size.
-
-Custody is `connector-calls.json` in the capture directory: each used call's
-id, tool, input, observation time, transcript and result digest, plus the byte
-count and sha256 of every transcript prefix read, which can be re-checked while
-the transcript only grows. The evidence's provider limitations state what
-replay cannot prove: it is as authentic as the client's own transcript, and the
-connector's rendered text stands in for Slack's raw message bodies.
+Complete acquisition uses the explicitly declared `slack-web-api-v1` structured
+reader above, with already authorized credentials. No credential discovery,
+automatic adapter fallback, or new authentication is part of connector replay.
+A future connector may support acquisition only after its actual producer
+preserves lossless records and its consumer is verified against that contract.
 
 
 ## Saved bytes, custody and retry
