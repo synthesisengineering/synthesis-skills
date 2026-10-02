@@ -915,7 +915,7 @@ def _prepare_checkpoint(context, payload):
                     context["actor"]["native_payload"])
         if not paths[1].is_file():
             raise ValueError("PM checkpoint needs the existing owner's adopted CURRENT_STATE.json build")
-        adopted = json.loads(_read_json_bytes(paths[1]), object_pairs_hook=_unique)
+        adopted = project_state.read_operational_state(paths[1])
         if adopted.get("session_id") != proof["session_uuid"] or adopted.get("project_id") != state["project_id"]:
             raise ValueError("PM adopted state is not owned by this current session")
         fields = ("phase", "status", "controlling_plan", "accepted_baseline", "next_actions", "last_session")
@@ -977,7 +977,7 @@ def _postamble(tx):
         raise ValueError("terminal postamble owner differs from the committed intent")
     paths = [tx.project / "CONTEXT.md", tx.project / project_state.STATE_FILE]
     admit_paths(Path(tx.actor["board"]), state["project_id"], tx.project, paths, tx.actor["native_payload"])
-    adopted = json.loads(_read_json_bytes(paths[1]), object_pairs_hook=_unique)
+    adopted = project_state.read_operational_state(paths[1])
     if adopted.get("session_id") != proof["session_uuid"] or adopted.get("project_id") != state["project_id"]:
         raise ValueError("terminal PM state changed owner or project")
     fields = ("phase", "status", "controlling_plan", "accepted_baseline", "next_actions", "last_session")

@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.153.4] - 2026-10-02
+
+- Checkpoint and finish autonomous runs with large project state using the project-state reader and its existing safety limits.
+
 ## [4.153.3] - 2026-10-02
 
 - Inventory retained evidence without opening special files, with explicit bounded scan policies and fewer repeated scans.
