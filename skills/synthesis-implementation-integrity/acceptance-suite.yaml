@@ -1,5 +1,5 @@
 schema: 2
-suite: retained-recovery-4-153-3
+suite: checkpoint-state-reader-4-153-4
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy, maintenance and portable
   evidence owners; scoped source acquisition and inert native web observations
@@ -1422,6 +1422,19 @@ changed_surfaces:
   - recovery-670554c07388b9a3
   - recovery-89745c2a84710224
   - recovery-349132eedc5d6122
+  - pm-reader-6a0624d6b6946954
+  - pm-reader-695f67241ad18774
+  - pm-reader-58f80c02d89fb3fe
+  - pm-reader-0782758e02e09647
+  - pm-reader-049a6844ccb497ff
+  - pm-reader-dfd0de76c30f2560
+  - pm-reader-5ad0aa762ece2ac2
+  - pm-reader-bdd3e5ee869fed8c
+  - pm-reader-21c29b17bace88c6
+  - pm-reader-5fad75b408d03e59
+  - pm-reader-0d5b9362b567f0d4
+  - pm-reader-532073d9a393cd7b
+  - pm-reader-56aa66192aae6eb6
 - path: .codex-plugin/plugin.json
   cases:
   - final-42c5721991f12696
@@ -2831,6 +2844,19 @@ changed_surfaces:
   - recovery-670554c07388b9a3
   - recovery-89745c2a84710224
   - recovery-349132eedc5d6122
+  - pm-reader-6a0624d6b6946954
+  - pm-reader-695f67241ad18774
+  - pm-reader-58f80c02d89fb3fe
+  - pm-reader-0782758e02e09647
+  - pm-reader-049a6844ccb497ff
+  - pm-reader-dfd0de76c30f2560
+  - pm-reader-5ad0aa762ece2ac2
+  - pm-reader-bdd3e5ee869fed8c
+  - pm-reader-21c29b17bace88c6
+  - pm-reader-5fad75b408d03e59
+  - pm-reader-0d5b9362b567f0d4
+  - pm-reader-532073d9a393cd7b
+  - pm-reader-56aa66192aae6eb6
 - path: .muse-plugin/plugin.json
   cases:
   - final-42c5721991f12696
@@ -4240,6 +4266,19 @@ changed_surfaces:
   - recovery-670554c07388b9a3
   - recovery-89745c2a84710224
   - recovery-349132eedc5d6122
+  - pm-reader-6a0624d6b6946954
+  - pm-reader-695f67241ad18774
+  - pm-reader-58f80c02d89fb3fe
+  - pm-reader-0782758e02e09647
+  - pm-reader-049a6844ccb497ff
+  - pm-reader-dfd0de76c30f2560
+  - pm-reader-5ad0aa762ece2ac2
+  - pm-reader-bdd3e5ee869fed8c
+  - pm-reader-21c29b17bace88c6
+  - pm-reader-5fad75b408d03e59
+  - pm-reader-0d5b9362b567f0d4
+  - pm-reader-532073d9a393cd7b
+  - pm-reader-56aa66192aae6eb6
 - path: CHANGELOG.md
   cases:
   - final-42c5721991f12696
@@ -7100,6 +7139,19 @@ changed_surfaces:
   - recovery-d64c37e2b7248a7e
   - recovery-902433572ef7ab33
   - recovery-6c685b9c510c2fd7
+  - pm-reader-6a0624d6b6946954
+  - pm-reader-695f67241ad18774
+  - pm-reader-58f80c02d89fb3fe
+  - pm-reader-0782758e02e09647
+  - pm-reader-049a6844ccb497ff
+  - pm-reader-dfd0de76c30f2560
+  - pm-reader-5ad0aa762ece2ac2
+  - pm-reader-bdd3e5ee869fed8c
+  - pm-reader-21c29b17bace88c6
+  - pm-reader-5fad75b408d03e59
+  - pm-reader-0d5b9362b567f0d4
+  - pm-reader-532073d9a393cd7b
+  - pm-reader-56aa66192aae6eb6
 - path: skills/synthesis-autopilot/scripts/native_review.py
   cases:
   - recovery-4e70f7851331fab0
@@ -8681,6 +8733,21 @@ changed_surfaces:
   - recovery-9ff2dd590682c079
   - recovery-3e8522d59b5f17cf
   - recovery-d06f34b2784ba35b
+- path: skills/synthesis-autopilot/scripts/test_controller_project_state.py
+  cases:
+  - pm-reader-6a0624d6b6946954
+  - pm-reader-695f67241ad18774
+  - pm-reader-58f80c02d89fb3fe
+  - pm-reader-0782758e02e09647
+  - pm-reader-049a6844ccb497ff
+  - pm-reader-dfd0de76c30f2560
+  - pm-reader-5ad0aa762ece2ac2
+  - pm-reader-bdd3e5ee869fed8c
+  - pm-reader-21c29b17bace88c6
+  - pm-reader-5fad75b408d03e59
+  - pm-reader-0d5b9362b567f0d4
+  - pm-reader-532073d9a393cd7b
+  - pm-reader-56aa66192aae6eb6
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -16389,3 +16456,81 @@ cases:
   expected_status: pass
   fixture: ../synthesis-decision-packet/scripts/test_note_whitespace.py::test_javascript_whitespace_set_matches_python_transport
   motivating_defect: javascript whitespace set matches python transport
+- id: pm-reader-6a0624d6b6946954
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_large_pm_state_checkpoint_uses_pm_contract
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-695f67241ad18774
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_large_pm_state_terminal_postamble_uses_pm_contract
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-58f80c02d89fb3fe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_large_requests_keep_request_ceiling
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-0782758e02e09647
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[oversized-checkpoint]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-049a6844ccb497ff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[oversized-finish]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-dfd0de76c30f2560
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[duplicate-checkpoint]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-5ad0aa762ece2ac2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[duplicate-finish]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-bdd3e5ee869fed8c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[nonfinite-checkpoint]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-21c29b17bace88c6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[nonfinite-finish]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-5fad75b408d03e59
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[symlink-checkpoint]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-0d5b9362b567f0d4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[symlink-finish]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-532073d9a393cd7b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[fifo-checkpoint]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.
+- id: pm-reader-56aa66192aae6eb6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_controller_project_state.py::test_pm_consumers_refuse_invalid_state[fifo-finish]
+  motivating_defect: Project state consumers used the request-size bound; large valid state must complete
+    while invalid evidence and oversized requests refuse.

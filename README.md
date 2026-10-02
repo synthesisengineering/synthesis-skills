@@ -18,6 +18,9 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.4** fixes checkpoint and finalization failures for large project
+state. Both consumers use the existing bounded project-state reader.
+
 Release **4.153.2** corrects empty-list parsing in complete detection-rule
 documents. Credential scanning and unsupported-syntax refusals remain enforced.
 
