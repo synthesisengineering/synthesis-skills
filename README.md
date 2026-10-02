@@ -1502,4 +1502,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Support posture: [SUPPORT.md](SUPPORT.md
 
 Large autopilot journals use authenticated content blocks with finite storage budgets. Recovery retains earlier event bytes, ownership and cost history; incomplete or corrupted records never become completion evidence.
 
-Release 4.153.3 improves retained-evidence recovery, native owner renewal, and decision-note handling.
+Release **4.153.3** improves retained-evidence recovery, native owner renewal, and decision-note handling.
