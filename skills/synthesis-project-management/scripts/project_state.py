@@ -86,7 +86,32 @@ class RecoveryReport:
     planes: dict[str, str]
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # The report schema is flat strings plus these explicit containers.
+        # Detach every mutable container without recursively copying each
+        # scalar in potentially large retained-file inventories.
+        return {
+            "project_id": self.project_id,
+            "status": self.status,
+            "selected_path": self.selected_path,
+            "selected_head": self.selected_head,
+            "selected_tree": self.selected_tree,
+            "candidates": [
+                {
+                    "source": candidate.source,
+                    "project_path": candidate.project_path,
+                    "worktree": candidate.worktree,
+                    "ref": candidate.ref,
+                    "head": candidate.head,
+                    "project_tree": candidate.project_tree,
+                    "timestamp": candidate.timestamp,
+                    "dirty_files": [dict(row) for row in candidate.dirty_files],
+                    "session_id": candidate.session_id,
+                }
+                for candidate in self.candidates
+            ],
+            "issues": list(self.issues),
+            "planes": dict(self.planes),
+        }
 
 
 def _run(
@@ -550,14 +575,11 @@ def _dirty_path_name(value: str) -> Path:
     return Path(value)
 
 
-def _dirty_manifest_path(value: str) -> str | None:
-    """Verify parent/workspace aliases but never resolve the final entry."""
-    path = Path(value)
-    if not path.is_absolute() or ".." in path.parts or str(path) != value:
-        return None
+def _manifest_parent_snapshot(path: Path) -> tuple | None:
+    """Observe one parent spelling and its nearest existing directory."""
     fd = None
     try:
-        parent = path.parent.resolve(strict=False)
+        parent = path.resolve(strict=False)
         probe = parent
         while True:
             try:
@@ -572,17 +594,150 @@ def _dirty_manifest_path(value: str) -> str | None:
         fields = ("st_dev", "st_ino", "st_mode")
         if any(getattr(initial, key) != getattr(opened, key) for key in fields):
             return None
-        if path.parent.resolve(strict=False) != parent:
+        if path.resolve(strict=False) != parent:
             return None
         final = probe.lstat()
         if any(getattr(opened, key) != getattr(final, key) for key in fields):
             return None
-        return str(parent / path.name)
+        return parent, probe, tuple(getattr(final, key) for key in fields)
     except (OSError, RuntimeError):
         return None
     finally:
         if fd is not None:
             os.close(fd)
+
+
+def _dirty_manifest_path(value: str) -> str | None:
+    """Verify parent/workspace aliases but never resolve the final entry."""
+    path = Path(value)
+    if not path.is_absolute() or ".." in path.parts or str(path) != value:
+        return None
+    observation = _manifest_parent_snapshot(path.parent)
+    return str(observation[0] / path.name) if observation is not None else None
+
+
+class _ManifestPathObservations:
+    """Share directory prefixes within one resolution, then revalidate them.
+
+    Ordinary components need no repeated ancestor resolution. Aliases and
+    exceptional components still use the full parent observer; this cache does
+    not implement symlink resolution or retain observations across invocations.
+    """
+
+    def __init__(self):
+        self.parents: dict[Path, tuple | None] = {}
+        self.directories: dict[Path, tuple] = {}
+        self.missing: set[Path] = set()
+        self.fallback: dict[Path, tuple | None] = {}
+
+    @staticmethod
+    def _directory_identity(path: Path, initial=None) -> tuple | None:
+        fd = None
+        try:
+            initial = initial if initial is not None else path.lstat()
+            if not stat.S_ISDIR(initial.st_mode):
+                return None
+            fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            opened = os.fstat(fd)
+            fields = ("st_dev", "st_ino", "st_mode")
+            identity = tuple(getattr(opened, key) for key in fields)
+            if tuple(getattr(initial, key) for key in fields) != identity:
+                return None
+            final = path.lstat()
+            return identity if tuple(getattr(final, key) for key in fields) == identity else None
+        except (OSError, RuntimeError):
+            return None
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+    def _observe_parent(self, path: Path) -> tuple | None:
+        ancestor = self.parents.get(path.parent)
+        if ancestor is not None:
+            canonical = ancestor[0] / path.name
+            if ancestor[0] != ancestor[1]:
+                # A missing ancestor implies a missing suffix. Its first absent
+                # component is rechecked, including creation of a symlink there.
+                return canonical, ancestor[1], ancestor[2]
+            if canonical in self.missing:
+                return canonical, ancestor[1], ancestor[2]
+            if canonical in self.directories:
+                identity = self.directories[canonical]
+                return canonical, canonical, identity
+            try:
+                initial = canonical.lstat()
+            except FileNotFoundError:
+                self.missing.add(canonical)
+                return canonical, ancestor[1], ancestor[2]
+            except OSError:
+                pass
+            else:
+                if stat.S_ISDIR(initial.st_mode):
+                    identity = self._directory_identity(canonical, initial)
+                    if identity is None:
+                        # A failed open/identity check is not a stable directory
+                        # observation. Revalidate it through the full observer,
+                        # which also catches a transition to a valid alias.
+                        self.fallback[path] = None
+                        return None
+                    self.directories[canonical] = identity
+                    return canonical, canonical, identity
+        observation = _manifest_parent_snapshot(path)
+        self.fallback[path] = observation
+        return observation
+
+    def __call__(self, value: str) -> str | None:
+        path = Path(value)
+        if not path.is_absolute() or ".." in path.parts or str(path) != value:
+            return None
+        parent = path.parent
+        if parent not in self.parents:
+            pending = []
+            prefix = parent
+            while prefix not in self.parents:
+                pending.append(prefix)
+                if prefix.parent == prefix:
+                    break
+                prefix = prefix.parent
+            for prefix in reversed(pending):
+                self.parents[prefix] = self._observe_parent(prefix)
+        observation = self.parents[parent]
+        return str(observation[0] / path.name) if observation is not None else None
+
+    def verify(self) -> None:
+        for path in self.missing:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                pass
+            raise ProjectStateError("manifest parent changed during project resolution")
+        # Check descendants before ancestors: replacement/retargeting during a
+        # descendant check must still be observed by its ancestor's final check.
+        # An alias can reveal a deep canonical prefix before that prefix is
+        # encountered directly, so insertion order is not an ancestry order.
+        for path, expected in sorted(
+            self.directories.items(), key=lambda item: len(item[0].parts), reverse=True
+        ):
+            if self._directory_identity(path) != expected:
+                raise ProjectStateError("manifest parent changed during project resolution")
+        for parent, expected in reversed(self.fallback.items()):
+            if _manifest_parent_snapshot(parent) != expected:
+                raise ProjectStateError("manifest parent changed during project resolution")
+        # Full alias observations traverse ordinary ancestors too. Close those
+        # ancestors after the alias checks, which may otherwise come after an
+        # ancestor's last identity read. This is a fresh bounded read, not an
+        # atomic filesystem snapshot.
+        closing = set()
+        for parent, expected in self.fallback.items():
+            for path in (parent,) + (() if expected is None else expected[:2]):
+                for ancestor in (path, *path.parents):
+                    if ancestor in self.directories:
+                        closing.add(ancestor)
+        for path in sorted(closing, key=lambda value: len(value.parts), reverse=True):
+            if self._directory_identity(path) != self.directories[path]:
+                raise ProjectStateError("manifest parent changed during project resolution")
 
 
 def _dirty_tree_bound(
@@ -984,29 +1139,87 @@ def _manifest_inventory(
 
 
 def _manifest_for_dirty(
-    dirty: list[dict[str, str]], manifests: Iterable[dict[str, Any]]
+    dirty: list[dict[str, str]], manifests: Iterable[dict[str, Any]], *, normalize=None
 ) -> str | None:
+    normalize = normalize or _dirty_manifest_path
     dirty_paths = {item["path"]: item["sha256"] for item in dirty}
     for manifest in manifests:
         if manifest.get("_kind") != "manifest":
             continue
         paths = {
-            _dirty_manifest_path(value)
+            normalized
             for value in manifest.get("paths", [])
-            if isinstance(value, str) and _dirty_manifest_path(value) is not None
+            if isinstance(value, str)
+            and (normalized := normalize(value)) is not None
         }
         if not set(dirty_paths).issubset(paths):
             continue
         claimed_hashes = {
-            _dirty_manifest_path(key): value
+            normalized: value
             for key, value in (manifest.get("path_hashes") or {}).items()
             if isinstance(key, str)
             and isinstance(value, str)
-            and _dirty_manifest_path(key) is not None
+            and (normalized := normalize(key)) is not None
         }
         if claimed_hashes and any(
             claimed_hashes.get(path) != digest for path, digest in dirty_paths.items()
         ):
+            continue
+        # The edit hook stores regular-file bytes here. Prepared launches may
+        # also retain typed fingerprints in this map. Honor every supplied
+        # observation without inventing missing hashes for legacy paths-only
+        # manifests, or treating regular hashes as nonregular fingerprints.
+        content = manifest.get("content_hashes", {})
+        if not isinstance(content, dict):
+            continue
+        recorded_content = {}
+        malformed = False
+        for key, value in content.items():
+            if (not isinstance(key, str) or not isinstance(value, str)
+                or (value != "deleted" and re.fullmatch(r"[0-9a-f]{64}", value) is None)):
+                malformed = True
+                break
+            normalized = normalize(key)
+            if normalized is None:
+                malformed = True
+                break
+            recorded_content[normalized] = value
+        if malformed or any(
+            path in recorded_content and recorded_content[path] != digest
+            for path, digest in dirty_paths.items()
+        ) or any(
+            path in recorded_content and recorded_content[path] != digest
+            for path, digest in claimed_hashes.items()
+        ):
+            continue
+        # Hash domains overlap: regular bytes b"symlink\0target" hash exactly
+        # like the typed symlink fingerprint. A prepared typed map therefore
+        # needs the producer's recorded kind, not a kind inferred from today.
+        kinds = manifest.get("path_kinds", {})
+        if not isinstance(kinds, dict):
+            continue
+        normalized_kinds = {}
+        for key, value in kinds.items():
+            if (not isinstance(key, str) or not isinstance(value, str)
+                    or (normalized := normalize(key)) is None):
+                malformed = True
+                break
+            normalized_kinds[normalized] = value
+        if malformed:
+            continue
+        kind_mismatch = False
+        for item in dirty:
+            path = item["path"]
+            recorded_kind = normalized_kinds.get(path)
+            if recorded_kind is None and path in claimed_hashes:
+                # Only this sentinel has an unambiguous historical type.
+                recorded_kind = "deleted" if claimed_hashes[path] == "deleted" else "unverified"
+            elif recorded_kind is None and path in recorded_content:
+                recorded_kind = "deleted" if recorded_content[path] == "deleted" else "file"
+            if recorded_kind is not None and recorded_kind != item.get("kind", "file"):
+                kind_mismatch = True
+                break
+        if kind_mismatch:
             continue
         return str(manifest.get("session_id") or "") or None
     return None
@@ -1246,6 +1459,7 @@ def _resolve_project_unlocked(
     manifests, manifest_issues = _manifest_inventory(
         repo_guard_root, checkpoint_receipt_root
     )
+    manifest_paths = _ManifestPathObservations()
     issues.extend(manifest_issues)
     authoritative: list[Candidate] = []
     for worktree, repository_head, branch in worktree_records:
@@ -1267,7 +1481,7 @@ def _resolve_project_unlocked(
         if not project_head or not tree:
             continue
         dirty = _dirty_project_files(worktree, relative)
-        owner = _manifest_for_dirty(dirty, manifests) if dirty else None
+        owner = _manifest_for_dirty(dirty, manifests, normalize=manifest_paths) if dirty else None
         candidate = Candidate(
             source="canonical" if worktree == repo else "worktree",
             project_path=str(project.resolve()),
@@ -1308,32 +1522,28 @@ def _resolve_project_unlocked(
             {"continuity": "UNKNOWN"},
         )
     fallback = authoritative[0]
-    related_sessions = {
-        str(payload.get("session_id"))
-        for payload in manifests
-        if payload.get("_kind") == "manifest"
-        and (
+    # Reuse the same relevance decision in both passes of this resolution.
+    # Keep the serialized-substring semantics, including receipt metadata.
+    relevant_manifests = [
+        (
             project_id in json.dumps(payload, sort_keys=True)
             or any(
-                (normalized := _dirty_manifest_path(path)) is not None
+                (normalized := manifest_paths(path)) is not None
                 and Path(normalized).is_relative_to(canonical_project_prefix)
                 for path in payload.get("paths", [])
                 if isinstance(path, str)
             )
         )
+        for payload in manifests
+    ]
+    related_sessions = {
+        str(payload.get("session_id"))
+        for payload, relevant in zip(manifests, relevant_manifests)
+        if payload.get("_kind") == "manifest" and relevant
     }
-    for payload in manifests:
-        material = json.dumps(payload, sort_keys=True)
-        paths = [
-            str(value) for value in payload.get("paths", []) if isinstance(value, str)
-        ]
+    for payload, relevant in zip(manifests, relevant_manifests):
         if (
-            project_id in material
-            or any(
-                (normalized := _dirty_manifest_path(path)) is not None
-                and Path(normalized).is_relative_to(canonical_project_prefix)
-                for path in paths
-            )
+            relevant
             or str(payload.get("session_id")) in related_sessions
         ):
             candidates.append(
@@ -1410,11 +1620,10 @@ def _resolve_project_unlocked(
         status = "CONFLICT"
         selected = None
     elif dirty_candidates:
-        signatures = {
-            _sha_bytes(json.dumps(candidate.dirty_files, sort_keys=True).encode())
-            for candidate in dirty_candidates
-        }
-        if len(signatures) != 1:
+        if any(
+            candidate.dirty_files != dirty_candidates[0].dirty_files
+            for candidate in dirty_candidates[1:]
+        ):
             issues.append("divergent attributed dirty project states")
             status = "CONFLICT"
             selected = None
@@ -1467,6 +1676,8 @@ def _resolve_project_unlocked(
         )
         status = "UNKNOWN"
         selected = None
+
+    manifest_paths.verify()
 
     if (
         status == "PASS"

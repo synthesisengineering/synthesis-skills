@@ -15,6 +15,423 @@ import project_state as state
 import coordination as engine
 
 
+def test_manifest_parent_observations_share_prefixes_and_recheck(tmp_path, monkeypatch):
+    tmp_path = tmp_path.resolve()
+    common = tmp_path / "shared" / "deep" / "prefix"
+    common.mkdir(parents=True)
+    for n in range(60):
+        (common / f"group-{n}").mkdir()
+    real = state._manifest_parent_snapshot
+    calls = []
+    def observe(path):
+        calls.append(path)
+        return real(path)
+    monkeypatch.setattr(state, "_manifest_parent_snapshot", observe)
+    paths = [str(common / f"group-{n % 120}" / f"entry-{n}") for n in range(6000)]
+    normalizer = state._ManifestPathObservations()
+    first = [normalizer(path) for path in paths]
+    assert [normalizer(path) for path in paths] == first
+    # Only the filesystem root needs full ancestor resolution; all distinct
+    # existing and missing parents share the ordinary directory prefixes.
+    assert calls == [Path(tmp_path.anchor)]
+    normalizer.verify()
+    assert calls == [Path(tmp_path.anchor)] * 2
+    assert first == paths
+
+
+@pytest.mark.parametrize("change", ["replace", "retarget", "missing-symlink"])
+def test_manifest_prefix_change_refuses_even_when_leaf_parent_is_unchanged(tmp_path, change):
+    root = tmp_path / "root"
+    root.mkdir()
+    branch = root / "branch"
+    branch.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(root, target_is_directory=True)
+    cache = state._ManifestPathObservations()
+    if change == "missing-symlink":
+        raw = str(root / "missing" / "deeper" / "entry")
+        assert cache(raw) == raw
+        (root / "missing").symlink_to(branch, target_is_directory=True)
+    else:
+        raw = str((alias if change == "retarget" else root) / "branch" / "entry")
+        assert cache(raw) == str(branch / "entry")
+        root.rename(tmp_path / "old-root")
+        root.mkdir()
+        (tmp_path / "old-root" / "branch").rename(branch)
+        if change == "retarget":
+            alias.unlink()
+            alias.symlink_to(tmp_path / "old-root", target_is_directory=True)
+    with pytest.raises(state.ProjectStateError, match="manifest parent changed"):
+        cache.verify()
+    fresh = state._ManifestPathObservations()
+    assert fresh(raw) == state._dirty_manifest_path(raw)
+    fresh.verify()
+
+
+@pytest.mark.parametrize("alias_first", [False, True])
+def test_manifest_prefix_replacement_during_final_descendant_check_refuses(tmp_path, monkeypatch, alias_first):
+    root = tmp_path / "root"
+    branch = root / "branch"
+    leaf_parent = branch / "child"
+    leaf_parent.mkdir(parents=True)
+    cache = state._ManifestPathObservations()
+    if alias_first:
+        alias = tmp_path / "alias"
+        alias.symlink_to(branch, target_is_directory=True)
+        cache(str(alias / "child" / "entry"))
+    cache(str(leaf_parent / "entry"))
+    real = cache._directory_identity
+    changed = False
+    def race(path, initial=None):
+        nonlocal changed
+        result = real(path, initial)
+        if path == leaf_parent and not changed:
+            changed = True
+            root.rename(tmp_path / "old-root")
+            root.mkdir()
+            (tmp_path / "old-root" / "branch").rename(branch)
+        return result
+    monkeypatch.setattr(cache, "_directory_identity", race)
+    with pytest.raises(state.ProjectStateError, match="manifest parent changed"):
+        cache.verify()
+    assert changed
+
+
+@pytest.mark.parametrize("replaced", ["lexical", "canonical"])
+def test_manifest_alias_final_check_closes_observed_ancestors(tmp_path, monkeypatch, replaced):
+    lexical, canonical = tmp_path / "lexical", tmp_path / "canonical"
+    (lexical / "kept").mkdir(parents=True)
+    target = canonical / "target"
+    target.mkdir(parents=True)
+    (canonical / "kept").mkdir()
+    alias = lexical / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    cache = state._ManifestPathObservations()
+    cache(str(lexical / "kept" / "entry"))
+    cache(str(canonical / "kept" / "entry"))
+    cache(str(alias / "entry"))
+    victim = lexical if replaced == "lexical" else canonical
+    expected = cache.directories[victim]
+    original = state._manifest_parent_snapshot
+    changed = False
+    def replace_after_alias_observation(path):
+        nonlocal changed
+        result = original(path)
+        if path == alias and not changed:
+            changed = True
+            victim.rename(tmp_path / "old-parent")
+            victim.mkdir()
+            child = "alias" if replaced == "lexical" else "target"
+            (tmp_path / "old-parent" / child).rename(victim / child)
+        return result
+    monkeypatch.setattr(state, "_manifest_parent_snapshot", replace_after_alias_observation)
+    with pytest.raises(state.ProjectStateError, match="manifest parent changed"):
+        cache.verify()
+    assert changed and cache._directory_identity(victim) != expected
+
+
+def test_manifest_prefix_replacement_during_open_is_not_attributed(tmp_path, monkeypatch):
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    original = state.os.open
+    changed = False
+    def replace(path, flags, *args, **kwargs):
+        nonlocal changed
+        if Path(path) == parent and not changed:
+            changed = True
+            parent.rename(tmp_path / "old-parent")
+            parent.symlink_to(foreign, target_is_directory=True)
+        return original(path, flags, *args, **kwargs)
+    monkeypatch.setattr(state.os, "open", replace)
+    cache = state._ManifestPathObservations()
+    assert cache(str(parent / "entry")) is None
+    assert changed
+    with pytest.raises(state.ProjectStateError, match="manifest parent changed"):
+        cache.verify()
+    assert state._ManifestPathObservations()(str(parent / "entry")) == str(foreign / "entry")
+
+
+@pytest.mark.parametrize("target", ["self", "cycle", "relative-up", "missing", "file"])
+def test_manifest_prefix_alias_semantics_match_full_observer(tmp_path, target):
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    if target == "self":
+        alias.symlink_to("alias")
+    elif target == "cycle":
+        alias.symlink_to("other")
+        (tmp_path / "other").symlink_to("alias")
+    elif target == "relative-up":
+        alias.symlink_to("real/../real")
+    elif target == "missing":
+        alias.symlink_to("missing/deep")
+    else:
+        (tmp_path / "file").write_text("not a directory")
+        alias.symlink_to("file")
+    cache = state._ManifestPathObservations()
+    for suffix in ("entry", "nested/entry"):
+        raw = str(alias / suffix)
+        assert cache(raw) == state._dirty_manifest_path(raw)
+    cache.verify()
+
+
+@pytest.mark.parametrize("change", ["retarget", "replace", "create", "invalid-to-valid"])
+def test_manifest_parent_observation_drift_refuses_and_next_call_is_fresh(tmp_path, change):
+    parent = tmp_path / "parent"
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(); b.mkdir()
+    if change == "retarget": parent.symlink_to(a, target_is_directory=True)
+    elif change == "replace": parent.mkdir()
+    elif change == "invalid-to-valid": parent.write_text("not a directory")
+    raw = str(parent / "entry")
+    normalizer = state._ManifestPathObservations()
+    before = normalizer(raw)
+    if change == "retarget":
+        parent.unlink(); parent.symlink_to(b, target_is_directory=True)
+    elif change == "replace":
+        parent.rename(tmp_path / "original-parent"); parent.mkdir()
+    elif change == "create": parent.mkdir()
+    else:
+        parent.unlink(); parent.mkdir()
+    with pytest.raises(state.ProjectStateError, match="manifest parent changed"):
+        normalizer.verify()
+    fresh = state._ManifestPathObservations()
+    assert fresh(raw) == state._dirty_manifest_path(raw)
+    fresh.verify()
+    if change in {"retarget", "invalid-to-valid"}: assert fresh(raw) != before
+
+
+def test_manifest_parent_cache_preserves_alias_and_literal_leaf(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    leaf = real / "leaf"
+    leaf.symlink_to("unfollowed-target")
+    cache = state._ManifestPathObservations()
+    assert cache(str(alias / "leaf")) == str(leaf)
+    for invalid in ("relative", str(alias) + "/../leaf", str(alias) + "//leaf"):
+        assert cache(invalid) is None
+    cache.verify()
+
+
+@pytest.mark.parametrize("content,typed,expected", [
+    (None, None, "owner"), ("a", None, None), ("b", None, "owner"),
+    (None, "a", None), ("a", "b", None), ("b", "b", "owner"),
+])
+def test_resolver_honors_both_attribution_hash_maps(tmp_path, content, typed, expected):
+    path = str(tmp_path / "entry")
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [path]}
+    if content is not None:
+        manifest["content_hashes"] = {path: content * 64}
+    if typed is not None:
+        manifest["path_hashes"] = {path: typed * 64}
+        manifest["path_kinds"] = {path: "file"}
+    assert state._manifest_for_dirty([{"path": path, "sha256": "b" * 64, "kind": "file"}], [manifest]) == expected
+
+
+@pytest.mark.parametrize("kind", ["deleted", "symlink", "directory"])
+def test_resolver_preserves_typed_custody_and_refuses_replacement(tmp_path, kind):
+    path = tmp_path / "entry"
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "symlink":
+        path.symlink_to("unfollowed")
+    snapshot = state._dirty_leaf_snapshot(path)
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [str(path)],
+                "path_hashes": {str(path): snapshot["sha256"]},
+                "content_hashes": {str(path): snapshot["sha256"]},
+                "path_kinds": {str(path): kind}}
+    assert state._manifest_for_dirty([{"path": str(path), **snapshot}], [manifest]) == "owner"
+    if kind == "directory":
+        (path / "new").write_text("foreign")
+    else:
+        if kind == "symlink":
+            path.unlink()
+        path.write_text("foreign")
+    assert state._manifest_for_dirty([{"path": str(path), **state._dirty_leaf_snapshot(path)}], [manifest]) is None
+
+
+@pytest.mark.parametrize("bad", [[], {"relative": "a" * 64}, {"path": "bad"}])
+def test_resolver_refuses_malformed_content_attribution(tmp_path, bad):
+    path = str(tmp_path / "entry")
+    value = {path: "bad"} if bad == {"path": "bad"} else bad
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [path], "content_hashes": value}
+    assert state._manifest_for_dirty([{"path": path, "sha256": "b" * 64}], [manifest]) is None
+
+
+@pytest.mark.parametrize("maps", ["content", "both", "typed-only"])
+@pytest.mark.parametrize("record_kind", [False, True])
+def test_file_to_symlink_hash_domain_overlap_never_transfers_ownership(tmp_path, maps, record_kind):
+    path = tmp_path / "entry"
+    digest = hashlib.sha256(b"symlink\0foreign-target").hexdigest()
+    path.symlink_to("foreign-target")
+    row = {"path": str(path), **state._dirty_leaf_snapshot(path)}
+    assert row["sha256"] == digest  # Exact domain overlap, not a SHA collision.
+    manifest = {"_kind": "manifest", "session_id": "original-writer", "paths": [str(path)]}
+    if maps in {"content", "both"}: manifest["content_hashes"] = {str(path): digest}
+    if maps in {"typed-only", "both"}: manifest["path_hashes"] = {str(path): digest}
+    if record_kind: manifest["path_kinds"] = {str(path): "file"}
+    assert state._manifest_for_dirty([row], [manifest]) is None
+
+
+@pytest.mark.parametrize("record_kind", [False, True])
+def test_symlink_to_file_with_same_typed_digest_is_not_reattribution(tmp_path, record_kind):
+    path = tmp_path / "entry"
+    path.write_bytes(b"symlink\0foreign-target")
+    row = {"path": str(path), **state._dirty_leaf_snapshot(path)}
+    manifest = {"_kind": "manifest", "session_id": "link-writer", "paths": [str(path)],
+                "path_hashes": {str(path): row["sha256"]}}
+    if record_kind: manifest["path_kinds"] = {str(path): "symlink"}
+    assert state._manifest_for_dirty([row], [manifest]) is None
+
+
+@pytest.mark.parametrize("hashed", [False, True])
+def test_manifest_normalization_cost_and_complete_ownership(tmp_path, monkeypatch, hashed):
+    first, second = tmp_path / "first", tmp_path / "second"
+    dirty = [{"path": str(first), "sha256": "a" * 64},
+             {"path": str(second), "sha256": "b" * 64}]
+    manifest = {"_kind": "manifest", "session_id": "owner",
+                "paths": [str(first), str(second), 7, "../invalid"]}
+    if hashed:
+        manifest["path_hashes"] = {str(first): "a" * 64, str(second): "b" * 64}
+        manifest["path_kinds"] = {str(first): "file", str(second): "file"}
+    original = state._dirty_manifest_path
+    calls = []
+    def counted(value):
+        calls.append(value)
+        return original(value)
+    monkeypatch.setattr(state, "_dirty_manifest_path", counted)
+    assert state._manifest_for_dirty(dirty, [manifest]) == "owner"
+    assert len(calls) == (7 if hashed else 3)
+    manifest["paths"].remove(str(second))
+    assert state._manifest_for_dirty(dirty, [manifest]) is None
+    manifest["paths"].append(str(second))
+    manifest["path_hashes"] = {str(first): "c" * 64, str(second): "b" * 64}
+    assert state._manifest_for_dirty(dirty, [manifest]) is None
+
+
+def test_manifest_alias_hash_order_and_fresh_resolution(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    leaf = target / "entry"
+    alternate = alias / "entry"
+    dirty = [{"path": str(leaf), "sha256": "a" * 64}]
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [str(alternate)],
+                "path_hashes": {str(leaf): "b" * 64, str(alternate): "a" * 64},
+                "path_kinds": {str(leaf): "file"}}
+    assert state._manifest_for_dirty(dirty, [manifest]) == "owner"
+    manifest["path_hashes"] = dict(reversed(list(manifest["path_hashes"].items())))
+    assert state._manifest_for_dirty(dirty, [manifest]) is None
+    manifest.pop("path_hashes")
+    alias.unlink()
+    alias.symlink_to(tmp_path, target_is_directory=True)
+    assert state._manifest_for_dirty(dirty, [manifest]) is None
+
+
+def test_manifest_parent_change_during_normalization_is_refused(tmp_path, monkeypatch):
+    target = tmp_path / "target"
+    target.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(target, target_is_directory=True)
+    original = Path.resolve
+    count = 0
+    def retarget(path, *args, **kwargs):
+        nonlocal count
+        if path == alias:
+            count += 1
+            if count == 2:
+                alias.unlink()
+                alias.symlink_to(tmp_path, target_is_directory=True)
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "resolve", retarget)
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [str(alias / "entry")]}
+    assert state._manifest_for_dirty([{"path": str(target / "entry"), "sha256": "a" * 64}], [manifest]) is None
+
+
+def test_report_projection_preserves_schema_and_detaches_all_containers():
+    from dataclasses import asdict
+    candidate = state.Candidate("canonical", "/project", "/repo", None, "head", "tree", "time",
+                                [{"path": "/project/x", "sha256": "digest", "mode": "0644"}], "owner")
+    report = state.RecoveryReport("alpha", "LOCAL_RECOVERABLE", "/project", "head", "tree",
+                                  [candidate], ["issue"], {"continuity": "LOCAL_READY"})
+    projected = report.to_dict()
+    assert projected == asdict(report)
+    projected["candidates"][0]["dirty_files"][0]["sha256"] = "different"
+    projected["candidates"][0]["dirty_files"].append({})
+    projected["candidates"][0]["source"] = "other"
+    projected["candidates"].append({})
+    projected["issues"].append("other")
+    projected["planes"]["continuity"] = "different"
+    assert report.to_dict() == asdict(report)
+    assert candidate.dirty_files == [{"path": "/project/x", "sha256": "digest", "mode": "0644"}]
+    assert candidate.source == "canonical" and len(report.candidates) == 1
+    assert report.issues == ["issue"] and report.planes == {"continuity": "LOCAL_READY"}
+
+
+def test_recovery_serializes_manifest_once_and_preserves_related_receipt(tmp_path, monkeypatch):
+    repo, project = init_repo(tmp_path)
+    context = project / "CONTEXT.md"
+    context.write_text(context.read_text() + "changed\n")
+    manifest = {"_kind": "manifest", "session_id": "owner", "paths": [str(context)]}
+    receipt = {"_kind": "receipt", "session_id": "owner"}
+    monkeypatch.setattr(state, "_manifest_inventory", lambda *a, **k: ([manifest, receipt], []))
+    original = state.json.dumps
+    seen = []
+    def counted(value, *args, **kwargs):
+        if value is manifest or value is receipt:
+            seen.append(value)
+        assert not (isinstance(value, list) and value and isinstance(value[0], dict)
+                    and "sha256" in value[0]), "dirty inventories must not be serialized to compare them"
+        return original(value, *args, **kwargs)
+    monkeypatch.setattr(state.json, "dumps", counted)
+    report = state.resolve_project("alpha", repo / "projects/index.yaml", fetch=False)
+    assert report.status == "LOCAL_RECOVERABLE"
+    assert seen == [manifest, receipt]
+    assert [candidate.source for candidate in report.candidates if candidate.session_id == "owner"][-2:] == ["manifest", "receipt"]
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_resolver_parent_drift_prevents_optional_fast_forward(tmp_path, monkeypatch, drift):
+    repo, project = init_repo(tmp_path)
+    peer = tmp_path / "peer"
+    run("git", "clone", str(tmp_path / "remote.git"), str(peer), cwd=tmp_path)
+    for key, value in [("user.email", "fixture@example.invalid"), ("user.name", "Fixture"),
+                       ("core.hooksPath", str(tmp_path / "fixture-hooks"))]:
+        run("git", "config", key, value, cwd=peer)
+    commit_version(peer, peer / "projects/alpha", "2.0.0")
+    run("git", "push", "origin", "main", cwd=peer)
+    alias = tmp_path / "alias"
+    alias.symlink_to(project, target_is_directory=True)
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    manifest = {"_kind": "receipt", "session_id": "fixture", "paths": [str(alias / "CONTEXT.md")]}
+    monkeypatch.setattr(state, "_manifest_inventory", lambda *a, **k: ([manifest], []))
+    original = state._latest_session_date
+    def after_relevance(path):
+        result = original(path)
+        if drift:
+            alias.unlink(); alias.symlink_to(unrelated, target_is_directory=True)
+        return result
+    monkeypatch.setattr(state, "_latest_session_date", after_relevance)
+    effects = []
+    def fast_forward(*args):
+        effects.append(args)
+        return False, "fixture effect boundary observed"
+    monkeypatch.setattr(state, "_safe_fast_forward", fast_forward)
+    report = state.resolve_project("alpha", repo / "projects/index.yaml", fetch=True, fast_forward_canonical=True)
+    if drift:
+        assert report.status == "UNKNOWN" and report.selected_path is None
+        assert any("manifest parent changed" in issue for issue in report.issues)
+        assert effects == []
+    else:
+        assert report.status == "PASS" and len(effects) == 1
+
+
 @pytest.mark.parametrize("reader", [state.read_operational_state, state._load_json])
 def test_state_json_shared_size_boundary(tmp_path, monkeypatch, reader):
     monkeypatch.setattr(state, "MAX_STATE_JSON_BYTES", 128)
@@ -474,7 +891,7 @@ def test_dirty_attributed_project_file_is_local_recoverable(tmp_path: Path) -> N
     pending = state_root / "pending"
     pending.mkdir(parents=True)
     session = "session-a"
-    payload = {"schema_version": 2, "session_id": session, "paths": [str(context)], "path_hashes": {str(context): sha(context)}}
+    payload = {"schema_version": 2, "session_id": session, "paths": [str(context)], "path_hashes": {str(context): sha(context)}, "path_kinds": {str(context): "file"}}
     (pending / (hashlib.sha256(session.encode()).hexdigest() + ".json")).write_text(json.dumps(payload), encoding="utf-8")
     report = state.resolve_project("alpha", repo / "projects" / "index.yaml", repo_guard_root=state_root, fetch=False)
     assert report.status == "LOCAL_RECOVERABLE"
@@ -497,6 +914,7 @@ def test_dirty_state_on_older_head_conflicts_with_newer_committed_state(tmp_path
         "session_id": session,
         "paths": [str(context)],
         "path_hashes": {str(context): sha(context)},
+        "path_kinds": {str(context): "file"},
     }
     (pending / (hashlib.sha256(session.encode()).hexdigest() + ".json")).write_text(
         json.dumps(payload), encoding="utf-8"
@@ -519,7 +937,7 @@ def test_two_attributed_dirty_worktrees_with_different_hashes_conflict(tmp_path:
     root.mkdir(parents=True)
     for index, path in enumerate(paths):
         session = f"session-{index}"
-        payload = {"schema_version": 2, "session_id": session, "paths": [str(path)], "path_hashes": {str(path): sha(path)}}
+        payload = {"schema_version": 2, "session_id": session, "paths": [str(path)], "path_hashes": {str(path): sha(path)}, "path_kinds": {str(path): "file"}}
         (root / (hashlib.sha256(session.encode()).hexdigest() + ".json")).write_text(json.dumps(payload), encoding="utf-8")
     report = state.resolve_project("alpha", repo / "projects" / "index.yaml", repo_guard_root=root.parent, fetch=False)
     assert report.status == "CONFLICT"
@@ -2010,6 +2428,7 @@ def test_dirty_inventory_manifest_attributes_leaf_identity_without_dereference(
                 "session_id": "own-fixture",
                 "paths": [str(leaf)],
                 "path_hashes": {r["path"]: r["sha256"] for r in rows},
+                "path_kinds": {r["path"]: r["kind"] for r in rows},
             }
         )
     )
@@ -2270,6 +2689,7 @@ def test_dirty_inventory_verified_workspace_alias_attributes_literal_leaf(tmp_pa
                 "session_id": "fixture-owner",
                 "paths": [str(alias_leaf)],
                 "path_hashes": {str(alias_leaf): rows[0]["sha256"]},
+                "path_kinds": {str(alias_leaf): rows[0]["kind"]},
             }
         )
     )
@@ -2550,6 +2970,7 @@ def test_dirty_directory_descendant_only_claim_does_not_authorize_aggregate(tmp_
     assert state._manifest_for_dirty(rows, [manifest]) is None
     manifest["paths"] = [str(nested)]
     manifest["path_hashes"] = {row["path"]: row["sha256"] for row in rows}
+    manifest["path_kinds"] = {row["path"]: row["kind"] for row in rows}
     assert state._manifest_for_dirty(rows, [manifest]) == "synthetic"
 
 

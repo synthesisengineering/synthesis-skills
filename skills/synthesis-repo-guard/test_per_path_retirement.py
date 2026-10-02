@@ -418,3 +418,191 @@ def test_hash_reader_accepts_only_wellformed_entries() -> None:
     assert MODULE.load_pending_manifest_hashes({"content_hashes": {"/a": "A" * 64}}) == {}
     assert MODULE.load_pending_manifest_hashes({"content_hashes": {"/a": good, "/b": "nope"}}) == {"/a": good}
     assert MODULE.load_pending_manifest_hashes({"content_hashes": {1: good}}) == {}
+
+
+@pytest.mark.parametrize("method", ["published", "per-path", "stranded"])
+def test_partial_retirement_prunes_all_attribution_maps(tmp_path, monkeypatch, method):
+    repo, _remote, cfg, _hooks = repository(tmp_path)
+    retired, survivor = repo / "seed.md", tmp_path / "kept.md"
+    survivor.write_text("retained bytes")
+    keys = [str(retired), str(survivor)]
+    maps = {
+        "content_hashes": {key: sha("retained evidence") for key in keys},
+        "path_hashes": {key: sha("retained evidence") for key in keys},
+        "path_kinds": {key: "file" for key in keys},
+    }
+    maps["content_hashes"][str(retired)] = maps["path_hashes"][str(retired)] = sha("seed\n")
+    manifest = write_manifest("partial-map-retirement", keys, keys, maps)
+    data = json.loads(manifest.read_text())
+    roots = lambda path: repo if path == retired else None
+    entries = [(key, Path(key), True) for key in keys]
+    if method == "published":
+        MODULE.retire_published_entries(manifest, data, entries, roots, {repo: {"action": "clean"}}, {})
+    elif method == "per-path":
+        MODULE.retire_per_path_entries(manifest, data, entries, roots, {repo: {"action": "hook-blocked"}}, cfg, dry_run=False)
+    else:
+        # Isolate classification evidence; exercise the real narrowing and write.
+        missing = tmp_path / "missing-worktree"
+        monkeypatch.setattr(MODULE, "classify_stranded_entry", lambda path, *_: {
+            "drop_eligible": True, "evidence": {
+                "missing_worktree_root": str(missing),
+                "nearest_existing_ancestor": str(tmp_path),
+                "retirement_intents": [], "local_handoff_receipt_named_worktree": False,
+            },
+        } if path == retired else None)
+        monkeypatch.setattr(MODULE, "canonical_copy_evidence", lambda *_: {})
+        # Use a genuinely missing lexical path within the classified root.
+        retired = missing / "seed.md"
+        data["paths"][0] = data["remote_paths"][0] = str(retired)
+        for field in maps:
+            data[field][str(retired)] = data[field].pop(keys[0])
+        manifest.write_text(json.dumps(data))
+        MODULE.drop_stranded_entries(manifest, data, cfg, assertion="synthetic published evidence", dry_run=False,
+                                     evidence=MODULE.StrandedEvidence(), root_of=lambda _: None)
+    actual = json.loads(manifest.read_text())
+    assert actual["paths"] == actual["remote_paths"] == [str(survivor)]
+    for field in maps:
+        assert actual[field] == {str(survivor): maps[field][str(survivor)]}
+
+
+@pytest.mark.parametrize("shape", ["typed-symlink", "deleted", "untyped-path-hash", "malformed"])
+def test_per_path_retry_refuses_foreign_type_and_ambiguous_evidence(tmp_path, shape):
+    repo, _remote, cfg, _hooks = repository(tmp_path)
+    path = repo / "changed.md"
+    path.write_bytes(b"symlink\0foreign-target")
+    key = str(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    extra = {"content_hashes": {key: digest}}
+    if shape == "typed-symlink":
+        extra.update(path_hashes={key: digest}, path_kinds={key: "symlink"})
+    elif shape == "deleted":
+        extra.update(content_hashes={key: "deleted"}, path_kinds={key: "deleted"})
+    elif shape == "untyped-path-hash":
+        extra["path_hashes"] = {key: digest}
+    else:
+        extra["content_hashes"][key] = "corrupt"
+    manifest = write_manifest("typed-classification", [key], [key], extra)
+    data = json.loads(manifest.read_text())
+    before = manifest.read_bytes()
+    result = MODULE.retire_per_path_entries(manifest, data, [(key, path, True)], lambda _: repo,
+        {repo: {"action": "hook-blocked"}}, cfg, dry_run=True)[0]["roots"][0]
+    assert result["would_commit"] == result["would_retire"] == []
+    assert [item["path"] for item in result["would_skip"]] == ["changed.md"]
+    assert manifest.read_bytes() == before
+
+
+def test_head_symlink_blob_is_not_regular_file_evidence(tmp_path):
+    repo, _remote, _cfg, _hooks = repository(tmp_path)
+    link = repo / "link"
+    link.symlink_to("foreign-target")
+    commit_all(repo, "fixture link")
+    assert MODULE.head_content_hash(repo, "link") is None
+    assert MODULE.head_content_hash(repo, "seed.md") == sha("seed\n")
+
+
+def test_head_hash_uses_captured_object_when_branch_advances(tmp_path, monkeypatch):
+    repo, _remote, _cfg, _hooks = repository(tmp_path)
+    real_git_bytes = MODULE.git_bytes
+    calls = []
+    def advance_after_tree(root, *args, **kwargs):
+        result = real_git_bytes(root, *args, **kwargs)
+        calls.append(args)
+        if "ls-tree" in args:
+            path = repo / "seed.md"
+            path.unlink()
+            path.symlink_to("foreign-target")
+            commit_all(repo, "fixture advance")
+        return result
+    monkeypatch.setattr(MODULE, "git_bytes", advance_after_tree)
+    assert MODULE.head_content_hash(repo, "seed.md") == sha("seed\n")
+    assert calls[1][:2] == ("cat-file", "blob")
+    assert ":" not in calls[1][2]
+
+
+@pytest.mark.parametrize("digest,kind", [("deleted", "deleted"), ("f" * 64, "file")])
+def test_clean_foreign_restoration_does_not_retire_attributed_change(tmp_path, digest, kind):
+    repo, _remote, cfg, _hooks = repository(tmp_path)
+    path = repo / "seed.md"
+    key = str(path)
+    manifest = write_manifest("restored-clean", [key], [key], {
+        "content_hashes": {key: digest}, "path_kinds": {key: kind}})
+    data = json.loads(manifest.read_text())
+    result = MODULE.retire_per_path_entries(manifest, data, [(key, path, True)], lambda _: repo,
+        {repo: {"action": "hook-blocked"}}, cfg, dry_run=True)[0]["roots"][0]
+    assert result["would_retire"] == result["would_commit"] == []
+    assert [row["path"] for row in result["would_skip"]] == ["seed.md"]
+
+
+@pytest.mark.parametrize("action", sorted(MODULE.PUBLISHED_ACTIONS))
+@pytest.mark.parametrize("digest,kind", [("deleted", "deleted"), ("f" * 64, "file")])
+def test_published_root_does_not_retire_foreign_restoration(tmp_path, action, digest, kind):
+    repo, _remote, cfg, _hooks = repository(tmp_path)
+    path = repo / "seed.md"
+    key = str(path)
+    manifest = write_manifest("published-restoration", [key], [key], {
+        "content_hashes": {key: digest}, "path_kinds": {key: kind}})
+    data = json.loads(manifest.read_text())
+    before = manifest.read_bytes()
+    results = {repo: {"action": action}}
+    entries = [(key, path, True)]
+    # The real flush invokes these owners in this order.
+    assert MODULE.retire_published_entries(manifest, data, entries, lambda _: repo, results, {}) == []
+    MODULE.retire_per_path_entries(manifest, data, entries, lambda _: repo, results, cfg, dry_run=False)
+    assert manifest.read_bytes() == before
+
+
+def test_published_root_retires_matching_deletion_only(tmp_path):
+    repo, _remote, _cfg, _hooks = repository(tmp_path)
+    path = repo / "seed.md"
+    path.unlink()
+    commit_all(repo, "fixture deletion")
+    key = str(path)
+    manifest = write_manifest("published-deletion", [key], [key], {
+        "content_hashes": {key: "deleted"}, "path_kinds": {key: "deleted"}})
+    data = json.loads(manifest.read_text())
+    result = MODULE.retire_published_entries(manifest, data, [(key, path, True)],
+        lambda _: repo, {repo: {"action": "committed-pushed"}}, {})
+    assert result[0]["files"] == 1 and result[0]["manifest_removed"] is True
+    assert not manifest.exists()
+
+
+def test_published_symlink_custody_does_not_retire_aliased_foreign_file(tmp_path):
+    repo, _remote, _cfg, _hooks = repository(tmp_path)
+    target, link = repo / "seed.md", repo / "link"
+    link.symlink_to("seed.md")
+    commit_all(repo, "fixture link")
+    keys = [str(link), str(target)]
+    digest = hashlib.sha256(b"symlink\0seed.md").hexdigest()
+    manifest = write_manifest("published-alias", keys, keys, {
+        "content_hashes": {keys[0]: digest, keys[1]: "f" * 64},
+        "path_kinds": {keys[0]: "symlink", keys[1]: "file"}})
+    data = json.loads(manifest.read_text())
+    entries = [(str(link), link.resolve(), True), (str(target), target, True)]
+    result = MODULE.retire_published_entries(manifest, data, entries,
+        lambda _: repo, {repo: {"action": "committed-pushed"}}, {})
+    assert result[0]["files"] == 1
+    assert json.loads(manifest.read_text())["paths"] == [str(target)]
+    assert MODULE.head_content_hash(repo, "link", "symlink") == digest
+    assert MODULE.head_content_hash(repo, "link") is None
+
+
+@pytest.mark.parametrize("link_first", [True, False])
+def test_per_path_matching_target_keeps_unmatched_symlink(tmp_path, link_first):
+    repo, _remote, cfg, _hooks = repository(tmp_path)
+    target, link = repo / "seed.md", repo / "link"
+    link.symlink_to("seed.md")
+    commit_all(repo, "fixture link")
+    command("git", "push", "-q", "origin", "main", cwd=repo)
+    keys = [str(link), str(target)] if link_first else [str(target), str(link)]
+    manifest = write_manifest("per-path-alias", keys, keys, {
+        "content_hashes": {str(link): "f" * 64, str(target): sha("seed\n")},
+        "path_kinds": {str(link): "symlink", str(target): "file"}})
+    data = json.loads(manifest.read_text())
+    entries = [(key, Path(key).resolve(), True) for key in keys]
+    result = MODULE.retire_per_path_entries(manifest, data, entries, lambda _: repo,
+        {repo: {"action": "hook-blocked"}}, cfg, dry_run=False)
+    assert result[0]["retired_paths"] == [str(target)]
+    remaining = json.loads(manifest.read_text())
+    assert remaining["paths"] == remaining["remote_paths"] == [str(link)]
+    assert remaining["content_hashes"] == {str(link): "f" * 64}
+    assert remaining["path_kinds"] == {str(link): "symlink"}

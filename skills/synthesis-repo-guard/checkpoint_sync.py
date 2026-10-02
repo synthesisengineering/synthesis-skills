@@ -1819,6 +1819,14 @@ def rebind_receipt_digest(manifest: Path, before_digest: str, marker: dict) -> b
     return True
 
 
+def prune_pending_entry_maps(data: dict) -> None:
+    """Keep attribution evidence on exactly the surviving lexical paths."""
+    kept = set(data["paths"])
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        if isinstance(data.get(field), dict):
+            data[field] = {key: value for key, value in data[field].items() if key in kept}
+
+
 def drop_stranded_entries(
     manifest: Path,
     data: dict,
@@ -1877,6 +1885,7 @@ def drop_stranded_entries(
         narrowed["remote_paths"] = [
             value for value in data["remote_paths"] if str(value) not in dropped_set
         ]
+    prune_pending_entry_maps(narrowed)
     if dry_run:
         return {
             **summary,
@@ -1968,6 +1977,43 @@ def load_pending_manifest_hashes(data: dict) -> dict[str, str]:
     return clean
 
 
+def pending_entry_evidence(data: dict, key: str) -> tuple[str | None, str | None]:
+    """Bind a hash to its entry kind; malformed evidence never becomes legacy."""
+    supplied = []
+    for field in ("content_hashes", "path_hashes"):
+        mapping = data.get(field, {})
+        if not isinstance(mapping, dict):
+            return None, "invalid"
+        if key in mapping:
+            value = mapping[key]
+            if not isinstance(value, str) or not (
+                value == "deleted" or _CONTENT_HASH_RE.fullmatch(value)
+            ):
+                return None, "invalid"
+            supplied.append(value)
+    kinds = data.get("path_kinds", {})
+    if not isinstance(kinds, dict):
+        return None, "invalid"
+    if not supplied:
+        return (None, "invalid") if key in kinds else (None, None)
+    if len(set(supplied)) != 1:
+        return None, "invalid"
+    digest = supplied[0]
+    kind = kinds.get(key)
+    if kind is None:
+        if digest == "deleted":
+            kind = "deleted"
+        elif key not in data.get("path_hashes", {}):
+            kind = "file"  # Historical content-only evidence hashed regular files.
+        else:
+            return None, "invalid"  # Typed and raw hashes share a digest domain.
+    if kind not in {"file", "symlink", "directory", "special", "deleted"}:
+        return None, "invalid"
+    if (digest == "deleted") != (kind == "deleted"):
+        return None, "invalid"
+    return digest, kind
+
+
 def git_bytes(repo: Path, *args: str, timeout: int = 60) -> tuple[int, bytes, str]:
     """Run git capturing raw stdout bytes (blob-safe; ``git()`` decodes text)."""
     try:
@@ -1992,12 +2038,26 @@ def worktree_content_hash(path: Path) -> str | None:
         return None
 
 
-def head_content_hash(repo: Path, rel: str) -> str | None:
-    """sha256 of the blob bytes ``HEAD:rel`` holds; None when unanswerable."""
-    rc, blob, _ = git_bytes(repo, "cat-file", "-p", f"HEAD:{rel}")
+def head_content_hash(repo: Path, rel: str, kind: str = "file") -> str | None:
+    """Hash the mode-checked Git leaf in its recorded attribution domain."""
+    modes = {"file": (b"100644", b"100755"), "symlink": (b"120000",)}
+    if kind not in modes:
+        return None
+    rc, tree, _ = git_bytes(repo, "--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", rel)
+    records = tree.split(b"\0")
+    if rc != 0 or len(records) != 2 or records[-1]:
+        return None
+    metadata, separator, name = records[0].partition(b"\t")
+    fields = metadata.split(b" ")
+    if (not separator or name != os.fsencode(rel) or len(fields) != 3
+            or fields[0] not in modes[kind] or fields[1] != b"blob"
+            or re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", fields[2]) is None):
+        return None
+    # A branch can advance between these calls; hash the mode-checked object.
+    rc, blob, _ = git_bytes(repo, "cat-file", "blob", fields[2].decode("ascii"))
     if rc != 0:
         return None
-    return hashlib.sha256(blob).hexdigest()
+    return hashlib.sha256((b"symlink\0" if kind == "symlink" else b"") + blob).hexdigest()
 
 
 def current_branch(repo: Path) -> str | None:
@@ -2115,27 +2175,35 @@ def retire_per_path_entries(
     """
     if not manifest.exists():
         return []
+    def literal_entry(value: object) -> Path:
+        path = Path(str(value)).expanduser()
+        return path.parent.resolve(strict=False) / path.name
+
     current = {
-        Path(str(value)).expanduser().resolve(strict=False)
+        literal_entry(value)
         for value in [*data.get("paths", []), *data.get("remote_paths", [])]
     }
-    hashes = load_pending_manifest_hashes(data)
-    lookup: dict[str, str] = {}
-    for key, value in hashes.items():
+    lookup: dict[str, tuple[str | None, str | None]] = {}
+    for key in data.get("paths", []):
         try:
-            lookup[str(Path(key).expanduser().resolve(strict=False))] = value
+            literal = str(literal_entry(key))
+            evidence = pending_entry_evidence(data, key)
+            if literal in lookup and lookup[literal] != evidence:
+                evidence = (None, "invalid")
+            lookup[literal] = evidence
         except (OSError, RuntimeError, ValueError):
             continue
     by_root: dict[Path, list[Path]] = {}
-    for _raw, resolved, is_context in entries:
-        if not is_context or resolved not in current:
+    for raw, resolved, is_context in entries:
+        literal = literal_entry(raw)
+        if not is_context or literal not in current:
             continue
         root = root_of(resolved)
         if root is None:
             continue
         bucket = by_root.setdefault(root, [])
-        if resolved not in bucket:
-            bucket.append(resolved)
+        if literal not in bucket:
+            bucket.append(literal)
     if not by_root:
         return []
 
@@ -2156,7 +2224,7 @@ def retire_per_path_entries(
         rel_of: dict[Path, str] = {}
         for resolved in by_root[root]:
             try:
-                rel_of[resolved] = str(resolved.resolve(strict=False).relative_to(repo_base))
+                rel_of[resolved] = str(resolved.relative_to(repo_base))
             except ValueError:
                 continue
         if not rel_of:
@@ -2171,11 +2239,19 @@ def retire_per_path_entries(
         verdicts: dict[Path, str] = {}
         reasons: dict[Path, str] = {}
         for resolved, rel in rel_of.items():
-            attr = lookup.get(str(resolved))
+            attr, kind = lookup.get(str(resolved), (None, None))
+            if kind == "invalid":
+                verdicts[resolved] = "skip-foreign"
+                reasons[resolved] = "invalid or ambiguous attribution evidence"
+                continue
             if rel in dirty:
                 work = worktree_content_hash(resolved)
                 if work is None:
                     verdicts[resolved] = "keep"  # missing/non-file: existing flow owns it
+                    continue
+                if kind not in (None, "file"):
+                    verdicts[resolved] = "skip-foreign"
+                    reasons[resolved] = "attributed entry kind differs from current regular file"
                     continue
                 if attr is None or work == attr:
                     verdicts[resolved] = "committable"
@@ -2191,7 +2267,13 @@ def retire_per_path_entries(
                     verdicts[resolved] = "skip-foreign"
                     reasons[resolved] = "foreign-overwrite"
             elif pushed:
-                verdicts[resolved] = "retire-clean"
+                if attr is None or (kind == "file" and head_content_hash(root, rel) == attr):
+                    verdicts[resolved] = "retire-clean"
+                elif kind == "deleted" and not os.path.lexists(resolved):
+                    verdicts[resolved] = "retire-clean"
+                else:
+                    verdicts[resolved] = "skip-foreign"
+                    reasons[resolved] = "clean published entry differs from attributed bytes or kind"
             else:
                 verdicts[resolved] = "keep"
         committable = sorted(rel_of[r] for r in rel_of if verdicts[r] == "committable")
@@ -2241,24 +2323,10 @@ def retire_per_path_entries(
         return []
 
     def survives(value: object) -> bool:
-        return Path(str(value)).expanduser().resolve(strict=False) not in retired_resolved
+        return literal_entry(value) not in retired_resolved
 
     kept = [value for value in data["paths"] if survives(value)]
     removed = len(data["paths"]) - len(kept)
-    if retired_resolved and isinstance(data.get("content_hashes"), dict):
-        pruned = {}
-        for key, value in data["content_hashes"].items():
-            try:
-                drop = (
-                    Path(key).expanduser().resolve(strict=False) in retired_resolved
-                    if isinstance(key, str)
-                    else False
-                )
-            except (OSError, RuntimeError, ValueError):
-                drop = False
-            if not drop:
-                pruned[key] = value
-        data["content_hashes"] = pruned
     summary = {
         "repo": str(manifest),
         "name": "pending-session",
@@ -2279,6 +2347,7 @@ def retire_per_path_entries(
         data["paths"] = kept
         if "remote_paths" in data:
             data["remote_paths"] = [value for value in data["remote_paths"] if survives(value)]
+        prune_pending_entry_maps(data)
         data["updated_at"] = stamp
         atomic_json(manifest, data)
         rebind_receipt_digest(manifest, before_digest, {"derived_from_per_path_retirement": stamp})
@@ -2298,19 +2367,37 @@ def retire_published_entries(
     Blocked repositories keep their entries; the manifest is deleted only when
     nothing remains. Called with the manifest lock held, never on a dry run.
     """
-    retired_resolved: set[Path] = set()
+    retired_keys: set[str] = set()
     retired_roots: set[str] = set()
-    for _raw, resolved, is_context in entries:
+    for raw, resolved, is_context in entries:
         root = root_of(resolved)
         if root is None:
             continue
         result = (context_results if is_context else source_results).get(root)
         if result is not None and result["action"] in PUBLISHED_ACTIONS:
-            retired_resolved.add(resolved)
+            digest, kind = pending_entry_evidence(data, raw)
+            path = Path(raw).expanduser()
+            try:
+                literal = path.parent.resolve(strict=False) / path.name
+                relative = str(literal.relative_to(root.resolve()))
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if kind in {"file", "symlink"}:
+                if head_content_hash(root, relative, kind) != digest:
+                    continue
+            elif kind == "deleted":
+                rc, tree, _ = git_bytes(root, "--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", relative)
+                if rc != 0 or tree or os.path.lexists(literal):
+                    continue
+            elif kind is not None:
+                # A repository-level outcome does not prove typed non-file
+                # custody or repair malformed evidence. Keep that obligation.
+                continue
+            retired_keys.add(raw)
             retired_roots.add(str(root))
 
     def survives(value: object) -> bool:
-        return Path(str(value)).expanduser().resolve(strict=False) not in retired_resolved
+        return str(value) not in retired_keys
 
     kept = [value for value in data["paths"] if survives(value)]
     removed = len(data["paths"]) - len(kept)
@@ -2333,6 +2420,7 @@ def retire_published_entries(
     data["paths"] = kept
     if "remote_paths" in data:
         data["remote_paths"] = [value for value in data["remote_paths"] if survives(value)]
+    prune_pending_entry_maps(data)
     data["updated_at"] = stamp
     atomic_json(manifest, data)
     rebind_receipt_digest(
@@ -2909,13 +2997,29 @@ def record_prepared_native_launch(*, project: Path, run_id: str, permit_id: str,
             raise ValueError("existing attribution is malformed; preserve it")
         if run_state._last_event(project, run_id)["digest"] != event["digest"]:
             raise ValueError("prepared attribution journal changed during admission")
-        current = {row["path"]: row["sha256"] for row in project_state._dirty_project_files(repository, relative)}
+        current_rows = project_state._dirty_project_files(repository, relative)
+        current = {row["path"]: row["sha256"] for row in current_rows}
         if current != after:
             raise ValueError("prepared attribution bytes changed during admission")
         result = dict(old)
         result["paths"] = sorted(set(old["paths"]) | set(after))
         result["path_hashes"] = {**old.get("path_hashes", {}), **after}
         result["content_hashes"] = {**old.get("content_hashes", {}), **after}
+        # Retain the kind from the same capture used for digest verification.
+        # New projection writes are already proven regular above. Never change
+        # an unchanged baseline's known kind merely because its digest matches.
+        old_kinds = old.get("path_kinds", {})
+        if not isinstance(old_kinds, dict):
+            raise ValueError("existing attribution entry kinds are malformed")
+        kinds = {row["path"]: row["kind"] for row in current_rows}
+        for path, kind in kinds.items():
+            recorded = old_kinds.get(path)
+            if (recorded is None and path in old.get("content_hashes", {})
+                    and path not in old.get("path_hashes", {})):
+                recorded = "deleted" if old["content_hashes"][path] == "deleted" else "file"
+            if path not in allowed and recorded is not None and recorded != kind:
+                raise ValueError("prepared attribution baseline entry kind changed")
+        result["path_kinds"] = {**old_kinds, **kinds}
         result["prepared_native_launch"] = {"run_id": run_id, "permit_id": permit_id,
             "prepared_revision": grant["prepared_revision"], "journal_revision": revision,
             "event_digest": event["digest"], "issuer_session_uuid": proof["session_uuid"],

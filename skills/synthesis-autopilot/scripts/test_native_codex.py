@@ -27,6 +27,35 @@ def goal(objective="Synthetic objective", tokens=10):
 
 
 class CodexTests(unittest.TestCase):
+    def test_started_agent_activity_is_observation_without_admission(self):
+        item = {"type": "SubAgentActivity", "id": "start", "kind": "started",
+                "agent_thread_id": "child", "agent_path": "/root/worker"}
+        fact = adapter.decode_record(self.item_completed(item), ROOT)[0]
+        self.assertEqual(fact["kind"], "item.observation")
+        self.assertEqual(fact["status"], "observed")
+        self.assertFalse(fact["data"]["grants_authority"])
+        self.assertFalse(fact["data"]["portable_completion"])
+        self.assertIsNone(fact["native"]["call_id"])
+
+    def test_subagent_environment_patch_is_inert_observation(self):
+        row = {"timestamp": "2026-10-02T00:17:17Z", "ordinal": 3,
+               "type": "world_state", "payload": {"full": False, "state": {
+                   "environments": {"subagents": '<agent name="/root/worker" />'}}}}
+        before = deepcopy(row)
+        fact = adapter.decode_record(row, ROOT)[0]
+        self.assertEqual(fact["kind"], "context.world_state")
+        for field in ("grants_authority", "portable_completion", "recovery_proven",
+                      "effects_replayed", "settings_applied", "usage_counted"):
+            self.assertFalse(fact["data"][field])
+        self.assertEqual(row, before)
+        for value in (None, [], {}, True):
+            bad = deepcopy(row); bad["payload"]["state"]["environments"]["subagents"] = value
+            with self.assertRaises(ValueError): adapter.decode_record(bad, ROOT)
+        bad = deepcopy(row); bad["payload"]["state"]["environments"]["authority"] = True
+        with self.assertRaises(ValueError): adapter.decode_record(bad, ROOT)
+        bad = deepcopy(row); bad["payload"]["state"]["environments"]["current_date"] = "2026-10-02"
+        with self.assertRaises(ValueError): adapter.decode_record(bad, ROOT)
+
     def item_completed(self, item=None):
         # Synthetic content retaining the genuine 0.155.0-alpha.16.4 rollout
         # envelope. This is not the separate lower-case exec JSON dialect.

@@ -17,7 +17,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v11"
+ADAPTER_VERSION = "codex-dialect-v12"
 SUPPORTED_SCHEMAS = (
     "session_meta",
     "turn_context",
@@ -588,7 +588,7 @@ def _completed_item(value, producer):
             "kind",
             "agent_thread_id",
             "agent_path",
-        } or item.get("kind") not in {"completed", "interacted"}:
+        } or item.get("kind") not in {"started", "completed", "interacted"}:
             raise DialectError("unsupported agent activity grammar")
         thread = _text(item.get("agent_thread_id"), "agent activity thread")
         path = _text(item.get("agent_path"), "agent activity path")
@@ -950,10 +950,16 @@ def _world_state(value):
     """Qualify the observed full snapshot; instructions remain inert content."""
     _closed(value, {"full", "state"})
     if value["full"] is False:
-        # Observed midnight date update only, not a synthesized full snapshot.
+        # Observed single-field environment patches, never synthesized full
+        # snapshots or evidence that a listed child was admitted or terminated.
         _closed(value["state"], {"environments"})
-        _closed(value["state"]["environments"], {"current_date"})
-        date = value["state"]["environments"]["current_date"]
+        env = value["state"]["environments"]
+        _object(env, "environment patch")
+        if set(env) == {"subagents"}:
+            _body(env["subagents"])
+            return
+        _closed(env, {"current_date"})
+        date = env["current_date"]
         if not isinstance(date, str) or not re.fullmatch(
             r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date
         ):

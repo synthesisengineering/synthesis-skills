@@ -143,6 +143,7 @@ def test_large_snapshot_blocks_are_derived_and_attributed_by_the_existing_owner(
     assert blocks
     for path in blocks:
         assert manifest['path_hashes'][str(path)] == hashlib.sha256(path.read_bytes()).hexdigest()
+        assert manifest['path_kinds'][str(path)] == 'file'
 
 
 @pytest.mark.parametrize("damage", [None, "current", "summary", "foreign"])

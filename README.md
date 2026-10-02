@@ -18,6 +18,11 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.153.1** reduces repeated path and manifest processing during project
+recovery. Publication retains typed ownership evidence across partial flushes;
+continuity diagnostics report timeouts explicitly. Native activity observations
+remain separate from execution authority.
+
 Release **4.153.0** runs source checks and acceptance batches with bounded
 parallelism. Publication verifies authenticated results for the exact tested
 candidate, then installs and verifies selected clients without repeating the
