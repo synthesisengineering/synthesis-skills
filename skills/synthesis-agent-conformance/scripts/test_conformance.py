@@ -613,6 +613,29 @@ def test_payload_parity_agrees_when_a_broken_pointer_is_ignored(tmp_path: Path) 
     assert "No active synthesis project pointer is set." in context
 
 
+@pytest.mark.parametrize("stopped", [False, True])
+@pytest.mark.parametrize("failed_format", ["claude", "codex"])
+def test_payload_timeout_is_named_failure_not_traceback(tmp_path, monkeypatch, stopped, failed_format):
+    import subprocess
+    observed = []
+    def timed_run(argv, **kwargs):
+        client = argv[argv.index("--format") + 1]
+        observed.append(client)
+        if client == failed_format:
+            raise subprocess.TimeoutExpired(argv, 30)
+        return subprocess.CompletedProcess(argv, 0, json.dumps({
+            "hookSpecificOutput": {"additionalContext": "same context"}
+        }), "")
+    monkeypatch.setattr(MODULE, "run", timed_run)
+    if stopped:
+        ok, detail = MODULE.stopped_payload_parity(tmp_path, {}, tmp_path / "board")
+    else:
+        ok, detail = MODULE.payload_parity(tmp_path / "pointer", tmp_path / "board")
+    assert not ok
+    assert failed_format in detail and "30s timeout" in detail
+    assert observed == (["claude"] if failed_format == "claude" else ["claude", "codex"])
+
+
 def write_stopped_project(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     project = repo / "projects" / "demo"

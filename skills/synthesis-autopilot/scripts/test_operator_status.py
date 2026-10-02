@@ -361,6 +361,7 @@ def causal_world(engine, world):
                 "session_id": state["owner"]["session_uuid"],
                 "paths": [row["path"] for row in dirty],
                 "path_hashes": {row["path"]: row["sha256"] for row in dirty},
+                "path_kinds": {row["path"]: row["kind"] for row in dirty},
             }
         )
     )

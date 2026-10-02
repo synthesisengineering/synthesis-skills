@@ -122,7 +122,7 @@ def admitted_claim(claim: str, workspaces, *, canonical: bool = False, allow_cre
         base = Path(os.path.expanduser(path))
         if not base.is_absolute() or ".." in base.parts:
             raise ClaimIdentityError("relative claim requires an absolute checkout context")
-        if Path(raw).parts[0] == base.name:
+        if Path(raw).parts and Path(raw).parts[0] == base.name:
             base = base.parent
         candidates.add(os.path.realpath(base / raw))
     if len(candidates) != 1:

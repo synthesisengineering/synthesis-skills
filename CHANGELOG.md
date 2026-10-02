@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.153.1] - 2026-10-02
+
+### Fixed
+
+- Reduce repeated manifest and directory work during project recovery while
+  rechecking filesystem identity before selecting or updating a checkout.
+- Preserve file kinds and retained hashes through partial publication so a
+  later edit cannot claim another session's changes or lose an own obligation.
+- Report continuity diagnostic timeouts as failed checks with an explicit
+  budget instead of an uncaught exception.
+- Decode bounded native subagent activity and environment observations without
+  treating them as execution, admission or completion authority.
+
 ## [4.153.0] - 2026-09-30
 
 ### Changed

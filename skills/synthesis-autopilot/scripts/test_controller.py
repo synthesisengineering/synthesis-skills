@@ -70,7 +70,8 @@ def attribute_recovery_fixture(world):
     fd,path=tempfile.mkstemp(prefix='.synthetic-',dir=directory)
     with os.fdopen(fd,'w') as stream:
         stream.write(json.dumps({'schema_version':2,'session_id':identity,
-            'paths':[row['path'] for row in dirty], 'path_hashes':{row['path']:row['sha256'] for row in dirty}}))
+            'paths':[row['path'] for row in dirty], 'path_hashes':{row['path']:row['sha256'] for row in dirty},
+            'path_kinds':{row['path']:row['kind'] for row in dirty}}))
     os.replace(path,directory/'synthetic-fixture.json')
 
 

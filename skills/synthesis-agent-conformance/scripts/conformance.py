@@ -1910,6 +1910,16 @@ def activate(
 TIMESTAMP_LINE = re.compile(r"^Verified local time: .*$", re.MULTILINE)
 
 
+def _diagnostic_payload(command: list[str], *, input_text: str):
+    """Keep bounded diagnostic failures in the named parity check result."""
+    try:
+        return run(command, input_text=input_text)
+    except subprocess.TimeoutExpired as exc:
+        return subprocess.CompletedProcess(
+            command, 124, "", f"diagnostic payload exceeded {exc.timeout}s timeout"
+        )
+
+
 def payload_parity(
     pointer: Path,
     coordination_board: Path = DEFAULT_COORDINATION_BOARD,
@@ -1926,7 +1936,7 @@ def payload_parity(
     script = SCRIPTS_DIR / "session_context.py"
     contexts: dict[str, str] = {}
     for client_format in ("claude", "codex"):
-        result = run(
+        result = _diagnostic_payload(
             [
                 sys.executable,
                 "-B",
@@ -2068,7 +2078,7 @@ def stopped_payload_parity(
     contexts: dict[str, str] = {}
     input_text = json.dumps({"cwd": str(project)})
     for client_format in ("claude", "codex"):
-        result = run(
+        result = _diagnostic_payload(
             [
                 sys.executable,
                 "-B",
