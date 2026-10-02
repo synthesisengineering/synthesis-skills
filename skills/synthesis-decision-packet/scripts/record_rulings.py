@@ -86,14 +86,24 @@ def js_length(text: str) -> int:
 # The format in Python: what renderSummary() emits for a given spec and state
 # ---------------------------------------------------------------------------
 
-def compose_legacy_summary(spec: dict, state: dict, storage_blocked: bool = False) -> str:
+def _summary_lines(spec: dict, state: dict, storage_blocked: bool = False) -> list:
     """Render the summary the packet's button would emit.
 
     `state` maps row id -> {"choice": option value, "note": str, "bulk": bool},
     each key optional, mirroring the packet's saved state.
     """
     title = str(spec["title"])
-    lines = [title, "=" * js_length(title), ""]
+    lines = []
+
+    def emit(text, field, rid=None):
+        # Field ownership comes from the bound spec/state, never from parsing
+        # note contents that may themselves resemble row headers or trailers.
+        for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            lines.append((line, field, rid))
+
+    emit(title, "title")
+    emit("=" * js_length(title), "title underline")
+    emit("", "separator")
     decided = 0
     bulk = 0
     for row in spec["rows"]:
@@ -117,18 +127,23 @@ def compose_legacy_summary(spec: dict, state: dict, storage_blocked: bool = Fals
                 mark += BULK if saved.get("bulk") else TOOK
         if saved.get("bulk"):
             bulk += 1
-        lines.append(str(row["id"]) + ID_LABEL_SEP + str(row["label"]))
-        lines.append(DECISION_PREFIX + mark)
+        emit(str(row["id"]) + ID_LABEL_SEP + str(row["label"]), "label", row["id"])
+        emit(DECISION_PREFIX + mark, "decision", row["id"])
         note = str(saved.get("note") or "")
         if js_trim(note):
-            lines.append(NOTE_PREFIX + js_trim(note))
-        lines.append("")
-    lines.append(DECIDED_LINE.format(decided=decided, total=len(spec["rows"])))
+            emit(NOTE_PREFIX + js_trim(note), "note", row["id"])
+        emit("", "separator", row["id"])
+    emit(DECIDED_LINE.format(decided=decided, total=len(spec["rows"])), "count")
     if bulk:
-        lines.append(f"{bulk}{BULK_TRAILER}")
+        emit(f"{bulk}{BULK_TRAILER}", "bulk count")
     if storage_blocked:
-        lines.append(STORAGE_TRAILER)
-    return "\n".join(lines)
+        emit(STORAGE_TRAILER, "storage status")
+    return lines
+
+
+def compose_legacy_summary(spec: dict, state: dict, storage_blocked: bool = False) -> str:
+    """Render human fields in their bound order, with notes treated as text."""
+    return "\n".join(line for line, _field, _rid in _summary_lines(spec, state, storage_blocked))
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +269,16 @@ def js_trim(text: str) -> str:
     return text.strip(JS_WHITESPACE)
 
 
+def normalize_note(text: str) -> str:
+    """Match the page's note transport: LF lines and no trailing JS whitespace.
+
+    Internal indentation, word spacing and paragraph breaks remain significant.
+    This normalization never applies to labels, decisions or binding metadata.
+    """
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return js_trim("\n".join(line.rstrip(JS_WHITESPACE) for line in lines))
+
+
 def _normalized_text(text: str) -> str:
     lines = [line if line.strip() else "" for line in
              text.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
@@ -316,7 +341,7 @@ def _selection_state(spec: dict, selections: list) -> dict:
             note.encode("utf-8")
         except UnicodeEncodeError as exc:
             raise SummaryError(f"row {rid}: invalid Unicode note") from exc
-        state[rid] = {"choice": choice, "note": note, "bulk": bulk}
+        state[rid] = {"choice": choice, "note": normalize_note(note), "bulk": bulk}
     return state
 
 
@@ -333,7 +358,7 @@ def compose_summary(spec: dict, state: dict, storage_blocked: bool = False) -> s
         if not isinstance(note, str):
             raise SummaryError("note must be a string")
         selections.append({"id": row["id"], "choice": saved.get("choice"),
-                           "note": js_trim(note), "bulk": saved.get("bulk", False)})
+                           "note": normalize_note(note), "bulk": saved.get("bulk", False)})
     normalized = _selection_state(spec, selections)
     binding = {"schema_version": 2, "spec_sha256": spec_digest(spec),
                "selections": selections, "storage_blocked": storage_blocked}
@@ -357,9 +382,27 @@ def parse_summary(text: str, spec: dict | None = None) -> dict:
     if spec_digest(spec) != binding["spec_sha256"]:
         raise SummaryError("summary spec digest differs from the current spec; response is stale")
     state = _selection_state(spec, binding["selections"])
-    expected = compose_summary(spec, state, binding["storage_blocked"])
-    if _normalized_text(text) != _normalized_text(expected):
-        raise SummaryError("summary text/rows differ from the exact current spec and selections; paste the whole summary unedited")
+    expected = _summary_lines(spec, state, binding["storage_blocked"])
+    # Keep the validated incoming note bytes in the binding comparison. A
+    # faithful paste from a page that emitted trailing note spaces still binds
+    # to the same normalized note; no other field gains whitespace tolerance.
+    incoming = {"schema_version": 2, "spec_sha256": binding["spec_sha256"],
+                "selections": [{key: selected[key] for key in ("id", "choice", "note", "bulk")}
+                               for selected in binding["selections"]],
+                "storage_blocked": binding["storage_blocked"]}
+    expected.append((BINDING_PREFIX + json.dumps(incoming, ensure_ascii=False,
+                     separators=(",", ":"), allow_nan=False), "binding", None))
+    actual = _normalized_text(text).split("\n")
+    for index in range(max(len(expected), len(actual))):
+        wanted, field, rid = expected[index] if index < len(expected) else (None, "trailing text", None)
+        got = actual[index] if index < len(actual) else None
+        if field == "note" and got is not None:
+            got = got.rstrip(JS_WHITESPACE)
+        wanted = wanted if wanted is None or wanted.strip() else ""
+        if got != wanted:
+            owner = f"row {rid}: " if rid is not None else "packet: "
+            raise SummaryError(f"{owner}{field} differs at summary line {index + 1}; "
+                               "paste the whole summary with its decisions and note text unchanged")
     rulings = []
     for row in spec["rows"]:
         saved = state[row["id"]]
