@@ -2,10 +2,10 @@
 name: synthesis-meeting-prep
 description: "Prepare a principal for any meeting the way a wise chief of staff would: weigh 60+ factors across the meeting, participants, principal's position, knowledge, and risk; model the readers before drafting; deliver a dense, scannable pack with a capture half; then debrief the transcript into decisions, commitments, and reader-profile updates. Use for 1:1s, reviews, forums, external meetings, interviews, and post-meeting follow-through."
 license: "CC0-1.0"
-depends_on: []
+depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.1"
+  version: "1.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -26,26 +26,45 @@ are normative. This file is the operating protocol.
 
 ## 1. Configuration contract
 
-All person-specific state lives outside the skill, in private paths
-the skill reads at load time:
+Select the meeting's owning workspace before loading a profile. Resolve its
+approved private context repository through the workspace's existing registry
+and routing policy. Relationship-bound profiles belong in that workspace's
+deletion unit. Personal records that must survive the relationship follow the
+principal's retention policy separately; never migrate a mixed profile until
+its ownership is resolved.
 
-```
-~/.synthesis/meeting-prep/principal.json     # role, goals, authority, tells
-~/.synthesis/meeting-prep/readers/<id>.md    # per-person reader profiles (R12)
+Every profile operation requires the explicit absolute repository root and a
+stable workspace id. The tool verifies the exact Git checkout root and binds
+the profile directory to that id. These arguments assert an already approved
+private destination; a Git remote or repository name cannot establish privacy.
+The tool does not discover a repository from the current directory, search
+other workspaces, or fall back to the user's home directory.
+
+```text
+<context-repo>/profiles/meeting-prep/.owner.json
+<context-repo>/profiles/meeting-prep/principal.json
+<context-repo>/profiles/meeting-prep/readers/<id>.md
 ```
 
-`principal.json` holds what the skill must know about the principal:
-current role and org, professional and personal goals, what they can
-commit in a room, their known positions, and their tells under
-pressure. Reader profiles hold relationship, technical depth, what
-the person cares about, what they have already been told, and what
-landed last time. Both are scaffolded by `scripts/prep_init.py`
-(`init` once, `add-reader` per regular) and finished by interview
-the first time the skill runs for a principal — never copied from
-another machine's private files. Missing config degrades gracefully:
-the skill asks the three questions it cannot proceed without (who is
-the reader to you, how technical, what is the meeting's job) and
-drafts anyway.
+Use `scripts/prep_init.py resolve --context-repo /absolute/private-context
+--workspace example` to resolve this directory without creating it. Pass the
+same two owner arguments to `init` or `add-reader`. Creation refuses an
+existing file; edit existing content through the context repository's normal
+record workflow. New files are mode 0600 and new directories are mode 0700.
+
+`principal.json` holds the principal's role, goals, authority, positions, and
+pressure responses within this workspace. Reader profiles hold relationship,
+technical depth, current concerns, prior context, and what landed last time.
+Scaffold with `init` and `add-reader`, then complete the interview using this
+workspace's evidence. Missing profiles permit the three essential questions
+(reader relationship, technical depth, meeting purpose) and a draft using only
+current context. Missing or ambiguous ownership prevents profile reads and
+writes; it never triggers a search of global or other-workspace profiles.
+
+Legacy global profiles need an explicit per-file ownership and hash map. The
+existing prep owner provides read-only preflight and bounded apply/resume;
+see [workspace-profiles.md](references/workspace-profiles.md). Migrating one
+workspace leaves unresolved and other-owner entries untouched.
 
 ## 2. The prep loop
 
@@ -97,7 +116,8 @@ After the meeting, when a transcript or notes exist:
    and the prep-vs-reality gap: what the prep missed or mis-weighted.
 3. **Draft the follow-ups.** Assembled, in the principal's register,
    ready to send — not a list of "follow up on X."
-4. **Update the profiles.** Fold the gap into the reader profiles:
+4. **Update the profiles.** Reconfirm the workspace owner, then fold the gap
+   into its reader profiles:
    what landed, what didn't, what they were told. This is how prep
    compounds.
 5. **Capture durable facts.** Anything that belongs in the workspace

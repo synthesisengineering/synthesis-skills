@@ -1944,3 +1944,117 @@ def test_prepared_retirement_cannot_replace_or_strip_original_claim_binding(tmp_
                                              **dict(options, claims_runtime=replacement))
         assert intent.read_bytes() == before
         assert worktree.exists()
+
+
+@pytest.mark.parametrize("mode", ["shared", "unlocked"])
+def test_inherited_lifecycle_refuses_nonexclusive_descriptor_without_upgrading(tmp_path, monkeypatch, mode):
+    import fcntl
+    path = MODULE.lifecycle_lock_path()
+    descriptor = MODULE.open_lock_file(path)
+    probe = MODULE.open_lock_file(path)
+    try:
+        if mode == "shared":
+            fcntl.flock(descriptor, fcntl.LOCK_SH)
+        monkeypatch.setenv(MODULE.LIFECYCLE_LOCK_FD_ENV, str(descriptor))
+        with pytest.raises(ValueError, match="exclusive"):
+            with MODULE.lifecycle_lock():
+                pytest.fail("shared descriptor granted exclusive lifecycle authority")
+        # A refusal must not upgrade or unlock the caller's shared descriptor.
+        fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        fcntl.flock(probe, fcntl.LOCK_UN)
+        if mode == "shared":
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        os.close(probe)
+        os.close(descriptor)
+
+
+def test_inherited_lifecycle_exclusive_descriptor_refused_without_changing_parent(tmp_path, monkeypatch):
+    import fcntl
+    path = MODULE.lifecycle_lock_path()
+    descriptor = MODULE.open_lock_file(path)
+    probe = MODULE.open_lock_file(path)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        monkeypatch.setenv(MODULE.LIFECYCLE_LOCK_FD_ENV, str(descriptor))
+        with pytest.raises(ValueError, match="inherited lifecycle"):
+            with MODULE.lifecycle_lock():
+                pytest.fail("raw descriptor was treated as prior authority")
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    finally:
+        os.close(probe)
+        os.close(descriptor)
+
+
+def test_inherited_lifecycle_cannot_borrow_another_descriptors_exclusion(tmp_path, monkeypatch):
+    import fcntl
+    path = MODULE.lifecycle_lock_path()
+    claimed = MODULE.open_lock_file(path)
+    actual = MODULE.open_lock_file(path)
+    try:
+        fcntl.flock(actual, fcntl.LOCK_EX)
+        monkeypatch.setenv(MODULE.LIFECYCLE_LOCK_FD_ENV, str(claimed))
+        with pytest.raises((ValueError, BlockingIOError)):
+            with MODULE.lifecycle_lock():
+                pytest.fail("different open description supplied exclusive authority")
+    finally:
+        os.close(actual)
+        os.close(claimed)
+
+
+def test_inherited_lifecycle_refusal_performs_no_lock_mutation(tmp_path, monkeypatch):
+    import fcntl
+    path = MODULE.lifecycle_lock_path()
+    actual = MODULE.open_lock_file(path)
+    claimed = MODULE.open_lock_file(path)
+    real = fcntl.flock
+    calls = []
+    try:
+        real(actual, fcntl.LOCK_EX)
+        monkeypatch.setenv(MODULE.LIFECYCLE_LOCK_FD_ENV, str(claimed))
+        def observe(fd, operation):
+            calls.append((fd, operation))
+            return real(fd, operation)
+        monkeypatch.setattr(fcntl, "flock", observe)
+        for held in (True, False):
+            if not held:
+                real(actual, fcntl.LOCK_UN)
+            with pytest.raises(ValueError, match="inherited lifecycle"):
+                with MODULE.lifecycle_lock():
+                    pytest.fail("unowned descriptor admitted")
+        assert calls == []
+        # The rejected descriptor remains unlocked; the actual owner may
+        # reacquire exclusive custody, without a validation side effect.
+        real(actual, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        os.close(actual)
+        os.close(claimed)
+
+
+def test_lifecycle_actual_owner_reentrant_exclusion_and_finite_wait(tmp_path, monkeypatch):
+    import fcntl
+    path = MODULE.lifecycle_lock_path()
+    probe = MODULE.open_lock_file(path)
+    try:
+        with MODULE.lifecycle_lock(timeout=0.1):
+            with MODULE.lifecycle_lock(timeout=0.1):
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        with pytest.raises(TimeoutError, match="busy"):
+            with MODULE.lifecycle_lock(timeout=0.01):
+                pytest.fail("exclusive owner overlapped shared holder")
+        fcntl.flock(probe, fcntl.LOCK_UN)
+        with MODULE.lifecycle_lock(timeout=0.01):
+            pass
+    finally:
+        os.close(probe)
+
+
+@pytest.mark.parametrize("bound", [float("nan"), float("inf"), -1, 0, True, "5"])
+def test_lifecycle_rejects_invalid_finite_bound(tmp_path, bound):
+    with pytest.raises(ValueError, match="finite positive"):
+        with MODULE.lifecycle_lock(timeout=bound):
+            pass

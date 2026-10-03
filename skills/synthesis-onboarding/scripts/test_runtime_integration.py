@@ -31,7 +31,7 @@ from test_runtime_payload import LEGACY_NUDGE
 ROOT = Path(__file__).resolve().parents[3]
 GIT_PAYLOADS = {
     **{"skills/synthesis-git-hooks/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
-       for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")},
+       for name in ("pre-commit", "pre-merge-commit", "commit-msg", "_load_config.py", "_scan_staged.py")},
     **{"skills/synthesis-project-management/scripts/" + name: (".synthesis/git-hooks/" + name, 0o755)
        for name in ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py")},
     "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py": (".synthesis/git-hooks/native_transcript_identity.py", 0o755),
@@ -542,3 +542,22 @@ def test_engine_immutable_history_binding_refuses_without_writes(historical_day_
     assert report.exit_code() == 1, report.steps
     assert not case.helper.exists()
     assert readonly_tree_snapshot(case.machine.home) == before
+
+
+@pytest.mark.parametrize("name", ["pre-commit", "pre-merge-commit", "commit-msg", "_load_config.py", "_scan_staged.py"])
+def test_hooks_probe_requires_each_protective_git_entrypoint(machine, name):
+    # Existing probe checks stable wiring; protective doctors separately verify
+    # runtime bytes and policy. Keep every other required probe input present.
+    write(machine.home / ".synthesis/message-guard/message_guard.py", "# fixture\n")
+    write(machine.home / ".synthesis/message-guard/patterns.json", "{}\n")
+    assert onboard._hooks_probe([])[0] is True
+    target = machine.home / ".synthesis/git-hooks" / name
+    retained = machine.home / ("retained-" + name)
+    before = target.read_bytes(), target.stat().st_mode & 0o777
+    target.rename(retained)
+    ok, detail = onboard._hooks_probe([])
+    assert ok is False
+    assert str(target) in detail
+    assert (retained.read_bytes(), retained.stat().st_mode & 0o777) == before
+    retained.rename(target)
+    assert onboard._hooks_probe([])[0] is True

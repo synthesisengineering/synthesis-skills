@@ -61,6 +61,7 @@ mkdir -p "$(dirname "$CONFIG_PATH")"
 
 echo "→ Copying engine to $TARGET_DIR/"
 cp -f "$SCRIPT_DIR/pre-commit" "$TARGET_DIR/pre-commit"
+cp -f "$SCRIPT_DIR/pre-merge-commit" "$TARGET_DIR/pre-merge-commit"
 cp -f "$SCRIPT_DIR/commit-msg" "$TARGET_DIR/commit-msg"
 # The scanner reuses this grammar from captured source, without pyc execution.
 cp -f "$SCRIPT_DIR/_load_config.py" "$TARGET_DIR/_load_config.py"
@@ -93,6 +94,7 @@ cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
 # Source generations are read-only; installed runtime modes are independent.
 chmod 755 \
     "$TARGET_DIR/pre-commit" \
+    "$TARGET_DIR/pre-merge-commit" \
     "$TARGET_DIR/commit-msg" \
     "$TARGET_DIR/_load_config.py" \
     "$TARGET_DIR/_scan_staged.py" \

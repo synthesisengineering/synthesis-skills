@@ -201,3 +201,138 @@ def test_atomic_writer_persists_mode_and_renamed_parent(tmp_path, monkeypatch):
     assert calls == [(False, 0o640), (True, stat.S_IMODE(tmp_path.stat().st_mode))]
     assert path.read_text() == "after"
     assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+@pytest.mark.parametrize("line", [
+    "We open the report.", "The OPEN item was discussed.", "open: this is prose",
+    "We wrote TODO: an example.", "> TODO: quoted example", "`TODO: inline example`",
+    "    TODO: indented code", "\tTODO: indented code", "- [x] TODO: completed example",
+    "OPEN the report", "TODO:", "TODO:   ",
+])
+def test_session_markers_require_explicit_unquoted_marker_syntax(tmp_path, line):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text(line + "\n\nTODO: actual\n")
+    loops = fmt._skeleton_loops(source)
+    assert [item["text"] for item in loops] == ["actual"]
+    assert loops[0]["source"]["line"] == 3
+
+
+@pytest.mark.parametrize("marker", ["TODO", "FIXME", "XXX", "OPEN", "TBD"])
+@pytest.mark.parametrize("prefix", ["", "- ", "* ", "+ ", "1. ", "2) ", "   - "])
+def test_explicit_session_markers_preserve_duplicate_occurrence_identity(tmp_path, marker, prefix):
+    import hashlib
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    original = prefix + marker + ": actual\n" + prefix + marker + ": actual\n"
+    source.write_text(original)
+    before = fmt._skeleton_loops(source)
+    assert len(before) == 2
+    assert len({item["id"] for item in before}) == 2
+    assert all(item["text"] == "actual" and item["unverified"] for item in before)
+    assert [item["source"]["line"] for item in before] == [1, 2]
+    assert all(item["source"]["sha256"] == hashlib.sha256(original.encode()).hexdigest() for item in before)
+    source.write_text("ordinary prose\n" + original)
+    after = fmt._skeleton_loops(source)
+    assert [item["id"] for item in after] == [item["id"] for item in before]
+    assert [item["source"]["line"] for item in after] == [2, 3]
+
+
+def test_marker_and_checkbox_examples_do_not_seed_obligations(tmp_path):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text("```text\nTODO: fenced\n```\n> OPEN: quoted\n\nTODO: actual\n")
+    (p / "CONTEXT.md").write_text("# Context\n> - [ ] quoted\n    - [ ] indented\n- [x] done\n- [ ] actual checkbox\n")
+    loops = fmt._skeleton_loops(source, p)
+    assert [item["text"] for item in loops] == ["actual", "actual checkbox"]
+
+
+@pytest.mark.parametrize("body, expected", [
+    ("> Quoted discussion\nTODO: quoted continuation\n\nOPEN: actual\n", ["actual"]),
+    ("> Quoted discussion\nTODO: quoted continuation\n- OPEN: actual list\n", ["actual list"]),
+    ("> Quoted discussion\nTODO: quoted continuation\n# Actual section\nOPEN: actual\n", ["actual"]),
+])
+def test_lazy_blockquote_marker_examples_remain_inert(tmp_path, body, expected):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text(body)
+    assert [x["text"] for x in fmt._skeleton_loops(source)] == expected
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~"])
+def test_new_fenced_block_ends_lazy_quote_before_next_marker(tmp_path, fence):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text("> Quoted paragraph\n" + fence + "text\nTODO: code\n" + fence + "\nTODO: actual\n")
+    loops = fmt._skeleton_loops(source)
+    assert [item["text"] for item in loops] == ["actual"]
+    assert loops[0]["source"]["line"] == 5
+
+
+@pytest.mark.parametrize("body", [
+    "```\n> ```\nTODO: code\n```\nTODO: real\n",
+    "> ```\n> > ```\n> TODO: code\n> ```\nTODO: real\n",
+    "- item\n  ```\n  TODO: code\nTODO: real\n",
+    "- item\n  - ```\n    TODO: code\nTODO: real\n",
+])
+def test_container_fence_coordinates_and_dedent(tmp_path, body):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text(body)
+    loops = fmt._skeleton_loops(source)
+    assert [item["text"] for item in loops] == ["real"]
+    assert loops[0]["source"]["line"] == body.splitlines().index("TODO: real") + 1
+
+
+@pytest.mark.parametrize("body", [
+    "- ```text\n  TODO: example\n  ```\n\nTODO: real\n",
+    "1. ~~~text\n   OPEN: example\n   ~~~\n\nTODO: real\n",
+    ">     quoted indented code\nTODO: real\n",
+    "> ```text\n> example\n> ```\nTODO: real\n",
+    "> quoted\n---\nTODO: real\n",
+    "> quoted\n***\nTODO: real\n",
+    "> quoted\n___\nTODO: real\n",
+])
+def test_commonmark_container_boundaries_preserve_real_marker(tmp_path, body):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text(body)
+    loops = fmt._skeleton_loops(source)
+    assert [item["text"] for item in loops] == ["real"]
+    assert loops[0]["source"]["line"] == body.splitlines().index("TODO: real") + 1
+
+
+def test_migrate_refresh_list_fence_keeps_curated_candidates_and_coordinates(tmp_path):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    original = "- ```\n  TODO: example\n  ```\n\nTODO: real\n"
+    source.write_text(original)
+    assert fmt.migrate(p, apply=True)["verified"]
+    path = p / fmt.STATE_NAME
+    state = json.loads(path.read_text())
+    assert {item["text"] for item in state["open_loops"]} == {"real", "Verify recovery"}
+    real = next(item for item in state["open_loops"] if item["text"] == "real")
+    assert real["source"]["line"] == 5
+    real.update(owner="curated", unverified=False)
+    state["goal"] = "Curated"
+    path.write_text(json.dumps(state))
+    source.write_text(original + "OPEN: next\n")
+    assert fmt.refresh(p, apply=True)["verified"]
+    after = json.loads(path.read_text())
+    assert after["goal"] == "Curated" and real in after["open_loops"]
+    assert "example" not in {item["text"] for item in after["open_loops"]}
+
+
+@pytest.mark.parametrize("body", [
+    "- > ```\n  > TODO: code\n  > ```\n\nTODO: real\n",
+    "1. > ~~~\n   > TODO: code\n   > ~~~\n\nTODO: real\n",
+    "- > quoted\n  TODO: lazy quote example\n\nTODO: real\n",
+    "- > ```\n  > > ```\n  > TODO: code\n  > ```\nTODO: real\n",
+])
+def test_list_contained_quotes_remain_inert(tmp_path, body):
+    p = make_project(tmp_path)
+    source = p / "sessions/2026-09.md"
+    source.write_text(body)
+    loops = fmt._skeleton_loops(source)
+    assert [item["text"] for item in loops] == ["real"]
+    assert loops[0]["source"]["line"] == body.splitlines().index("TODO: real") + 1

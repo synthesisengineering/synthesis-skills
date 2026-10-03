@@ -17,7 +17,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v12"
+ADAPTER_VERSION = "codex-dialect-v13"
 SUPPORTED_SCHEMAS = (
     "session_meta",
     "turn_context",
@@ -391,9 +391,7 @@ def _completed_item(value, producer):
         status = (
             "failed"
             if native_status == "failed" or code not in (None, 0)
-            else "observed"
-            if native_status == "completed" and code == 0
-            else "unknown"
+            else "observed" if native_status == "completed" and code == 0 else "unknown"
         )
     elif kind == "FileChange":
         # These are digest-only native item observations, not portable writes.
@@ -439,9 +437,7 @@ def _completed_item(value, producer):
         status = (
             "failed"
             if native_status == "failed"
-            else "observed"
-            if native_status == "completed"
-            else "unknown"
+            else "observed" if native_status == "completed" else "unknown"
         )
     elif kind == "McpToolCall":
         _closed(
@@ -465,9 +461,9 @@ def _completed_item(value, producer):
                 "arguments",
                 "pluginId",
                 "status",
-                "result",
                 "duration",
             }
+            | ({"error"} if "error" in item else {"result"})
             | ({"readOnlyHint"} if "readOnlyHint" in item else set()),
         )
         if "readOnlyHint" in item:
@@ -479,24 +475,48 @@ def _completed_item(value, producer):
         # MCP arguments are opaque tool-defined JSON. Validate the bounded
         # object, then digest it; never interpret instructions or invoke it.
         _object(item["arguments"], "MCP arguments")
-        result = _object(item["result"], "MCP result")
-        _closed(
-            result, {"content", "isError"} | ({"_meta"} if "_meta" in result else set())
-        )
-        _flag(result["isError"])
-        if "_meta" in result:
-            # MCP result _meta is an application extension object, like the
-            # opaque tool-defined arguments above. decode_record's whole-row
-            # JSON bounds apply; retain only the item digest, never authority,
-            # executable instructions, outcome overrides or usage from it.
-            _object(result["_meta"], "MCP result metadata")
-        if not isinstance(result["content"], list):
-            raise DialectError("unsupported MCP result content")
-        for content in result["content"]:
-            _closed(content, {"type", "text"})
-            if content["type"] != "text":
-                raise DialectError("unsupported MCP result content type")
-            _body(content["text"])
+        if "error" in item:
+            _closed(item["error"], {"message"})
+            _body(item["error"]["message"])
+            if item["status"] != "failed":
+                raise DialectError("MCP error contradicts item status")
+            result_is_error = True
+        else:
+            result = _object(item["result"], "MCP result")
+            _closed(
+                result,
+                {"content", "isError"} | ({"_meta"} if "_meta" in result else set()),
+            )
+            _flag(result["isError"])
+            if "_meta" in result:
+                # MCP result _meta is an application extension object, like the
+                # opaque tool-defined arguments above. decode_record's whole-row
+                # JSON bounds apply; retain only the item digest, never authority,
+                # executable instructions, outcome overrides or usage from it.
+                _object(result["_meta"], "MCP result metadata")
+            if not isinstance(result["content"], list):
+                raise DialectError("unsupported MCP result content")
+            for content in result["content"]:
+                _object(content, "MCP content")
+                if content.get("type") == "image":
+                    _closed(content, {"type", "data", "mimeType", "_meta"})
+                    if content["mimeType"] != "image/jpeg":
+                        raise DialectError("unsupported MCP image media type")
+                    _body(content["data"])
+                    _closed(content["_meta"], {"codex/imageDetail"})
+                    if content["_meta"]["codex/imageDetail"] not in (
+                        "auto",
+                        "low",
+                        "high",
+                        "original",
+                    ):
+                        raise DialectError("unsupported MCP image detail")
+                else:
+                    _closed(content, {"type", "text"})
+                    if content["type"] != "text":
+                        raise DialectError("unsupported MCP result content type")
+                    _body(content["text"])
+            result_is_error = result["isError"]
         _closed(item["duration"], {"secs", "nanos"})
         _integer(item["duration"]["secs"], "MCP duration seconds")
         nanos = _integer(item["duration"]["nanos"], "MCP duration nanoseconds")
@@ -504,10 +524,8 @@ def _completed_item(value, producer):
             raise DialectError("invalid MCP duration nanoseconds")
         status = (
             "failed"
-            if item["status"] == "failed" or result["isError"]
-            else "observed"
-            if item["status"] == "completed"
-            else "unknown"
+            if item["status"] == "failed" or result_is_error
+            else "observed" if item["status"] == "completed" else "unknown"
         )
     elif kind == "Extension":
         # Native extension projections are inert observations. Search snippets
@@ -548,7 +566,10 @@ def _completed_item(value, producer):
                 if action_kind == "findInPage":
                     fields.add("pattern")
                 _closed(action, fields)
-                _text(action["url"], "native web URL")
+                if action_kind == "findInPage" and action["url"] is None:
+                    status = "unknown"
+                else:
+                    _text(action["url"], "native web URL")
                 if action_kind == "findInPage":
                     _body(action["pattern"])
             else:
@@ -557,9 +578,15 @@ def _completed_item(value, producer):
                 raise DialectError("invalid search results")
             for result in item["results"]:
                 _object(result, "native web result")
-                fields = {"type", "domain", "ref_id", "snippet", "title", "url"}
-                if "thumbnail_url" in result:
-                    fields.add("thumbnail_url")
+                fields = set(result)
+                complete = {"type", "domain", "ref_id", "snippet", "title", "url"}
+                allowed = [complete, complete | {"thumbnail_url"}]
+                if action_kind in {"openPage", "findInPage"}:
+                    allowed += [complete - {"title"}, complete - {"domain", "url"}]
+                if fields not in allowed:
+                    raise DialectError("unsupported native web result fields")
+                if not complete <= fields:
+                    status = "unknown"
                 _closed(result, fields)
                 if result["type"] != "text_result":
                     raise DialectError("unsupported search result")
@@ -567,6 +594,71 @@ def _completed_item(value, producer):
                     _body(result[field])
         else:
             raise DialectError("unsupported native extension")
+    elif kind == "UserMessage":
+        _closed(
+            value,
+            {
+                "type",
+                "thread_id",
+                "turn_id",
+                "item",
+                "started_at_ms",
+                "completed_at_ms",
+            },
+        )
+        _closed(
+            item,
+            {"type", "id", "content"}
+            | ({"client_id"} if "client_id" in item else set()),
+        )
+        if "client_id" in item:
+            _text(item["client_id"], "user item client identity")
+        if not isinstance(item["content"], list) or not item["content"]:
+            raise DialectError("unsupported user item content")
+        for part in item["content"]:
+            _closed(part, {"type", "text", "text_elements"})
+            if part["type"] != "text" or part["text_elements"] != []:
+                raise DialectError("unsupported user item text elements")
+            _body(part["text"])
+        # A completed display item is not a second user-input event. Its text
+        # remains digest-only; only the native user event owns invalidation.
+    elif kind == "CollabAgentToolCall":
+        _closed(
+            value,
+            {
+                "type",
+                "thread_id",
+                "turn_id",
+                "item",
+                "started_at_ms",
+                "completed_at_ms",
+            },
+        )
+        _closed(
+            item,
+            {
+                "type",
+                "id",
+                "tool",
+                "status",
+                "sender_thread_id",
+                "receiver_thread_ids",
+                "receiver_agents",
+                "agents_states",
+            },
+        )
+        if (
+            item["sender_thread_id"] != producer["thread_id"]
+            or item["tool"] != "wait"
+            or item["status"] != "completed"
+            or item["receiver_thread_ids"] != []
+            or item["receiver_agents"] != []
+            or item["agents_states"] != {}
+        ):
+            raise DialectError("unsupported collaboration item observation")
+        # Empty historical wait metadata proves neither delivery nor a worker's
+        # completion. Other target/result schemas require their own evidence.
+        status = "unknown"
     elif kind == "Reasoning":
         for field in ("summary_text", "raw_content"):
             if not isinstance(item.get(field), list) or any(
@@ -614,6 +706,211 @@ def _completed_item(value, producer):
         "portable_completion": False,
         "grants_authority": False,
     }
+
+
+def _retained_fields(value, required, optional=()):
+    _object(value, "retained object")
+    if not set(required) <= value.keys() or set(value) - set(required) - set(optional):
+        raise DialectError("unsupported retained fields")
+
+
+def _retained_metadata(value, *, guardian=False):
+    """Closed historical annotations; not source attribution or an approval."""
+    optional = {
+        "user_input_order",
+        "compaction_model_hash",
+        "mcp_attribution",
+        "retained_source",
+    }
+    if guardian:
+        optional.add("fallback_token_limit_override")
+    _retained_fields(value, {"client_authored"}, optional)
+    _flag(value["client_authored"])
+    for key in ("user_input_order", "fallback_token_limit_override"):
+        if key in value:
+            _integer(value[key], "retained " + key)
+    if "compaction_model_hash" in value:
+        _text(value["compaction_model_hash"], "retained model hash")
+    if "mcp_attribution" in value:
+        attribution = value["mcp_attribution"]
+        _retained_fields(attribution, {"status"}, {"sources", "error_reason"})
+        if attribution["status"] != "attribution_error":
+            raise DialectError("unsupported retained attribution status")
+        if "error_reason" in attribution:
+            if "sources" not in attribution:
+                raise DialectError("retained attribution reason lacks sources")
+            _text(attribution["error_reason"], "retained attribution error")
+        if "sources" in attribution:
+            if not isinstance(attribution["sources"], list):
+                raise DialectError("retained attribution sources must be an array")
+            for source in attribution["sources"]:
+                _closed(
+                    source, {"plugin_id", "server_name", "tool_name", "first_turn_id"}
+                )
+                for name in source:
+                    _text(source[name], "retained attribution " + name)
+    if "retained_source" in value:
+        source = value["retained_source"]
+        _closed(source, {"id", "revision", "complete"})
+        _closed(source["id"], {"message_id", "role", "turn_id"})
+        for name in ("message_id", "turn_id"):
+            _text(source["id"][name], "retained source " + name)
+        if source["id"]["role"] not in ("user", "assistant"):
+            raise DialectError("unsupported retained source role")
+        _text(source["revision"], "retained source revision")
+        _flag(source["complete"])
+
+
+_RETAINED_CONTENT_KINDS = {
+    "user.text",
+    "user.image",
+    "user.heartbeat",
+    "images.resize_notice",
+    "unknown",
+    "generic.developer_instructions",
+    "memories.instructions",
+    "host_skills.instructions",
+    "permissions.instructions",
+    "collaboration_mode.instructions",
+    "multi_agent.role_instructions",
+    "multi_agent.mode_instructions",
+    "agents_md.instructions",
+    "environments.environment_context",
+    "hooks.additional_context",
+    "additional_content.codex_apps_client_time_context",
+    "additional_content.codex_apps_open_page_instructions",
+}
+
+
+def _retained_parts(parts, kinds):
+    if not isinstance(parts, list):
+        raise DialectError("retained content must be an array")
+    for part in parts:
+        _object(part, "retained content")
+        kind = part.get("type")
+        if not isinstance(kind, str) or kind not in kinds:
+            raise DialectError("unsupported retained content type")
+        if kind == "input_image":
+            _closed(part, {"type", "detail", "image_url"})
+            if part["detail"] not in ("auto", "low", "high", "original"):
+                raise DialectError("unsupported retained image detail")
+            _body(part["image_url"])
+        elif kind == "encrypted_content":
+            _closed(part, {"type", "encrypted_content"})
+            _body(part["encrypted_content"])
+        else:
+            _closed(part, {"type", "text"})
+            _body(part["text"])
+
+
+def _guardian_item(item):
+    """Validate one inert retained item; never decode it into active events.
+
+    The span reader calls this at each item boundary and releases that item's
+    projection. Existing per-input JSON limits apply to each retained item;
+    the span reader separately bounds total nodes, depth, bytes and array work.
+    """
+    _bounded(item)
+    _object(item, "guardian history item")
+    kind = item.get("type")
+    common = {"type", "id", "internal_chat_message_metadata_passthrough"}
+    if kind == "message":
+        _retained_fields(
+            item, common | {"role", "content"}, {"guardian_metadata", "phase"}
+        )
+        role = item["role"]
+        if role not in ("user", "developer", "assistant"):
+            raise DialectError("unsupported guardian role")
+        if role == "assistant":
+            if item.get("phase") not in ("commentary", "final_answer"):
+                raise DialectError("unsupported guardian message phase")
+            parts = {"output_text"}
+        else:
+            if "phase" in item:
+                raise DialectError("guardian input claims output phase")
+            parts = {"input_text", "input_image"}
+        _retained_parts(item["content"], parts)
+        if not item["content"]:
+            raise DialectError("empty guardian message")
+    elif kind in {"function_call_output", "custom_tool_call_output"}:
+        _closed(item, common | {"call_id", "output", "guardian_metadata"})
+        if isinstance(item["output"], str):
+            _body(item["output"])
+        else:
+            _retained_parts(item["output"], {"input_text", "input_image"})
+    elif kind == "function_call":
+        _retained_fields(
+            item,
+            common | {"call_id", "name", "arguments", "guardian_metadata"},
+            {"namespace"},
+        )
+        _body(item["arguments"])
+        _text(item["name"], "retained function name")
+        if "namespace" in item:
+            _text(item["namespace"], "retained namespace")
+    elif kind == "custom_tool_call":
+        _closed(item, common | {"call_id", "name", "input", "status"})
+        _text(item["name"], "retained tool name")
+        _body(item["input"])
+        if item["status"] != "completed":
+            raise DialectError("unsupported retained tool status")
+    elif kind == "reasoning":
+        _retained_fields(item, common | {"summary", "encrypted_content"}, {"content"})
+        if "content" in item and item["content"] is not None:
+            raise DialectError("unsupported retained reasoning content")
+        _body(item["encrypted_content"])
+        _retained_parts(item["summary"], {"summary_text"})
+    elif kind == "agent_message":
+        _closed(item, common | {"author", "recipient", "content", "guardian_metadata"})
+        _text(item["author"], "retained author")
+        _text(item["recipient"], "retained recipient")
+        _retained_parts(item["content"], {"input_text", "encrypted_content"})
+    else:
+        raise DialectError("unsupported guardian item type")
+    _text(item["id"], "guardian item identity")
+    if "call_id" in item:
+        _text(item["call_id"], "guardian call identity")
+    if "guardian_metadata" in item:
+        _retained_metadata(item["guardian_metadata"], guardian=True)
+    passthrough = item["internal_chat_message_metadata_passthrough"]
+    required = {"turn_id"} | ({"content_item_kinds"} if kind == "message" else set())
+    optional = set() if kind == "reasoning" else {"create_time"}
+    _retained_fields(passthrough, required, optional)
+    _text(passthrough["turn_id"], "guardian turn identity")
+    if "create_time" in passthrough:
+        instant = passthrough["create_time"]
+        if (
+            type(instant) not in (int, float)
+            or instant < 0
+            or not math.isfinite(instant)
+        ):
+            raise DialectError("invalid guardian creation time")
+    if kind == "message":
+        kinds = passthrough["content_item_kinds"]
+        if (
+            not isinstance(kinds, list)
+            or len(kinds) != len(item["content"])
+            or any(
+                not isinstance(x, str) or x not in _RETAINED_CONTENT_KINDS
+                for x in kinds
+            )
+        ):
+            raise DialectError("unsupported guardian content metadata")
+
+
+def _resume_metadata(value):
+    _closed(
+        value, {"multi_agent_version", "last_started_turn_id", "previous_turn_settings"}
+    )
+    _text(value["multi_agent_version"], "retained agent version")
+    _text(value["last_started_turn_id"], "retained started turn")
+    settings = value["previous_turn_settings"]
+    _retained_fields(
+        settings, {"model", "comp_hash", "realtime_active"}, {"cyber_access_program"}
+    )
+    for key in set(settings) - {"realtime_active"}:
+        _text(settings[key], "retained setting " + key)
+    _flag(settings["realtime_active"])
 
 
 def _compacted(row, producer):
@@ -683,7 +980,14 @@ def _compacted(row, producer):
             "compaction_response_id",
             "latest_token_usage_record",
         },
+        {"guardian_history", "resume_metadata"},
     )
+    if "guardian_history" in value:
+        array(value["guardian_history"])
+        for retained_item in value["guardian_history"]:
+            _guardian_item(retained_item)
+    if "resume_metadata" in value:
+        _resume_metadata(value["resume_metadata"])
     string(value["message"])
     _integer(value["window_number"], "window number")
     for key in (
@@ -701,32 +1005,9 @@ def _compacted(row, producer):
     array(metadata)
     if not history or len(history) != len(metadata):
         raise DialectError("compaction history metadata cardinality mismatch")
-    content_kinds = {
-        "user.text",
-        "user.image",
-        "images.resize_notice",
-        "unknown",
-        "generic.developer_instructions",
-        "memories.instructions",
-        "host_skills.instructions",
-        "permissions.instructions",
-        "collaboration_mode.instructions",
-        "multi_agent.role_instructions",
-        "multi_agent.mode_instructions",
-        "agents_md.instructions",
-        "environments.environment_context",
-    }
+    content_kinds = _RETAINED_CONTENT_KINDS
     for item, item_metadata in zip(history, metadata):
-        fields(
-            item_metadata,
-            {"client_authored"},
-            {"user_input_order", "compaction_model_hash"},
-        )
-        boolean(item_metadata["client_authored"])
-        if "user_input_order" in item_metadata:
-            _integer(item_metadata["user_input_order"], "retained input order")
-        if "compaction_model_hash" in item_metadata:
-            _text(item_metadata["compaction_model_hash"], "compaction model hash")
+        _retained_metadata(item_metadata)
         _object(item, "retained history item")
         if item.get("type") == "message":
             fields(
@@ -802,7 +1083,47 @@ def _compacted(row, producer):
             "user_messages_incomplete",
             "next_order",
         },
+        {"assistant_messages", "assistant_messages_incomplete", "sender_deliveries"},
     )
+    extended = {
+        "assistant_messages",
+        "assistant_messages_incomplete",
+        "sender_deliveries",
+    }
+    if extended & set(retained) and not extended <= set(retained):
+        raise DialectError("incomplete retained context extension")
+    if extended <= set(retained):
+        boolean(retained["assistant_messages_incomplete"])
+        array(retained["assistant_messages"])
+        for message in retained["assistant_messages"]:
+            fields(
+                message,
+                {
+                    "complete",
+                    "message_id",
+                    "order",
+                    "phase",
+                    "revision",
+                    "text",
+                    "turn_id",
+                },
+            )
+            boolean(message["complete"])
+            _integer(message["order"], "retained assistant order")
+            for key in ("message_id", "turn_id", "revision"):
+                _text(message[key], "retained assistant " + key)
+            if message["phase"] not in ("commentary", "final_answer"):
+                raise DialectError("unsupported retained assistant phase")
+            string(message["text"])
+        array(retained["sender_deliveries"])
+        for delivery in retained["sender_deliveries"]:
+            fields(
+                delivery, {"order", "receiver_message_id", "receiver_turn_id", "text"}
+            )
+            _integer(delivery["order"], "retained delivery order")
+            for key in ("receiver_message_id", "receiver_turn_id"):
+                _text(delivery[key], "retained delivery " + key)
+            string(delivery["text"])
     # No nonempty verified-answer schema was observed; do not infer its meaning.
     if retained["verified_answers"] != []:
         raise DialectError("unsupported retained verified-answer schema")
@@ -811,7 +1132,14 @@ def _compacted(row, producer):
     _integer(retained["next_order"], "retained next order")
     array(retained["user_messages"])
     for message in retained["user_messages"]:
-        fields(message, {"complete", "message_id", "order", "text", "turn_id"})
+        fields(
+            message,
+            {"complete", "message_id", "order", "text", "turn_id"},
+            {"revision", "origin"},
+        )
+        for key in ("revision", "origin"):
+            if key in message:
+                _text(message[key], "retained message " + key)
         boolean(message["complete"])
         _integer(message["order"], "retained message order")
         string(message["text"])
@@ -844,6 +1172,19 @@ def _compacted(row, producer):
         _counts(usage[key])
     return {
         "native_type": "compacted",
+        **(
+            {
+                "guardian_history_count": len(value["guardian_history"]),
+                "guardian_history_digest": _digest(value["guardian_history"]),
+            }
+            if "guardian_history" in value
+            else {}
+        ),
+        **(
+            {"resume_metadata_digest": _digest(value["resume_metadata"])}
+            if "resume_metadata" in value
+            else {}
+        ),
         "window_number": value["window_number"],
         **{
             key: value[key]
@@ -870,7 +1211,9 @@ def _compacted(row, producer):
     }
 
 
-def decode_streamed_compaction(row, producer, *, digest, mode, source_locator):
+def decode_streamed_compaction(
+    row, producer, *, digest, mode, source_locator, guardian_count=None
+):
     """Normalize a strict streaming projection after complete wire validation.
 
     The reader elides only known body strings and authenticates every original
@@ -879,8 +1222,25 @@ def decode_streamed_compaction(row, producer, *, digest, mode, source_locator):
     """
     if not isinstance(row, dict) or row.get("type") != "compacted":
         raise DialectError("unsupported streamed context grammar")
+    if guardian_count is not None:
+        # Only the span owner's individually validated guardian projections are
+        # represented by null slots. Direct decoding never accepts those slots.
+        if (
+            type(guardian_count) is not int
+            or not 0 <= guardian_count <= 1024
+            or row.get("payload", {}).get("guardian_history") != [None] * guardian_count
+        ):
+            raise DialectError("invalid streamed guardian projection")
+        row = {
+            **row,
+            "payload": {
+                k: v for k, v in row["payload"].items() if k != "guardian_history"
+            },
+        }
     facts = decode_record(row, producer, mode=mode, source_locator=source_locator)
     data = facts[0]["data"]
+    if guardian_count is not None:
+        data["guardian_history_count"] = guardian_count
     for key in (
         "message_digest",
         "replacement_history_digest",
@@ -950,28 +1310,48 @@ def _world_state(value):
     """Qualify the observed full snapshot; instructions remain inert content."""
     _closed(value, {"full", "state"})
     if value["full"] is False:
-        # Observed single-field environment patches, never synthesized full
-        # snapshots or evidence that a listed child was admitted or terminated.
-        _closed(value["state"], {"environments"})
-        env = value["state"]["environments"]
-        _object(env, "environment patch")
-        if set(env) == {"subagents"}:
-            _body(env["subagents"])
-            return
-        _closed(env, {"current_date"})
-        date = env["current_date"]
-        if not isinstance(date, str) or not re.fullmatch(
-            r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date
+        # Historical patches report only their exact changed fields; they are
+        # never merged into a current configuration or interpreted as grants.
+        state = _object(value["state"], "world-state patch")
+        if set(state) not in [
+            {"environments"},
+            {"agents_md"},
+            {"host_skills"},
+            {"agents_md", "environments", "permissions"},
+            {"environments", "permissions"},
+            {"environments", "host_skills", "permissions"},
+        ]:
+            raise DialectError("unsupported world-state patch fields")
+        for name, key in (
+            ("agents_md", "text"),
+            ("host_skills", "body"),
+            ("permissions", "instructions"),
         ):
-            raise DialectError("unsupported date patch")
-        try:
-            datetime.fromisoformat(date)
-        except ValueError as exc:
-            raise DialectError("invalid date patch") from exc
+            if name in state:
+                _string_fields(state[name], {key})
+        if "environments" in state:
+            env = _object(state["environments"], "environment patch")
+            if set(env) not in [
+                {"subagents"},
+                {"filesystem"},
+                {"filesystem", "subagents"},
+                {"current_date"},
+            ]:
+                raise DialectError("unsupported environment patch fields")
+            for key in env:
+                _body(env[key])
+            if "current_date" in env:
+                date = env["current_date"]
+                if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", date):
+                    raise DialectError("unsupported date patch")
+                try:
+                    datetime.fromisoformat(date)
+                except ValueError as exc:
+                    raise DialectError("invalid date patch") from exc
         return
     if value["full"] is not True:
         raise DialectError("world-state full flag must be boolean")
-    state = value["state"]
+    state = _object(value["state"], "world state")
     flags = {
         "apps_instructions",
         "environments_instructions",
@@ -990,12 +1370,12 @@ def _world_state(value):
             "host_skills",
             "managed_developer_instructions",
             "multi_agent_mode",
-            "orchestrator_skills",
             "permissions",
             "persistent_mode",
             "realtime",
             "skills",
-        },
+        }
+        | ({"orchestrator_skills"} if "orchestrator_skills" in state else set()),
     )
     for key in flags:
         _flag(state[key])
@@ -1011,6 +1391,8 @@ def _world_state(value):
         ("realtime", {"active"}),
         ("skills", {"includeInstructions"}),
     ):
+        if name == "orchestrator_skills" and name not in state:
+            continue
         _closed(state[name], keys)
         for key in keys:
             _flag(state[name][key])
@@ -1054,9 +1436,10 @@ def _thread_settings(value, producer):
         "approvals_reviewer",
         "cwd",
         "reasoning_effort",
-        "reasoning_summary",
         "personality",
     }
+    if "reasoning_summary" in settings:
+        strings.add("reasoning_summary")
     # Native settings may omit the active profile descriptor. Absence is an
     # observation of missing metadata, never an unrestricted profile or grant.
     _closed(
@@ -1132,6 +1515,11 @@ def _context_observation(row, producer):
         native_type = "thread_settings_applied"
     return {
         "native_type": native_type,
+        **(
+            {"context_form": "full" if value["full"] else "patch"}
+            if row["type"] == "world_state"
+            else {}
+        ),
         "context_digest": _digest(value),
         "effects_replayed": False,
         "settings_applied": False,

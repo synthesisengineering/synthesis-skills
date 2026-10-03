@@ -1453,3 +1453,82 @@ def test_unexplained_missing_link_refuses_with_recovery_evidence(tmp_path):
     assert git(clone, "rev-parse", "feature/demo").stdout.strip() == head
     assert target.exists()
     assert str(target) in git(clone, "worktree", "list", "--porcelain").stdout
+
+
+def test_reconciler_owner_requires_actual_scope_and_pinned_bytes(tmp_path, monkeypatch):
+    import fcntl
+    pin = MODULE.stage_reconciler()
+    owner = MODULE._reconciler_owner(pin)
+    with pytest.raises(ValueError, match="lifecycle owner"):
+        MODULE.run_reconciler(pin, ["--help"], owner)
+    with MODULE.lifecycle_lock(pin) as active:
+        assert active is owner
+        probe = owner.open_lock_file(owner.lifecycle_lock_path())
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            with pytest.raises(ValueError, match="lifecycle owner"):
+                MODULE.run_reconciler(pin, ["--help"], object())
+            # The same acquired owner executes its ordinary CLI entrypoint.
+            result = MODULE.run_reconciler(pin, ["--config", str(tmp_path / "absent-config.json"), "--verify-worktree-retirement", str(tmp_path / "missing-worktree")], active)
+            assert result.returncode == 1
+            assert json.loads(result.stdout)[0]["action"] == "retirement-reconcile-failed"
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            pin.write_bytes(pin.read_bytes() + b"\n# mutation\n")
+            with pytest.raises(ValueError, match="digest"):
+                MODULE.run_reconciler(pin, ["--status"], active)
+        finally:
+            os.close(probe)
+
+
+@pytest.mark.parametrize("swallow_oserror", [False, True])
+def test_reconciler_owner_deadline_restores_owner_and_process_state(tmp_path, monkeypatch, swallow_oserror):
+    import fcntl
+    import signal
+    import time
+    from contextlib import contextmanager
+    pin = MODULE.stage_reconciler()
+    prior_handler = signal.getsignal(signal.SIGALRM)
+    original_deadline = MODULE._call_deadline
+    @contextmanager
+    def brief(_seconds):
+        with original_deadline(0.01):
+            yield
+    monkeypatch.setattr(MODULE, "_call_deadline", brief)
+    argv = list(sys.argv)
+    with MODULE.lifecycle_lock(pin) as owner:
+        def slow_main():
+            try:
+                time.sleep(0.04)
+            except OSError:
+                if not swallow_oserror:
+                    raise
+                time.sleep(0.04)
+            return 0
+        monkeypatch.setattr(owner, "main", slow_main)
+        with pytest.raises(TimeoutError, match="time ceiling"):
+            MODULE.run_reconciler(pin, ["--status"], owner)
+        assert sys.argv == argv
+        assert signal.getsignal(signal.SIGALRM) == prior_handler
+        assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+        probe = owner.open_lock_file(owner.lifecycle_lock_path())
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+    assert getattr(MODULE._RECONCILER_SCOPE, "owner", None) is None
+
+
+def test_reconciler_owner_rejects_environment_before_loading_historical_owner(tmp_path, monkeypatch):
+    called = []
+    def forbidden_load(path):
+        called.append(str(path))
+        raise AssertionError("historical owner must not receive raw-FD authority")
+    monkeypatch.setattr(MODULE, "_reconciler_owner", forbidden_load)
+    monkeypatch.setenv(MODULE.LIFECYCLE_LOCK_FD_ENV, "3")
+    with pytest.raises(ValueError, match="inherited lifecycle"):
+        with MODULE.lifecycle_lock(tmp_path / "historical-pin.py"):
+            pytest.fail("historical raw-FD grant entered")
+    assert called == []

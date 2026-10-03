@@ -512,7 +512,10 @@ class _CommandJSON(_StreamJSON):
             {"process_id", "parsed_cmd", "source", "duration", "formatted_output"},
         ),
         ("payload", "item", "duration"): ({"secs", "nanos"}, set()),
-        ("payload", "item", "parsed_cmd", "*"): ({"type", "cmd", "path"}, {"name"}),
+        ("payload", "item", "parsed_cmd", "*"): (
+            {"type", "cmd"},
+            {"path", "name", "query"},
+        ),
     }
     ARRAYS = {("payload", "item", "command"), ("payload", "item", "parsed_cmd")}
     INTS = {
@@ -528,7 +531,8 @@ class _CommandJSON(_StreamJSON):
     }
     BODIES |= {("payload", "item", "command", "*")}
     BODIES |= {
-        ("payload", "item", "parsed_cmd", "*", k) for k in ("cmd", "name", "path")
+        ("payload", "item", "parsed_cmd", "*", k)
+        for k in ("cmd", "name", "path", "query")
     }
 
     def __init__(self, depth=32):
@@ -589,11 +593,13 @@ class _CommandJSON(_StreamJSON):
             raise SourceError("unsupported streamed command fields")
         if path == ("payload", "item", "parsed_cmd", "*"):
             kind = self.s["projection"].get("payload.item.parsed_cmd.*.type")
-            if kind not in {"read", "list_files"} or keys != (
-                {"type", "cmd", "name", "path"}
-                if kind == "read"
-                else {"type", "cmd", "path"}
-            ):
+            shapes = {
+                "read": {"type", "cmd", "name", "path"},
+                "list_files": {"type", "cmd", "path"},
+                "search": {"type", "cmd", "query", "path"},
+                "unknown": {"type", "cmd"},
+            }
+            if kind not in shapes or keys != shapes[kind]:
                 raise SourceError("unqualified parsed-command type")
 
     def normalized(self, producer, digest, mode, locator):
@@ -632,9 +638,7 @@ class _CommandJSON(_StreamJSON):
         observed = (
             "failed"
             if status == "failed" or code not in (None, 0)
-            else "observed"
-            if status == "completed" and code == 0
-            else "unknown"
+            else "observed" if status == "completed" and code == 0 else "unknown"
         )
         row = {
             k: p[k]
@@ -686,6 +690,17 @@ class _CompactionJSON(_StreamJSON):
         ("payload", "replacement_history", "*", "content", "*", "image_url"),
         ("payload", "replacement_history", "*", "encrypted_content"),
         ("payload", "retained_context", "user_messages", "*", "text"),
+        ("payload", "retained_context", "assistant_messages", "*", "text"),
+        ("payload", "retained_context", "sender_deliveries", "*", "text"),
+    }
+    BODIES |= {
+        ("payload", "guardian_history", "*", key)
+        for key in ("encrypted_content", "input", "arguments", "output")
+    }
+    BODIES |= {
+        ("payload", "guardian_history", "*", collection, "*", key)
+        for collection in ("content", "output", "summary")
+        for key in ("text", "image_url", "encrypted_content")
     }
 
     def __init__(self, depth=32):
@@ -694,6 +709,8 @@ class _CompactionJSON(_StreamJSON):
         self.metadata_bytes = 0
         self.containers = {}
         self.row = None
+        self.guardian_count = 0
+        self.guardian_metadata_start = None
 
     def _path(self):
         if self.s["stack"] and self.s["stack"][-1]["kind"] == "array":
@@ -735,6 +752,10 @@ class _CompactionJSON(_StreamJSON):
             "*" if isinstance(self.containers.get(tuple(path[:i])), list) else part
             for i, part in enumerate(path)
         )
+        if pattern == ("payload", "guardian_history", "*"):
+            if char != "{":
+                raise SourceError("guardian history item must be an object")
+            self.guardian_metadata_start = self.metadata_bytes
         if char in "{[":
             value = {} if char == "{" else []
             self._put(path, value)
@@ -748,13 +769,33 @@ class _CompactionJSON(_StreamJSON):
     def _close(self, frame):
         # Only open containers need a second reference; the bounded root owns
         # the completed structure until owner validation finishes.
-        del self.containers[tuple(frame["path"])]
+        path = tuple(frame["path"])
+        if len(path) == 3 and path[:2] == ("payload", "guardian_history"):
+            native_codex._guardian_item(self.containers[path])
+            # Bound retained space without retaining historical bodies or all
+            # guardian metadata. Total parsed nodes/array work stay bounded.
+            self.containers[path[:-1]][-1] = None
+            self.guardian_count += 1
+            self.metadata_bytes = self.guardian_metadata_start
+            self.guardian_metadata_start = None
+        del self.containers[path]
 
     def normalized(self, producer, digest, mode, locator):
         if not self.finish():
             raise SourceError(self.s["error"])
+        payload = self.row.get("payload") if isinstance(self.row, dict) else None
+        guardian_count = (
+            self.guardian_count
+            if isinstance(payload, dict) and "guardian_history" in payload
+            else None
+        )
         candidates = native_codex.decode_streamed_compaction(
-            self.row, producer, digest=digest, mode=mode, source_locator=locator
+            self.row,
+            producer,
+            digest=digest,
+            mode=mode,
+            source_locator=locator,
+            guardian_count=guardian_count,
         )
         row = {
             k: self.row[k]

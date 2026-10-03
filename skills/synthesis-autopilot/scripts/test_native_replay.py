@@ -982,3 +982,83 @@ def test_semantic_charge_includes_component_growth_refusal_byte(bridge, engine, 
     assert reads == [1025]
     header = source["replay"]["fresh"]["binding"]["header_length"]
     assert bridge.replay_read_ceiling(source) == 4 * header + sum(reads)
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_codex_retained_history_replay_uses_original_interval_and_user_precedence(
+    bridge, engine, world, monkeypatch, facade, cancel
+):
+    import json
+    import native_codex as codex
+    from test_native_retained_context import retained
+    from test_controller import invoke, start_request, state_of
+
+    session = world["actor"]["native_payload"]["session_id"]
+    fixture_home = world["scratch"] / "retained-codex"
+    directory = fixture_home / "sessions/2026/01/01"
+    directory.mkdir(parents=True)
+    transcript = directory / ("rollout-" + session + ".jsonl")
+    transcript.write_text(
+        json.dumps(
+            {
+                "type": "session_meta",
+                "payload": {"id": session, "cwd": str(world["repo"])},
+            }
+        )
+        + "\n"
+    )
+    world["transcript"] = transcript
+    world["actor"]["native_payload"]["transcript_path"] = str(transcript)
+    world["board"].write_text(
+        world["board"]
+        .read_text()
+        .replace("| claude |", "| codex |")
+        .replace("cc:" + session, "codex:" + session)
+    )
+    monkeypatch.setenv("CODEX_HOME", str(fixture_home))
+    monkeypatch.setenv("SYNTHESIS_CLIENT_SESSION_REF", "codex:" + session)
+    decode = codex.decode_streamed_compaction
+
+    def prior(*args, **kwargs):
+        raise codex.DialectError("synthetic retained v12 schema gap")
+
+    with monkeypatch.context() as old:
+        old.setattr(codex, "ADAPTER_VERSION", "codex-dialect-v12")
+        old.setattr(codex, "decode_streamed_compaction", prior)
+        started = invoke(facade, world, start_request(world))
+        assert started["status"] == "READY", started
+        state = state_of(world, started)
+        row = retained(1200000)
+        usage = row["payload"]["latest_token_usage_record"]
+        usage["thread_id"] = usage["session_id"] = session
+        append(world, row)
+        if cancel:
+            append(
+                world,
+                {
+                    "type": "event_msg",
+                    "ordinal": 9,
+                    "payload": {"type": "turn_aborted", "turn_id": "cancel-original"},
+                },
+            )
+        for _ in range(8):
+            state = observe(engine, world, state)
+            if src(state)["cursor"]["offset"] == transcript.stat().st_size:
+                break
+        assert src(state)["cursor"]["first_gap"] is not None
+    assert codex.decode_streamed_compaction is decode
+    original = deepcopy(state)
+    final = replay_to_end(engine, world, state)
+    replay = src(final)["replay"]
+    assert replay["status"] == "complete", replay.get("failure")
+    assert replay["original_offset"] == src(original)["cursor"]["enrolled_from"]
+    assert src(final)["history"][-1]["cursor"] == src(original)["cursor"]
+    assert final["effects"] == original["effects"] and final["status"] != "completed"
+    assert (
+        final["extensions"]["workflow"]["budget"]
+        == original["extensions"]["workflow"]["budget"]
+    )
+    result = bridge.current_invalidation(engine.inspect_context(final, world["actor"]))
+    assert result["status"] == ("invalidated" if cancel else "clear")
+    assert result["authority_granted"] is False
+    assert engine.load_run(world["project"], final["run_id"]) == final

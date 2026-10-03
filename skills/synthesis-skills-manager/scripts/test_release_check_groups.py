@@ -1216,6 +1216,7 @@ def test_diagnostic_primitives_do_not_call_mocked_product_io(tmp_path, monkeypat
             "stat",
             "lstat",
             "getuid",
+            "getcwd",
             "fsync",
         ):
             patch.setattr(os, name, product_only)
@@ -2119,3 +2120,124 @@ print(g.encode_acceptance_receipt({'execution': {'batches': batches}}))
     assert str(tmp_path) not in json.dumps(document)
     assert groups.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
     assert groups.DIAGNOSTIC_SECONDS == 10
+
+
+@pytest.mark.parametrize("path,line,expected", [
+    ("test_cases.py", 4, 4), ("absolute", 4, 4),
+    ("/private/foreign.py", 4, None), ("other.py", 4, None),
+    ("test_cases.py", True, None), ("test_cases.py", -1, None),
+    ("test_cases.py", 0, None), ("test_cases.py", 1000001, None),
+    (["private"], 4, None), ("test_cases.py", "4", None),
+])
+def test_failure_site_binds_line_to_selected_source(tmp_path, path, line, expected):
+    import hashlib
+
+    p = groups.InventoryPlugin("fixture", tmp_path / "unused.json")
+    if path == "absolute":
+        path = str(p.source_root / "test_cases.py")
+    report = SimpleNamespace(
+        nodeid="test_cases.py::test_one[PRIVATE_PARAMETER]",
+        longrepr=SimpleNamespace(reprcrash=SimpleNamespace(path=path, lineno=line)),
+    )
+    expected_site = None if expected is None else {
+        "source_sha256": hashlib.sha256(b"test_cases.py").hexdigest(), "line": expected,
+    }
+    assert p._failure_site(report) == expected_site
+    assert p._failure_site(SimpleNamespace(nodeid=report.nodeid, longrepr="private text")) is None
+
+
+@pytest.mark.parametrize("subtest", [False, True, "helper"])
+def test_failure_line_actual_export_retains_privacy_and_failed_outcome(tmp_path, subtest):
+    import importlib.util
+
+    integrity = Path(groups.__file__).resolve().parents[2] / "synthesis-implementation-integrity/scripts"
+    spec = importlib.util.spec_from_file_location("failure_line_fixture_owner", integrity / "test_acceptance_batches.py")
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    owner = fixtures.owner()
+    root = tmp_path / "source"
+    code = (
+        "def test_one(subtests):\n"
+        "    with subtests.test(part='SYNTHETIC_PRIVATE_PARAMETER'):\n"
+        "        assert False, 'SYNTHETIC_PRIVATE_MESSAGE'\n"
+    ) if subtest is True else (
+        "import pytest\n"
+        "@pytest.mark.parametrize('value', [1], ids=['SYNTHETIC_PRIVATE_PARAMETER'])\n"
+        "def test_one(value):\n"
+        "    assert False, 'SYNTHETIC_PRIVATE_MESSAGE'\n"
+    )
+    if subtest == "helper":
+        code = (
+            "from private_helper import fail\n"
+            "def test_one():\n"
+            "    fail()\n"
+        )
+    manifest = fixtures.corpus(root, code)
+    if subtest == "helper":
+        (root / "private_helper.py").write_text(
+            "def fail():\n"
+            "    raise TimeoutError('SYNTHETIC_PRIVATE_HELPER_MESSAGE')\n"
+        )
+    value, errors = owner.validate_manifest(manifest, root)
+    assert not errors
+    plan = owner.batch_plan(owner.case_contract(value, root))
+    completed = groups.bounded_run(
+        [sys.executable, str(fixtures.OWNER), "run", "--manifest", str(manifest), "--repo-root", str(root), "--receipt"],
+        root, 30, dict(os.environ, TMPDIR=str(tmp_path)),
+    )
+    assert completed.returncode == 1, completed.stdout
+    assert groups.decode_acceptance_receipt(completed.stdout)["ok"] is False
+    destination = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert receipt["status"] == "RETAINED", receipt
+    public = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    failed = [phase for batch in public["batches"] for phase in batch["phases"] if phase["outcome"] == "failed"]
+    assert len(failed) == (2 if subtest is True else 1)
+    detailed = [phase for phase in failed if phase["kind"] == ("subtest" if subtest is True else "phase")]
+    assert len(detailed) == 1
+    assert detailed[0]["failure_line"] == (4 if subtest is False else 3)
+    if subtest is True:
+        parent = [phase for phase in failed if phase["kind"] == "phase"]
+        assert len(parent) == 1 and parent[0]["when"] == "call"
+    assert public["authorizes_release"] is False
+    blob = json.dumps(public)
+    for private in ["SYNTHETIC_PRIVATE_PARAMETER", "SYNTHETIC_PRIVATE_MESSAGE", "SYNTHETIC_PRIVATE_HELPER_MESSAGE", "private_helper.py", str(root), str(tmp_path)]:
+        assert private not in blob
+    assert all("failure_line" not in phase for batch in public["batches"] for phase in batch["phases"] if phase["outcome"] != "failed")
+
+
+def test_failure_site_bounded_selected_caller_and_exact_identity(tmp_path):
+    import hashlib
+
+    plugin = groups.InventoryPlugin("fixture", tmp_path / "unused.json")
+    source = "test_cases.py"
+    def location(path, line):
+        return SimpleNamespace(path=path, lineno=line)
+    def entry(path, line):
+        return SimpleNamespace(reprfileloc=location(path, line))
+    representation = SimpleNamespace(
+        reprcrash=location("/private/helper.py", 99),
+        reprtraceback=SimpleNamespace(reprentries=[
+            entry(source, 4), entry(str(plugin.source_root / source), 8),
+            entry("/private/helper.py", 99),
+        ]),
+    )
+    report = SimpleNamespace(nodeid=source + "::test_one[PRIVATE]", longrepr=representation)
+    expected = {"source_sha256": hashlib.sha256(source.encode()).hexdigest(), "line": 8}
+    assert plugin._failure_site(report) == expected
+    representation.reprcrash = location(source, 12)
+    assert plugin._failure_site(report) == dict(expected, line=12)
+    representation.reprcrash = location("/private/helper.py", 99)
+    entries = representation.reprtraceback
+    entries.reprentries = [entry(source, 8)] * 128
+    assert plugin._failure_site(report) == expected
+    entries.reprentries.append(entry(source, 8))
+    assert plugin._failure_site(report) is None
+    for invalid in [None, iter([entry(source, 8)]), "private", {0: entry(source, 8)}]:
+        entries.reprentries = invalid
+        assert plugin._failure_site(report) is None
+    for path, line in [("./test_cases.py", 8), ("other/test_cases.py", 8),
+                       ("/private/test_cases.py", 8), (source, True),
+                       (source, 0), (source, 1000001), (source, "8")]:
+        entries.reprentries = (entry(path, line),)
+        assert plugin._failure_site(report) is None

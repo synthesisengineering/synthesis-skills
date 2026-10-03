@@ -48,6 +48,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import socket
@@ -271,27 +272,20 @@ def open_lock_file(path: Path) -> int:
 
 
 def inherited_lifecycle_lock_fd(path: Path) -> int | None:
-    raw = os.environ.get(LIFECYCLE_LOCK_FD_ENV)
-    if raw is None:
-        return None
-    try:
-        descriptor = int(raw)
-        inherited = os.fstat(descriptor)
-        expected = os.stat(path, follow_symlinks=False)
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"inherited lifecycle lock is invalid: {exc}") from exc
-    if (inherited.st_dev, inherited.st_ino) != (expected.st_dev, expected.st_ino):
-        raise ValueError("inherited lifecycle lock does not match the state lock")
-    if not stat.S_ISREG(inherited.st_mode):
-        raise ValueError("inherited lifecycle lock is not a regular file")
-    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    return descriptor
+    # flock has no portable non-mutating query for prior authority of an open
+    # description. An environment descriptor must never create a borrowed scope.
+    if os.environ.get(LIFECYCLE_LOCK_FD_ENV) is not None:
+        raise ValueError("inherited lifecycle descriptors cannot establish exclusive authority; use the lifecycle owner")
+    return None
 
 
 @contextmanager
-def lifecycle_lock():
-    """Serialize every pending-manifest, receipt, and retirement mutation."""
+def lifecycle_lock(*, timeout: float | None = None):
+    """Own exclusive global mutation; exclude shared per-owner attribution."""
 
+    if timeout is not None and (type(timeout) not in (int, float)
+                                or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("lifecycle timeout must be a finite positive number")
     depth = getattr(_LIFECYCLE_LOCK_STATE, "depth", 0)
     if depth:
         _LIFECYCLE_LOCK_STATE.depth = depth + 1
@@ -309,7 +303,22 @@ def lifecycle_lock():
     inherited = inherited_lifecycle_lock_fd(path)
     descriptor = inherited if inherited is not None else open_lock_file(path)
     if inherited is None:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            if timeout is None:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+            else:
+                deadline = time.monotonic() + timeout
+                while True:
+                    try:
+                        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError("lifecycle lock is busy; retry the retained operation")
+                        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        except BaseException:
+            os.close(descriptor)
+            raise
     _LIFECYCLE_LOCK_STATE.depth = 1
     try:
         yield

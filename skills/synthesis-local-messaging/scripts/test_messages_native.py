@@ -98,7 +98,7 @@ class FixtureProcess:
                 self.mode,
             ],
             cwd=cwd,
-            timeout=3,
+            timeout=timeout,
             output_bytes=65536,
             pass_fds=pass_fds,
         )

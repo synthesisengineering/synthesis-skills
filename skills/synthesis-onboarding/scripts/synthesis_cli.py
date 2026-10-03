@@ -73,7 +73,7 @@ from system_contract import (  # noqa: E402 - source contract must precede relea
 )
 
 
-ENGINE_VERSION = "2.10.3"
+ENGINE_VERSION = "2.10.4"
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI_COMMANDS = (
     "explain",

@@ -53,8 +53,16 @@ heading levels, skip fenced examples, and distinguish dated entries from
 interior undated headings. Long indexes state the full entry count and the
 number omitted from the compact listing.
 
-Migration and refresh seed unchecked `CONTEXT.md` tasks alongside markers in
-the newest session log. Candidates carry relative source path, line and source
+Migration and refresh seed unchecked `CONTEXT.md` tasks alongside explicit
+markers in the newest session log. A session marker starts an unquoted line
+(with at most three leading spaces) or an unordered/numbered list item and is
+exactly `TODO:`, `FIXME:`, `XXX:`, `OPEN:` or `TBD:`, followed by horizontal
+whitespace and nonempty task text. Lowercase words, labels inside ordinary
+prose, checked tasks, fenced/indented code and blockquote examples (including
+lazy continuation until a blank or new block) do not seed candidates.
+Unchecked context tasks likewise start an unquoted list item outside code.
+Session marker text remains a bounded 120-character candidate preview;
+its source path, line and digest retain the complete underlying evidence. Candidates carry relative source path, line and source
 digest, remain `unverified`, and are never automatically treated as completed.
 Repeated task wording keeps distinct source occurrences. Candidate IDs survive
 line shifts; source hashes and line numbers describe the original observation,
