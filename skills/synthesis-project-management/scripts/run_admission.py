@@ -325,6 +325,46 @@ def admit_paths(
     )
 
 
+def admit_registry_paths(board, project_id, project, paths, native_payload, *, expected_claim_hash=None):
+    """Registry identity comes from the native board, not the row being edited.
+
+    All paths still require fresh exact claims and physical worktree admission.
+    Only the explicit registry plus this owning project's records are eligible.
+    """
+    project = Path(project).absolute()
+    registry = safe_path(project.parent / "index.yaml", project.parent)
+    if registry not in paths or any(Path(p) != registry and not Path(p).is_relative_to(project) for p in paths):
+        raise AdmissionError("registry transaction paths escape its exact project")
+    if not registry.exists():
+        return admit_registry_creation(board, project_id, project, paths, native_payload,
+                                       expected_claim_hash=expected_claim_hash)
+    return _admit_paths(board, project_id, project, paths, native_payload,
+                        expected_claim_hash=expected_claim_hash, registry_operation=True)
+
+
+def admit_registry_creation(board, project_id, project, paths, native_payload, *, expected_claim_hash=None):
+    """Bootstrap only an absent registry and this project's transaction journal.
+
+    The proposed registry never establishes identity. The existing native board,
+    exact physical workspace and exact claims remain the sole write admission.
+    """
+    project = Path(project).absolute()
+    registry = safe_path(project.parent / "index.yaml", project.parent)
+    journal = project / ".record-transactions"
+    initial_prefix = ".record-transactions.init-"
+    if registry.exists() or registry not in paths or any(
+        Path(p) != registry and not Path(p).is_relative_to(journal)
+        and not (Path(p).is_relative_to(project) and Path(p).relative_to(project).parts[0].startswith(initial_prefix))
+        for p in paths
+    ):
+        raise AdmissionError("registry bootstrap scope must contain only absent registry and owned journal")
+    from record_transaction import registry_git_state
+    if registry_git_state(project) != (None, None):
+        raise AdmissionError("registry bootstrap needs absent HEAD and index membership")
+    return _admit_paths(board, project_id, project, paths, native_payload,
+                        expected_claim_hash=expected_claim_hash, registry_creation=True)
+
+
 def inspect_paths(
     board: Path, project_id: str, project: Path, paths: list[Path], native_payload: dict
 ) -> dict:
@@ -344,6 +384,8 @@ def _admit_paths(
     expected_claim_hash=None,
     readonly=False,
     passive=False,
+    registry_creation=False,
+    registry_operation=False,
 ):
     try:
         project = Path(project).absolute()
@@ -354,10 +396,11 @@ def _admit_paths(
         registry = safe_path(repository / "projects/index.yaml", repository)
         import team_contract
 
-        team_contract.require_registry(
-            registry, board=board, native_payload=native_payload
-        )
-        if project_id not in registry_entries(registry.read_text(encoding="utf-8")):
+        if not registry_creation:
+            team_contract.require_registry(
+                registry, board=board, native_payload=native_payload
+            )
+        if not (registry_creation or registry_operation) and project_id not in registry_entries(registry.read_text(encoding="utf-8")):
             raise AdmissionError("project is not registered")
         if not paths:
             raise AdmissionError("admission requires explicit paths")

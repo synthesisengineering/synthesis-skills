@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.3] - 2026-10-03
+
+- Require exact native claims and retained transaction evidence for registry creation and edits, including ordinary field and entry changes.
+- Preserve foreign entries and modes across concurrent writes, staged checks and interrupted recovery.
+- Support explicit empty registries after final-entry removal and authenticated recreation while refusing ordinary project admission without an entry.
+
 ## [4.154.2] - 2026-10-03
 
 - Require explicit workspace ownership for meeting profiles; migrate selected legacy files with hash-bound custody while preserving unresolved profiles.

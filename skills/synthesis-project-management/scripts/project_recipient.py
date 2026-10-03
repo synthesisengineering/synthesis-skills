@@ -67,6 +67,24 @@ def registry_entries(text: str) -> dict[str, dict[str, str]]:
     """
     lines = text.splitlines()
     headers = [i for i, line in enumerate(lines) if re.match(r"^projects\s*:", line)]
+    if headers and len(headers) == 1 and re.fullmatch(
+        r"projects:\s*\[\s*\]\s*(?:#.*)?", lines[headers[0]]
+    ):
+        # An explicit empty sequence is a complete registry state. Missing,
+        # null or truncated project lists still fail closed below.
+        for line in lines[headers[0] + 1 :]:
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            if line[:1].isspace() or line.startswith("- "):
+                raise error("registry empty project list has trailing entries")
+            break  # next top-level section is not a project entry
+        return {}
+    if not headers:
+        significant = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+        if significant and re.fullmatch(r"\[\s*\]\s*(?:#.*)?", significant[0]):
+            if len(significant) != 1:
+                raise error("registry empty project list has trailing syntax")
+            return {}
     if headers:
         if len(headers) != 1 or not re.fullmatch(
             r"projects:\s*(?:#.*)?", lines[headers[0]]

@@ -273,6 +273,8 @@ def _body_gate(
 
 
 def _read(path: Path) -> str:
+    if path.name == "index.yaml" and path.parent.name == "projects":
+        raise ContextEditError("registry edits require registry-patch and an exact reviewed preimage")
     if path.is_symlink():
         raise ContextEditError(f"refusing to edit a symlink: {path}")
     if not path.is_file():
@@ -768,6 +770,155 @@ def apply_edits(
             "replacements": len(edits), "lines": lines, "note": note}
 
 
+def _registry_nodes(text):
+    """Bound structure before YAML composition; never expand aliases or tags."""
+    import yaml
+    if len(text.encode("utf-8")) > record_transaction.MAX_FILE_BYTES:
+        raise ContextEditError("registry exceeds bounded source size")
+    # Reject aliases and directives before composition; bound parser work.
+    count = depth = 0
+    try:
+        for token in yaml.scan(text):
+            count += 1
+            if isinstance(token, (yaml.tokens.BlockMappingStartToken, yaml.tokens.BlockSequenceStartToken,
+                                  yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
+                depth += 1
+            elif isinstance(token, (yaml.tokens.BlockEndToken, yaml.tokens.FlowMappingEndToken,
+                                    yaml.tokens.FlowSequenceEndToken)):
+                depth -= 1
+            if count > 100000 or depth > 64 or isinstance(token, (yaml.tokens.AliasToken, yaml.tokens.AnchorToken, yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
+                raise ContextEditError("registry aliases, tags, directives or excessive structure refused")
+        node = yaml.compose(text)
+    except yaml.YAMLError as exc:
+        raise ContextEditError("registry YAML is invalid") from exc
+    def mapping(node):
+        if not isinstance(node, yaml.MappingNode):
+            raise ContextEditError("registry mapping required")
+        result = {}
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode) or key.value in result:
+                raise ContextEditError("registry duplicate or nonscalar key")
+            result[key.value] = value
+        return result
+    if isinstance(node, yaml.MappingNode):
+        node = mapping(node).get("projects")
+    if not isinstance(node, yaml.SequenceNode) or len(node.value) > 10000:
+        raise ContextEditError("registry bounded project list required")
+    entries = {}
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, yaml.MappingNode):
+            mapping(current)
+            stack.extend(value for _, value in current.value)
+        elif isinstance(current, yaml.SequenceNode):
+            stack.extend(current.value)
+    for item in node.value:
+        row = mapping(item); ident = row.get("id")
+        if not isinstance(ident, yaml.ScalarNode) or ident.value in entries:
+            raise ContextEditError("registry missing or duplicate id")
+        entries[ident.value] = (item, row)
+    return node, entries
+
+
+def patch_registry(project: Path, entry: str, fields: dict, expected_sha256: str,
+                   *, board: Path, native_payload: dict, dry_run=False) -> dict:
+    """Apply reviewed entry fields, including creation and structured values.
+
+    Unchanged fields and all other entries retain their exact bytes. Entry
+    removal or whole-entry replacement uses apply-transaction's explicit
+    @registry edit and the same reviewed SHA, native admission and journal.
+    """
+    import yaml
+    project = record_transaction._path(project)
+    path = record_transaction._target(project, "@registry")
+    raw, meta = record_transaction._snapshot(path)
+    if meta["sha256"] != expected_sha256:
+        raise ContextEditError("registry reviewed preimage changed")
+    if (not isinstance(entry, str) or not entry or len(entry) > 256
+            or not isinstance(fields, dict) or not 1 <= len(fields) <= 64 or "id" in fields):
+        raise ContextEditError("registry requires a bounded entry and 1..64 fields excluding id")
+    # JSON values are literal YAML flow values. Bound traversal before encoding.
+    stack = [(fields, 0)]; count = 0
+    while stack:
+        value, depth = stack.pop(); count += 1
+        if count > 100000 or depth > 64:
+            raise ContextEditError("registry field structure exceeds bounds")
+        if type(value) is dict:
+            if any(type(k) is not str or not k or len(k) > 4096 for k in value):
+                raise ContextEditError("registry fields require bounded string keys")
+            stack.extend((v, depth + 1) for v in value.values())
+        elif type(value) is list:
+            stack.extend((v, depth + 1) for v in value)
+        elif type(value) not in (str, bool, int, float, type(None)):
+            raise ContextEditError("registry field values must be JSON values")
+    try:
+        encoded = json.dumps(fields, ensure_ascii=False, allow_nan=False)
+    except (ValueError, OverflowError) as exc:
+        raise ContextEditError("registry field values must be finite JSON") from exc
+    if len(encoded.encode("utf-8")) > 1024 * 1024:
+        raise ContextEditError("registry fields exceed bounded bytes")
+    text = raw.decode("utf-8")
+    sequence, entries = _registry_nodes(text)
+    edits = []
+    target = entries.get(entry)
+    if target is None:
+        value = json.dumps({"id": entry, **fields}, ensure_ascii=False, allow_nan=False)
+        if sequence.flow_style and not sequence.value:
+            # The explicit empty state becomes the same id-first block form
+            # consumed by routing and transactional registry admission.
+            start, end = sequence.start_mark.index, sequence.end_mark.index
+            line_start = text.rfind("\n", 0, start) + 1
+            wrapped = text[line_start:start].strip() == "projects:"
+            indent = "  " if wrapped else ""
+            block = ("\n" if wrapped else "") + indent + "- id: " + json.dumps(entry) + "\n"
+            block += "".join(indent + "  " + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in fields.items())
+            edits.append((start, end, block))
+        elif sequence.flow_style:
+            at = sequence.end_mark.index - 1
+            edits.append((at, at, ", " + value))
+        else:
+            at = sequence.end_mark.index
+            prefix = "" if at == 0 or text[at - 1] == "\n" else "\n"
+            indent = " " * sequence.start_mark.column
+            block = indent + "- id: " + json.dumps(entry) + "\n"
+            block += "".join(indent + "  " + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in fields.items())
+            edits.append((at, at, prefix + block))
+    else:
+        item, row = target
+        missing = {}
+        for field, value in fields.items():
+            replacement = json.dumps(value, ensure_ascii=False, allow_nan=False)
+            old = row.get(field)
+            if old is None:
+                missing[field] = value
+                continue
+            # Block values consume a terminating newline/indent before the next
+            # key; keep that separator while replacing only the value node.
+            if old.end_mark.line > old.start_mark.line and (not isinstance(old, yaml.ScalarNode) or old.style in ("|", ">")):
+                replacement += "\n" + " " * old.end_mark.column
+            edits.append((old.start_mark.index, old.end_mark.index, replacement))
+        if missing:
+            if item.flow_style:
+                at = item.end_mark.index - 1
+                replacement = ", " + json.dumps(missing, ensure_ascii=False, allow_nan=False)[1:-1]
+            else:
+                at = item.end_mark.index
+                indent = item.start_mark.column
+                replacement = ("" if at == 0 or text[at - 1] == "\n" else "\n")
+                replacement += "".join(" " * indent + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in missing.items())
+            edits.append((at, at, replacement))
+    edited = text
+    for start, end, replacement in sorted(edits, reverse=True):
+        edited = edited[:start] + replacement + edited[end:]
+    _registry_nodes(edited)
+    if edited == text:
+        raise ContextEditError("registry patch leaves bytes unchanged")
+    return apply_transaction(project, [{"file": "@registry", "expected_sha256": expected_sha256,
+        "edits": [{"op": "replace", "anchor": text, "replacement": edited}]}],
+        board=board, native_payload=native_payload, dry_run=dry_run)
+
+
 def apply_transaction(project: Path, files: list[dict], *, board: Path,
                       native_payload: dict, dry_run: bool = False,
                       source_custody: list[dict] | None = None,
@@ -868,11 +1019,26 @@ def main(argv: list[str] | None = None) -> int:
             succession.add_argument("--board", type=Path, required=True)
             succession.add_argument("--native-payload", type=Path, required=True)
             succession.add_argument("--dry-run", action="store_true")
+    registry = sub.add_parser("registry-patch")
+    registry.add_argument("--project", type=Path, required=True)
+    registry.add_argument("--entry", required=True)
+    registry.add_argument("--fields", type=Path, required=True)
+    registry.add_argument("--expected-sha256", required=True)
+    registry.add_argument("--board", type=Path, required=True)
+    registry.add_argument("--native-payload", type=Path, required=True)
+    registry.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     if sum(getattr(args, name, None) == "-" for name in ("anchor", "replacement", "text", "value")) > 1:
         parser.error("stdin may supply only one operand; use the file flags for other operands")
 
     try:
+        if args.command == "registry-patch":
+            result = patch_registry(args.project, args.entry,
+                record_transaction.read_request(args.fields), args.expected_sha256,
+                board=args.board, native_payload=record_transaction.read_request(args.native_payload),
+                dry_run=args.dry_run)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         if args.command in {"review-succession", "apply-succession"}:
             import record_succession
             request = record_transaction.read_request(args.request)

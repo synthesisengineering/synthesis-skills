@@ -1333,6 +1333,13 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
             )
         )
 
+# The ordinary commit gate checks registry intent through the existing record
+# transaction owner; receipt-mode dispatch must bind that lazy dependency too.
+for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
+    if "synthesis-project-management/scripts/coordination.py" in {_entry, *_dependencies}:
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_dependencies,
+            "synthesis-context-lifecycle/scripts/record_transaction.py")))
+
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
 )

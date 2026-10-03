@@ -2811,6 +2811,31 @@ def command_check_staged(args) -> int:
         if refreshed is not None:
             session = refreshed
 
+    if "projects/index.yaml" in staged_paths:
+        try:
+            lifecycle = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle/scripts"
+            if str(lifecycle) not in sys.path:
+                sys.path.insert(0, str(lifecycle))
+            import record_transaction
+            staged = _git_bytes(repository, "show", ":projects/index.yaml")
+            head_mode, index_mode = record_transaction.registry_git_state(repository / "projects" / session.project)
+            head = _git_bytes(repository, "show", "HEAD:projects/index.yaml") if head_mode is not None else None
+            if staged.returncode or (head is not None and head.returncode):
+                raise RuntimeError("registry authorship requires verified HEAD and index membership")
+            mode = _git_bytes(repository, "ls-files", "--stage", "--", "projects/index.yaml")
+            rows_mode = mode.stdout.decode("utf-8", errors="strict").splitlines()
+            if mode.returncode or len(rows_mode) != 1:
+                raise RuntimeError("registry index mode is ambiguous")
+            record_transaction.registry_authorship(repository / "projects" / session.project,
+                session_uuid=session.session_uuid, repository=repository, branch=branch,
+                board=args.board, staged=staged.stdout, head=head.stdout if head else None,
+                staged_mode=rows_mode[0].split()[0], head_mode=head_mode)
+        except (OSError, ValueError, RuntimeError, ImportError, subprocess.SubprocessError) as exc:
+            payload = _check_staged_payload(args, "refused-registry-authorship",
+                selector_source=selector_source, detail=str(exc), remediation=CHECK_STAGED_REMEDIATION)
+            _emit_check_staged(args, payload)
+            return 10
+
     outside_paths = _outside_claim(session, repository, staged_paths)
     override_reason = sanitize(str(args.override_reason or ""))
     if outside_paths and not override_reason:

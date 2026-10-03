@@ -28,6 +28,10 @@ _QUERIES = frozenset({
     ("rev-parse", "--show-toplevel", "--symbolic-full-name", "HEAD"),
     ("rev-parse", "--show-toplevel"),
     ("branch", "--show-current"),
+    ("ls-tree", "HEAD", "--", "projects/index.yaml"),
+    ("show", "HEAD:projects/index.yaml"),
+    ("show", ":projects/index.yaml"),
+    ("ls-files", "--stage", "--", "projects/index.yaml"),
 })
 
 

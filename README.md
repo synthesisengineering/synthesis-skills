@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.3** applies registry changes through authenticated transactions, preserves unrelated entries, and recovers interrupted creation, structural edits, removal and recreation. An empty registry remains valid state without granting a project route.
+
 Release **4.154.2** reads additional native history formats with bounded streaming validation. Retained instructions and tool output remain historical data; decoder changes require explicit recovery of the original interval.
 
 Release **4.154.1** checks replay ownership against the current authenticated

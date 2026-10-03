@@ -1,5 +1,5 @@
 schema: 2
-suite: retained-native-context-4-154-2
+suite: registry-transactions-4-154-3
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy, maintenance and portable evidence
   owners; scoped source acquisition and inert native web observations
@@ -1680,6 +1680,25 @@ changed_surfaces:
   - retained-context-3b7308500811c09f
   - diagnostic-line-selected-source
   - diagnostic-line-actual-private-export
+  - registry-5765d0aff4f028aa
+  - registry-fe772b06f8912778
+  - registry-790068be80fbd4e4
+  - registry-3d9f4d2be5aef70d
+  - registry-5c7b2d1fd85ed1ad
+  - registry-5f9604499e7687bc
+  - registry-0a3fce7bbd8bdae6
+  - registry-2c4555a2df8fc657
+  - registry-95c673742e3ed0e6
+  - registry-152bfae2419d528e
+  - registry-8592535d61012b44
+  - registry-281353409b492185
+  - registry-22fc22730c236a07
+  - registry-e4280da9b210975d
+  - registry-b419c3787e7182a5
+  - registry-8d205fac8af7cbd3
+  - registry-5f965845992ad24b
+  - registry-005d7fe0fc45f024
+  - registry-486bc45bd13f5e4e
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -3515,6 +3534,25 @@ changed_surfaces:
   - public-ready-profile-f5d85f2aff005bad
   - public-ready-profile-7c259e6ffd367f5b
   - public-ready-profile-7ca8d12845257ba1
+  - registry-5765d0aff4f028aa
+  - registry-fe772b06f8912778
+  - registry-790068be80fbd4e4
+  - registry-3d9f4d2be5aef70d
+  - registry-5c7b2d1fd85ed1ad
+  - registry-5f9604499e7687bc
+  - registry-0a3fce7bbd8bdae6
+  - registry-2c4555a2df8fc657
+  - registry-95c673742e3ed0e6
+  - registry-152bfae2419d528e
+  - registry-8592535d61012b44
+  - registry-281353409b492185
+  - registry-22fc22730c236a07
+  - registry-e4280da9b210975d
+  - registry-b419c3787e7182a5
+  - registry-8d205fac8af7cbd3
+  - registry-5f965845992ad24b
+  - registry-005d7fe0fc45f024
+  - registry-486bc45bd13f5e4e
 - path: README.md
   cases: *id001
 - path: skills/synthesis-autopilot/SKILL.md
@@ -5640,6 +5678,25 @@ changed_surfaces:
   - public-ready-profile-f5d85f2aff005bad
   - public-ready-profile-7c259e6ffd367f5b
   - public-ready-profile-7ca8d12845257ba1
+  - registry-5765d0aff4f028aa
+  - registry-fe772b06f8912778
+  - registry-790068be80fbd4e4
+  - registry-3d9f4d2be5aef70d
+  - registry-5c7b2d1fd85ed1ad
+  - registry-5f9604499e7687bc
+  - registry-0a3fce7bbd8bdae6
+  - registry-2c4555a2df8fc657
+  - registry-95c673742e3ed0e6
+  - registry-152bfae2419d528e
+  - registry-8592535d61012b44
+  - registry-281353409b492185
+  - registry-22fc22730c236a07
+  - registry-e4280da9b210975d
+  - registry-b419c3787e7182a5
+  - registry-8d205fac8af7cbd3
+  - registry-5f965845992ad24b
+  - registry-005d7fe0fc45f024
+  - registry-486bc45bd13f5e4e
 - path: skills/synthesis-skills-manager/scripts/release_check_groups.py
   cases: &id003
   - diagnostic-line-selected-source
@@ -5685,19 +5742,7 @@ changed_surfaces:
   - merge-guard-42884e02cc896b94
   - merge-guard-4e24e44bab0114d5
 - path: skills/synthesis-onboarding/scripts/test_runtime_payload.py
-  cases:
-  - final-21730796218b5fb4
-  - final-a14fc99729369b52
-  - final-819315b201f0f699
-  - final-7a6fd91152caa0aa
-  - merge-guard-7dfe6e2e2ed28f55
-  - merge-guard-bba7f363ef669005
-  - merge-guard-1beb31677f26e81b
-  - merge-guard-b5c2141babda0ce4
-  - merge-guard-9cdad97b9a3d4139
-  - merge-guard-517748bab331c9b0
-  - merge-guard-42884e02cc896b94
-  - merge-guard-4e24e44bab0114d5
+  cases: *id005
 - path: skills/synthesis-skills-manager/SKILL.md
   cases: *id003
 - path: skills/synthesis-onboarding/SKILL.md
@@ -5721,7 +5766,7 @@ changed_surfaces:
   - messaging-delivery-0f2a3b36d02a85ea
   - messaging-delivery-652d992bab6ca3c9
 - path: skills/synthesis-project-management/scripts/test_project_format_refresh.py
-  cases:
+  cases: &id006
   - public-ready-contention-0dc49ed11d0433bb
   - public-ready-contention-03eacfb3456cbcf9
   - public-ready-contention-9395d3e91dc16822
@@ -5792,13 +5837,13 @@ changed_surfaces:
   - public-ready-contention-61c256c8c4e1da5d
   - public-ready-contention-cc5a426be6cc2f1d
 - path: skills/synthesis-project-management/scripts/test_retire_worktree.py
-  cases:
+  cases: &id007
   - public-ready-contention-67bb9c3e4c7a3fcd
   - public-ready-contention-85f117d2f8b88fa7
   - public-ready-contention-e3943c3a6e35573a
   - public-ready-contention-e93b1ad00477cff1
 - path: skills/synthesis-repo-guard/test_checkpoint_sync.py
-  cases:
+  cases: &id009
   - public-ready-contention-f3e97561a7aa49c7
   - public-ready-contention-f474a57f785d23ac
   - public-ready-contention-8743ffd80b3281ec
@@ -5812,7 +5857,7 @@ changed_surfaces:
   - public-ready-contention-4e00c31d9764a9b1
   - public-ready-contention-3ad2d16a8c2b875c
 - path: skills/synthesis-project-management/scripts/test_prune_tool_snapshots.py
-  cases:
+  cases: &id008
   - public-ready-snapshot-e81878ec0cf2aefe
   - public-ready-snapshot-0dd9422d99b65b1b
   - public-ready-snapshot-d62f1b7677f001ba
@@ -5841,175 +5886,13 @@ changed_surfaces:
   - public-ready-onboarding-f8ed5888dfb19498
   - public-ready-onboarding-2082ed6ee80f0a1f
 - path: skills/synthesis-project-management/references/project-formats.md
-  cases:
-  - public-ready-contention-0dc49ed11d0433bb
-  - public-ready-contention-03eacfb3456cbcf9
-  - public-ready-contention-9395d3e91dc16822
-  - public-ready-contention-360e85b3ec8c51fa
-  - public-ready-contention-63aa6279539fb0ec
-  - public-ready-contention-0310aeabf34d3dc7
-  - public-ready-contention-76569e4ef8005164
-  - public-ready-contention-4e5224eed9829445
-  - public-ready-contention-89905bda9e5de9a0
-  - public-ready-contention-bd7b56aba0a4d843
-  - public-ready-contention-674764c563acb9e2
-  - public-ready-contention-b55b6979433fbee1
-  - public-ready-contention-70e1a297351e880a
-  - public-ready-contention-3d11f04988693b5d
-  - public-ready-contention-0e397470eb4637bc
-  - public-ready-contention-96c44ce927d74ba0
-  - public-ready-contention-b54cde498e494ef1
-  - public-ready-contention-e2fb94c9a82da0f3
-  - public-ready-contention-fa4dd261d1f09936
-  - public-ready-contention-4342090dd62c5fd9
-  - public-ready-contention-51a711c2e862c00f
-  - public-ready-contention-8ce51703f2306c1b
-  - public-ready-contention-2d60ee0578d6c1d1
-  - public-ready-contention-0a73299b76930f64
-  - public-ready-contention-bfa184af5bfe9d2c
-  - public-ready-contention-1da2f147f49beab0
-  - public-ready-contention-f29805563f720798
-  - public-ready-contention-245471a2b1c99a92
-  - public-ready-contention-9ad5a8418ebb1c16
-  - public-ready-contention-dfbde2b1ec9b0d18
-  - public-ready-contention-1b5cd2124c51aaa1
-  - public-ready-contention-fe34f0da98f127d2
-  - public-ready-contention-45f0efe3ae03bf3d
-  - public-ready-contention-b3e861fa45337a86
-  - public-ready-contention-09718009f39ba01b
-  - public-ready-contention-928eeb6850ceb641
-  - public-ready-contention-432b0e18715b135a
-  - public-ready-contention-d4a5ee56851fa15e
-  - public-ready-contention-7e4b19ba92552272
-  - public-ready-contention-139a557df6a15613
-  - public-ready-contention-68a2ce293e10822f
-  - public-ready-contention-776220e6ba3b9eeb
-  - public-ready-contention-521c6226b2e8c7a7
-  - public-ready-contention-d5c3d158fcaf0c47
-  - public-ready-contention-28270dfea358c432
-  - public-ready-contention-c276e2ac0fdc3fb4
-  - public-ready-contention-b2b20451e279c77a
-  - public-ready-contention-637f3951304e25f8
-  - public-ready-contention-4da804c9450d5539
-  - public-ready-contention-4ff3d50cf7a98762
-  - public-ready-contention-c40ca055fafaf9a6
-  - public-ready-contention-f3a940b9f99d7f5f
-  - public-ready-contention-ff0e3d06b90f4644
-  - public-ready-contention-ed473089060a33bd
-  - public-ready-contention-11f0ffed015899e8
-  - public-ready-contention-d8bb57a7201b40c9
-  - public-ready-contention-51abedea2cdccd61
-  - public-ready-contention-369937d561679ce3
-  - public-ready-contention-a1a9b862c7705ce8
-  - public-ready-contention-52233a813fba7bb5
-  - public-ready-contention-2719a134604af1c0
-  - public-ready-contention-65f1b13ca326faa5
-  - public-ready-contention-494f5f597323b673
-  - public-ready-contention-0e75587d22bc8b14
-  - public-ready-contention-50ca0040145c09e0
-  - public-ready-contention-e2f37dd866009d96
-  - public-ready-contention-4a05820e5829c13c
-  - public-ready-contention-61c256c8c4e1da5d
-  - public-ready-contention-cc5a426be6cc2f1d
+  cases: *id006
 - path: skills/synthesis-project-management/scripts/project_format.py
-  cases:
-  - public-ready-contention-0dc49ed11d0433bb
-  - public-ready-contention-03eacfb3456cbcf9
-  - public-ready-contention-9395d3e91dc16822
-  - public-ready-contention-360e85b3ec8c51fa
-  - public-ready-contention-63aa6279539fb0ec
-  - public-ready-contention-0310aeabf34d3dc7
-  - public-ready-contention-76569e4ef8005164
-  - public-ready-contention-4e5224eed9829445
-  - public-ready-contention-89905bda9e5de9a0
-  - public-ready-contention-bd7b56aba0a4d843
-  - public-ready-contention-674764c563acb9e2
-  - public-ready-contention-b55b6979433fbee1
-  - public-ready-contention-70e1a297351e880a
-  - public-ready-contention-3d11f04988693b5d
-  - public-ready-contention-0e397470eb4637bc
-  - public-ready-contention-96c44ce927d74ba0
-  - public-ready-contention-b54cde498e494ef1
-  - public-ready-contention-e2fb94c9a82da0f3
-  - public-ready-contention-fa4dd261d1f09936
-  - public-ready-contention-4342090dd62c5fd9
-  - public-ready-contention-51a711c2e862c00f
-  - public-ready-contention-8ce51703f2306c1b
-  - public-ready-contention-2d60ee0578d6c1d1
-  - public-ready-contention-0a73299b76930f64
-  - public-ready-contention-bfa184af5bfe9d2c
-  - public-ready-contention-1da2f147f49beab0
-  - public-ready-contention-f29805563f720798
-  - public-ready-contention-245471a2b1c99a92
-  - public-ready-contention-9ad5a8418ebb1c16
-  - public-ready-contention-dfbde2b1ec9b0d18
-  - public-ready-contention-1b5cd2124c51aaa1
-  - public-ready-contention-fe34f0da98f127d2
-  - public-ready-contention-45f0efe3ae03bf3d
-  - public-ready-contention-b3e861fa45337a86
-  - public-ready-contention-09718009f39ba01b
-  - public-ready-contention-928eeb6850ceb641
-  - public-ready-contention-432b0e18715b135a
-  - public-ready-contention-d4a5ee56851fa15e
-  - public-ready-contention-7e4b19ba92552272
-  - public-ready-contention-139a557df6a15613
-  - public-ready-contention-68a2ce293e10822f
-  - public-ready-contention-776220e6ba3b9eeb
-  - public-ready-contention-521c6226b2e8c7a7
-  - public-ready-contention-d5c3d158fcaf0c47
-  - public-ready-contention-28270dfea358c432
-  - public-ready-contention-c276e2ac0fdc3fb4
-  - public-ready-contention-b2b20451e279c77a
-  - public-ready-contention-637f3951304e25f8
-  - public-ready-contention-4da804c9450d5539
-  - public-ready-contention-4ff3d50cf7a98762
-  - public-ready-contention-c40ca055fafaf9a6
-  - public-ready-contention-f3a940b9f99d7f5f
-  - public-ready-contention-ff0e3d06b90f4644
-  - public-ready-contention-ed473089060a33bd
-  - public-ready-contention-11f0ffed015899e8
-  - public-ready-contention-d8bb57a7201b40c9
-  - public-ready-contention-51abedea2cdccd61
-  - public-ready-contention-369937d561679ce3
-  - public-ready-contention-a1a9b862c7705ce8
-  - public-ready-contention-52233a813fba7bb5
-  - public-ready-contention-2719a134604af1c0
-  - public-ready-contention-65f1b13ca326faa5
-  - public-ready-contention-494f5f597323b673
-  - public-ready-contention-0e75587d22bc8b14
-  - public-ready-contention-50ca0040145c09e0
-  - public-ready-contention-e2f37dd866009d96
-  - public-ready-contention-4a05820e5829c13c
-  - public-ready-contention-61c256c8c4e1da5d
-  - public-ready-contention-cc5a426be6cc2f1d
+  cases: *id006
 - path: skills/synthesis-project-management/scripts/retire_worktree.py
-  cases:
-  - public-ready-contention-67bb9c3e4c7a3fcd
-  - public-ready-contention-85f117d2f8b88fa7
-  - public-ready-contention-e3943c3a6e35573a
-  - public-ready-contention-e93b1ad00477cff1
+  cases: *id007
 - path: skills/synthesis-project-management/scripts/prune_tool_snapshots.py
-  cases:
-  - public-ready-snapshot-e81878ec0cf2aefe
-  - public-ready-snapshot-0dd9422d99b65b1b
-  - public-ready-snapshot-d62f1b7677f001ba
-  - public-ready-snapshot-e599d54bc0f597df
-  - public-ready-snapshot-ca62e93fb483591e
-  - public-ready-snapshot-c777332bd6188d6d
-  - public-ready-snapshot-c6dc5869b786842d
-  - public-ready-snapshot-7611bec695681d52
-  - public-ready-snapshot-f37a410301e6cc9b
-  - public-ready-snapshot-db3c7cfc47477ed4
-  - public-ready-snapshot-d56cb8d738ffd84c
-  - public-ready-snapshot-a410a1f0fd50552a
-  - public-ready-snapshot-aa9aaf3810875748
-  - public-ready-snapshot-f30e758743f09013
-  - public-ready-snapshot-a8b1029d89d6dbba
-  - public-ready-snapshot-f4e3172c2e4888f2
-  - public-ready-snapshot-79a81f1180647aa2
-  - public-ready-snapshot-6999e3077acff0e1
-  - public-ready-snapshot-b57b5b1c3f44bd03
-  - public-ready-snapshot-28a1543feea6da17
+  cases: *id008
 - path: skills/synthesis-project-management/SKILL.md
   cases:
   - public-ready-contention-0dc49ed11d0433bb
@@ -6106,33 +5989,9 @@ changed_surfaces:
   - public-ready-snapshot-b57b5b1c3f44bd03
   - public-ready-snapshot-28a1543feea6da17
 - path: skills/synthesis-repo-guard/checkpoint_sync.py
-  cases:
-  - public-ready-contention-f3e97561a7aa49c7
-  - public-ready-contention-f474a57f785d23ac
-  - public-ready-contention-8743ffd80b3281ec
-  - public-ready-contention-f62930f93ba8616f
-  - public-ready-contention-2a153452f1f25f88
-  - public-ready-contention-6b841f7869c5651d
-  - public-ready-contention-f7e5d97d175e0eee
-  - public-ready-contention-0b71cfa3fe884c2e
-  - public-ready-contention-1de8e1eb86be0fae
-  - public-ready-contention-e14e869d6709ce77
-  - public-ready-contention-4e00c31d9764a9b1
-  - public-ready-contention-3ad2d16a8c2b875c
+  cases: *id009
 - path: skills/synthesis-repo-guard/SKILL.md
-  cases:
-  - public-ready-contention-f3e97561a7aa49c7
-  - public-ready-contention-f474a57f785d23ac
-  - public-ready-contention-8743ffd80b3281ec
-  - public-ready-contention-f62930f93ba8616f
-  - public-ready-contention-2a153452f1f25f88
-  - public-ready-contention-6b841f7869c5651d
-  - public-ready-contention-f7e5d97d175e0eee
-  - public-ready-contention-0b71cfa3fe884c2e
-  - public-ready-contention-1de8e1eb86be0fae
-  - public-ready-contention-e14e869d6709ce77
-  - public-ready-contention-4e00c31d9764a9b1
-  - public-ready-contention-3ad2d16a8c2b875c
+  cases: *id009
 - path: skills/synthesis-onboarding/scripts/onboard.py
   cases:
   - public-ready-onboarding-6d68b907f76d6c37
@@ -6147,7 +6006,7 @@ changed_surfaces:
   - final-d0b879b27cec94ff
   - acquisition-d0b879b27cec94ff
 - path: skills/synthesis-meeting-prep/SKILL.md
-  cases:
+  cases: &id010
   - public-ready-profile-22622260689c272a
   - public-ready-profile-b6c4c7c42f945686
   - public-ready-profile-c7ad7cfccacdb64c
@@ -6203,173 +6062,11 @@ changed_surfaces:
   - public-ready-profile-7c259e6ffd367f5b
   - public-ready-profile-7ca8d12845257ba1
 - path: skills/synthesis-meeting-prep/references/requirements.md
-  cases:
-  - public-ready-profile-22622260689c272a
-  - public-ready-profile-b6c4c7c42f945686
-  - public-ready-profile-c7ad7cfccacdb64c
-  - public-ready-profile-ed0e646c0c9e5a1a
-  - public-ready-profile-64cf5b97def8d71d
-  - public-ready-profile-575809c567f3eb2b
-  - public-ready-profile-c89f1a8560fe13b3
-  - public-ready-profile-31b9bce5a2bcfad0
-  - public-ready-profile-23c3a92185046cb2
-  - public-ready-profile-26abfa4ef640cdd2
-  - public-ready-profile-0a62b84ed17364b0
-  - public-ready-profile-c8ffc529c6cbbfcb
-  - public-ready-profile-7590eded23f1ac9c
-  - public-ready-profile-20a221259237cf70
-  - public-ready-profile-689062ac7c256c70
-  - public-ready-profile-6bd929b9a9962cd5
-  - public-ready-profile-182b6312e7dc39ff
-  - public-ready-profile-a6a970a571123e24
-  - public-ready-profile-d2e9f3f6f7527017
-  - public-ready-profile-5f1c5d98ea197ea1
-  - public-ready-profile-97f266019c25748d
-  - public-ready-profile-32962b2ced361e0a
-  - public-ready-profile-f13a6354599964f6
-  - public-ready-profile-a352b0066e1836d6
-  - public-ready-profile-4ce0f7059bcd7f93
-  - public-ready-profile-d1e42819f1a7417d
-  - public-ready-profile-3ef72e18b21fe07f
-  - public-ready-profile-99891cb102cb02c9
-  - public-ready-profile-248e6f59c3205967
-  - public-ready-profile-78dcd7f9bdd8555e
-  - public-ready-profile-e7247ace51e122d5
-  - public-ready-profile-6813786fdac9b5c5
-  - public-ready-profile-e0240b02427e3924
-  - public-ready-profile-f8e25d59dffa7319
-  - public-ready-profile-0499f79ae8f5c803
-  - public-ready-profile-58d8443dc597c5b7
-  - public-ready-profile-3cc8b9848f86be93
-  - public-ready-profile-e930c1ad7ed9645f
-  - public-ready-profile-143f2b72df0b6485
-  - public-ready-profile-683e682510deb77c
-  - public-ready-profile-b50d1da6172af098
-  - public-ready-profile-51e7ad6ac0bf6658
-  - public-ready-profile-639aa0cccbe8e9a4
-  - public-ready-profile-87feaba7ab312f5c
-  - public-ready-profile-d4cfec00c56cac26
-  - public-ready-profile-6dc5b5df1e6d68af
-  - public-ready-profile-37fa84ca51ff2138
-  - public-ready-profile-b76f69ed534266ae
-  - public-ready-profile-5e4d69eb44cbe3cf
-  - public-ready-profile-e5af336f1914f195
-  - public-ready-profile-68fb93b6ac97580f
-  - public-ready-profile-f5d85f2aff005bad
-  - public-ready-profile-7c259e6ffd367f5b
-  - public-ready-profile-7ca8d12845257ba1
+  cases: *id010
 - path: skills/synthesis-meeting-prep/references/workspace-profiles.md
-  cases:
-  - public-ready-profile-22622260689c272a
-  - public-ready-profile-b6c4c7c42f945686
-  - public-ready-profile-c7ad7cfccacdb64c
-  - public-ready-profile-ed0e646c0c9e5a1a
-  - public-ready-profile-64cf5b97def8d71d
-  - public-ready-profile-575809c567f3eb2b
-  - public-ready-profile-c89f1a8560fe13b3
-  - public-ready-profile-31b9bce5a2bcfad0
-  - public-ready-profile-23c3a92185046cb2
-  - public-ready-profile-26abfa4ef640cdd2
-  - public-ready-profile-0a62b84ed17364b0
-  - public-ready-profile-c8ffc529c6cbbfcb
-  - public-ready-profile-7590eded23f1ac9c
-  - public-ready-profile-20a221259237cf70
-  - public-ready-profile-689062ac7c256c70
-  - public-ready-profile-6bd929b9a9962cd5
-  - public-ready-profile-182b6312e7dc39ff
-  - public-ready-profile-a6a970a571123e24
-  - public-ready-profile-d2e9f3f6f7527017
-  - public-ready-profile-5f1c5d98ea197ea1
-  - public-ready-profile-97f266019c25748d
-  - public-ready-profile-32962b2ced361e0a
-  - public-ready-profile-f13a6354599964f6
-  - public-ready-profile-a352b0066e1836d6
-  - public-ready-profile-4ce0f7059bcd7f93
-  - public-ready-profile-d1e42819f1a7417d
-  - public-ready-profile-3ef72e18b21fe07f
-  - public-ready-profile-99891cb102cb02c9
-  - public-ready-profile-248e6f59c3205967
-  - public-ready-profile-78dcd7f9bdd8555e
-  - public-ready-profile-e7247ace51e122d5
-  - public-ready-profile-6813786fdac9b5c5
-  - public-ready-profile-e0240b02427e3924
-  - public-ready-profile-f8e25d59dffa7319
-  - public-ready-profile-0499f79ae8f5c803
-  - public-ready-profile-58d8443dc597c5b7
-  - public-ready-profile-3cc8b9848f86be93
-  - public-ready-profile-e930c1ad7ed9645f
-  - public-ready-profile-143f2b72df0b6485
-  - public-ready-profile-683e682510deb77c
-  - public-ready-profile-b50d1da6172af098
-  - public-ready-profile-51e7ad6ac0bf6658
-  - public-ready-profile-639aa0cccbe8e9a4
-  - public-ready-profile-87feaba7ab312f5c
-  - public-ready-profile-d4cfec00c56cac26
-  - public-ready-profile-6dc5b5df1e6d68af
-  - public-ready-profile-37fa84ca51ff2138
-  - public-ready-profile-b76f69ed534266ae
-  - public-ready-profile-5e4d69eb44cbe3cf
-  - public-ready-profile-e5af336f1914f195
-  - public-ready-profile-68fb93b6ac97580f
-  - public-ready-profile-f5d85f2aff005bad
-  - public-ready-profile-7c259e6ffd367f5b
-  - public-ready-profile-7ca8d12845257ba1
+  cases: *id010
 - path: skills/synthesis-meeting-prep/scripts/prep_init.py
-  cases:
-  - public-ready-profile-22622260689c272a
-  - public-ready-profile-b6c4c7c42f945686
-  - public-ready-profile-c7ad7cfccacdb64c
-  - public-ready-profile-ed0e646c0c9e5a1a
-  - public-ready-profile-64cf5b97def8d71d
-  - public-ready-profile-575809c567f3eb2b
-  - public-ready-profile-c89f1a8560fe13b3
-  - public-ready-profile-31b9bce5a2bcfad0
-  - public-ready-profile-23c3a92185046cb2
-  - public-ready-profile-26abfa4ef640cdd2
-  - public-ready-profile-0a62b84ed17364b0
-  - public-ready-profile-c8ffc529c6cbbfcb
-  - public-ready-profile-7590eded23f1ac9c
-  - public-ready-profile-20a221259237cf70
-  - public-ready-profile-689062ac7c256c70
-  - public-ready-profile-6bd929b9a9962cd5
-  - public-ready-profile-182b6312e7dc39ff
-  - public-ready-profile-a6a970a571123e24
-  - public-ready-profile-d2e9f3f6f7527017
-  - public-ready-profile-5f1c5d98ea197ea1
-  - public-ready-profile-97f266019c25748d
-  - public-ready-profile-32962b2ced361e0a
-  - public-ready-profile-f13a6354599964f6
-  - public-ready-profile-a352b0066e1836d6
-  - public-ready-profile-4ce0f7059bcd7f93
-  - public-ready-profile-d1e42819f1a7417d
-  - public-ready-profile-3ef72e18b21fe07f
-  - public-ready-profile-99891cb102cb02c9
-  - public-ready-profile-248e6f59c3205967
-  - public-ready-profile-78dcd7f9bdd8555e
-  - public-ready-profile-e7247ace51e122d5
-  - public-ready-profile-6813786fdac9b5c5
-  - public-ready-profile-e0240b02427e3924
-  - public-ready-profile-f8e25d59dffa7319
-  - public-ready-profile-0499f79ae8f5c803
-  - public-ready-profile-58d8443dc597c5b7
-  - public-ready-profile-3cc8b9848f86be93
-  - public-ready-profile-e930c1ad7ed9645f
-  - public-ready-profile-143f2b72df0b6485
-  - public-ready-profile-683e682510deb77c
-  - public-ready-profile-b50d1da6172af098
-  - public-ready-profile-51e7ad6ac0bf6658
-  - public-ready-profile-639aa0cccbe8e9a4
-  - public-ready-profile-87feaba7ab312f5c
-  - public-ready-profile-d4cfec00c56cac26
-  - public-ready-profile-6dc5b5df1e6d68af
-  - public-ready-profile-37fa84ca51ff2138
-  - public-ready-profile-b76f69ed534266ae
-  - public-ready-profile-5e4d69eb44cbe3cf
-  - public-ready-profile-e5af336f1914f195
-  - public-ready-profile-68fb93b6ac97580f
-  - public-ready-profile-f5d85f2aff005bad
-  - public-ready-profile-7c259e6ffd367f5b
-  - public-ready-profile-7ca8d12845257ba1
+  cases: *id010
 - path: skills/synthesis-meeting-prep/scripts/test_prep_init.py
   cases:
   - public-ready-profile-22622260689c272a
@@ -6428,6 +6125,43 @@ changed_surfaces:
   - public-ready-profile-f5d85f2aff005bad
   - public-ready-profile-7c259e6ffd367f5b
   - public-ready-profile-7ca8d12845257ba1
+- path: skills/synthesis-context-lifecycle/references/durable-record-operations.md
+  cases: &id011
+  - registry-5765d0aff4f028aa
+  - registry-fe772b06f8912778
+  - registry-790068be80fbd4e4
+  - registry-3d9f4d2be5aef70d
+  - registry-5c7b2d1fd85ed1ad
+  - registry-5f9604499e7687bc
+  - registry-0a3fce7bbd8bdae6
+  - registry-2c4555a2df8fc657
+  - registry-95c673742e3ed0e6
+  - registry-152bfae2419d528e
+  - registry-8592535d61012b44
+  - registry-281353409b492185
+  - registry-22fc22730c236a07
+  - registry-e4280da9b210975d
+  - registry-b419c3787e7182a5
+  - registry-8d205fac8af7cbd3
+  - registry-5f965845992ad24b
+  - registry-005d7fe0fc45f024
+  - registry-486bc45bd13f5e4e
+- path: skills/synthesis-context-lifecycle/scripts/context_edit.py
+  cases: *id011
+- path: skills/synthesis-context-lifecycle/scripts/record_transaction.py
+  cases: *id011
+- path: skills/synthesis-onboarding/scripts/release_runtime.py
+  cases: *id011
+- path: skills/synthesis-project-management/scripts/coordination.py
+  cases: *id011
+- path: skills/synthesis-project-management/scripts/native_git.py
+  cases: *id011
+- path: skills/synthesis-project-management/scripts/project_recipient.py
+  cases: *id011
+- path: skills/synthesis-project-management/scripts/run_admission.py
+  cases: *id011
+- path: skills/synthesis-project-management/scripts/test_record_transaction.py
+  cases: *id011
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -16415,3 +16149,117 @@ cases:
   fixture: ../synthesis-meeting-prep/scripts/test_profile_workspace.py::test_owner_marker_boolean_schema_refuses
   motivating_defect: Meeting profiles require explicit workspace and owning repository selection; selected legacy
     migration must preserve byte identity, interrupted custody and unresolved records.
+- id: registry-5765d0aff4f028aa
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_exact_entry_cas_and_staged_authorship
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-fe772b06f8912778
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_refusal_preserves_foreign_bytes
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-790068be80fbd4e4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_raw_staged_bytes_cannot_borrow_a_claim
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-3d9f4d2be5aef70d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_recovery_uses_original_intent_and_preserves_third_state
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-5c7b2d1fd85ed1ad
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_interrupted_owner_recovers
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-5f9604499e7687bc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_genuine_concurrent_disjoint_writers_retry_without_loss
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-0a3fce7bbd8bdae6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_commit_refuses_changed_intent_custody
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-2c4555a2df8fc657
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_commit_dependency_is_receipt_bound
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-95c673742e3ed0e6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_git_preimage_read_is_physically_bounded
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-152bfae2419d528e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_structural_operations_preserve_other_entry_and_gate
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-8592535d61012b44
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_bootstrap_exact_native_admission_and_staged_gate
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-281353409b492185
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_bootstrap_refuses_without_effect
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-22fc22730c236a07
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_bootstrap_interruption_and_foreign_create_preserved
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-e4280da9b210975d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_bootstrap_interruption_recovers_original_intent
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-b419c3787e7182a5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_foreign_mode_never_becomes_own_intent
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-8d205fac8af7cbd3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_own_entry_removal_retains_native_authority_and_completes
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-5f965845992ad24b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_final_entry_removal_and_recovery
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-005d7fe0fc45f024
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_explicit_empty_has_no_route
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.
+- id: registry-486bc45bd13f5e4e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_record_transaction.py::test_registry_empty_lookalikes_remain_refusals
+  motivating_defect: Registry transactions must preserve unrelated entries and modes, prove exact authenticated
+    ownership, and recover structural and empty-registry transitions without admitting foreign writes.

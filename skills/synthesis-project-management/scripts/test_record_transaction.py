@@ -540,3 +540,388 @@ def test_bounded_cli_request_failures_preserve_all_records(world, edits, kind):
     )
     assert code == 1
     assert originals(world) == old
+
+# Shared-registry entry custody: real PM/native admission and Git fixtures.
+def registry_world(world):
+    from test_run_admission import git
+    index = world['repo'] / 'projects/index.yaml'
+    index.write_text('- id: alpha\n  status: active # own\n  note: "keep exact"\n- id: beta\n  status: paused # foreign\n')
+    git(world['repo'], 'add', 'projects/index.yaml')
+    git(world['repo'], 'commit', '-m', 'Fixture registry')
+    write_board(world, claims=f"{world['project']}/**, {index}")
+    return index
+
+
+def registry_patch(world, index, entry='alpha', fields=None, digest=None):
+    import hashlib
+    return context_edit.patch_registry(world['project'], entry, fields or {'status': 'completed'},
+        digest or hashlib.sha256(index.read_bytes()).hexdigest(), board=world['board'],
+        native_payload=world['actor']['native_payload'])
+
+
+def registry_gate(world):
+    from types import SimpleNamespace
+    import coordination
+    from test_run_admission import SEAT
+    return coordination.command_check_staged(SimpleNamespace(board=world['board'],
+        id=SEAT, repository=world['repo'], active_project_file=world['repo']/'absent-pointer',
+        override_reason=None, json=True))
+
+
+def test_registry_exact_entry_cas_and_staged_authorship(world):
+    from test_run_admission import git
+    index = registry_world(world); before = index.read_bytes()
+    result = registry_patch(world, index)
+    assert result['status'] == 'committed'
+    assert index.read_bytes() == before.replace(b'status: active', b'status: "completed"')
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 0
+    index.write_bytes(index.read_bytes().replace(b'status: paused', b'status: active'))
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 10
+
+
+@pytest.mark.parametrize('bad', ['stale', 'dirty', 'staged', 'foreign-seat', 'no-claim', 'symlink', 'missing-field', 'id', 'nested', 'alias', 'duplicate'])
+def test_registry_refusal_preserves_foreign_bytes(world, bad):
+    from test_run_admission import git
+    index = registry_world(world)
+    fields = {'status': 'completed'}; digest = None
+    if bad == 'stale': digest = '0' * 64
+    elif bad in {'dirty', 'staged'}:
+        index.write_bytes(index.read_bytes() + b'# unrelated dirty work\n')
+        if bad == 'staged': git(world['repo'], 'add', 'projects/index.yaml')
+    elif bad == 'foreign-seat': world['actor']['native_payload']['session_id'] = 'foreign'
+    elif bad == 'no-claim': write_board(world)
+    elif bad == 'symlink':
+        held = index.with_name('held.yaml');index.rename(held);index.symlink_to(held.name)
+    elif bad == 'missing-field': fields = {'missing': 'new'}
+    elif bad == 'id': fields = {'id': 'foreign'}
+    elif bad == 'nested': fields = {'status': {'unknown': 1}}
+    elif bad == 'alias': index.write_text('- id: alpha\n  status: &anchor active\n- id: beta\n  status: *anchor\n')
+    elif bad == 'duplicate': index.write_text('- id: alpha\n  status: active\n  status: paused\n')
+    before = index.read_bytes()
+    if bad == 'missing-field':
+        assert registry_patch(world, index, fields=fields)['status'] == 'committed'
+        assert index.read_bytes().split(b'- id: beta', 1)[1] == before.split(b'- id: beta', 1)[1]
+        return
+    with pytest.raises((context_edit.ContextEditError, rt.RecordTransactionError, ValueError)):
+        registry_patch(world, index, fields=fields, digest=digest)
+    assert index.read_bytes() == before
+
+
+def test_registry_raw_staged_bytes_cannot_borrow_a_claim(world):
+    from test_run_admission import git
+    index = registry_world(world)
+    index.write_bytes(index.read_bytes().replace(b'active', b'completed'))
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 10
+
+
+def test_registry_recovery_uses_original_intent_and_preserves_third_state(world, monkeypatch):
+    index = registry_world(world); before = index.read_bytes(); replace = rt.os.replace
+    def fail(src, dst):
+        if Path(dst) == index: raise OSError('retained registry interruption')
+        return replace(src, dst)
+    with monkeypatch.context() as patch:
+        patch.setattr(rt.os, 'replace', fail)
+        with pytest.raises(OSError): registry_patch(world, index)
+    assert index.read_bytes() == before
+    index.write_bytes(before + b'# foreign intervening edit\n')
+    with pytest.raises(rt.RecordTransactionError): recover(world)
+    assert index.read_bytes().endswith(b'# foreign intervening edit\n')
+
+
+def test_registry_interrupted_owner_recovers(world, monkeypatch):
+    index = registry_world(world); replace = rt.os.replace
+    def fail(src, dst):
+        if Path(dst) == index: raise OSError('retained registry interruption')
+        return replace(src, dst)
+    with monkeypatch.context() as patch:
+        patch.setattr(rt.os, 'replace', fail)
+        with pytest.raises(OSError): registry_patch(world, index)
+    assert recover(world)['status'] == 'committed'
+    assert '"completed"' in index.read_text()
+
+
+def test_registry_genuine_concurrent_disjoint_writers_retry_without_loss(world, tmp_path):
+    import hashlib
+    from test_run_admission import git
+    index = registry_world(world); digest = hashlib.sha256(index.read_bytes()).hexdigest()
+    payload = tmp_path/'native.json';payload.write_text(json.dumps(world['actor']['native_payload']))
+    commands = []
+    for entry in ['alpha', 'beta']:
+        fields = tmp_path/(entry+'.json');fields.write_text(json.dumps({'status': 'completed'}))
+        commands.append([sys.executable, '-B', str(Path(context_edit.__file__)), 'registry-patch',
+            '--project', str(world['project']), '--entry', entry, '--fields', str(fields),
+            '--expected-sha256', digest, '--board', str(world['board']), '--native-payload', str(payload)])
+    workers = [subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for cmd in commands]
+    results = []
+    try:
+        for i, worker in enumerate(workers):
+            out, err = worker.communicate(timeout=30)
+            (tmp_path/f'worker-{i}.log').write_text(out+err)
+            results.append(worker.returncode)
+    finally:
+        for worker in workers:
+            if worker.poll() is None: worker.terminate()
+            worker.wait(timeout=5)
+    assert sorted(results) == [0, 1]
+    winner = results.index(0); loser = results.index(1)
+    assert index.read_text().count('"completed"') == 1
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 0
+    git(world['repo'], 'commit', '-m', 'Fixture first entry')
+    registry_patch(world, index, entry=['alpha', 'beta'][loser])
+    assert index.read_text().count('"completed"') == 2
+    assert '# own' in index.read_text() and '# foreign' in index.read_text()
+    assert winner != loser
+
+
+@pytest.mark.parametrize('damage', ['mode', 'foreign-owner', 'manifest-shape', 'history-digest'])
+def test_registry_commit_refuses_changed_intent_custody(world, damage):
+    import hashlib
+    from test_run_admission import git
+    index = registry_world(world); result = registry_patch(world, index)
+    journal = Path(result['journal']); manifest_path = journal / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    history_path = world['project']/rt.STORE/'history.json'
+    history = json.loads(history_path.read_text())
+    if damage == 'mode':
+        os.chmod(index, 0o755)
+    elif damage == 'foreign-owner':
+        manifest['authority']['session_uuid'] = '01990000-0000-7000-8000-000000000033'
+    elif damage == 'manifest-shape':
+        manifest['files'] = [17]
+    else:
+        history['completed'][result['transaction']] = '0'*64
+    if damage in {'foreign-owner', 'manifest-shape'}:
+        raw = rt._json(manifest);manifest_path.write_bytes(raw)
+        history['completed'][result['transaction']] = hashlib.sha256(raw).hexdigest()
+    history_path.write_bytes(rt._json(history))
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 10
+
+
+def test_registry_commit_dependency_is_receipt_bound():
+    import importlib.util
+    source = Path(__file__).resolve().parents[2]/'synthesis-onboarding/scripts/release_runtime.py'
+    spec = importlib.util.spec_from_file_location('registry_release_runtime', source)
+    module = importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    dependent = {name: deps for name, deps in module.ENTRYPOINT_DEPENDENCIES.items()
+        if 'synthesis-project-management/scripts/coordination.py' in {name, *deps}}
+    assert dependent
+    assert all('synthesis-context-lifecycle/scripts/record_transaction.py' in deps for deps in dependent.values())
+
+
+def test_registry_git_preimage_read_is_physically_bounded(world):
+    from test_run_admission import git
+    index = registry_world(world); small = index.read_bytes()
+    index.write_bytes(small + b'#' + b'x' * (4*1024*1024) + b'\n')
+    git(world['repo'], 'add', 'projects/index.yaml')
+    git(world['repo'], 'commit', '-m', 'Fixture large predecessor')
+    index.write_bytes(small)
+    with pytest.raises(rt.RecordTransactionError, match='bounded query'):
+        registry_patch(world, index)
+    assert index.read_bytes() == small
+
+
+@pytest.mark.parametrize('operation', ['new-entry', 'new-field', 'nested', 'multiline', 'remove'])
+def test_registry_structural_operations_preserve_other_entry_and_gate(world, operation):
+    import hashlib
+    from test_run_admission import git
+    index = registry_world(world); before = index.read_bytes()
+    foreign = before.split(b'- id: beta', 1)[1]
+    if operation == 'remove':
+        old = index.read_text(); new = old.replace('- id: beta\n  status: paused # foreign\n', '')
+        result = context_edit.apply_transaction(world['project'], [{'file':'@registry',
+            'expected_sha256':hashlib.sha256(before).hexdigest(),
+            'edits':[{'op':'replace','anchor':old,'replacement':new}]}],
+            board=world['board'], native_payload=world['actor']['native_payload'])
+        assert index.read_text() == new
+    else:
+        entry = 'gamma' if operation == 'new-entry' else 'alpha'
+        fields = {'status':'active'} if operation == 'new-entry' else {
+            'new-field': {'last_session':'2026-10-03'},
+            'nested': {'repositories': {'one': ['a', 'b']}},
+            'multiline': {'note':'first\nsecond'},
+        }[operation]
+        result = registry_patch(world,index,entry=entry,fields=fields)
+        assert index.read_bytes().split(b'- id: beta',1)[1].startswith(foreign)
+    assert result['status'] == 'committed'
+    git(world['repo'],'add','projects/index.yaml')
+    assert registry_gate(world) == 0
+
+
+def registry_absent_world(world):
+    from test_run_admission import git
+    index = registry_world(world)
+    index.rename(index.with_suffix('.retained'))
+    git(world['repo'],'rm','--cached','projects/index.yaml')
+    git(world['repo'],'commit','-m','Fixture absent registry')
+    return index
+
+
+def registry_create(world, text='- id: alpha\n  status: active\n'):
+    return context_edit.apply_transaction(world['project'],
+        [{'file':'@registry','create':{'text':text,'mode':0o644}}],
+        board=world['board'],native_payload=world['actor']['native_payload'])
+
+
+def test_registry_bootstrap_exact_native_admission_and_staged_gate(world):
+    from test_run_admission import git
+    index = registry_absent_world(world)
+    assert registry_create(world)['status'] == 'committed'
+    git(world['repo'],'add','projects/index.yaml')
+    assert registry_gate(world) == 0
+    assert index.stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.parametrize('bad', ['claim','native','tracked-empty','working-file','wrong-entry','duplicate','symlink','invalid-consumer'])
+def test_registry_bootstrap_refuses_without_effect(world, bad):
+    from test_run_admission import git
+    index = registry_absent_world(world); text = '- id: alpha\n  status: active\n'
+    if bad == 'claim': write_board(world)
+    elif bad == 'native': world['actor']['native_payload']['session_id'] = 'foreign'
+    elif bad == 'tracked-empty':
+        index.write_text('');git(world['repo'],'add','projects/index.yaml');git(world['repo'],'commit','-m','Fixture empty tracked registry')
+        index.rename(index.with_suffix('.retained-empty'))
+    elif bad == 'working-file': index.write_text('foreign\n')
+    elif bad == 'wrong-entry': text = '- id: foreign\n  status: active\n'
+    elif bad == 'duplicate': text += '- id: alpha\n  status: paused\n'
+    elif bad == 'symlink': index.symlink_to(index.with_suffix('.retained'))
+    else: text = '[{id: alpha, status: active}]\n'
+    before = index.read_bytes() if index.exists() else None
+    with pytest.raises((rt.RecordTransactionError, context_edit.ContextEditError, ValueError)):
+        registry_create(world,text)
+    assert (index.read_bytes() if index.exists() else None) == before
+    assert not (world['project']/rt.STORE).exists()
+
+
+def test_registry_bootstrap_interruption_and_foreign_create_preserved(world, monkeypatch):
+    index = registry_absent_world(world)
+    link = rt.os.link
+    def foreign_link(src,dst,**kwargs):
+        if Path(dst) == index:
+            index.write_text('foreign intervening file\n')
+        return link(src,dst,**kwargs)
+    with monkeypatch.context() as patch:
+        patch.setattr(rt.os,'link',foreign_link)
+        with pytest.raises(FileExistsError): registry_create(world)
+    assert index.read_text() == 'foreign intervening file\n'
+    with pytest.raises(rt.RecordTransactionError):
+        context_edit.recover_transaction(world['project'],board=world['board'],native_payload=world['actor']['native_payload'])
+    assert index.read_text() == 'foreign intervening file\n'
+
+
+def test_registry_bootstrap_interruption_recovers_original_intent(world, monkeypatch):
+    from test_run_admission import git
+    index = registry_absent_world(world)
+    link = rt.os.link
+    def interrupt(src,dst,**kwargs):
+        if Path(dst) == index: raise OSError('retained bootstrap interruption')
+        return link(src,dst,**kwargs)
+    with monkeypatch.context() as patch:
+        patch.setattr(rt.os,'link',interrupt)
+        with pytest.raises(OSError): registry_create(world)
+    assert not index.exists()
+    assert context_edit.recover_transaction(world['project'],board=world['board'],native_payload=world['actor']['native_payload'])['status'] == 'committed'
+    git(world['repo'],'add','projects/index.yaml');assert registry_gate(world)==0
+
+
+@pytest.mark.parametrize('staged',[False,True])
+@pytest.mark.parametrize('filemode',[False,True])
+def test_registry_foreign_mode_never_becomes_own_intent(world, staged, filemode):
+    from test_run_admission import git
+    index = registry_world(world);before=index.read_bytes()
+    git(world['repo'],'config','core.filemode',str(filemode).lower())
+    os.chmod(index,0o755)
+    if staged: git(world['repo'],'update-index','--chmod=+x','projects/index.yaml')
+    with pytest.raises(rt.RecordTransactionError): registry_patch(world,index)
+    assert index.read_bytes()==before and index.stat().st_mode&0o777==0o755
+
+
+@pytest.mark.parametrize('interrupted',[False,True])
+def test_registry_own_entry_removal_retains_native_authority_and_completes(world, monkeypatch, interrupted):
+    import hashlib
+    from test_run_admission import git
+    index=registry_world(world);old=index.read_text()
+    new=old.replace('- id: alpha\n  status: active # own\n  note: "keep exact"\n','')
+    request=[{'file':'@registry','expected_sha256':hashlib.sha256(index.read_bytes()).hexdigest(),
+        'edits':[{'op':'replace','anchor':old,'replacement':new}]}]
+    if interrupted:
+        finish=rt._finish
+        def pause(*args,**kwargs): raise OSError('retained post-removal interruption')
+        with monkeypatch.context() as patch:
+            patch.setattr(rt,'_finish',pause)
+            with pytest.raises(OSError):
+                context_edit.apply_transaction(world['project'],request,board=world['board'],native_payload=world['actor']['native_payload'])
+        assert index.read_text()==new
+        result=context_edit.recover_transaction(world['project'],board=world['board'],native_payload=world['actor']['native_payload'])
+        assert rt._finish is finish
+    else:
+        result=context_edit.apply_transaction(world['project'],request,board=world['board'],native_payload=world['actor']['native_payload'])
+    assert result['status']=='committed' and index.read_text()==new
+    assert not (world['project']/rt.STORE/'active').exists()
+    git(world['repo'],'add','projects/index.yaml');assert registry_gate(world)==0
+
+
+@pytest.mark.parametrize('wrapped', [False, True])
+@pytest.mark.parametrize('interrupted', [False, True])
+def test_registry_final_entry_removal_and_recovery(world, monkeypatch, wrapped, interrupted):
+    import hashlib
+    from test_run_admission import git
+    from project_recipient import registry_entries
+    index = registry_world(world)
+    old = '- id: alpha\n  status: active\n'
+    if wrapped:
+        old = 'schema: 1\nprojects:\n  - id: alpha\n    status: active\nother: retained\n'
+    index.write_text(old)
+    git(world['repo'], 'add', 'projects/index.yaml')
+    git(world['repo'], 'commit', '-m', 'Fixture single entry')
+    new = 'schema: 1\nprojects: []\nother: retained\n' if wrapped else '[]\n'
+    request = [{'file': '@registry', 'expected_sha256': hashlib.sha256(index.read_bytes()).hexdigest(),
+                'edits': [{'op': 'replace', 'anchor': old, 'replacement': new}]}]
+    if interrupted:
+        with monkeypatch.context() as patch:
+            def pause(*args, **kwargs):
+                raise OSError('retained final-entry interruption')
+            patch.setattr(rt, '_finish', pause)
+            with pytest.raises(OSError):
+                apply(world, request)
+        assert index.read_text() == new
+        result = recover(world)
+    else:
+        result = apply(world, request)
+    assert result['status'] == 'committed'
+    assert index.read_text() == new and registry_entries(new) == {}
+    assert not (world['project'] / rt.STORE / 'active').exists()
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 0
+    from project_recipient import project_route
+    with pytest.raises(ValueError, match='missing from the registry'):
+        project_route(index, 'alpha', board=world['board'])
+    with pytest.raises(Exception, match='registered|registry'):
+        apply(world, [{'file': 'plan.md', 'edits': [{'op': 'replace', 'anchor': 'Human-owned prose.', 'replacement': 'Must not apply.'}]}])
+    git(world['repo'], 'commit', '-m', 'Fixture empty registry')
+    restored = registry_patch(world, index, fields={'status': 'active'})
+    assert restored['status'] == 'committed'
+    assert registry_entries(index.read_text())['alpha']['status'] == 'active'
+    assert project_route(index, 'alpha', board=world['board'])['resolved_project'] == 'alpha'
+    git(world['repo'], 'add', 'projects/index.yaml')
+    assert registry_gate(world) == 0
+
+
+@pytest.mark.parametrize('text', ['[]\n', '# explicit empty\n[] # retained\n',
+                                  'projects: []\n', 'schema: 1\nprojects: [] # empty\nother: retained\n'])
+def test_registry_explicit_empty_has_no_route(text):
+    from project_recipient import registry_entries
+    assert registry_entries(text) == {}
+
+
+@pytest.mark.parametrize('text', ['', '# missing\n', 'projects:\n', 'projects: null\n',
+                                  '[]\n- id: hidden\n', 'projects: []\n  - id: hidden\n',
+                                  'projects: []\nprojects: []\n', 'projects: [] trailing\n'])
+def test_registry_empty_lookalikes_remain_refusals(text):
+    from project_recipient import registry_entries
+    with pytest.raises(ValueError):
+        registry_entries(text)

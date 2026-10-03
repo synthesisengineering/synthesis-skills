@@ -560,3 +560,46 @@ staged index; do not include another session's paths. Never bypass hooks.
 Use synthesis-repo-guard for local receipts and pending publication;
 synthesis-agent-conformance `continuity --readiness local|remote` for the two
 gates; and context_doctor with the matching readiness mode.
+
+
+## Shared registry entry edits
+
+Use `context_edit.py registry-patch` with the exact reviewed SHA-256, entry ID,
+a JSON fields file, native payload and board. It supports adding an entry or
+field and literal scalar, nested, list and multiline JSON values. Unchanged
+fields and other entries retain their original bytes. A first write must match
+both HEAD and index bytes and executable modes; foreign work is refused.
+
+For explicit entry removal, whole-entry replacement or an exact structural
+rewrite, use the existing `apply-transaction` owner with a `@registry` target,
+`expected_sha256`, and an exact replacement edit. Removing the current active
+project row does not revoke transaction admission: identity remains the exact
+active native board seat, physical repository and branch, and exact claims at
+every boundary. Ordinary non-registry admission still requires registration.
+
+For first registry creation, use one `@registry` request with
+`create: {"text": "- id: alpha\n  status: active\n", "mode": 420}`.
+The exact existing project directory, active native seat, registered physical
+worktree/branch, registry claim and transaction-journal claims are prerequisites.
+The creation text is reviewed intent, never proof of identity. Successful
+bounded Git HEAD-tree and index queries must both prove the path absent; an
+empty tracked file or a failed query is not absence. Creation is atomic and
+cannot overwrite an intervening file. The new registry must include the already
+authenticated project and satisfy the existing registry consumer grammar.
+
+The registry lock precedes the project transaction lock. Concurrent writers
+with one reviewed preimage cannot absorb each other's edits. Complete the first
+owner's ordinary commit, re-read the resulting registry and retry with its new
+hash. Incomplete transactions retain their journal and are reconciled only by
+`recover-transaction` under fresh original native and claim admission.
+
+The ordinary staged gate verifies the same seat's completed intent against
+staged bytes, working inode/mode, and original HEAD bytes/mode (or verified
+absence for bootstrap). Raw writes and arbitrary parent traversal cannot
+establish this custody. This proves the tested cooperative edit and commit
+boundary; historical shell-window authorship and arbitrary-file attribution
+remain separate evidence obligations.
+
+### Removing the final registry entry
+
+Use the existing exact-CAS registry transaction to replace the final project list with an explicit empty sequence: `[]` for a bare registry, or `projects: []` while retaining other top-level sections. Blank content, an omitted list or `projects: null` remains invalid. Registry-specific native authority remains bound to the original seat, physical repository, exact claims and transaction intent through removal, interrupted recovery and staged verification; an empty registry grants no project route or ordinary project admission.

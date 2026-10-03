@@ -344,7 +344,7 @@ def _authority(project, board, native_payload, paths, expected=None):
 
     try:
         return dict(
-            run_admission.admit_paths(
+            (run_admission.admit_registry_paths if project.parent / "index.yaml" in paths else run_admission.admit_paths)(
                 Path(board),
                 project.name,
                 project,
@@ -357,6 +357,114 @@ def _authority(project, board, native_payload, paths, expected=None):
         raise RecordTransactionError(
             f"fresh exact record authority refused: {exc}"
         ) from exc
+
+
+def _target(project, name):
+    """One explicit registry target; arbitrary parent traversal remains refused."""
+    if name == "@registry":
+        if project.parent.name != "projects":
+            raise RecordTransactionError("registry target needs an exact project directory")
+        return _path(project.parent / "index.yaml", project.parent)
+    return _path(project / name, project)
+
+
+def _target_name(project, path):
+    return "@registry" if path == project.parent / "index.yaml" else str(path.relative_to(project))
+
+
+def registry_authorship(project, *, session_uuid, repository, branch, board, staged, head, staged_mode, head_mode=None):
+    """Verify staged registry bytes against this seat's retained exact intent.
+
+    This evidence never grants claims; the caller separately admits the active
+    seat, physical repository and staged paths through the ordinary gate.
+    """
+    project = _path(project)
+    if project.parent != Path(repository) / "projects":
+        raise RecordTransactionError("registry authorship needs the exact owning project")
+    with _lock(project.parent), managed(project):
+        current, current_meta = _snapshot(_target(project, "@registry"))
+        if current != staged:
+            raise RecordTransactionError("registry working bytes differ from staged intent")
+        history = _history(project / STORE)
+        matches, total = [], 0
+        for ident, digest in history["completed"].items():
+            path = project / STORE / "completed" / ident / "manifest.json"
+            manifest, raw = _read_json(path)
+            total += len(raw)
+            if total > MAX_TOTAL_BYTES:
+                raise RecordTransactionError("registry authorship history exceeds bounded read")
+            if _digest(raw) != digest:
+                raise RecordTransactionError("registry transaction history digest differs")
+            files = manifest.get("files")
+            if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES or any(not isinstance(item, dict) for item in files):
+                raise RecordTransactionError("invalid registry history target list")
+            for item in files:
+                after = item.get("after")
+                if not isinstance(after, dict):
+                    raise RecordTransactionError("invalid registry history target identity")
+                if item.get("path") != "@registry" or after.get("sha256") != _digest(staged):
+                    continue
+                _manifest(path.parent, project, completed=True)
+                if current_meta != after or staged_mode != ("100755" if after["mode"] & 0o111 else "100644"):
+                    raise RecordTransactionError("registry staged or working mode/identity differs from intent")
+                authority = manifest.get("authority", {})
+                before = item.get("before")
+                preimage_matches = (before is None and head is None and head_mode is None) or (
+                    isinstance(before, dict) and head is not None and before.get("sha256") == _digest(head)
+                    and head_mode == ("100755" if before["mode"] & 0o111 else "100644"))
+                if (preimage_matches
+                    and authority.get("session_uuid") == session_uuid
+                    and authority.get("repository") == str(repository)
+                    and authority.get("branch") == branch
+                    and authority.get("board") == str(Path(board).absolute())
+                    and manifest.get("project") == str(project)):
+                    matches.append(ident)
+        if len(matches) != 1:
+            raise RecordTransactionError("staged registry lacks one exact clean-preimage intent by this seat")
+        return matches[0]
+
+
+def registry_git_state(project):
+    """Bounded positive Git queries: absent is an empty successful tree lookup."""
+    import subprocess
+    pm = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+    if str(pm) not in sys.path:
+        sys.path.insert(0, str(pm))
+    import native_git
+    repo = project.parent.parent
+    rows = []
+    for query in (("ls-tree", "HEAD", "--", "projects/index.yaml"),
+                  ("ls-files", "--stage", "--", "projects/index.yaml")):
+        try:
+            result = native_git.run(["git", *query], cwd=repo, timeout=10)
+        except subprocess.SubprocessError as exc:
+            raise RecordTransactionError("registry Git preimage exceeds bounded query") from exc
+        if result.returncode:
+            raise RecordTransactionError("registry Git membership query failed")
+        lines = result.stdout.decode("utf-8", errors="strict").splitlines()
+        if len(lines) > 1 or (lines and (lines[0].split("\t")[-1] != "projects/index.yaml"
+                or lines[0].split()[0] not in ("100644", "100755"))):
+            raise RecordTransactionError("registry Git membership or mode is ambiguous")
+        if lines and query[0] == "ls-files" and lines[0].split()[2] != "0":
+            raise RecordTransactionError("registry index is unmerged")
+        rows.append(lines[0].split()[0] if lines else None)
+    return tuple(rows)
+
+
+def _registry_clean(project, data, mode):
+    # First-write custody binds bytes AND executable mode, never a shell window.
+    import subprocess
+    expected_mode = "100755" if mode & 0o111 else "100644"
+    if registry_git_state(project) != (expected_mode, expected_mode):
+        raise RecordTransactionError("registry preimage mode differs from HEAD or index; preserve foreign work")
+    import native_git
+    for spec in ("HEAD:projects/index.yaml", ":projects/index.yaml"):
+        try:
+            result = native_git.run(["git", "show", spec], cwd=project.parent.parent, timeout=10)
+        except subprocess.SubprocessError as exc:
+            raise RecordTransactionError("registry Git preimage exceeds bounded query") from exc
+        if result.returncode or result.stdout != data:
+            raise RecordTransactionError("registry preimage is not clean in HEAD and index; preserve foreign work")
 
 
 def _matches(path, expected):
@@ -392,7 +500,7 @@ def _settle_creation(path, item):
         raise RecordTransactionError("created target changed during recovery")
 
 
-def _manifest(active, project):
+def _manifest(active, project, *, completed=False):
     manifest, raw = _read_json(active / "manifest.json")
     if (
         set(manifest)
@@ -441,13 +549,13 @@ def _manifest(active, project):
             raise RecordTransactionError("invalid target record")
         if not isinstance(item["path"], str):
             raise RecordTransactionError("target path must be a string")
-        path = _path(project / item["path"], project)
+        path = _target(project, item["path"])
         if (
-            item["path"] != str(path.relative_to(project))
-            or STORE in path.relative_to(project).parts
+            item["path"] != _target_name(project, path)
+            or STORE in Path(item["path"]).parts
         ):
             raise RecordTransactionError("invalid target relative path")
-        expected_stage = active / (str(index) + ".staged")
+        expected_stage = (project / STORE / "active" if completed else active) / (str(index) + ".staged")
         if item["stage"] != str(expected_stage):
             raise RecordTransactionError("invalid staged target path")
         if str(path) in paths:
@@ -554,7 +662,7 @@ def _finish(project, active, manifest, digest, history):
     _project_identity(project, manifest)
     _check_custody(project, active, manifest)
     for item in manifest["files"]:
-        if not _matches(project / item["path"], item["after"]):
+        if not _matches(_target(project, item["path"]), item["after"]):
             raise RecordTransactionError(
                 "final transaction readback differs; retained for reconciliation"
             )
@@ -583,7 +691,7 @@ def _finish(project, active, manifest, digest, history):
 def _commit(project, active, manifest, digest, history, board, payload):
     _project_identity(project, manifest)
     _check_custody(project, active, manifest)
-    paths = [project / item["path"] for item in manifest["files"]]
+    paths = [_target(project, item["path"]) for item in manifest["files"]]
     expected = manifest["authority"]["claim_hash"]
     proof = _authority(project, board, payload, [*paths, project / STORE], expected)
     if any(
@@ -652,7 +760,7 @@ def _commit(project, active, manifest, digest, history, board, payload):
 def recover(project, *, board, native_payload):
     """Reconcile the original committed intent; never replay an arbitrary file."""
     project = _path(project)
-    with _lock(project, exclusive=True):
+    with _lock(project.parent if project.parent.name == "projects" else project, exclusive=True), _lock(project, exclusive=True):
         store = _path(project / STORE, project)
         active = _path(store / "active", project)
         if not active.is_dir():
@@ -690,7 +798,7 @@ def apply(
         raise RecordTransactionError("invalid caller intent identity")
     if not isinstance(requests, list) or not 1 <= len(requests) <= MAX_FILES:
         raise RecordTransactionError("files must be a nonempty bounded array")
-    with _lock(project, exclusive=True):
+    with _lock(project.parent if any(isinstance(q, dict) and q.get("file") == "@registry" for q in requests) else project, exclusive=True), _lock(project, exclusive=True):
         _pending(project)
         prepared = []
         seen = set()
@@ -719,11 +827,13 @@ def apply(
                 or Path(request["file"]).is_absolute()
             ):
                 raise RecordTransactionError("target must be a project-relative file")
-            path = _path(project / request["file"], project)
-            if STORE in path.relative_to(project).parts or str(path) in seen:
+            path = _target(project, request["file"])
+            if STORE in Path(request["file"]).parts or str(path) in seen:
                 raise RecordTransactionError("duplicate/reserved transaction target")
             seen.add(str(path))
             if "create" in request:
+                if request["file"] == "@registry" and (len(requests) != 1 or registry_git_state(project) != (None, None)):
+                    raise RecordTransactionError("registry bootstrap requires one absent HEAD/index target")
                 if set(request) != {"file", "create"}:
                     raise RecordTransactionError("creation cannot carry edit overrides")
                 create = request["create"]
@@ -743,10 +853,18 @@ def apply(
                     )
                 before = None
                 output = create["text"].encode("utf-8")
+                if request["file"] == "@registry":
+                    context_edit._registry_nodes(create["text"])
+                    if project.name not in context_edit._registry_nodes(create["text"])[1]:
+                        raise RecordTransactionError("bootstrap must register the already authenticated owning project")
                 note = "explicit additive record creation"
                 lines = context_edit._check_budget(create["text"], None, path)
             else:
                 data, before = _snapshot(path)
+                if request["file"] == "@registry":
+                    if "expected_sha256" not in request:
+                        raise RecordTransactionError("registry requires an exact reviewed preimage")
+                    _registry_clean(project, data, before["mode"])
                 expected_sha256 = request.get("expected_sha256")
                 if "expected_sha256" in request and (
                     not isinstance(expected_sha256, str)
@@ -783,6 +901,13 @@ def apply(
                 lines = context_edit._check_budget(edited, limit, path)
                 note = context_edit._coherence_gate(path, original, edited, *flags)
                 output = edited.encode("utf-8")
+            if request["file"] == "@registry":
+                context_edit._registry_nodes(output.decode("utf-8"))
+                pm = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+                if str(pm) not in sys.path:
+                    sys.path.insert(0, str(pm))
+                from project_recipient import registry_entries
+                registry_entries(output.decode("utf-8"))
             total += len(output)
             if len(output) > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
                 raise RecordTransactionError("transaction byte bound exceeded")
@@ -902,7 +1027,7 @@ def apply(
                 raise RecordTransactionError("transaction requires one filesystem")
             files.append(
                 {
-                    "path": str(path.relative_to(project)),
+                    "path": _target_name(project, path),
                     "before": before,
                     "after": after,
                     "stage": str(store / "active" / stage.name),
