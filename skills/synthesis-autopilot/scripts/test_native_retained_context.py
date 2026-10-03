@@ -498,7 +498,7 @@ def test_v12_binding_needs_explicit_reconciliation(tmp_path, monkeypatch):
     fresh, fresh_cursor = native.enroll_source(
         path, client="codex", expected_root_session_id=PRODUCER["thread_id"]
     )
-    assert fresh["producer"]["adapter_version"] == "codex-dialect-v13"
+    assert fresh["producer"]["adapter_version"] == "codex-dialect-v14"
     assert fresh["generation"] != binding["generation"] and fresh_cursor["offset"] == 0
     assert (binding, cursor) == original and fresh[
         "authentication"

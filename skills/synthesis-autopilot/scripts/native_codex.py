@@ -17,7 +17,7 @@ import math
 import re
 
 
-ADAPTER_VERSION = "codex-dialect-v13"
+ADAPTER_VERSION = "codex-dialect-v14"
 SUPPORTED_SCHEMAS = (
     "session_meta",
     "turn_context",
@@ -594,6 +594,10 @@ def _completed_item(value, producer):
                     _body(result[field])
         else:
             raise DialectError("unsupported native extension")
+    elif kind == "FunctionCallOutput":
+        _closed(value, {"type", "thread_id", "turn_id", "item", "started_at_ms", "completed_at_ms"})
+        _unlinked_output(item, completed=True)
+        status = "unknown"
     elif kind == "UserMessage":
         _closed(
             value,
@@ -814,6 +818,14 @@ def _guardian_item(item):
     _object(item, "guardian history item")
     kind = item.get("type")
     common = {"type", "id", "internal_chat_message_metadata_passthrough"}
+    if kind == "function_call_output" and "call_id" not in item:
+        # The same closed observed unlinked output may be embedded in history.
+        # Validate it without creating a live result, pairing, usage or authority.
+        _closed(item, common | {"name", "namespace", "output", "guardian_metadata"})
+        value = {key: value for key, value in item.items() if key != "guardian_metadata"}
+        _unlinked_output(value)
+        _unlinked_output_metadata(value, item["guardian_metadata"])
+        return
     if kind == "message":
         _retained_fields(
             item, common | {"role", "content"}, {"guardian_metadata", "phase"}
@@ -1317,6 +1329,7 @@ def _world_state(value):
             {"environments"},
             {"agents_md"},
             {"host_skills"},
+            {"environments", "host_skills"},
             {"agents_md", "environments", "permissions"},
             {"environments", "permissions"},
             {"environments", "host_skills", "permissions"},
@@ -1530,6 +1543,49 @@ def _context_observation(row, producer):
     }
 
 
+def _unlinked_output(value, *, completed=False):
+    fields = {"type", "id", "name", "namespace", "output"}
+    if not completed:
+        fields.add("internal_chat_message_metadata_passthrough")
+    _closed(value, fields)
+    if (value["type"] != ("FunctionCallOutput" if completed else "function_call_output")
+            or value["name"] != "send_message_to_thread" or value["namespace"] != "codex_app"):
+        raise DialectError("unsupported unlinked output grammar")
+    ident = _text(value["id"], "unlinked output identity")
+    if not ident.startswith("fco_"):
+        raise DialectError("invalid unlinked output identity")
+    _body(value["output"])
+    if not completed:
+        meta = value["internal_chat_message_metadata_passthrough"]
+        _closed(meta, {"turn_id", "create_time"})
+        _text(meta["turn_id"], "unlinked output turn")
+        stamp = meta["create_time"]
+        if type(stamp) not in (int, float) or not math.isfinite(stamp) or stamp < 0:
+            raise DialectError("invalid unlinked output creation time")
+    return {"output_digest": _digest(value["output"]), "pairing": "UNKNOWN",
+            "interpretation": "inert_unlinked_native_output", "grants_authority": False}
+
+
+def _unlinked_output_record(row):
+    _closed(row, {"type", "timestamp", "ordinal", "payload", "metadata"})
+    _context_envelope({k:v for k,v in row.items() if k != "metadata"})
+    data = _unlinked_output(row["payload"])
+    _unlinked_output_metadata(row["payload"], row["metadata"])
+    return data
+
+
+def _unlinked_output_metadata(value, meta):
+    _closed(meta, {"client_authored", "fallback_token_limit_override", "user_input_order", "sender_user_messages"})
+    _flag(meta["client_authored"])
+    for key in ("fallback_token_limit_override", "user_input_order"):
+        _integer(meta[key], key)
+    sender = meta["sender_user_messages"]
+    _string_fields(sender, {"receiver_turn_id", "receiver_message_id", "text"})
+    if (sender["receiver_message_id"] != value["id"]
+            or sender["receiver_turn_id"] != value["internal_chat_message_metadata_passthrough"]["turn_id"]):
+        raise DialectError("unlinked output metadata identity mismatch")
+
+
 def decode_record(row, producer, *, mode="synthetic", source_locator=None):
     _bounded(row)
     _object(row, "record")
@@ -1699,6 +1755,12 @@ def decode_record(row, producer, *, mode="synthetic", source_locator=None):
             "function_call_output",
             "custom_tool_call_output",
         }:
+            if subtype == "function_call_output" and (
+                "call_id" not in value
+                or (isinstance(row.get("metadata"), dict)
+                    and "sender_user_messages" in row["metadata"])
+            ):
+                return fact("tool.result", "unknown", _unlinked_output_record(row))
             call = _text(value.get("call_id"), "call identity")
             if subtype.endswith("_output"):
                 if "output" not in value:

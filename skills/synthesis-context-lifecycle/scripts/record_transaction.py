@@ -327,7 +327,102 @@ def _history(store):
     return data
 
 
-def _authority(project, board, native_payload, paths, expected=None):
+def memory_repository(root):
+    """Bind a physical private repository to its configured Git origin identity.
+
+    This reads local metadata only. It does not attest hosting ACLs or contact a
+    remote. Caller family/workspace labels cannot redefine this source identity.
+    """
+    local = Path(__file__).resolve().parent
+    flat = (local / "coordination_process.py").is_file()
+    pm = local if flat else local.parents[1] / "synthesis-project-management/scripts"
+    if str(pm) not in sys.path:
+        sys.path.insert(0, str(pm))
+    root = _path(root)
+    rituals = local if flat else local.parents[1] / "synthesis-daily-rituals/scripts"
+    if str(rituals) not in sys.path:
+        sys.path.insert(0, str(rituals))
+    for name, directory in (("repo_state", rituals), ("credential_paths", rituals),
+                            ("ritual_workers", rituals), ("coordination", pm),
+                            ("team_contract", pm), ("coordination_process", pm)):
+        module = sys.modules.get(name)
+        if module is not None and Path(getattr(module, "__file__", "")).resolve() != directory / (name + ".py"):
+            raise RecordTransactionError("memory repository owner belongs to another source generation")
+    import repo_state
+    import team_contract
+    import coordination
+    try:
+        repository, branch = coordination._repository_state(root)
+        index = repository / "projects/index.yaml"
+        team = team_contract.registry_binding(index) if index.exists() else None
+        approved = repo_state.repository_identity(repository, enrolled=team)
+        memory = approved["memory"]
+        family, workspace, source = (memory["family"], memory["workspace"], memory["source"])
+        binding = {"repository": str(repository), "branch": branch,
+                   "approved_source": approved, "family": family,
+                   "workspace": workspace, "source": source}
+        if team is not None:
+            if family != "workspace":
+                raise ValueError("personal repository cannot be an enrolled engagement deletion unit")
+            if team["repository"]["audience"] != "private":
+                raise ValueError("shared enrolled source cannot become a private memory destination")
+            if workspace != team["document"]["deletion_unit"] or source != "knowledge":
+                raise ValueError("configured memory scope differs from enrolled deletion unit")
+            binding["team_sha256"] = team["sha256"]
+    except (OSError, RuntimeError, ValueError, KeyError):
+        # Configuration/remote parsers may include original input in exceptions.
+        # Never persist or print those inputs through the transaction error path.
+        raise RecordTransactionError("approved physical memory repository identity unavailable or changed") from None
+    return binding
+
+
+def memory_record_home(root):
+    """Recognize canonical homes without converting them into PM projects."""
+    root = _path(root)
+    binding = memory_repository(root)
+    repository = Path(binding["repository"])
+    if root.parent == repository / "projects" and binding["source"] == "knowledge":
+        home = "project"
+    elif root == repository / "lessons" and binding["source"] == "knowledge":
+        home = "lessons"
+    elif (root.parent == repository and binding["source"] == "private-skills"
+          and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,100}", root.name)
+          and (root / "SKILL.md").is_file()):
+        _snapshot(root / "SKILL.md")
+        home = "private-skill"
+    else:
+        raise RecordTransactionError("destination is not an existing canonical project, lessons root or private skill")
+    return {**binding, "home": home, "record_root": str(root)}
+
+
+def _canonical_admission_project(root, board, native_payload):
+    """Resolve one existing registered project from the same live native seat.
+
+    Canonical lessons/skills do not become registered projects. The ordinary
+    PM owner still admits that exact project and every canonical/journal path.
+    """
+    import run_admission
+    home = memory_record_home(root)
+    if home["home"] == "project":
+        return root, home
+    binding = run_admission.native_binding(Path(board), native_payload)
+    workspaces = binding["workspaces"]
+    if len(workspaces) > 64:
+        raise RecordTransactionError("canonical owner workspace search exceeds bound")
+    candidates = []
+    for workspace in workspaces:
+        parts = workspace.rsplit(" @ ", 1)
+        if len(parts) != 2 or not Path(parts[0]).is_absolute():
+            raise RecordTransactionError("canonical owner workspace registration is invalid")
+        candidate = _path(Path(parts[0]) / "projects" / binding["project_id"])
+        if candidate.is_dir():
+            candidates.append(candidate)
+    if len(set(candidates)) != 1:
+        raise RecordTransactionError("canonical record needs one exact registered owning project")
+    return candidates[0], home
+
+
+def _authority(project, board, native_payload, paths, expected=None, *, memory_home=None):
     if not isinstance(native_payload, dict):
         raise RecordTransactionError("native payload must be an object")
     pm_scripts = (
@@ -343,20 +438,159 @@ def _authority(project, board, native_payload, paths, expected=None):
         ) from exc
 
     try:
-        return dict(
-            run_admission.admit_paths(
+        if "meeting_prep_share" in native_payload:
+            if memory_home is not None:
+                raise RecordTransactionError("shared prep grant cannot authorize a native-memory destination")
+            return dict(run_admission.admit_shared_prep(board, project, paths, native_payload, expected))
+        admission_project, home = (project, None)
+        if project.parent.name != "projects":
+            admission_project, home = _canonical_admission_project(project, board, native_payload)
+        if memory_home is not None:
+            current_home = memory_record_home(project)
+            if current_home != memory_home:
+                raise RecordTransactionError("memory repository binding changed")
+            home = current_home
+        proof = dict(
+            (run_admission.admit_registry_paths if project.parent / "index.yaml" in paths else run_admission.admit_paths)(
                 Path(board),
-                project.name,
-                project,
+                admission_project.name,
+                admission_project,
                 paths,
                 native_payload,
                 expected_claim_hash=expected,
             )
         )
+        if home is not None:
+            # The declaration must also be the owning native project's actual
+            # workspace configuration, not a destination-local lookalike.
+            anchor = memory_repository(admission_project)["approved_source"]
+            destination = home["approved_source"]
+            if "declaration" in destination:
+                if (anchor.get("declaration") != destination["declaration"]
+                        or anchor.get("declaration_source") != destination["declaration_source"]
+                        or anchor.get("declaration_sha256") != destination["declaration_sha256"]
+                        or anchor.get("declaration_identity") != destination["declaration_identity"]
+                        or anchor.get("workspace_identity") != destination["workspace_identity"]):
+                    raise RecordTransactionError("destination is not in the native owner's configured workspace")
+            elif (anchor.get("enrollment_sha256") != destination.get("enrollment_sha256")
+                  or anchor["physical"]["common_directory_identity"] != destination["physical"]["common_directory_identity"]):
+                raise RecordTransactionError("destination is not the native owner's enrolled repository")
+            if memory_record_home(project) != home:
+                raise RecordTransactionError("canonical repository identity changed during admission")
+            proof["canonical_home"] = home
+        return proof
     except (OSError, RuntimeError, ValueError) as exc:
         raise RecordTransactionError(
             f"fresh exact record authority refused: {exc}"
         ) from exc
+
+
+def _target(project, name):
+    """One explicit registry target; arbitrary parent traversal remains refused."""
+    if name == "@registry":
+        if project.parent.name != "projects":
+            raise RecordTransactionError("registry target needs an exact project directory")
+        return _path(project.parent / "index.yaml", project.parent)
+    return _path(project / name, project)
+
+
+def _target_name(project, path):
+    return "@registry" if path == project.parent / "index.yaml" else str(path.relative_to(project))
+
+
+def registry_authorship(project, *, session_uuid, repository, branch, board, staged, head, staged_mode, head_mode=None):
+    """Verify staged registry bytes against this seat's retained exact intent.
+
+    This evidence never grants claims; the caller separately admits the active
+    seat, physical repository and staged paths through the ordinary gate.
+    """
+    project = _path(project)
+    if project.parent != Path(repository) / "projects":
+        raise RecordTransactionError("registry authorship needs the exact owning project")
+    with _lock(project.parent), managed(project):
+        current, current_meta = _snapshot(_target(project, "@registry"))
+        if current != staged:
+            raise RecordTransactionError("registry working bytes differ from staged intent")
+        history = _history(project / STORE)
+        matches, total = [], 0
+        for ident, digest in history["completed"].items():
+            path = project / STORE / "completed" / ident / "manifest.json"
+            manifest, raw = _read_json(path)
+            total += len(raw)
+            if total > MAX_TOTAL_BYTES:
+                raise RecordTransactionError("registry authorship history exceeds bounded read")
+            if _digest(raw) != digest:
+                raise RecordTransactionError("registry transaction history digest differs")
+            files = manifest.get("files")
+            if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES or any(not isinstance(item, dict) for item in files):
+                raise RecordTransactionError("invalid registry history target list")
+            for item in files:
+                after = item.get("after")
+                if not isinstance(after, dict):
+                    raise RecordTransactionError("invalid registry history target identity")
+                if item.get("path") != "@registry" or after.get("sha256") != _digest(staged):
+                    continue
+                _manifest(path.parent, project, completed=True)
+                if current_meta != after or staged_mode != ("100755" if after["mode"] & 0o111 else "100644"):
+                    raise RecordTransactionError("registry staged or working mode/identity differs from intent")
+                authority = manifest.get("authority", {})
+                before = item.get("before")
+                preimage_matches = (before is None and head is None and head_mode is None) or (
+                    isinstance(before, dict) and head is not None and before.get("sha256") == _digest(head)
+                    and head_mode == ("100755" if before["mode"] & 0o111 else "100644"))
+                if (preimage_matches
+                    and authority.get("session_uuid") == session_uuid
+                    and authority.get("repository") == str(repository)
+                    and authority.get("branch") == branch
+                    and authority.get("board") == str(Path(board).absolute())
+                    and manifest.get("project") == str(project)):
+                    matches.append(ident)
+        if len(matches) != 1:
+            raise RecordTransactionError("staged registry lacks one exact clean-preimage intent by this seat")
+        return matches[0]
+
+
+def registry_git_state(project):
+    """Bounded positive Git queries: absent is an empty successful tree lookup."""
+    import subprocess
+    pm = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+    if str(pm) not in sys.path:
+        sys.path.insert(0, str(pm))
+    import native_git
+    repo = project.parent.parent
+    rows = []
+    for query in (("ls-tree", "HEAD", "--", "projects/index.yaml"),
+                  ("ls-files", "--stage", "--", "projects/index.yaml")):
+        try:
+            result = native_git.run(["git", *query], cwd=repo, timeout=10)
+        except subprocess.SubprocessError as exc:
+            raise RecordTransactionError("registry Git preimage exceeds bounded query") from exc
+        if result.returncode:
+            raise RecordTransactionError("registry Git membership query failed")
+        lines = result.stdout.decode("utf-8", errors="strict").splitlines()
+        if len(lines) > 1 or (lines and (lines[0].split("\t")[-1] != "projects/index.yaml"
+                or lines[0].split()[0] not in ("100644", "100755"))):
+            raise RecordTransactionError("registry Git membership or mode is ambiguous")
+        if lines and query[0] == "ls-files" and lines[0].split()[2] != "0":
+            raise RecordTransactionError("registry index is unmerged")
+        rows.append(lines[0].split()[0] if lines else None)
+    return tuple(rows)
+
+
+def _registry_clean(project, data, mode):
+    # First-write custody binds bytes AND executable mode, never a shell window.
+    import subprocess
+    expected_mode = "100755" if mode & 0o111 else "100644"
+    if registry_git_state(project) != (expected_mode, expected_mode):
+        raise RecordTransactionError("registry preimage mode differs from HEAD or index; preserve foreign work")
+    import native_git
+    for spec in ("HEAD:projects/index.yaml", ":projects/index.yaml"):
+        try:
+            result = native_git.run(["git", "show", spec], cwd=project.parent.parent, timeout=10)
+        except subprocess.SubprocessError as exc:
+            raise RecordTransactionError("registry Git preimage exceeds bounded query") from exc
+        if result.returncode or result.stdout != data:
+            raise RecordTransactionError("registry preimage is not clean in HEAD and index; preserve foreign work")
 
 
 def _matches(path, expected):
@@ -392,7 +626,7 @@ def _settle_creation(path, item):
         raise RecordTransactionError("created target changed during recovery")
 
 
-def _manifest(active, project):
+def _manifest(active, project, *, completed=False):
     manifest, raw = _read_json(active / "manifest.json")
     if (
         set(manifest)
@@ -441,13 +675,13 @@ def _manifest(active, project):
             raise RecordTransactionError("invalid target record")
         if not isinstance(item["path"], str):
             raise RecordTransactionError("target path must be a string")
-        path = _path(project / item["path"], project)
+        path = _target(project, item["path"])
         if (
-            item["path"] != str(path.relative_to(project))
-            or STORE in path.relative_to(project).parts
+            item["path"] != _target_name(project, path)
+            or STORE in Path(item["path"]).parts
         ):
             raise RecordTransactionError("invalid target relative path")
-        expected_stage = active / (str(index) + ".staged")
+        expected_stage = (project / STORE / "active" if completed else active) / (str(index) + ".staged")
         if item["stage"] != str(expected_stage):
             raise RecordTransactionError("invalid staged target path")
         if str(path) in paths:
@@ -554,7 +788,7 @@ def _finish(project, active, manifest, digest, history):
     _project_identity(project, manifest)
     _check_custody(project, active, manifest)
     for item in manifest["files"]:
-        if not _matches(project / item["path"], item["after"]):
+        if not _matches(_target(project, item["path"]), item["after"]):
             raise RecordTransactionError(
                 "final transaction readback differs; retained for reconciliation"
             )
@@ -583,9 +817,10 @@ def _finish(project, active, manifest, digest, history):
 def _commit(project, active, manifest, digest, history, board, payload):
     _project_identity(project, manifest)
     _check_custody(project, active, manifest)
-    paths = [project / item["path"] for item in manifest["files"]]
+    paths = [_target(project, item["path"]) for item in manifest["files"]]
     expected = manifest["authority"]["claim_hash"]
-    proof = _authority(project, board, payload, [*paths, project / STORE], expected)
+    proof = _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
     if any(
         proof.get(k) != manifest["authority"].get(k)
         for k in [
@@ -595,6 +830,7 @@ def _commit(project, active, manifest, digest, history, board, payload):
             "repository",
             "branch",
             "board",
+            "canonical_home",
         ]
     ):
         raise RecordTransactionError("transaction identity/checkout changed")
@@ -629,7 +865,8 @@ def _commit(project, active, manifest, digest, history, board, payload):
     for item, path in pending:
         _project_identity(project, manifest)
         _check_custody(project, active, manifest)
-        _authority(project, board, payload, [*paths, project / STORE], expected)
+        _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
         if not _matches(path, item["before"]) or not _matches(
             Path(item["stage"]), item["after"]
         ):
@@ -645,14 +882,15 @@ def _commit(project, active, manifest, digest, history, board, payload):
         else:
             os.replace(item["stage"], path)
             _sync_dir(path.parent)
-    _authority(project, board, payload, [*paths, project / STORE], expected)
+    _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
     return _finish(project, active, manifest, digest, history)
 
 
 def recover(project, *, board, native_payload):
     """Reconcile the original committed intent; never replay an arbitrary file."""
     project = _path(project)
-    with _lock(project, exclusive=True):
+    with _lock(project.parent if project.parent.name == "projects" else project, exclusive=True), _lock(project, exclusive=True):
         store = _path(project / STORE, project)
         active = _path(store / "active", project)
         if not active.is_dir():
@@ -679,6 +917,7 @@ def apply(
     intent_id=None,
     source_custody=None,
     expected_claim_hash=None,
+    memory_home=None,
 ):
     """Preflight all files, publish durable intent, then recoverably commit."""
     import context_edit
@@ -690,7 +929,7 @@ def apply(
         raise RecordTransactionError("invalid caller intent identity")
     if not isinstance(requests, list) or not 1 <= len(requests) <= MAX_FILES:
         raise RecordTransactionError("files must be a nonempty bounded array")
-    with _lock(project, exclusive=True):
+    with _lock(project.parent if any(isinstance(q, dict) and q.get("file") == "@registry" for q in requests) else project, exclusive=True), _lock(project, exclusive=True):
         _pending(project)
         prepared = []
         seen = set()
@@ -719,11 +958,13 @@ def apply(
                 or Path(request["file"]).is_absolute()
             ):
                 raise RecordTransactionError("target must be a project-relative file")
-            path = _path(project / request["file"], project)
-            if STORE in path.relative_to(project).parts or str(path) in seen:
+            path = _target(project, request["file"])
+            if STORE in Path(request["file"]).parts or str(path) in seen:
                 raise RecordTransactionError("duplicate/reserved transaction target")
             seen.add(str(path))
             if "create" in request:
+                if request["file"] == "@registry" and (len(requests) != 1 or registry_git_state(project) != (None, None)):
+                    raise RecordTransactionError("registry bootstrap requires one absent HEAD/index target")
                 if set(request) != {"file", "create"}:
                     raise RecordTransactionError("creation cannot carry edit overrides")
                 create = request["create"]
@@ -743,10 +984,18 @@ def apply(
                     )
                 before = None
                 output = create["text"].encode("utf-8")
+                if request["file"] == "@registry":
+                    context_edit._registry_nodes(create["text"])
+                    if project.name not in context_edit._registry_nodes(create["text"])[1]:
+                        raise RecordTransactionError("bootstrap must register the already authenticated owning project")
                 note = "explicit additive record creation"
                 lines = context_edit._check_budget(create["text"], None, path)
             else:
                 data, before = _snapshot(path)
+                if request["file"] == "@registry":
+                    if "expected_sha256" not in request:
+                        raise RecordTransactionError("registry requires an exact reviewed preimage")
+                    _registry_clean(project, data, before["mode"])
                 expected_sha256 = request.get("expected_sha256")
                 if "expected_sha256" in request and (
                     not isinstance(expected_sha256, str)
@@ -783,6 +1032,13 @@ def apply(
                 lines = context_edit._check_budget(edited, limit, path)
                 note = context_edit._coherence_gate(path, original, edited, *flags)
                 output = edited.encode("utf-8")
+            if request["file"] == "@registry":
+                context_edit._registry_nodes(output.decode("utf-8"))
+                pm = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+                if str(pm) not in sys.path:
+                    sys.path.insert(0, str(pm))
+                from project_recipient import registry_entries
+                registry_entries(output.decode("utf-8"))
             total += len(output)
             if len(output) > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
                 raise RecordTransactionError("transaction byte bound exceeded")
@@ -859,8 +1115,25 @@ def apply(
         if not store.exists():
             metadata.extend([initial, initial / "history.json"])
         proof = _authority(
-            project, board, native_payload, [*paths, *metadata], expected_claim_hash
+            project, board, native_payload, [*paths, *metadata], expected_claim_hash,
+            memory_home=memory_home
         )
+        if "prep_grant" in proof:
+            grant = proof["prep_grant"]
+            if len(prepared) != 1 or sources:
+                raise RecordTransactionError("shared prep writes exactly one artifact")
+            path, before, output, _, _, mode = prepared[0]
+            if str(path) != grant["target"]:
+                raise RecordTransactionError("shared prep target differs")
+            if grant["operation"] == "create":
+                if before is not None or mode != 0o600:
+                    raise RecordTransactionError("shared prep create requires absence and private mode")
+            else:
+                if before is None or before["sha256"] != grant["before"] or before["mode"] != 0o600:
+                    raise RecordTransactionError("shared prep append preimage changed")
+                old, _ = _snapshot(path)
+                if not output.startswith(old) or len(output) <= len(old):
+                    raise RecordTransactionError("shared prep contract permits append only")
         for path, before, *_ in prepared:
             if not _matches(path, before):
                 raise RecordTransactionError("source changed during preflight")
@@ -902,7 +1175,7 @@ def apply(
                 raise RecordTransactionError("transaction requires one filesystem")
             files.append(
                 {
-                    "path": str(path.relative_to(project)),
+                    "path": _target_name(project, path),
                     "before": before,
                     "after": after,
                     "stage": str(store / "active" / stage.name),
@@ -958,6 +1231,7 @@ def apply(
             native_payload,
             [*paths, project / STORE],
             proof["claim_hash"],
+            memory_home=proof.get("canonical_home"),
         )
         for path, before, *_ in prepared:
             if not _matches(path, before):

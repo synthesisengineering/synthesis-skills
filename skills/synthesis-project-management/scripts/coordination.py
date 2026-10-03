@@ -2811,6 +2811,31 @@ def command_check_staged(args) -> int:
         if refreshed is not None:
             session = refreshed
 
+    if "projects/index.yaml" in staged_paths:
+        try:
+            lifecycle = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle/scripts"
+            if str(lifecycle) not in sys.path:
+                sys.path.insert(0, str(lifecycle))
+            import record_transaction
+            staged = _git_bytes(repository, "show", ":projects/index.yaml")
+            head_mode, index_mode = record_transaction.registry_git_state(repository / "projects" / session.project)
+            head = _git_bytes(repository, "show", "HEAD:projects/index.yaml") if head_mode is not None else None
+            if staged.returncode or (head is not None and head.returncode):
+                raise RuntimeError("registry authorship requires verified HEAD and index membership")
+            mode = _git_bytes(repository, "ls-files", "--stage", "--", "projects/index.yaml")
+            rows_mode = mode.stdout.decode("utf-8", errors="strict").splitlines()
+            if mode.returncode or len(rows_mode) != 1:
+                raise RuntimeError("registry index mode is ambiguous")
+            record_transaction.registry_authorship(repository / "projects" / session.project,
+                session_uuid=session.session_uuid, repository=repository, branch=branch,
+                board=args.board, staged=staged.stdout, head=head.stdout if head else None,
+                staged_mode=rows_mode[0].split()[0], head_mode=head_mode)
+        except (OSError, ValueError, RuntimeError, ImportError, subprocess.SubprocessError) as exc:
+            payload = _check_staged_payload(args, "refused-registry-authorship",
+                selector_source=selector_source, detail=str(exc), remediation=CHECK_STAGED_REMEDIATION)
+            _emit_check_staged(args, payload)
+            return 10
+
     outside_paths = _outside_claim(session, repository, staged_paths)
     override_reason = sanitize(str(args.override_reason or ""))
     if outside_paths and not override_reason:
@@ -3022,7 +3047,59 @@ def succession_notice_block(
     return "\n".join(lines) + "\n\n"
 
 
+def prep_recipient_scope(session):
+    """Grant invalidation excludes grants and heartbeat, never ordinary custody."""
+    value = [session.session_uuid, session.client_ref, session.project, session.machine,
+             sorted(session.workspaces), sorted(c for c in session.claims if not c.startswith("prep-share:"))]
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def grant_prep_share(board, recipient, contributor, context_repo, workspace, artifact,
+                     operation, before, *, private, ttl=900):
+    """Authenticated recipient grants one bounded contribution in its own row."""
+    import base64
+    import uuid
+    import time
+    if private is not True or type(ttl) is not int or not 0 < ttl <= 3600:
+        raise ValueError("explicit private destination and bounded lifetime required")
+    repo, branch = _repository_state(Path(context_repo))
+    if repo != Path(context_repo).absolute():
+        raise ValueError("exact context checkout root required")
+    target = repo / "meeting-preps" / artifact
+    result = {}
+    def update(text):
+        sessions = rows(text)
+        owner, writer = find_session(sessions, recipient), find_session(sessions, contributor)
+        if (owner is None or writer is None or not active(owner) or not active(writer)
+                or not owner.client_ref or owner.session_uuid == writer.session_uuid or not _caller_owns_session(Path(board), owner)):
+            raise ValueError("authenticated active recipient and distinct active contributor required")
+        if validate_sessions(sessions):
+            raise ValueError("coordination must be valid before sharing")
+        if not _workspace_registered(owner, repo, branch) or not _workspace_registered(writer, repo, branch):
+            raise ValueError("both seats must register this exact physical workspace and branch")
+        if _outside_claim(owner, repo, [str(target.relative_to(repo))]):
+            raise ValueError("recipient does not own the exact prep artifact")
+        grant = {"schema": 1, "id": uuid.uuid4().hex, "recipient": owner.session_uuid,
+                 "contributor": writer.session_uuid, "repository": str(repo), "branch": branch,
+                 "workspace": workspace, "target": str(target), "operation": operation,
+                 "before": before, "expires": int(time.time()) + ttl,
+                 "recipient_scope": prep_recipient_scope(owner), "private": True}
+        encoded = "prep-share:" + base64.urlsafe_b64encode(json.dumps(grant, sort_keys=True).encode()).decode()
+        claim_scope.prep_share_claim(encoded)
+        if len([c for c in owner.claims if c.startswith("prep-share:")]) >= 128:
+            raise ValueError("retained prep grant capacity reached; reconcile through recipient owner")
+        owner.claims.append(encoded)
+        owner.heartbeat = timestamp()
+        result.update(grant)
+        return replace_table(text, sessions)
+    locked_update(Path(board), update, require_fence=True, lock_timeout=5)
+    return result
+
+
 def command_claim(args) -> int:
+    if any(plain(area).startswith("prep-share:") for area in args.area):
+        print("coordination claim refused: prep grants require the authenticated meeting-prep owner", file=sys.stderr)
+        return 10
     dependent = getattr(args, "then", None)
     if dependent is not None:
         if (

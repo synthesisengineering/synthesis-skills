@@ -273,6 +273,8 @@ def _body_gate(
 
 
 def _read(path: Path) -> str:
+    if path.name == "index.yaml" and path.parent.name == "projects":
+        raise ContextEditError("registry edits require registry-patch and an exact reviewed preimage")
     if path.is_symlink():
         raise ContextEditError(f"refusing to edit a symlink: {path}")
     if not path.is_file():
@@ -692,6 +694,7 @@ def _edit_in_memory(text: str, edit: dict) -> str:
     op = edit["op"]
     fields = {
         "replace": {"op", "anchor", "replacement", "count"},
+        "append": {"op", "text"},
         "set-field": {"op", "field", "value"},
         "insert-before": {"op", "anchor", "text"},
         "delete-line": {"op", "anchor"},
@@ -701,6 +704,10 @@ def _edit_in_memory(text: str, edit: dict) -> str:
     for name in fields[op] - {"op", "count"}:
         if not isinstance(edit.get(name), str):
             raise ContextEditError(f"{op} requires string {name}")
+    if op == "append":
+        if not edit["text"]:
+            raise ContextEditError("append requires nonempty text")
+        return text + edit["text"]
     if op == "set-field":
         if not edit["field"] or any(c in edit["field"] + edit["value"] for c in "\r\n"):
             raise ContextEditError("set-field requires one field and one line of text")
@@ -768,19 +775,468 @@ def apply_edits(
             "replacements": len(edits), "lines": lines, "note": note}
 
 
+def _registry_nodes(text):
+    """Bound structure before YAML composition; never expand aliases or tags."""
+    import yaml
+    if len(text.encode("utf-8")) > record_transaction.MAX_FILE_BYTES:
+        raise ContextEditError("registry exceeds bounded source size")
+    # Reject aliases and directives before composition; bound parser work.
+    count = depth = 0
+    try:
+        for token in yaml.scan(text):
+            count += 1
+            if isinstance(token, (yaml.tokens.BlockMappingStartToken, yaml.tokens.BlockSequenceStartToken,
+                                  yaml.tokens.FlowMappingStartToken, yaml.tokens.FlowSequenceStartToken)):
+                depth += 1
+            elif isinstance(token, (yaml.tokens.BlockEndToken, yaml.tokens.FlowMappingEndToken,
+                                    yaml.tokens.FlowSequenceEndToken)):
+                depth -= 1
+            if count > 100000 or depth > 64 or isinstance(token, (yaml.tokens.AliasToken, yaml.tokens.AnchorToken, yaml.tokens.TagToken, yaml.tokens.DirectiveToken)):
+                raise ContextEditError("registry aliases, tags, directives or excessive structure refused")
+        node = yaml.compose(text)
+    except yaml.YAMLError as exc:
+        raise ContextEditError("registry YAML is invalid") from exc
+    def mapping(node):
+        if not isinstance(node, yaml.MappingNode):
+            raise ContextEditError("registry mapping required")
+        result = {}
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode) or key.value in result:
+                raise ContextEditError("registry duplicate or nonscalar key")
+            result[key.value] = value
+        return result
+    if isinstance(node, yaml.MappingNode):
+        node = mapping(node).get("projects")
+    if not isinstance(node, yaml.SequenceNode) or len(node.value) > 10000:
+        raise ContextEditError("registry bounded project list required")
+    entries = {}
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, yaml.MappingNode):
+            mapping(current)
+            stack.extend(value for _, value in current.value)
+        elif isinstance(current, yaml.SequenceNode):
+            stack.extend(current.value)
+    for item in node.value:
+        row = mapping(item); ident = row.get("id")
+        if not isinstance(ident, yaml.ScalarNode) or ident.value in entries:
+            raise ContextEditError("registry missing or duplicate id")
+        entries[ident.value] = (item, row)
+    return node, entries
+
+
+def patch_registry(project: Path, entry: str, fields: dict, expected_sha256: str,
+                   *, board: Path, native_payload: dict, dry_run=False) -> dict:
+    """Apply reviewed entry fields, including creation and structured values.
+
+    Unchanged fields and all other entries retain their exact bytes. Entry
+    removal or whole-entry replacement uses apply-transaction's explicit
+    @registry edit and the same reviewed SHA, native admission and journal.
+    """
+    import yaml
+    project = record_transaction._path(project)
+    path = record_transaction._target(project, "@registry")
+    raw, meta = record_transaction._snapshot(path)
+    if meta["sha256"] != expected_sha256:
+        raise ContextEditError("registry reviewed preimage changed")
+    if (not isinstance(entry, str) or not entry or len(entry) > 256
+            or not isinstance(fields, dict) or not 1 <= len(fields) <= 64 or "id" in fields):
+        raise ContextEditError("registry requires a bounded entry and 1..64 fields excluding id")
+    # JSON values are literal YAML flow values. Bound traversal before encoding.
+    stack = [(fields, 0)]; count = 0
+    while stack:
+        value, depth = stack.pop(); count += 1
+        if count > 100000 or depth > 64:
+            raise ContextEditError("registry field structure exceeds bounds")
+        if type(value) is dict:
+            if any(type(k) is not str or not k or len(k) > 4096 for k in value):
+                raise ContextEditError("registry fields require bounded string keys")
+            stack.extend((v, depth + 1) for v in value.values())
+        elif type(value) is list:
+            stack.extend((v, depth + 1) for v in value)
+        elif type(value) not in (str, bool, int, float, type(None)):
+            raise ContextEditError("registry field values must be JSON values")
+    try:
+        encoded = json.dumps(fields, ensure_ascii=False, allow_nan=False)
+    except (ValueError, OverflowError) as exc:
+        raise ContextEditError("registry field values must be finite JSON") from exc
+    if len(encoded.encode("utf-8")) > 1024 * 1024:
+        raise ContextEditError("registry fields exceed bounded bytes")
+    text = raw.decode("utf-8")
+    sequence, entries = _registry_nodes(text)
+    edits = []
+    target = entries.get(entry)
+    if target is None:
+        value = json.dumps({"id": entry, **fields}, ensure_ascii=False, allow_nan=False)
+        if sequence.flow_style and not sequence.value:
+            # The explicit empty state becomes the same id-first block form
+            # consumed by routing and transactional registry admission.
+            start, end = sequence.start_mark.index, sequence.end_mark.index
+            line_start = text.rfind("\n", 0, start) + 1
+            wrapped = text[line_start:start].strip() == "projects:"
+            indent = "  " if wrapped else ""
+            block = ("\n" if wrapped else "") + indent + "- id: " + json.dumps(entry) + "\n"
+            block += "".join(indent + "  " + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in fields.items())
+            edits.append((start, end, block))
+        elif sequence.flow_style:
+            at = sequence.end_mark.index - 1
+            edits.append((at, at, ", " + value))
+        else:
+            at = sequence.end_mark.index
+            prefix = "" if at == 0 or text[at - 1] == "\n" else "\n"
+            indent = " " * sequence.start_mark.column
+            block = indent + "- id: " + json.dumps(entry) + "\n"
+            block += "".join(indent + "  " + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in fields.items())
+            edits.append((at, at, prefix + block))
+    else:
+        item, row = target
+        missing = {}
+        for field, value in fields.items():
+            replacement = json.dumps(value, ensure_ascii=False, allow_nan=False)
+            old = row.get(field)
+            if old is None:
+                missing[field] = value
+                continue
+            # Block values consume a terminating newline/indent before the next
+            # key; keep that separator while replacing only the value node.
+            if old.end_mark.line > old.start_mark.line and (not isinstance(old, yaml.ScalarNode) or old.style in ("|", ">")):
+                replacement += "\n" + " " * old.end_mark.column
+            edits.append((old.start_mark.index, old.end_mark.index, replacement))
+        if missing:
+            if item.flow_style:
+                at = item.end_mark.index - 1
+                replacement = ", " + json.dumps(missing, ensure_ascii=False, allow_nan=False)[1:-1]
+            else:
+                at = item.end_mark.index
+                indent = item.start_mark.column
+                replacement = ("" if at == 0 or text[at - 1] == "\n" else "\n")
+                replacement += "".join(" " * indent + json.dumps(k) + ": " + json.dumps(v, ensure_ascii=False, allow_nan=False) + "\n" for k, v in missing.items())
+            edits.append((at, at, replacement))
+    edited = text
+    for start, end, replacement in sorted(edits, reverse=True):
+        edited = edited[:start] + replacement + edited[end:]
+    _registry_nodes(edited)
+    if edited == text:
+        raise ContextEditError("registry patch leaves bytes unchanged")
+    return apply_transaction(project, [{"file": "@registry", "expected_sha256": expected_sha256,
+        "edits": [{"op": "replace", "anchor": text, "replacement": edited}]}],
+        board=board, native_payload=native_payload, dry_run=dry_run)
+
+
 def apply_transaction(project: Path, files: list[dict], *, board: Path,
                       native_payload: dict, dry_run: bool = False,
                       source_custody: list[dict] | None = None,
-                      expected_claim_hash: str | None = None) -> dict:
+                      expected_claim_hash: str | None = None,
+                      memory_home: dict | None = None) -> dict:
     """One recoverable multi-file project edit with fresh exact PM authority."""
     return record_transaction.apply(project, files, board=board,
                                     native_payload=native_payload, dry_run=dry_run,
                                     source_custody=source_custody,
-                                    expected_claim_hash=expected_claim_hash)
+                                    expected_claim_hash=expected_claim_hash,
+                                    memory_home=memory_home)
 
 
 def recover_transaction(project: Path, *, board: Path, native_payload: dict) -> dict:
     return record_transaction.recover(project, board=board, native_payload=native_payload)
+
+
+# Native-memory import uses this owner rather than editing context files from a
+# harness. Export packets are data, never routing, publication or clear authority.
+MEMORY_MAX_ENTRIES = 64
+MEMORY_PRESERVE = frozenset({"contract", "pay-equity", "hiring-negotiation",
+                           "termination", "review-self", "ip-assignment", "dispute-evidence"})
+MEMORY_KINDS = MEMORY_PRESERVE | {"lesson", "project-fact", "workspace-fact", "voice", "public-candidate"}
+
+
+def _memory_owners():
+    import importlib.util
+    skills = Path(__file__).resolve().parents[2]
+    def load(name, file):
+        if name in sys.modules and Path(getattr(sys.modules[name], "__file__", "")).resolve() != file.resolve():
+            raise ContextEditError("memory dependency is bound to another source generation")
+        if name not in sys.modules:
+            spec = importlib.util.spec_from_file_location(name, file)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        return sys.modules[name]
+    local = Path(__file__).resolve().parent
+    if (local / "coordination_process.py").is_file():
+        return (load("ritual_workers", local / "ritual_workers.py"),
+                load("publication_receipt", local / "publication_receipt.py"))
+    return (load("ritual_workers", skills / "synthesis-daily-rituals/scripts/ritual_workers.py"),
+            load("publication_receipt", skills / "synthesis-repo-guard/publication_receipt.py"))
+
+
+def _memory_digest(value):
+    import hashlib
+    return hashlib.sha256(value).hexdigest()
+
+
+def _memory_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+
+
+def _memory_packet(packet):
+    if (not isinstance(packet, dict) or set(packet) != {"schema", "harness", "store", "entries"}
+            or type(packet["schema"]) is not int or packet["schema"] != 1
+            or not isinstance(packet["harness"], str) or packet["harness"] not in {"codex", "claude", "muse"}
+            or not isinstance(packet["entries"], list) or len(packet["entries"]) > MEMORY_MAX_ENTRIES):
+        raise ContextEditError("bounded closed native export packet required")
+    seen, total = set(), 0
+    for item in packet["entries"]:
+        if not isinstance(item, dict) or set(item) != {"id", "text", "sha256", "scope", "workspace_hint"}:
+            raise ContextEditError("native export cannot contain routing decisions")
+        if (not isinstance(item["id"], str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", item["id"])
+                or item["id"] in seen or not isinstance(item["text"], str) or not item["text"].strip()
+                or len(item["text"].encode()) > 65536
+                or item["sha256"] != _memory_digest(item["text"].encode())
+                or not isinstance(item["scope"], str) or item["scope"] not in {"personal", "workspace", "unknown"}
+                or "<!-- native-memory-key:" in item["text"] or "<!-- /native-memory-key:" in item["text"]
+                or (item["workspace_hint"] is not None and
+                    (not isinstance(item["workspace_hint"], str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", item["workspace_hint"])))):
+            raise ContextEditError("native entry identity/content/scope invalid")
+        total += len(item["text"].encode())
+        seen.add(item["id"])
+    if total > 1024 * 1024:
+        raise ContextEditError("native export byte bound exceeded")
+
+
+def _memory_preflight(packet, store, board, machine):
+    _memory_packet(packet)
+    workers, _ = _memory_owners()
+    probe = workers.memory_probe(store, harness=packet["harness"], machine=machine, board=board)
+    if probe["status"] == "PENDING_ACTIVE_HARNESS":
+        return probe
+    if packet["store"] != probe.get("store"):
+        raise ContextEditError("native export store CAS changed; re-export through its own harness")
+    return probe
+
+
+def memory_ingest(project: Path, packet: dict, selection: dict, *, store: Path,
+                  board: Path, machine: str, native_payload: dict, dry_run=False) -> dict:
+    """Archive reviewed entries and append via the existing recoverable editor.
+
+    Selection is an explicit Synthesis routing decision, not native output. One
+    invocation is confined to one already selected private project/deletion unit.
+    Files and archive parents must exist; this owner does not invent a project,
+    workspace, private skill, publication approval or a model's semantic ruling.
+    """
+    probe = _memory_preflight(packet, store, board, machine)
+    if probe["status"] == "PENDING_ACTIVE_HARNESS":
+        return probe
+    if (not isinstance(selection, dict) or set(selection) != {"family", "workspace", "archive_dir", "routes"}
+            or not isinstance(selection["family"], str) or selection["family"] not in {"personal", "workspace"}
+            or not isinstance(selection["routes"], list) or len(selection["routes"]) > MEMORY_MAX_ENTRIES):
+        raise ContextEditError("explicit bounded private routing selection required")
+    project = record_transaction._path(project)
+    if selection["family"] == "workspace":
+        if not isinstance(selection["workspace"], str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", selection["workspace"]):
+            raise ContextEditError("workspace deletion-unit owner required")
+    elif selection["workspace"] is not None:
+        raise ContextEditError("personal root cannot impersonate a workspace deletion unit")
+    def path_for(value):
+        if not isinstance(value, str) or not value or Path(value).is_absolute():
+            raise ContextEditError("project-relative unaliased path required")
+        path = record_transaction._path(project / value, project)
+        if path == project or record_transaction.STORE in path.relative_to(project).parts:
+            raise ContextEditError("reserved memory target")
+        return path
+    try:
+        destination = record_transaction.memory_record_home(project)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ContextEditError("memory destination binding refused: " + str(exc)) from exc
+    archive = path_for(selection["archive_dir"])
+    if not archive.is_dir():
+        raise ContextEditError("selected archive directory must already exist")
+    entries = {item["id"]: item for item in packet["entries"]}
+    seen, effects, statuses, required, custody = set(), [], [], {}, []
+    originals, outputs, eligible_targets = {}, {}, set()
+    for route in selection["routes"]:
+        if (not isinstance(route, dict) or set(route) != {"id", "kind", "key", "file", "anchor"}
+                or not isinstance(route["id"], str) or route["id"] not in entries or route["id"] in seen
+                or not isinstance(route["kind"], str) or route["kind"] not in MEMORY_KINDS
+                or not isinstance(route["key"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,127}", route["key"])
+                or not isinstance(route["anchor"], str) or not route["anchor"]):
+            raise ContextEditError("exact reviewed entry routing required")
+        seen.add(route["id"])
+        entry = entries[route["id"]]
+        preserve = route["kind"] in MEMORY_PRESERVE
+        if preserve and selection["family"] != "personal":
+            raise ContextEditError("ALWAYS-PRESERVE records require the personal private root")
+        if (selection["family"], selection["workspace"]) != (destination["family"], destination["workspace"]):
+            raise ContextEditError("selected family/workspace differs from actual repository deletion unit")
+        if (route["kind"] == "voice" and destination["home"] != "private-skill") or (
+                destination["home"] == "private-skill" and route["kind"] != "voice"):
+            raise ContextEditError("voice records require their canonical private-skill source")
+        if destination["home"] == "lessons" and route["kind"] != "lesson":
+            raise ContextEditError("lessons root accepts reviewed lesson routes only")
+        if not preserve:
+            if entry["scope"] == "unknown":
+                statuses.append({"id": entry["id"], "status": "PENDING_OWNER"})
+                continue
+            if entry["scope"] == "workspace" or entry["workspace_hint"] is not None:
+                if (selection["family"] != "workspace" or not entry["workspace_hint"]
+                        or selection["workspace"] != entry["workspace_hint"]):
+                    raise ContextEditError("workspace-private entry requires its explicit owning deletion unit")
+            elif selection["family"] != "personal":
+                raise ContextEditError("personal memory cannot be routed to an engagement deletion unit")
+        if route["kind"] == "public-candidate":
+            statuses.append({"id": entry["id"], "status": "PENDING_PUBLICATION_DECISION"})
+            continue
+        target = path_for(route["file"])
+        if target.is_relative_to(archive):
+            raise ContextEditError("canonical target cannot be the memory archive")
+        if target not in originals:
+            raw, identity = record_transaction._snapshot(target)
+            originals[target] = (raw, identity)
+            outputs[target] = raw.decode("utf-8")
+        original = outputs[target]
+        marker = "<!-- native-memory-key:" + route["key"] + " -->"
+        end = "<!-- /native-memory-key:" + route["key"] + " -->"
+        block = marker + "\n" + entry["text"] + "\n" + end + "\n"
+        # A key identifies one canonical assertion. Different bytes remain a
+        # decision; a harness cannot silently overwrite a canonical assertion.
+        if marker in original:
+            if original.count(marker) != 1 or block not in original:
+                statuses.append({"id": entry["id"], "status": "PENDING_CONTRADICTION", "key": route["key"]})
+                continue
+            outcome = "DEDUPLICATED"
+        elif "\n" + entry["text"] + "\n" in "\n" + original + "\n":
+            # Exact complete text already exists in the selected canonical file.
+            outcome = "DEDUPLICATED"
+        else:
+            if original.count(route["anchor"]) != 1:
+                raise ContextEditError("canonical insertion anchor must match exactly once")
+            outputs[target] = original.replace(route["anchor"], block + route["anchor"], 1)
+            outcome = "INGESTED"
+        eligible_targets.add(target)
+        record = {"schema": 1, "harness": packet["harness"], "entry": entry,
+                  "canonical_key": route["key"], "kind": route["kind"], "file": route["file"], "project": str(project)}
+        archived = _memory_json(record).encode()
+        archive_path = archive / (_memory_digest(archived) + ".json")
+        if archive_path.exists() or archive_path.is_symlink():
+            prior, identity = record_transaction._snapshot(archive_path)
+            if prior != archived:
+                raise ContextEditError("memory archive hash collision or changed custody")
+            custody.append({"file": archive_path.relative_to(project).as_posix(), "expected": identity})
+        else:
+            # Archive creation precedes canonical editing in the transaction's
+            # ordered effects. Interrupted creation retains recoverable custody.
+            effects.append({"file": archive_path.relative_to(project).as_posix(),
+                            "create": {"text": archived.decode(), "mode": 0o600}})
+        required[str(archive_path)] = _memory_digest(archived)
+        statuses.append({"id": entry["id"], "sha256": entry["sha256"], "status": outcome})
+    for target, (raw, identity) in originals.items():
+        if target not in eligible_targets:
+            continue
+        after = outputs[target].encode()
+        if after != raw:
+            effects.append({"file": target.relative_to(project).as_posix(),
+                            "expected_sha256": identity["sha256"],
+                            "edits": [{"op": "replace", "anchor": raw.decode(), "replacement": after.decode()}]})
+        else:
+            custody.append({"file": target.relative_to(project).as_posix(), "expected": identity})
+        required[str(target)] = _memory_digest(after)
+    # Reobserve the selected store/board immediately before PM admission. The
+    # native consumer must do the same before its own export/clear operation.
+    again = _memory_preflight(packet, store, board, machine)
+    if again["status"] == "PENDING_ACTIVE_HARNESS":
+        return again
+    if record_transaction.memory_record_home(project) != destination:
+        raise ContextEditError("memory destination changed before transaction")
+    # Re-admit even a deduplicated no-effect observation. A prior local receipt
+    # cannot substitute for this native seat's current exact claims.
+    record_transaction._authority(project, board, native_payload,
+        [archive, *originals.keys(), project / record_transaction.STORE], memory_home=destination)
+    transaction = None
+    if effects:
+        transaction = apply_transaction(project, effects, board=board, native_payload=native_payload,
+                                        dry_run=dry_run, source_custody=custody,
+                                        memory_home=destination)
+    statuses.extend({"id": item["id"], "status": "PENDING_ROUTING"}
+                    for item in packet["entries"] if item["id"] not in seen)
+    return {"schema": 1, "status": "DRY_RUN" if dry_run else "LOCAL_INGESTION",
+            "harness": packet["harness"], "store": packet["store"], "project": str(project),
+            "packet_sha256": _memory_digest(_memory_json(packet).encode()),
+            "selection_sha256": _memory_digest(_memory_json(selection).encode()),
+            "entries": statuses, "required_files": required,
+            "transaction": transaction, "native_export_verified": False,
+            "native_clear": "NOT_EXECUTED", "pending": True}
+
+
+def memory_clear_request(packet: dict, receipt: dict, *, store: Path, board: Path,
+                         machine: str, guard_root: Path, native: str,
+                         publication_sha256: str) -> dict:
+    """Prepare exact eligible hashes; NEVER performs or attests native clearing.
+
+    A publication observation proves only its existing owner's past exact-byte
+    delivery. Current native export/clear capability and native operation receipt
+    remain separate requirements. This source ships no deletion adapter.
+    """
+    probe = _memory_preflight(packet, store, board, machine)
+    if probe["status"] == "PENDING_ACTIVE_HARNESS":
+        return probe
+    if (not isinstance(receipt, dict) or receipt.get("status") != "LOCAL_INGESTION"
+            or receipt.get("packet_sha256") != _memory_digest(_memory_json(packet).encode())
+            or receipt.get("store") != packet["store"] or receipt.get("harness") != packet["harness"]
+            or not isinstance(receipt.get("required_files"), dict) or not receipt["required_files"]
+            or len(receipt["required_files"]) > MEMORY_MAX_ENTRIES * 2
+            or not isinstance(publication_sha256, str) or not re.fullmatch("[a-f0-9]{64}", publication_sha256)):
+
+        raise ContextEditError("exact local ingestion receipt required")
+    _, publication = _memory_owners()
+    proof = publication.observe(guard_root, native, required_files=receipt.get("required_files"),
+                                expected_receipt_sha256=publication_sha256)
+    if proof["status"] != "VERIFIED_REMOTE_READY":
+        return {"status": "PENDING_PUBLICATION", "pending": True, "native_clear": "NOT_EXECUTED"}
+    # Read each member once under the same finite aggregate publication bound.
+    # Neither the number of entries nor archive membership multiplies I/O.
+    import time
+    deadline = time.monotonic() + 10
+    eligible, cache, archives = [], {}, []
+    workers, _ = _memory_owners()
+    remaining = 32 * 1024 * 1024
+    for filename, digest in receipt["required_files"].items():
+        if time.monotonic() >= deadline:
+            raise ContextEditError("memory eligibility time bound exceeded")
+        path = Path(filename)
+        raw = workers.read_regular(path, min(8 * 1024 * 1024, remaining))
+        remaining -= len(raw)
+        if _memory_digest(raw) != digest:
+            raise ContextEditError("ingested bytes changed after publication observation")
+        cache[filename] = raw
+        if path.suffix == ".json":
+            data = json.loads(raw, object_pairs_hook=_unique_object)
+            if not isinstance(data, dict):
+                raise ContextEditError("invalid archived memory record")
+            archives.append(data)
+    for entry in packet["entries"]:
+        if time.monotonic() >= deadline:
+            raise ContextEditError("memory eligibility time bound exceeded")
+        for data in archives:
+            if data.get("entry") != entry or data.get("harness") != packet["harness"]:
+                continue
+            if data.get("project") != receipt.get("project") or not isinstance(data.get("file"), str):
+                raise ContextEditError("archive canonical routing binding is missing")
+            project = record_transaction._path(Path(data["project"]))
+            canonical = record_transaction._path(project / data["file"], project)
+            if str(canonical) not in cache or canonical.suffix == ".json":
+                raise ContextEditError("archive canonical file is not covered")
+            if "\n" + entry["text"] + "\n" in "\n" + cache[str(canonical)].decode("utf-8") + "\n":
+                eligible.append({"id": entry["id"], "sha256": entry["sha256"]})
+                break
+    final_probe = _memory_preflight(packet, store, board, machine)
+    if final_probe["status"] == "PENDING_ACTIVE_HARNESS":
+        return final_probe
+    # Export/clear support is deliberately not guessed from binaries or store
+    # paths. In particular, Codex note-only update permission is not clear power.
+    return {"status": "PENDING_NATIVE_CAPABILITY", "pending": True,
+            "harness": packet["harness"], "store": packet["store"],
+            "eligible": eligible, "publication_sha256": proof["receipt_sha256"],
+            "native_clear": "NOT_EXECUTED", "dispatch": None,
+            "reason": "Own-harness export provenance and supported hash-CAS clear action require native qualification; raw-file deletion is prohibited."}
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict:
@@ -868,11 +1324,66 @@ def main(argv: list[str] | None = None) -> int:
             succession.add_argument("--board", type=Path, required=True)
             succession.add_argument("--native-payload", type=Path, required=True)
             succession.add_argument("--dry-run", action="store_true")
+    registry = sub.add_parser("registry-patch")
+    registry.add_argument("--project", type=Path, required=True)
+    registry.add_argument("--entry", required=True)
+    registry.add_argument("--fields", type=Path, required=True)
+    registry.add_argument("--expected-sha256", required=True)
+    registry.add_argument("--board", type=Path, required=True)
+    registry.add_argument("--native-payload", type=Path, required=True)
+    registry.add_argument("--dry-run", action="store_true")
+    for command in ("memory-probe", "memory-ingest", "memory-clear-plan"):
+        memory = sub.add_parser(command)
+        memory.add_argument("--store", type=Path, required=True)
+        memory.add_argument("--board", type=Path, required=True)
+        memory.add_argument("--machine", required=True)
+        if command == "memory-probe":
+            memory.add_argument("--harness", choices=["claude", "codex", "muse"], required=True)
+            memory.add_argument("--previous", type=Path)
+        else:
+            memory.add_argument("--packet", type=Path, required=True)
+        if command == "memory-ingest":
+            memory.add_argument("--project", type=Path, required=True)
+            memory.add_argument("--selection", type=Path, required=True)
+            memory.add_argument("--native-payload", type=Path, required=True)
+            memory.add_argument("--dry-run", action="store_true")
+        if command == "memory-clear-plan":
+            memory.add_argument("--receipt", type=Path, required=True)
+            memory.add_argument("--guard-root", type=Path, required=True)
+            memory.add_argument("--native", required=True)
+            memory.add_argument("--publication-sha256", required=True)
     args = parser.parse_args(argv)
     if sum(getattr(args, name, None) == "-" for name in ("anchor", "replacement", "text", "value")) > 1:
         parser.error("stdin may supply only one operand; use the file flags for other operands")
 
     try:
+        if args.command == "registry-patch":
+            result = patch_registry(args.project, args.entry,
+                record_transaction.read_request(args.fields), args.expected_sha256,
+                board=args.board, native_payload=record_transaction.read_request(args.native_payload),
+                dry_run=args.dry_run)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.command.startswith("memory-"):
+            if args.command == "memory-probe":
+                workers, _ = _memory_owners()
+                result = workers.memory_probe(args.store, harness=args.harness, machine=args.machine,
+                                              board=args.board, previous=record_transaction.read_request(args.previous)
+                                              if args.previous else None)
+            else:
+                packet = record_transaction.read_request(args.packet)
+                if args.command == "memory-ingest":
+                    result = memory_ingest(args.project, packet, record_transaction.read_request(args.selection),
+                                           store=args.store, board=args.board, machine=args.machine,
+                                           native_payload=record_transaction.read_request(args.native_payload),
+                                           dry_run=args.dry_run)
+                else:
+                    result = memory_clear_request(packet, record_transaction.read_request(args.receipt),
+                                                  store=args.store, board=args.board, machine=args.machine,
+                                                  guard_root=args.guard_root, native=args.native,
+                                                  publication_sha256=args.publication_sha256)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         if args.command in {"review-succession", "apply-succession"}:
             import record_succession
             request = record_transaction.read_request(args.request)

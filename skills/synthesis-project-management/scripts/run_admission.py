@@ -325,6 +325,46 @@ def admit_paths(
     )
 
 
+def admit_registry_paths(board, project_id, project, paths, native_payload, *, expected_claim_hash=None):
+    """Registry identity comes from the native board, not the row being edited.
+
+    All paths still require fresh exact claims and physical worktree admission.
+    Only the explicit registry plus this owning project's records are eligible.
+    """
+    project = Path(project).absolute()
+    registry = safe_path(project.parent / "index.yaml", project.parent)
+    if registry not in paths or any(Path(p) != registry and not Path(p).is_relative_to(project) for p in paths):
+        raise AdmissionError("registry transaction paths escape its exact project")
+    if not registry.exists():
+        return admit_registry_creation(board, project_id, project, paths, native_payload,
+                                       expected_claim_hash=expected_claim_hash)
+    return _admit_paths(board, project_id, project, paths, native_payload,
+                        expected_claim_hash=expected_claim_hash, registry_operation=True)
+
+
+def admit_registry_creation(board, project_id, project, paths, native_payload, *, expected_claim_hash=None):
+    """Bootstrap only an absent registry and this project's transaction journal.
+
+    The proposed registry never establishes identity. The existing native board,
+    exact physical workspace and exact claims remain the sole write admission.
+    """
+    project = Path(project).absolute()
+    registry = safe_path(project.parent / "index.yaml", project.parent)
+    journal = project / ".record-transactions"
+    initial_prefix = ".record-transactions.init-"
+    if registry.exists() or registry not in paths or any(
+        Path(p) != registry and not Path(p).is_relative_to(journal)
+        and not (Path(p).is_relative_to(project) and Path(p).relative_to(project).parts[0].startswith(initial_prefix))
+        for p in paths
+    ):
+        raise AdmissionError("registry bootstrap scope must contain only absent registry and owned journal")
+    from record_transaction import registry_git_state
+    if registry_git_state(project) != (None, None):
+        raise AdmissionError("registry bootstrap needs absent HEAD and index membership")
+    return _admit_paths(board, project_id, project, paths, native_payload,
+                        expected_claim_hash=expected_claim_hash, registry_creation=True)
+
+
 def inspect_paths(
     board: Path, project_id: str, project: Path, paths: list[Path], native_payload: dict
 ) -> dict:
@@ -344,6 +384,8 @@ def _admit_paths(
     expected_claim_hash=None,
     readonly=False,
     passive=False,
+    registry_creation=False,
+    registry_operation=False,
 ):
     try:
         project = Path(project).absolute()
@@ -354,10 +396,11 @@ def _admit_paths(
         registry = safe_path(repository / "projects/index.yaml", repository)
         import team_contract
 
-        team_contract.require_registry(
-            registry, board=board, native_payload=native_payload
-        )
-        if project_id not in registry_entries(registry.read_text(encoding="utf-8")):
+        if not registry_creation:
+            team_contract.require_registry(
+                registry, board=board, native_payload=native_payload
+            )
+        if not (registry_creation or registry_operation) and project_id not in registry_entries(registry.read_text(encoding="utf-8")):
             raise AdmissionError("project is not registered")
         if not paths:
             raise AdmissionError("admission requires explicit paths")
@@ -460,3 +503,63 @@ def _admit_paths(
         if isinstance(exc, AdmissionError):
             raise
         raise AdmissionError(f"run admission failed: {exc}") from exc
+
+
+def admit_shared_prep(board, project, paths, native_payload, expected_claim_hash=None):
+    """Fresh board-owned grant, scoped to one prep and its transaction custody."""
+    import claim_scope
+    import team_contract
+    selection = native_payload.get("meeting_prep_share")
+    if (not isinstance(selection, dict) or set(selection) != {"id", "workspace"}
+            or not isinstance(selection["id"], str)):
+        raise AdmissionError("exact prep grant and workspace required")
+    binding = native_binding(Path(board), native_payload)
+    text = _snapshot(Path(board))
+    sessions = coordination.rows(text)
+    matches = []
+    for session in sessions:
+        for claim in session.claims:
+            grant = claim_scope.prep_share_claim(claim)
+            if grant is not None and grant["id"] == selection["id"]:
+                matches.append((session, grant))
+    if len(matches) != 1:
+        raise AdmissionError("shared prep grant missing or ambiguous")
+    recipient, grant = matches[0]
+    repo, branch = coordination._repository_state(Path(grant["repository"]))
+    project = safe_path(Path(project).absolute(), repo)
+    if (project != repo / "meeting-preps" or str(repo) != grant["repository"]
+            or branch != grant["branch"] or selection["workspace"] != grant["workspace"]
+            or grant["contributor"] != binding["session_uuid"]
+            or not coordination.active(recipient) or recipient.session_uuid != grant["recipient"]
+            or not recipient.client_ref or time.time() >= grant["expires"]
+            or coordination.prep_recipient_scope(recipient) != grant["recipient_scope"]):
+        raise AdmissionError("shared prep identity, workspace, recipient or expiry changed")
+    writer = coordination.find_session(sessions, binding["session_uuid"])
+    if (writer is None or not coordination._workspace_registered(recipient, repo, branch)
+            or not coordination._workspace_registered(writer, repo, branch)
+            or coordination._outside_claim(recipient, repo, [str(Path(grant["target"]).relative_to(repo))])):
+        raise AdmissionError("shared prep recipient or contributor scope changed")
+    registry = repo / "projects/index.yaml"
+    team_contract.require_registry(registry, board=Path(board), native_payload=native_payload)
+    registered = registry_entries(registry.read_text(encoding="utf-8"))
+    if binding["project_id"] not in registered or recipient.project not in registered:
+        raise AdmissionError("prep seats must belong to registered projects")
+    enrolled = team_contract.registry_binding(registry)
+    if enrolled is not None and enrolled["repository"]["audience"] != "private":
+        raise AdmissionError("shared/public repository is not a private prep destination")
+    marker = safe_path(repo / "profiles/meeting-prep/.owner.json", repo)
+    owner = json.loads(marker.read_text())
+    if not isinstance(owner, dict) or type(owner.get("schema")) is not int or owner != {"schema": 1, "workspace": grant["workspace"]}:
+        raise AdmissionError("private workspace owner marker changed")
+    target = safe_path(Path(grant["target"]), repo)
+    for raw in paths:
+        path = safe_path(Path(raw), repo)
+        rel = path.relative_to(project)
+        if path != target and not (rel.parts and (rel.parts[0] == ".record-transactions" or rel.parts[0].startswith(".record-transactions.init-"))):
+            raise AdmissionError("shared prep grant cannot authorize another file")
+    proof = {**binding, "repository": str(repo), "branch": branch, "project_root": str(project),
+             "prep_grant": grant}
+    proof["claim_hash"] = _fingerprint([binding["claim_hash"], grant])
+    if expected_claim_hash is not None and expected_claim_hash != proof["claim_hash"]:
+        raise AdmissionError("shared prep scope changed")
+    return proof

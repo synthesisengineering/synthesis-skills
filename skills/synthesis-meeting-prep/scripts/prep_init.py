@@ -459,6 +459,56 @@ def migrate(request, *, apply=False):
                 "complete": True, "receipt": str(receipt)}
 
 
+def share_pack(context_repo, workspace, artifact, *, board, recipient, contributor,
+               operation, before=None, private=False, ttl=900):
+    repo, _ = _owner(context_repo, workspace)
+    # A pre-existing workspace binding is required, never minted by sharing.
+    marker = repo / PROFILE_PATH / ".owner.json"
+    if not marker.is_file():
+        raise ValueError("private workspace profiles must be explicitly bound first")
+    pm = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+    sys.path.insert(0, str(pm))
+    import coordination
+    import team_contract
+    if private is not True:
+        raise ValueError("explicit approved private context required")
+    team_contract.require_registry(repo / "projects/index.yaml", board=board)
+    enrollment = team_contract.registry_binding(repo / "projects/index.yaml")
+    if enrollment is not None and enrollment["repository"]["audience"] != "private":
+        raise ValueError("shared/public repository is not a private prep destination")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.md", artifact):
+        raise ValueError("literal prep artifact required")
+    target = records._path(repo / "meeting-preps" / artifact, repo)
+    if not target.parent.is_dir():
+        raise ValueError("existing private prep folder required")
+    if operation == "create":
+        if os.path.lexists(target) or before is not None:
+            raise ValueError("create grant requires absent artifact")
+    elif operation == "append":
+        _, snapshot = records._snapshot(target)
+        if snapshot["sha256"] != before or snapshot["mode"] != 0o600:
+            raise ValueError("append grant requires exact private preimage")
+    return coordination.grant_prep_share(board, recipient, contributor, repo, workspace,
+                                         artifact, operation, before, private=private, ttl=ttl)
+
+
+def write_pack(context_repo, workspace, artifact, text, *, board, native_payload,
+               grant_id, operation, before=None):
+    repo, _ = _owner(context_repo, workspace)
+    folder = records._path(repo / "meeting-preps", repo)
+    if not folder.is_dir() or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.md", artifact):
+        raise ValueError("existing private prep folder and literal Markdown artifact required")
+    payload = dict(native_payload, meeting_prep_share={"id": grant_id, "workspace": workspace})
+    if operation == "create":
+        request = {"file": artifact, "create": {"text": text, "mode": 0o600}}
+    elif operation == "append":
+        request = {"file": artifact, "expected_sha256": before,
+                   "edits": [{"op": "append", "text": text}]}
+    else:
+        raise ValueError("prep operation must be create or append")
+    return records.apply(folder, [request], board=board, native_payload=payload, intent_id=grant_id)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Manage explicitly owned private meeting profiles.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -474,9 +524,31 @@ def main(argv=None):
             p.add_argument("--relationship", choices=RELATIONSHIPS, required=True)
     p = sub.add_parser("migrate", help="preflight an exact ownership/hash map; --apply performs the move")
     p.add_argument("--map", type=Path, required=True); p.add_argument("--apply", action="store_true")
+    p = sub.add_parser("share-pack", help="authenticated recipient grants one private artifact contribution")
+    p.add_argument("--context-repo", type=Path, required=True); p.add_argument("--workspace", required=True)
+    p.add_argument("--artifact", required=True); p.add_argument("--board", type=Path, required=True)
+    p.add_argument("--recipient", required=True); p.add_argument("--contributor", required=True)
+    p.add_argument("--operation", choices=("create", "append"), required=True)
+    p.add_argument("--before"); p.add_argument("--private", action="store_true", required=True)
+    p.add_argument("--ttl", type=int, default=900)
+    p = sub.add_parser("write-pack", help="consume exact sharing authority through the record transaction")
+    p.add_argument("--context-repo", type=Path, required=True); p.add_argument("--workspace", required=True)
+    p.add_argument("--artifact", required=True); p.add_argument("--board", type=Path, required=True)
+    p.add_argument("--grant-id", required=True); p.add_argument("--native-payload", type=Path, required=True)
+    p.add_argument("--operation", choices=("create", "append"), required=True)
+    p.add_argument("--before"); p.add_argument("--text-file", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "migrate":
+        if args.command == "share-pack":
+            result = share_pack(args.context_repo, args.workspace, args.artifact, board=args.board,
+                                recipient=args.recipient, contributor=args.contributor, operation=args.operation,
+                                before=args.before, private=args.private, ttl=args.ttl)
+        elif args.command == "write-pack":
+            raw, _ = records._snapshot(args.text_file)
+            result = write_pack(args.context_repo, args.workspace, args.artifact, raw.decode("utf-8"),
+                                board=args.board, native_payload=records.read_request(args.native_payload),
+                                grant_id=args.grant_id, operation=args.operation, before=args.before)
+        elif args.command == "migrate":
             request = records.read_request(args.map)
             result = migrate(request, apply=args.apply)
         elif args.command == "resolve":

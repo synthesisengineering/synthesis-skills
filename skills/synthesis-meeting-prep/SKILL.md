@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.0"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -103,6 +103,34 @@ For every meeting, in order:
    default, `<date>-<slug>-prep.md`), and the two-line drivers note
    in chat. Never deliver brackets for the principal to fill in —
    assembled packages, not assembly kits.
+
+## Shared prep contributions
+
+A broad `meeting-preps/` claim remains exclusive for ordinary edits. To accept a
+contribution, its authenticated active recipient uses `prep_init.py share-pack`
+with the exact contributor seat, private context repository, workspace, literal
+Markdown artifact, create/append operation and (for append) reviewed SHA256.
+`--private` asserts the already approved private destination; names and Git
+remotes are not privacy evidence. Both seats register the same physical checkout
+and branch; the profile owner marker and any team registry must agree. A team
+shared/public repository cannot receive these private prep contributions.
+
+The grant is recorded in the recipient's own coordination row, expires within
+one hour (15 minutes by default), and binds its current ordinary claim scope.
+Do not paste grant markers into `coordination claim`, narrow or release another
+seat's claim, or claim the overlapping artifact as exclusive. Missing or ambiguous
+authority refuses before an artifact effect. The recipient can invalidate grants
+by changing its held scope or releasing its own seat through existing owners.
+
+The contributor uses `prep_init.py write-pack` with that grant ID, native event
+payload and bounded text file. Creation requires absence; append preserves the
+complete reviewed prefix. The existing record transaction serializes competing
+writers, rejects changed preimages and retains interruption custody. Restore
+valid current authority and use the existing transaction recovery owner with the
+same `meeting_prep_share` selection to recover; never remove its journal by hand.
+A grant covers one artifact and transaction custody only. It grants no generic
+edit, profile migration, publication, deployment or recipient impersonation right.
+The recipient retains publication custody under its existing claim.
 
 ## 3. The debrief loop
 

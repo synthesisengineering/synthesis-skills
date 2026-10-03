@@ -50,6 +50,78 @@ INTRODUCED_DEPENDENCIES = {"skills/synthesis-git-hooks/scripts/pre-merge-commit"
  'skills/synthesis-agent-conformance/scripts/client_binaries.py': ('skills/synthesis-project-management/scripts/peer_addressing.py',),
  'skills/synthesis-project-management/scripts/coordination_process.py': ('skills/synthesis-project-management/scripts/coordination.py',)}
 
+# Exact source and destination membership for the coordinator registry closure.
+REGISTRY_DEPENDENCIES = {'skills/synthesis-project-management/scripts/run_admission.py': ('.synthesis/git-hooks/run_admission.py',
+                                                                  493),
+ 'skills/synthesis-project-management/scripts/project_state.py': ('.synthesis/git-hooks/project_state.py',
+                                                                  493),
+ 'skills/synthesis-project-management/scripts/plan_reference.py': ('.synthesis/git-hooks/plan_reference.py',
+                                                                   493),
+ 'skills/synthesis-context-lifecycle/scripts/context_currency.py': ('.synthesis/git-hooks/context_currency.py',
+                                                                    493),
+ 'skills/synthesis-context-lifecycle/scripts/context_edit.py': ('.synthesis/git-hooks/context_edit.py',
+                                                                493),
+ 'skills/synthesis-context-lifecycle/scripts/record_succession.py': ('.synthesis/git-hooks/record_succession.py',
+                                                                     493),
+ 'skills/synthesis-context-lifecycle/scripts/record_transaction.py': ('.synthesis/git-hooks/record_transaction.py',
+                                                                      493),
+ 'skills/synthesis-decision-packet/scripts/build_packet.py': ('.synthesis/git-hooks/build_packet.py',
+                                                              493),
+ 'skills/synthesis-decision-packet/scripts/record_rulings.py': ('.synthesis/git-hooks/record_rulings.py',
+                                                                493),
+ 'skills/synthesis-onboarding/scripts/release_runtime.py': ('.synthesis/git-hooks/release_runtime.py',
+                                                            493),
+ 'skills/synthesis-repo-guard/publication_receipt.py': ('.synthesis/git-hooks/publication_receipt.py',
+                                                        493),
+ 'skills/synthesis-agent-conformance/scripts/yaml_runtime.py': ('.synthesis/git-hooks/yaml_runtime.py',
+                                                                493),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py': ('.synthesis/git-hooks/yaml/__init__.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py': ('.synthesis/git-hooks/yaml/composer.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py': ('.synthesis/git-hooks/yaml/constructor.py',
+                                                                          420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py': ('.synthesis/git-hooks/yaml/cyaml.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py': ('.synthesis/git-hooks/yaml/dumper.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py': ('.synthesis/git-hooks/yaml/emitter.py',
+                                                                      420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/error.py': ('.synthesis/git-hooks/yaml/error.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/events.py': ('.synthesis/git-hooks/yaml/events.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py': ('.synthesis/git-hooks/yaml/loader.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py': ('.synthesis/git-hooks/yaml/nodes.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py': ('.synthesis/git-hooks/yaml/parser.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py': ('.synthesis/git-hooks/yaml/reader.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py': ('.synthesis/git-hooks/yaml/representer.py',
+                                                                          420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py': ('.synthesis/git-hooks/yaml/resolver.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py': ('.synthesis/git-hooks/yaml/scanner.py',
+                                                                      420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py': ('.synthesis/git-hooks/yaml/serializer.py',
+                                                                         420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py': ('.synthesis/git-hooks/yaml/tokens.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/manifest.json': ('.synthesis/references/pyyaml-manifest.json',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/LICENSE': ('.synthesis/references/pyyaml-LICENSE',
+                                                              420),
+ 'skills/synthesis-daily-rituals/scripts/repo_state.py': ('.synthesis/git-hooks/repo_state.py',
+                                                          493),
+ 'skills/synthesis-daily-rituals/scripts/ritual_workers.py': ('.synthesis/git-hooks/ritual_workers.py',
+                                                              493),
+ 'skills/synthesis-daily-rituals/scripts/credential_paths.py': ('.synthesis/git-hooks/credential_paths.py',
+                                                                493)}
+INTRODUCED_DEPENDENCIES.update({relative: ("skills/synthesis-project-management/scripts/coordination.py",)
+                                for relative in REGISTRY_DEPENDENCIES})
+
 MESSAGE_PARSER_DEPENDENCIES = frozenset(
     "skills/synthesis-project-management/scripts/" + name
     for name in ("native_git.py", "claim_scope.py", "board_grammar.py", "coordination_schema.py")
@@ -59,6 +131,15 @@ MESSAGE_PARSER_DEPENDENCIES = frozenset(
 def _dependency_anchors(entry):
     # A source may be installed by several components. Adoption authority is
     # local to the selected component, never borrowed from a sibling target.
+    if entry.component == "day-end":
+        if entry.source_relative in {
+            "skills/synthesis-daily-rituals/scripts/ritual_state.py",
+            "skills/synthesis-daily-rituals/scripts/ritual_workers.py",
+            "skills/synthesis-daily-rituals/scripts/credential_paths.py",
+        }:
+            return ("skills/synthesis-daily-rituals/scripts/day-end",
+                    "skills/synthesis-daily-rituals/scripts/day-end-nudge.sh")
+        return ()
     if entry.component == "message-guard":
         if entry.source_relative in MESSAGE_PARSER_DEPENDENCIES:
             return ("skills/synthesis-message-guard/scripts/message_guard.py",)
@@ -147,13 +228,17 @@ def _specs(home, state_dir, components):
         for name in ("pre-commit", "pre-merge-commit", "commit-msg", "_load_config.py", "_scan_staged.py"):
             result.append(("git-hooks", "skills/synthesis-git-hooks/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
-        for name in ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py"):
+        for name in ("coordination.py", "team_contract.py", "native_identity.py", "claim_scope.py", "native_git.py", "coordination_schema.py", "board_grammar.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py", "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py", "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py", "run_admission.py", "project_state.py", "plan_reference.py"):
             result.append(("git-hooks", "skills/synthesis-project-management/scripts/" + name,
                            home / ".synthesis/git-hooks" / name, 0o755))
         result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py",
                        home / ".synthesis/git-hooks/native_transcript_identity.py", 0o755))
         result.append(("git-hooks", "skills/synthesis-agent-conformance/scripts/client_binaries.py",
                        home / ".synthesis/git-hooks/client_binaries.py", 0o755))
+        for relative, (target, mode) in REGISTRY_DEPENDENCIES.items():
+            if relative.startswith("skills/synthesis-project-management/scripts/"):
+                continue  # Already declared in the checked coordinator tuple above.
+            result.append(("git-hooks", relative, home / target, mode))
         result.append(("git-hooks", "skills/synthesis-project-management/references/session-words-v1.txt.zlib.b85",
                        home / ".synthesis/references/session-words-v1.txt.zlib.b85", 0o644))
     if "message-guard" in components:

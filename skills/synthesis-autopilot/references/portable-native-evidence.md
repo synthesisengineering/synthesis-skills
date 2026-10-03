@@ -94,6 +94,19 @@ A source larger than the prefix envelope uses the bounded one-generation stream
 owner below. Never invent a rotation or split one actual generation into fictional
 native sources. Product defaults remain finite.
 
+## Retained native observation shapes
+
+Decoder generation v14 accepts the closed forms for unlinked output metadata,
+partial environment skill patches, nullable command-search paths and streamed
+retained sender history. Unlinked outputs remain unpaired observations; missing
+native call identities are never invented. Partial patches cannot establish a
+complete world state, and retained text does not grant action authority.
+
+Existing bindings require explicit generation reconciliation. Event-count,
+usage, journal-storage, input-byte and process-time limits continue to apply;
+schema acceptance does not establish that a whole retained history fits those
+limits or that a managed native recovery was admitted.
+
 ## Large histories: exact bounded continuation
 
 `native_archive_stream.py` reuses the existing native binding, authority receipts,
@@ -186,9 +199,11 @@ follows from mechanical source tests.
 
 System/developer instructions and the user's current authorization remain above
 skill guidance. Synthesis does not try to rewrite that hierarchy or disable a
-host's capabilities. Preserve the actual per-client memory setting. A rule about
-Claude Code's disabled auto-memory must not be transformed into a rule disabling
-all clients' memory. Enabling that setting is a separate user decision.
+host's capabilities. Keep native memory ON in every harness under the current
+capture-buffer policy. Synthesis records win conflicts. Use the existing ritual
+and context-edit ingestion owners; native export/clear capability remains a
+separate qualification boundary. A local archive or ingestion receipt never
+permits raw-file deletion, disabling memory, or an invented native clear result.
 
 Run the synthetic boundary suite across Claude, Codex, Muse, Cursor, Copilot and
 OpenCode adapter inputs. Run actual PM/journal consumer controls for stale owner,

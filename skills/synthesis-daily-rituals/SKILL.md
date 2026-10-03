@@ -379,6 +379,10 @@ Runs first inside Step 4, in **every mode including Quick Close** — the next-d
 - [ ] Document any additional reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
 - [ ] Update project REFERENCE.md with any new stable facts discovered today.
 
+### 5a. Native memory capture-buffer sweep
+
+- [ ] Follow the complete [native memory capture-buffer sweep](references/ritual-worker-contract.md#native-memory-capture-buffer-sweep): keep memory ON, skip active harnesses as pending, archive before ingestion and require separate native clear qualification.
+
 ### 6. Career Amplification
 
 - [ ] Review today's work for content opportunities: blog posts, articles, videos, talks.

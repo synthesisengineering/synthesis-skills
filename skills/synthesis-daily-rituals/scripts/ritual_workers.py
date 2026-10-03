@@ -543,3 +543,131 @@ def verify_artifact(
         "session": session,
         "lesson_candidates": len(candidates),
     }
+
+
+# Native memory is an untrusted capture buffer. These bounded observations do
+# not parse a harness's memory format or invoke a model/native action.
+MEMORY_MAX_FILES = 1024
+MEMORY_MAX_BYTES = 32 * 1024 * 1024
+MEMORY_MAX_FILE = 8 * 1024 * 1024
+MEMORY_SECONDS = 10
+
+
+def memory_store_snapshot(store: Path) -> dict:
+    """Hash one explicitly selected directory without interpreting its format."""
+    import json
+    import time
+
+    store = Path(store)
+    if not store.is_absolute() or ".." in store.parts or store.resolve() != store:
+        raise RitualWorkersError("memory store must be an explicit unaliased absolute directory")
+    deadline = time.monotonic() + MEMORY_SECONDS
+    directories, files, total = {}, [], 0
+
+    def metadata(path):
+        info = path.lstat()
+        if info.st_uid != os.getuid() or info.st_mode & 0o022:
+            raise RitualWorkersError("memory store ownership/mode refused")
+        return info
+
+    def walk(directory, depth):
+        nonlocal total
+        if time.monotonic() >= deadline or depth > 16:
+            raise RitualWorkersError("memory store time/depth bound exceeded")
+        info = metadata(directory)
+        if not stat.S_ISDIR(info.st_mode):
+            raise RitualWorkersError("memory store directory is not regular")
+        names = sorted(os.listdir(directory))
+        if len(names) + len(files) + len(directories) > MEMORY_MAX_FILES:
+            raise RitualWorkersError("memory store entry bound exceeded")
+        directories[directory] = (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_ctime_ns, names)
+        for name in names:
+            path = directory / name
+            item = metadata(path)
+            if stat.S_ISDIR(item.st_mode):
+                walk(path, depth + 1)
+            elif stat.S_ISREG(item.st_mode):
+                raw = read_regular(path, min(MEMORY_MAX_FILE, MEMORY_MAX_BYTES - total))
+                total += len(raw)
+                files.append({"path": path.relative_to(store).as_posix(),
+                              "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)})
+            else:
+                raise RitualWorkersError("memory store has an unsupported member")
+            if time.monotonic() >= deadline:
+                raise RitualWorkersError("memory store time bound exceeded")
+
+    walk(store, 0)
+    # Revalidate every file and directory, not just the directory mtime. A
+    # background consolidator can replace bytes without changing membership.
+    for item in files:
+        raw = read_regular(store / item["path"], MEMORY_MAX_FILE)
+        if hashlib.sha256(raw).hexdigest() != item["sha256"]:
+            raise RitualWorkersError("memory store changed during hashing")
+        if time.monotonic() >= deadline:
+            raise RitualWorkersError("memory store time bound exceeded")
+    for directory, expected in directories.items():
+        info = metadata(directory)
+        current = (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_ctime_ns, sorted(os.listdir(directory)))
+        if current != expected:
+            raise RitualWorkersError("memory store membership/identity changed")
+    identity = directories[store]
+    return {"path": str(store), "device": identity[0], "inode": identity[1],
+            "sha256": hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "files": len(files), "bytes": total}
+
+
+def memory_probe(store: Path, *, harness: str, machine: str, board: Path,
+                 previous: dict | None = None) -> dict:
+    """Fenced coordination preflight. The current harness counts as active too.
+
+    The existing coordination owner may refresh its leased mirror; no native
+    store, memory ledger or harness operation is modified by this probe.
+    """
+    import sys
+
+    if harness not in {"codex", "claude", "muse"} or not machine:
+        raise RitualWorkersError("explicit known harness and machine required")
+    scripts = Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    import coordination
+
+    # Refuse a missing/unsafe selected board before calling its owner (which
+    # can otherwise initialize an absent parent). A leased mirror alone is not
+    # evidence that this machine has no active harness seats.
+    read_regular(Path(board), MAX_ARTIFACT_BYTES)
+    text = coordination._check_staged_board_snapshot(Path(board), lock_timeout=1)
+    if text is None:
+        raise RitualWorkersError("selected coordination board is absent")
+    board_raw = read_regular(Path(board), MAX_ARTIFACT_BYTES)
+    if board_raw.decode("utf-8") != text:
+        raise RitualWorkersError("coordination changed after its owner fence")
+    sessions = coordination.rows(text, strict=True)
+    from team_contract import CLIENT_SCHEMES
+
+    for session in sessions:
+        if coordination.active(session) and session.machine in {machine, "unknown", ""}:
+            reference = coordination.normalize_client_ref(session.client_ref)
+            scheme = reference.split(":", 1)[0] if reference else None
+            client = next((name for name, schemes in CLIENT_SCHEMES.items() if scheme in schemes), None)
+            if client is None or client == harness:
+                return {"status": "PENDING_ACTIVE_HARNESS", "harness": harness,
+                        "pending": True, "model_calls": 0}
+    current = memory_store_snapshot(store)
+    if read_regular(Path(board), MAX_ARTIFACT_BYTES) != board_raw:
+        raise RitualWorkersError("coordination changed during memory preflight")
+    if previous is not None:
+        if not isinstance(previous, dict) or set(previous) != {"store", "complete"} or type(previous["complete"]) is not bool:
+            raise RitualWorkersError("invalid memory ledger observation")
+        old = previous["store"]
+        if not isinstance(old, dict) or set(old) != set(current):
+            raise RitualWorkersError("invalid previous memory store binding")
+        if any(old[k] != current[k] for k in ("path", "device", "inode")):
+            raise RitualWorkersError("memory store moved or was replaced; owner reconciliation required")
+        if old == current:
+            return {"status": "UNCHANGED" if previous["complete"] else "PENDING_UNCHANGED",
+                    "harness": harness, "store": current, "pending": not previous["complete"], "model_calls": 0}
+    if read_regular(Path(board), MAX_ARTIFACT_BYTES) != board_raw:
+        raise RitualWorkersError("coordination changed during memory preflight")
+    return {"status": "EXPORT_REQUIRED", "harness": harness, "store": current,
+            "board_sha256": hashlib.sha256(board_raw).hexdigest(), "pending": True, "model_calls": 0}

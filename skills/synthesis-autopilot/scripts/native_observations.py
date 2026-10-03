@@ -538,6 +538,7 @@ class _CommandJSON(_StreamJSON):
     def __init__(self, depth=32):
         super().__init__(depth=depth)
         self.array_counts = {}
+        self.null_parsed_path = False
 
     def _path(self):
         if self.s["stack"] and self.s["stack"][-1]["kind"] == "array":
@@ -552,6 +553,8 @@ class _CommandJSON(_StreamJSON):
             if self.array_counts[array] > 256:
                 raise SourceError("command array exceeds semantic work bound")
         if path in self.OBJECTS:
+            if path == ("payload", "item", "parsed_cmd", "*"):
+                self.null_parsed_path = False
             if char != "{":
                 raise SourceError("command object type mismatch")
             return False
@@ -567,6 +570,11 @@ class _CommandJSON(_StreamJSON):
         if path == ("payload", "item", "exit_code"):
             if char not in "n-0123456789":
                 raise SourceError("command exit-code type mismatch")
+            return True
+        if path == ("payload", "item", "parsed_cmd", "*", "path") and char == "n":
+            # Validate the item's type at close so JSON key order cannot alter
+            # acceptance. This flag resets for each parsed item, not each page.
+            self.null_parsed_path = True
             return True
         if path in self.BODIES:
             if char != '"':
@@ -601,6 +609,8 @@ class _CommandJSON(_StreamJSON):
             }
             if kind not in shapes or keys != shapes[kind]:
                 raise SourceError("unqualified parsed-command type")
+            if self.null_parsed_path and kind != "search":
+                raise SourceError("only a parsed search may omit its path")
 
     def normalized(self, producer, digest, mode, locator):
         if not self.finish():
@@ -692,6 +702,7 @@ class _CompactionJSON(_StreamJSON):
         ("payload", "retained_context", "user_messages", "*", "text"),
         ("payload", "retained_context", "assistant_messages", "*", "text"),
         ("payload", "retained_context", "sender_deliveries", "*", "text"),
+        ("payload", "guardian_history", "*", "guardian_metadata", "sender_user_messages", "text"),
     }
     BODIES |= {
         ("payload", "guardian_history", "*", key)
