@@ -1678,6 +1678,8 @@ changed_surfaces:
   - retained-context-79a61d2d82169367
   - retained-context-69f8bf2865bc4b95
   - retained-context-3b7308500811c09f
+  - diagnostic-line-selected-source
+  - diagnostic-line-actual-private-export
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -1972,6 +1974,14 @@ changed_surfaces:
   - retained-context-69f8bf2865bc4b95
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: *id001
+- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
+  cases:
+  - diagnostic-line-selected-source
+  - diagnostic-line-actual-private-export
+- path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
+  cases:
+  - diagnostic-line-selected-source
+  - diagnostic-line-actual-private-export
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -10861,3 +10871,13 @@ cases:
   expected_status: pass
   fixture: ../synthesis-autopilot/scripts/test_native_replay.py::test_codex_retained_history_replay_uses_original_interval_and_user_precedence
   motivating_defect: codex retained history replay uses original interval and user precedence
+- id: diagnostic-line-selected-source
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_site_binds_line_to_selected_source
+  control_class: acceptance-test
+  motivating_defect: Hosted failing phases withheld the selected test source line needed for diagnosis.
+  expected_status: pass
+- id: diagnostic-line-actual-private-export
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_failure_line_actual_export_retains_privacy_and_failed_outcome
+  control_class: acceptance-test
+  motivating_defect: Hosted failing phases withheld the selected test source line needed for diagnosis.
+  expected_status: pass

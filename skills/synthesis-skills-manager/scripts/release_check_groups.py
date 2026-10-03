@@ -16,7 +16,6 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import hashlib
 import json
 import math
-import math
 import os
 from pathlib import Path
 import selectors
@@ -43,6 +42,7 @@ _diagnostic_os_fstat = os.fstat
 _diagnostic_os_stat = os.stat
 _diagnostic_os_lstat = os.lstat
 _diagnostic_os_getuid = os.getuid
+_diagnostic_os_getcwd = os.getcwd
 _diagnostic_os_fsync = os.fsync
 _diagnostic_is_regular = stat.S_ISREG
 _diagnostic_mode = stat.S_IMODE
@@ -1089,6 +1089,19 @@ def capture_acceptance_diagnostics(
                     "seconds": duration,
                 }
             )
+            site = row.get("failure_site")
+            if site is not None:
+                source = node.split("::", 1)[0]
+                if (
+                    row["outcome"] != "failed"
+                    or not isinstance(site, dict)
+                    or set(site) != {"source_sha256", "line"}
+                    or site["source_sha256"] != hashlib.sha256(source.encode()).hexdigest()
+                    or type(site["line"]) is not int
+                    or not 1 <= site["line"] <= 1000000
+                ):
+                    raise ValueError("invalid diagnostic failure site")
+                clean[-1]["failure_line"] = site["line"]
             if len(clean) > MAX_TESTS * 4:
                 raise ValueError("diagnostic phase ceiling")
         return clean
@@ -1458,6 +1471,7 @@ def read_progress(path: Path) -> dict:
 
 class InventoryPlugin:
     def __init__(self, group: str, report: Path, selection: list[str] | None = None):
+        self.source_root = Path(_diagnostic_os_getcwd())
         self.group = group
         self.selection = selection
         self.report = report
@@ -1477,6 +1491,29 @@ class InventoryPlugin:
         self.progress_sequence = 0
         self.reporting_seconds = 0.0
         self.failure_detail_bytes = 0
+
+    def _failure_site(self, report):
+        """Retain only a line in the selected source file; never exception data.
+
+        This is diagnostic metadata, not outcome, custody or release authority.
+        Foreign/helper paths and representations without a line remain unknown.
+        """
+        node = getattr(report, "nodeid", None)
+        if not isinstance(node, str) or len(node) > 8192:
+            return None
+        source = node.split("::", 1)[0]
+        if not source.endswith(".py") or Path(source).is_absolute() or any(
+            p in {"", ".", ".."} for p in source.split("/")
+        ):
+            return None
+        crash = getattr(getattr(report, "longrepr", None), "reprcrash", None)
+        line = getattr(crash, "lineno", None)
+        path = getattr(crash, "path", None)
+        if type(line) is not int or not 1 <= line <= 1000000:
+            return None
+        if not isinstance(path, str) or path not in {source, str(self.source_root / source)}:
+            return None
+        return {"source_sha256": _diagnostic_sha256(source.encode()).hexdigest(), "line": line}
 
     def _failure_detail(self, report):
         """Render bounded pytest diagnostics without collecting arbitrary locals.
@@ -1711,7 +1748,7 @@ class InventoryPlugin:
                 outcome=report.outcome,
                 duration=report.duration,
                 **(
-                    {"failure": self._failure_detail(report)}
+                    {"failure": self._failure_detail(report), "failure_site": self._failure_site(report)}
                     if report.outcome == "failed"
                     else {}
                 ),
@@ -1768,7 +1805,7 @@ class InventoryPlugin:
             outcome=report.outcome,
             duration=report.duration,
             **(
-                {"failure": self._failure_detail(report)}
+                {"failure": self._failure_detail(report), "failure_site": self._failure_site(report)}
                 if report.outcome == "failed"
                 else {}
             ),
