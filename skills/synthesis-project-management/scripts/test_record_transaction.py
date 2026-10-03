@@ -925,3 +925,41 @@ def test_registry_empty_lookalikes_remain_refusals(text):
     from project_recipient import registry_entries
     with pytest.raises(ValueError):
         registry_entries(text)
+
+
+@pytest.mark.parametrize('layout', ['installed', 'retained'])
+def test_cold_registry_gate_uses_complete_owned_runtime(world, tmp_path, layout):
+    """The real staged consumer must work without an ambient source import path."""
+    import retirement_runtime
+    from test_run_admission import git, SEAT
+    index = registry_world(world)
+    registry_patch(world, index)
+    git(world['repo'], 'add', 'projects/index.yaml')
+    args = ['check-staged', '--id', SEAT, '--repository', str(world['repo']),
+            '--active-project-file', str(world['repo'] / 'absent-pointer'), '--json']
+    if layout == 'retained':
+        store = tmp_path / 'retained'
+        digest = retirement_runtime.stage(Path(__file__).resolve().parent.parent, store)
+        def call():
+            return retirement_runtime.invoke(store, digest, world['board'], args)
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'synthesis-onboarding/scripts'))
+        import runtime_payload
+        source = Path(__file__).resolve().parents[3]
+        home = tmp_path / 'installed-home'
+        for _, relative, target, mode in runtime_payload._specs(home, home / 'state', {'git-hooks'}):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((source / relative).read_bytes())
+            target.chmod(mode)
+        script = home / '.synthesis/git-hooks/coordination.py'
+        def call():
+            return subprocess.run([sys.executable, '-S', '-B', str(script), '--board', str(world['board']), *args],
+                                  cwd=world['repo'], text=True, capture_output=True, timeout=30)
+    owned = call()
+    (tmp_path / 'owned-gate.json').write_text(json.dumps({'code': owned.returncode, 'stdout': owned.stdout, 'stderr': owned.stderr}))
+    assert owned.returncode == 0, owned.stderr or owned.stdout
+    index.write_bytes(index.read_bytes().replace(b'status: paused', b'status: active'))
+    git(world['repo'], 'add', 'projects/index.yaml')
+    foreign = call()
+    (tmp_path / 'foreign-gate.json').write_text(json.dumps({'code': foreign.returncode, 'stdout': foreign.stdout, 'stderr': foreign.stderr}))
+    assert foreign.returncode == 10, foreign.stderr or foreign.stdout

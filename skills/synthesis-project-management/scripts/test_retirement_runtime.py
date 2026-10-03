@@ -25,6 +25,13 @@ def source_in_target(tmp_path):
     guard = worktree / "skills/synthesis-repo-guard"
     guard.mkdir()
     shutil.copy2(CHECKPOINT_SCRIPT, guard / "checkpoint_sync.py")
+    import retirement_runtime as runtime
+    source = SCRIPT.parent.parent
+    for member in runtime.MEMBERS:
+        original = runtime.source_member(source, member)
+        destination = worktree / "skills" / original.relative_to(source.parent)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, destination)
     (worktree / "change.txt").write_text("synthetic work\n")
     git(worktree, "add", ".")
     git(worktree, "commit", "-qm", "synthetic source")
@@ -377,7 +384,9 @@ def test_retained_runtime_covers_all_coordinator_python_imports():
     """Audit eager and lazy imports, including the cross-skill Muse resolver."""
     import ast
     import retirement_runtime as runtime
-    modules = {Path(name).stem: runtime.source_member(SCRIPT.parent.parent, name)
+    from importlib.util import resolve_name
+    modules = {name.removeprefix('scripts/').removesuffix('/__init__.py').removesuffix('.py').replace('/', '.'):
+               runtime.source_member(SCRIPT.parent.parent, name)
                for name in runtime.MEMBERS if name.endswith('.py')}
     pending, visited = ['coordination'], set()
     while pending:
@@ -385,15 +394,30 @@ def test_retained_runtime_covers_all_coordinator_python_imports():
         if name in visited:
             continue
         visited.add(name)
+        package = name if modules[name].name == '__init__.py' else name.rpartition('.')[0]
         for node in ast.walk(ast.parse(modules[name].read_bytes())):
-            imported = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
-                        else [node.module] if isinstance(node, ast.ImportFrom) and node.module else [])
-            for value in imported:
-                dependency = value.split('.')[0]
-                if dependency not in sys.stdlib_module_names and dependency != '__future__':
-                    assert dependency in modules, (name, dependency)
-                    pending.append(dependency)
-    assert 'native_transcript_identity' in visited and 'project_recipient' in visited
+            imported = []
+            if isinstance(node, ast.Import):
+                imported = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    imported = [resolve_name('.' * node.level + (node.module or ''), package)]
+                    if not node.module:
+                        imported = [value + '.' + alias.name for value in imported for alias in node.names]
+                elif node.module:
+                    imported = [node.module]
+            for dependency in imported:
+                if dependency.split('.')[0] in sys.stdlib_module_names | {'__future__'}:
+                    continue
+                # This upstream optional extension is explicitly denied by the
+                # retained loader; its pure-Python fallback is retained/tested.
+                if dependency == 'yaml._yaml':
+                    assert name == 'yaml.cyaml'
+                    continue
+                assert dependency in modules, (name, dependency)
+                pending.append(dependency)
+    assert {'native_transcript_identity', 'project_recipient', 'record_transaction',
+            'run_admission', 'context_edit', 'yaml', 'yaml.parser'} <= visited
 
 
 def test_admission_reexports_canonical_lock_identity_without_duplicate_implementation():
@@ -474,3 +498,48 @@ def test_retirement_wrong_resolved_root_is_structured_refusal(tmp_path, monkeypa
     assert owner.main() == 2
     assert "different or unavailable checkout" in capsys.readouterr().err
     assert target.exists() and (target / ".git").read_bytes() == before
+
+
+def test_retained_and_installed_dependency_layouts_are_exact(tmp_path):
+    import retirement_runtime as runtime
+    sys.path.insert(0, str(SCRIPT.parents[2] / 'synthesis-onboarding/scripts'))
+    import runtime_payload
+    source = SCRIPT.parent.parent
+    root = source.parents[1]
+    home = tmp_path / 'home'
+    actual = {relative: (str(target.relative_to(home)), mode)
+              for _, relative, target, mode in runtime_payload._specs(home, home / 'state', {'git-hooks'})}
+    for member in runtime.MEMBERS:
+        relative = str(runtime.source_member(source, member).relative_to(root))
+        expected = ('.synthesis/git-hooks/' + member.removeprefix('scripts/'),
+                    0o644 if member.startswith('scripts/yaml/') else 0o755)
+        if member.startswith('references/'):
+            expected = ('.synthesis/' + member, 0o644)
+        assert actual[relative] == expected
+    assert set(runtime_payload.REGISTRY_DEPENDENCIES) <= set(actual)
+
+
+@pytest.mark.parametrize('damage', [False, True])
+def test_retained_release_yaml_cold_execution_and_pin_refusal(tmp_path, damage):
+    import retirement_runtime as runtime
+    clone, target, board, row, env, _ = source_in_target(tmp_path)
+    source = target / 'skills/synthesis-project-management'
+    script = source / 'scripts/coordination.py'
+    text = script.read_text().replace('from __future__ import annotations',
+        'from __future__ import annotations\nimport yaml\nassert yaml.safe_load("fixture: true") == {"fixture": True}')
+    script.write_text(text)
+    if damage:
+        package = target / 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py'
+        package.write_bytes(package.read_bytes() + b'\n# foreign bytes\n')
+        with pytest.raises(ValueError):
+            runtime.stage(source, tmp_path / 'store')
+    else:
+        digest = runtime.stage(source, tmp_path / 'store')
+        previous = os.environ.copy()
+        os.environ.update(env)
+        try:
+            result = runtime.invoke(tmp_path / 'store', digest, board, ['whoami', '--json'])
+        finally:
+            os.environ.clear(); os.environ.update(previous)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)['row']['session'] == row['compact_id']

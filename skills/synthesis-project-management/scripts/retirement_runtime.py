@@ -22,12 +22,30 @@ COORDINATION_SCRIPTS = (
     "team_contract.py", "native_identity.py", "coordination_archive.py", "pointer_lock.py", "peer_addressing.py",
     "fleet_identity.py", "fleet_paths.py", "fleet_bootstrap.py", "fleet_doctor.py",
     "fleet_handoff.py", "fleet_logical.py", "fleet_subscriptions.py", "coordination_process.py", "coordination_lock.py", "project_recipient.py",
+    "run_admission.py", "project_state.py", "plan_reference.py",
 )
 # Stdlib-only modules the coordination closure imports from the conformance skill.
-CONFORMANCE_SCRIPTS = ("native_transcript_identity.py", "client_binaries.py")
-MEMBERS = tuple("scripts/" + name for name in COORDINATION_SCRIPTS) + (
+CONFORMANCE_SCRIPTS = ("native_transcript_identity.py", "client_binaries.py", "yaml_runtime.py")
+# Cross-skill registry intent readers are executable dependencies of coordination.
+# Keep source paths explicit; no installed cache or source-name guessing is used.
+CROSS_SKILL_SOURCES = {
+    "context_currency.py": "synthesis-context-lifecycle/scripts/context_currency.py",
+    "context_edit.py": "synthesis-context-lifecycle/scripts/context_edit.py",
+    "record_succession.py": "synthesis-context-lifecycle/scripts/record_succession.py",
+    "record_transaction.py": "synthesis-context-lifecycle/scripts/record_transaction.py",
+    "build_packet.py": "synthesis-decision-packet/scripts/build_packet.py",
+    "record_rulings.py": "synthesis-decision-packet/scripts/record_rulings.py",
+    "release_runtime.py": "synthesis-onboarding/scripts/release_runtime.py",
+    "publication_receipt.py": "synthesis-repo-guard/publication_receipt.py",
+}
+YAML_SCRIPTS = ("__init__.py", "composer.py", "constructor.py", "cyaml.py", "dumper.py",
+                "emitter.py", "error.py", "events.py", "loader.py", "nodes.py", "parser.py",
+                "reader.py", "representer.py", "resolver.py", "scanner.py", "serializer.py", "tokens.py")
+MEMBERS = tuple("scripts/" + name for name in COORDINATION_SCRIPTS + CONFORMANCE_SCRIPTS) + (
+    *("scripts/" + name for name in CROSS_SKILL_SOURCES),
+    *("scripts/yaml/" + name for name in YAML_SCRIPTS),
     "references/session-words-v1.txt.zlib.b85",
-    *("scripts/" + name for name in CONFORMANCE_SCRIPTS),
+    "references/pyyaml-manifest.json", "references/pyyaml-LICENSE",
 )
 MAX_FILE = 4 * 1024 * 1024
 MAX_TOTAL = 16 * 1024 * 1024
@@ -127,8 +145,9 @@ def verify(store, digest, *, snapshot=False):
     if not isinstance(files, dict) or set(files) != set(MEMBERS):
         raise ValueError("retained coordination runtime dependency set changed")
     expected = {"": {"MANIFEST.json", "scripts", "references"},
-                "scripts": set(COORDINATION_SCRIPTS) | set(CONFORMANCE_SCRIPTS),
-                "references": {"session-words-v1.txt.zlib.b85"}}
+                "scripts": set(COORDINATION_SCRIPTS) | set(CONFORMANCE_SCRIPTS) | set(CROSS_SKILL_SOURCES) | {"yaml"},
+                "scripts/yaml": set(YAML_SCRIPTS),
+                "references": {"session-words-v1.txt.zlib.b85", "pyyaml-manifest.json", "pyyaml-LICENSE"}}
     total = 0
     for relative, names in expected.items():
         directory = root / relative
@@ -157,6 +176,12 @@ def source_member(source, relative):
     name = relative.removeprefix("scripts/")
     if name in CONFORMANCE_SCRIPTS:
         return source.parent / "synthesis-agent-conformance/scripts" / name
+    if name in CROSS_SKILL_SOURCES:
+        return source.parent / CROSS_SKILL_SOURCES[name]
+    if relative.startswith("scripts/yaml/"):
+        return source.parent / "synthesis-agent-conformance/vendor/pyyaml" / name
+    if relative in {"references/pyyaml-manifest.json", "references/pyyaml-LICENSE"}:
+        return source.parent / "synthesis-agent-conformance/vendor/pyyaml" / relative.removeprefix("references/pyyaml-")
     return source / relative
 
 
@@ -164,6 +189,13 @@ def stage(source, store):
     source, store = safe_path(source), safe_path(store)
     store.mkdir(parents=True, exist_ok=True, mode=0o700)
     validate_directory(store)
+    # Reuse the release-owned dependency verifier before retaining its bytes.
+    # The retained executor subsequently consumes only its immutable snapshot.
+    yaml_path = source_member(source, "scripts/yaml_runtime.py")
+    yaml_module = types.ModuleType("_retirement_yaml_owner")
+    yaml_module.__file__ = str(yaml_path)
+    exec(compile(read_regular(yaml_path), str(yaml_path), "exec"), yaml_module.__dict__)
+    yaml_contents = yaml_module.verified_bytes(source.parent / "synthesis-agent-conformance/vendor/pyyaml")
     contents = {}
     total = 0
     for relative in MEMBERS:
@@ -174,6 +206,12 @@ def stage(source, store):
         contents[relative] = content
     if any(read_regular(source_member(source, key)) != content for key, content in contents.items()):
         raise ValueError("coordination source changed while staging")
+    for key, data in yaml_contents.items():
+        retained = "references/pyyaml-LICENSE" if key == "LICENSE" else "scripts/" + key
+        if contents[retained] != data:
+            raise ValueError("release-owned YAML changed while retaining its bytes")
+    if hashlib.sha256(contents["references/pyyaml-manifest.json"]).hexdigest() != yaml_module.MANIFEST_SHA256:
+        raise ValueError("release-owned YAML manifest changed while retaining its bytes")
     manifest = {"schema_version": 1, "files": {
         key: {"sha256": hashlib.sha256(value).hexdigest(), "size": len(value)}
         for key, value in contents.items()
@@ -193,7 +231,7 @@ def stage(source, store):
             handle.flush()
             os.fchmod(handle.fileno(), 0o400)
             os.fsync(handle.fileno())
-    for directory in (temporary / "scripts", temporary / "references", temporary):
+    for directory in (temporary / "scripts/yaml", temporary / "scripts", temporary / "references", temporary):
         fsync_directory(directory)
     # Interrupted staging directories are retained evidence; never resumed or
     # selected as runtime. The digest-addressed complete directory alone is used.
@@ -249,18 +287,20 @@ if set(contents) != set(manifest['files']):
 for name, data in contents.items():
     if manifest['files'][name] != {'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}:
         raise ValueError('retained runtime snapshot member changed')
-modules = {name.removeprefix('scripts/').removesuffix('.py'): name
+modules = {(name.removeprefix('scripts/').removesuffix('/__init__.py').removesuffix('.py').replace('/', '.')): name
            for name in contents if name.startswith('scripts/') and name.endswith('.py')}
 isolated_search_path = tuple(sys.path)
 class VerifiedModules(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     def find_spec(self, fullname, path=None, target=None):
+        if fullname in {'yaml.cyaml', 'yaml._yaml'}:
+            raise ModuleNotFoundError('retained runtime permits release-owned pure Python YAML only')
         if fullname not in modules:
             # Admitted scripts may insert their historical source directory.
             # A late unlisted file there must not shadow standard-library code.
             sys.path[:] = isolated_search_path
             return None
         return importlib.util.spec_from_loader(fullname, self,
-             origin=os.path.join(root, modules[fullname]))
+             origin=os.path.join(root, modules[fullname]), is_package=fullname == 'yaml')
     def create_module(self, spec):
         return None
     def exec_module(self, module):

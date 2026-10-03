@@ -48,6 +48,37 @@ for source in \
     "$COORDINATION_SOURCE/project_recipient.py" \
     "$CONFORMANCE_SOURCE/native_transcript_identity.py" \
     "$CONFORMANCE_SOURCE/client_binaries.py" \
+    "$SKILLS_DIR/synthesis-project-management/scripts/run_admission.py" \
+    "$SKILLS_DIR/synthesis-project-management/scripts/project_state.py" \
+    "$SKILLS_DIR/synthesis-project-management/scripts/plan_reference.py" \
+    "$SKILLS_DIR/synthesis-context-lifecycle/scripts/context_currency.py" \
+    "$SKILLS_DIR/synthesis-context-lifecycle/scripts/context_edit.py" \
+    "$SKILLS_DIR/synthesis-context-lifecycle/scripts/record_succession.py" \
+    "$SKILLS_DIR/synthesis-context-lifecycle/scripts/record_transaction.py" \
+    "$SKILLS_DIR/synthesis-decision-packet/scripts/build_packet.py" \
+    "$SKILLS_DIR/synthesis-decision-packet/scripts/record_rulings.py" \
+    "$SKILLS_DIR/synthesis-onboarding/scripts/release_runtime.py" \
+    "$SKILLS_DIR/synthesis-repo-guard/publication_receipt.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/scripts/yaml_runtime.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/error.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/events.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/manifest.json" \
+    "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/LICENSE" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -88,6 +119,70 @@ cp -f "$COORDINATION_SOURCE/coordination_lock.py" "$TARGET_DIR/coordination_lock
 cp -f "$COORDINATION_SOURCE/project_recipient.py" "$TARGET_DIR/project_recipient.py"
 cp -f "$CONFORMANCE_SOURCE/native_transcript_identity.py" "$TARGET_DIR/native_transcript_identity.py"
 cp -f "$CONFORMANCE_SOURCE/client_binaries.py" "$TARGET_DIR/client_binaries.py"
+# Registry transactions use the complete release-owned cross-skill closure.
+mkdir -p "$TARGET_DIR/yaml"
+cp -f "$SKILLS_DIR/synthesis-project-management/scripts/run_admission.py" "$HOME/.synthesis/git-hooks/run_admission.py"
+chmod 755 "$HOME/.synthesis/git-hooks/run_admission.py"
+cp -f "$SKILLS_DIR/synthesis-project-management/scripts/project_state.py" "$HOME/.synthesis/git-hooks/project_state.py"
+chmod 755 "$HOME/.synthesis/git-hooks/project_state.py"
+cp -f "$SKILLS_DIR/synthesis-project-management/scripts/plan_reference.py" "$HOME/.synthesis/git-hooks/plan_reference.py"
+chmod 755 "$HOME/.synthesis/git-hooks/plan_reference.py"
+cp -f "$SKILLS_DIR/synthesis-context-lifecycle/scripts/context_currency.py" "$HOME/.synthesis/git-hooks/context_currency.py"
+chmod 755 "$HOME/.synthesis/git-hooks/context_currency.py"
+cp -f "$SKILLS_DIR/synthesis-context-lifecycle/scripts/context_edit.py" "$HOME/.synthesis/git-hooks/context_edit.py"
+chmod 755 "$HOME/.synthesis/git-hooks/context_edit.py"
+cp -f "$SKILLS_DIR/synthesis-context-lifecycle/scripts/record_succession.py" "$HOME/.synthesis/git-hooks/record_succession.py"
+chmod 755 "$HOME/.synthesis/git-hooks/record_succession.py"
+cp -f "$SKILLS_DIR/synthesis-context-lifecycle/scripts/record_transaction.py" "$HOME/.synthesis/git-hooks/record_transaction.py"
+chmod 755 "$HOME/.synthesis/git-hooks/record_transaction.py"
+cp -f "$SKILLS_DIR/synthesis-decision-packet/scripts/build_packet.py" "$HOME/.synthesis/git-hooks/build_packet.py"
+chmod 755 "$HOME/.synthesis/git-hooks/build_packet.py"
+cp -f "$SKILLS_DIR/synthesis-decision-packet/scripts/record_rulings.py" "$HOME/.synthesis/git-hooks/record_rulings.py"
+chmod 755 "$HOME/.synthesis/git-hooks/record_rulings.py"
+cp -f "$SKILLS_DIR/synthesis-onboarding/scripts/release_runtime.py" "$HOME/.synthesis/git-hooks/release_runtime.py"
+chmod 755 "$HOME/.synthesis/git-hooks/release_runtime.py"
+cp -f "$SKILLS_DIR/synthesis-repo-guard/publication_receipt.py" "$HOME/.synthesis/git-hooks/publication_receipt.py"
+chmod 755 "$HOME/.synthesis/git-hooks/publication_receipt.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/scripts/yaml_runtime.py" "$HOME/.synthesis/git-hooks/yaml_runtime.py"
+chmod 755 "$HOME/.synthesis/git-hooks/yaml_runtime.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py" "$HOME/.synthesis/git-hooks/yaml/__init__.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/__init__.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py" "$HOME/.synthesis/git-hooks/yaml/composer.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/composer.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py" "$HOME/.synthesis/git-hooks/yaml/constructor.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/constructor.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py" "$HOME/.synthesis/git-hooks/yaml/cyaml.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/cyaml.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py" "$HOME/.synthesis/git-hooks/yaml/dumper.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/dumper.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py" "$HOME/.synthesis/git-hooks/yaml/emitter.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/emitter.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/error.py" "$HOME/.synthesis/git-hooks/yaml/error.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/error.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/events.py" "$HOME/.synthesis/git-hooks/yaml/events.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/events.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py" "$HOME/.synthesis/git-hooks/yaml/loader.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/loader.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py" "$HOME/.synthesis/git-hooks/yaml/nodes.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/nodes.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py" "$HOME/.synthesis/git-hooks/yaml/parser.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/parser.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py" "$HOME/.synthesis/git-hooks/yaml/reader.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/reader.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py" "$HOME/.synthesis/git-hooks/yaml/representer.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/representer.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py" "$HOME/.synthesis/git-hooks/yaml/resolver.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/resolver.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py" "$HOME/.synthesis/git-hooks/yaml/scanner.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/scanner.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py" "$HOME/.synthesis/git-hooks/yaml/serializer.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/serializer.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py" "$HOME/.synthesis/git-hooks/yaml/tokens.py"
+chmod 644 "$HOME/.synthesis/git-hooks/yaml/tokens.py"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/manifest.json" "$HOME/.synthesis/references/pyyaml-manifest.json"
+chmod 644 "$HOME/.synthesis/references/pyyaml-manifest.json"
+cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/LICENSE" "$HOME/.synthesis/references/pyyaml-LICENSE"
+chmod 644 "$HOME/.synthesis/references/pyyaml-LICENSE"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"
@@ -148,7 +243,8 @@ else
     git config --global core.hooksPath "$TARGET_DIR"
 fi
 
-# v2: the sidecar is stdlib-only — no PyYAML or any third-party dependency.
+# The sidecar is stdlib-only; registry transaction readers carry their verified
+# release-owned pure Python YAML package in this installed runtime.
 # Any python3 >= 3.6 on PATH works identically. Verify the whole chain:
 echo ""
 echo "→ Running the health check (doctor)…"

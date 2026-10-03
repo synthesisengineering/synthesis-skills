@@ -41,6 +41,70 @@ SOURCE_FILES = {
                 for n in ("day-end", "day-end-nudge.sh", "ritual_state.py", "ritual_workers.py", "credential_paths.py")},
 }
 
+# Independent fixture membership models the complete installed registry runtime.
+SOURCE_FILES["git-hooks"].update({'skills/synthesis-project-management/scripts/run_admission.py': ('.synthesis/git-hooks/run_admission.py',
+                                                                  493),
+ 'skills/synthesis-project-management/scripts/project_state.py': ('.synthesis/git-hooks/project_state.py',
+                                                                  493),
+ 'skills/synthesis-project-management/scripts/plan_reference.py': ('.synthesis/git-hooks/plan_reference.py',
+                                                                   493),
+ 'skills/synthesis-context-lifecycle/scripts/context_currency.py': ('.synthesis/git-hooks/context_currency.py',
+                                                                    493),
+ 'skills/synthesis-context-lifecycle/scripts/context_edit.py': ('.synthesis/git-hooks/context_edit.py',
+                                                                493),
+ 'skills/synthesis-context-lifecycle/scripts/record_succession.py': ('.synthesis/git-hooks/record_succession.py',
+                                                                     493),
+ 'skills/synthesis-context-lifecycle/scripts/record_transaction.py': ('.synthesis/git-hooks/record_transaction.py',
+                                                                      493),
+ 'skills/synthesis-decision-packet/scripts/build_packet.py': ('.synthesis/git-hooks/build_packet.py',
+                                                              493),
+ 'skills/synthesis-decision-packet/scripts/record_rulings.py': ('.synthesis/git-hooks/record_rulings.py',
+                                                                493),
+ 'skills/synthesis-onboarding/scripts/release_runtime.py': ('.synthesis/git-hooks/release_runtime.py',
+                                                            493),
+ 'skills/synthesis-repo-guard/publication_receipt.py': ('.synthesis/git-hooks/publication_receipt.py',
+                                                        493),
+ 'skills/synthesis-agent-conformance/scripts/yaml_runtime.py': ('.synthesis/git-hooks/yaml_runtime.py',
+                                                                493),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py': ('.synthesis/git-hooks/yaml/__init__.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py': ('.synthesis/git-hooks/yaml/composer.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py': ('.synthesis/git-hooks/yaml/constructor.py',
+                                                                          420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py': ('.synthesis/git-hooks/yaml/cyaml.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py': ('.synthesis/git-hooks/yaml/dumper.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py': ('.synthesis/git-hooks/yaml/emitter.py',
+                                                                      420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/error.py': ('.synthesis/git-hooks/yaml/error.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/events.py': ('.synthesis/git-hooks/yaml/events.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py': ('.synthesis/git-hooks/yaml/loader.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py': ('.synthesis/git-hooks/yaml/nodes.py',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py': ('.synthesis/git-hooks/yaml/parser.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py': ('.synthesis/git-hooks/yaml/reader.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py': ('.synthesis/git-hooks/yaml/representer.py',
+                                                                          420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py': ('.synthesis/git-hooks/yaml/resolver.py',
+                                                                       420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py': ('.synthesis/git-hooks/yaml/scanner.py',
+                                                                      420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py': ('.synthesis/git-hooks/yaml/serializer.py',
+                                                                         420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py': ('.synthesis/git-hooks/yaml/tokens.py',
+                                                                     420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/manifest.json': ('.synthesis/references/pyyaml-manifest.json',
+                                                                    420),
+ 'skills/synthesis-agent-conformance/vendor/pyyaml/LICENSE': ('.synthesis/references/pyyaml-LICENSE',
+                                                              420)})
+
 
 class Receipts(EngineReceipts):
     def __init__(self, path):
@@ -984,3 +1048,36 @@ def test_actual_immutable_git_hooks_installer_reconciles_runtime_modes(tmp_path,
     with pytest.raises(ContractError, match="unowned|modified|provenance"):
         runtime.plan(fixture, home, state, {"git-hooks"}, receipts.data)
     assert snapshot(home) == before_refusal
+
+
+@pytest.mark.parametrize('pre_claim_bundle', [
+    'skills/synthesis-context-lifecycle/scripts/record_transaction.py',
+    'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py',
+], indirect=True)
+def test_registry_dependency_introduction_requires_custody_and_cold_execution(pre_claim_bundle):
+    machine = pre_claim_bundle
+    before = snapshot(machine.home)
+    with pytest.raises(ContractError, match='doctor failed'):
+        runtime.apply(claim_bundle_plan(machine), machine.receipts, verify_after=lambda: False)
+    after = snapshot(machine.home)
+    assert {path: after[path] for path in before} == before
+    assert not machine.helper.exists()
+    anchor = machine.home / '.synthesis/git-hooks/coordination.py'
+    anchor_bytes = anchor.read_bytes()
+    anchor.write_bytes(anchor_bytes + b'\nforeign changes\n')
+    foreign = snapshot(machine.home)
+    with pytest.raises(ContractError):
+        claim_bundle_plan(machine)
+    assert snapshot(machine.home) == foreign and not machine.helper.exists()
+    anchor.write_bytes(anchor_bytes)
+    runtime.apply(claim_bundle_plan(machine), machine.receipts)
+    assert machine.helper.read_bytes() == (machine.current / machine.dependency).read_bytes()
+    assert machine.helper.stat().st_mode & 0o777 == SOURCE_FILES['git-hooks'][machine.dependency][1]
+    result = subprocess.run([sys.executable, '-S', '-B', '-c',
+        "import coordination, record_transaction, run_admission, context_edit, yaml; "
+        "assert yaml.safe_load('fixture: true') == {'fixture': True}; "
+        "assert context_edit._registry_nodes('- id: fixture\\n  status: active\\n')"],
+        cwd=machine.home / '.synthesis/git-hooks', capture_output=True, text=True, timeout=15,
+        env={**os.environ, 'HOME': str(machine.home)})
+    assert result.returncode == 0, result.stderr
+    assert all(row['status'] == 'current' for row in runtime.verify(claim_bundle_plan(machine)))

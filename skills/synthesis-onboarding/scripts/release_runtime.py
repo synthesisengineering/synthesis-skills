@@ -1338,7 +1338,17 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
 for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
     if "synthesis-project-management/scripts/coordination.py" in {_entry, *_dependencies}:
         ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_dependencies,
-            "synthesis-context-lifecycle/scripts/record_transaction.py")))
+            "synthesis-context-lifecycle/scripts/record_transaction.py",
+            "synthesis-context-lifecycle/scripts/context_edit.py",
+            "synthesis-context-lifecycle/scripts/context_currency.py",
+            "synthesis-context-lifecycle/scripts/record_succession.py",
+            "synthesis-decision-packet/scripts/build_packet.py",
+            "synthesis-decision-packet/scripts/record_rulings.py",
+            "synthesis-onboarding/scripts/release_runtime.py",
+            "synthesis-project-management/scripts/project_state.py",
+            "synthesis-project-management/scripts/run_admission.py",
+            "synthesis-project-management/scripts/plan_reference.py",
+            "synthesis-repo-guard/publication_receipt.py")))
 
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
