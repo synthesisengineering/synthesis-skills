@@ -304,13 +304,12 @@ def test_required_checks_execute_guardrails_suite() -> None:
 
 def test_required_checks_execute_whole_system_onboarding_contract() -> None:
     commands = {name: command for name, command in release.REQUIRED_CHECKS}
-    assert commands["pytest.onboarding"] == [
-        "python3",
-        "-m",
-        "pytest",
-        "skills/synthesis-onboarding/scripts/",
-        "-q",
-    ]
+    import release_check_groups as groups
+    for group in groups.ONBOARDING_GROUPS:
+        assert commands["pytest." + group] == [
+            "python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py",
+            "--group", group,
+        ]
     assert commands["onboarding.catalog-scaffolds"] == [
         "python3",
         "skills/synthesis-onboarding/scripts/check_scaffolds.py",
@@ -4590,7 +4589,9 @@ def test_required_checks_cover_ci_pytest_groups() -> None:
         'pytest.autopilot.native', 'pytest.autopilot.native-control',
         'pytest.autopilot.evaluation', 'pytest.autopilot.core', 'pytest.meeting-prep',
         'pytest.model-tiers', 'pytest.promotion-gate', 'pytest.context-lifecycle-integrity',
-        'pytest.onboarding', 'onboarding.catalog-scaffolds', 'onboarding.capabilities',
+        'pytest.onboarding-runtime', 'pytest.onboarding-payload',
+        'pytest.onboarding-instructions', 'pytest.onboarding-enrollment',
+        'pytest.onboarding-clients', 'pytest.onboarding-core', 'onboarding.catalog-scaffolds', 'onboarding.capabilities',
         'pytest.release', 'pytest.guardrails', 'meeting-transcripts.completeness',
         'meeting-transcripts.primary', 'pytest.meeting-acquisition',
         'pytest.rituals-guard-hooks', 'pytest.kb-edit-okf', 'compileall',

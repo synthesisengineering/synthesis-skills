@@ -2241,3 +2241,83 @@ def test_failure_site_bounded_selected_caller_and_exact_identity(tmp_path):
                        (source, 0), (source, 1000001), (source, "8")]:
         entries.reprentries = (entry(path, line),)
         assert plugin._failure_site(report) is None
+
+
+def test_onboarding_partition_is_exhaustive_ordered_and_admits_future_files():
+    nodes = [groups.OB + '/test_' + name + '.py::test_one[' + str(i) + ']'
+             for i, name in enumerate(('runtime_payload', 'release_runtime',
+                 'instruction_new', 'team_new', 'native_new', 'brand_new'))]
+    result = groups.partition(nodes)
+    assert set(result) == set(groups.ONBOARDING_GROUPS)
+    assert sum(result.values(), []).count(nodes[-1]) == 1
+    assert result['onboarding-core'] == [nodes[-1]]
+    assert sorted(sum(result.values(), [])) == sorted(nodes)
+    for selected in result.values():
+        assert selected == [node for node in nodes if node in selected]
+
+
+@pytest.mark.parametrize('bad', ['mixed', 'outside', 'duplicate', 'overlap'])
+def test_onboarding_collection_refuses_ambiguous_ownership(monkeypatch, bad):
+    nodes = [groups.OB + '/test_runtime_payload.py::test_one']
+    if bad == 'mixed':
+        nodes += [ids()[0]]
+    elif bad == 'outside':
+        nodes += ['skills/foreign/test_one.py::test_one']
+    elif bad == 'duplicate':
+        nodes *= 2
+    else:
+        monkeypatch.setattr(groups, 'ONBOARDING_RULES', {
+            **groups.ONBOARDING_RULES, 'onboarding-core': ('test_runtime_payload',)})
+    with pytest.raises(ValueError):
+        groups.partition(nodes)
+
+
+@pytest.mark.parametrize('defect', ['none', 'reason', 'foreign', 'teardown', 'xfail'])
+def test_onboarding_optional_skip_requires_exact_existing_contract(tmp_path, defect):
+    node = groups.OB + '/test_distribution.py::test_real_package_manager_install_is_usable_without_install_scripts[bun]'
+    if defect == 'foreign':
+        node = groups.OB + '/test_other.py::test_one'
+    p = groups.InventoryPlugin('onboarding-core', tmp_path/'report.json')
+    p.full = p.selected = [node]
+    phase(p, node, 'setup')
+    p.pytest_runtest_logreport(SimpleNamespace(
+        nodeid=node, when='call', outcome='skipped', duration=.1,
+        wasxfail='expected' if defect == 'xfail' else None,
+        longrepr=('source.py', 1, 'Skipped: wrong reason' if defect == 'reason' else
+            'Skipped: package-manager consumer acceptance requires npm and bun')))
+    phase(p, node, 'teardown', 'failed' if defect == 'teardown' else 'passed')
+    assert finish(p).exitstatus == (0 if defect == 'none' else 1)
+    receipt = json.loads(p.report.read_text())
+    assert receipt['phases'][node]['call']['outcome'] == 'skipped'
+    assert receipt['phases'][node]['call']['skip_reason'].startswith('Skipped: ')
+
+
+def test_onboarding_actual_group_keeps_all_collection_and_future_parameters(tmp_path, monkeypatch):
+    root = tmp_path/'source'; scripts = root/groups.OB; scripts.mkdir(parents=True)
+    (scripts/'test_runtime_payload.py').write_text('def test_elsewhere(): assert True\n')
+    (scripts/'test_brand_new.py').write_text('import pytest\n@pytest.mark.parametrize("n", [1,2])\ndef test_new(n): assert n\n')
+    monkeypatch.setenv('TMPDIR', str(tmp_path))
+    monkeypatch.setenv('SYNTHESIS_ACCEPTANCE_SELECTION', str(tmp_path/'foreign-selection.json'))
+    code, result = groups.run_group(root, 'onboarding-core')
+    assert code == 0 and not result['errors']
+    assert len(result['inventory']) == 3 and len(result['selected']) == 2
+    assert all(set(row) == {'setup','call','teardown'} for row in result['phases'].values())
+
+
+def test_ritual_first_failure_retains_traceback_and_success_is_exhaustive(tmp_path):
+    import ast
+    root = Path(__file__).resolve().parents[3]
+    tree = ast.parse((root/'skills/synthesis-skills-manager/scripts/release.py').read_text())
+    checks = dict(ast.literal_eval(next(n.value for n in tree.body
+        if isinstance(n, ast.AnnAssign) and getattr(n.target,'id','') == 'REQUIRED_CHECKS')))
+    command = checks['pytest.rituals-guard-hooks']
+    assert command[-2:] == ['-q', '--maxfail=1']
+    script = tmp_path/'test_example.py'
+    script.write_text('def test_first(): assert False, "CAUSAL_FAILURE"\ndef test_second(): assert True\n')
+    env = dict(os.environ, TMPDIR=str(tmp_path))
+    failed = groups.bounded_run([sys.executable,'-m','pytest',str(script),*command[-2:]], tmp_path, 15, env)
+    assert failed.returncode != 0 and 'CAUSAL_FAILURE' in failed.stdout
+    assert '1 failed' in failed.stdout and 'stopping after 1 failures' in failed.stdout
+    script.write_text('def test_first(): assert True\ndef test_second(): assert True\n')
+    passed = groups.bounded_run([sys.executable,'-m','pytest',str(script),*command[-2:]], tmp_path, 15, env)
+    assert passed.returncode == 0 and '2 passed' in passed.stdout

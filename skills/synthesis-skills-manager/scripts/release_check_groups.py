@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded, exhaustive autopilot release groups, using ordinary pytest collection.
+"""Bounded, exhaustive release groups, using ordinary pytest collection.
 
 Every group collects the entire directory before selecting its exact partition.
 No file allowlist: newly collected files enter core unless a domain rule owns them.
@@ -53,6 +53,16 @@ _diagnostic_open_file = open
 
 GROUPS = ("state", "native", "evaluation", "core", "native-control")
 AP = "skills/synthesis-autopilot/scripts"
+OB = "skills/synthesis-onboarding/scripts"
+ONBOARDING_RULES = {
+    "onboarding-runtime": ("test_release_runtime", "test_runtime_integration", "test_runtime_doctors", "test_managed_runtime", "test_signed_receipt", "test_p13_", "test_local_messaging_runtime"),
+    "onboarding-payload": ("test_runtime_payload", "test_b11_"),
+    "onboarding-instructions": ("test_instruction_", "test_kb_"),
+    "onboarding-enrollment": ("test_additive_", "test_team_", "test_fleet_", "test_organization", "test_upgrade_"),
+    "onboarding-clients": ("test_native_", "test_long_transcript", "test_stop_", "test_plugin_", "test_reload_", "test_client_"),
+}
+ONBOARDING_GROUPS = (*ONBOARDING_RULES, "onboarding-core")
+ALL_GROUPS = (*GROUPS, *ONBOARDING_GROUPS)
 CHECK_SECONDS = 900
 ACCEPTANCE_SECONDS = 6000  # finite whole-suite owner, not a per-group allowance
 GROUP_SECONDS = 880  # collection, execution and reporting; 20s outer cleanup reserve
@@ -255,6 +265,14 @@ def decode_acceptance_receipt(output: str | bytes) -> dict:
 
 def group_for(nodeid: str) -> str:
     path = nodeid.split("::", 1)[0]
+    if path.startswith(OB + "/"):
+        if not path.endswith(".py") or ".." in Path(path).parts:
+            raise ValueError("collection escaped the onboarding directory")
+        choices = [group for group, prefixes in ONBOARDING_RULES.items()
+                   if Path(path).name.startswith(prefixes)]
+        if len(choices) > 1:
+            raise ValueError("overlapping group ownership")
+        return choices[0] if choices else "onboarding-core"
     if (
         not path.startswith(AP + "/")
         or not path.endswith(".py")
@@ -273,12 +291,17 @@ def group_for(nodeid: str) -> str:
     return GROUPS[choices.index(True)] if any(choices) else "core"
 
 
-def partition(nodeids: list[str]) -> dict[str, list[str]]:
+def partition(nodeids: list[str], *, group=None) -> dict[str, list[str]]:
     if not nodeids or len(nodeids) > MAX_TESTS or len(set(nodeids)) != len(nodeids):
         raise ValueError("empty, duplicate or oversized collection")
-    groups = {name: [] for name in GROUPS}
+    onboarding = (group in ONBOARDING_GROUPS if group is not None
+                  else nodeids[0].startswith(OB + "/"))
+    groups = {name: [] for name in (ONBOARDING_GROUPS if onboarding else GROUPS)}
     for node in nodeids:
-        groups[group_for(node)].append(node)
+        owner = group_for(node)
+        if owner not in groups:
+            raise ValueError("mixed release collection domains")
+        groups[owner].append(node)
     if sorted(n for nodes in groups.values() for n in nodes) != sorted(nodeids):
         raise ValueError("non-exhaustive partition")
     return groups
@@ -1685,7 +1708,7 @@ class InventoryPlugin:
 
     def pytest_collection_modifyitems(self, session, config, items):
         if self.selection is None:
-            groups = partition(self.full)
+            groups = partition(self.full, group=self.group)
             self.counts = {name: len(nodes) for name, nodes in groups.items()}
             self.selected = groups[self.group]
         else:
@@ -1814,6 +1837,9 @@ class InventoryPlugin:
             "duration": report.duration,
             "wasxfail": wasxfail,
         }
+        if (report.outcome == "skipped" and type(longrepr) is tuple
+                and len(longrepr) == 3 and isinstance(longrepr[2], str)):
+            phases[report.when]["skip_reason"] = longrepr[2][:1024]
         self._progress(
             "phase",
             nodeid=report.nodeid,
@@ -1840,6 +1866,22 @@ class InventoryPlugin:
                 == AP
                 + "/test_evaluation_artifacts.py::test_mac_worker_cannot_fork_or_spawn_a_process_outside_the_deadline"
             )
+            # Ordinary source onboarding has two optional dependency controls.
+            # Admit only their existing call-time skips, never arbitrary skips,
+            # xfails, missing phases or failures. Acceptance selectors retain
+            # their independent polarity contract above.
+            reason = phases.get("call", {}).get("skip_reason")
+            optional_reason = {
+                OB + "/test_instruction_adversarial.py::test_actual_private_adapter_and_public_engine_converge_without_mutating_sources": "Skipped: optional private adapter is not installed",
+                **{OB + "/test_distribution.py::test_real_package_manager_install_is_usable_without_install_scripts[" + manager + "]": "Skipped: package-manager consumer acceptance requires npm and " + manager for manager in ("npm", "bun")},
+            }.get(node)
+            if (self.group in ONBOARDING_GROUPS and optional_reason is not None
+                    and reason == optional_reason
+                    and set(phases) == {"setup", "call", "teardown"}
+                    and phases["call"]["outcome"] == "skipped"
+                    and phases["setup"]["outcome"] == phases["teardown"]["outcome"] == "passed"
+                    and not any(p.get("wasxfail") for p in phases.values())):
+                continue
             if (
                 host_skip
                 and set(phases) == {"setup", "teardown"}
@@ -2079,7 +2121,7 @@ def pytest_configure(config):
         return
     group = os.environ.get("SYNTHESIS_RELEASE_TEST_GROUP")
     if group:
-        if group not in GROUPS:
+        if group not in ALL_GROUPS:
             raise ValueError("unknown release test group")
         config.pluginmanager.register(
             _registered_inventory(
@@ -2090,6 +2132,9 @@ def pytest_configure(config):
 
 
 def run_group(root: Path, group: str) -> tuple[int, dict]:
+    if group not in ALL_GROUPS:
+        raise ValueError("unknown release test group")
+    directory = OB if group in ONBOARDING_GROUPS else AP
     deadline = time.monotonic() + CHECK_SECONDS - 5
     before = source_digest(root)
     with retained_group_fixture() as temp:
@@ -2122,7 +2167,7 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
                 str(config),
                 "--confcutdir",
                 str(root),
-                AP,
+                directory,
                 # An outer acceptance config can be above a nested fixture.
                 # Bind node IDs to this explicitly admitted source root.
                 "--rootdir",
@@ -2162,7 +2207,7 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
         payload["fixture_custody"] = str(temp)
         # Independently validate plugin output rather than trusting its return code alone.
         try:
-            groups = partition(payload["inventory"])
+            groups = partition(payload["inventory"], group=group)
         except (ValueError, KeyError, TypeError) as error:
             payload["error"] = str(error)
             groups = None
@@ -2195,7 +2240,7 @@ def run_group(root: Path, group: str) -> tuple[int, dict]:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--group", choices=GROUPS, required=True)
+    parser.add_argument("--group", choices=ALL_GROUPS, required=True)
     args = parser.parse_args(argv)
     try:
         code, payload = run_group(Path(__file__).resolve().parents[3], args.group)

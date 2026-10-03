@@ -278,8 +278,28 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
         ],
     ),
     (
-        "pytest.onboarding",
-        ["python3", "-m", "pytest", "skills/synthesis-onboarding/scripts/", "-q"],
+        "pytest.onboarding-runtime",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-runtime"],
+    ),
+    (
+        "pytest.onboarding-payload",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-payload"],
+    ),
+    (
+        "pytest.onboarding-instructions",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-instructions"],
+    ),
+    (
+        "pytest.onboarding-enrollment",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-enrollment"],
+    ),
+    (
+        "pytest.onboarding-clients",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-clients"],
+    ),
+    (
+        "pytest.onboarding-core",
+        ["python3", "skills/synthesis-skills-manager/scripts/release_check_groups.py", "--group", "onboarding-core"],
     ),
     (
         "onboarding.catalog-scaffolds",
@@ -348,6 +368,7 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
             "skills/synthesis-decision-packet/scripts/",
             "skills/synthesis-local-messaging/scripts/",
             "-q",
+            "--maxfail=1",
         ],
     ),
     (

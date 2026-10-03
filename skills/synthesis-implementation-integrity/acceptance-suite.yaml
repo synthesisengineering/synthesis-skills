@@ -6936,6 +6936,14 @@ changed_surfaces:
   - native-shape-c9da6761d67b3bf5
   - runtime-anchor-94de0d7a51b22526
   - runtime-anchor-64721b9451b7eeb0
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
 - path: README.md
   cases:
   - final-42c5721991f12696
@@ -9124,6 +9132,17 @@ changed_surfaces:
   - composition-28306eb25ba9344c
   - composition-25654cc331a718fe
   - composition-ed7e7f67f5890d0a
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
 - path: skills/synthesis-daily-rituals/scripts/repo_state.py
   cases:
   - composition-28ae758b9e097cc4
@@ -11205,6 +11224,14 @@ changed_surfaces:
   - native-shape-c9da6761d67b3bf5
   - runtime-anchor-94de0d7a51b22526
   - runtime-anchor-64721b9451b7eeb0
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
 - path: skills/synthesis-meeting-prep/SKILL.md
   cases:
   - public-ready-profile-22622260689c272a
@@ -12066,6 +12093,71 @@ changed_surfaces:
   - native-shape-c9da6761d67b3bf5
   - performance-fd9f4e60a1a7b498
   - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-daily-rituals/references/ritual-worker-contract.md
+  cases:
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
+- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
+  cases:
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
+- path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
+  cases:
+  - source-catalog-dbcefb1022f21289
+  - source-catalog-6bb9334f08a8677f
+  - source-catalog-16ad484d8f164b27
+  - source-catalog-fa017e9027f84382
+  - source-catalog-59711e81f5e68549
+  - source-catalog-0c7c259a7ba9522f
+  - source-catalog-56820ca6f6d659e9
+  - source-catalog-7942c4d284205d30
+  - acquisition-5662dbec35b61e6d
+  - final-e5dea17c5d5fc6c2
+  - acquisition-e5dea17c5d5fc6c2
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -23081,3 +23173,51 @@ cases:
   fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_covers_each_introduced_dependency
   motivating_defect: Introduced runtime dependencies must retain their component-local released anchors
     and complete installed doctor coverage.
+- id: source-catalog-dbcefb1022f21289
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_onboarding_partition_is_exhaustive_ordered_and_admits_future_files
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-6bb9334f08a8677f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_onboarding_collection_refuses_ambiguous_ownership
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-16ad484d8f164b27
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_onboarding_optional_skip_requires_exact_existing_contract
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-fa017e9027f84382
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_onboarding_actual_group_keeps_all_collection_and_future_parameters
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-59711e81f5e68549
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_ritual_first_failure_retains_traceback_and_success_is_exhaustive
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-0c7c259a7ba9522f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_required_checks_execute_whole_system_onboarding_contract
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-56820ca6f6d659e9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_skill_document_stays_within_repo_budget
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
+- id: source-catalog-7942c4d284205d30
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_skill_documents.py::test_rituals_moved_blocks_survive_in_their_references
+  motivating_defect: The complete source catalog exceeded its unchanged onboarding group deadline and
+    the rituals instruction budget.
