@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.2] - 2026-10-03
+
+- Decode observed retained native context, partial state updates and completed item formats through bounded readers, keeping historical text inert and missing metadata explicit.
+- Validate large retained history incrementally without increasing structural, memory or source-integrity limits; require explicit reconciliation when the decoder generation changes.
+
 ## [4.154.1] - 2026-10-02
 
 - Admit complete diagnostic custody up to a finite 4,096-record ceiling and reject impossible plans before acceptance execution; retain independent byte, time, privacy and test-batching limits.
