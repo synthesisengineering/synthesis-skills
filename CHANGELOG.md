@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.2] - 2026-10-03
 
+- Apply the existing claim and content checks to automatic merge commits and verify the merge entry point during installation.
+- Retain a bounded selected-source traceback line for helper failures without exporting raw exception content; exercise native-script fixtures with their declared process allowance.
+
 - Decode observed retained native context, partial state updates and completed item formats through bounded readers, keeping historical text inert and missing metadata explicit.
 - Validate large retained history incrementally without increasing structural, memory or source-integrity limits; require explicit reconciliation when the decoder generation changes.
 

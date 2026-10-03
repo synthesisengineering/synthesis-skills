@@ -1496,7 +1496,8 @@ class InventoryPlugin:
         """Retain only a line in the selected source file; never exception data.
 
         This is diagnostic metadata, not outcome, custody or release authority.
-        Foreign/helper paths and representations without a line remain unknown.
+        A helper failure may identify its nearest selected-source caller, not
+        the innermost throw. Foreign paths and oversized tracebacks stay unknown.
         """
         node = getattr(report, "nodeid", None)
         if not isinstance(node, str) or len(node) > 8192:
@@ -1506,14 +1507,29 @@ class InventoryPlugin:
             p in {"", ".", ".."} for p in source.split("/")
         ):
             return None
-        crash = getattr(getattr(report, "longrepr", None), "reprcrash", None)
-        line = getattr(crash, "lineno", None)
-        path = getattr(crash, "path", None)
-        if type(line) is not int or not 1 <= line <= 1000000:
+        representation = getattr(report, "longrepr", None)
+        paths = {source, str(self.source_root / source)}
+
+        def selected_site(location):
+            line = getattr(location, "lineno", None)
+            path = getattr(location, "path", None)
+            if type(line) is not int or not 1 <= line <= 1000000:
+                return None
+            if not isinstance(path, str) or path not in paths:
+                return None
+            return {"source_sha256": _diagnostic_sha256(source.encode()).hexdigest(), "line": line}
+
+        site = selected_site(getattr(representation, "reprcrash", None))
+        if site is not None:
+            return site
+        entries = getattr(getattr(representation, "reprtraceback", None), "reprentries", None)
+        if type(entries) not in (list, tuple) or len(entries) > 128:
             return None
-        if not isinstance(path, str) or path not in {source, str(self.source_root / source)}:
-            return None
-        return {"source_sha256": _diagnostic_sha256(source.encode()).hexdigest(), "line": line}
+        for entry in reversed(entries):
+            site = selected_site(getattr(entry, "reprfileloc", None))
+            if site is not None:
+                return site
+        return None
 
     def _failure_detail(self, report):
         """Render bounded pytest diagnostics without collecting arbitrary locals.

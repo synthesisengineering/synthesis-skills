@@ -1,0 +1,11 @@
+#!/bin/bash
+# Git invokes this entry point for an automatic merge commit, which does not
+# invoke pre-commit itself. Keep one owner for claims, staged bytes and delegates.
+set -euo pipefail
+HOOK_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+COMMIT_OWNER="$HOOK_DIR/pre-commit"
+if [ ! -f "$COMMIT_OWNER" ] || [ ! -x "$COMMIT_OWNER" ]; then
+    echo "MERGE COMMIT BLOCKED: required pre-commit owner is unavailable: $COMMIT_OWNER" >&2
+    exit 1
+fi
+exec "$COMMIT_OWNER" "$@"

@@ -19,6 +19,7 @@ from system_contract import ContractError, release_descriptor_from_checkout
 SOURCE_FILES = {
     "git-hooks": {
         "skills/synthesis-git-hooks/scripts/pre-commit": (".synthesis/git-hooks/pre-commit", 0o755),
+        "skills/synthesis-git-hooks/scripts/pre-merge-commit": (".synthesis/git-hooks/pre-merge-commit", 0o755),
         "skills/synthesis-git-hooks/scripts/commit-msg": (".synthesis/git-hooks/commit-msg", 0o755),
         "skills/synthesis-git-hooks/scripts/_load_config.py": (".synthesis/git-hooks/_load_config.py", 0o755),
         "skills/synthesis-git-hooks/scripts/_scan_staged.py": (".synthesis/git-hooks/_scan_staged.py", 0o755),
@@ -779,9 +780,10 @@ ARCHIVE_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_a
 NATIVE_GIT_DEPENDENCY = "skills/synthesis-project-management/scripts/native_git.py"
 SCANNER_DEPENDENCY = "skills/synthesis-git-hooks/scripts/_scan_staged.py"
 PROCESS_DEPENDENCY = "skills/synthesis-project-management/scripts/coordination_process.py"
+MERGE_DEPENDENCY = "skills/synthesis-git-hooks/scripts/pre-merge-commit"
 
 
-@pytest.fixture(params=[CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py", "skills/synthesis-agent-conformance/scripts/client_binaries.py"])
+@pytest.fixture(params=[MERGE_DEPENDENCY, CLAIM_DEPENDENCY, GRAMMAR_DEPENDENCY, ARCHIVE_DEPENDENCY, NATIVE_GIT_DEPENDENCY, SCANNER_DEPENDENCY, PROCESS_DEPENDENCY, "skills/synthesis-project-management/scripts/coordination_lock.py", "skills/synthesis-project-management/scripts/project_recipient.py", "skills/synthesis-agent-conformance/scripts/native_transcript_identity.py", "skills/synthesis-agent-conformance/scripts/client_binaries.py"])
 def pre_claim_bundle(tmp_path, request):
     """A released standalone bundle whose installed closure predates the helper."""
     from types import SimpleNamespace
@@ -845,6 +847,19 @@ def test_pre_helper_bundle_upgrade_proves_old_pointer_and_executes_new_closure(p
         env={**os.environ, "HOME": str(machine.home)})
     assert result.returncode == 0, result.stderr
     assert all(row["status"] == "current" for row in runtime.verify(claim_bundle_plan(machine, proof)))
+    if machine.dependency == MERGE_DEPENDENCY:
+        config = machine.home / ".synthesis/git-hook-config.yaml"
+        config.write_text("config_version: 2\npersonal_remote_patterns:\n  - 'never'\n"
+                          "tier_0_always:\n  credentials:\n    - 'AKIA[0-9A-Z]{16}'\n"
+                          "tier_1_strict_only:\n  confidentiality:\n    - 'fixture-restricted-marker'\n"
+                          "check_commit_message: false\n")
+        staged = machine.current / "ordinary.txt"
+        staged.write_text("fixture-restricted-marker\n")
+        fixture_git(machine.current, "add", "ordinary.txt")
+        result = subprocess.run([str(machine.helper)], cwd=machine.current,
+            capture_output=True, timeout=20,
+            env={**os.environ, "HOME": str(machine.home), "SYNTHESIS_GIT_HOOK_CONFIG": str(config)})
+        assert result.returncode == 1 and b"SENSITIVE PATTERN DETECTED" in result.stdout
     if machine.dependency == SCANNER_DEPENDENCY:
         # Execute the actual newly installed boundary, not just an import.
         config = machine.home / ".synthesis/git-hook-config.yaml"

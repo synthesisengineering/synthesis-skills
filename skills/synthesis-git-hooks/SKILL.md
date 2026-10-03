@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.2"
+  version: "2.8.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -18,6 +18,18 @@ The engine is a Bash boundary plus standard-library Python sidecars. The policy
 is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
 adopting synthesis engineering fills in with personal-remote patterns, client
 names, internal URLs, and optionally a coordination-board path.
+
+## Automatic merge commits
+
+Git's `pre-merge-commit` entry point invokes the same `pre-commit` owner for
+clean automatic merge commits. Claims, bound receipts, staged-content scanning
+and required repository delegates therefore apply to these merge commits too.
+Missing or non-executable commit-owner code refuses the merge. The installer,
+runtime payload inventory and doctor include the merge entry point; a missing
+or non-executable entry point is an explicit doctor alarm because Git would
+otherwise skip it. Conflict resolution completed with `git commit` continues
+through `pre-commit`. Fast-forward merges create no commit and do not invoke
+this commit boundary.
 
 ## Staged bytes and commit-message scanning
 

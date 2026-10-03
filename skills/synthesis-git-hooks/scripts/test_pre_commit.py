@@ -1039,6 +1039,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
     installed = home / ".synthesis" / "git-hooks"
     assert {path.name for path in installed.iterdir()} == {
         "pre-commit",
+        "pre-merge-commit",
         "commit-msg",
         "_load_config.py",
         "_scan_staged.py",

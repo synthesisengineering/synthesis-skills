@@ -79,7 +79,7 @@ DEFAULT_CONFIG = Path.home() / ".synthesis" / "git-hook-config.yaml"
 # board turns check-staged into a fail-closed commit boundary. The source files
 # remain canonical in synthesis-project-management; source_engine_path maps the
 # dependency instead of duplicating it in this skill.
-CORE_ENGINE_FILES = ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")
+CORE_ENGINE_FILES = ("pre-commit", "pre-merge-commit", "commit-msg", "_load_config.py", "_scan_staged.py")
 COORDINATION_ENGINE_FILES = (
     "coordination.py",
     "claim_scope.py",
@@ -1599,14 +1599,14 @@ def run_doctor(config_path: Path) -> int:
                 # commits proceed unscanned (advisory alarm, not a
                 # boundary refusal). A missing sidecar or runtime file
                 # means the running gate fails closed: blocking.
-                if name in ("pre-commit", "commit-msg"):
+                if name in ("pre-commit", "pre-merge-commit", "commit-msg"):
                     advisories.append(
                         f"hooksPath missing {name}: {f} — commits proceed "
                         "without this gate"
                     )
                 else:
                     problems.append(f"hooksPath missing {name}: {f}")
-            elif name in ("pre-commit", "commit-msg") and not os.access(f, os.X_OK):
+            elif name in ("pre-commit", "pre-merge-commit", "commit-msg") and not os.access(f, os.X_OK):
                 # Git silently skips non-executable hooks: same shape as
                 # missing, commits proceed unprotected.
                 advisories.append(
