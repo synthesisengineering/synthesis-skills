@@ -216,3 +216,288 @@ def test_coordination_resolves_the_sibling_module(monkeypatch):
         monkeypatch.delitem(sys.modules, name)
     module = p.coordination()
     assert Path(module.__file__).resolve() == Path(p.__file__).resolve().parent / "coordination.py"
+
+
+def test_owner_references_skip_unrelated_payload_reads(tmp_path, monkeypatch):
+    own = snapshot(tmp_path, session="ours")
+    foreign = [snapshot(tmp_path, session="foreign-" + str(i), suffix=str(i)) for i in range(12)]
+    for path in foreign:
+        data = json.loads(path.read_bytes()); data["dirty"] = {"large": "x" * 262144}
+        path.write_text(json.dumps(data))
+    originals = {path: path.read_bytes() for path in [own, *foreign]}
+    before = {path: p._identity(path.stat()) for path in originals}
+    assert p.index_retained(tmp_path) == {"indexed": 13, "unchanged": 0, "payloads_moved": 0}
+    assert p.index_retained(tmp_path) == {"indexed": 0, "unchanged": 13, "payloads_moved": 0}
+    calls = []
+    original = p.read_regular
+    def observed(path, **kwargs):
+        if path.parent == own.parent and path.suffix == ".json":
+            calls.append(path)
+        return original(path, **kwargs)
+    monkeypatch.setattr(p, "read_regular", observed)
+    selected = p.selected_snapshots(own.parent, "ours")
+    assert [row[0] for row in selected] == [own]
+    assert calls == [own]
+    assert all(path.read_bytes() == raw and p._identity(path.stat()) == before[path]
+               for path, raw in originals.items())
+
+
+@pytest.mark.parametrize("mutation", ["bad-mac", "foreign-name", "extra-field", "symlink", "bad-mode"])
+def test_owner_reference_refusals_preserve_payloads(tmp_path, mutation):
+    path = snapshot(tmp_path)
+    p.index_retained(tmp_path)
+    reference = p._owner_path(path)
+    original = path.read_bytes()
+    if mutation == "symlink":
+        kept = tmp_path / "retained-ref"; reference.rename(kept); reference.symlink_to(kept)
+    elif mutation == "bad-mode":
+        reference.chmod(0o644)
+    else:
+        data = json.loads(reference.read_bytes())
+        if mutation == "bad-mac": data["mac"] = "0" * 64
+        elif mutation == "foreign-name": data["body"]["snapshot"] = "foreign.json"
+        else: data["body"]["private"] = True
+        reference.write_text(json.dumps(data))
+    with pytest.raises((ValueError, RuntimeError)):
+        p.selected_snapshots(path.parent, "someone-else")
+    assert path.read_bytes() == original
+
+
+def test_stale_and_missing_reference_reconcile_explicitly_without_losing_ownership(tmp_path):
+    path = snapshot(tmp_path, session="before")
+    p.index_retained(tmp_path)
+    data = json.loads(path.read_bytes()); data["session_id"] = "after"
+    path.write_text(json.dumps(data))
+    raw = path.read_bytes()
+    assert [row[0] for row in p.selected_snapshots(path.parent, "after")] == [path]
+    assert p.selected_snapshots(path.parent, "before") == []
+    assert p.index_retained(tmp_path)["indexed"] == 1
+    assert path.read_bytes() == raw
+    new = snapshot(tmp_path, session="after", suffix="new")
+    assert {row[0] for row in p.selected_snapshots(path.parent, "after")} == {path, new}
+
+
+def test_old_start_lineage_and_recent_delta_are_both_selected(tmp_path):
+    old = snapshot(tmp_path, session="ours", suffix="old", age=10000000)
+    data = json.loads(old.read_bytes()); data["started_at"] = 100
+    old.write_text(json.dumps(data))
+    recent = snapshot(tmp_path, session="ours", suffix="recent", age=1)
+    data = json.loads(recent.read_bytes()); data["started_at"] = 200; data["changed"] = ["/fixture/projects/ours/CONTEXT.md"]
+    recent.write_text(json.dumps(data))
+    p.index_retained(tmp_path)
+    selected = p.selected_snapshots(old.parent, "ours")
+    assert {row[0] for row in selected} == {old, recent}
+    assert min(row[1]["started_at"] for row in selected) == 100
+    assert any(row[1].get("changed") for row in selected)
+
+
+def test_unclassified_or_oversize_legacy_records_refuse_without_deletion(tmp_path, monkeypatch):
+    path = snapshot(tmp_path)
+    original = path.read_bytes()
+    monkeypatch.setattr(p, "SNAPSHOT_TOTAL_BYTES", len(original) - 1)
+    with pytest.raises(ValueError, match="byte ceiling"):
+        p.selected_snapshots(path.parent, "ended")
+    assert path.read_bytes() == original
+    monkeypatch.setattr(p, "SNAPSHOT_TOTAL_BYTES", 100000)
+    path.write_text('{"session_id":"ended","session_id":"foreign"}')
+    with pytest.raises(ValueError, match="duplicate"):
+        p.selected_snapshots(path.parent, "ended")
+    assert path.exists()
+
+
+def test_owner_reconciliation_and_prune_keep_live_and_archived_custody(tmp_path):
+    ended = snapshot(tmp_path, session="ended")
+    live = snapshot(tmp_path, session="live", suffix="live")
+    p.index_retained(tmp_path)
+    raw = {path: path.read_bytes() for path in (ended, live)}
+    assert run(tmp_path, [row("ended"), row("live", "active")])["archived"] == 1
+    assert not ended.exists() and not p._owner_path(ended).exists()
+    assert live.read_bytes() == raw[live] and p._owner_path(live).exists()
+    assert [item[0] for item in p.selected_snapshots(live.parent, "live")] == [live]
+    [archived] = list((tmp_path / "tool-snapshots.archive").glob("*/*.json"))
+    assert archived.read_bytes() == raw[ended]
+
+
+def test_selected_read_serializes_concurrent_append(tmp_path, monkeypatch):
+    import threading
+    first = snapshot(tmp_path, session="ours")
+    p.index_retained(tmp_path)
+    entered, release, written = threading.Event(), threading.Event(), threading.Event()
+    original = p.read_regular
+    errors = []
+    result = []
+    def reading(path, **kwargs):
+        if path == first:
+            entered.set()
+            assert release.wait(3)
+        return original(path, **kwargs)
+    monkeypatch.setattr(p, "read_regular", reading)
+    def reader():
+        try: result.extend(p.selected_snapshots(first.parent, "ours"))
+        except BaseException as exc: errors.append(exc)
+    def writer():
+        try:
+            with p.locked(first.parent / ".snapshot.lock", deadline=p.time.monotonic() + 3):
+                new = snapshot(tmp_path, session="ours", suffix="new")
+                p.publish_owner_reference(new, "ours")
+                written.set()
+        except BaseException as exc: errors.append(exc)
+    reading_thread = threading.Thread(target=reader); reading_thread.start()
+    assert entered.wait(3)
+    writing_thread = threading.Thread(target=writer); writing_thread.start()
+    assert not written.wait(0.05)
+    release.set(); reading_thread.join(3); writing_thread.join(3)
+    assert not reading_thread.is_alive() and not writing_thread.is_alive() and not errors
+    assert [row[0] for row in result] == [first]
+    assert len(p.selected_snapshots(first.parent, "ours")) == 2
+
+
+def test_selected_read_lock_and_listing_are_finite(tmp_path, monkeypatch):
+    path = snapshot(tmp_path)
+    monkeypatch.setattr(p, "SNAPSHOT_FILES", 0)
+    with pytest.raises(ValueError, match="count ceiling"):
+        p.selected_snapshots(path.parent, "ended")
+    with p.locked(path.parent / ".snapshot.lock"):
+        monkeypatch.setattr(p, "SNAPSHOT_SECONDS", 0.02)
+        with pytest.raises(RuntimeError, match="time ceiling"):
+            p.selected_snapshots(path.parent, "ended")
+    assert path.exists()
+
+
+def test_foreign_payload_changed_during_reference_selection_refuses(tmp_path, monkeypatch):
+    path = snapshot(tmp_path, session="foreign")
+    p.index_retained(tmp_path)
+    original = p._reference
+    def race(candidate, key=None):
+        result = original(candidate, key)
+        if candidate == path:
+            data = json.loads(path.read_bytes()); data["session_id"] = "ours"
+            path.write_text(json.dumps(data))
+        return result
+    monkeypatch.setattr(p, "_reference", race)
+    with pytest.raises(RuntimeError, match="changed"):
+        p.selected_snapshots(path.parent, "ours")
+    assert json.loads(path.read_bytes())["session_id"] == "ours"
+
+
+def test_uncooperative_append_is_not_a_complete_snapshot_listing(tmp_path, monkeypatch):
+    path = snapshot(tmp_path, session="ours")
+    p.index_retained(tmp_path)
+    original = p.read_regular
+    added = []
+    def race(candidate, **kwargs):
+        result = original(candidate, **kwargs)
+        if candidate == path and not added:
+            added.append(snapshot(tmp_path, session="ours", suffix="late"))
+        return result
+    monkeypatch.setattr(p, "read_regular", race)
+    with pytest.raises(RuntimeError, match="directory changed"):
+        p.selected_snapshots(path.parent, "ours")
+    assert added[0].exists() and path.exists()
+
+
+def test_owner_publication_pins_parent_descriptor(tmp_path, monkeypatch):
+    path = snapshot(tmp_path)
+    p.index_retained(tmp_path)
+    owners = p._owner_path(path).parent
+    retained = owners.with_name("retained-owners")
+    original = os.replace
+    changed = []
+    def race(source, destination, **kwargs):
+        if str(source).startswith(".owner-") and not changed:
+            owners.rename(retained); owners.mkdir(mode=0o700)
+            changed.append(True)
+        return original(source, destination, **kwargs)
+    monkeypatch.setattr(os, "replace", race)
+    raw = path.read_bytes()
+    with pytest.raises(RuntimeError, match="parent changed"):
+        p.publish_owner_reference(path, "ended")
+    assert changed and path.read_bytes() == raw
+    assert not list(owners.iterdir())
+    assert list(retained.iterdir())
+
+
+def test_owner_key_change_refuses_selection_and_preserves_payload(tmp_path, monkeypatch):
+    path = snapshot(tmp_path, session="ours")
+    p.index_retained(tmp_path)
+    original = p.read_regular
+    def race(candidate, **kwargs):
+        result = original(candidate, **kwargs)
+        if candidate == path:
+            (path.parent / ".owner-key").write_bytes(b"x" * 32)
+        return result
+    monkeypatch.setattr(p, "read_regular", race)
+    raw = path.read_bytes()
+    with pytest.raises(RuntimeError, match="key changed"):
+        p.selected_snapshots(path.parent, "ours")
+    assert path.read_bytes() == raw
+
+
+def test_selected_growth_cannot_cross_remaining_byte_budget(tmp_path, monkeypatch):
+    path = snapshot(tmp_path, session="ours")
+    budget = path.stat().st_size + 1
+    monkeypatch.setattr(p, "SNAPSHOT_TOTAL_BYTES", budget)
+    original = p.read_regular
+    limits = []
+    def grow(candidate, **kwargs):
+        if candidate == path:
+            limits.append(kwargs["limit"])
+            data = json.loads(path.read_bytes()); data["dirty"]["larger"] = "x" * 10000
+            path.write_text(json.dumps(data))
+        return original(candidate, **kwargs)
+    monkeypatch.setattr(p, "read_regular", grow)
+    with pytest.raises(ValueError, match="byte ceiling"):
+        p.selected_snapshots(path.parent, "ours")
+    assert limits == [budget]
+    assert path.stat().st_size > budget
+
+
+def test_selected_lock_parent_replacement_cannot_create_foreign_lock(tmp_path, monkeypatch):
+    path = snapshot(tmp_path, session="ours")
+    p.index_retained(tmp_path)
+    directory = path.parent
+    retained = tmp_path / "retained-snapshots"
+    changed = []
+    original = os.open
+    def race(name, flags, *args, **kwargs):
+        if Path(name).name == ".snapshot.lock" and not changed:
+            directory.rename(retained); directory.mkdir()
+            changed.append(True)
+        return original(name, flags, *args, **kwargs)
+    monkeypatch.setattr(os, "open", race)
+    with pytest.raises(RuntimeError, match="parent changed"):
+        p.selected_snapshots(directory, "ours")
+    assert changed and not list(directory.iterdir())
+    assert (retained / path.name).exists()
+
+
+def test_owner_publication_expiry_after_parse_preserves_prior_reference(tmp_path, monkeypatch):
+    path = snapshot(tmp_path)
+    p.index_retained(tmp_path)
+    reference = p._owner_path(path)
+    before = path.read_bytes(), reference.read_bytes()
+    clock = [10.0]
+    original = p._strict_json
+    def parsed(raw):
+        result = original(raw); clock[0] = 12.0; return result
+    monkeypatch.setattr(p.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(p, "_strict_json", parsed)
+    with pytest.raises(RuntimeError, match="time ceiling"):
+        p.publish_owner_reference(path, "ended", deadline=11.0)
+    assert (path.read_bytes(), reference.read_bytes()) == before
+
+
+def test_index_propagates_original_deadline_into_publication(tmp_path, monkeypatch):
+    path = snapshot(tmp_path)
+    raw = path.read_bytes()
+    clock = [10.0]; deadlines = []
+    original = p.publish_owner_reference
+    def delayed(path, session_id, *, deadline=None):
+        deadlines.append(deadline); clock[0] = 21.0
+        return original(path, session_id, deadline=deadline)
+    monkeypatch.setattr(p.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(p, "publish_owner_reference", delayed)
+    with pytest.raises(RuntimeError, match="time ceiling"):
+        p.index_retained(tmp_path)
+    assert deadlines == [20.0] and path.read_bytes() == raw
+    assert not p._owner_path(path).exists()

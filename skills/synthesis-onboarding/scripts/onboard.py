@@ -106,7 +106,7 @@ from whole_system import (
     validate_personal_policy,
 )
 
-ENGINE_VERSION = "2.10.3"
+ENGINE_VERSION = "2.10.4"
 PUBLIC_REPO_HTTPS = "https://github.com/synthesisengineering/synthesis-skills.git"
 PUBLIC_MARKETPLACE_REF = "synthesisengineering/synthesis-skills"
 PLUGIN_NAME = "synthesis-skills"
@@ -4567,7 +4567,7 @@ def _hooks_probe(clients_wanted):
     engine = HOME / ".synthesis" / "git-hooks"
     required = [
         engine / name
-        for name in ("pre-commit", "commit-msg", "_load_config.py", "_scan_staged.py")
+        for name in ("pre-commit", "pre-merge-commit", "commit-msg", "_load_config.py", "_scan_staged.py")
     ]
     missing = [str(path) for path in required if not path.is_file()]
     rc, out, _ = git(["config", "--global", "--get", "core.hooksPath"])

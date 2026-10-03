@@ -141,10 +141,14 @@ A small per-person file — relationship, technical depth, what they
 care about, what they have already been told, what landed last time —
 prevents entire classes of failure. The skill maintains these
 profiles and consults them before drafting; the debrief updates them
-after. Convention (adopted 2026-09-20): one file per person at
-`~/.synthesis/meeting-prep/readers/<id>.md`, scaffolded by
-`prep_init.py add-reader`, keyed by a stable short id the principal
-chooses.
+after. One file per person lives at
+`<approved-private-context-repo>/profiles/meeting-prep/readers/<id>.md`,
+keyed by a stable short id the principal chooses. The repository is the
+explicit owning workspace's deletion unit; both the repository and workspace
+id are required before reading, scaffolding, or updating profiles. Global-home
+and cross-workspace fallback are forbidden. Principal profiles use the same
+owner boundary. Existing global files move only after exact ownership and
+source-hash selection; unresolved ownership remains unresolved and untouched.
 
 ## R13 — Register samples ground the draft (adopted 2026-09-20)
 

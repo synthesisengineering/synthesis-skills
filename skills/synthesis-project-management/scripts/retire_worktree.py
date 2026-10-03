@@ -41,6 +41,10 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import inspect
+import io
+import signal
+import threading
 import hashlib
 import json
 import os
@@ -53,7 +57,7 @@ import tempfile
 import uuid
 import types
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
 from pathlib import Path
 
 
@@ -302,7 +306,7 @@ def require_surviving_retirement_state(worktree: Path) -> None:
 
 
 @contextmanager
-def lifecycle_lock():
+def _exclusive_lifecycle_descriptor():
     validate_state_paths(STATE_DIR, LIFECYCLE_LOCK, RETIREMENT_RUNTIME_DIR)
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     validate_state_paths(STATE_DIR, LIFECYCLE_LOCK, RETIREMENT_RUNTIME_DIR)
@@ -327,6 +331,98 @@ def lifecycle_lock():
         if locked:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
+
+
+_RECONCILERS = {}
+_RECONCILER_SCOPE = threading.local()
+
+
+class _ReconcilerDeadline(BaseException):
+    """Escape the pinned owner's ordinary I/O error handling at the deadline."""
+
+
+@contextmanager
+def _call_deadline(seconds):
+    """Bound the current helper call without a second lock-owning process."""
+    if threading.current_thread() is not threading.main_thread():
+        raise ValueError("reconciler execution requires the retirement helper main thread")
+    prior_handler = signal.getsignal(signal.SIGALRM)
+    prior_timer = signal.getitimer(signal.ITIMER_REAL)
+    if prior_timer != (0.0, 0.0):
+        raise ValueError("an existing timer prevents a bounded reconciler call")
+    def expired(_signum, _frame):
+        raise _ReconcilerDeadline()
+    signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    except _ReconcilerDeadline:
+        raise TimeoutError("retirement reconciler exceeded its time ceiling") from None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, prior_handler)
+
+
+def _reconciler_owner(path):
+    """Load the retained hash-pinned owner; never accept a lock from the environment."""
+    path = lexical_absolute(path)
+    validate_state_paths(path)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
+                or before.st_nlink != 1 or before.st_mode & 0o022
+                or before.st_size > 1024 * 1024):
+            raise ValueError("unsafe retained retirement reconciler")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            content = handle.read(1024 * 1024 + 1)
+        def identity(info):
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                    info.st_mtime_ns, info.st_ctime_ns)
+        if (len(content) > 1024 * 1024 or identity(before) != identity(os.fstat(descriptor))
+                or identity(before) != identity(path.lstat())):
+            raise ValueError("retained retirement reconciler changed during load")
+    finally:
+        os.close(descriptor)
+    digest = hashlib.sha256(content).hexdigest()
+    if path.name != "checkpoint-sync-" + digest + ".py":
+        raise ValueError("retained retirement reconciler digest does not match its identity")
+    key = (str(path), str(STATE_DIR))
+    if key not in _RECONCILERS:
+        owner = types.ModuleType("retirement_checkpoint_" + digest)
+        owner.__file__ = str(path)
+        exec(compile(content, str(path), "exec"), owner.__dict__)
+        owner.PENDING_DIR = STATE_DIR / "pending"
+        owner.LOCAL_HANDOFF_DIR = STATE_DIR / "local-handoff"
+        owner.RETIREMENT_DIR = RETIREMENT_DIR
+        owner.RETIRED_PENDING_DIR = STATE_DIR / "retired-pending"
+        _RECONCILERS[key] = owner
+    return _RECONCILERS[key]
+
+
+@contextmanager
+def lifecycle_lock(checkpoint_sync=None):
+    # Reject before loading even a retained historical owner: older pinned
+    # code must never receive environment-supplied descriptor authority.
+    if os.environ.get(LIFECYCLE_LOCK_FD_ENV) is not None:
+        raise ValueError("inherited lifecycle descriptors cannot establish exclusive authority")
+    owner = _reconciler_owner(checkpoint_sync or stage_reconciler())
+    if "timeout" in inspect.signature(owner.lifecycle_lock).parameters:
+        scope = owner.lifecycle_lock(timeout=LIFECYCLE_LOCK_TIMEOUT)
+        scope.__enter__()
+    else:
+        # A retained historical owner is executed as pinned, with the helper's
+        # original finite acquisition bound. It receives no inherited FD.
+        scope = owner.lifecycle_lock()
+        with _call_deadline(LIFECYCLE_LOCK_TIMEOUT):
+            scope.__enter__()
+    previous = getattr(_RECONCILER_SCOPE, "owner", None)
+    _RECONCILER_SCOPE.owner = owner
+    try:
+        yield owner
+    finally:
+        _RECONCILER_SCOPE.owner = previous
+        scope.__exit__(*sys.exc_info())
 
 
 def stage_reconciler() -> Path:
@@ -419,25 +515,23 @@ def pinned_reconciler(data: dict) -> Path:
 def run_reconciler(
     checkpoint_sync: Path,
     arguments: list[str],
-    lock_fd: int,
+    lock_owner,
 ) -> subprocess.CompletedProcess[str]:
-    environment = dict(os.environ)
-    environment[LIFECYCLE_LOCK_FD_ENV] = str(lock_fd)
-    command = [
-        sys.executable,
-        str(checkpoint_sync),
-        *arguments,
-        "--json",
-    ]
-    return subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-        env=environment,
-        pass_fds=(lock_fd,),
-    )
+    # Only this helper's actually acquired owner scope can call the pinned
+    # reconciler. No descriptor probe, upgrade or environment grant occurs.
+    if (getattr(_RECONCILER_SCOPE, "owner", None) is not lock_owner
+            or _reconciler_owner(checkpoint_sync) is not lock_owner):
+        raise ValueError("retirement reconciler requires its acquired lifecycle owner")
+    command = [str(checkpoint_sync), *arguments, "--json"]
+    output, errors = io.StringIO(), io.StringIO()
+    previous = sys.argv
+    try:
+        sys.argv = command
+        with _call_deadline(60), redirect_stdout(output), redirect_stderr(errors):
+            result = lock_owner.main()
+    finally:
+        sys.argv = previous
+    return subprocess.CompletedProcess(command, result, output.getvalue(), errors.getvalue())
 
 
 def reconciler_detail(completed: subprocess.CompletedProcess[str]) -> Path:
@@ -628,7 +722,7 @@ def cleanup_branch(
     print(f"Verified branch content by {method} against {base_ref} at {base_oid[:12]}")
 
     try:
-        with lifecycle_lock():
+        with _exclusive_lifecycle_descriptor():
             delete_local_branch(repository, branch, expected_head,
                 base_ref=base_ref, base_oid=base_oid,
                 force=(method == "identical-tree"))
@@ -697,7 +791,7 @@ def resume_retirement(
             f"retirement intent is for {recorded_branch or 'detached HEAD'}, not {expected_branch}"
         )
     try:
-        with lifecycle_lock() as lock_fd:
+        with lifecycle_lock(pinned_reconciler(data)) as lock_owner:
             claims_runtime = data.get("claims_runtime")
             if claims_runtime is not None or os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip():
                 retirement_runtime = retirement_runtime_owner()
@@ -706,7 +800,7 @@ def resume_retirement(
             completed = run_reconciler(
                 checkpoint_sync,
                 ["--complete-worktree-retirement", str(intent)],
-                lock_fd,
+                lock_owner,
             )
             reconciler_detail(completed)
             print(f"Resumed retirement from {intent}")
@@ -1023,7 +1117,7 @@ def main() -> int:
         return fail(refusal)
 
     try:
-        with lifecycle_lock() as lock_fd:
+        with lifecycle_lock() as lock_owner:
             claims_runtime = None
             if os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip():
                 retirement_runtime = retirement_runtime_owner()
@@ -1047,7 +1141,7 @@ def main() -> int:
                     base,
                 ] + (["--retirement-branch", branch] if branch else [])
                   + (["--retirement-claims-runtime", json.dumps(claims_runtime)] if claims_runtime else []),
-                lock_fd,
+                lock_owner,
             )
             intent = reconciler_detail(prepared)
             intent_data = json.loads(intent.read_text(encoding="utf-8"))
@@ -1056,7 +1150,7 @@ def main() -> int:
                 retirement_runtime.authenticate(intent_data.get("claims_runtime"), RETIREMENT_RUNTIME_DIR, args.board)
 
             verified_target = run_reconciler(
-                checkpoint_sync, ["--verify-worktree-retirement", str(intent)], lock_fd
+                checkpoint_sync, ["--verify-worktree-retirement", str(intent)], lock_owner
             )
             reconciler_detail(verified_target)
             removed = run(repository, "worktree", "remove", str(worktree))
@@ -1067,7 +1161,7 @@ def main() -> int:
             completed = run_reconciler(
                 checkpoint_sync,
                 ["--complete-worktree-retirement", str(intent)],
-                lock_fd,
+                lock_owner,
             )
             reconciler_detail(completed)
             if completed.stdout.strip():

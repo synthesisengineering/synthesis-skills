@@ -54,7 +54,9 @@ STATE_SCHEMA = 1
 
 V1_LAYOUT = ("CONTEXT.md", "REFERENCE.md", "sessions")
 HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)(?:\s+#+)?\s*$")
-LOOP_RE = re.compile(r"\b(TODO|FIXME|XXX|OPEN|TBD)\b[:\s]+(.{0,120})", re.IGNORECASE)
+# A marker is an explicit uppercase label at a paragraph/list-item boundary.
+# Ordinary prose, quoted examples and indented code do not grant task identity.
+LOOP_RE = re.compile(r"^ {0,3}(?:(?:[-*+]|[0-9]+[.)])[ \t]+)?(TODO|FIXME|XXX|OPEN|TBD):[ \t]+(\S.{0,119})")
 
 
 def detect(project_dir: Path) -> str:
@@ -111,24 +113,101 @@ def _source_data(path: Path) -> bytes:
 
 
 def _visible_lines(text: str):
-    """Yield source line numbers outside fenced code examples."""
-    fence = None
-    for number, line in enumerate(text.splitlines(), 1):
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
-        if marker:
-            token = marker.group(1)
-            if fence is None:
-                # Backtick info strings cannot themselves contain a backtick.
-                if token[0] != "`" or "`" not in line[marker.end():]:
-                    fence = token
-                    continue
-            elif (token[0] == fence[0] and len(token) >= len(fence)
-                  and not line[marker.end():].strip()):
-                fence = None
-                continue
-        if fence is None:
-            yield number, line
+    """Yield original coordinates outside code and blockquote examples.
 
+    Containers matter: a list's fence is relative to its content indentation,
+    and a quoted code block cannot acquire a lazy paragraph continuation.
+    """
+    fence = None
+    lazy_quote = False
+    list_indent, list_depth = 0, 0
+    for number, line in enumerate(text.splitlines(), 1):
+        expanded = line.expandtabs(4)
+        content = expanded
+        quote_depth = 0
+        containers = []
+        while (quote := re.match(r"^ {0,3}> ?", content)):
+            quote_depth += 1
+            containers.append(("quote", 0))
+            content = content[quote.end():]
+        if fence is not None:
+            token, prefixes = fence
+            # Consume only the recorded container prefixes, in their original
+            # order. Additional '>' and list markers inside code stay literal.
+            fenced = expanded
+            contained = True
+            for kind, width in prefixes:
+                if kind == "quote":
+                    prefix = re.match(r"^ {0,3}> ?", fenced)
+                    if prefix is None:
+                        contained = False
+                        break
+                    fenced = fenced[prefix.end():]
+                elif not fenced.strip():
+                    fenced = ""
+                elif len(fenced) - len(fenced.lstrip()) >= width:
+                    fenced = fenced[width:]
+                else:
+                    contained = False
+                    break
+            if contained:
+                closing = re.match(r"^ {0,3}(`{3,}|~{3,})[ \t]*$", fenced)
+                if (closing and closing.group(1)[0] == token[0]
+                        and len(closing.group(1)) >= len(token)):
+                    fence = None
+                lazy_quote = False
+                continue
+            fence = None
+            lazy_quote = False
+        thematic = re.match(r"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$", content)
+        block_start = (thematic or re.match(r"^ {0,3}(?:#{1,6}[ \t]|[-*+][ \t]+|1[.)][ \t]+|`{3,}|~{3,})", content))
+        if not quote_depth and lazy_quote:
+            if not content.strip():
+                lazy_quote = False
+            elif not block_start:
+                continue
+            else:
+                lazy_quote = False
+        # Keep the containing list offset on continuation lines. Dedenting
+        # leaves the list (and any unclosed fence within that list).
+        if (quote_depth != list_depth or
+                (content.strip() and len(content) - len(content.lstrip()) < list_indent)):
+            list_indent = 0
+        body, indent = content[list_indent:], list_indent
+        if list_indent:
+            containers.append(("list", list_indent))
+        while True:
+            item = re.match(r"^ {0,3}(?:[-*+]|[0-9]{1,9}[.)])([ ]+)(?=\S)", body)
+            if item:
+                padding = len(item.group(1))
+                # Five spaces after a list marker start indented code.
+                width = item.end() if padding <= 4 else item.end() - padding + 1
+                indent += width
+                body = body[width:]
+                containers.append(("list", width))
+                list_indent, list_depth = indent, quote_depth
+                continue
+            quote = re.match(r"^ {0,3}> ?", body)
+            if quote:
+                quote_depth += 1
+                containers.append(("quote", 0))
+                body = body[quote.end():]
+                continue
+            break
+        opening = re.match(r"^ {0,3}(`{3,}|~{3,})", body)
+        if opening:
+            token = opening.group(1)
+            if token[0] != "`" or "`" not in body[opening.end():]:
+                fence = (token, tuple(containers))
+                lazy_quote = False
+                continue
+        indented = body.startswith("    ")
+        if quote_depth:
+            lazy_quote = bool(body.strip()) and not (indented or thematic or re.match(r"^ {0,3}#{1,6}[ \t]", body))
+            continue
+        if indented or thematic:
+            continue
+        yield number, line
 
 
 def _source_lines(path: Path):
@@ -148,7 +227,7 @@ def _skeleton_loops(newest: Path | None, project_dir: Path | None = None) -> lis
         source_lines = _visible_lines(source_data.decode("utf-8"))
         source_digest = hashlib.sha256(source_data).hexdigest()
         for number, line in source_lines:
-            match = (re.match(r"^\s*[-*+]\s+\[ \]\s+(.+?)\s*$", line)
+            match = (re.match(r"^ {0,3}[-*+][ \t]+\[ \][ \t]+(.+?)[ \t]*$", line)
                      if kind == "context-checkbox" else LOOP_RE.search(line))
             if not match:
                 continue

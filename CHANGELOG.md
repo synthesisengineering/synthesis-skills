@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.2] - 2026-10-03
 
+- Require explicit workspace ownership for meeting profiles; migrate selected legacy files with hash-bound custody while preserving unresolved profiles.
+- Keep quoted and fenced marker examples inert while retaining real project obligations and their source coordinates.
+- Require actual lifecycle lock ownership during checkpoint and worktree retirement; retain finite deadlines for pinned reconciliation.
+- Select authenticated snapshot owners before decoding unrelated payloads, with explicit retained-record indexing and unchanged pruning safeguards.
+- Align onboarding engine versions with the skill contract and require the merge guard in runtime fixtures and hook-presence checks.
+
 - Apply the existing claim and content checks to automatic merge commits and verify the merge entry point during installation.
 - Retain a bounded selected-source traceback line for helper failures without exporting raw exception content; exercise native-script fixtures with their declared process allowance.
 

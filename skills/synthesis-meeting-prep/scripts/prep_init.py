@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
-"""prep_init.py — scaffold meeting-prep private configuration.
+"""Scaffold workspace-owned private meeting profiles and migrate exact selections.
 
-Creates the principal file and reader-profile templates the
-synthesis-meeting-prep skill reads. Non-interactive and
-refusing-to-overwrite: colleagues run it once, then answer the
-interview prompts it prints.
-
-Usage:
-    prep_init.py init --name NAME --role ROLE --org ORG [--goals 'a;b'] [--dir DIR]
-    prep_init.py add-reader --id ID --name NAME --relationship REL [--dir DIR]
-
-Exit 0 on success. Exit 2 on bad input or when files exist without
---force. Never overwrites without --force.
+Every invocation names an approved private context repository and workspace.
+There is no global-home, current-directory, or arbitrary --dir fallback.
 """
-
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack, contextmanager
+import hashlib
 import json
-import sys
+import os
 from pathlib import Path
+import re
+import subprocess
+import sys
 
-ENGINE_VERSION = "1.0.0"
+_CONTEXT = Path(__file__).resolve().parents[2] / "synthesis-context-lifecycle" / "scripts"
+sys.path.insert(0, str(_CONTEXT))
+import record_transaction as records  # noqa: E402 - existing bounded record owner
+
+ENGINE_VERSION = "2.0.0"
+PROFILE_PATH = Path("profiles/meeting-prep")
+MAX_PROFILES = 128
+MAX_TOTAL_BYTES = 32 * 1024 * 1024
 
 RELATIONSHIPS = ("peer", "boss", "report", "skip", "external", "other")
 
@@ -68,95 +70,427 @@ three questions it cannot proceed without and drafts anyway.
 """
 
 
-def init_principal(
-    root: Path,
-    name: str,
-    role: str,
-    org: str,
-    goals: list[str],
-    force: bool = False,
-) -> dict:
-    root.mkdir(parents=True, exist_ok=True)
-    principal_path = root / "principal.json"
-    if principal_path.exists() and not force:
-        raise FileExistsError(f"{principal_path} exists (use --force to replace)")
-    payload = dict(PRINCIPAL_TEMPLATE)
-    payload["name"] = name
-    payload["role"] = role
-    payload["org"] = org
-    payload["goals_professional"] = goals
-    principal_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    readers = root / "readers"
-    readers.mkdir(exist_ok=True)
-    template = readers / "_template.md"
-    if not template.exists() or force:
-        template.write_text(
-            READER_TEMPLATE.format(name="(name)", relationship="(peer|boss|report|skip|external|other)"),
-            encoding="utf-8",
-        )
-    return {"principal": str(principal_path), "template": str(template)}
+def _absolute(path):
+    if path is None or not Path(path).is_absolute():
+        raise ValueError("an explicit absolute owner path is required")
+    return records._path(Path(path))
 
 
-def add_reader(
-    root: Path, reader_id: str, name: str, relationship: str, force: bool = False
-) -> dict:
+def _git(path, *args):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    return subprocess.run(["git", "-C", str(path), *args], env=env,
+                          capture_output=True, text=True, timeout=10, check=False)
+
+
+def _owner(context_repo, workspace):
+    if not isinstance(workspace, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", workspace):
+        raise ValueError("an explicit stable workspace id is required")
+    repo = _absolute(context_repo)
+    if repo in (Path(repo.anchor), Path.home()) or not repo.is_dir():
+        raise ValueError("owner must be a dedicated existing private context repository")
+    actual = _git(repo, "rev-parse", "--show-toplevel")
+    if actual.returncode or Path(actual.stdout.strip()) != repo:
+        raise ValueError("context repository must be its exact Git checkout root")
+    root = records._path(repo / PROFILE_PATH, repo)
+    marker = records._path(root / ".owner.json", repo)
+    if marker.exists():
+        found, _ = records._read_json(marker)
+        if type(found.get("schema")) is not int or found != {"schema": 1, "workspace": workspace}:
+            raise ValueError("profile directory belongs to a different or ambiguous owner")
+    elif root.exists() and any(root.iterdir()):
+        raise ValueError("unbound existing profiles require an explicit migration selection")
+    return repo, root
+
+
+def default_root(context_repo=None, workspace=None) -> Path:
+    """Resolve only the explicitly selected owner, never the caller's CWD/home."""
+    return _owner(context_repo, workspace)[1]
+
+
+def _mkdir(path):
+    path = records._path(path)
+    if path.exists():
+        if not path.is_dir():
+            raise ValueError("profile parent must be a directory")
+        return
+    _mkdir(path.parent)
+    path.mkdir(mode=0o700)
+    records._path(path)
+    records._sync_dir(path.parent)
+
+
+def _bind(repo, root, workspace):
+    # Must be called under the existing repository-directory owner lock.
+    _owner(repo, workspace)
+    _mkdir(root)
+    marker = root / ".owner.json"
+    if not marker.exists():
+        records._new_file(marker, records._json({"schema": 1, "workspace": workspace}))
+        records._sync_dir(root)
+
+
+@contextmanager
+def _owned(context_repo, workspace, *, create=False):
+    repo, root = _owner(context_repo, workspace)
+    with records.managed(repo, exclusive=True):
+        _owner(repo, workspace)
+        if create:
+            _bind(repo, root, workspace)
+        yield repo, root
+
+
+def _absent(path):
+    records._path(path)
+    if os.path.lexists(path):
+        # Inspect special/hardlinked input before issuing any overwrite remedy.
+        records._snapshot(path)
+        raise FileExistsError(f"profile exists; explicit content editing is required: {path}")
+
+
+def _create(path, data):
+    if len(data) > records.MAX_FILE_BYTES:
+        raise ValueError("profile exceeds 8 MiB bound")
+    _absent(path)
+    _mkdir(path.parent)
+    records._new_file(path, data)
+    records._sync_dir(path.parent)
+    actual, _ = records._snapshot(path)
+    if actual != data:
+        raise ValueError("profile readback differs; preserve the retained file")
+
+
+def init_principal(context_repo, name, role, org, goals, *, workspace):
+    with _owned(context_repo, workspace) as (repo, root):
+        principal, template = root / "principal.json", root / "readers/_template.md"
+        _absent(principal)
+        _absent(template)
+        payload = dict(PRINCIPAL_TEMPLATE, name=name, role=role, org=org, goals_professional=goals)
+        data = (json.dumps(payload, indent=2, allow_nan=False) + "\n").encode()
+        text = READER_TEMPLATE.format(name="(name)", relationship="(peer|boss|report|skip|external|other)").encode()
+        if len(data) > records.MAX_FILE_BYTES:
+            raise ValueError("profile exceeds 8 MiB bound")
+        _bind(repo, root, workspace)
+        _create(principal, data)
+        _create(template, text)
+        return {"workspace": workspace, "principal": str(principal), "template": str(template)}
+
+
+def add_reader(context_repo, reader_id, name, relationship, *, workspace):
     if relationship not in RELATIONSHIPS:
-        raise ValueError(
-            f"relationship must be one of {', '.join(RELATIONSHIPS)}"
-        )
-    if not reader_id.replace("-", "").replace("_", "").isalnum():
+        raise ValueError("relationship must be one of " + ", ".join(RELATIONSHIPS))
+    if not isinstance(reader_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", reader_id):
         raise ValueError("reader id must be alphanumeric (dashes/underscores ok)")
-    readers = root / "readers"
-    readers.mkdir(parents=True, exist_ok=True)
-    path = readers / f"{reader_id}.md"
-    if path.exists() and not force:
-        raise FileExistsError(f"{path} exists (use --force to replace)")
-    path.write_text(
-        READER_TEMPLATE.format(name=name, relationship=relationship),
-        encoding="utf-8",
-    )
-    return {"reader": str(path)}
+    with _owned(context_repo, workspace) as (repo, root):
+        path = root / "readers" / (reader_id + ".md")
+        _absent(path)
+        data = READER_TEMPLATE.format(name=name, relationship=relationship).encode()
+        if len(data) > records.MAX_FILE_BYTES:
+            raise ValueError("profile exceeds 8 MiB bound")
+        _bind(repo, root, workspace)
+        _create(path, data)
+        return {"workspace": workspace, "reader": str(path)}
 
 
-def default_root() -> Path:
-    return Path.home() / ".synthesis" / "meeting-prep"
+def _profile_name(value):
+    if value == "principal.json" or (isinstance(value, str) and re.fullmatch(r"readers/[A-Za-z0-9_][A-Za-z0-9_-]{0,63}\.md", value)):
+        return value
+    raise ValueError("migration paths must be exact principal/reader profile names")
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Scaffold meeting-prep configuration.")
-    sub = parser.add_subparsers(dest="command", required=True)
-    p_init = sub.add_parser("init", help="create principal.json and the reader template")
-    p_init.add_argument("--name", required=True)
-    p_init.add_argument("--role", required=True)
-    p_init.add_argument("--org", required=True)
-    p_init.add_argument("--goals", default="", help="semicolon-separated professional goals")
-    p_init.add_argument("--dir", default=None, help="config dir (default ~/.synthesis/meeting-prep)")
-    p_init.add_argument("--force", action="store_true")
-    p_reader = sub.add_parser("add-reader", help="add a reader profile template")
-    p_reader.add_argument("--id", required=True)
-    p_reader.add_argument("--name", required=True)
-    p_reader.add_argument("--relationship", required=True, choices=RELATIONSHIPS)
-    p_reader.add_argument("--dir", default=None)
-    p_reader.add_argument("--force", action="store_true")
-    args = parser.parse_args(argv)
-    root = Path(args.dir) if args.dir else default_root()
-    try:
-        if args.command == "init":
-            goals = [g.strip() for g in args.goals.split(";") if g.strip()]
-            result = init_principal(
-                root, args.name, args.role, args.org, goals, force=args.force
-            )
-            print(json.dumps(result, indent=2))
-            print(INTERVIEW.format(root=root))
+def _identity(path):
+    st = records._path(path).stat()
+    return {"dev": st.st_dev, "ino": st.st_ino}
+
+
+def _same(snapshot, expected):
+    return all(snapshot.get(key) == expected.get(key) for key in ("dev", "ino", "mode", "bytes", "sha256"))
+
+
+def _custody(row, root, runtime, legacy, custody):
+    """Read-only validation of every resumable state before any apply writes."""
+    src = records._path(legacy / row["path"], legacy)
+    dst = records._path(root / row["path"], root)
+    stage = records._path(runtime / "files" / row["path"], runtime)
+    retained = records._path(custody / row["path"], custody)
+    if row["status"] in ("prepared", "staged"):
+        _, current = records._snapshot(src)
+        if not _same(current, row["source"]):
+            raise ValueError("source changed; preserve all migration evidence")
+        if retained.exists():
+            raise ValueError("unexpected retained source before the copy boundary")
+        if not stage.exists():
+            if row["status"] == "staged" or dst.exists():
+                raise ValueError("staged custody is missing or destination is occupied")
+            return
+        linked = dst.exists() and os.path.samefile(stage, dst)
+        _, staged = records._snapshot(stage, _links=2 if linked else 1)
+        if (staged["sha256"] != row["source"]["sha256"]
+                or (row["stage"] is not None and not _same(staged, row["stage"]))):
+            raise ValueError("partial or changed stage retained; reconciliation required")
+        if dst.exists() and not linked:
+            raise ValueError("destination is not this migration's staged inode")
+        if linked:
+            records._snapshot(dst, _links=2)
+        return
+    linked = stage.exists()
+    _, destination = records._snapshot(dst, _links=2 if linked else 1)
+    if not _same(destination, row["destination"]):
+        raise ValueError("destination changed; original custody is retained")
+    if linked:
+        _, staged = records._snapshot(stage, _links=2)
+        if not _same(staged, row["stage"]) or not os.path.samefile(stage, dst):
+            raise ValueError("stage custody changed; no removal")
+    if row["status"] == "complete":
+        if src.exists() or retained.exists() or linked:
+            raise ValueError("source or stage reappeared after completion; no automatic deletion")
+        return
+    if src.exists() and retained.exists():
+        raise ValueError("a source path reappeared; preserve both copies")
+    current_path = src if src.exists() else retained
+    if not current_path.exists():
+        if row["status"] != "retained":
+            raise ValueError("source custody is missing; reconciliation required")
+        return
+    _, current = records._snapshot(current_path)
+    if not _same(current, row["source"]):
+        raise ValueError("source custody changed; preserve all migration evidence")
+
+
+def _plan(request):
+    if not isinstance(request, dict) or set(request) != {"schema", "legacy_root", "context_repo", "workspace", "files"} or type(request["schema"]) is not int or request["schema"] != 1:
+        raise ValueError("migration requires the closed schema-1 explicit owner map")
+    repo, root = _owner(request["context_repo"], request["workspace"])
+    legacy = _absolute(request["legacy_root"])
+    if not legacy.is_dir() or legacy in (Path(legacy.anchor), Path.home()) or legacy.is_relative_to(repo) or repo.is_relative_to(legacy):
+        raise ValueError("legacy profiles require a dedicated source outside the destination repository")
+    if _git(legacy, "rev-parse", "--show-toplevel").returncode == 0:
+        raise ValueError("tracked source custody requires the Git record owner, not this legacy migration")
+    files = request["files"]
+    if not isinstance(files, list) or not 1 <= len(files) <= MAX_PROFILES:
+        raise ValueError("migration selection must contain 1..128 exact profile entries")
+    selected, seen, unresolved = [], set(), 0
+    for item in files:
+        if not isinstance(item, dict) or set(item) != {"path", "sha256", "workspace"}:
+            raise ValueError("each migration entry needs exact path, sha256 and workspace")
+        name = _profile_name(item["path"])
+        if name in seen:
+            raise ValueError("duplicate migration profile")
+        seen.add(name)
+        if item["workspace"] is not None and (not isinstance(item["workspace"], str)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", item["workspace"])):
+            raise ValueError("profile ownership must be an explicit workspace or null")
+        if item["workspace"] != request["workspace"]:
+            unresolved += 1
+            continue
+        if not isinstance(item["sha256"], str) or not re.fullmatch("[0-9a-f]{64}", item["sha256"]):
+            raise ValueError("selected profile needs its exact source SHA-256")
+        selected.append(dict(item))
+    if not selected:
+        raise ValueError("no profile has the explicitly selected owner")
+    binding = {"schema": 1, "legacy_root": str(legacy), "context_repo": str(repo),
+               "workspace": request["workspace"], "files": selected}
+    digest = hashlib.sha256(records._json(binding)).hexdigest()
+    return repo, root, legacy, binding, digest, unresolved
+
+
+def _journal(path, value):
+    records._path(path)
+    if path.exists():
+        records._snapshot(path)
+        records._replace_json(path, value)
+    else:
+        records._new_file(path, records._json(value))
+        records._sync_dir(path.parent)
+
+
+def migrate(request, *, apply=False):
+    """Copy, verify, move source into retained custody, verify, then remove it.
+
+    Cooperative operations hold both existing directory locks. A changed source
+    moved at the atomic rename boundary is retained in custody and refused,
+    never deleted. Unselected and unresolved profiles are not opened.
+    """
+    repo, root, legacy, binding, digest, unresolved = _plan(request)
+    with ExitStack() as stack:
+        for directory in sorted((repo, legacy), key=str):
+            stack.enter_context(records.managed(directory, exclusive=True))
+        _owner(repo, binding["workspace"])
+        runtime = records._path(root / ".migrations" / digest, root)
+        receipt = records._path(runtime / "receipt.json", runtime)
+        custody = records._path(legacy / (".meeting-prep-migration-" + digest), legacy)
+        existed = receipt.exists()
+        if existed:
+            state, _ = records._read_json(receipt)
+            if (set(state) != {"schema", "plan", "repo_identity", "legacy_identity", "files"}
+                    or type(state["schema"]) is not int or state["schema"] != 1 or state["plan"] != binding
+                    or state["repo_identity"] != _identity(repo)
+                    or state["legacy_identity"] != _identity(legacy)
+                    or not isinstance(state["files"], list)
+                    or len(state["files"]) != len(binding["files"])):
+                raise ValueError("migration receipt does not bind this exact owner and selection")
         else:
-            result = add_reader(
-                root, args.id, args.name, args.relationship, force=args.force
-            )
-            print(json.dumps(result, indent=2))
-    except (OSError, ValueError) as exc:
+            if runtime.exists() or custody.exists():
+                raise ValueError("unreceipted migration custody exists; preserve it for reconciliation")
+            state = {"schema": 1, "plan": binding, "repo_identity": _identity(repo),
+                     "legacy_identity": _identity(legacy), "files": []}
+            total = 0
+            for item in binding["files"]:
+                src, dst = legacy / item["path"], root / item["path"]
+                raw, snapshot = records._snapshot(src)
+                if snapshot["sha256"] != item["sha256"]:
+                    raise ValueError("migration source hash differs from the explicit map")
+                total += len(raw)
+                if total > MAX_TOTAL_BYTES:
+                    raise ValueError("migration exceeds 32 MiB selected data")
+                _absent(dst)
+                state["files"].append({"path": item["path"], "source": snapshot,
+                                       "destination": None, "stage": None, "status": "prepared"})
+        for item, row in zip(binding["files"], state["files"]):
+            if (not isinstance(row, dict) or set(row) != {"path", "source", "destination", "stage", "status"}
+                    or row["path"] != item["path"] or not isinstance(row["source"], dict)
+                    or row["source"].get("sha256") != item["sha256"]
+                    or row["status"] not in ("prepared", "staged", "copied", "retained", "complete")):
+                raise ValueError("migration receipt has an invalid file state")
+            if ((row["status"] != "prepared" and row["stage"] is None)
+                    or (row["status"] in ("copied", "retained", "complete") and row["destination"] is None)
+                    or (row["status"] in ("prepared", "staged") and row["destination"] is not None)):
+                raise ValueError("migration receipt has inconsistent custody")
+            identities = [row["source"], *[row[k] for k in ("stage", "destination") if row[k] is not None]]
+            for identity in identities:
+                if (not isinstance(identity, dict)
+                        or set(identity) != {"dev", "ino", "mode", "bytes", "sha256"}
+                        or any(type(identity[k]) is not int or identity[k] < 0 for k in ("dev", "ino", "mode", "bytes"))
+                        or identity["mode"] > 0o7777
+                        or identity["bytes"] > records.MAX_FILE_BYTES
+                        or not isinstance(identity["sha256"], str)
+                        or not re.fullmatch("[0-9a-f]{64}", identity["sha256"])):
+                    raise ValueError("migration receipt has an invalid file identity")
+            for key in ("stage", "destination"):
+                identity = row[key]
+                if identity is not None and (identity["sha256"] != row["source"]["sha256"]
+                        or identity["bytes"] != row["source"]["bytes"] or identity["mode"] != 0o600):
+                    raise ValueError("migration copy identity does not bind the selected source")
+            if row["destination"] is not None and not _same(row["stage"], row["destination"]):
+                raise ValueError("migration copy identities name different staged objects")
+        if sum(row["source"]["bytes"] for row in state["files"]) > MAX_TOTAL_BYTES:
+            raise ValueError("migration exceeds 32 MiB selected data")
+        for row in state["files"]:
+            _custody(row, root, runtime, legacy, custody)
+        if not apply:
+            return {"workspace": binding["workspace"], "selected": len(state["files"]),
+                    "unresolved": unresolved, "apply": False, "migration": digest,
+                    "resume": existed, "receipt": str(receipt)}
+        _bind(repo, root, binding["workspace"])
+        _mkdir(runtime)
+        if not existed:
+            _journal(receipt, state)
+        for row in state["files"]:
+            src = records._path(legacy / row["path"], legacy)
+            dst = records._path(root / row["path"], root)
+            stage = records._path(runtime / "files" / row["path"], runtime)
+            retained = records._path(custody / row["path"], custody)
+            if row["status"] in ("prepared", "staged"):
+                raw, current = records._snapshot(src)
+                if not _same(current, row["source"]):
+                    raise ValueError("source changed; preserve all migration evidence")
+                _mkdir(stage.parent)
+                if not stage.exists():
+                    records._new_file(stage, raw)
+                    records._sync_dir(stage.parent)
+                links = 2 if dst.exists() and os.path.samefile(stage, dst) else 1
+                copied, snap = records._snapshot(stage, _links=links)
+                if copied != raw or (row["stage"] is not None and not _same(snap, row["stage"])):
+                    raise ValueError("partial or changed stage retained; reconciliation required")
+                row.update(stage=snap, status="staged")
+                _journal(receipt, state)
+                _mkdir(dst.parent)
+                if not dst.exists():
+                    os.link(stage, dst, follow_symlinks=False)
+                    records._sync_dir(dst.parent)
+                elif not os.path.samefile(stage, dst):
+                    raise FileExistsError("destination is not this migration's staged inode")
+                copied, snap = records._snapshot(dst, _links=2)
+                if copied != raw or snap["ino"] != row["stage"]["ino"] or snap["dev"] != row["stage"]["dev"]:
+                    raise ValueError("destination copy failed identity verification")
+                row.update(destination=snap, status="copied")
+                _journal(receipt, state)
+            if stage.exists():
+                staged, snap = records._snapshot(stage, _links=2)
+                if not _same(snap, row["stage"]) or not os.path.samefile(stage, dst):
+                    raise ValueError("stage custody changed; no removal")
+                stage.unlink()
+                records._sync_dir(stage.parent)
+            copied, snap = records._snapshot(dst)
+            if not _same(snap, row["destination"]):
+                raise ValueError("destination changed; original custody is retained")
+            if row["status"] == "complete":
+                if os.path.lexists(src) or os.path.lexists(retained):
+                    raise ValueError("source reappeared after completion; no automatic deletion")
+                continue
+            if not retained.exists() and src.exists():
+                _, current = records._snapshot(src)
+                if not _same(current, row["source"]):
+                    raise ValueError("source changed before custody move")
+                _mkdir(retained.parent)
+                if os.path.lexists(retained):
+                    raise FileExistsError("retained source slot is occupied")
+                os.rename(src, retained)
+                records._sync_dir(src.parent)
+                records._sync_dir(retained.parent)
+            if os.path.lexists(src):
+                raise ValueError("a source path reappeared; preserve both copies")
+            if retained.exists():
+                _, current = records._snapshot(retained)
+                if not _same(current, row["source"]):
+                    raise ValueError("source changed at the move boundary; retained without deletion")
+                row["status"] = "retained"
+                _journal(receipt, state)
+                _, verified = records._snapshot(dst)
+                if not _same(verified, row["destination"]):
+                    raise ValueError("destination changed before source deletion")
+                retained.unlink()
+                records._sync_dir(retained.parent)
+            elif row["status"] != "retained":
+                raise ValueError("source custody is missing; reconciliation required")
+            row["status"] = "complete"
+            _journal(receipt, state)
+        return {"workspace": binding["workspace"], "selected": len(state["files"]),
+                "unresolved": unresolved, "apply": True, "migration": digest,
+                "complete": True, "receipt": str(receipt)}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Manage explicitly owned private meeting profiles.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for command in ("resolve", "init", "add-reader"):
+        p = sub.add_parser(command)
+        p.add_argument("--context-repo", type=Path, required=True, help="approved private context repository root")
+        p.add_argument("--workspace", required=True, help="stable owning workspace id")
+        if command == "init":
+            p.add_argument("--name", required=True); p.add_argument("--role", required=True)
+            p.add_argument("--org", required=True); p.add_argument("--goals", default="")
+        elif command == "add-reader":
+            p.add_argument("--id", required=True); p.add_argument("--name", required=True)
+            p.add_argument("--relationship", choices=RELATIONSHIPS, required=True)
+    p = sub.add_parser("migrate", help="preflight an exact ownership/hash map; --apply performs the move")
+    p.add_argument("--map", type=Path, required=True); p.add_argument("--apply", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "migrate":
+            request = records.read_request(args.map)
+            result = migrate(request, apply=args.apply)
+        elif args.command == "resolve":
+            result = {"workspace": args.workspace, "root": str(default_root(args.context_repo, args.workspace))}
+        elif args.command == "init":
+            result = init_principal(args.context_repo, args.name, args.role, args.org,
+                                    [g.strip() for g in args.goals.split(";") if g.strip()], workspace=args.workspace)
+        else:
+            result = add_reader(args.context_repo, args.id, args.name, args.relationship, workspace=args.workspace)
+        print(json.dumps(result, indent=2))
+        return 0
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"prep_init: {exc}", file=sys.stderr)
         return 2
-    return 0
 
 
 if __name__ == "__main__":
