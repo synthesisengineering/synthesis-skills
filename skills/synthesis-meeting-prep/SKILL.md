@@ -2,7 +2,7 @@
 name: synthesis-meeting-prep
 description: "Prepare a principal for any meeting the way a wise chief of staff would: weigh 60+ factors across the meeting, participants, principal's position, knowledge, and risk; model the readers before drafting; deliver a dense, scannable pack with a capture half; then debrief the transcript into decisions, commitments, and reader-profile updates. Use for 1:1s, reviews, forums, external meetings, interviews, and post-meeting follow-through."
 license: "CC0-1.0"
-depends_on: [synthesis-context-lifecycle]
+depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
   version: "1.2.0"
