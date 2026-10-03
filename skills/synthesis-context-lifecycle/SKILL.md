@@ -238,3 +238,151 @@ protocol](../synthesis-project-management/references/parallel-agent-protocol.md#
 A vanished `.git` link or tracked file is unresolved loss evidence; retain its
 registration, refs and surviving files. It is not retirement, deletion authority,
 or a reason to discard foreign claims.
+
+
+## Native memory capture-buffer ingestion
+
+Native memory remains ON. Synthesis records are authoritative; native memory is
+untrusted capture data. Use the existing `context_edit.py memory-probe`,
+`memory-ingest`, and `memory-clear-plan` commands; their structured outputs are
+private records, not banner text. This source supports bounded observation and
+shared ingestion. It does **not** claim a qualified native export or clear action.
+
+Before export, select the actual machine, installed harness, explicit store and
+coordination board. `memory-probe` reads the current board and skips any active
+seat for that harness on that machine, including the current seat. An unknown
+client identity is also pending. Stale active rows are not silently retired.
+An unchanged complete ledger observation needs no model call; unchanged pending
+work stays pending. Missing, moved, aliased, changing, oversized or unsupported
+stores refuse instead of returning NOT_APPLICABLE. The format-agnostic directory
+hash is bounded to 1,024 entries, 32 MiB total, 8 MiB per file, depth 16 and ten
+seconds. A store exceeding these limits needs an explicit owner correction,
+never truncation or a guessed empty export.
+
+Only the harness may export its memories through its supported native mechanism.
+Use the existing dispatch owner (Codex: `codex_dispatch.py`) only after native
+capability qualification and a fresh inactive-harness check. Binary availability,
+help text, directory contents and a synthetic packet do not prove export/clear
+support. Do not invent a Muse memory surface. A proven native no-memory result
+may be recorded separately as NOT_APPLICABLE; absent or unsupported capabilities
+remain pending. The shared owner never invokes a harness or parses its store.
+
+The bounded export packet has exactly `schema: 1`, `harness`, the exact `store`
+probe result, and at most 64 `entries`. Each entry has only `id`, `text`,
+`sha256` (UTF-8 text), `scope` (`personal`, `workspace`, `unknown`) and nullable
+`workspace_hint`. Native output supplies no destination or routing authority.
+Store bytes are rechecked before ingestion. These packets remain unverified
+native provenance until separately qualified; a successful local transaction
+cannot change that fact.
+
+Read the exported material and canonical records in Synthesis before selecting
+routes. Resolve any existing stub to its actual canonical file first; select that
+file, rather than copying a stub's referent into a second location. The explicit
+private selection contains `family` (`personal` or `workspace`), nullable
+`workspace`, an existing project-relative `archive_dir`, and `routes`. Each route
+contains one exact exported `id`, a reviewed `kind`, stable assertion `key`,
+project-relative canonical `file`, and its unique insertion `anchor`. Resolve the
+project/deletion-unit owner through the current registry before creating this
+selection. This selection is a reviewed Synthesis decision, never native output.
+No arbitrary public destination or public publication operation is provided.
+
+Kinds `lesson`, `project-fact`, `workspace-fact`, `voice`, and `public-candidate`
+are distinct. Select reusable lessons in the personal lessons root, project
+facts in the owning REFERENCE, and voice material in the owning private skill;
+workspace-private content stays in its exact workspace deletion unit. Unknown
+ownership remains pending. ALWAYS-PRESERVE kinds `contract`, `pay-equity`,
+`hiring-negotiation`, `termination`, `review-self`, `ip-assignment`, and
+`dispute-evidence` require the personal private root even when the source has a
+workspace hint. `public-candidate` remains a publication decision, never an
+automatic public edit.
+
+`memory-ingest --project … --packet … --selection … --store … --board …
+--machine … --native-payload …` uses the existing authenticated PM transaction
+owner. Archive creation is ordered before canonical edits; source hashes, exact
+claims and recovery custody remain enforced. Interrupted transactions use
+`recover-transaction`, never a second ingestion replay. Exact existing text is
+deduplicated. A previously recorded assertion key with different bytes remains
+PENDING_CONTRADICTION; it never overwrites canonical text. Record all returned
+pending identities and their private evidence pointers as decisions through the
+existing ritual artifact/context transaction, before finishing the close. The
+native source remains intact throughout. A dry run is not a local receipt.
+
+After the ordinary guarded publication owner has published the selected exact
+archive/canonical bytes, `memory-clear-plan` requires the local ingestion receipt,
+packet, current store/board, exact native publication owner and receipt SHA-256.
+It verifies required-file membership through `publication_receipt.observe`;
+an unrelated, changed or incomplete publication receipt cannot qualify entries.
+Only exact archived entries still present in their bound canonical files become
+eligible. The result remains **PENDING_NATIVE_CAPABILITY** with
+`native_clear: NOT_EXECUTED` and no dispatch. It is a non-executing plan, not a
+clear receipt or permission to delete memory files. A future qualified own-harness
+action must snapshot first, recheck active seats and exact source hashes, clear
+only eligible unchanged entries, and supply its actual native result. Until that
+boundary is proved, keep the ledger incomplete and the native memories intact.
+Codex's requested-note update mechanism is not permission to edit/delete its
+memory files or its database. No implementation may disable native memory to
+avoid this boundary. Capability gaps block clean memory-sweep closure, not the
+remaining day-end work.
+
+### Canonical destination binding
+
+The memory owner binds the actual checkout to one approved repository in the
+owning workspace's existing `.agents/repos.yaml`, or to its exact pinned team
+repository enrollment. A matching repository basename or remote slug grants no
+authority. The configured full remote identity must match the single actual
+origin; credentials, ambiguous origins and foreign physical clones refuse.
+Real worktrees require reciprocal Git metadata and the declared repository's
+same physical common directory. The authenticated owning project's workspace
+must independently match the destination's declaration. An enrolled private
+repository takes its deletion-unit ID from the team contract; that ID need not
+match a naming alias. Shared enrollment cannot become a private memory source.
+These local source checks do not attest remote privacy ACLs.
+
+Each configured destination row must explicitly declare its memory scope. Names,
+remote slugs and caller selection labels never supply this classification:
+
+```yaml
+repos:
+  - name: journal-vault
+    path: journal-vault
+    remotes:
+      origin: https://git.example/owner/journal-vault.git
+    memory:
+      family: personal
+      workspace: null
+      source: knowledge
+```
+
+The `memory` object has exactly these three keys. `family` is `personal` or
+`workspace`; personal requires `workspace: null`, while workspace requires the
+explicit engagement deletion-unit ID. `source` is `knowledge` or `private-skills`;
+private-skills requires personal scope. The same row must already satisfy the
+existing full-origin and physical-checkout checks. Unknown, extra or malformed
+metadata refuses. An exact pinned private team enrollment supplies knowledge
+scope and its deletion-unit ID when no workspace declaration exists; when both
+exist, the configured scope must match that enrollment exactly. Shared enrollment
+cannot supply private scope. Changing this metadata invalidates prepared and
+recovering transaction authority until the original declaration is restored.
+
+Transaction custody records configuration/enrollment hashes, physical identities
+and a credential-free remote identity digest. It never stores the raw origin.
+Declarations, checkouts and source identities are rebound before effects and
+recovery; an intervening replacement or source change preserves unfinished
+custody and refuses until the original authority is restored.
+
+Pass the actual record root to `memory-ingest --project`: an existing registered
+project, the actual knowledge repository's `lessons/`, or an existing
+direct child skill directory with `SKILL.md` in the explicitly configured
+personal private-skills source repository. Lessons
+roots accept lesson routes; private-skill roots accept voice routes. For a
+canonical root outside `projects/`, the existing transaction owner resolves one
+registered owning project from the same active native seat's bounded workspace
+list. That project stays subject to ordinary registry/native/worktree/branch
+admission, and every canonical/archive/journal path needs its exact current
+claim. The canonical root never masquerades as a registered project. Its physical
+repository/origin/home identity is retained in transaction custody and rebound
+before recovery. Ambiguous owning projects require an explicit owner correction.
+
+Native export provenance and native clearing remain separately unqualified.
+Neither a successful local edit nor an exact publication observation dispatches
+clearing or attests a real native operation.

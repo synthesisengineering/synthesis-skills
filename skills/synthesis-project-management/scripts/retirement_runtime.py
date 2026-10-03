@@ -29,6 +29,9 @@ CONFORMANCE_SCRIPTS = ("native_transcript_identity.py", "client_binaries.py", "y
 # Cross-skill registry intent readers are executable dependencies of coordination.
 # Keep source paths explicit; no installed cache or source-name guessing is used.
 CROSS_SKILL_SOURCES = {
+    "repo_state.py": "synthesis-daily-rituals/scripts/repo_state.py",
+    "ritual_workers.py": "synthesis-daily-rituals/scripts/ritual_workers.py",
+    "credential_paths.py": "synthesis-daily-rituals/scripts/credential_paths.py",
     "context_currency.py": "synthesis-context-lifecycle/scripts/context_currency.py",
     "context_edit.py": "synthesis-context-lifecycle/scripts/context_edit.py",
     "record_succession.py": "synthesis-context-lifecycle/scripts/record_succession.py",

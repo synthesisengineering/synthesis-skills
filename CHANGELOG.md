@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.3] - 2026-10-03
 
+- Ingest native-memory exports through bounded readers into their authenticated canonical knowledge destinations, retaining source identity and explicit clear-capability status.
+- Support shared meeting-prep contributions through scoped grants while keeping registry and memory destinations under their existing owners.
+- Include the complete registry and memory dependency closure in installed runtimes and independent installer checks.
 - Require exact native claims and retained transaction evidence for registry creation and edits, including ordinary field and entry changes.
 - Preserve foreign entries and modes across concurrent writes, staged checks and interrupted recovery.
 - Support explicit empty registries after final-entry removal and authenticated recreation while refusing ordinary project admission without an entry.

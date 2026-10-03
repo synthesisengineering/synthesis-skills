@@ -1065,6 +1065,23 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "project_recipient.py",
         "native_transcript_identity.py",
         "client_binaries.py",
+        # Keep this expected membership independent of the installer copy list.
+        "run_admission.py",
+        "project_state.py",
+        "plan_reference.py",
+        "context_currency.py",
+        "context_edit.py",
+        "record_succession.py",
+        "record_transaction.py",
+        "build_packet.py",
+        "record_rulings.py",
+        "release_runtime.py",
+        "publication_receipt.py",
+        "yaml_runtime.py",
+        "yaml",
+        "repo_state.py",
+        "ritual_workers.py",
+        "credential_paths.py",
         "source-path",
     }
     assert (

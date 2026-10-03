@@ -101,7 +101,13 @@ GIT_PAYLOADS.update({'skills/synthesis-project-management/scripts/run_admission.
  'skills/synthesis-agent-conformance/vendor/pyyaml/manifest.json': ('.synthesis/references/pyyaml-manifest.json',
                                                                     420),
  'skills/synthesis-agent-conformance/vendor/pyyaml/LICENSE': ('.synthesis/references/pyyaml-LICENSE',
-                                                              420)})
+                                                              420),
+ 'skills/synthesis-daily-rituals/scripts/repo_state.py': ('.synthesis/git-hooks/repo_state.py',
+                                                          493),
+ 'skills/synthesis-daily-rituals/scripts/ritual_workers.py': ('.synthesis/git-hooks/ritual_workers.py',
+                                                              493),
+ 'skills/synthesis-daily-rituals/scripts/credential_paths.py': ('.synthesis/git-hooks/credential_paths.py',
+                                                                493)})
 
 STALE_RELATIVE = "skills/synthesis-project-management/scripts/peer_addressing.py"
 MESSAGE_RELATIVE = "skills/synthesis-message-guard/scripts/message_guard.py"

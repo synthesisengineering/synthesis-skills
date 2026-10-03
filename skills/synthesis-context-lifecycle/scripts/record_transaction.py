@@ -327,7 +327,102 @@ def _history(store):
     return data
 
 
-def _authority(project, board, native_payload, paths, expected=None):
+def memory_repository(root):
+    """Bind a physical private repository to its configured Git origin identity.
+
+    This reads local metadata only. It does not attest hosting ACLs or contact a
+    remote. Caller family/workspace labels cannot redefine this source identity.
+    """
+    local = Path(__file__).resolve().parent
+    flat = (local / "coordination_process.py").is_file()
+    pm = local if flat else local.parents[1] / "synthesis-project-management/scripts"
+    if str(pm) not in sys.path:
+        sys.path.insert(0, str(pm))
+    root = _path(root)
+    rituals = local if flat else local.parents[1] / "synthesis-daily-rituals/scripts"
+    if str(rituals) not in sys.path:
+        sys.path.insert(0, str(rituals))
+    for name, directory in (("repo_state", rituals), ("credential_paths", rituals),
+                            ("ritual_workers", rituals), ("coordination", pm),
+                            ("team_contract", pm), ("coordination_process", pm)):
+        module = sys.modules.get(name)
+        if module is not None and Path(getattr(module, "__file__", "")).resolve() != directory / (name + ".py"):
+            raise RecordTransactionError("memory repository owner belongs to another source generation")
+    import repo_state
+    import team_contract
+    import coordination
+    try:
+        repository, branch = coordination._repository_state(root)
+        index = repository / "projects/index.yaml"
+        team = team_contract.registry_binding(index) if index.exists() else None
+        approved = repo_state.repository_identity(repository, enrolled=team)
+        memory = approved["memory"]
+        family, workspace, source = (memory["family"], memory["workspace"], memory["source"])
+        binding = {"repository": str(repository), "branch": branch,
+                   "approved_source": approved, "family": family,
+                   "workspace": workspace, "source": source}
+        if team is not None:
+            if family != "workspace":
+                raise ValueError("personal repository cannot be an enrolled engagement deletion unit")
+            if team["repository"]["audience"] != "private":
+                raise ValueError("shared enrolled source cannot become a private memory destination")
+            if workspace != team["document"]["deletion_unit"] or source != "knowledge":
+                raise ValueError("configured memory scope differs from enrolled deletion unit")
+            binding["team_sha256"] = team["sha256"]
+    except (OSError, RuntimeError, ValueError, KeyError):
+        # Configuration/remote parsers may include original input in exceptions.
+        # Never persist or print those inputs through the transaction error path.
+        raise RecordTransactionError("approved physical memory repository identity unavailable or changed") from None
+    return binding
+
+
+def memory_record_home(root):
+    """Recognize canonical homes without converting them into PM projects."""
+    root = _path(root)
+    binding = memory_repository(root)
+    repository = Path(binding["repository"])
+    if root.parent == repository / "projects" and binding["source"] == "knowledge":
+        home = "project"
+    elif root == repository / "lessons" and binding["source"] == "knowledge":
+        home = "lessons"
+    elif (root.parent == repository and binding["source"] == "private-skills"
+          and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,100}", root.name)
+          and (root / "SKILL.md").is_file()):
+        _snapshot(root / "SKILL.md")
+        home = "private-skill"
+    else:
+        raise RecordTransactionError("destination is not an existing canonical project, lessons root or private skill")
+    return {**binding, "home": home, "record_root": str(root)}
+
+
+def _canonical_admission_project(root, board, native_payload):
+    """Resolve one existing registered project from the same live native seat.
+
+    Canonical lessons/skills do not become registered projects. The ordinary
+    PM owner still admits that exact project and every canonical/journal path.
+    """
+    import run_admission
+    home = memory_record_home(root)
+    if home["home"] == "project":
+        return root, home
+    binding = run_admission.native_binding(Path(board), native_payload)
+    workspaces = binding["workspaces"]
+    if len(workspaces) > 64:
+        raise RecordTransactionError("canonical owner workspace search exceeds bound")
+    candidates = []
+    for workspace in workspaces:
+        parts = workspace.rsplit(" @ ", 1)
+        if len(parts) != 2 or not Path(parts[0]).is_absolute():
+            raise RecordTransactionError("canonical owner workspace registration is invalid")
+        candidate = _path(Path(parts[0]) / "projects" / binding["project_id"])
+        if candidate.is_dir():
+            candidates.append(candidate)
+    if len(set(candidates)) != 1:
+        raise RecordTransactionError("canonical record needs one exact registered owning project")
+    return candidates[0], home
+
+
+def _authority(project, board, native_payload, paths, expected=None, *, memory_home=None):
     if not isinstance(native_payload, dict):
         raise RecordTransactionError("native payload must be an object")
     pm_scripts = (
@@ -343,16 +438,47 @@ def _authority(project, board, native_payload, paths, expected=None):
         ) from exc
 
     try:
-        return dict(
+        if "meeting_prep_share" in native_payload:
+            if memory_home is not None:
+                raise RecordTransactionError("shared prep grant cannot authorize a native-memory destination")
+            return dict(run_admission.admit_shared_prep(board, project, paths, native_payload, expected))
+        admission_project, home = (project, None)
+        if project.parent.name != "projects":
+            admission_project, home = _canonical_admission_project(project, board, native_payload)
+        if memory_home is not None:
+            current_home = memory_record_home(project)
+            if current_home != memory_home:
+                raise RecordTransactionError("memory repository binding changed")
+            home = current_home
+        proof = dict(
             (run_admission.admit_registry_paths if project.parent / "index.yaml" in paths else run_admission.admit_paths)(
                 Path(board),
-                project.name,
-                project,
+                admission_project.name,
+                admission_project,
                 paths,
                 native_payload,
                 expected_claim_hash=expected,
             )
         )
+        if home is not None:
+            # The declaration must also be the owning native project's actual
+            # workspace configuration, not a destination-local lookalike.
+            anchor = memory_repository(admission_project)["approved_source"]
+            destination = home["approved_source"]
+            if "declaration" in destination:
+                if (anchor.get("declaration") != destination["declaration"]
+                        or anchor.get("declaration_source") != destination["declaration_source"]
+                        or anchor.get("declaration_sha256") != destination["declaration_sha256"]
+                        or anchor.get("declaration_identity") != destination["declaration_identity"]
+                        or anchor.get("workspace_identity") != destination["workspace_identity"]):
+                    raise RecordTransactionError("destination is not in the native owner's configured workspace")
+            elif (anchor.get("enrollment_sha256") != destination.get("enrollment_sha256")
+                  or anchor["physical"]["common_directory_identity"] != destination["physical"]["common_directory_identity"]):
+                raise RecordTransactionError("destination is not the native owner's enrolled repository")
+            if memory_record_home(project) != home:
+                raise RecordTransactionError("canonical repository identity changed during admission")
+            proof["canonical_home"] = home
+        return proof
     except (OSError, RuntimeError, ValueError) as exc:
         raise RecordTransactionError(
             f"fresh exact record authority refused: {exc}"
@@ -693,7 +819,8 @@ def _commit(project, active, manifest, digest, history, board, payload):
     _check_custody(project, active, manifest)
     paths = [_target(project, item["path"]) for item in manifest["files"]]
     expected = manifest["authority"]["claim_hash"]
-    proof = _authority(project, board, payload, [*paths, project / STORE], expected)
+    proof = _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
     if any(
         proof.get(k) != manifest["authority"].get(k)
         for k in [
@@ -703,6 +830,7 @@ def _commit(project, active, manifest, digest, history, board, payload):
             "repository",
             "branch",
             "board",
+            "canonical_home",
         ]
     ):
         raise RecordTransactionError("transaction identity/checkout changed")
@@ -737,7 +865,8 @@ def _commit(project, active, manifest, digest, history, board, payload):
     for item, path in pending:
         _project_identity(project, manifest)
         _check_custody(project, active, manifest)
-        _authority(project, board, payload, [*paths, project / STORE], expected)
+        _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
         if not _matches(path, item["before"]) or not _matches(
             Path(item["stage"]), item["after"]
         ):
@@ -753,7 +882,8 @@ def _commit(project, active, manifest, digest, history, board, payload):
         else:
             os.replace(item["stage"], path)
             _sync_dir(path.parent)
-    _authority(project, board, payload, [*paths, project / STORE], expected)
+    _authority(project, board, payload, [*paths, project / STORE], expected,
+                   memory_home=manifest["authority"].get("canonical_home"))
     return _finish(project, active, manifest, digest, history)
 
 
@@ -787,6 +917,7 @@ def apply(
     intent_id=None,
     source_custody=None,
     expected_claim_hash=None,
+    memory_home=None,
 ):
     """Preflight all files, publish durable intent, then recoverably commit."""
     import context_edit
@@ -984,8 +1115,25 @@ def apply(
         if not store.exists():
             metadata.extend([initial, initial / "history.json"])
         proof = _authority(
-            project, board, native_payload, [*paths, *metadata], expected_claim_hash
+            project, board, native_payload, [*paths, *metadata], expected_claim_hash,
+            memory_home=memory_home
         )
+        if "prep_grant" in proof:
+            grant = proof["prep_grant"]
+            if len(prepared) != 1 or sources:
+                raise RecordTransactionError("shared prep writes exactly one artifact")
+            path, before, output, _, _, mode = prepared[0]
+            if str(path) != grant["target"]:
+                raise RecordTransactionError("shared prep target differs")
+            if grant["operation"] == "create":
+                if before is not None or mode != 0o600:
+                    raise RecordTransactionError("shared prep create requires absence and private mode")
+            else:
+                if before is None or before["sha256"] != grant["before"] or before["mode"] != 0o600:
+                    raise RecordTransactionError("shared prep append preimage changed")
+                old, _ = _snapshot(path)
+                if not output.startswith(old) or len(output) <= len(old):
+                    raise RecordTransactionError("shared prep contract permits append only")
         for path, before, *_ in prepared:
             if not _matches(path, before):
                 raise RecordTransactionError("source changed during preflight")
@@ -1083,6 +1231,7 @@ def apply(
             native_payload,
             [*paths, project / STORE],
             proof["claim_hash"],
+            memory_home=proof.get("canonical_home"),
         )
         for path, before, *_ in prepared:
             if not _matches(path, before):

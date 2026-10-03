@@ -503,3 +503,63 @@ def _admit_paths(
         if isinstance(exc, AdmissionError):
             raise
         raise AdmissionError(f"run admission failed: {exc}") from exc
+
+
+def admit_shared_prep(board, project, paths, native_payload, expected_claim_hash=None):
+    """Fresh board-owned grant, scoped to one prep and its transaction custody."""
+    import claim_scope
+    import team_contract
+    selection = native_payload.get("meeting_prep_share")
+    if (not isinstance(selection, dict) or set(selection) != {"id", "workspace"}
+            or not isinstance(selection["id"], str)):
+        raise AdmissionError("exact prep grant and workspace required")
+    binding = native_binding(Path(board), native_payload)
+    text = _snapshot(Path(board))
+    sessions = coordination.rows(text)
+    matches = []
+    for session in sessions:
+        for claim in session.claims:
+            grant = claim_scope.prep_share_claim(claim)
+            if grant is not None and grant["id"] == selection["id"]:
+                matches.append((session, grant))
+    if len(matches) != 1:
+        raise AdmissionError("shared prep grant missing or ambiguous")
+    recipient, grant = matches[0]
+    repo, branch = coordination._repository_state(Path(grant["repository"]))
+    project = safe_path(Path(project).absolute(), repo)
+    if (project != repo / "meeting-preps" or str(repo) != grant["repository"]
+            or branch != grant["branch"] or selection["workspace"] != grant["workspace"]
+            or grant["contributor"] != binding["session_uuid"]
+            or not coordination.active(recipient) or recipient.session_uuid != grant["recipient"]
+            or not recipient.client_ref or time.time() >= grant["expires"]
+            or coordination.prep_recipient_scope(recipient) != grant["recipient_scope"]):
+        raise AdmissionError("shared prep identity, workspace, recipient or expiry changed")
+    writer = coordination.find_session(sessions, binding["session_uuid"])
+    if (writer is None or not coordination._workspace_registered(recipient, repo, branch)
+            or not coordination._workspace_registered(writer, repo, branch)
+            or coordination._outside_claim(recipient, repo, [str(Path(grant["target"]).relative_to(repo))])):
+        raise AdmissionError("shared prep recipient or contributor scope changed")
+    registry = repo / "projects/index.yaml"
+    team_contract.require_registry(registry, board=Path(board), native_payload=native_payload)
+    registered = registry_entries(registry.read_text(encoding="utf-8"))
+    if binding["project_id"] not in registered or recipient.project not in registered:
+        raise AdmissionError("prep seats must belong to registered projects")
+    enrolled = team_contract.registry_binding(registry)
+    if enrolled is not None and enrolled["repository"]["audience"] != "private":
+        raise AdmissionError("shared/public repository is not a private prep destination")
+    marker = safe_path(repo / "profiles/meeting-prep/.owner.json", repo)
+    owner = json.loads(marker.read_text())
+    if not isinstance(owner, dict) or type(owner.get("schema")) is not int or owner != {"schema": 1, "workspace": grant["workspace"]}:
+        raise AdmissionError("private workspace owner marker changed")
+    target = safe_path(Path(grant["target"]), repo)
+    for raw in paths:
+        path = safe_path(Path(raw), repo)
+        rel = path.relative_to(project)
+        if path != target and not (rel.parts and (rel.parts[0] == ".record-transactions" or rel.parts[0].startswith(".record-transactions.init-"))):
+            raise AdmissionError("shared prep grant cannot authorize another file")
+    proof = {**binding, "repository": str(repo), "branch": branch, "project_root": str(project),
+             "prep_grant": grant}
+    proof["claim_hash"] = _fingerprint([binding["claim_hash"], grant])
+    if expected_claim_hash is not None and expected_claim_hash != proof["claim_hash"]:
+        raise AdmissionError("shared prep scope changed")
+    return proof

@@ -95,6 +95,46 @@ def workspace_parts(workspace: str) -> tuple[str, str]:
     return tuple(plain(part) for part in workspace.rsplit(" @ ", 1)) if " @ " in workspace else (plain(workspace), "unknown")
 
 
+def prep_share_claim(value):
+    """Decode the one artifact contract; this marker is never a path claim."""
+    import base64
+    import json
+    raw = plain(value)
+    if not raw.startswith("prep-share:"):
+        return None
+    try:
+        token = raw[len("prep-share:"):]
+        if len(token) > 4096 or not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", token):
+            raise ValueError("invalid encoding")
+        data = json.loads(base64.urlsafe_b64decode(token))
+        fields = {"schema", "id", "recipient", "contributor", "repository", "branch",
+                  "workspace", "target", "operation", "before", "expires", "recipient_scope", "private"}
+        if not isinstance(data, dict) or set(data) != fields or type(data["schema"]) is not int or data["schema"] != 1:
+            raise ValueError("invalid fields")
+        if data["private"] is not True or data["operation"] not in {"create", "append"}:
+            raise ValueError("private create/append contract required")
+        if not re.fullmatch(r"[0-9a-f]{32}", str(data["id"])) or type(data["expires"]) is not int:
+            raise ValueError("invalid identity/expiry")
+        import uuid
+        for key in ("recipient", "contributor"):
+            if str(uuid.UUID(data[key])) != data[key]:
+                raise ValueError("exact seat UUID required")
+        repo, target = Path(data["repository"]), Path(data["target"])
+        if (not repo.is_absolute() or ".." in repo.parts or target.parent != repo / "meeting-preps"
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.md", target.name)
+                or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", data["workspace"])
+                or not isinstance(data["branch"], str) or not data["branch"]):
+            raise ValueError("exact private workspace artifact required")
+        if not re.fullmatch(r"[0-9a-f]{64}", data["recipient_scope"]):
+            raise ValueError("recipient scope binding required")
+        if (data["operation"] == "create" and data["before"] is not None) or (
+            data["operation"] == "append" and not re.fullmatch(r"[0-9a-f]{64}", str(data["before"]))):
+            raise ValueError("exact preimage required")
+        return data
+    except (ValueError, TypeError, KeyError) as exc:
+        raise ClaimIdentityError("invalid shared prep contract") from exc
+
+
 def admitted_claim(claim: str, workspaces, *, canonical: bool = False, allow_creation: bool = False) -> str:
     """One filesystem grammar for admission and the eventual write consumer.
 
@@ -103,6 +143,9 @@ def admitted_claim(claim: str, workspaces, *, canonical: bool = False, allow_cre
     A relative claim needs one physical binding, even on a single-row board.
     """
     raw = os.path.expanduser(plain(claim))
+    if raw.startswith("prep-share:"):
+        prep_share_claim(raw)
+        return claim
     if not raw or any(ord(c) < 32 for c in raw) or ".." in Path(raw).parts:
         raise ClaimIdentityError("claim path is empty, contains control characters or parent traversal")
     if Path(raw).is_absolute():

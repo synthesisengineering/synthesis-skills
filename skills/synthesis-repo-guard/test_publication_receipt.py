@@ -316,3 +316,20 @@ def test_embedded_manifest_schema_is_not_numeric_coercion(published, schema):
     manifest.write_bytes(invalid)
     with pytest.raises(m.ProofError):
         m.build(manifest, invalid, results)
+
+
+def test_required_ingestion_paths_and_exact_receipt_cas(published):
+    root, repo, path, native, manifest, raw, results, git = published
+    m = owner()
+    proof = m.build(manifest, raw, results)
+    dest = root / 'publication' / manifest.name
+    dest.parent.mkdir()
+    dest.write_text(json.dumps(proof))
+    manifest.unlink()
+    sha = hashlib.sha256(dest.read_bytes()).hexdigest()
+    required = {str(path): hashlib.sha256(path.read_bytes()).hexdigest()}
+    assert m.observe(root, native, required_files=required, expected_receipt_sha256=sha)['status'] == 'VERIFIED_REMOTE_READY'
+    assert m.observe(root, native, required_files=required, expected_receipt_sha256='0' * 64)['status'] == 'UNKNOWN'
+    assert m.observe(root, native, required_files={str(path): '0' * 64})['status'] == 'UNKNOWN'
+    assert m.observe(root, native, required_files={str(repo / 'uncovered'): '0' * 64})['status'] == 'UNKNOWN'
+    assert m.observe(root, native, required_files={})['status'] == 'UNKNOWN'

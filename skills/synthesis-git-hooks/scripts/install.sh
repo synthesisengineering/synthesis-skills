@@ -79,6 +79,9 @@ for source in \
     "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py" \
     "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/manifest.json" \
     "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/LICENSE" \
+    "$SKILLS_DIR/synthesis-daily-rituals/scripts/repo_state.py" \
+    "$SKILLS_DIR/synthesis-daily-rituals/scripts/ritual_workers.py" \
+    "$SKILLS_DIR/synthesis-daily-rituals/scripts/credential_paths.py" \
     "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85"; do
     [ -f "$source" ] || {
         echo "✖ Required synthesis-project-management dependency missing: $source" >&2
@@ -183,6 +186,12 @@ cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/manifest.json" "$HO
 chmod 644 "$HOME/.synthesis/references/pyyaml-manifest.json"
 cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/LICENSE" "$HOME/.synthesis/references/pyyaml-LICENSE"
 chmod 644 "$HOME/.synthesis/references/pyyaml-LICENSE"
+cp -f "$SKILLS_DIR/synthesis-daily-rituals/scripts/repo_state.py" "$TARGET_DIR/repo_state.py"
+chmod 755 "$TARGET_DIR/repo_state.py"
+cp -f "$SKILLS_DIR/synthesis-daily-rituals/scripts/ritual_workers.py" "$TARGET_DIR/ritual_workers.py"
+chmod 755 "$TARGET_DIR/ritual_workers.py"
+cp -f "$SKILLS_DIR/synthesis-daily-rituals/scripts/credential_paths.py" "$TARGET_DIR/credential_paths.py"
+chmod 755 "$TARGET_DIR/credential_paths.py"
 printf '%s\n' "$SCRIPT_DIR" > "$TARGET_DIR/source-path"
 cp -f "$COORDINATION_REFERENCES/session-words-v1.txt.zlib.b85" \
     "$TARGET_REFERENCES/session-words-v1.txt.zlib.b85"

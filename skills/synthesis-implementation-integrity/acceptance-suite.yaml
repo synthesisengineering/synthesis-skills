@@ -1,5 +1,5 @@
 schema: 2
-suite: registry-transactions-4-154-3
+suite: registry-memory-prep-composition
 membership: closed
 production_entry_point: Core safeguards, native callbacks and recovery, team policy, maintenance and portable
   evidence owners; scoped source acquisition and inert native web observations
@@ -8607,6 +8607,113 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+- path: skills/synthesis-autopilot/references/portable-native-evidence.md
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+- path: skills/synthesis-context-lifecycle/SKILL.md
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
 - path: skills/synthesis-context-lifecycle/references/durable-record-operations.md
   cases:
   - registry-5765d0aff4f028aa
@@ -8628,6 +8735,54 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
 - path: skills/synthesis-context-lifecycle/scripts/context_edit.py
   cases:
   - registry-5765d0aff4f028aa
@@ -8649,6 +8804,87 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - composition-5d6e0459a4ea3445
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
 - path: skills/synthesis-context-lifecycle/scripts/record_transaction.py
   cases:
   - registry-5765d0aff4f028aa
@@ -8670,6 +8906,301 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - composition-5d6e0459a4ea3445
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
+- path: skills/synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+- path: skills/synthesis-daily-rituals/scripts/repo_state.py
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
+- path: skills/synthesis-daily-rituals/scripts/ritual_workers.py
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
 - path: skills/synthesis-git-hooks/scripts/install.sh
   cases:
   - final-18d6eb36b76420bc
@@ -10547,6 +11078,252 @@ changed_surfaces:
   - registry-runtime-231b8683508baf54
   - registry-runtime-e8cb1b3d707e85e7
   - diagnostic-line-selected-caller
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - composition-b3e5be2d509422a9
+  - composition-5d6e0459a4ea3445
+  - memory-scope-1f641883c05b72e0
+  - memory-scope-1741401b13fbd592
+  - memory-scope-130a071da26bebd2
+  - memory-scope-fbebb6dfb60e7e9b
+  - memory-scope-8a2b34e1055c46ce
+  - memory-scope-1c63c5fac2d0da21
+  - memory-scope-6de0a5497381e3bc
+- path: skills/synthesis-meeting-prep/SKILL.md
+  cases:
+  - public-ready-profile-22622260689c272a
+  - public-ready-profile-b6c4c7c42f945686
+  - public-ready-profile-c7ad7cfccacdb64c
+  - public-ready-profile-ed0e646c0c9e5a1a
+  - public-ready-profile-64cf5b97def8d71d
+  - public-ready-profile-575809c567f3eb2b
+  - public-ready-profile-c89f1a8560fe13b3
+  - public-ready-profile-31b9bce5a2bcfad0
+  - public-ready-profile-23c3a92185046cb2
+  - public-ready-profile-26abfa4ef640cdd2
+  - public-ready-profile-0a62b84ed17364b0
+  - public-ready-profile-c8ffc529c6cbbfcb
+  - public-ready-profile-7590eded23f1ac9c
+  - public-ready-profile-20a221259237cf70
+  - public-ready-profile-689062ac7c256c70
+  - public-ready-profile-6bd929b9a9962cd5
+  - public-ready-profile-182b6312e7dc39ff
+  - public-ready-profile-a6a970a571123e24
+  - public-ready-profile-d2e9f3f6f7527017
+  - public-ready-profile-5f1c5d98ea197ea1
+  - public-ready-profile-97f266019c25748d
+  - public-ready-profile-32962b2ced361e0a
+  - public-ready-profile-f13a6354599964f6
+  - public-ready-profile-a352b0066e1836d6
+  - public-ready-profile-4ce0f7059bcd7f93
+  - public-ready-profile-d1e42819f1a7417d
+  - public-ready-profile-3ef72e18b21fe07f
+  - public-ready-profile-99891cb102cb02c9
+  - public-ready-profile-248e6f59c3205967
+  - public-ready-profile-78dcd7f9bdd8555e
+  - public-ready-profile-e7247ace51e122d5
+  - public-ready-profile-6813786fdac9b5c5
+  - public-ready-profile-e0240b02427e3924
+  - public-ready-profile-f8e25d59dffa7319
+  - public-ready-profile-0499f79ae8f5c803
+  - public-ready-profile-58d8443dc597c5b7
+  - public-ready-profile-3cc8b9848f86be93
+  - public-ready-profile-e930c1ad7ed9645f
+  - public-ready-profile-143f2b72df0b6485
+  - public-ready-profile-683e682510deb77c
+  - public-ready-profile-b50d1da6172af098
+  - public-ready-profile-51e7ad6ac0bf6658
+  - public-ready-profile-639aa0cccbe8e9a4
+  - public-ready-profile-87feaba7ab312f5c
+  - public-ready-profile-d4cfec00c56cac26
+  - public-ready-profile-6dc5b5df1e6d68af
+  - public-ready-profile-37fa84ca51ff2138
+  - public-ready-profile-b76f69ed534266ae
+  - public-ready-profile-5e4d69eb44cbe3cf
+  - public-ready-profile-e5af336f1914f195
+  - public-ready-profile-68fb93b6ac97580f
+  - public-ready-profile-f5d85f2aff005bad
+  - public-ready-profile-7c259e6ffd367f5b
+  - public-ready-profile-7ca8d12845257ba1
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
+- path: skills/synthesis-meeting-prep/scripts/prep_init.py
+  cases:
+  - public-ready-profile-22622260689c272a
+  - public-ready-profile-b6c4c7c42f945686
+  - public-ready-profile-c7ad7cfccacdb64c
+  - public-ready-profile-ed0e646c0c9e5a1a
+  - public-ready-profile-64cf5b97def8d71d
+  - public-ready-profile-575809c567f3eb2b
+  - public-ready-profile-c89f1a8560fe13b3
+  - public-ready-profile-31b9bce5a2bcfad0
+  - public-ready-profile-23c3a92185046cb2
+  - public-ready-profile-26abfa4ef640cdd2
+  - public-ready-profile-0a62b84ed17364b0
+  - public-ready-profile-c8ffc529c6cbbfcb
+  - public-ready-profile-7590eded23f1ac9c
+  - public-ready-profile-20a221259237cf70
+  - public-ready-profile-689062ac7c256c70
+  - public-ready-profile-6bd929b9a9962cd5
+  - public-ready-profile-182b6312e7dc39ff
+  - public-ready-profile-a6a970a571123e24
+  - public-ready-profile-d2e9f3f6f7527017
+  - public-ready-profile-5f1c5d98ea197ea1
+  - public-ready-profile-97f266019c25748d
+  - public-ready-profile-32962b2ced361e0a
+  - public-ready-profile-f13a6354599964f6
+  - public-ready-profile-a352b0066e1836d6
+  - public-ready-profile-4ce0f7059bcd7f93
+  - public-ready-profile-d1e42819f1a7417d
+  - public-ready-profile-3ef72e18b21fe07f
+  - public-ready-profile-99891cb102cb02c9
+  - public-ready-profile-248e6f59c3205967
+  - public-ready-profile-78dcd7f9bdd8555e
+  - public-ready-profile-e7247ace51e122d5
+  - public-ready-profile-6813786fdac9b5c5
+  - public-ready-profile-e0240b02427e3924
+  - public-ready-profile-f8e25d59dffa7319
+  - public-ready-profile-0499f79ae8f5c803
+  - public-ready-profile-58d8443dc597c5b7
+  - public-ready-profile-3cc8b9848f86be93
+  - public-ready-profile-e930c1ad7ed9645f
+  - public-ready-profile-143f2b72df0b6485
+  - public-ready-profile-683e682510deb77c
+  - public-ready-profile-b50d1da6172af098
+  - public-ready-profile-51e7ad6ac0bf6658
+  - public-ready-profile-639aa0cccbe8e9a4
+  - public-ready-profile-87feaba7ab312f5c
+  - public-ready-profile-d4cfec00c56cac26
+  - public-ready-profile-6dc5b5df1e6d68af
+  - public-ready-profile-37fa84ca51ff2138
+  - public-ready-profile-b76f69ed534266ae
+  - public-ready-profile-5e4d69eb44cbe3cf
+  - public-ready-profile-e5af336f1914f195
+  - public-ready-profile-68fb93b6ac97580f
+  - public-ready-profile-f5d85f2aff005bad
+  - public-ready-profile-7c259e6ffd367f5b
+  - public-ready-profile-7ca8d12845257ba1
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
   - registry-5765d0aff4f028aa
@@ -10672,6 +11449,84 @@ changed_surfaces:
   - merge-guard-42884e02cc896b94
   - merge-guard-4e24e44bab0114d5
   - registry-runtime-e8cb1b3d707e85e7
+- path: skills/synthesis-project-management/references/records-and-conventions.md
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+- path: skills/synthesis-project-management/scripts/claim_scope.py
+  cases:
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
 - path: skills/synthesis-project-management/scripts/coordination.py
   cases:
   - registry-5765d0aff4f028aa
@@ -10693,6 +11548,32 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
 - path: skills/synthesis-project-management/scripts/native_git.py
   cases:
   - registry-5765d0aff4f028aa
@@ -10795,6 +11676,60 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
+- path: skills/synthesis-project-management/scripts/test_prep_sharing.py
+  cases:
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
 - path: skills/synthesis-project-management/scripts/test_record_transaction.py
   cases:
   - registry-5765d0aff4f028aa
@@ -10821,6 +11756,32 @@ changed_surfaces:
   - final-336ac9f17fce8efc
   - final-1c402ee113ac6274
   - registry-runtime-92ca8eedb6e4cfff
+  - prep-share-b1cef695366d27c9
+  - prep-share-1d4ff179685e8b43
+  - prep-share-5db8dd9a925ed28a
+  - prep-share-1201eef98cefec04
+  - prep-share-a3719f2ceac0d5a5
+  - prep-share-1ad3aaf1d98a5a8f
+  - prep-share-6d929103f338f06a
+  - prep-share-0933ee618ddfcc46
+  - prep-share-43d9c76a6ba4cfd6
+  - prep-share-c670ba1e588a72d8
+  - prep-share-02bc643547e85cea
+  - prep-share-ef084d615318bc5d
+  - prep-share-ca75dd82d328a8c6
+  - prep-share-820dd014d2081daf
+  - prep-share-ae685b4532c19309
+  - prep-share-50884a412c7b34a4
+  - prep-share-8254a8009948cc27
+  - prep-share-85888dee6a61105a
+  - prep-share-1eefcd1b598eb138
+  - prep-share-a6b6776f4fc0642d
+  - prep-share-623f56a1ebd22fb7
+  - prep-share-433b5861793db30d
+  - prep-share-e7de29132bc55c57
+  - prep-share-b0cf91a669a67db5
+  - prep-share-146320ea52836eb8
+  - composition-5d6e0459a4ea3445
 - path: skills/synthesis-project-management/scripts/test_retirement_runtime.py
   cases:
   - final-6429d4c7877d799a
@@ -10836,6 +11797,118 @@ changed_surfaces:
   - final-ee85a2171b67640d
   - registry-runtime-d7bf610b33eca9e5
   - registry-runtime-231b8683508baf54
+- path: skills/synthesis-repo-guard/publication_receipt.py
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+- path: skills/synthesis-repo-guard/test_publication_receipt.py
+  cases:
+  - composition-28ae758b9e097cc4
+  - composition-692d89f748edef2d
+  - composition-cb1a9a414d348f4e
+  - composition-403ef7791e8b501a
+  - composition-cf93af75376bc04e
+  - composition-c1578df0632a2628
+  - composition-68962c9b503b8358
+  - composition-81dda0b9b3970384
+  - composition-e56225d6cd753605
+  - composition-caccad768a70c361
+  - composition-d4a3ea2b7f9b2e98
+  - composition-e14be63910370cb7
+  - composition-39d5e91a07dcabd1
+  - composition-88c859874dd2f36a
+  - composition-453e85e6fb4f0f51
+  - composition-cf9ad9fcaad6a0d4
+  - composition-ce8fc670c451279e
+  - composition-53d3c001af9a38ab
+  - composition-1419c2a755b59bc6
+  - composition-46be8959e6006b9b
+  - composition-b2cc01b28e5280ff
+  - composition-e28d63dd2a434617
+  - composition-2e7b27164792527a
+  - composition-def3773006bccdb6
+  - composition-23dd36069f3af033
+  - composition-13ab92546220f969
+  - composition-66bd1209176c03db
+  - composition-99b44cc4e21ee591
+  - composition-08f4c267cbed4efc
+  - composition-844d12ae84eabab9
+  - composition-d1e600fd5f213f5b
+  - composition-94972e7f2da3b756
+  - composition-6c81819cb060dd6d
+  - composition-742261718c4003dd
+  - composition-40acdc50bfc4f655
+  - composition-3a1b79c687f54d34
+  - composition-aa8aca9dfddff5ca
+  - composition-9a72a17bd2a92e1e
+  - composition-ff2c5a83967eea13
+  - composition-18efa29b953e7ee9
+  - composition-10a59fd4439c82d0
+  - composition-48643777144b1ff9
+  - composition-811bd71254cba722
+  - composition-d888902c904c4904
+  - composition-d1a9fceb54a10b77
+  - composition-28306eb25ba9344c
+  - composition-25654cc331a718fe
+  - composition-ed7e7f67f5890d0a
+  - final-f569c936f947d2db
+  - final-f6fa79e1a4ab0817
+  - final-cda62648a851c62f
+  - final-cdd4648553317d01
+  - composition-b3e5be2d509422a9
+- path: skills/synthesis-git-hooks/scripts/test_pre_commit.py
+  cases:
+  - final-18d6eb36b76420bc
+  - final-f54a4e5f6bf8099b
+  - final-2cd84b53700a500c
+  - final-21730796218b5fb4
+  - registry-runtime-92ca8eedb6e4cfff
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -21262,3 +22335,502 @@ cases:
   fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_registry_dependency_introduction_requires_custody_and_cold_execution
   motivating_defect: Registry commit admission imports must be bound in retained, installed and receipt-selected
     dependency closures, including cold execution and exact ownership when introducing payloads.
+- id: prep-share-b1cef695366d27c9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_actual_native_transaction[create]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-1d4ff179685e8b43
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_actual_native_transaction[append]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-5db8dd9a925ed28a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[private]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-1201eef98cefec04
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[recipient]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-a3719f2ceac0d5a5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[contributor]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-1ad3aaf1d98a5a8f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[workspace]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-6d929103f338f06a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[artifact]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-0933ee618ddfcc46
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[expiry]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-43d9c76a6ba4cfd6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_refusal_preserves_board_and_files[forged-caller]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-c670ba1e588a72d8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[missing]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-02bc643547e85cea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[forged-id]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-ef084d615318bc5d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[workspace]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-ca75dd82d328a8c6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[other-artifact]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-820dd014d2081daf
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[native]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-ae685b4532c19309
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[expired]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-50884a412c7b34a4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[owner-scope]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-8254a8009948cc27
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[owner-released]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-85888dee6a61105a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[public]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-1eefcd1b598eb138
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_consumer_refusals[marker]
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-a6b6776f4fc0642d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_append_cas_preserves_concurrent_update
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-623f56a1ebd22fb7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_does_not_authorize_generic_replacement
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-433b5861793db30d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_grant_is_not_an_exclusive_path_claim
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-e7de29132bc55c57
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_simultaneous_writers_serialize_without_lost_update
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-b0cf91a669a67db5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_interruption_recovery_rechecks_recipient
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: prep-share-146320ea52836eb8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_shared_prep_raw_claim_cannot_mint_grant
+  motivating_defect: 'PREPS-CLAIM: an authenticated recipient must permit an exact private artifact contribution
+    without surrendering its broad exclusive claim.'
+- id: composition-28ae758b9e097cc4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_archive_then_actual_transaction_and_dedup
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-692d89f748edef2d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_dry_run_never_emits_clear_eligible_receipt
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-cb1a9a414d348f4e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_exact_remote_bytes_eligible_but_native_capability_remains_pending
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-403ef7791e8b501a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_clear_refuses_changed_or_unpublished_evidence
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-cf93af75376bc04e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_contradiction_does_not_overwrite_or_clear
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-c1578df0632a2628
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_always_preserve_forces_personal_root
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-68962c9b503b8358
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_deletion_unit_routing_refusal
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-81dda0b9b3970384
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_matching_workspace_and_no_publication_promotion
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-e56225d6cd753605
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_unknown_scope_and_unselected_stay_pending
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-caccad768a70c361
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_packet_and_owner_denials_are_nonmutating
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-d4a3ea2b7f9b2e98
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_active_harness_skips_before_store_read
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-e14be63910370cb7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_store_cheap_noop_preserves_pending_and_detects_change
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-39d5e91a07dcabd1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_store_refusals_never_claim_not_applicable
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-88c859874dd2f36a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_archive_first_interruption_and_existing_recovery
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-453e85e6fb4f0f51
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_substring_is_not_a_canonical_duplicate
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-cf9ad9fcaad6a0d4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_mixed_pending_entries_never_become_clear_eligible
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-ce8fc670c451279e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_source_change_after_export_refuses_without_local_writes
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-53d3c001af9a38ab
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_completed_source_packet_cannot_smuggle_marker_namespace
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-1419c2a755b59bc6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_store_changes_during_hash_refuse
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-46be8959e6006b9b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_cli_probe_emits_structured_pending_without_invocation
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-b2cc01b28e5280ff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_selected_canonical_behind_stub_is_deduped_without_copying_stub
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-e28d63dd2a434617
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_store_finite_bounds
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-2e7b27164792527a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_simulated_supported_native_consumer_enforces_entry_hash_cas
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-def3773006bccdb6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_missing_board_never_implies_inactive_harness
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-23dd36069f3af033
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_stale_leased_mirror_cannot_claim_inactive
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-13ab92546220f969
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_foreign_loaded_dependency_cannot_supply_memory_owner
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-66bd1209176c03db
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_clear_plan_reads_each_required_file_once
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-99b44cc4e21ee591
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_unknown_active_reference_stays_pending_before_store_read
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-08f4c267cbed4efc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_unchanged_memory_observation_rechecks_final_board
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-844d12ae84eabab9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_destination_git_identity_refuses_before_effect
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-d1e600fd5f213f5b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_canonical_home_uses_actual_registered_owner_and_exact_claims
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-94972e7f2da3b756
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_canonical_home_cannot_bypass_ordinary_project_admission
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-6c81819cb060dd6d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_canonical_memory_recovery_preserves_original_root_binding
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-742261718c4003dd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_origin_binding_rechecked_during_effect_and_recovery
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-40acdc50bfc4f655
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_deletion_unit_comes_from_actual_enrolled_team_contract
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-3a1b79c687f54d34
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_same_named_unenrolled_origin_refused_without_effect
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-aa8aca9dfddff5ca
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_even_configured_credentials_never_become_authority
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-9a72a17bd2a92e1e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_approved_full_identity_receipt_contains_only_remote_digest
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-ff2c5a83967eea13
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_foreign_checkout_same_origin_cannot_substitute_for_declared_repo
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-18efa29b953e7ee9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_legitimate_reciprocal_worktree_uses_declared_primary_identity
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-10a59fd4439c82d0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_worktree_metadata_substitution_refuses_before_effect
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-48643777144b1ff9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_declaration_cas_preserves_interruption_and_recovery
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-811bd71254cba722
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_destination_local_declaration_cannot_replace_native_owner_workspace
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-d888902c904c4904
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_foreign_loaded_repository_owner_is_refused
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-d1a9fceb54a10b77
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_enrolled_identity_without_declaration_still_binds_exact_private_source
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-28306eb25ba9344c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_shared_enrollment_cannot_become_private_memory_source
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-25654cc331a718fe
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_and_registry_share_exact_transaction_history
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-ed7e7f67f5890d0a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_home_refuses_prep_selector_before_archive
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-b3e5be2d509422a9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_publication_receipt.py::test_required_ingestion_paths_and_exact_receipt_cas
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: composition-5d6e0459a4ea3445
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_prep_sharing.py::test_prep_grant_cannot_authorize_registry_or_memory_home
+  motivating_defect: Complete accepted native-memory destination identity and exact shared-prep grants
+    must compose with registry authority, custody, recovery and refusal boundaries.
+- id: memory-scope-1f641883c05b72e0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_scope_metadata_is_closed_before_effect
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-1741401b13fbd592
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_scope_missing_metadata_never_uses_repository_name
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-130a071da26bebd2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_caller_selection_cannot_relabel_configured_memory_scope
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-fbebb6dfb60e7e9b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_configured_memory_scope_must_equal_pinned_enrollment
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-8a2b34e1055c46ce
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_memory_scope_change_after_archive_refuses_and_recovers
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-1c63c5fac2d0da21
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_configured_private_skill_source_does_not_authorize_arbitrary_homes
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.
+- id: memory-scope-6de0a5497381e3bc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-context-lifecycle/scripts/test_native_memory_ingestion.py::test_installed_memory_owner_repeats_identity_and_actual_ingestion
+  motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
+    deletion unit and exact canonical home; public code cannot infer private identity from user-specific
+    names.

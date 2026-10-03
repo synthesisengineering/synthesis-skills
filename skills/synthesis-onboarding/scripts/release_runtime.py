@@ -1338,6 +1338,9 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
 for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
     if "synthesis-project-management/scripts/coordination.py" in {_entry, *_dependencies}:
         ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys((*_dependencies,
+            "synthesis-daily-rituals/scripts/repo_state.py",
+            "synthesis-daily-rituals/scripts/ritual_workers.py",
+            "synthesis-daily-rituals/scripts/credential_paths.py",
             "synthesis-context-lifecycle/scripts/record_transaction.py",
             "synthesis-context-lifecycle/scripts/context_edit.py",
             "synthesis-context-lifecycle/scripts/context_currency.py",

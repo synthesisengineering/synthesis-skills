@@ -3047,7 +3047,59 @@ def succession_notice_block(
     return "\n".join(lines) + "\n\n"
 
 
+def prep_recipient_scope(session):
+    """Grant invalidation excludes grants and heartbeat, never ordinary custody."""
+    value = [session.session_uuid, session.client_ref, session.project, session.machine,
+             sorted(session.workspaces), sorted(c for c in session.claims if not c.startswith("prep-share:"))]
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+def grant_prep_share(board, recipient, contributor, context_repo, workspace, artifact,
+                     operation, before, *, private, ttl=900):
+    """Authenticated recipient grants one bounded contribution in its own row."""
+    import base64
+    import uuid
+    import time
+    if private is not True or type(ttl) is not int or not 0 < ttl <= 3600:
+        raise ValueError("explicit private destination and bounded lifetime required")
+    repo, branch = _repository_state(Path(context_repo))
+    if repo != Path(context_repo).absolute():
+        raise ValueError("exact context checkout root required")
+    target = repo / "meeting-preps" / artifact
+    result = {}
+    def update(text):
+        sessions = rows(text)
+        owner, writer = find_session(sessions, recipient), find_session(sessions, contributor)
+        if (owner is None or writer is None or not active(owner) or not active(writer)
+                or not owner.client_ref or owner.session_uuid == writer.session_uuid or not _caller_owns_session(Path(board), owner)):
+            raise ValueError("authenticated active recipient and distinct active contributor required")
+        if validate_sessions(sessions):
+            raise ValueError("coordination must be valid before sharing")
+        if not _workspace_registered(owner, repo, branch) or not _workspace_registered(writer, repo, branch):
+            raise ValueError("both seats must register this exact physical workspace and branch")
+        if _outside_claim(owner, repo, [str(target.relative_to(repo))]):
+            raise ValueError("recipient does not own the exact prep artifact")
+        grant = {"schema": 1, "id": uuid.uuid4().hex, "recipient": owner.session_uuid,
+                 "contributor": writer.session_uuid, "repository": str(repo), "branch": branch,
+                 "workspace": workspace, "target": str(target), "operation": operation,
+                 "before": before, "expires": int(time.time()) + ttl,
+                 "recipient_scope": prep_recipient_scope(owner), "private": True}
+        encoded = "prep-share:" + base64.urlsafe_b64encode(json.dumps(grant, sort_keys=True).encode()).decode()
+        claim_scope.prep_share_claim(encoded)
+        if len([c for c in owner.claims if c.startswith("prep-share:")]) >= 128:
+            raise ValueError("retained prep grant capacity reached; reconcile through recipient owner")
+        owner.claims.append(encoded)
+        owner.heartbeat = timestamp()
+        result.update(grant)
+        return replace_table(text, sessions)
+    locked_update(Path(board), update, require_fence=True, lock_timeout=5)
+    return result
+
+
 def command_claim(args) -> int:
+    if any(plain(area).startswith("prep-share:") for area in args.area):
+        print("coordination claim refused: prep grants require the authenticated meeting-prep owner", file=sys.stderr)
+        return 10
     dependent = getattr(args, "then", None)
     if dependent is not None:
         if (

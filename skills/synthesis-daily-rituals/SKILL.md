@@ -379,6 +379,32 @@ Runs first inside Step 4, in **every mode including Quick Close** — the next-d
 - [ ] Document any additional reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
 - [ ] Update project REFERENCE.md with any new stable facts discovered today.
 
+### 5a. Native memory capture-buffer sweep
+
+- [ ] Keep native memory ON in every installed harness. Select each harness's
+  actual machine/store and read the current coordination board with
+  `context_edit.py memory-probe`; follow the complete native-memory protocol in
+  `synthesis-context-lifecycle`. This bounded directory hash needs no model call.
+- [ ] Skip active harnesses with explicit pending coverage, including the current
+  harness. Unchanged incomplete work stays pending; missing/moved/unsupported
+  stores are refusals, never an empty success. Do not infer NOT_APPLICABLE from
+  a missing directory or CLI command.
+- [ ] A changed store requires a qualified own-harness native export. Shared
+  `memory-ingest` applies reviewed deterministic routing through the existing
+  PM transaction owner, archives first, deduplicates exact canonical content and
+  leaves contradictions/public candidates as decisions. Save returned pending
+  identities and private evidence pointers in the existing worker artifact.
+- [ ] Complete ordinary exact-session guarded publication at Step 11 before
+  preparing `memory-clear-plan`. Only exact receipted archive/canonical bytes
+  qualify; the source owner currently returns a non-executing native capability
+  pending plan. No raw-file/database deletion or disabling native memory is
+  permitted. Complete native clear only through a separately qualified native
+  operation with a fresh active-seat check and exact unchanged hashes; retain its
+  actual receipt before marking the memory ledger complete.
+- [ ] Report counts and coverage gaps only in alerts. Continue the rest of the
+  ritual while a harness is active or lacks qualified export/clear support. Such
+  a gap prevents claiming a clean memory sweep, not all project work.
+
 ### 6. Career Amplification
 
 - [ ] Review today's work for content opportunities: blog posts, articles, videos, talks.

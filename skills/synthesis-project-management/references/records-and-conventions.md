@@ -21,10 +21,11 @@ this system, for three structural reasons:
 
 This system solves all three by being nothing more than files in a git
 repository: `CONTEXT.md`, `REFERENCE.md`, `sessions/`, and `lessons/`,
-readable and writable by any agent that can read and write files. If your
-tool's native memory feature can be redirected or disabled, doing so and
-routing that content here instead avoids maintaining two parallel, drifting
-memories of the same work.
+readable and writable by any agent through the existing record owners. Native
+memory remains enabled as an untrusted capture buffer. Review and route exports
+to the actual private repository and canonical record; synthesis records win
+conflicts. Clearing requires separately qualified harness-native capability and
+verified publication, and never follows from a local ingestion receipt alone.
 
 ## Project naming — the full rationale
 

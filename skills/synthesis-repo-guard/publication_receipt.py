@@ -206,7 +206,7 @@ def build(manifest, raw, results, *, seconds=10):
             "readiness": "REMOTE_READY", "verified_at_epoch": time.time(), **snapshot}
 
 
-def observe(root, native, *, seconds=2):
+def observe(root, native, *, seconds=2, required_files=None, expected_receipt_sha256=None):
     """Bounded offline diagnostic. No receipt grants publication or checkpoint authority."""
     unknown = {"status": "UNKNOWN", "owner": OWNER, "live_remote_rechecked": False,
                "detail": "Publication is unverified. Absence of a current bound receipt does not mean unpublished; use the authorized exact-session flush owner."}
@@ -241,6 +241,21 @@ def observe(root, native, *, seconds=2):
         current = _snapshot(paths, deadline)
         if current["files"] != data.get("files") or current["repositories"] != data.get("repositories"):
             raise ProofError("publication receipt does not match current content")
+        if expected_receipt_sha256 is not None and (
+                not isinstance(expected_receipt_sha256, str)
+                or hashlib.sha256(raw).hexdigest() != expected_receipt_sha256):
+            raise ProofError("publication receipt changed from the selected receipt")
+        if required_files is not None:
+            if (not isinstance(required_files, dict) or not required_files
+                    or len(required_files) > MAX_PATHS):
+                raise ProofError("required publication files must be a bounded nonempty mapping")
+            present = {item["path"]: item.get("sha256") for item in current["files"]
+                       if item.get("state") == "present"}
+            for path, digest in required_files.items():
+                if (not isinstance(path, str) or str(_path(path)) != path
+                        or not isinstance(digest, str) or len(digest) != 64
+                        or present.get(path) != digest):
+                    raise ProofError("required ingested bytes are not covered by publication")
         _path(str(receipt))
         _path(str(manifest))
         if _identity(receipt.lstat()) != identity or os.path.lexists(manifest):

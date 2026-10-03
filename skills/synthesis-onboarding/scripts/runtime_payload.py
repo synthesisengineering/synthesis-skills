@@ -112,7 +112,13 @@ REGISTRY_DEPENDENCIES = {'skills/synthesis-project-management/scripts/run_admiss
  'skills/synthesis-agent-conformance/vendor/pyyaml/manifest.json': ('.synthesis/references/pyyaml-manifest.json',
                                                                     420),
  'skills/synthesis-agent-conformance/vendor/pyyaml/LICENSE': ('.synthesis/references/pyyaml-LICENSE',
-                                                              420)}
+                                                              420),
+ 'skills/synthesis-daily-rituals/scripts/repo_state.py': ('.synthesis/git-hooks/repo_state.py',
+                                                          493),
+ 'skills/synthesis-daily-rituals/scripts/ritual_workers.py': ('.synthesis/git-hooks/ritual_workers.py',
+                                                              493),
+ 'skills/synthesis-daily-rituals/scripts/credential_paths.py': ('.synthesis/git-hooks/credential_paths.py',
+                                                                493)}
 INTRODUCED_DEPENDENCIES.update({relative: ("skills/synthesis-project-management/scripts/coordination.py",)
                                 for relative in REGISTRY_DEPENDENCIES})
 
