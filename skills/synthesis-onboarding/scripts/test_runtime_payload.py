@@ -1056,10 +1056,7 @@ def test_actual_immutable_git_hooks_installer_reconciles_runtime_modes(tmp_path,
     assert snapshot(home) == before_refusal
 
 
-@pytest.mark.parametrize('pre_claim_bundle', [
-    'skills/synthesis-context-lifecycle/scripts/record_transaction.py',
-    'skills/synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py',
-], indirect=True)
+@pytest.mark.parametrize('pre_claim_bundle', sorted(runtime.REGISTRY_DEPENDENCIES), indirect=True)
 def test_registry_dependency_introduction_requires_custody_and_cold_execution(pre_claim_bundle):
     machine = pre_claim_bundle
     before = snapshot(machine.home)
@@ -1087,3 +1084,15 @@ def test_registry_dependency_introduction_requires_custody_and_cold_execution(pr
         env={**os.environ, 'HOME': str(machine.home)})
     assert result.returncode == 0, result.stderr
     assert all(row['status'] == 'current' for row in runtime.verify(claim_bundle_plan(machine)))
+
+
+@pytest.mark.parametrize("component", sorted(runtime.COMPONENTS))
+def test_introduced_dependency_anchors_belong_to_actual_component(tmp_path, component):
+    from types import SimpleNamespace
+    specs = list(runtime._specs(tmp_path / 'home', tmp_path / 'state', {component}))
+    members = {relative for _, relative, _, _ in specs}
+    for _, relative, _, _ in specs:
+        anchors = runtime._dependency_anchors(SimpleNamespace(component=component, source_relative=relative))
+        assert set(anchors) <= members, (component, relative, anchors)
+        if relative in runtime.INTRODUCED_DEPENDENCIES and component != 'kernel':
+            assert anchors, (component, relative)

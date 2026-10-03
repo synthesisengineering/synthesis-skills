@@ -131,6 +131,15 @@ MESSAGE_PARSER_DEPENDENCIES = frozenset(
 def _dependency_anchors(entry):
     # A source may be installed by several components. Adoption authority is
     # local to the selected component, never borrowed from a sibling target.
+    if entry.component == "day-end":
+        if entry.source_relative in {
+            "skills/synthesis-daily-rituals/scripts/ritual_state.py",
+            "skills/synthesis-daily-rituals/scripts/ritual_workers.py",
+            "skills/synthesis-daily-rituals/scripts/credential_paths.py",
+        }:
+            return ("skills/synthesis-daily-rituals/scripts/day-end",
+                    "skills/synthesis-daily-rituals/scripts/day-end-nudge.sh")
+        return ()
     if entry.component == "message-guard":
         if entry.source_relative in MESSAGE_PARSER_DEPENDENCIES:
             return ("skills/synthesis-message-guard/scripts/message_guard.py",)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+
+import pytest
 import shutil
 import shlex
 import subprocess
@@ -600,6 +602,7 @@ def engine_copy(target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for name in SIDECAR.ENGINE_FILES:
         destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(
             SIDECAR.source_engine_path(SCRIPT_DIR, name).read_bytes()
         )
@@ -833,8 +836,14 @@ def test_installer_and_drift_check_cover_the_same_files() -> None:
 
     installer = (SCRIPT_DIR / "install.sh").read_text(encoding="utf-8")
     copied = set()
-    for match in re.finditer(r"cp -f \"([^\"]+)\" \"\$TARGET", installer):
-        copied.add(Path(match.group(1)).name)
+    for match in re.finditer(r'cp -f "([^\"]+)"\s+"([^\"]+)"', installer):
+        source, target = match.groups()
+        if target.startswith("$TARGET_DIR/"):
+            copied.add(target.removeprefix("$TARGET_DIR/"))
+        elif target.startswith("$HOME/.synthesis/git-hooks/"):
+            copied.add(target.removeprefix("$HOME/.synthesis/git-hooks/"))
+        elif target.startswith("$HOME/.synthesis/references/"):
+            copied.add("../references/" + target.removeprefix("$HOME/.synthesis/references/"))
     copied.discard("git-hook-config.example.yaml")  # seeded, not drifted
     assert copied, "installer parses to an empty copy set"
     assert set(SIDECAR.ENGINE_FILES) == copied, (
@@ -1577,3 +1586,15 @@ def test_empty_worktree_root_fails_closed(tmp_path: Path) -> None:
     assert "Git worktree root resolved to an empty path." in completed.stderr
     assert "delegate-required" not in completed.stderr
     assert not (root / "delegate-ran").exists()
+
+
+@pytest.mark.parametrize("name", tuple(SIDECAR.DEPENDENCY_ENGINE_SOURCES))
+def test_doctor_covers_each_introduced_dependency(tmp_path, name):
+    installed, source, environment = doctor_harness(tmp_path)
+    healthy = doctor(installed, environment, tmp_path)
+    assert healthy.returncode == 0, healthy.stdout + healthy.stderr
+    path = installed / name
+    path.write_bytes(path.read_bytes() + b"\n# retained drift fixture\n")
+    drifted = doctor(installed, environment, tmp_path)
+    assert drifted.returncode == 1, drifted.stdout + drifted.stderr
+    assert "DRIFT: installed " + name in drifted.stdout

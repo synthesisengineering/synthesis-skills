@@ -104,7 +104,42 @@ COORDINATION_ENGINE_FILES = (
     "native_transcript_identity.py",
     "client_binaries.py",
 )
-ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES
+# Exact installed dependency paths and their existing source owners.
+DEPENDENCY_ENGINE_SOURCES = {'run_admission.py': 'synthesis-project-management/scripts/run_admission.py',
+ 'project_state.py': 'synthesis-project-management/scripts/project_state.py',
+ 'plan_reference.py': 'synthesis-project-management/scripts/plan_reference.py',
+ 'context_currency.py': 'synthesis-context-lifecycle/scripts/context_currency.py',
+ 'context_edit.py': 'synthesis-context-lifecycle/scripts/context_edit.py',
+ 'record_succession.py': 'synthesis-context-lifecycle/scripts/record_succession.py',
+ 'record_transaction.py': 'synthesis-context-lifecycle/scripts/record_transaction.py',
+ 'build_packet.py': 'synthesis-decision-packet/scripts/build_packet.py',
+ 'record_rulings.py': 'synthesis-decision-packet/scripts/record_rulings.py',
+ 'release_runtime.py': 'synthesis-onboarding/scripts/release_runtime.py',
+ 'publication_receipt.py': 'synthesis-repo-guard/publication_receipt.py',
+ 'yaml_runtime.py': 'synthesis-agent-conformance/scripts/yaml_runtime.py',
+ 'yaml/__init__.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py',
+ 'yaml/composer.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py',
+ 'yaml/constructor.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/constructor.py',
+ 'yaml/cyaml.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/cyaml.py',
+ 'yaml/dumper.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/dumper.py',
+ 'yaml/emitter.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/emitter.py',
+ 'yaml/error.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/error.py',
+ 'yaml/events.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/events.py',
+ 'yaml/loader.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/loader.py',
+ 'yaml/nodes.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/nodes.py',
+ 'yaml/parser.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/parser.py',
+ 'yaml/reader.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/reader.py',
+ 'yaml/representer.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/representer.py',
+ 'yaml/resolver.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/resolver.py',
+ 'yaml/scanner.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/scanner.py',
+ 'yaml/serializer.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/serializer.py',
+ 'yaml/tokens.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/tokens.py',
+ '../references/pyyaml-manifest.json': 'synthesis-agent-conformance/vendor/pyyaml/manifest.json',
+ '../references/pyyaml-LICENSE': 'synthesis-agent-conformance/vendor/pyyaml/LICENSE',
+ 'repo_state.py': 'synthesis-daily-rituals/scripts/repo_state.py',
+ 'ritual_workers.py': 'synthesis-daily-rituals/scripts/ritual_workers.py',
+ 'credential_paths.py': 'synthesis-daily-rituals/scripts/credential_paths.py'}
+ENGINE_FILES = CORE_ENGINE_FILES + COORDINATION_ENGINE_FILES + tuple(DEPENDENCY_ENGINE_SOURCES)
 COORDINATION_ASSET = "session-words-v1.txt.zlib.b85"
 
 SOURCE_ENV = "SYNTHESIS_GIT_HOOKS_SOURCE"
@@ -1356,6 +1391,8 @@ def source_engine_path(path: Path, name: str) -> Path:
         return local
     if len(path.parents) < 2:
         return local
+    if name in DEPENDENCY_ENGINE_SOURCES:
+        return path.parents[1] / DEPENDENCY_ENGINE_SOURCES[name]
     return (
         path.parents[1]
         / (

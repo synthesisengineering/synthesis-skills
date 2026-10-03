@@ -6921,6 +6921,21 @@ changed_surfaces:
   - registry-5f965845992ad24b
   - registry-005d7fe0fc45f024
   - registry-486bc45bd13f5e4e
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
 - path: README.md
   cases:
   - final-42c5721991f12696
@@ -8657,6 +8672,21 @@ changed_surfaces:
   - composition-28306eb25ba9344c
   - composition-25654cc331a718fe
   - composition-ed7e7f67f5890d0a
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
 - path: skills/synthesis-context-lifecycle/SKILL.md
   cases:
   - composition-28ae758b9e097cc4
@@ -11160,6 +11190,21 @@ changed_surfaces:
   - memory-scope-8a2b34e1055c46ce
   - memory-scope-1c63c5fac2d0da21
   - memory-scope-6de0a5497381e3bc
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
 - path: skills/synthesis-meeting-prep/SKILL.md
   cases:
   - public-ready-profile-22622260689c272a
@@ -11424,6 +11469,8 @@ changed_surfaces:
   - registry-runtime-d7bf610b33eca9e5
   - registry-runtime-231b8683508baf54
   - registry-runtime-e8cb1b3d707e85e7
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
 - path: skills/synthesis-onboarding/scripts/test_runtime_integration.py
   cases:
   - public-ready-onboarding-6d68b907f76d6c37
@@ -11449,6 +11496,8 @@ changed_surfaces:
   - merge-guard-42884e02cc896b94
   - merge-guard-4e24e44bab0114d5
   - registry-runtime-e8cb1b3d707e85e7
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
 - path: skills/synthesis-project-management/references/records-and-conventions.md
   cases:
   - composition-28ae758b9e097cc4
@@ -11909,6 +11958,114 @@ changed_surfaces:
   - final-2cd84b53700a500c
   - final-21730796218b5fb4
   - registry-runtime-92ca8eedb6e4cfff
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
+- path: skills/synthesis-git-hooks/scripts/_load_config.py
+  cases:
+  - runtime-anchor-94de0d7a51b22526
+  - runtime-anchor-64721b9451b7eeb0
+- path: skills/synthesis-autopilot/scripts/native_codex.py
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-autopilot/scripts/native_observations.py
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-autopilot/scripts/test_native_count_shapes.py
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-autopilot/scripts/test_native_large_context.py
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-autopilot/scripts/test_native_retained_context.py
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
+- path: skills/synthesis-autopilot/SKILL.md
+  cases:
+  - native-shape-b6a0319f1769559a
+  - native-shape-d24939b21f8868d1
+  - native-shape-e5613dcbe86822a0
+  - native-shape-f1b6e658a39dab7d
+  - native-shape-574d9566a7dde69f
+  - native-shape-c860758a2a5226db
+  - native-shape-1849f0b7353966aa
+  - native-shape-64c032856a1cb906
+  - native-shape-a81e8826772589ef
+  - native-shape-bd4c965389b193b1
+  - native-shape-ae9afbf787085a86
+  - native-shape-9e8e9b57ad9a606d
+  - native-shape-c9da6761d67b3bf5
+  - performance-fd9f4e60a1a7b498
+  - retained-context-a76672ee9c3ef3e1
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -22834,3 +22991,93 @@ cases:
   motivating_defect: Generic configured memory scope must remain bound to the approved physical repository,
     deletion unit and exact canonical home; public code cannot infer private identity from user-specific
     names.
+- id: native-shape-b6a0319f1769559a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_unlinked_output_is_unknown_and_never_pairs
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-d24939b21f8868d1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_unlinked_output_refuses_changed_closed_shape
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-e5613dcbe86822a0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_unlinked_completed_item_is_inert
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-f1b6e658a39dab7d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_world_environment_skill_patch_closed
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-574d9566a7dde69f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_count_boundary_retains_input_and_byte_guard
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-c860758a2a5226db
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_existing_capacity_remains_until_complete_owner_qualification
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-1849f0b7353966aa
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_linked_output_with_ordinary_metadata_keeps_native_identity
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-64c032856a1cb906
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_partial_world_patch_cannot_be_relabelled_full
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-a81e8826772589ef
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_actual_projection_preserves_unlinked_results_without_pairing
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-bd4c965389b193b1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_stream_search_nullable_path_is_inert
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-ae9afbf787085a86
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_stream_retained_unlinked_sender_history_is_inert
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-9e8e9b57ad9a606d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_stream_new_shapes_remain_closed
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: native-shape-c9da6761d67b3bf5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_stream_nullable_search_is_order_independent_and_item_scoped
+  motivating_defect: Retained native observations must use closed inert shapes, preserve actual identities,
+    and retain finite limits and explicit reconciliation.
+- id: runtime-anchor-94de0d7a51b22526
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_introduced_dependency_anchors_belong_to_actual_component
+  motivating_defect: Introduced runtime dependencies must retain their component-local released anchors
+    and complete installed doctor coverage.
+- id: runtime-anchor-64721b9451b7eeb0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-git-hooks/scripts/test_pre_commit.py::test_doctor_covers_each_introduced_dependency
+  motivating_defect: Introduced runtime dependencies must retain their component-local released anchors
+    and complete installed doctor coverage.

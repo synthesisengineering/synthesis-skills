@@ -94,6 +94,19 @@ A source larger than the prefix envelope uses the bounded one-generation stream
 owner below. Never invent a rotation or split one actual generation into fictional
 native sources. Product defaults remain finite.
 
+## Retained native observation shapes
+
+Decoder generation v14 accepts the closed forms for unlinked output metadata,
+partial environment skill patches, nullable command-search paths and streamed
+retained sender history. Unlinked outputs remain unpaired observations; missing
+native call identities are never invented. Partial patches cannot establish a
+complete world state, and retained text does not grant action authority.
+
+Existing bindings require explicit generation reconciliation. Event-count,
+usage, journal-storage, input-byte and process-time limits continue to apply;
+schema acceptance does not establish that a whole retained history fits those
+limits or that a managed native recovery was admitted.
+
 ## Large histories: exact bounded continuation
 
 `native_archive_stream.py` reuses the existing native binding, authority receipts,

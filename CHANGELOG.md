@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.3] - 2026-10-03
 
+- Bind introduced runtime dependencies to their component-local released anchors and verify every installed dependency in the doctor.
+- Decode retained unlinked native outputs, partial environment patches and bounded large command metadata as inert observations with explicit generation reconciliation.
 - Ingest native-memory exports through bounded readers into their authenticated canonical knowledge destinations, retaining source identity and explicit clear-capability status.
 - Support shared meeting-prep contributions through scoped grants while keeping registry and memory destinations under their existing owners.
 - Include the complete registry and memory dependency closure in installed runtimes and independent installer checks.
