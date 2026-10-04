@@ -1720,18 +1720,40 @@ def working_digest_fixture(tmp_path):
     (project / "link-external").symlink_to(external)
     (project / "link-directory").symlink_to(external_dir, target_is_directory=True)
     (project / "link-missing").symlink_to(tmp_path / "missing-target")
-    contents["link-internal"] = contents["z-last.md"]
-    contents["link-external"] = external.read_bytes()
-    # Path ordering compares path components, so a/child precedes a.txt.
-    order = [".gitignore", ".hidden", "a/child.txt", "a.txt", deep,
-             "ignored/output.bin", "link-external", "link-internal",
-             "nested/.pytest_cache/state.json", "z-last.md"]
+    contents, order = expected_retained_entries(project)
     return project, contents, order
 
 
+def expected_retained_entries(project):
+    """Independent fixture inventory: link text, ordinary bytes, type and mode."""
+    import stat
+    entries = {}
+    order = []
+    for path in sorted(project.rglob("*")):
+        if ".git" in path.parts:
+            continue
+        info = path.lstat()
+        mode = f"{stat.S_IMODE(info.st_mode):04o}"
+        if stat.S_ISLNK(info.st_mode):
+            target = os.readlink(path)
+            row = {"kind": "symlink", "target": target,
+                   "sha256": hashlib.sha256(b"symlink\0" + os.fsencode(target)).hexdigest()}
+        elif stat.S_ISDIR(info.st_mode):
+            row = {"kind": "directory", "sha256": hashlib.sha256(
+                f"directory-entry-v1\0{mode}".encode()).hexdigest()}
+        else:
+            assert stat.S_ISREG(info.st_mode)
+            row = {"kind": "file", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        row["mode"] = mode
+        name = str(path.relative_to(project))
+        entries[name] = row
+        order.append(name)
+    return entries, order
+
+
 def expected_working_digest(contents, order):
-    entries = [(name, hashlib.sha256(contents[name]).hexdigest()) for name in order]
-    return hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
+    entries = [(name, contents[name]) for name in order]
+    return hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 @pytest.mark.parametrize("root_form", ["absolute", "relative", "current", "symlink"])
@@ -1748,10 +1770,10 @@ def test_working_digest_preserves_complete_coverage_and_order(tmp_path, monkeypa
         alias.symlink_to(project, target_is_directory=True)
         project = alias
     observed = []
-    original = state._sha_file
-    monkeypatch.setattr(state, "_sha_file", lambda path: observed.append(path) or original(path))
+    original = state._dirty_leaf_snapshot
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", lambda path, **kw: observed.append(path) or original(path, **kw))
     assert state._working_digest(project) == expected_working_digest(contents, order)
-    assert observed == [project / name for name in order]
+    assert observed == [project.resolve() / name for name in order]
 
 
 @pytest.mark.parametrize("change", ["changed", "new", "deleted", "symlink-target"])
@@ -1760,29 +1782,29 @@ def test_working_digest_recomputes_changed_new_deleted_and_linked_content(tmp_pa
     before = state._working_digest(project)
     assert before == expected_working_digest(contents, order)
     if change == "changed":
-        contents["a.txt"] = b"changed bytes"
-        (project / "a.txt").write_bytes(contents["a.txt"])
+        (project / "a.txt").write_bytes(b"changed bytes")
     elif change == "new":
-        contents["new-untracked.txt"] = b"new untracked bytes"
-        (project / "new-untracked.txt").write_bytes(contents["new-untracked.txt"])
-        order.insert(order.index("z-last.md"), "new-untracked.txt")
+        (project / "new-untracked.txt").write_bytes(b"new untracked bytes")
     elif change == "deleted":
         (project / "a.txt").unlink()
-        del contents["a.txt"]
-        order.remove("a.txt")
     else:
-        contents["link-external"] = b"changed external file target"
-        (tmp_path / "outside.txt").write_bytes(contents["link-external"])
+        (tmp_path / "outside.txt").write_bytes(b"changed external file target")
+        # External bytes are not retained project evidence. The link itself is.
+        assert state._working_digest(project) == before
+        (project / "link-external").unlink()
+        (project / "link-external").symlink_to(tmp_path / "different-target")
+    contents, order = expected_retained_entries(project)
     after = state._working_digest(project)
     assert after == expected_working_digest(contents, order)
     assert after != before
 
 
+
 def test_working_digest_rereads_every_included_file_independently(tmp_path, monkeypatch):
     project, contents, order = working_digest_fixture(tmp_path)
     reads = []
-    original = state._sha_file
-    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original(path))
+    original = state._dirty_leaf_snapshot
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", lambda path, **kw: reads.append(path) or original(path, **kw))
     assert state._working_digest(project) == expected_working_digest(contents, order)
     assert state._working_digest(project) == expected_working_digest(contents, order)
     assert reads == [project / name for name in order] * 2
@@ -2066,13 +2088,13 @@ def test_hash_traversal_matches_retained_rglob_corpus(tmp_path, monkeypatch, con
         assert ".md" in expected and "line\nbreak.md" in expected
         assert ".git/inside.md" in expected
     else:
-        paths = [path for path in sorted(item for item in project.rglob("*") if item.is_file())
-                 if ".git" not in path.parts]
-        entries = [(str(path.relative_to(project)), sha(path)) for path in paths]
-        expected = hashlib.sha256(json.dumps(entries, separators=(",", ":")).encode()).hexdigest()
+        entries, order = expected_retained_entries(project)
+        paths = [project.resolve() / name for name in order]
+        expected = expected_working_digest(entries, order)
     reads = []
-    original = state._sha_file
-    monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or original(path))
+    owner = "_sha_file" if consumer == "_content_hashes" else "_dirty_leaf_snapshot"
+    original = getattr(state, owner)
+    monkeypatch.setattr(state, owner, lambda path, **kw: reads.append(path) or original(path, **kw))
     assert getattr(state, consumer)(project) == expected
     assert reads == paths
 
@@ -2167,6 +2189,13 @@ def test_hash_traversal_does_not_accept_incomplete_io(tmp_path, monkeypatch, con
 
     monkeypatch.setattr(state.os, "scandir", Scan)
     monkeypatch.setattr(Path, "is_file", is_file)
+    if consumer == "_working_digest" and failure == "is_file":
+        original_leaf = state._dirty_leaf_snapshot
+        def denied_leaf(path, **kwargs):
+            if path == leaf:
+                raise PermissionError("fixture file stat denied")
+            return original_leaf(path, **kwargs)
+        monkeypatch.setattr(state, "_dirty_leaf_snapshot", denied_leaf)
     with pytest.raises(OSError):
         getattr(state, consumer)(project)
     assert len(opened) == len(closed)
@@ -2190,8 +2219,20 @@ def test_hash_traversal_rechecks_file_type_after_enumeration(tmp_path, monkeypat
 
     monkeypatch.setattr(Path, "is_file", is_file)
     monkeypatch.setattr(state, "_sha_file", lambda path: reads.append(path) or "unexpected")
-    result = getattr(state, consumer)(project)
-    assert result == ({} if consumer == "_content_hashes" else hashlib.sha256(b"[]").hexdigest())
+    if consumer == "_working_digest":
+        original_leaf = state._dirty_leaf_snapshot
+        def reclassified(path, **kwargs):
+            if path == leaf and not checked:
+                leaf.unlink()
+                leaf.mkdir()
+                checked.append(path)
+            return original_leaf(path, **kwargs)
+        monkeypatch.setattr(state, "_dirty_leaf_snapshot", reclassified)
+    if consumer == "_content_hashes":
+        assert getattr(state, consumer)(project) == {}
+    else:
+        with pytest.raises(state.ProjectStateError, match="changed before capture"):
+            getattr(state, consumer)(project)
     assert checked == [leaf]
     assert reads == []
 
@@ -3114,3 +3155,135 @@ def test_dirty_directory_multiple_git_roots_have_linear_final_rechecks(
         nested = project / f"retained-{number}"
         assert calls[str(nested)] == 1
         assert calls[str(nested / "payload")] == 2
+
+
+@pytest.mark.parametrize("target_kind", ["regular", "missing", "directory"])
+def test_working_digest_retains_named_state_link_without_following(tmp_path, monkeypatch, target_kind):
+    project = tmp_path / "project"
+    retained = project / "retained" / "CURRENT_STATE.json"
+    retained.parent.mkdir(parents=True)
+    target = tmp_path / "external"
+    if target_kind == "regular":
+        target.write_bytes(b"private external bytes")
+    elif target_kind == "directory":
+        target.mkdir()
+    retained.symlink_to(target, target_is_directory=target_kind == "directory")
+    original = os.open
+    def guarded(path, flags, *args, **kwargs):
+        assert Path(path) != target, "retained links must never open their target"
+        return original(path, flags, *args, **kwargs)
+    monkeypatch.setattr(os, "open", guarded)
+    before = state._working_digest(project)
+    retained.unlink()
+    retained.symlink_to(tmp_path / "different-target")
+    assert state._working_digest(project) != before
+
+
+def test_working_digest_nested_state_is_ordinary_retained_bytes(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    leaf = project / "retained" / "CURRENT_STATE.json"
+    leaf.parent.mkdir(parents=True)
+    monkeypatch.setattr(state, "MAX_STATE_JSON_BYTES", 8)
+    leaf.write_bytes(b"not JSON and more than eight bytes")
+    before = state._working_digest(project)
+    leaf.write_bytes(b"changed retained bytes")
+    assert state._working_digest(project) != before
+    (project / "CURRENT_STATE.json").write_bytes(b"oversized real state")
+    with pytest.raises(state.ProjectStateError, match="8-byte"):
+        state._working_digest(project)
+
+
+@pytest.mark.parametrize("kind", ["empty-directory", "fifo", "mode", "link-text"])
+def test_working_digest_retains_entry_identity(tmp_path, kind):
+    project = tmp_path / "project"
+    project.mkdir()
+    before = state._working_digest(project)
+    leaf = project / "retained"
+    if kind == "empty-directory":
+        leaf.mkdir()
+    elif kind == "fifo":
+        os.mkfifo(leaf)
+    elif kind == "mode":
+        leaf.write_bytes(b"bytes")
+        before = state._working_digest(project)
+        leaf.chmod(0o755)
+    else:
+        leaf.symlink_to("absent-one")
+        before = state._working_digest(project)
+        leaf.unlink()
+        leaf.symlink_to("absent-two")
+    after = state._working_digest(project)
+    assert after != before
+    assert state._working_digest(project) == after
+
+
+def test_working_digest_regular_swap_never_reads_external_target(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    leaf = project / "retained.bin"
+    leaf.write_bytes(b"original")
+    target = tmp_path / "external"
+    target.write_bytes(b"must never be read")
+    original = os.open
+    raced = []
+    def swapped(path, flags, *args, **kwargs):
+        if path == leaf.name and not flags & os.O_DIRECTORY and not raced:
+            leaf.unlink()
+            leaf.symlink_to(target)
+            raced.append(True)
+        return original(path, flags, *args, **kwargs)
+    monkeypatch.setattr(os, "open", swapped)
+    with pytest.raises(state.ProjectStateError):
+        state._working_digest(project)
+    assert raced == [True]
+
+
+@pytest.mark.parametrize("mutation", ["earlier-file", "new-name", "deleted-name", "same-target-link"])
+def test_working_digest_closes_whole_pass_mutation_window(tmp_path, monkeypatch, mutation):
+    project = tmp_path / "project"
+    project.mkdir()
+    earlier = project / "a-first"
+    earlier.write_bytes(b"before")
+    later = project / "z-last"
+    later.write_bytes(b"later")
+    link = project / "b-link"
+    link.symlink_to("absent")
+    original = state._dirty_leaf_snapshot
+    def changing(path, **kwargs):
+        row = original(path, **kwargs)
+        if path == later:
+            if mutation == "earlier-file":
+                earlier.write_bytes(b"after")
+            elif mutation == "new-name":
+                (project / "new").write_bytes(b"new")
+            elif mutation == "deleted-name":
+                earlier.unlink()
+            else:
+                link.unlink()
+                link.symlink_to("absent")
+        return row
+    monkeypatch.setattr(state, "_dirty_leaf_snapshot", changing)
+    with pytest.raises((OSError, state.ProjectStateError)):
+        state._working_digest(project)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_working_digest_closes_directory_after_descendant(tmp_path, monkeypatch, nested):
+    project = tmp_path / "project"
+    parent = project / "nested" if nested else project
+    parent.mkdir(parents=True)
+    leaf = parent / "retained.bin"
+    leaf.write_bytes(b"bytes")
+    original = state._dirty_entry_identity
+    calls = []
+    def changed(path):
+        identity = original(path)
+        if path == leaf:
+            calls.append(path)
+            if len(calls) == 2:
+                (parent / "new-name").write_bytes(b"must be detected")
+        return identity
+    monkeypatch.setattr(state, "_dirty_entry_identity", changed)
+    with pytest.raises(state.ProjectStateError, match="changed after capture"):
+        state._working_digest(project)
+    assert calls == [leaf, leaf]

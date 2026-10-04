@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.4] - 2026-10-04
+
+- Reuse authenticated journal reads within an operation, with fresh ownership checks and bounded immutable decoding.
+- Store native usage and snapshot provenance in bounded lossless representations, preserving historical observations and durable digests.
+- Reduce repeated state copies while retaining aliases, cycles, insertion order and independent mutable results.
+- Bind retained project fixtures by their file, directory, link or special-file identity without following symlink targets; keep live structured-state validation strict.
+
 ## [4.154.3] - 2026-10-03
 
 - Partition the complete onboarding source catalog into six bounded groups and keep ritual instructions within their document limit without dropping guidance.

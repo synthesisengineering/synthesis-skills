@@ -9,8 +9,14 @@ import hashlib
 import json
 from pathlib import Path
 import pytest
-from test_controller import engine, facade, world, invoke, request, start_request, state_of, prepared_consumer, attribute_recovery_fixture
-from test_run_state import command, handoff_world, prepare_handoff
+import test_controller as controller_fixtures
+from test_controller import invoke, request, start_request, state_of, prepared_consumer, attribute_recovery_fixture
+engine = controller_fixtures.engine
+facade = controller_fixtures.facade
+world = controller_fixtures.world
+import test_run_state as run_fixtures
+from test_run_state import command, prepare_handoff
+handoff_world = run_fixtures.handoff_world
 from test_autopilot_cli import facade_cli
 
 
@@ -518,3 +524,75 @@ def test_recovered_owner_can_admit_multiple_current_effects(facade,world,monkeyp
     for identity in ('first-current-effect','second-current-effect'):
         state=command(runtime,world,state,'effect.prepare',{'id':identity,'target':'fixture:target','payload_digest':'a'*64,'idempotency_key':identity,'authority_ref':''})
     assert set(state['effects'])=={'first-current-effect','second-current-effect'}
+
+
+def test_capsule_references_complete_large_budget_without_losing_obligations(facade, world, monkeypatch):
+    import recovery_capsule
+    import run_state
+    state = state_of(world, invoke(facade, world, start_request(world)))
+    def retain(current, payload, context):
+        import resource_policy
+        current['extensions']['workflow']['budget'].setdefault('native_usage', resource_policy.empty_usage())
+        current['extensions']['workflow']['budget']['retained_resource_evidence'] = payload
+        return current
+    run_state.register_command('fixture.retained_budget', retain, allowed_fields=('extensions',))
+    state = command(run_state, world, state, 'fixture.retained_budget', {'unknown': 'UNKNOWN', 'evidence': 'x' * 350000})
+    budget = deepcopy(state['extensions']['workflow']['budget'])
+    assert len(run_state._json(budget)) > recovery_capsule.MAX_CAPSULE_BYTES
+    state, ref = checkpoint(facade, world, state)
+    capsule = state['extensions']['controller']['checkpoint']['recovery_capsule']
+    resources = capsule['obligations']['resources']
+    assert len(run_state._json(capsule)) <= recovery_capsule.MAX_CAPSULE_BYTES
+    assert 'recorded_budget' not in resources
+    pointer = resources['recorded_budget_ref']
+    parent = run_state._read(world['project'] / pointer['event_ref'])
+    assert pointer['pointer'] == '/state/extensions/workflow/budget'
+    assert parent['state']['extensions']['workflow']['budget'] == budget
+    assert pointer['sha256'] == run_state._digest(budget)
+    response = invoke(facade, world, request('recover', {'reconcile_sources': True, 'capsule_ref': ref['event_ref']}, state, 'large-budget-recovery'))
+    assert response['status'] == 'READY', response
+    assert state_of(world, response)['extensions']['workflow']['budget'] == budget
+
+
+@pytest.mark.parametrize('fault', ['digest', 'pointer', 'event', 'owner', 'missing'])
+def test_capsule_budget_reference_cannot_select_foreign_or_missing_bytes(facade, world, fault):
+    import recovery_capsule
+    state, ref = checkpoint(facade, world)
+    capsule = deepcopy(state['extensions']['controller']['checkpoint']['recovery_capsule'])
+    resources = capsule['obligations']['resources']
+    if fault == 'digest': resources['recorded_budget_ref']['sha256'] = '0' * 64
+    elif fault == 'pointer': resources['recorded_budget_ref']['pointer'] += '/foreign'
+    elif fault == 'event': resources['recorded_budget_ref']['event_ref'] = ref['event_ref']
+    elif fault == 'owner': resources['owner_ref']['sha256'] = '0' * 64
+    else:
+        path = world['project'] / resources['recorded_budget_ref']['event_ref']
+        path.rename(path.with_suffix('.retained'))
+    with pytest.raises((ValueError, OSError)):
+        recovery_capsule._validate_resource_reference(world['project'], state, capsule)
+
+
+@pytest.mark.parametrize('fault', ['missing-ref', 'both-forms', 'extra-field'])
+def test_capsule_resource_representation_is_closed(facade, world, fault):
+    import recovery_capsule
+    state, _ = checkpoint(facade, world)
+    capsule = deepcopy(state['extensions']['controller']['checkpoint']['recovery_capsule'])
+    resources = capsule['obligations']['resources']
+    if fault == 'missing-ref': resources.pop('recorded_budget_ref')
+    elif fault == 'both-forms': resources['recorded_budget'] = {}
+    else: resources['extra'] = True
+    with pytest.raises(ValueError, match='exactly one complete'):
+        recovery_capsule._validate_resource_reference(world['project'], state, capsule)
+
+
+def test_capsule_authenticates_original_embedded_budget(facade, world):
+    import recovery_capsule
+    import run_state
+    state, _ = checkpoint(facade, world)
+    capsule = deepcopy(state['extensions']['controller']['checkpoint']['recovery_capsule'])
+    resources = capsule['obligations']['resources']
+    ref = resources.pop('recorded_budget_ref')
+    parent = run_state._read(world['project'] / ref['event_ref'])
+    resources['recorded_budget'] = deepcopy(parent['state']['extensions']['workflow']['budget'])
+    recovery_capsule._validate_resource_reference(world['project'], state, capsule)
+    resources['recorded_budget']['foreign'] = True
+    with pytest.raises(ValueError): recovery_capsule._validate_resource_reference(world['project'], state, capsule)

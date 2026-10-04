@@ -50,7 +50,7 @@ def _fields(value, required, optional=()):
 
 
 def _extension(state):
-    value = deepcopy(state.get("extensions", {}).get("native_observations"))
+    value = run_state._copy_state(state.get("extensions", {}).get("native_observations"))
     if value is None:
         projection = native.empty_projection()
         return {
@@ -1075,7 +1075,7 @@ def _promote_replay_source(source, revision):
 
 
 def _reduce_replay_page(state, prepared, context):
-    result = deepcopy(state)
+    result = run_state._copy_state(state)
     extension = _extension(state)
     source, batch = deepcopy(prepared["source"]), deepcopy(prepared["batch"])
     if batch is not None:
@@ -1198,7 +1198,7 @@ def _prepare_observe(context, payload):
 def _reduce_observe(state, prepared, context):
     if prepared.get("replay_step"):
         return _reduce_replay_page(state, prepared, context)
-    result = deepcopy(state)
+    result = run_state._copy_state(state)
     extension = _extension(state)
     source, batch = deepcopy(prepared["source"]), deepcopy(prepared["batch"])
     source.update(

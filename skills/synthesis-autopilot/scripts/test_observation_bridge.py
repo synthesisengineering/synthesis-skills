@@ -9,8 +9,14 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
-from test_run_state import engine, world, create, command  # noqa: F401
-from test_controller import facade  # noqa: F401
+import test_run_state as run_fixtures
+import test_controller as controller_fixtures
+from test_run_state import create, command
+
+# Pytest discovers these imported fixture objects by their public names.
+engine = run_fixtures.engine
+world = run_fixtures.world
+facade = controller_fixtures.facade
 
 
 @pytest.fixture
@@ -513,3 +519,60 @@ def test_reconciliation_rejects_changed_frontier_and_mid_record_offset(bridge, e
     with pytest.raises(ValueError, match='prior frontier'):
         reconcile(engine, world, state, spec)
     assert engine.load_run(world['project'], state['run_id']) == state
+
+
+@pytest.mark.parametrize('replay', [False, True])
+def test_page_reducer_bulk_copy_is_pure_and_retains_unknown_fields(bridge, engine, world, replay):
+    state = enroll(engine, world, create(engine, world))
+    append(world, *pair(world))
+    source = deepcopy(state['extensions']['native_observations']['sources']['root'])
+    batch = bridge.native.read_page(source['binding'], source['cursor'], run_id=state['run_id'])
+    shared = {'z': [1], 'a': 2}
+    state['extensions']['future'] = {'left': shared, 'right': shared}
+    prepared = {'handle': 'root', 'source': source, 'batch': batch}
+    if replay:
+        # Pending replay is not promoted; source admission stays in preparer.
+        source['replay'] = {'status': 'pending'}
+        prepared['replay_step'] = True
+    before, input_before = deepcopy(state), deepcopy(prepared)
+    result = bridge._reduce_observe(state, prepared, {})
+    assert state == before and prepared == input_before
+    assert result['extensions']['future']['left'] is result['extensions']['future']['right']
+    assert result['extensions']['future']['left'] is not shared
+    assert list(result['extensions']['future']['left']) == ['z', 'a']
+    result['extensions']['future']['left']['z'].append(2)
+    result['extensions']['native_observations']['latest_batch']['events'].clear()
+    assert state == before and prepared == input_before
+
+
+def test_extension_validates_digest_and_keeps_independent_projection(bridge, engine, world):
+    state = enroll(engine, world, create(engine, world))
+    append(world, *pair(world));state = observe(engine, world, state)
+    before = deepcopy(state)
+    extension = bridge._extension(state)
+    extension['projection']['events'].clear()
+    assert state == before
+    state['extensions']['native_observations']['projection_digest'] = 'foreign'
+    with pytest.raises(ValueError, match='custody is invalid'):
+        bridge._extension(state)
+    prepared = {'handle': 'root', 'source': before['extensions']['native_observations']['sources']['root'],
+                'batch': before['extensions']['native_observations']['latest_batch']}
+    with pytest.raises(ValueError, match='custody is invalid'):
+        bridge._reduce_observe(state, prepared, {})
+
+
+@pytest.mark.parametrize('branch', ['extension', 'projection', 'event_index'])
+def test_page_reducer_preserves_detachment_from_foreign_aliases(bridge, engine, world, branch):
+    state = enroll(engine, world, create(engine, world))
+    append(world, *pair(world))
+    extension = state['extensions']['native_observations']
+    state['unknown_core_alias'] = extension if branch == 'extension' else extension[branch]
+    before = deepcopy(state)
+    source = deepcopy(extension['sources']['root'])
+    batch = bridge.native.read_page(source['binding'], source['cursor'], run_id=state['run_id'])
+    result = bridge._reduce_observe(state, {'handle': 'root', 'source': source, 'batch': batch}, {})
+    assert state == before
+    assert result['unknown_core_alias'] == before['unknown_core_alias']
+    assert result['extensions']['native_observations']['event_index']
+    target = result['extensions']['native_observations']
+    assert result['unknown_core_alias'] is not (target if branch == 'extension' else target[branch])
