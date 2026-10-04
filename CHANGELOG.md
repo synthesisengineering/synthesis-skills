@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.5] - 2026-10-04
+
+- Select the journal codec before binding prepared-launch projection hashes, and verify historical transitions with faithfully encoded fixtures.
+- Recognize complete captured diffs of literal detection rules while rejecting key material, malformed captures, and unrelated credentials through the ordinary commit guard.
+
 ## [4.154.4] - 2026-10-04
 
 - Keep hashless local handoff read-only after a seat is released while requiring exact native admission for attribution retirement.

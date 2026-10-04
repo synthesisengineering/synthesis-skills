@@ -630,3 +630,172 @@ def test_supported_rule_vocabulary_is_independent_of_active_subset(tmp_path, var
         )
     stage(root, "catalog.data", after)
     assert_status(invoke(root, env), 0 if variant == "catalog" else 1)
+
+
+def captured_rules(before=None, after=None, *, context=3):
+    """Synthetic traditional unified capture; no private paths or real keys."""
+    import difflib
+    if before is None:
+        before = ["    - '" + marker + "'\n" for marker in MARKERS[1:4]]
+        before += ["\n", "# synthetic neighboring section\n", "# retained comment\n"]
+    if after is None:
+        after = before[:3] + ["    - '" + marker + "'\n" for marker in MARKERS[4:]] + before[3:]
+    return "".join(difflib.unified_diff(before, after, fromfile="synthetic-before", tofile="synthetic-after", n=context)).encode()
+
+
+@pytest.mark.parametrize("name", ["capture.diff", "arbitrary.data", "policy.yaml"])
+@pytest.mark.parametrize("message", [False, True])
+def test_complete_captured_literal_rule_diff_uses_content_not_path(tmp_path, name, message):
+    root, _, env = setup(tmp_path, personal=True, enabled=False)
+    body = captured_rules()
+    stage(root, name, body)
+    assert_status(invoke(root, env, body if message else None), 0)
+
+
+@pytest.mark.parametrize("variant", ["addition", "removal", "replacement", "multiple-hunks", "multiple-files"])
+def test_complete_captured_rule_diff_consumes_both_sides(tmp_path, variant):
+    root, _, env = setup(tmp_path)
+    body = captured_rules()
+    item = lambda marker: "    - '" + marker + "'\n"
+    if variant == "addition": body = captured_rules([], [item(MARKERS[0])])
+    elif variant == "removal": body = captured_rules([item(MARKERS[0])], [])
+    elif variant == "replacement": body = captured_rules([item(MARKERS[0])], [item(MARKERS[1])])
+    elif variant == "multiple-hunks":
+        before = [item(MARKERS[0])] + ["# synthetic gap\n"] * 10 + [item(MARKERS[1])]
+        after = [item(MARKERS[2])] + before[1:-1] + [item(MARKERS[3])]
+        body = captured_rules(before, after, context=0)
+    elif variant == "multiple-files": body += captured_rules([item(MARKERS[0])], [item(MARKERS[1])])
+    stage(root, "data", body)
+    assert_status(invoke(root, env), 0)
+
+
+@pytest.mark.parametrize("variant", ["truncated", "old-count", "new-count", "missing-old", "missing-new", "extra-hunk", "extra-header", "extra-prose", "nested", "context-only", "bad-prefix", "bad-indent", "no-newline", "annotation", "overlap", "huge-count", "empty-path", "nul", "invalid-utf8", "leading-zero-count"])
+def test_malformed_captured_rule_diff_never_grants_rule_status(tmp_path, variant):
+    root, config, env = setup(tmp_path)
+    config.write_text(config.read_text() + "allowlist_lines:\n  - '.*'\ndiff_exclude_paths:\n  - '.*'\n")
+    body = captured_rules()
+    if variant == "truncated": body = body.rsplit(b"\n", 2)[0] + b"\n"
+    elif variant == "old-count": body = body.replace(b"-1,6", b"-1,7")
+    elif variant == "new-count": body = body.replace(b"+1,8", b"+1,7")
+    elif variant == "missing-old": body = b"\n".join(body.split(b"\n")[1:])
+    elif variant == "missing-new": body = body.replace(b"+++ synthetic-after\n", b"")
+    elif variant == "extra-hunk": body += b"@@ -50 +50 @@\n"
+    elif variant == "extra-header": body += b"--- unfinished\n+++ unfinished\n"
+    elif variant == "extra-prose": body += b"unrelated trailing prose\n"
+    elif variant == "nested": body = b"--- outer\n+++ outer\n@@ -0,0 +1,11 @@\n" + b"".join(b"+"+line+b"\n" for line in body.splitlines())
+    elif variant == "context-only": body = body.replace(b"+1,8", b"+1,6");body=b"\n".join(line for line in body.split(b"\n") if not line.startswith(b"+    -"))
+    elif variant == "bad-prefix": body = body.replace(b"+    -", b"?    -", 1)
+    elif variant == "bad-indent": body = body.replace(b"+    -", b"+  -", 1)
+    elif variant == "no-newline": body = body[:-1]
+    elif variant == "annotation": body += b"\\ No newline at end of file\n"
+    elif variant == "overlap": body += body[body.index(b"@@ "):]
+    elif variant == "huge-count": body = body.replace(b"+1,8", b"+1,"+b"9"*5000)
+    elif variant == "empty-path": body = body.replace(b"+++ synthetic-after", b"+++ ")
+    elif variant == "nul": body = body.replace(b"synthetic-after", b"synthetic\0after")
+    elif variant == "invalid-utf8": body = body.replace(b"synthetic-after", b"synthetic\xffafter")
+    elif variant == "leading-zero-count": body = body.replace(b"+1,8", b"+1,08")
+    stage(root, "capture.diff", body)
+    assert_status(invoke(root, env), 1)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("placement", ["added", "removed", "context", "quoted-body", "escaped-header"])
+def test_captured_diff_cannot_hide_key_material_on_either_side(tmp_path, family, placement):
+    root, _, env = setup(tmp_path)
+    marker = "BEGIN " + family + "PRIVATE KEY" + (" BLOCK" if family == "PGP " else "")
+    key = ["-----" + marker + "-----\n", BODY + "\n", "-----" + marker.replace("BEGIN", "END", 1) + "-----\n"]
+    catalog = ["    - '" + MARKERS[0] + "'\n"]
+    if placement == "added": body = captured_rules(catalog, catalog + key)
+    elif placement == "removed": body = captured_rules(catalog + key, catalog)
+    elif placement == "context": body = captured_rules(key+catalog, key+catalog+["    - '"+MARKERS[1]+"'\n"])
+    elif placement == "quoted-body": body = captured_rules(catalog, catalog+["    - '"+BODY+"'\n"])
+    else: body = captured_rules(catalog, catalog+[json.dumps({"secret":"".join(key)}).replace("BEGIN", "\\u0042EGIN")+"\n"])
+    stage(root, "capture.diff", body)
+    assert_status(invoke(root, env), 1)
+
+
+@pytest.mark.parametrize("variant", ["header", "comment", "escaped-comment", "custom", "credential", "mandatory"])
+def test_captured_rules_leave_other_credential_and_policy_evidence_mandatory(tmp_path, variant, monkeypatch):
+    root, config, env = setup(tmp_path, personal=True, enabled=False)
+    body = captured_rules()
+    if variant == "header": body = body.replace(b"synthetic-after", MARKERS[0].encode())
+    elif variant == "comment": body = body.replace(b"# retained comment", ("# "+MARKERS[0]).encode())
+    elif variant == "escaped-comment": body = body.replace(b"# retained comment", ("# "+MARKERS[0]).replace("BEGIN", "\\u0042EGIN").encode())
+    elif variant == "custom": config.write_text(config.read_text().replace("  api_keys:\n", "  api_keys:\n    - 'BEGIN.*PRIVATE KEY'\n"))
+    elif variant == "credential": body = body.replace(b"# retained comment", b"# " + b"AKIA" + b"ABCDEFGHIJKLMNOP")
+    stage(root, "arbitrary.data", body)
+    if variant == "mandatory":
+        monkeypatch.chdir(root);module=loader("_scan_staged.py");active,typed=scan_arguments(config)
+        assert module.scan(active,active,".*",".*",marker_policy=typed,mandatory="BEGIN.*PRIVATE KEY")
+    else: assert_status(invoke(root, env), 1)
+
+
+def test_new_body_below_previously_admitted_capture_still_refuses(tmp_path):
+    root, _, env = setup(tmp_path)
+    before = captured_rules();stage(root,"capture.data",before)
+    git(root,"config","core.hooksPath",str(SCRIPTS))
+    accepted=subprocess.run(["git","commit","-m","Synthetic captured rules"],cwd=root,env=env,capture_output=True,timeout=30)
+    (tmp_path/'guarded-positive.stdout').write_bytes(accepted.stdout);(tmp_path/'guarded-positive.stderr').write_bytes(accepted.stderr)
+    assert accepted.returncode==0,(accepted.stdout,accepted.stderr)
+    stage(root,"capture.data",before+(BODY+"\n").encode());diff=git(root,"diff","--cached","-U0")
+    assert MARKERS[0].encode() not in diff.split(b"@@")[-1]
+    head=git(root,"rev-parse","HEAD")
+    refused=subprocess.run(["git","commit","-m","Synthetic added payload"],cwd=root,env=env,capture_output=True,timeout=30)
+    (tmp_path/'guarded-negative.stdout').write_bytes(refused.stdout);(tmp_path/'guarded-negative.stderr').write_bytes(refused.stderr)
+    assert refused.returncode == 1, (refused.stdout, refused.stderr)
+    # Git relays its hook output on stderr; direct hook invocation uses stdout.
+    assert b"SENSITIVE PATTERN" in refused.stdout + refused.stderr
+    assert git(root, "rev-parse", "HEAD") == head
+
+
+@pytest.mark.parametrize("staged_sensitive", [False, True])
+def test_captured_diff_evidence_binds_staged_blob_not_worktree(tmp_path, staged_sensitive):
+    root,_,env=setup(tmp_path);valid=captured_rules();invalid=valid+(BODY+"\n").encode()
+    stage(root,"capture.data",invalid if staged_sensitive else valid)
+    (root/'capture.data').write_bytes(valid if staged_sensitive else invalid)
+    assert_status(invoke(root,env),1 if staged_sensitive else 0)
+
+
+def test_captured_diff_recognition_keeps_deadline_and_exact_scalar_line_binding(tmp_path):
+    module=loader('_scan_staged.py');raw=captured_rules();parser=module.load_rule_parser(time.monotonic()+5)
+    rules=module.detection_rule_lines(raw,MARKERS,parser)
+    lines=raw.split(b'\n')
+    assert rules and all(lines[n-1][0:1] in (b' ',b'+',b'-') and b"- 'BEGIN " in lines[n-1] for n in rules)
+    assert not any(n in rules for n,line in enumerate(lines,1) if line.startswith((b'--- ',b'+++ ',b'@@ ',b' #')))
+    with pytest.raises(module.ScanError,match='bound'):
+        module.detection_rule_lines(raw,MARKERS,parser,time.monotonic()-1)
+
+
+def test_scanner_source_has_no_unclosed_marker_comparison_region():
+    scanner = loader("_scan_staged.py")
+    body = (SCRIPTS / "_scan_staged.py").read_bytes()
+    records = [(b"scanner.py", i, line) for i, line in enumerate(body.split(b"\n"), 1)]
+    assert scanner.material_lines(
+        {b"scanner.py": body}, records, MARKERS, time.monotonic() + 10
+    ) == b""
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+@pytest.mark.parametrize("closure", ["exact", "partial", "quoted", "other-family"])
+def test_explicit_prefix_keeps_inline_and_raw_footer_semantics(family, closure):
+    scanner = loader("_scan_staged.py")
+    marker = ("BEGIN " + family + "PRIVATE KEY").lower().encode()
+    suffix = b" block" if family == "PGP " else b""
+    header = b"-----" + marker + suffix + b"-----"
+    footer = b"-----" + marker.replace(b"begin ", b"end ", 1) + suffix + b"-----"
+    if closure == "partial":
+        footer = footer[:-1]
+    elif closure == "quoted":
+        footer = b'"' + footer + b'"'
+    elif closure == "other-family":
+        footer = b"-----end " + (b"rsa " if family != "RSA " else b"ec ") + b"private key-----"
+    region = header + b"\n" + BODY.encode() + b"\n" + footer
+    encoded = [value.lower().encode() for value in MARKERS]
+    inline = json.dumps({"example": region.decode()}).encode()
+    assert scanner.complete_inline_key_regions(inline, encoded) is (closure == "exact")
+    body = region + b"\nordinary addition\n"
+    hits = scanner.material_lines(
+        {b"sample.txt": body}, [(b"sample.txt", 4, b"ordinary addition")],
+        MARKERS, time.monotonic() + 10,
+    )
+    assert bool(hits) is (closure != "exact")

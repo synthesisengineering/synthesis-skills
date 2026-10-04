@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.5** lets complete captured detection-rule diffs pass the commit guard while continuing to reject key material and malformed captures. Existing user policy and claim checks remain active.
+
 Release **4.154.4** reduces repeated journal decoding and state copying during retained-history recovery. Checkpoints bind retained fixture bytes and link identities while applying structured-state validation to the live project state. Native recovery still requires its own completed qualification.
 
 Release **4.154.3** applies registry changes through authenticated transactions, preserves unrelated entries, and recovers interrupted creation, structural edits, removal and recreation. An empty registry remains valid state without granting a project route.

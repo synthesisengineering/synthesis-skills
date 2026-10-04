@@ -146,24 +146,68 @@ def test_large_snapshot_blocks_are_derived_and_attributed_by_the_existing_owner(
         assert manifest['path_kinds'][str(path)] == 'file'
 
 
+def historical_prepared_fixture(world, state):
+    """Construct synthetic original-codec history with its exact physical claims.
+
+    Archive construction bytes before re-encoding. This is test input creation,
+    never a migration of a real run or evidence of native enrollment.
+    """
+    from copy import deepcopy
+    import journal_storage as storage, run_state
+    home = run_state._home(world['project'], state['run_id'])
+    construction = world['scratch'] / 'prepared-codec-bound-construction'
+    construction.mkdir()
+    history = list(run_state._events(world['project'], state['run_id']))
+    plan_text = world['plan'].read_text()
+    (construction / 'current.json').write_bytes((home / 'current.json').read_bytes())
+    previous = ''
+    rewritten = {}
+    for original in history:
+        event = deepcopy(dict(original))
+        target = home / 'events' / f"{event['revision']:012d}.json"
+        (construction / target.name).write_bytes(target.read_bytes())
+        event['state']['extensions'].pop('journal_storage')
+        event['previous_digest'] = previous
+        rendered = run_state._projection_bytes(world['project'], event['state'], plan_text)
+        projection_hashes = {str(path): hashlib.sha256(raw).hexdigest() for path, raw in rendered.items()}
+        if event['actor'].get('kind') == 'prepared-native-launch':
+            event['actor']['edit_basis'] = {path: rewritten.get(path, digest)
+                for path, digest in event['actor']['edit_basis'].items()}
+            event['actor']['projection_hashes'] = projection_hashes
+        event.pop('digest')
+        event['digest'] = run_state._digest(event)
+        raw, blocks = storage.encode(event, codec=1)
+        storage.materialize(home, blocks)
+        target.write_bytes(raw)
+        previous = event['digest']
+        rewritten[str(target)] = hashlib.sha256(raw).hexdigest()
+        rewritten.update(projection_hashes)
+        state = event['state']
+    raw, blocks = storage.encode(state, codec=1)
+    storage.materialize(home, blocks)
+    (home / 'current.json').write_bytes(raw)
+    assert run_state.load_run(world['project'], state['run_id']) == state
+    assert 'journal_storage' not in state['extensions']
+    return state
+
+
 @pytest.mark.parametrize("damage", [None, "current", "summary", "foreign"])
 def test_original_inline_prepared_append_keeps_its_committed_attribution(engine, facade, world, monkeypatch, damage):
     import journal_storage, prepared_native_launch as launch, run_state
     from test_run_state import command
-    with monkeypatch.context() as before_upgrade:
-        before_upgrade.setattr(journal_storage, 'INLINE_BYTES', 4 * 1024 * 1024)
-        state = prepared(facade, world)
-        def grow(state, payload, context):
-            state['extensions']['history'] = 'x' * (1200 * 1024)
-            return state
-        engine.register_command('fixture.grow-inline', grow, allowed_fields=('extensions',))
-        state = command(engine, world, state, 'fixture.grow-inline', {})
-        attribute_recovery_fixture(world)
-        state = launch._step(world['project'], state['run_id'], 'permit1', TOKEN, 'reserve', runtime_root=world['runtime'])
+    state = prepared(facade, world)
+    def grow(state, payload, context):
+        state['extensions']['history'] = 'x' * (journal_storage.INLINE_BYTES // 2)
+        return state
+    engine.register_command('fixture.grow-inline', grow, allowed_fields=('extensions',))
+    state = command(engine, world, state, 'fixture.grow-inline', {})
+    attribute_recovery_fixture(world)
+    state = launch._step(world['project'], state['run_id'], 'permit1', TOKEN, 'reserve', runtime_root=world['runtime'])
+    state = historical_prepared_fixture(world, state)
     home = run_state._home(world['project'], state['run_id'])
     preserved = {p.name: p.read_bytes() for p in (home / 'events').iterdir()}
     assert journal_storage.MARKER not in json.loads((home / 'current.json').read_text())
-    assert len((home / 'current.json').read_bytes()) > journal_storage.INLINE_BYTES
+    assert len((home / 'current.json').read_bytes()) > journal_storage.INLINE_BYTES // 2
     def attribute():
         return owner().record_prepared_native_launch(project=world['project'], run_id=state['run_id'], permit_id='permit1', token=TOKEN, revision=state['revision'], guard_root=world['runtime'].parent / 'repo-guard')
     if damage:
@@ -180,3 +224,66 @@ def test_original_inline_prepared_append_keeps_its_committed_attribution(engine,
         assert attribute().is_file()
     for name, raw in preserved.items():
         assert (home / 'events' / name).read_bytes() == raw
+
+
+@pytest.mark.parametrize('large', [False, True])
+@pytest.mark.parametrize('phase', ['reserve', 'submit', 'observe'])
+def test_first_modern_prepared_append_binds_selected_codec_before_projection_hashes(engine, facade, world, large, phase):
+    import journal_storage as storage, prepared_native_launch as launch, run_state
+    from test_run_state import command
+    state = prepared(facade, world)
+    def grow(state, payload, context):
+        state['extensions']['historical'] = 'x' * (2 * storage.INLINE_BYTES if large else 256)
+        return state
+    engine.register_command('fixture.historical', grow, allowed_fields=('extensions',))
+    state = command(engine, world, state, 'fixture.historical', {})
+    attribute_recovery_fixture(world)
+    if phase != 'reserve':
+        state = launch._step(world['project'], state['run_id'], 'permit1', TOKEN, 'reserve', runtime_root=world['runtime'])
+    state = historical_prepared_fixture(world, state)
+    home = run_state._home(world['project'], state['run_id'])
+    old = {path: path.read_bytes() for path in (home / 'events').iterdir()}
+    attribute_recovery_fixture(world)
+    extra = {}
+    if phase == 'submit':
+        extra['send'] = lambda: {'commandId': 'synthetic-command', 'status': 'accepted'}
+    elif phase == 'observe':
+        import native_resume
+        extra['outcome'] = native_resume._observation({'status': 'unknown', 'task_accepted': False,
+            'native_session_id': world['actor']['native_payload']['session_id']})
+    launch._step(world['project'], state['run_id'], 'permit1', TOKEN, phase, runtime_root=world['runtime'], **extra)
+    state = run_state.load_run(world['project'], state['run_id'])
+    assert state['extensions']['journal_storage'] == {'codec': 2}
+    assert run_state.load_run(world['project'], state['run_id']) == state
+    event = run_state._last_event(world['project'], state['run_id'])
+    rendered = run_state._projection_bytes(world['project'], state, world['plan'].read_text(), retain_storage=True)
+    assert event['actor']['projection_hashes'] == {str(path): hashlib.sha256(raw).hexdigest() for path, raw in rendered.items()}
+    assert owner().record_prepared_native_launch(project=world['project'], run_id=state['run_id'], permit_id='permit1', token=TOKEN, revision=state['revision'], guard_root=world['runtime'].parent / 'repo-guard').is_file()
+    for path, raw in old.items():
+        assert path.read_bytes() == raw
+
+
+def test_codec_bound_prepared_append_refuses_policy_switched_inline(engine, facade, world, monkeypatch):
+    import journal_storage as storage, prepared_native_launch as launch, run_state
+    from test_run_state import command
+    with monkeypatch.context() as larger_inline:
+        larger_inline.setattr(storage, 'INLINE_BYTES', 4 * 1024 * 1024)
+        state = prepared(facade, world)
+        def grow(state, payload, context):
+            state['extensions']['history'] = 'x' * (1200 * 1024)
+            return state
+        engine.register_command('fixture.policy-switched-inline', grow, allowed_fields=('extensions',))
+        state = command(engine, world, state, 'fixture.policy-switched-inline', {})
+        attribute_recovery_fixture(world)
+        state = launch._step(world['project'], state['run_id'], 'permit1', TOKEN, 'reserve', runtime_root=world['runtime'])
+    home = run_state._home(world['project'], state['run_id'])
+    assert state['extensions']['journal_storage'] == {'codec': 2}
+    assert storage.MARKER not in json.loads((home / 'current.json').read_bytes())
+    assert len((home / 'current.json').read_bytes()) > storage.INLINE_BYTES
+    guard = world['runtime'].parent / 'repo-guard'
+    retained = {path: path.read_bytes() for path in (guard / 'pending').iterdir()}
+    events = {path: path.read_bytes() for path in (home / 'events').iterdir()}
+    with pytest.raises(ValueError, match='noncanonical or foreign'):
+        owner().record_prepared_native_launch(project=world['project'], run_id=state['run_id'], permit_id='permit1', token=TOKEN, revision=state['revision'], guard_root=guard)
+    assert {path: path.read_bytes() for path in (guard / 'pending').iterdir()} == retained
+    assert {path: path.read_bytes() for path in (home / 'events').iterdir()} == events

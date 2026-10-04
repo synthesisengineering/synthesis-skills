@@ -1151,6 +1151,10 @@ def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, run
                 row["status"]="observed" if outcome.get("status")=="native_terminal" else "unknown"
         updated["revision"]=state["revision"]+1
         updated["updated_at"]=_now()
+        # The committed attribution must describe the same codec the append
+        # selects. Validate the predecessor binding before selecting its successor.
+        journal_storage.codec_for(updated)
+        updated.setdefault("extensions", {})["journal_storage"] = {"codec": 2}
         projection_hashes={str(path):hashlib.sha256(raw).hexdigest()
             for path,raw in _projection_bytes(project,updated,plan_before).items()}
         if phase in {"reserve","submit"}:
