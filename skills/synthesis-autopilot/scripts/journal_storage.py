@@ -342,17 +342,32 @@ def _read_at(parent, name, limit, *, _identity=None, _fd=None, _opened=None):
             raise _HandleChanged("snapshot handle metadata changed")
         if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
             raise ValueError("snapshot file is not a bounded regular file")
-        # Positional reads give each occurrence a fresh independent read even
-        # when a scoped handle is reused. No shared seek offset is authoritative.
         chunks, size = [], 0
-        while size <= before.st_size:
-            chunk = os.pread(fd, before.st_size + 1 - size, size)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            size += len(chunk)
-            if size == before.st_size:
-                break
+        if _fd is None:
+            # This call owns the newly opened descriptor and its stream offset.
+            # Unbuffered reads consume at most the declared bytes plus the one
+            # refusal byte. Keep the ordinary stream boundary, while finally
+            # remains the sole descriptor owner even if stream setup fails.
+            with os.fdopen(fd, "rb", buffering=0, closefd=False) as stream:
+                while size <= before.st_size:
+                    chunk = stream.read(before.st_size + 1 - size)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    size += len(chunk)
+                    if size == before.st_size:
+                        break
+        else:
+            # Borrowed handles may have another consumer's seek offset. Each
+            # occurrence performs fresh positional reads without changing it.
+            while size <= before.st_size:
+                chunk = os.pread(fd, before.st_size + 1 - size, size)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size == before.st_size:
+                    break
         raw = chunks[0] if len(chunks) == 1 else b"".join(chunks)
         after = os.fstat(fd)
         present = os.stat(name, dir_fd=parent, follow_symlinks=False)

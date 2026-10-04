@@ -3107,6 +3107,18 @@ changed_surfaces:
   - journal-members-6b2652a052c90388
   - journal-members-5e7c962472b6fa9e
   - journal-members-df24762209ccb11b
+  - growth-reader-7eec17c77b28bc98
+  - growth-reader-e8f5119a004678e9
+  - growth-reader-7facd3ae5a5efb6b
+  - growth-reader-25f17714d64f8eb4
+  - growth-reader-ae21fb0931bf09eb
+  - growth-reader-07bb4e062d1da243
+  - growth-reader-ebad55a36c9b5ae4
+  - growth-reader-2e44a561d6f05a4c
+  - growth-reader-7bdf10e5efbe0e92
+  - growth-reader-c3c9cd19932ad9c8
+  - growth-reader-274ab97d5f6fd819
+  - growth-reader-2eb8b3e35492c83c
 - path: skills/synthesis-autopilot/scripts/operator_status.py
   cases:
   - final-f8f0939b644079f8
@@ -4433,6 +4445,18 @@ changed_surfaces:
   - journal-members-6b2652a052c90388
   - journal-members-5e7c962472b6fa9e
   - journal-members-df24762209ccb11b
+  - growth-reader-7eec17c77b28bc98
+  - growth-reader-e8f5119a004678e9
+  - growth-reader-7facd3ae5a5efb6b
+  - growth-reader-25f17714d64f8eb4
+  - growth-reader-ae21fb0931bf09eb
+  - growth-reader-07bb4e062d1da243
+  - growth-reader-ebad55a36c9b5ae4
+  - growth-reader-2e44a561d6f05a4c
+  - growth-reader-7bdf10e5efbe0e92
+  - growth-reader-c3c9cd19932ad9c8
+  - growth-reader-274ab97d5f6fd819
+  - growth-reader-2eb8b3e35492c83c
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases:
   - final-42c5721991f12696
@@ -7557,6 +7581,18 @@ changed_surfaces:
   - journal-members-6b2652a052c90388
   - journal-members-5e7c962472b6fa9e
   - journal-members-df24762209ccb11b
+  - growth-reader-7eec17c77b28bc98
+  - growth-reader-e8f5119a004678e9
+  - growth-reader-7facd3ae5a5efb6b
+  - growth-reader-25f17714d64f8eb4
+  - growth-reader-ae21fb0931bf09eb
+  - growth-reader-07bb4e062d1da243
+  - growth-reader-ebad55a36c9b5ae4
+  - growth-reader-2e44a561d6f05a4c
+  - growth-reader-7bdf10e5efbe0e92
+  - growth-reader-c3c9cd19932ad9c8
+  - growth-reader-274ab97d5f6fd819
+  - growth-reader-2eb8b3e35492c83c
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -25200,3 +25236,75 @@ cases:
   expected_status: pass
   fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_composed_buffers_enforce_logical_bound_before_join
   motivating_defect: 'Charged journal representation contract: test_composed_buffers_enforce_logical_bound_before_join'
+- id: growth-reader-7eec17c77b28bc98
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_borrowed_positional_read_is_fresh_and_never_changes_or_closes_offset
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_borrowed_positional_read_is_fresh_and_never_changes_or_closes_offset'
+- id: growth-reader-e8f5119a004678e9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_read_short_stream_keeps_cumulative_bound_and_closes[]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_read_short_stream_keeps_cumulative_bound_and_closes[]'
+- id: growth-reader-7facd3ae5a5efb6b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_read_short_stream_keeps_cumulative_bound_and_closes[abcdef]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_read_short_stream_keeps_cumulative_bound_and_closes[abcdef]'
+- id: growth-reader-25f17714d64f8eb4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_read_stream_growth_consumes_only_one_refusal_byte[]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_read_stream_growth_consumes_only_one_refusal_byte[]'
+- id: growth-reader-ae21fb0931bf09eb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_read_stream_growth_consumes_only_one_refusal_byte[abcdef]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_read_stream_growth_consumes_only_one_refusal_byte[abcdef]'
+- id: growth-reader-07bb4e062d1da243
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_stream_failure_closes_exact_owned_descriptor[setup]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_stream_failure_closes_exact_owned_descriptor[setup]'
+- id: growth-reader-ebad55a36c9b5ae4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_stream_failure_closes_exact_owned_descriptor[read]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_stream_failure_closes_exact_owned_descriptor[read]'
+- id: growth-reader-2e44a561d6f05a4c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_stream_failure_closes_exact_owned_descriptor[cancel]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_stream_failure_closes_exact_owned_descriptor[cancel]'
+- id: growth-reader-7bdf10e5efbe0e92
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_owned_stream_failure_closes_exact_owned_descriptor[fstat]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_owned_stream_failure_closes_exact_owned_descriptor[fstat]'
+- id: growth-reader-c3c9cd19932ad9c8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_retained_read_failure_closes_handle_and_returns_all_charges[growth]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_retained_read_failure_closes_handle_and_returns_all_charges[growth]'
+- id: growth-reader-274ab97d5f6fd819
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_retained_read_failure_closes_handle_and_returns_all_charges[replacement]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_retained_read_failure_closes_handle_and_returns_all_charges[replacement]'
+- id: growth-reader-2eb8b3e35492c83c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_retained_read_failure_closes_handle_and_returns_all_charges[cancel]
+  motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
+    cleanup: test_retained_read_failure_closes_handle_and_returns_all_charges[cancel]'

@@ -3607,3 +3607,171 @@ def test_owned_member_parts_real_plan_admission_reuses_charged_parts(tmp_path, m
         result['field-0']['z'].append('changed consumer')
         assert storage.decode(path, descriptor) == expected
     assert memo['closed'] and not memo['plans'] and memo['budget']['bytes'] == 0
+
+
+@pytest.mark.parametrize('payload', [b'', b'abcdef'])
+def test_owned_read_stream_growth_consumes_only_one_refusal_byte(tmp_path, monkeypatch, payload):
+    target = tmp_path / 'a.json'
+    target.write_bytes(payload)
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original = os.fdopen
+    reads, fds, identities = [], [], []
+    class GrowingStream:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def read(self, count):
+            with target.open('ab') as writer: writer.write(b'!')
+            raw = self.stream.read(count)
+            reads.append((count, len(raw)))
+            return raw
+    def opened(fd, *args, **kwargs):
+        fds.append(fd)
+        assert kwargs == {'buffering': 0, 'closefd': False}
+        return GrowingStream(original(fd, *args, **kwargs))
+    monkeypatch.setattr(os, 'fdopen', opened)
+    try:
+        with pytest.raises(ValueError, match='changed during read'):
+            storage._read_at(parent, 'a.json', len(payload), _identity=identities)
+        assert reads == [(len(payload) + 1, len(payload) + 1)]
+        assert identities == []
+        with pytest.raises(OSError): os.fstat(fds[0])
+        os.fstat(parent)
+    finally:
+        os.close(parent)
+
+
+@pytest.mark.parametrize('payload', [b'', b'abcdef'])
+def test_owned_read_short_stream_keeps_cumulative_bound_and_closes(tmp_path, monkeypatch, payload):
+    (tmp_path / 'a.json').write_bytes(payload)
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original = os.fdopen
+    requests, reads, fds, identities = [], [], [], []
+    class ShortStream:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def read(self, count):
+            requests.append(count)
+            raw = self.stream.read(min(count, 2))
+            reads.append(len(raw))
+            return raw
+    def opened(fd, *args, **kwargs):
+        fds.append(fd)
+        return ShortStream(original(fd, *args, **kwargs))
+    def forbidden(*args, **kwargs): raise AssertionError('owned read bypassed stream')
+    monkeypatch.setattr(os, 'fdopen', opened)
+    monkeypatch.setattr(os, 'pread', forbidden)
+    try:
+        assert storage._read_at(parent, 'a.json', len(payload), _identity=identities) == payload
+        assert requests == ([7, 5, 3] if payload else [1])
+        assert sum(reads) == len(payload)
+        assert len(identities) == 1
+        with pytest.raises(OSError): os.fstat(fds[0])
+    finally:
+        os.close(parent)
+
+
+@pytest.mark.parametrize('fault', ['setup', 'read', 'cancel', 'fstat'])
+def test_owned_stream_failure_closes_exact_owned_descriptor(tmp_path, monkeypatch, fault):
+    (tmp_path / 'a.json').write_bytes(b'abcdef')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original_open, original_stream, original_stat = os.open, os.fdopen, os.fstat
+    opened = []
+    def acquire(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+    class FailedStream:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): return self.stream.__exit__(*args)
+        def read(self, count):
+            if fault == 'cancel': raise KeyboardInterrupt('bounded synthetic cancellation')
+            raise OSError('bounded synthetic read failure')
+    def stream(fd, *args, **kwargs):
+        if fault == 'setup': raise OSError('bounded synthetic setup failure')
+        return FailedStream(original_stream(fd, *args, **kwargs))
+    def inspect(fd):
+        if fault == 'fstat' and fd in opened: raise OSError('bounded synthetic fstat failure')
+        return original_stat(fd)
+    monkeypatch.setattr(os, 'open', acquire)
+    monkeypatch.setattr(os, 'fdopen', stream)
+    monkeypatch.setattr(os, 'fstat', inspect)
+    try:
+        with pytest.raises(KeyboardInterrupt if fault == 'cancel' else OSError):
+            storage._read_at(parent, 'a.json', 6)
+        assert len(opened) == 1
+        with pytest.raises(OSError): original_stat(opened[0])
+        original_stat(parent)
+    finally:
+        os.close(parent)
+
+
+def test_borrowed_positional_read_is_fresh_and_never_changes_or_closes_offset(tmp_path, monkeypatch):
+    target = tmp_path / 'a.json'
+    target.write_bytes(b'abcdef')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    fd = os.open(target, os.O_RDONLY)
+    original = os.pread
+    requests, identities = [], []
+    def short_read(handle, count, offset):
+        requests.append((count, offset))
+        return original(handle, min(count, 2), offset)
+    def forbidden(*args, **kwargs): raise AssertionError('borrowed descriptor wrapped in stream')
+    monkeypatch.setattr(os, 'pread', short_read)
+    monkeypatch.setattr(os, 'fdopen', forbidden)
+    try:
+        fingerprint = storage._file_fingerprint(os.fstat(fd))
+        os.lseek(fd, 4, os.SEEK_SET)
+        for _ in range(2):
+            assert storage._read_at(parent, 'a.json', 6, _fd=fd, _opened=fingerprint,
+                                    _identity=identities) == b'abcdef'
+            assert os.lseek(fd, 0, os.SEEK_CUR) == 4
+        assert requests == [(7, 0), (5, 2), (3, 4)] * 2
+        assert identities == [fingerprint, fingerprint]
+        target.write_bytes(b'uvwxyz')
+        with pytest.raises(storage._HandleChanged):
+            storage._read_at(parent, 'a.json', 6, _fd=fd, _opened=fingerprint)
+        assert len(requests) == 6
+        os.fstat(fd)
+    finally:
+        os.close(fd)
+        os.close(parent)
+
+
+@pytest.mark.parametrize('fault', ['growth', 'replacement', 'cancel'])
+def test_retained_read_failure_closes_handle_and_returns_all_charges(tmp_path, monkeypatch, fault):
+    target = tmp_path / 'a.json'
+    target.write_bytes(b'abcdef')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original = os.pread
+    reads, identities = [], []
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage._read_block(parent, 'a.json', 6, memo, []) == b'abcdef'
+            fd = next(iter(memo['handles'].values()))[0]
+            assert memo['budget']['count'] == 1 and memo['budget']['bytes'] > 0
+            def changed(handle, count, offset):
+                if fault == 'cancel': raise KeyboardInterrupt('bounded synthetic cancellation')
+                if fault == 'growth':
+                    with target.open('ab') as writer: writer.write(b'!')
+                else:
+                    replacement = tmp_path / 'replacement.json'
+                    replacement.write_bytes(b'abcdef')
+                    replacement.replace(target)
+                raw = original(handle, count, offset)
+                reads.append((count, offset, len(raw)))
+                return raw
+            monkeypatch.setattr(os, 'pread', changed)
+            with pytest.raises(KeyboardInterrupt if fault == 'cancel' else ValueError):
+                storage._read_block(parent, 'a.json', 6, memo, identities)
+            assert identities == []
+            assert not memo['handles'] and not memo['handle_probation'] and not memo['handle_protected']
+            assert memo['budget']['bytes'] == memo['budget']['count'] == memo['bytes'] == 0
+            with pytest.raises(OSError): os.fstat(fd)
+            if fault == 'growth': assert reads == [(7, 0, 7)]
+            if fault == 'replacement': assert reads == [(7, 0, 6)]
+    finally:
+        os.close(parent)
