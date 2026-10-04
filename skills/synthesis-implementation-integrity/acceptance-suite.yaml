@@ -2940,6 +2940,23 @@ changed_surfaces:
   - scanner-source-6506a6b5eb914219
   - scanner-source-c8512ad3d422f1be
   - scanner-source-dd97b7773b11399f
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -3018,6 +3035,177 @@ changed_surfaces:
   cases: *id001
 - path: skills/synthesis-repo-guard/test_prepared_launch_attribution.py
   cases: *id001
+- path: skills/synthesis-implementation-integrity/scripts/acceptance_suite.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-implementation-integrity/scripts/test_acceptance_suite.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: AGENTS.md
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-skills-manager/SKILL.md
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
+- path: skills/synthesis-implementation-integrity/SKILL.md
+  cases:
+  - timing-isolation-ac1ab9ea5fb8584d
+  - timing-isolation-df189909b3dc17a9
+  - timing-isolation-7fcc521af8296eaa
+  - timing-isolation-668a3ac3a5353c25
+  - timing-isolation-036b0f11368337b6
+  - timing-isolation-ba3d4dfc9182c0b0
+  - timing-isolation-d47cfefdb9d5f25f
+  - timing-isolation-aad5fd9b6c5131ff
+  - timing-isolation-faa04e5a92cd6039
+  - timing-isolation-866e998c2967e565
+  - timing-isolation-572adcb538ead20a
+  - timing-isolation-38a06b096dc16720
+  - timing-isolation-03c31182287a9d07
+  - timing-isolation-c764ffcda1ae1259
+  - timing-isolation-7373795c721d9f6b
+  - timing-isolation-54484f392dae804d
+  - timing-isolation-2341a3b3d7f322b7
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -19616,3 +19804,105 @@ cases:
   fixture: ../synthesis-git-hooks/scripts/test_marker_rules.py::test_scanner_source_has_no_unclosed_marker_comparison_region
   motivating_defect: Explicit scanner marker comparisons retain identical runtime values and exact footer/credential
     rejection while ordinary guarded source commits stay inspectable.
+- id: timing-isolation-ac1ab9ea5fb8584d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-df189909b3dc17a9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::test_native_history_crosses_snapshot_limit_and_recovers_exactly-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-7fcc521af8296eaa
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::test_native_history_crosses_snapshot_limit_and_recovers_exactly[x]-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-668a3ac3a5353c25
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::test_atomic_append_replay_projection_rebuild_and_operator-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-036b0f11368337b6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::test_atomic_append_replay_projection_rebuild_and_operator_extra-False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-ba3d4dfc9182c0b0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::TestOther::test_atomic_append_replay_projection_rebuild_and_operator-False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-d47cfefdb9d5f25f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_journal_storage.py::test_operator_refuses_if_final_projection_read_exhausts_same_time_budget-False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-aad5fd9b6c5131ff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_managed_native_owner.py::test_any-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-faa04e5a92cd6039
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_managed_native_owner.py-True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-866e998c2967e565
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[nested/test_managed_native_owner.py::test_any-False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-572adcb538ead20a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls[test_managed_native_owner_extra.py::test_any-False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-38a06b096dc16720
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_timing_partition_preserves_complete_ids_and_order
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-03c31182287a9d07
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_registered_timing_classifier_is_bound_before_fixture_mutation
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-c764ffcda1ae1259
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_scheduler_drains_before_timing_and_preserves_parallel_ordinary_workers[False]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-7373795c721d9f6b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_actual_scheduler_drains_before_timing_and_preserves_parallel_ordinary_workers[True]
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-54484f392dae804d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_source_catalog_timing_owner_drains_actual_scheduler
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: timing-isolation-2341a3b3d7f322b7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: scripts/test_acceptance_suite.py::test_acceptance_uses_shared_timing_classifier_without_changing_case_plan
+  motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
+    callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.

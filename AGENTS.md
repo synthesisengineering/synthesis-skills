@@ -61,7 +61,9 @@ CI and local verification execute the same exhaustive `REQUIRED_CHECKS` catalog
 in `release.py`. Two independent checks run concurrently by default (maximum four), each with its
 own retained temporary directory and bounded process group. Source identity is
 checked before and after execution. Failure stops further admission and drains
-running checks; missing checks never count as success. `--check-workers 1`
+running checks; missing checks never count as success. Controls with real wall-clock
+deadlines run exclusively through the shared timing-selector classification.
+Ordinary checks retain bounded parallelism; time and work limits do not increase. `--check-workers 1`
 provides a measured sequential comparison without changing the catalog.
 
 Hosted acceptance runs concurrently in its separate job. Its exact-candidate

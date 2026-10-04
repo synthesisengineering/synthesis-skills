@@ -465,3 +465,28 @@ def test_schema2_refuses_malformed_consumer_id(tmp_path: Path) -> None:
         )
         assert completed.returncode == 2, malformed
         assert "consume-acceptance" in completed.stdout, malformed
+
+
+def test_acceptance_uses_shared_timing_classifier_without_changing_case_plan(tmp_path, monkeypatch):
+    import acceptance_suite as owner
+    journal = "skills/synthesis-autopilot/scripts/test_journal_storage.py"
+    ordinary = "skills/synthesis-autopilot/scripts/test_future.py"
+    selectors = [ordinary + "::test_first", journal + "::test_native_history_crosses_snapshot_limit_and_recovers_exactly",
+                 journal + "::test_other", ordinary + "::test_last"]
+    contract = [{"id": str(i), "selector": s, "expected_status": "fail" if i == 2 else "pass",
+                 "control_class": "acceptance-test", "motivating_defect": "synthetic"} for i,s in enumerate(selectors)]
+    plan = owner.batch_plan(contract)
+    visited = []
+    monkeypatch.setattr(owner, "case_contract", lambda *_: contract)
+    monkeypatch.setattr(owner.checks, "source_digest", lambda *_: "unchanged")
+    def schedule(items, worker, **kwargs):
+        captured = list(items)
+        visited.extend((batch["selectors"], kwargs["exclusive_when"]((index, batch))) for index,batch in captured)
+        return [None] * len(captured)
+    monkeypatch.setattr(owner.checks, "bounded_map", schedule)
+    monkeypatch.setattr(owner, "validation_receipt", lambda _: {})
+    owner.execute({"cases": []}, tmp_path)
+    assert visited == [(p["selectors"], any(owner.checks.is_timing_sensitive_selector(s) for s in p["selectors"])) for p in plan]
+    assert [x for xs, flag in visited for x in xs] == [x for p in plan for x in p["selectors"]]
+    assert [c["expected_status"] for c in contract] == ["pass", "pass", "fail", "pass"]
+    assert any(flag for _,flag in visited) and any(not flag for _,flag in visited)

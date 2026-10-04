@@ -51,7 +51,7 @@ _diagnostic_loads = json.loads
 _diagnostic_sha256 = hashlib.sha256
 _diagnostic_open_file = open
 
-GROUPS = ("state", "native", "evaluation", "core", "native-control")
+GROUPS = ("state", "native", "evaluation", "core", "native-control", "timing")
 AP = "skills/synthesis-autopilot/scripts"
 OB = "skills/synthesis-onboarding/scripts"
 ONBOARDING_RULES = {
@@ -263,6 +263,26 @@ def decode_acceptance_receipt(output: str | bytes) -> dict:
         raise ValueError("acceptance receipt transport refused") from exc
 
 
+def is_timing_sensitive_selector(selector: str) -> bool:
+    """Identify actual wall-clock owner controls, including ancestor selectors.
+
+    These tests invoke unchanged production deadlines. Isolation prevents other
+    release fixtures from competing with them; it grants no extra time or work.
+    Exact paths prevent unrelated similarly named tests from acquiring this lane.
+    """
+    path, separator, node = selector.partition("::")
+    if path == AP + "/test_managed_native_owner.py":
+        return True
+    if path != AP + "/test_journal_storage.py":
+        return False
+    if not separator:
+        return True
+    return node.split("[", 1)[0] in (
+        "test_native_history_crosses_snapshot_limit_and_recovers_exactly",
+        "test_atomic_append_replay_projection_rebuild_and_operator",
+    )
+
+
 def group_for(nodeid: str) -> str:
     path = nodeid.split("::", 1)[0]
     if path.startswith(OB + "/"):
@@ -279,6 +299,8 @@ def group_for(nodeid: str) -> str:
         or ".." in Path(path).parts
     ):
         raise ValueError("collection escaped the autopilot directory")
+    if is_timing_sensitive_selector(nodeid):
+        return "timing"
     name = Path(path).name
     choices = [
         name.startswith(prefixes)
@@ -2093,7 +2115,7 @@ def _registered_inventory(group, report, selection=None):
         bound.__kwdefaults__ = function.__kwdefaults__
         return bound
 
-    for name in ("_progress_stamp", "group_for", "partition", "expand_selectors"):
+    for name in ("_progress_stamp", "is_timing_sensitive_selector", "group_for", "partition", "expand_selectors"):
         namespace[name] = bind(namespace[name])
     methods = {
         name: bind(value) if isinstance(value, FunctionType) else value

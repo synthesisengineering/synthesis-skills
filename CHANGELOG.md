@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.5] - 2026-10-04
 
+- Run wall-clock deadline controls exclusively in both source checks and acceptance, using one shared selector classification while ordinary checks remain parallel.
+
 - Select the journal codec before binding prepared-launch projection hashes, and verify historical transitions with faithfully encoded fixtures.
 - Recognize complete captured diffs of literal detection rules while rejecting key material, malformed captures, and unrelated credentials through the ordinary commit guard.
 

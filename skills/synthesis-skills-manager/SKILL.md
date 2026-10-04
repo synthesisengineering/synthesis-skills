@@ -5,12 +5,17 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.9.2"
+  version: "2.9.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Skills Manager
+
+**Version 2.9.3** uses one exact selector classification for wall-clock deadline
+controls in source checks and acceptance. Those controls drain earlier workers
+and run exclusively; ordinary checks remain parallel. Existing deadlines,
+coverage, cancellation and custody requirements stay enforced.
 
 **Version 2.9.1** checks complete diagnostic record capacity before acceptance
 execution. The finite record ceiling is 4,096; the 32 MiB, 10-second and

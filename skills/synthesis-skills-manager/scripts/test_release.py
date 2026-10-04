@@ -4587,7 +4587,7 @@ def test_required_checks_cover_ci_pytest_groups() -> None:
         'conformance.source', 'conformance.instructions', 'pytest.conformance',
         'pytest.coordination', 'pytest.checkpoint', 'pytest.autopilot.state',
         'pytest.autopilot.native', 'pytest.autopilot.native-control',
-        'pytest.autopilot.evaluation', 'pytest.autopilot.core', 'pytest.meeting-prep',
+        'pytest.autopilot.evaluation', 'pytest.autopilot.core', 'pytest.autopilot.timing', 'pytest.meeting-prep',
         'pytest.model-tiers', 'pytest.promotion-gate', 'pytest.context-lifecycle-integrity',
         'pytest.onboarding-runtime', 'pytest.onboarding-payload',
         'pytest.onboarding-instructions', 'pytest.onboarding-enrollment',
@@ -6843,3 +6843,34 @@ def test_diagnostic_capacity_refuses_before_actual_test_dispatch(tmp_path, monke
     assert release.consume_acceptance(repo, result, False) is None
     assert [step.name for step in result.failed] == ["checks.acceptance.diagnostics"]
     assert not destination.exists()
+
+
+def test_source_catalog_timing_owner_drains_actual_scheduler(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    active = set()
+    trace = []
+    catalog = (("ordinary-a", ["a"]), ("ordinary-b", ["b"]),
+        ("pytest.autopilot.timing", ["timing"]), ("ordinary-after", ["after"]))
+    monkeypatch.setattr(release, "REQUIRED_CHECKS", catalog)
+    monkeypatch.setattr(release, "source_digest", lambda root: "unchanged")
+    monkeypatch.setattr(release, "fixture_root", lambda prefix: tmp_path / "custody")
+    def execute(command, **kwargs):
+        item = command[0]
+        with lock:
+            assert not active if item == "timing" else "timing" not in active
+            active.add(item)
+            trace.append(("start", item, sorted(active)))
+        if item in ("a", "b"):
+            barrier.wait(timeout=5)
+        with lock:
+            active.remove(item)
+            trace.append(("end", item, sorted(active)))
+        return SimpleNamespace(returncode=0, stdout="", stderr="", fixture_custody=None)
+    monkeypatch.setattr(release, "bounded_run", execute)
+    assert release.run_source_checks(tmp_path, release.Result(), False, workers=2)
+    assert any(e[0] == "start" and len(e[2]) == 2 for e in trace)
+    assert [e[1] for e in trace if e[0] == "start"][-2:] == ["timing", "after"]
+    assert not active
