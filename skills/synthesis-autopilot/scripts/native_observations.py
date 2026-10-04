@@ -31,6 +31,7 @@ No source transcript or auxiliary database is written by this module.
 from __future__ import annotations
 
 import base64
+import binascii
 import codecs
 from copy import deepcopy
 from dataclasses import dataclass
@@ -1990,6 +1991,127 @@ def empty_projection() -> dict:
     }
 
 
+# Schema 2 is an explicitly admitted lossless retention contract, not an
+# active-window interpretation of the schema-1 count limit. Fixed-width rows
+# retain the complete event ID and normalized fingerprint. Existing journal
+# blocks provide persistence; this module adds no storage or authority owner.
+EVENT_INDEX_CODEC = "sha256-pairs-v1"
+MAX_EVENT_BLOCKS = 256
+EVENT_ROW_BYTES = 64
+
+
+def _event_blocks(value):
+    if (not isinstance(value, dict)
+            or set(value) != {"codec", "count", "blocks"}
+            or value["codec"] != EVENT_INDEX_CODEC
+            or type(value["count"]) is not int or value["count"] < 0
+            or not isinstance(value["blocks"], list)
+            or len(value["blocks"]) > MAX_EVENT_BLOCKS):
+        raise SourceError("invalid retained event index")
+    blocks, total, previous = {}, 0, ""
+    for block in value["blocks"]:
+        if (not isinstance(block, dict)
+                or set(block) != {"prefix", "count", "payload", "sha256"}
+                or not isinstance(block["prefix"], str)
+                or re.fullmatch(r"[0-9a-f]{2}", block["prefix"]) is None
+                or block["prefix"] <= previous
+                or type(block["count"]) is not int
+                or not 1 <= block["count"] <= MAX_INDEX_ENTRIES
+                or not isinstance(block["payload"], str)
+                or len(block["payload"]) != 4 * ((block["count"] * EVENT_ROW_BYTES + 2) // 3)):
+            raise SourceError("invalid retained event block bound or order")
+        try:
+            raw = base64.b64decode(block["payload"], validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise SourceError("invalid retained event block encoding") from exc
+        if (len(raw) != block["count"] * EVENT_ROW_BYTES
+                or base64.b64encode(raw).decode("ascii") != block["payload"]
+                or _sha(raw) != block["sha256"]):
+            raise SourceError("retained event block digest or length changed")
+        last = None
+        for start in range(0, len(raw), EVENT_ROW_BYTES):
+            identity = raw[start:start + 32]
+            if identity[:1].hex() != block["prefix"] or (last is not None and identity <= last):
+                raise SourceError("retained event block has duplicate or misplaced identity")
+            last = identity
+        blocks[block["prefix"]] = raw
+        total += block["count"]
+        previous = block["prefix"]
+    if total != value["count"]:
+        raise SourceError("retained event index count changed")
+    return blocks
+
+
+def _store_event_blocks(blocks):
+    rows = []
+    for prefix, raw in sorted(blocks.items()):
+        count = len(raw) // EVENT_ROW_BYTES
+        if len(raw) % EVENT_ROW_BYTES or not 1 <= count <= MAX_INDEX_ENTRIES:
+            raise SourceError("retained event block capacity reached")
+        rows.append({"prefix": prefix, "count": count,
+                     "payload": base64.b64encode(raw).decode("ascii"), "sha256": _sha(raw)})
+    if len(rows) > MAX_EVENT_BLOCKS:
+        raise SourceError("retained event block capacity reached")
+    return {"codec": EVENT_INDEX_CODEC, "count": sum(row["count"] for row in rows), "blocks": rows}
+
+
+def _event_row(identity, fingerprint):
+    if (not isinstance(identity, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", identity) is None
+            or not isinstance(fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None):
+        raise SourceError("retention requires complete event identity and fingerprint")
+    return bytes.fromhex(identity[7:] + fingerprint)
+
+
+def event_fingerprints(projection):
+    """Iterate every retained identity; never a summary or authority receipt."""
+    if len(_canonical(projection)) > MAX_PROJECTION_BYTES:
+        raise SourceError("observation projection exceeds storage bound")
+    if projection.get("schema_version") == 1:
+        yield from projection["events"].items()
+    elif projection.get("schema_version") == 2:
+        for raw in _event_blocks(projection["events"]).values():
+            for start in range(0, len(raw), EVENT_ROW_BYTES):
+                yield "sha256:" + raw[start:start + 32].hex(), raw[start + 32:start + 64].hex()
+    else:
+        raise SourceError("unsupported native projection representation")
+
+
+def retained_projection(projection):
+    """Pure exact conversion. Only the journal owner can admit its use."""
+    if projection.get("schema_version") == 2:
+        list(event_fingerprints(projection))
+        return deepcopy(projection)
+    if (projection.get("schema_version") != 1
+            or len(projection["events"]) + len(projection["gaps"]) + len(projection["diagnostics"]) > MAX_INDEX_ENTRIES):
+        raise SourceError("legacy projection requires its original retention bound")
+    blocks = {}
+    for identity, fingerprint in event_fingerprints(projection):
+        row = _event_row(identity, fingerprint)
+        blocks.setdefault(row[:1].hex(), []).append(row)
+    result = deepcopy(projection)
+    result["schema_version"] = 2
+    result["events"] = _store_event_blocks({key: b"".join(sorted(rows)) for key, rows in blocks.items()})
+    if len(_canonical(result)) > MAX_PROJECTION_BYTES:
+        raise SourceError("observation projection exceeds storage bound")
+    return result
+
+
+def _stored_fingerprint(raw, identity):
+    key = bytes.fromhex(identity[7:])
+    lo, hi = 0, len(raw) // EVENT_ROW_BYTES
+    while lo < hi:
+        mid = (lo + hi) // 2
+        offset = mid * EVENT_ROW_BYTES
+        current = raw[offset:offset + 32]
+        if current < key:
+            lo = mid + 1
+        elif current > key:
+            hi = mid
+        else:
+            return raw[offset + 32:offset + 64].hex()
+    return None
+
+
 def _ref(event):
     return {
         "event_id": event["event_id"],
@@ -2126,10 +2248,19 @@ def _usage(projection, event):
     )
 
 
-def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
+def reduce_observations(projection: dict, batch: ObservationBatch, *, event_limit=None) -> dict:
     """Pure projection for the existing journal. Never admit work or authority."""
     if len(_canonical(projection)) > MAX_PROJECTION_BYTES:
         raise SourceError("observation projection exceeds storage bound")
+    retained = projection.get("schema_version") == 2
+    blocks = _event_blocks(projection["events"]) if retained else None
+    if retained and (type(event_limit) is not int or not 1 <= event_limit <= MAX_PROJECTION_BYTES // EVENT_ROW_BYTES
+                     or projection["events"]["count"] > event_limit or len(batch["events"]) > MAX_INDEX_ENTRIES):
+        raise SourceError("retained projection requires finite owner event admission")
+    if not retained and projection.get("schema_version") != 1:
+        raise SourceError("unsupported native projection representation")
+    count = projection["events"]["count"] if retained else len(projection["events"])
+    additions = {}
     result = deepcopy(projection)
     for event in sorted(
         batch["events"],
@@ -2141,15 +2272,28 @@ def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
     ):
         ident = event["event_id"]
         fingerprint = _digest({k: v for k, v in event.items() if k != "ingested_at"})
-        if ident in result["events"]:
-            if result["events"][ident] != fingerprint:
+        if retained:
+            row = _event_row(ident, fingerprint)
+            prefix = row[:1].hex()
+            added = additions.setdefault(prefix, {})
+            previous = added.get(ident) or _stored_fingerprint(blocks.get(prefix, b""), ident)
+        else:
+            previous = result["events"].get(ident)
+        if previous is not None:
+            if previous != fingerprint:
                 raise SourceError("same source event has conflicting normalized bytes")
             continue
-        if len(result["events"]) >= MAX_INDEX_ENTRIES:
+        if count >= (event_limit if retained else MAX_INDEX_ENTRIES):
             raise SourceError(
                 "observation retention capacity reached; owner-linked bounded continuation required"
             )
-        result["events"][ident] = fingerprint
+        if retained:
+            if len(blocks.get(prefix, b"")) // EVENT_ROW_BYTES + len(added) >= MAX_INDEX_ENTRIES:
+                raise SourceError("retained event block capacity reached")
+            added[ident] = fingerprint
+        else:
+            result["events"][ident] = fingerprint
+        count += 1
         semantic = event["semantic_key"]
         if semantic:
             result["semantic"].setdefault(semantic, []).append(_ref(event))
@@ -2201,9 +2345,17 @@ def reduce_observations(projection: dict, batch: ObservationBatch) -> dict:
         p["status"] != "paired" for p in result["pairs"].values()
     )
     result["coverage"][batch["source_generation"]] = deepcopy(batch["coverage"])
+    if retained:
+        for prefix, added in additions.items():
+            if added:
+                raw = blocks.get(prefix, b"")
+                rows = [raw[start:start + EVENT_ROW_BYTES] for start in range(0, len(raw), EVENT_ROW_BYTES)]
+                rows.extend(_event_row(identity, fingerprint) for identity, fingerprint in added.items())
+                blocks[prefix] = b"".join(sorted(rows))
+        result["events"] = _store_event_blocks(blocks)
+    objects = len(blocks) if retained else len(result["events"])
     if (
-        len(result["events"]) + len(result["gaps"]) + len(result["diagnostics"])
-        > MAX_INDEX_ENTRIES
+        objects + len(result["gaps"]) + len(result["diagnostics"]) > MAX_INDEX_ENTRIES
         or len(_canonical(result)) > MAX_PROJECTION_BYTES
     ):
         raise SourceError(

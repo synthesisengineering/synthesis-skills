@@ -50,7 +50,7 @@ def _fields(value, required, optional=()):
 
 
 def _extension(state):
-    value = deepcopy(state.get("extensions", {}).get("native_observations"))
+    value = run_state._copy_state(state.get("extensions", {}).get("native_observations"))
     if value is None:
         projection = native.empty_projection()
         return {
@@ -67,13 +67,158 @@ def _extension(state):
         value.get("schema_version") != 1
         or value.get("projection_digest") != native._digest(value.get("projection"))
         or set(value.get("event_index", {}))
-        != set(value.get("projection", {}).get("events", {}))
+        != {identity for identity, _ in native.event_fingerprints(value.get("projection", {}))}
     ):
         raise ValueError("journal observation projection/cursor custody is invalid")
+    if value["projection"].get("schema_version") == 2 and not isinstance(value.get("retention"), dict):
+        raise ValueError("retained native projection lacks explicit owner admission")
     for source in value["sources"].values():
         native._validate_binding(source["binding"])
         native._validate_cursor(source["binding"], source["cursor"], native.Limits())
     return value
+
+
+def _retention_limits(value):
+    _fields(value, {"events", "steps", "work_bytes", "wall_millis"})
+    if type(value["events"]) is not int or not 1 <= value["events"] <= native.MAX_PROJECTION_BYTES // native.EVENT_ROW_BYTES:
+        raise ValueError("retention requires a finite event allowance inside the byte envelope")
+    _history_limits({"steps": value["steps"], "bytes": value["work_bytes"],
+                     "sources": 1, "wall_millis": value["wall_millis"]})
+    return deepcopy(value)
+
+
+def _retention_budget(state, context, reservation_id):
+    # The existing workflow owner admitted this actual journal reservation.
+    # A request-supplied resource declaration or packed count is not admission.
+    import workflow
+    flow = state.get("extensions", {}).get("workflow", {})
+    if flow.get("bindings") != workflow._bindings(state):
+        raise ValueError("retention requires the current admitted workflow binding")
+    workflow._admission_open(flow, context)
+    ledger = flow.get("budget", {})
+    row = ledger.get("reservations", {}).get(reservation_id)
+    if (not row or row.get("id") != reservation_id or row.get("status") != "reserved"
+            or row.get("category") not in {"work", "recovery"}
+            or not any(row.get("amounts", {}).values())):
+        raise ValueError("retention requires a fresh existing reserved work envelope")
+    parents, seen, current = [], set(), row
+    while current.get("parent_id") is not None:
+        parent_id = current["parent_id"]
+        if parent_id in seen:
+            raise ValueError("retention reservation ancestry is invalid")
+        seen.add(parent_id)
+        current = ledger["reservations"].get(parent_id)
+        if current is None or current.get("status") != "reserved":
+            raise ValueError("retention reservation parent is unavailable")
+        parents.append(current)
+    return ledger, row, native._digest([row, parents])
+
+
+def _retention_cost(projection, batch=None):
+    count = (projection["events"]["count"] if projection.get("schema_version") == 2
+             else len(projection["events"]))
+    incoming = len(batch["events"]) if batch is not None else 0
+    # Charge complete decoded identities as well as persisted encoded bytes.
+    # This conservative representation-work charge is not native I/O billing;
+    # source/journal reads keep their separate existing controller allowance.
+    return {"steps": 1, "decoded_entries": count + incoming,
+            "work_bytes": 8 * (len(native._canonical(projection))
+                                + (len(native._canonical(batch)) if batch is not None else 0))
+                          + 128 * (count + incoming)}
+
+
+def _retention_guard(state, context, extension, *, cost=None, final=False):
+    if extension["projection"].get("schema_version") != 2:
+        return None
+    retention = extension["retention"]
+    _fields(retention, {"schema_version", "current", "history"})
+    if retention["schema_version"] != 1 or not isinstance(retention["history"], list) or len(retention["history"]) >= MAX_GENERATIONS:
+        raise ValueError("invalid retained native allowance history")
+    record = retention["current"]
+    limits = _retention_limits(record["limits"])
+    ledger, row, digest = _retention_budget(state, context, record["reservation_id"])
+    expected = {key: state[key] for key in ("run_id", "contract_digest", "profile_digest")}
+    if (record["bindings"] != expected or record["reservation_digest"] != digest
+            or record["native_ref"] != context["binding"]["native_ref"]
+            or record["session_uuid"] != context["binding"]["session_uuid"]
+            or run_state._time(context["now"]) >= run_state._time(record["deadline"])
+            or run_state._time(record["deadline"]) > run_state._time(ledger["deadline"])):
+        raise ValueError("retained native allowance owner, resource or deadline changed")
+    charge = cost if cost is not None else ({} if final else _retention_cost(extension["projection"]))
+    if (extension["projection"]["events"]["count"] > limits["events"]
+            or record["steps"] + charge.get("steps", 0) > limits["steps"]
+            or record["work_bytes"] + charge.get("work_bytes", 0) > limits["work_bytes"]
+            or 128 * (record["decoded_entries"] + charge.get("decoded_entries", 0)) > limits["work_bytes"]):
+        raise ValueError("retained native finite work allowance exhausted")
+    return record
+
+
+def _prepare_retention(context, payload):
+    from datetime import timedelta
+    _fields(payload, {"prior_extension_digest", "reservation_id", "limits"})
+    extension = _extension(context["state"])
+    if native._digest(extension) != payload["prior_extension_digest"]:
+        raise ValueError("retention reconciliation requires the exact prior extension digest")
+    if "root" not in extension["sources"]:
+        raise ValueError("retention cannot invent native enrollment")
+    _admitted_source(context, "root", extension["sources"]["root"])
+    proof = read_admission_observation(context)
+    limits = _retention_limits(payload["limits"])
+    ledger, row, digest = _retention_budget(context["state"], context, payload["reservation_id"])
+    prior = extension.get("retention")
+    history = [] if prior is None else [*deepcopy(prior["history"]), deepcopy(prior["current"])]
+    if len(history) >= MAX_GENERATIONS or any(item["reservation_id"] == payload["reservation_id"] for item in history):
+        raise ValueError("retention cannot reuse or refill a consumed allowance")
+    cost = _retention_cost(extension["projection"])
+    current_count = len(extension["event_index"])
+    if (current_count > limits["events"] or cost["work_bytes"] > limits["work_bytes"]
+            or 128 * cost["decoded_entries"] > limits["work_bytes"]):
+        raise ValueError("retention migration exceeds its fresh finite allowance")
+    deadline = min(run_state._time(context["now"]) + timedelta(milliseconds=limits["wall_millis"]),
+                   run_state._time(ledger["deadline"]))
+    record = {"reservation_id": payload["reservation_id"], "reservation_digest": digest,
+              "reservation": deepcopy(row), "limits": limits, **cost,
+              "bindings": {key: context["state"][key] for key in ("run_id", "contract_digest", "profile_digest")},
+              "native_ref": proof["native_ref"], "session_uuid": proof["session_uuid"],
+              "prior_extension_digest": payload["prior_extension_digest"],
+              "prior_projection_digest": extension["projection_digest"],
+              "prior_representation": extension["projection"]["schema_version"],
+              "started_at": context["now"], "deadline": deadline.isoformat(),
+              "owner_revision": context["state"]["revision"] + 1,
+              "source_io_charge": "separate existing controller allowance", "authority_granted": False}
+    extension["projection"] = native.retained_projection(extension["projection"])
+    extension["projection_digest"] = native._digest(extension["projection"])
+    extension["retention"] = {"schema_version": 1, "current": record, "history": history}
+    return {"prior_extension_digest": payload["prior_extension_digest"], "extension": extension}
+
+
+def _reduce_retention(state, prepared, context):
+    if native._digest(_extension(state)) != prepared["prior_extension_digest"]:
+        raise ValueError("retention reconciliation prior state changed")
+    result = run_state._copy_state(state)
+    result["extensions"]["native_observations"] = deepcopy(prepared["extension"])
+    _retention_guard(result, context, prepared["extension"], final=True)
+    return result
+
+
+def _retention_reduce(state, context, extension, batch):
+    if extension["projection"].get("schema_version") == 1:
+        return native.reduce_observations(extension["projection"], batch)
+    cost = _retention_cost(extension["projection"], batch)
+    record = _retention_guard(state, context, extension, cost=cost)
+    limit = None if record is None else record["limits"]["events"]
+    projection = native.reduce_observations(extension["projection"], batch, event_limit=limit)
+    if record is not None:
+        for name in ("steps", "decoded_entries", "work_bytes"):
+            record[name] += cost[name]
+    return projection
+
+
+def _retention_constraint(state, command, payload, context):
+    if command in {"native.retention", "native.observe", "native.page"}:
+        extension = _extension(state)
+        current = {**context, "now": run_state._now()}
+        _retention_guard(state, current, extension, final=True)
 
 
 def _root(context):
@@ -1075,13 +1220,11 @@ def _promote_replay_source(source, revision):
 
 
 def _reduce_replay_page(state, prepared, context):
-    result = deepcopy(state)
+    result = run_state._copy_state(state)
     extension = _extension(state)
     source, batch = deepcopy(prepared["source"]), deepcopy(prepared["batch"])
     if batch is not None:
-        extension["projection"] = native.reduce_observations(
-            extension["projection"], batch
-        )
+        extension["projection"] = _retention_reduce(state, context, extension, batch)
         extension["projection_digest"] = native._digest(extension["projection"])
         digest = native._digest(batch)
         for i, event in enumerate(batch["events"]):
@@ -1129,6 +1272,7 @@ def _replayed_event(event, binding):
 def _prepare_observe(context, payload):
     _fields(payload, {"source_handle", "through_event", "task_id", "attempt_id"})
     extension = _extension(context["state"])
+    _retention_guard(context["state"], context, extension)
     handle = payload["source_handle"]
     source = extension["sources"].get(handle)
     if source is None:
@@ -1198,7 +1342,7 @@ def _prepare_observe(context, payload):
 def _reduce_observe(state, prepared, context):
     if prepared.get("replay_step"):
         return _reduce_replay_page(state, prepared, context)
-    result = deepcopy(state)
+    result = run_state._copy_state(state)
     extension = _extension(state)
     source, batch = deepcopy(prepared["source"]), deepcopy(prepared["batch"])
     source.update(
@@ -1214,7 +1358,7 @@ def _reduce_observe(state, prepared, context):
                 "source witness capacity reached; owner compaction required"
             )
     extension["sources"][prepared["handle"]] = source
-    extension["projection"] = native.reduce_observations(extension["projection"], batch)
+    extension["projection"] = _retention_reduce(state, context, extension, batch)
     extension["projection_digest"] = native._digest(extension["projection"])
     digest = native._digest(batch)
     for index, event in enumerate(batch["events"]):
@@ -2252,6 +2396,33 @@ def _history_source_fence(record):
         raise ValueError("historical source changed during its bounded snapshot")
 
 
+def _historical_projection(extension):
+    """Use only the subject's explicit representation; confer no old authority."""
+    projection = native.empty_projection()
+    if extension["projection"].get("schema_version") == 1:
+        return {"derived_projection": projection}
+    # The terminal subject's grant is historical evidence, never a current
+    # reservation. Current native.history charges all reconstruction work below.
+    limits = _retention_limits(extension["retention"]["current"]["limits"])
+    return {"derived_projection": native.retained_projection(projection),
+            "derived_event_limit": limits["events"],
+            "retention_work": {"steps": 0, "work_bytes": 0, "decoded_entries": 0}}
+
+
+def _historical_reduce(record, batch):
+    projection = record["derived_projection"]
+    if projection.get("schema_version") == 1:
+        return native.reduce_observations(projection, batch)
+    cost = _retention_cost(projection, batch)
+    if record["validation_bytes_charged"] + cost["work_bytes"] > record["limits"]["bytes"]:
+        raise ValueError("historical retained projection finite work exhausted")
+    result = native.reduce_observations(projection, batch, event_limit=record["derived_event_limit"])
+    record["validation_bytes_charged"] += cost["work_bytes"]
+    for key in ("steps", "work_bytes", "decoded_entries"):
+        record["retention_work"][key] += cost[key]
+    return result
+
+
 def _prepare_history(context, payload):
     from datetime import timedelta
     import time
@@ -2305,7 +2476,7 @@ def _prepare_history(context, payload):
             "prior_invalidation_digest": native._digest(_extension(old)["invalidation_index"]),
             "journal_page_bytes": journal_page_bytes,
             "journal_witnesses": {key: list(value) for key, value in witnesses.items()}, "source": prepared["source"],
-            "derived_projection": native.empty_projection(), "derived_invalidation_ids": [],
+            **_historical_projection(_extension(old)), "derived_invalidation_ids": [],
             "status": "pending", "stage": "original", "steps": 0,
             "validation_bytes_charged": 0, "started_at": context["now"],
             "deadline": deadline.isoformat(), "authority_granted": False,
@@ -2323,7 +2494,7 @@ def _prepare_history(context, payload):
         prepared = _prepare_replay_page(shadow, "root", source)
         source, batch = prepared["source"], prepared["batch"]
         if batch is not None:
-            record["derived_projection"] = native.reduce_observations(record["derived_projection"], batch)
+            record["derived_projection"] = _historical_reduce(record, batch)
             for event in batch["events"]:
                 if _invalidates(event) and event["event_id"] not in record["derived_invalidation_ids"]:
                     record["derived_invalidation_ids"].append(event["event_id"])
@@ -2370,6 +2541,9 @@ def _history_constraint(state, command, payload, context):
 
 
 def register(engine):
+    engine.register_command("native.retention", _reduce_retention)
+    engine.register_preparer("native.retention", _prepare_retention)
+    engine.register_constraint("native-retained-work", _retention_constraint)
     engine.register_command("native.history", _reduce_history)
     engine.register_preparer("native.history", _prepare_history)
     engine.register_constraint("native-historical-custody", _history_constraint)

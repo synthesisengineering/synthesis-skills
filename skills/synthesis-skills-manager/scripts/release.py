@@ -219,6 +219,15 @@ REQUIRED_CHECKS: tuple[tuple[str, list[str]], ...] = (
         ],
     ),
     (
+        "pytest.autopilot.timing",
+        [
+            "python3",
+            "skills/synthesis-skills-manager/scripts/release_check_groups.py",
+            "--group",
+            "timing",
+        ],
+    ),
+    (
         "pytest.autopilot.native",
         [
             "python3",
@@ -4700,6 +4709,7 @@ def run_source_checks(repo: Path, result: Result, dry_run: bool, *, workers=2) -
         completed = bounded_map(
             REQUIRED_CHECKS, execute, workers=workers,
             stop_when=lambda value: value.returncode != 0 or value.source_failure is not None, on_result=report,
+            exclusive_when=lambda item: item[0] == "pytest.autopilot.timing",
         )
         for index, value in enumerate(completed):
             if value is None:

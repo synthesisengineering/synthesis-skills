@@ -85,7 +85,9 @@ ACCEPTED_MOMENTS = (
 
 
 def now_local() -> datetime:
-    return datetime.now().astimezone().replace(microsecond=0)
+    # Acquisition observations retain fractions; compare them to the full clock.
+    # Watermark selectors and stored/displayed timestamps normalize separately.
+    return datetime.now().astimezone()
 
 
 def _localize(moment: datetime, reference: datetime) -> datetime:
@@ -112,7 +114,7 @@ def parse_moment(text: str, now: datetime) -> datetime:
     naive `now` is local time and yields naive moments), whole seconds."""
     raw = str(text).strip()
     if raw.lower() == "now":
-        return now
+        return now.replace(microsecond=0)
     day = _bare_date(raw)
     if day is not None:
         end = datetime.combine(day + timedelta(days=1), datetime.min.time())

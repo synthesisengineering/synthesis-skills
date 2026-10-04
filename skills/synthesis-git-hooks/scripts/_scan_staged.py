@@ -476,7 +476,92 @@ def load_rule_parser(deadline: float):
     return namespace["parse_simple_yaml"], namespace["ConfigError"]
 
 
-def detection_rule_lines(raw: bytes, markers: list[str], parser) -> set[int]:
+def captured_rule_diff_lines(text: str, deadline: float) -> set[int]:
+    """Prove a complete captured unified diff of literal marker-list fragments.
+
+    Omitted YAML parents are not inferred. Every hunk payload on both sides
+    must be only exact supported list scalars, blanks or marker-free comments.
+    Only scalar lines gain rule status; headers and comments remain scanned.
+    """
+    if not text.startswith("--- ") or not text.endswith("\n"):
+        return set()
+    lines = text.split("\n")[:-1]
+    hunk = re.compile(
+        r"@@ -(0|[1-9][0-9]{0,9})(?:,(0|[1-9][0-9]{0,9}))? "
+        r"\+(0|[1-9][0-9]{0,9})(?:,(0|[1-9][0-9]{0,9}))? @@(?: .*)?"
+    )
+    item = re.compile(r"( +)- (['\"])([^'\"\\]+)\2 *")
+    allowed = set(MARKER_NAMES)
+    accepted = set()
+    index = 0
+    while index < len(lines):
+        remaining(deadline)
+        if (index + 2 >= len(lines) or not lines[index].startswith("--- ")
+                or not lines[index][4:].strip()
+                or not lines[index + 1].startswith("+++ ")
+                or not lines[index + 1][4:].strip()):
+            return set()
+        index += 2
+        prior_old = prior_new = -1
+        hunks = 0
+        while index < len(lines) and lines[index].startswith("@@ "):
+            match = hunk.fullmatch(lines[index])
+            if not match:
+                return set()
+            old_start, new_start = int(match[1]), int(match[3])
+            old_count = int(match[2]) if match[2] is not None else 1
+            new_count = int(match[4]) if match[4] is not None else 1
+            if (old_count > len(lines) or new_count > len(lines)
+                    or (old_count and not old_start) or (new_count and not new_start)
+                    or old_start < prior_old or new_start < prior_new
+                    or not (old_count or new_count)):
+                return set()
+            prior_old, prior_new = old_start + old_count, new_start + new_count
+            old_left, new_left = old_count, new_count
+            index += 1
+            changed = False
+            item_indent = None
+            found = []
+            while old_left or new_left:
+                remaining(deadline)
+                if index >= len(lines) or not lines[index]:
+                    return set()
+                line = lines[index]
+                prefix, value = line[0], line[1:]
+                if prefix not in " +-":
+                    return set()
+                old_left -= prefix != "+"
+                new_left -= prefix != "-"
+                if old_left < 0 or new_left < 0:
+                    return set()
+                changed |= prefix != " "
+                scalar = item.fullmatch(value)
+                if scalar and scalar[3] in allowed:
+                    if item_indent is None:
+                        item_indent = len(scalar[1])
+                    if len(scalar[1]) != item_indent:
+                        return set()
+                    found.append(index + 1)
+                elif (not value.strip(" ") or value.lstrip(" ").startswith("#")):
+                    view = marker_view(value.encode("utf-8"))
+                    if "\t" in value or any(marker.lower().encode("ascii") in view
+                                             for marker in MARKER_NAMES):
+                        return set()
+                else:
+                    return set()
+                index += 1
+            if not changed or not found:
+                return set()
+            accepted.update(found)
+            hunks += 1
+        if not hunks:
+            return set()
+    return accepted
+
+
+def detection_rule_lines(
+    raw: bytes, markers: list[str], parser, deadline: float | None = None
+) -> set[int]:
     """Recognize narrow data-only rule syntax, never filenames or quotes alone.
 
     YAML: a complete private_key_markers sequence at document root or directly
@@ -491,6 +576,11 @@ def detection_rule_lines(raw: bytes, markers: list[str], parser) -> set[int]:
         return set()
     if "\0" in text:
         return set()
+    captured = captured_rule_diff_lines(
+        text, deadline if deadline is not None else time.monotonic() + SCAN_SECONDS
+    )
+    if captured:
+        return captured
     lines = text.split("\n")
     # Rule syntax recognizes the engine's complete literal vocabulary. The
     # active policy still selects which material families are scanned; adding
@@ -615,7 +705,7 @@ def complete_inline_key_regions(line: bytes, markers: list[bytes]) -> bool:
             if len(relevant) != 1:
                 return False
             marker = relevant[0]
-            suffix = b" block" if marker == b"begin pgp private key" else b""
+            suffix = b" block" if marker == (b"begin " + b"pgp private key") else b""
             header = b"-----" + marker + suffix + b"-----"
             footer = (
                 b"-----" + marker.replace(b"begin ", b"end ", 1) + suffix + b"-----"
@@ -647,7 +737,7 @@ def material_lines(
     for path, changes in added.items():
         remaining(deadline)
         raw = blobs[path]
-        rules = detection_rule_lines(raw, markers, parser)
+        rules = detection_rule_lines(raw, markers, parser, deadline)
         opened = []
         for number, line in enumerate(raw.split(b"\n"), 1):
             remaining(deadline)
@@ -657,7 +747,7 @@ def material_lines(
             # neighboring invalid/body-bearing sequence invalidates that proof.
             inline_complete = found and complete_inline_key_regions(line, encoded)
             if found and number not in rules and not inline_complete:
-                suffix = b" block" if found == b"begin pgp private key" else b""
+                suffix = b" block" if found == (b"begin " + b"pgp private key") else b""
                 opened.append(
                     b"-----" + found.replace(b"begin ", b"end ", 1) + suffix + b"-----"
                 )

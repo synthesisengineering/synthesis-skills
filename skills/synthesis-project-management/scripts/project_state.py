@@ -794,6 +794,8 @@ def _dirty_leaf_snapshot(
     _tree_budget: dict | None = None,
     _tree_depth: int = 0,
     _require_directory: bool = False,
+    _recursive: bool = True,
+    _expected: tuple | None = None,
 ) -> dict[str, str]:
     """Hash ordinary bytes or describe a leaf; never dereference evidence links.
 
@@ -852,11 +854,13 @@ def _dirty_leaf_snapshot(
             before = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
         except FileNotFoundError:
             return missing(path.name)
+        if _expected is not None and signature(before) != _expected:
+            raise ProjectStateError("working digest entry changed before capture")
         if _require_directory and not stat.S_ISDIR(before.st_mode):
             raise ProjectStateError("dirty Git directory record changed type")
         if control and not stat.S_ISREG(before.st_mode):
             raise ProjectStateError(f"project control file is not regular: {path}")
-        if path.name == STATE_FILE and before.st_size > MAX_STATE_JSON_BYTES:
+        if control and path.name == STATE_FILE and before.st_size > MAX_STATE_JSON_BYTES:
             raise ProjectStateError(
                 f"state JSON exceeds {MAX_STATE_JSON_BYTES}-byte limit"
             )
@@ -894,6 +898,15 @@ def _dirty_leaf_snapshot(
                 "kind": "symlink",
                 "target": target,
                 "sha256": _sha_bytes(b"symlink\0" + os.fsencode(target)),
+            }
+        elif stat.S_ISDIR(before.st_mode) and not _recursive:
+            # The working digest already enumerates every descendant once.
+            # Retain this directory's own identity without rehashing its subtree.
+            row = {
+                "kind": "directory",
+                "sha256": _sha_bytes(
+                    f"directory-entry-v1\0{stat.S_IMODE(before.st_mode):04o}".encode()
+                ),
             }
         elif stat.S_ISDIR(before.st_mode):
             budget = _tree_budget if _tree_budget is not None else {}
@@ -2285,21 +2298,64 @@ def _compiled_context(project: Path, state: dict[str, Any]) -> str:
 
 
 def _working_digest(project: Path) -> str:
-    entries: list[tuple[str, str]] = []
+    """Digest retained entry identities without following evidence symlinks.
+
+    Only the direct operational state is a typed control file. Nested fixtures
+    with the same basename retain their ordinary bytes, including invalid JSON.
+    Directory rows retain empty directories and modes; descendants are enumerated
+    once by the existing walker. Git metadata retains its established exclusion.
+    """
+    entries = []
     project_parts = project.parts
     project_anchor = project.anchor
     prefix_size = len(project_parts)
-    for path in sorted(item for item in _project_paths(project) if item.is_file()):
+    physical_root = project.resolve(strict=True)
+    root_info = physical_root.stat()
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise ProjectStateError("working digest root is not a directory")
+    # Observe directory identities before descent and every entry before reading
+    # any bodies. Directory mtime/ctime fence the enumerated name sets; the final
+    # pass also detects an earlier leaf changed while a later leaf was read.
+    observed = {physical_root: _dirty_entry_identity(physical_root)}
+    selected = []
+    for path in _project_paths(project):
         parts = path.parts
         if ".git" in parts:
             continue
-        # Traversal supplies lexical descendants. Slice their validated prefix
-        # instead of walking every ancestor for every file's relative name.
         if path.anchor != project_anchor or parts[:prefix_size] != project_parts:
-            raise ValueError(f"digest path is outside project: {path}")
-        relative = str(Path(*parts[prefix_size:]))
-        entries.append((relative, _sha_file(path)))
-    return _sha_bytes(json.dumps(entries, separators=(",", ":")).encode())
+            raise ValueError("digest path is outside project")
+        relative = Path(*parts[prefix_size:])
+        if not relative.parts or ".." in relative.parts:
+            raise ValueError("digest path is outside project")
+        physical = physical_root / relative
+        observed[physical] = _dirty_entry_identity(physical)
+        selected.append((path, relative, physical))
+    for _, relative, physical in sorted(selected):
+        row = _dirty_leaf_snapshot(
+            physical,
+            control=relative.parts == (STATE_FILE,),
+            _recursive=False,
+            _expected=observed[physical],
+        )
+        if row["kind"] == "deleted":
+            raise ProjectStateError("working digest entry disappeared during capture")
+        entries.append((str(relative), row))
+    # Close descendants before parents so a late child check cannot hide a
+    # changed directory name set behind an already-checked ancestor.
+    for path, expected in reversed(tuple(observed.items())):
+        if _dirty_entry_identity(path) != expected:
+            raise ProjectStateError("working digest entry changed after capture")
+    current_root = project.resolve(strict=True)
+    current_info = current_root.stat()
+    if current_root != physical_root or (
+        current_info.st_dev, current_info.st_ino, current_info.st_mode,
+        current_info.st_nlink, current_info.st_size,
+        current_info.st_mtime_ns, current_info.st_ctime_ns,
+    ) != observed[physical_root]:
+        raise ProjectStateError("working digest root changed during capture")
+    return _sha_bytes(
+        json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
+    )
 
 
 def _active_claim(

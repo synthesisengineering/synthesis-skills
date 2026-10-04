@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.5] - 2026-10-04
+
+- Reduce journal decoding allocations with parse-local key-shape checks while retaining canonical syntax, duplicate-member rejection, finite work limits and independent mutable results.
+- Correct the explicit-group fixture inventory expectation to include its additional test while keeping selected-group execution unchanged.
+- Run wall-clock deadline controls exclusively in both source checks and acceptance, using one shared selector classification while ordinary checks remain parallel.
+
+- Select the journal codec before binding prepared-launch projection hashes, and verify historical transitions with faithfully encoded fixtures.
+- Recognize complete captured diffs of literal detection rules while rejecting key material, malformed captures, and unrelated credentials through the ordinary commit guard.
+
+## [4.154.4] - 2026-10-04
+
+- Keep hashless local handoff read-only after a seat is released while requiring exact native admission for attribution retirement.
+- Retain complete native event identities in bounded lossless blocks through explicit owner reconciliation, preserving original enrollment, resource consumption and unresolved history.
+- Validate compressed journal canonical syntax while parsing, avoiding a second serialization without changing canonical bytes or physical custody checks.
+- Retire exact own published attribution during automatic Stop, with native ownership checks, bounded whole-owner work and retained unresolved entries.
+- Preserve subsecond precision when validating newly acquired evidence and continue to reject future timestamps.
+- Reduce bounded journal verification cost by scanning canonical strings and brackets without repeated per-token regular-expression objects.
+- Reuse authenticated journal reads within an operation, with fresh ownership checks and bounded immutable decoding.
+- Store native usage and snapshot provenance in bounded lossless representations, preserving historical observations and durable digests.
+- Reduce repeated state copies while retaining aliases, cycles, insertion order and independent mutable results.
+- Bind retained project fixtures by their file, directory, link or special-file identity without following symlink targets; keep live structured-state validation strict.
+
 ## [4.154.3] - 2026-10-03
 
 - Partition the complete onboarding source catalog into six bounded groups and keep ritual instructions within their document limit without dropping guidance.

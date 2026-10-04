@@ -25,6 +25,25 @@ not establish a rule. A Python data-only module may contain raw-string
 calls, concatenated material and arbitrary quotes are insufficient. Unknown
 syntax keeps the conservative marker refusal; it does not become an exemption.
 
+A complete captured traditional unified diff may also carry a literal marker-list
+fragment. The entire capture must consist of `---` / `+++` header pairs followed
+by complete, ordered hunks whose declared old and new line counts match. Each
+hunk must change at least one line and contain a supported marker scalar. Every
+payload line on both sides must be an exact quoted supported marker-list scalar
+at one consistent indentation, a blank line, or a marker-free comment. Only the
+scalar lines receive rule classification; paths, headers and comments never do.
+This recognizes the captured fragment itself without inventing its omitted YAML
+parent. It does not reconstruct or apply the patch.
+
+Missing headers, truncated or overlapping hunks, nested captures, extra prose,
+unsupported payloads, inconsistent indentation, missing final newline, and
+no-newline annotations do not establish this proof. Git extended-header patches
+are not this traditional-diff syntax. Unknown syntax retains ordinary sensitive
+marker refusal. A `.diff` filename, quoting, or a policy-looking path grants no
+exemption. Key headers or bodies on either side invalidate the fragment, including
+material added below a previously admitted captured rule. Existing scanner
+byte, file and deadline bounds apply; no additional configuration is introduced.
+
 Other credential expressions scan all added bytes before rule classification.
 The rest of the file and diff remain in the scan, so a valid rule cannot hide a
 second credential, key block, or custom-policy finding. Tier-1 and mandatory-team

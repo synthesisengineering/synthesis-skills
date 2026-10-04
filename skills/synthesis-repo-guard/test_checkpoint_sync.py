@@ -2058,3 +2058,542 @@ def test_lifecycle_rejects_invalid_finite_bound(tmp_path, bound):
     with pytest.raises(ValueError, match="finite positive"):
         with MODULE.lifecycle_lock(timeout=bound):
             pass
+
+
+# Automatic retirement is separately admitted; ordinary local receipts are read-only.
+@pytest.fixture
+def automatic_world(tmp_path, monkeypatch):
+    scripts = MODULE_PATH.parents[1] / "synthesis-project-management" / "scripts"
+    sys.path.insert(0, str(scripts))
+    import test_run_admission as admission_fixture
+    original_popen = subprocess.Popen
+    def recorded(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        with (tmp_path / "automatic-processes.jsonl").open("a") as stream:
+            stream.write(json.dumps({"pid": process.pid, "pgid": os.getpgid(process.pid),
+                                     "argv": args[0] if args else kwargs.get("args")}) + "\n")
+        return process
+    monkeypatch.setattr(subprocess, "Popen", recorded)
+    world = admission_fixture.world.__wrapped__(tmp_path, monkeypatch)
+    repo = world["repo"]
+    remote = tmp_path / "remote.git"
+    command("git", "init", "--bare", "-q", "-b", "main", str(remote))
+    command("git", "remote", "add", "origin", str(remote), cwd=repo)
+    command("git", "push", "-qu", "origin", "main", cwd=repo)
+    world["board"].with_name(".active-sessions.lock").touch()
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(world["board"]))
+    native = world["actor"]["native_payload"]["session_id"]
+    own = world["project"] / "CONTEXT.md"
+    pending = world["project"] / "unresolved.md"
+    pending.write_text("synthetic unpublished obligation\n")
+    data = {"schema_version": 2, "session_id": native, "paths": [str(own), str(pending)],
+            "remote_paths": [str(own), str(pending)],
+            "content_hashes": {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in (own, pending)},
+            "path_kinds": {str(own): "file", str(pending): "file"}}
+    manifest = MODULE.pending_manifest_path(native)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(data))
+    foreign = MODULE.pending_manifest_path("foreign-synthetic")
+    foreign.write_text(json.dumps({**data, "session_id": "foreign-synthetic"}))
+    world.update(own=own, pending=pending, manifest=manifest, foreign=foreign,
+                 cfg={**MODULE.DEFAULTS, "repos": [str(repo)], "allowed_remote_prefixes": [str(tmp_path)]},
+                 payload=world["actor"]["native_payload"])
+    return world
+
+
+def _automatic_call(world):
+    return MODULE.local_handoff_checkpoint(world["payload"], world["cfg"])
+
+
+def test_automatic_stop_retires_typed_own_landed_preserves_foreign_and_unresolved(automatic_world, monkeypatch):
+    w = automatic_world
+    foreign = w["foreign"].read_bytes()
+    head = command("git", "rev-parse", "HEAD", cwd=w["repo"])
+    original = MODULE.git
+    calls = []
+    def read_only(repo, *args, **kwargs):
+        assert not set(args) & {"commit", "push", "fetch", "add", "reset"}
+        calls.append(args)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "git", read_only)
+    monkeypatch.setattr(MODULE, "flush_pending_session", lambda *a, **k: pytest.fail("automatic full flush"))
+    result, _ = _automatic_call(w)
+    kept = json.loads(w["manifest"].read_text())
+    assert kept["paths"] == kept["remote_paths"] == [str(w["pending"])]
+    assert set(kept["content_hashes"]) == set(kept["path_kinds"]) == {str(w["pending"])}
+    assert w["foreign"].read_bytes() == foreign
+    assert command("git", "rev-parse", "HEAD", cwd=w["repo"]) == head
+    assert any(r["action"] == "retired-own-landed" for r in result)
+    first = w["manifest"].read_bytes()
+    _automatic_call(w)
+    assert w["manifest"].read_bytes() == first
+    receipt = json.loads((MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).read_text())
+    assert receipt["pending_manifest_sha256"] == hashlib.sha256(first).hexdigest()
+    assert calls
+
+
+@pytest.mark.parametrize("mutation", ["hashless", "foreign-hash", "typed-conflict", "unpublished", "missing", "ancestor-link", "remote-missing"])
+def test_automatic_stop_retains_unproved_entries(automatic_world, mutation):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    key = str(w["own"])
+    if mutation == "hashless":
+        data.pop("content_hashes"); data.pop("path_kinds")
+    elif mutation == "foreign-hash":
+        data["content_hashes"][key] = "0" * 64
+    elif mutation == "typed-conflict":
+        data["path_hashes"] = {key: "1" * 64}
+    elif mutation == "unpublished":
+        w["own"].write_text("new own unpublished\n")
+        command("git", "add", str(w["own"]), cwd=w["repo"])
+        command("git", "commit", "-qm", "Synthetic unpublished", cwd=w["repo"])
+        data["content_hashes"][key] = hashlib.sha256(w["own"].read_bytes()).hexdigest()
+    elif mutation == "missing":
+        w["own"].unlink()
+    elif mutation == "ancestor-link":
+        alias = w["repo"] / "alias"
+        alias.symlink_to(w["project"], target_is_directory=True)
+        replacement = str(alias / w["own"].name)
+        data["paths"][0] = data["remote_paths"][0] = replacement
+        data["content_hashes"][replacement] = data["content_hashes"].pop(key)
+        data["path_kinds"][replacement] = data["path_kinds"].pop(key)
+    elif mutation == "remote-missing":
+        command("git", "remote", "add", "unproved", str(w["repo"].parent / "remote.git"), cwd=w["repo"])
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes()
+    _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+
+
+@pytest.mark.parametrize("kind", ["deleted", "symlink"])
+def test_automatic_stop_retires_typed_deletion_and_link(automatic_world, kind):
+    w = automatic_world
+    p = w["project"] / "typed.md"
+    p.write_text("old\n")
+    command("git", "add", str(p), cwd=w["repo"])
+    command("git", "commit", "-qm", "Synthetic typed seed", cwd=w["repo"])
+    p.unlink()
+    if kind == "symlink":
+        p.symlink_to("CONTEXT.md")
+    command("git", "add", str(p), cwd=w["repo"])
+    command("git", "commit", "-qm", "Synthetic typed change", cwd=w["repo"])
+    command("git", "push", "-q", "origin", "main", cwd=w["repo"])
+    digest = "deleted" if kind == "deleted" else hashlib.sha256(b"symlink\0CONTEXT.md").hexdigest()
+    data = {"schema_version": 2, "session_id": w["payload"]["session_id"], "paths": [str(p)],
+            "remote_paths": [str(p)], "path_hashes": {str(p): digest}, "path_kinds": {str(p): kind}}
+    w["manifest"].write_text(json.dumps(data))
+    _automatic_call(w)
+    assert json.loads(w["manifest"].read_text())["paths"] == []
+    receipt_path = MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name
+    assert json.loads(receipt_path.read_text())["pending_manifest_sha256"] == hashlib.sha256(w["manifest"].read_bytes()).hexdigest()
+    # Receipt-write interruption has a supported recovery even after the last entry retires.
+    receipt_path.write_text("{incomplete")
+    _automatic_call(w)
+    assert json.loads(receipt_path.read_text())["readiness"] == "LOCAL_READY"
+
+
+@pytest.mark.parametrize("mutation", ["native", "transcript", "seat", "board", "manifest", "proof"])
+def test_automatic_stop_refuses_authority_and_cas_changes(automatic_world, monkeypatch, mutation):
+    w = automatic_world
+    before = w["manifest"].read_bytes()
+    if mutation == "native":
+        w["payload"]["session_id"] = "01990000-0000-7000-8000-000000000099"
+        # A forged event naming a victim's manifest is rejected by exact admission.
+        with MODULE.lifecycle_lock(), pytest.raises((ValueError, RuntimeError)):
+            MODULE._retire_automatic_landed(w["payload"], w["cfg"], w["manifest"])
+    elif mutation == "transcript":
+        w["transcript"].write_text('{"sessionId":"foreign","type":"user"}\n')
+        with pytest.raises((ValueError, RuntimeError)):
+            _automatic_call(w)
+    elif mutation == "seat":
+        monkeypatch.setenv("SYNTHESIS_COORDINATION_SESSION", "foreign")
+        with pytest.raises((ValueError, RuntimeError)):
+            _automatic_call(w)
+    else:
+        original = MODULE._automatic_landed_snapshot
+        calls = []
+        def racing(data, cfg, deadline):
+            result = original(data, cfg, deadline)
+            calls.append(1)
+            if len(calls) == 2:
+                if mutation == "board":
+                    w["board"].write_text(w["board"].read_text() + "\nConcurrent board append\n")
+                elif mutation == "manifest":
+                    d = json.loads(w["manifest"].read_text())
+                    d["paths"].append(str(w["project"] / "concurrent.md"))
+                    w["manifest"].write_text(json.dumps(d))
+                else:
+                    result["repositories"] = {}
+            return result
+        monkeypatch.setattr(MODULE, "_automatic_landed_snapshot", racing)
+        with pytest.raises((ValueError, RuntimeError)):
+            _automatic_call(w)
+    if mutation == "manifest":
+        assert str(w["own"]) in json.loads(w["manifest"].read_text())["paths"]
+        assert str(w["project"] / "concurrent.md") in json.loads(w["manifest"].read_text())["paths"]
+    else:
+        assert w["manifest"].read_bytes() == before
+
+
+@pytest.mark.parametrize("mutation", ["schema", "duplicate", "remote-only", "map-kind"])
+def test_automatic_stop_malformed_coverage_never_retires(automatic_world, mutation):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    if mutation == "schema":
+        data["schema_version"] = True
+    elif mutation == "duplicate":
+        data["paths"].append(str(w["own"]))
+    elif mutation == "remote-only":
+        data["remote_paths"].append(str(w["project"] / "remote-only.md"))
+    else:
+        data["path_kinds"] = "malformed"
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes()
+    if mutation == "map-kind":
+        _automatic_call(w)
+    else:
+        with pytest.raises((ValueError, RuntimeError)):
+            _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+
+
+def test_automatic_stop_retirement_receipt_failure_recovers_exact_narrowed_manifest(automatic_world, monkeypatch):
+    w = automatic_world
+    original = MODULE.atomic_json
+    def interrupted(path, data):
+        if path.parent == MODULE.LOCAL_HANDOFF_DIR:
+            raise OSError("synthetic receipt interruption")
+        return original(path, data)
+    monkeypatch.setattr(MODULE, "atomic_json", interrupted)
+    with pytest.raises(OSError, match="receipt interruption"):
+        _automatic_call(w)
+    narrowed = w["manifest"].read_bytes()
+    assert json.loads(narrowed)["paths"] == [str(w["pending"])]
+    monkeypatch.setattr(MODULE, "atomic_json", original)
+    _automatic_call(w)
+    assert w["manifest"].read_bytes() == narrowed
+    receipt = json.loads((MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).read_text())
+    assert receipt["pending_manifest_sha256"] == hashlib.sha256(narrowed).hexdigest()
+
+
+def test_automatic_stop_landed_own_bytes_retire_without_touching_later_foreign_work(automatic_world):
+    w = automatic_world
+    w["own"].write_text("later foreign working bytes\n")
+    _automatic_call(w)
+    assert str(w["own"]) not in json.loads(w["manifest"].read_text())["paths"]
+    assert w["own"].read_text() == "later foreign working bytes\n"
+
+
+def test_local_receipt_without_native_stop_never_mutates_attribution(automatic_world):
+    w = automatic_world
+    before = w["manifest"].read_bytes()
+    w["payload"].pop("hook_event_name")
+    _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+
+
+def test_automatic_retirement_existing_git_reads_share_finite_deadline(automatic_world, monkeypatch):
+    calls = []
+    def bounded(*args, **kwargs):
+        calls.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(args[0], 0, b"", b"")
+    monkeypatch.setattr(MODULE.subprocess, "run", bounded)
+    MODULE._LIFECYCLE_LOCK_STATE.retirement_deadline = MODULE.time.monotonic() + 0.5
+    try:
+        MODULE.git(automatic_world["repo"], "status")
+        MODULE.git_bytes(automatic_world["repo"], "status")
+        assert all(0 < value <= 0.5 for value in calls)
+        MODULE._LIFECYCLE_LOCK_STATE.retirement_deadline = MODULE.time.monotonic() - 1
+        with pytest.raises(ValueError, match="observation time"):
+            MODULE.git(automatic_world["repo"], "status")
+    finally:
+        MODULE._LIFECYCLE_LOCK_STATE.retirement_deadline = None
+
+
+@pytest.mark.parametrize("count", [257, 120000])
+def test_automatic_stop_large_existing_ledger_completes_whole_owner(automatic_world, monkeypatch, capsys, count):
+    import time
+    w = automatic_world
+    paths = [str(w["own"])] + [str(w["project"] / "unproved-history" / f"entry-{n:06d}.md") for n in range(count - 1)]
+    data = json.loads(w["manifest"].read_text())
+    data.update(paths=paths, remote_paths=paths, content_hashes={str(w["own"]): hashlib.sha256(w["own"].read_bytes()).hexdigest()}, path_kinds={str(w["own"]): "file"})
+    w["manifest"].write_text(json.dumps(data, separators=(",", ":")))
+    foreign = w["foreign"].read_bytes()
+    monkeypatch.setattr(MODULE, "resolve_config", lambda _: w["cfg"])
+    monkeypatch.setattr(sys, "argv", [str(MODULE_PATH), "--hook", "--quiet"])
+    calls = []
+    for turn in range(2):
+        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(w["payload"])))
+        started = time.monotonic()
+        assert MODULE.main() == 0
+        output = capsys.readouterr().out
+        response = json.loads(output) if output.strip() else {}
+        elapsed = time.monotonic() - started
+        calls.append({"seconds": elapsed, "response": response})
+        assert response.get("continue") is not False, response
+        assert elapsed < 25
+        kept = json.loads(w["manifest"].read_text())
+        assert kept["paths"] == kept["remote_paths"] == paths[1:]
+        assert w["foreign"].read_bytes() == foreign
+        receipt = json.loads((MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).read_text())
+        assert receipt["pending_manifest_sha256"] == hashlib.sha256(w["manifest"].read_bytes()).hexdigest()
+        assert sum(row.get("files", 0) for row in receipt["results"] if row["action"] == "local-ready") == count - 1
+    (w["scratch"] / "large-whole-stop-result.json").write_text(json.dumps({"count": count, "calls": calls}, indent=2))
+
+
+def test_automatic_stop_batch_cursor_does_not_starve_later_landed(automatic_world):
+    w = automatic_world
+    paths = []
+    for i in range(257):
+        p = w["project"] / f"unpublished-{i}.md"
+        p.write_text("unpublished")
+        paths.append(str(p))
+    data = json.loads(w["manifest"].read_text())
+    data.update(paths=paths + [str(w["own"])], remote_paths=paths + [str(w["own"])],
+                content_hashes={**{p: hashlib.sha256(b"unpublished").hexdigest() for p in paths}, str(w["own"]): hashlib.sha256(w["own"].read_bytes()).hexdigest()},
+                path_kinds={p: "file" for p in paths + [str(w["own"])]})
+    w["manifest"].write_text(json.dumps(data))
+    _automatic_call(w)
+    first = json.loads(w["manifest"].read_text())
+    assert first["paths"] == data["paths"] and first["automatic_retirement_cursor"] == paths[256]
+    _automatic_call(w)
+    second = json.loads(w["manifest"].read_text())
+    assert second["paths"] == paths and str(w["own"]) not in second["content_hashes"]
+
+
+def test_automatic_stop_malformed_cursor_preserves_manifest(automatic_world):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text()); data["automatic_retirement_cursor"] = "foreign"
+    w["manifest"].write_text(json.dumps(data)); before = w["manifest"].read_bytes()
+    with pytest.raises(ValueError, match="cursor"):
+        _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+
+
+
+def test_automatic_retirement_obeys_whole_stop_observation_bound(automatic_world, monkeypatch):
+    import time
+    w = automatic_world
+    original = MODULE._automatic_landed_snapshot
+    observed = []
+    def observe(data, cfg, deadline):
+        remaining = deadline - time.monotonic()
+        assert 0 < remaining <= 25
+        observed.append(remaining)
+        return original(data, cfg, deadline)
+    monkeypatch.setattr(MODULE, "_automatic_landed_snapshot", observe)
+    _automatic_call(w)
+    assert len(observed) == 2
+
+
+
+def test_automatic_stop_queries_only_bounded_selected_tree_paths(automatic_world, monkeypatch):
+    import publication_receipt
+    w = automatic_world
+    original = publication_receipt._git
+    observed = []
+    def exact(repo, deadline, *args):
+        if "ls-tree" in args:
+            assert "-r" not in args
+            assert "--literal-pathspecs" in args
+            paths = args[args.index("--") + 1:]
+            assert paths and sum(len(os.fsencode(p)) + 1 for p in paths) <= 16384
+            observed.append(paths)
+        return original(repo, deadline, *args)
+    monkeypatch.setattr(publication_receipt, "_git", exact)
+    _automatic_call(w)
+    assert len(observed) == 2
+
+
+
+def test_automatic_receipt_cached_parent_replacement_refuses(automatic_world, monkeypatch):
+    w = automatic_world
+    foreign = w["scratch"] / "foreign-directory"
+    foreign.mkdir()
+    for name in ("CONTEXT.md", "unresolved.md"):
+        (foreign / name).write_text("foreign synthetic bytes")
+    original = MODULE.repo_root_for_path
+    changed = []
+    def race(path):
+        value = original(path)
+        if not changed and path == w["project"]:
+            w["project"].rename(w["project"].with_name("retained-alpha"))
+            w["project"].symlink_to(foreign, target_is_directory=True)
+            changed.append(True)
+        return value
+    monkeypatch.setattr(MODULE, "repo_root_for_path", race)
+    before = w["manifest"].read_bytes()
+    with pytest.raises(ValueError, match="ancestry changed"):
+        MODULE.local_handoff_checkpoint({"session_id": w["payload"]["session_id"], "cwd": str(w["repo"])}, w["cfg"])
+    assert changed and w["manifest"].read_bytes() == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+def test_automatic_receipt_unrelated_shared_sibling_creation_is_allowed(automatic_world, monkeypatch):
+    w = automatic_world
+    original = MODULE.repo_root_for_path
+    changed = []
+    def sibling(path):
+        value = original(path)
+        if not changed and path == w["project"]:
+            (w["repo"].parent / "unrelated-sibling").mkdir()
+            changed.append(True)
+        return value
+    monkeypatch.setattr(MODULE, "repo_root_for_path", sibling)
+    before = w["manifest"].read_bytes()
+    results, manifest = MODULE.local_handoff_checkpoint({"session_id": w["payload"]["session_id"], "cwd": str(w["repo"])}, w["cfg"])
+    assert changed and w["manifest"].read_bytes() == before
+    assert manifest == w["manifest"] and not any(row.get("alert") for row in results)
+    assert (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).is_file()
+
+
+@pytest.mark.parametrize("maps", ["absent", "empty"])
+def test_hashless_stop_handoff_without_retirement_authority_preserves_manifest(automatic_world, maps):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        if maps == "absent":
+            data.pop(field, None)
+        else:
+            data[field] = {}
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    # No admitted retirement owner remains; ordinary local receipt is read-only.
+    w["board"].unlink()
+    w["board"].with_name(".active-sessions.lock").unlink()
+    results, selected = _automatic_call(w)
+    assert selected == w["manifest"]
+    assert all(row["action"] == "local-ready" for row in results)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    receipt = json.loads((MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).read_text())
+    assert receipt["pending_manifest_sha256"] == hashlib.sha256(before[0]).hexdigest()
+    assert not w["board"].exists()
+    assert not w["board"].with_name(".active-sessions.lock").exists()
+
+
+@pytest.mark.parametrize("evidence", [
+    "non_dict", "empty_non_dict", "kind_only", "invalid_hash", "conflicting_hashes",
+    "orphan_hash", "directory", "cursor", "null_cursor", "mixed",
+])
+def test_supplied_retirement_evidence_never_becomes_hashless_handoff(automatic_world, evidence):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        data.pop(field, None)
+    key = str(w["own"])
+    if evidence == "non_dict": data["path_kinds"] = ["invalid"]
+    elif evidence == "empty_non_dict": data["content_hashes"] = []
+    elif evidence == "kind_only": data["path_kinds"] = {key: "file"}
+    elif evidence == "invalid_hash": data["content_hashes"] = {key: "not-a-hash"}
+    elif evidence == "conflicting_hashes":
+        data["content_hashes"] = {key: "a" * 64}
+        data["path_hashes"] = {key: "b" * 64}
+    elif evidence == "orphan_hash": data["content_hashes"] = {str(w["project"] / "other"): "a" * 64}
+    elif evidence == "directory":
+        data["content_hashes"] = {key: "a" * 64}
+        data["path_kinds"] = {key: "directory"}
+    elif evidence in {"cursor", "null_cursor"}:
+        data["automatic_retirement_cursor"] = key if evidence == "cursor" else None
+    else:
+        data["content_hashes"] = {key: hashlib.sha256(w["own"].read_bytes()).hexdigest()}
+        data["path_kinds"] = {key: "file"}
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    lock = w["board"].with_name(".active-sessions.lock")
+    lock.unlink()
+    with pytest.raises(ValueError, match="existing lock disappeared"):
+        _automatic_call(w)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    assert not lock.exists()
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+@pytest.mark.parametrize("defect", ["missing", "symlink", "replaced", "foreign_held", "foreign_board"])
+def test_typed_retirement_stop_preserves_missing_or_foreign_lock_refusal(automatic_world, monkeypatch, defect):
+    import fcntl
+    w = automatic_world
+    lock = w["board"].with_name(".active-sessions.lock")
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    held = None
+    if defect == "missing": lock.unlink()
+    elif defect == "symlink":
+        retained = lock.with_name("retained-lock")
+        lock.rename(retained)
+        lock.symlink_to(retained)
+    elif defect == "replaced":
+        original = os.open
+        changed = []
+        def replace_before_open(path, flags, *args, **kwargs):
+            if Path(path) == lock and not changed:
+                lock.rename(lock.with_name("retained-lock"))
+                lock.write_text("different lock inode")
+                changed.append(True)
+            return original(path, flags, *args, **kwargs)
+        monkeypatch.setattr(os, "open", replace_before_open)
+    elif defect == "foreign_held":
+        held = os.open(lock, os.O_RDONLY)
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:
+        w["board"].write_text(w["board"].read_text().replace(w["payload"]["session_id"], "01990000-0000-7000-8000-000000000099"))
+    try:
+        with pytest.raises(ValueError):
+            _automatic_call(w)
+    finally:
+        if held is not None:
+            fcntl.flock(held, fcntl.LOCK_UN)
+            os.close(held)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+@pytest.mark.parametrize("defect", ["schema", "duplicate", "remote_only", "foreign_session"])
+def test_hashless_stop_still_validates_exact_manifest(automatic_world, defect):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        data.pop(field, None)
+    if defect == "schema": data["schema_version"] = True
+    elif defect == "duplicate": data["paths"].append(data["paths"][0])
+    elif defect == "remote_only": data["remote_paths"].append(str(w["project"] / "not-covered"))
+    else: data["session_id"] = "foreign"
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes()
+    if defect == "foreign_session":
+        results, selected = _automatic_call(w)
+        assert selected is None
+        assert len(results) == 1 and results[0]["action"] == "failed"
+        assert "invalid pending manifest" in results[0]["alert"]
+    else:
+        with pytest.raises(ValueError, match="manifest"):
+            _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+def test_automatic_stop_transient_git_proof_refusal_preserves_manifest(automatic_world, monkeypatch):
+    w = automatic_world
+    before = w["manifest"].read_bytes()
+    original_snapshot = MODULE._automatic_landed_snapshot
+    original_git = MODULE.git
+    snapshots = []
+    phase = 0
+    refused = []
+    def observe(data, cfg, deadline):
+        nonlocal phase
+        phase += 1
+        result = original_snapshot(data, cfg, deadline)
+        snapshots.append(result)
+        return result
+    def transient(repo, *args, **kwargs):
+        if phase == 2 and args == ("rev-parse", "--show-toplevel"):
+            refused.append(args)
+            return -1, "", "controlled transient Git observation refusal"
+        return original_git(repo, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "_automatic_landed_snapshot", observe)
+    monkeypatch.setattr(MODULE, "git", transient)
+    with pytest.raises(ValueError, match="publication proof changed"):
+        _automatic_call(w)
+    assert refused and len(snapshots) == 2 and snapshots[0] != snapshots[1]
+    assert snapshots[0]["landed"] and not snapshots[1]["landed"]
+    assert w["manifest"].read_bytes() == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()

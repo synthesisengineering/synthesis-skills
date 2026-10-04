@@ -822,3 +822,20 @@ def test_distinct_final_response_counters_stay_conflict(tmp_path):
     lane = next(iter(projection['usage'].values()))
     assert lane['reconciliation_required'] is True
     assert lane['response_usage_sum']['total_tokens'] == 10
+
+
+def test_retained_index_preserves_cross_page_pairs_aliases_gaps_and_usage(tmp_path):
+    from copy import deepcopy
+    rows = [pair()[0], usage(10), pair()[1], usage(20), pair(output='contradiction')[1]]
+    _, binding, cursor = source(tmp_path, rows)
+    batch = no.read_page(binding, cursor)
+    legacy, retained = no.empty_projection(), no.retained_projection(no.empty_projection())
+    for event in batch['events']:
+        page = {**deepcopy(batch), 'events': [event], 'gaps': [], 'diagnostics': []}
+        legacy = no.reduce_observations(legacy, page)
+        retained = no.reduce_observations(retained, page, event_limit=100)
+    assert dict(no.event_fingerprints(retained)) == legacy['events']
+    assert {k:v for k,v in retained.items() if k not in {'events','schema_version'}} == {k:v for k,v in legacy.items() if k not in {'events','schema_version'}}
+    assert any(p['status'] == 'conflict' for p in retained['pairs'].values())
+    assert retained['usage'] and retained['aggregate_tree_usage'] is None
+    assert no.reduce_observations(retained, batch, event_limit=100) == retained

@@ -456,7 +456,7 @@ def test_real_controller_recovery_preserves_costs_and_user_precedence(
     append(world, record("custom-title", session))
     state = observe(engine, world, state)
     budget = deepcopy(state["extensions"]["workflow"]["budget"])
-    assert len(budget["native_usage"]["measurements"]) == 1
+    assert len(__import__("resource_policy").usage_projection(budget["native_usage"])["measurements"]) == 1
     original = deepcopy(state)
     monkeypatch.setattr(adapter, "ADAPTER_VERSION", version)
     monkeypatch.setattr(adapter, "decode_record", decode)

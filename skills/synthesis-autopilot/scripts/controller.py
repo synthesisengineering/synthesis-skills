@@ -1292,6 +1292,11 @@ def encode_response(response: Response) -> bytes:
 
 
 def handle(request: Request, *, project: Path, actor=None, runtime_root=None, source_mode="native") -> Response:
+    with run_state.journal_operation():
+        return _handle(request, project=project, actor=actor, runtime_root=runtime_root, source_mode=source_mode)
+
+
+def _handle(request: Request, *, project: Path, actor=None, runtime_root=None, source_mode="native") -> Response:
     request = validate_request(request)
     if source_mode not in {"native", "synthetic"}:
         raise ValueError("source mode must be native or synthetic claim")

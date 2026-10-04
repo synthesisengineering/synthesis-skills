@@ -22,13 +22,15 @@ External effects are recorded here; their action owners still enforce approval.
 """
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 import importlib
 import json
 import os
+import pickle
 from pathlib import Path
 import re
 import stat
@@ -245,11 +247,18 @@ def _install_input(path, raw):
         os.close(descriptor)
 
 
-def _read(path):
+def _read(path, *, _identities=None):
+    if _identities is None:
+        scope = _HISTORY_OPERATION.get()
+        if scope:
+            for history in scope.values():
+                if history["paths"] and Path(path) == history["paths"][-1]:
+                    _fence_history(history)
+                    return deepcopy(history["last"])
     try:
-        raw = journal_storage.read_regular(path, MAX_JSON_BYTES)
+        raw = journal_storage.read_regular(path, MAX_JSON_BYTES, _identities=_identities)
         value = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
-        return journal_storage.decode(path, value)
+        return journal_storage.decode(path, value, _identities=_identities)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise RunStateError(f"unreadable state at {path}: {exc}") from exc
 
@@ -262,11 +271,7 @@ def _snapshot_bytes(path, value):
 
 def _retained_snapshot_bytes(path, value):
     """Derive existing storage form without rewriting admitted historical bytes."""
-    journal_storage.home_for(path)
-    physical = json.loads(journal_storage.read_regular(path, MAX_JSON_BYTES))
-    if isinstance(physical, dict) and journal_storage.MARKER in physical:
-        return _snapshot_bytes(path, value)
-    return {Path(path): _json(value) + b"\n"}
+    return journal_storage.retained_snapshot_bytes(path, value, max_bytes=MAX_JSON_BYTES)
 
 
 def _write(path, raw):
@@ -738,7 +743,7 @@ def _resume_binding(project, state, actor, payload):
     return proof
 
 
-def _events(project, run_id, *, verify_successor=True):
+def _event_paths(project, run_id):
     home = _home(project, run_id)
     directory = safe_path(home / "events", Path(project).resolve())
     if not directory.is_dir():
@@ -770,27 +775,43 @@ def _events(project, run_id, *, verify_successor=True):
     files.sort()
     if not files or len(files) > MAX_EVENTS:
         raise RunStateError("event stream is empty or exceeds supported replay limit")
+    return files
+
+
+def _check_event(event, run_id, revision, previous, previous_codec, commands):
+    if not isinstance(event, dict):
+        raise RunStateError("event must be an object")
+    digest = event.get("digest")
+    body = {key: value for key, value in event.items() if key != "digest"}
+    body_digest = event.verified_body_digest if isinstance(event, journal_storage.DecodedEvent) else _digest(body)
+    if digest != body_digest or event.get("previous_digest") != previous or event.get("revision") != revision or event.get("schema_version") != SCHEMA:
+        raise RunStateError("event chain failed integrity/schema validation")
+    state = event.get("state")
+    if not isinstance(state, dict) or state.get("schema_version") != SCHEMA or state.get("run_id") != run_id or state.get("revision") != revision or state.get("status") not in STATUSES:
+        raise RunStateError("event state identity is invalid")
+    codec = journal_storage.codec_for(state)
+    if codec < previous_codec:
+        raise RunStateError("journal storage codec regressed within authenticated history")
+    previous_codec = codec
+    if event.get("command_id") in commands:
+        raise RunStateError("event stream contains duplicate command IDs")
+    commands.add(event["command_id"])
+    return digest, codec
+
+
+def _events(project, run_id, *, verify_successor=True):
+    files = _event_paths(project, run_id)
     previous = ""
+    previous_codec = 1
     initial_state = None
     commands = set()
     for revision, path in enumerate(files, 1):
         if path.name != f"{revision:012d}.json":
             raise RunStateError("event sequence has a gap or unexpected entry")
         event = _read(path)
-        if not isinstance(event, dict):
-            raise RunStateError("event must be an object")
-        digest = event.get("digest")
-        body = {key: value for key, value in event.items() if key != "digest"}
-        body_digest = event.verified_body_digest if isinstance(event, journal_storage.DecodedEvent) else _digest(body)
-        if digest != body_digest or event.get("previous_digest") != previous or event.get("revision") != revision or event.get("schema_version") != SCHEMA:
-            raise RunStateError("event chain failed integrity/schema validation")
-        state = event.get("state")
-        if not isinstance(state, dict) or state.get("schema_version") != SCHEMA or state.get("run_id") != run_id or state.get("revision") != revision or state.get("status") not in STATUSES:
-            raise RunStateError("event state identity is invalid")
-        if event.get("command_id") in commands:
-            raise RunStateError("event stream contains duplicate command IDs")
-        commands.add(event["command_id"])
+        digest, previous_codec = _check_event(event, run_id, revision, previous, previous_codec, commands)
         previous = digest
+        state = event["state"]
         if revision == 1:
             initial_state = state
         yield event
@@ -801,8 +822,136 @@ def _events(project, run_id, *, verify_successor=True):
         _successor_inheritance(initial_state, parents[0])
 
 
+_HISTORY_OPERATION = ContextVar("run_state_history_operation", default=None)
+
+
+@contextmanager
+def journal_operation():
+    """Reuse verified history only during this bounded controller invocation.
+
+    No admission proof is retained. All entry reads are cold; every reuse fences
+    the exact regular files and physical ancestor identities observed by those
+    reads. The private latest snapshot and bounded revision metadata never leave
+    this scope. Nested owners share its lifetime, never extend it.
+    """
+    existing = _HISTORY_OPERATION.get()
+    if existing is not None:
+        yield
+        return
+    token = _HISTORY_OPERATION.set({})
+    try:
+        with journal_storage.compilation_scope():
+            yield
+    finally:
+        _HISTORY_OPERATION.reset(token)
+
+
+def _fence_history(retained):
+    groups = {}
+    for path, identity in retained["files"].items():
+        groups.setdefault(path.parent, []).append((path.name, identity))
+    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns")
+    for parent, entries in groups.items():
+        fd = journal_storage._safe_directory(parent)
+        try:
+            if parent.name == "v1" and parent.parent.name == "state-blocks":
+                journal_storage._lock_store(fd, exclusive=False)
+            for name, identity in entries:
+                current = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                if not stat.S_ISREG(current.st_mode) or tuple(getattr(current, key) for key in fields) != identity:
+                    raise RunStateError("verified journal file changed during operation")
+            journal_storage._same_directory(parent, fd)
+        finally:
+            os.close(fd)
+    # Include all physical ancestors, not just the two immediate store dirs.
+    for path, identity in retained["ancestors"].items():
+        current = path.lstat()
+        if (not stat.S_ISDIR(current.st_mode)
+                or (current.st_dev, current.st_ino, current.st_mode) != identity):
+            raise RunStateError("verified journal ancestor changed during operation")
+
+
+def _history_metadata(event):
+    state = event["state"]
+    return {key: event[key] for key in ("revision", "digest", "command", "command_id", "command_digest")} | {
+        "state_digest": _digest(state), "codec": journal_storage.codec_for(state),
+        "contract_revision": state["contract_revision"], "contract_digest": state["contract_digest"],
+        "profile_revision": state["profile_revision"], "profile_digest": state["profile_digest"]}
+
+
+def _verified_history(project, run_id):
+    """Return a verified head and compact history, with fresh physical fences."""
+    scope = _HISTORY_OPERATION.get()
+    if scope is None:
+        return None  # Cold consumers retain the original streaming owner.
+    key = (str(Path(project).resolve(strict=True)), run_id)
+    retained = scope.pop(key, None)
+    # A refused extension cannot leave a partial cache available to a caught
+    # retry. Publish the complete observation only after every final fence.
+    scope.clear()
+    paths = _event_paths(project, run_id)
+    if retained is not None:
+        _fence_history(retained)
+        if paths[:len(retained["paths"])] != retained["paths"]:
+            raise RunStateError("verified journal prefix changed during operation")
+    else:
+        retained = {"paths": [], "rows": [], "files": {}, "ancestors": {}, "last": None}
+        # Pin ancestry before the first read; recording it only afterward could
+        # adopt a directory replacement that moved the same files beneath it.
+        for ancestor in (paths[0].parent, *paths[0].parents):
+            info = ancestor.lstat()
+            if not stat.S_ISDIR(info.st_mode):
+                raise RunStateError("journal ancestor is not a directory")
+            retained["ancestors"][ancestor] = (info.st_dev, info.st_ino, info.st_mode)
+    previous = retained["rows"][-1]["digest"] if retained["rows"] else ""
+    codec = retained["rows"][-1]["codec"] if retained["rows"] else 1
+    commands = {row["command_id"] for row in retained["rows"]}
+    for path in paths[len(retained["paths"]):]:
+        revision = len(retained["paths"]) + 1
+        if path.name != f"{revision:012d}.json":
+            raise RunStateError("event sequence has a gap or unexpected entry")
+        identities = {}
+        event = _read(path, _identities=identities)
+        previous, codec = _check_event(event, run_id, revision, previous, codec, commands)
+        # Successor ancestry is deliberately revalidated by its full existing
+        # owner. It is not admitted by a cached metadata projection.
+        if revision == 1 and event["state"].get("successor"):
+            return None
+        retained["rows"].append(_history_metadata(event))
+        retained["paths"].append(path)
+        retained["last"] = event
+        for target, identity in identities.items():
+            if target in retained["files"] and retained["files"][target] != identity:
+                raise RunStateError("verified journal block changed during append")
+            known = target in retained["files"]
+            retained["files"][target] = identity
+            if known:
+                continue
+            for ancestor in target.parents:
+                info = ancestor.lstat()
+                current = (info.st_dev, info.st_ino, info.st_mode)
+                if not stat.S_ISDIR(info.st_mode) or (ancestor in retained["ancestors"] and retained["ancestors"][ancestor] != current):
+                    raise RunStateError("verified journal ancestor changed during append")
+                retained["ancestors"][ancestor] = current
+        if (len(retained["files"]) > journal_storage.MAX_STORE_ENTRIES + MAX_EVENTS
+                or len(_json(retained["rows"])) > MAX_JSON_BYTES):
+            # Optional reuse cannot reduce the original streaming admission
+            # domain. The caller falls back to its unchanged full cold owner.
+            return None
+    _fence_history(retained)
+    if scope is not None:
+        # One selected history per operation: unrelated reads cannot accumulate
+        # decoded snapshots across projects or consume an unbounded cache.
+        scope.clear()
+        scope[key] = retained
+    return retained
+
+
 def _last_event(project, run_id):
-    """Validate the complete chain while retaining only its latest full state."""
+    """Validate complete history and return an independent latest snapshot."""
+    history = _verified_history(project, run_id)
+    if history is not None:
+        return _copy_state(history["last"])
     last = None
     for last in _events(project, run_id):
         pass
@@ -811,10 +960,14 @@ def _last_event(project, run_id):
 
 def load_run(project: Path, run_id: str) -> dict:
     """Read only the selected journal; projections and other runs confer no truth."""
-    last = None
-    for last in _events(project, run_id):
-        pass
-    return deepcopy(last["state"])
+    history = _verified_history(project, run_id)
+    if history is None:
+        last = None
+        for last in _events(project, run_id):
+            pass
+    else:
+        last = history["last"]
+    return _copy_state(last["state"])
 
 
 def _projection_bytes(project, state, plan_text, *, retain_storage=False):
@@ -920,6 +1073,8 @@ def _require_unlinked_predecessor(project, run_id):
 def _append(project, state, command_id, command_digest, command, previous_digest, proof, *, prepared_authority=None):
     _require_unlinked_predecessor(project, state["run_id"])
     home = _home(project, state["run_id"])
+    journal_storage.codec_for(state)  # Refuse malformed predecessor bindings.
+    state.setdefault("extensions", {})["journal_storage"] = {"codec": 2}
     event = {"schema_version": SCHEMA, "revision": state["revision"], "previous_digest": previous_digest,
              "command_id": command_id, "command_digest": command_digest, "command": command,
              "actor": {key: proof[key] for key in ("session_uuid", "native_ref", "claim_hash")}, "state": state}
@@ -932,8 +1087,9 @@ def _append(project, state, command_id, command_digest, command, previous_digest
     path = home / "events" / f"{state['revision']:012d}.json"
     if path.exists():
         raise RunStateError("refusing to overwrite a committed event")
-    raw, blocks = journal_storage.encode(event)
-    _, projection_blocks = journal_storage.encode(state)
+    with journal_storage.compilation_scope():
+        raw, blocks = journal_storage.encode(event)
+        _, projection_blocks = journal_storage.encode(state)
     blocks.update(projection_blocks)
     journal_storage.materialize(home, blocks)
     _write(path, raw)
@@ -995,6 +1151,10 @@ def prepared_native_launch_step(project, run_id, permit_id, token, phase, *, run
                 row["status"]="observed" if outcome.get("status")=="native_terminal" else "unknown"
         updated["revision"]=state["revision"]+1
         updated["updated_at"]=_now()
+        # The committed attribution must describe the same codec the append
+        # selects. Validate the predecessor binding before selecting its successor.
+        journal_storage.codec_for(updated)
+        updated.setdefault("extensions", {})["journal_storage"] = {"codec": 2}
         projection_hashes={str(path):hashlib.sha256(raw).hexdigest()
             for path,raw in _projection_bytes(project,updated,plan_before).items()}
         if phase in {"reserve","submit"}:
@@ -1571,9 +1731,7 @@ def unregister_constraint(name):
 def inspect_context(state, actor, *, project=None):
     """Read-only fresh state/admission/evidence view for trusted owner modules."""
     project = Path(project or state["owner"]["project_root"])
-    last = None
-    for last in _events(project, state["run_id"]):
-        pass
+    last = _last_event(project, state["run_id"])
     current = last["state"]
     if current != state:
         raise RunStateError("inspection state is stale; reload the current journal")
@@ -1594,7 +1752,7 @@ def _native_readback(project, state, actor, journal_head, *, passive=False, inva
     """
     if passive and owner_reconcile:
         raise RunStateError("passive Stop readback cannot reconcile the coordination mirror")
-    selected, principal, head = deepcopy(state), deepcopy(actor), deepcopy(journal_head)
+    selected, principal, head = _copy_state(state), deepcopy(actor), deepcopy(journal_head)
     project = Path(project)
     def read(event_ids=None, interval=None, *, source_handle="root"):
         import observation_bridge
@@ -1688,7 +1846,7 @@ def _context_observed(project, state, payload, proof, *, actor, observation):
     authoritative_evidence = deepcopy(evidence)
     source_verdicts = {}
     plan_digest = _plan_digest(project, state, admitted_path=proof["paths"][1], repository=proof["repository"])
-    observer_context = {"project": Path(project), "state": deepcopy(state), "binding": deepcopy(proof),
+    observer_context = {"project": Path(project), "state": _copy_state(state), "binding": deepcopy(proof),
                         "actor": deepcopy(actor), "now": now, "artifacts": deepcopy(artifacts),
                         "evidence": deepcopy(evidence), "plan_digest": plan_digest}
     evaluating = set()
@@ -2681,6 +2839,56 @@ def _terminal_native_custody(project, state, command, payload, context):
     return lambda: None
 
 
+def _constraint_snapshot(state):
+    """Copy exact ordinary builtin graphs, including shared containers.
+
+    These bytes are self-produced, operation-local and never persisted or read
+    from state/external input. Exact-type validation excludes object reducers.
+    Each load preserves container aliases/cycles and dictionary insertion order
+    within an independent copy. Exotic values retain deepcopy behavior; durable
+    JSON refusal and every constraint/native admission invocation are unchanged.
+    """
+    import math
+    pending, seen = [state], set()
+    while pending:
+        item = pending.pop()
+        kind = type(item)
+        if kind is dict or kind is list:
+            identity = id(item)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            if kind is dict:
+                if any(type(key) is not str for key in item):
+                    return None
+                pending.extend(item.values())
+            else:
+                pending.extend(item)
+        elif kind is float:
+            if not math.isfinite(item):
+                return None
+        elif not (kind is str or kind is int or kind is bool or kind is type(None)):
+            return None
+    try:
+        # Only the exact builtin graph validated above reaches pickle. No
+        # object reducer can run; memoization retains shared-container identity.
+        # This is not a journal/input format or an authority cache.
+        raw = pickle.dumps(state, protocol=pickle.HIGHEST_PROTOCOL)
+    except (pickle.PickleError, TypeError, ValueError, OverflowError, RecursionError):
+        return None
+    return raw if len(raw) <= journal_storage.MAX_LOGICAL_BYTES else None
+
+
+def _copy_state(value):
+    """Independent bulk copy through the existing exact-builtin copy boundary.
+
+    Authority objects and other nonordinary values retain deepcopy semantics.
+    The serialization is produced and consumed here, never supplied by a caller.
+    """
+    snapshot = _constraint_snapshot(value)
+    return pickle.loads(snapshot) if snapshot is not None else deepcopy(value)
+
+
 def apply_command(project: Path, run_id: str, command: str, payload: dict, *, expected_revision: int,
                   command_id: str, actor: dict, runtime_root: Path | None = None,
                   request_binding: dict | None = None) -> dict:
@@ -2708,13 +2916,24 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
     if create_lock:
         _command_binding(project, state, actor, command, payload)
     with bounded_lock(lock, create=create_lock):
-        previous = None
-        matching = None
-        for event in _events(project, run_id):
-            previous = event
-            if event["command_id"] == command_id:
-                matching = event
-        state = deepcopy(previous["state"])
+        history = _verified_history(project, run_id)
+        if history is None:
+            previous = matching = None
+            for event in _events(project, run_id):
+                previous = event
+                if event["command_id"] == command_id:
+                    matching = event
+        else:
+            previous = history["last"]
+            matching = next((row for row in history["rows"] if row["command_id"] == command_id), None)
+            if matching is not None:
+                selected = _read(_home(project, run_id) / "events" / f"{matching['revision']:012d}.json")
+                if (selected.get("digest") != matching["digest"]
+                        or _digest({key: value for key, value in selected.items() if key != "digest"}) != matching["digest"]):
+                    raise RunStateError("replayed event differs from verified history")
+                _fence_history(history)
+                matching = selected
+        state = _copy_state(previous["state"])
         proof = _command_binding(project, state, actor, command, payload)
         material = {"command": command, "payload": payload, "session_uuid": proof["session_uuid"], "native_ref": proof["native_ref"]}
         if request_binding is not None:
@@ -2725,7 +2944,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
             if matching["command_digest"] != digest:
                 raise RunStateError("command ID was already used with different input")
             _project(project, state)
-            return deepcopy(matching["state"])
+            return _copy_state(matching["state"])
         if state["revision"] != expected_revision:
             raise RunStateError("stale run revision; reload before retry")
         late_custody = state["status"] == "incomplete" and command in _LATE_NATIVE_CUSTODY
@@ -2744,7 +2963,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 {**context, "actor": actor, "admission_observation": operation}) if late_custody else None
             context["journal_head"] = {"revision": state["revision"], "digest": previous["digest"], "scope": "full_run"}
             context["current_native_invalidation"] = _native_readback(project, state, actor, context["journal_head"], invalidation=True, owner_reconcile=True)
-            updated = deepcopy(state)
+            updated = _copy_state(state)
             if command.startswith("observe:") and command.split(":", 1)[1] in _OBSERVERS:
                 if command_id in state["evidence"] or command_id in state.get("observations", {}):
                     raise RunStateError("observation attempt IDs are immutable; use a new command ID")
@@ -2753,7 +2972,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                 if check_id not in context["artifacts"]:
                     raise RunStateError("observer requires a current registered artifact specification")
                 kind = command.split(":", 1)[1]
-                observer_context = {**context, "state": deepcopy(state), "project": project, "actor": deepcopy(actor),
+                observer_context = {**context, "state": _copy_state(state), "project": project, "actor": deepcopy(actor),
                                     "admission_observation": operation}
                 observer_context["criterion_report"] = lambda: criterion_report(state, context)
                 data = _OBSERVERS[kind](observer_context, deepcopy(payload))
@@ -2778,7 +2997,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                     raise RunStateError("unknown run command")
                 prepared = deepcopy(payload)
                 if command in _PREPARERS:
-                    observer_context = {**context, "state": deepcopy(state), "project": project,
+                    observer_context = {**context, "state": _copy_state(state), "project": project,
                         "actor": deepcopy(actor), "admission_observation": operation,
                         "command_id": command_id, "command_digest": digest, "runtime_root": _runtime(runtime_root)}
                     observer_context["criterion_report"] = lambda: criterion_report(state, context)
@@ -2794,8 +3013,11 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
         updated["revision"] = state["revision"] + 1
         updated["updated_at"] = _now()
         _record_request(updated, request_binding, command_id, digest)
+        constraint_snapshot = _constraint_snapshot(updated) if _CONSTRAINTS else None
         for check in _CONSTRAINTS.values():
-            check(deepcopy(updated), command, deepcopy(payload), context)
+            constraint_state = (pickle.loads(constraint_snapshot) if constraint_snapshot is not None
+                                else deepcopy(updated))
+            check(constraint_state, command, deepcopy(payload), context)
         # Re-admit after reducer work: a revoked seat must not commit after a
         # slow local verifier or a concurrent board mutation.
         if late_check is not None:
@@ -2819,7 +3041,7 @@ def apply_command(project: Path, run_id: str, command: str, payload: dict, *, ex
                       "transferred" if updated["owner"]["session_uuid"] != state["owner"]["session_uuid"] else None))
         if updated["owner"]["session_uuid"] != state["owner"]["session_uuid"]:
             _index_update(runtime_root, updated["owner"]["session_uuid"], run_id, _index_entry(project, updated))
-        return deepcopy(updated)
+        return _copy_state(updated)
 
 
 def owned_runs(actor: dict, *, runtime_root: Path | None = None, include_terminal: bool = False) -> list[dict]:

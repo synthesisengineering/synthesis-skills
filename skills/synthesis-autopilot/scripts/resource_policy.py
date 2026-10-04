@@ -8,6 +8,9 @@ that the unobserved execution tree, an invoice, or the provider is controlled.
 from __future__ import annotations
 from copy import deepcopy
 import hashlib
+import base64
+import zlib
+import re
 import json
 
 MAX_MEASUREMENTS = 10000
@@ -98,6 +101,188 @@ def empty_usage():
             'unknown_events': {}, 'source_handles': [], 'joined_events': {}}
 
 
+# The resource owner stores exactly the same projection using a bounded lossless
+# representation. This is not a new counter, charge, provenance source or store.
+# Repeated producer/locator field names dominated the former 2MiB payload. The
+# journal authenticates these bytes; the digest below validates representation
+# integrity, not independent authority. Logical expansion keeps the existing
+# observation projection ceiling, while the resource storage limit stays 2MiB.
+def _usage_bytes(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+
+
+_USAGE_STRUCTURE = re.compile(rb'"(?:[^"\\]|\\.)*"|[{}\[\],:]')
+
+
+def _bounded_usage_json(raw, work_counter=None):
+    # Count structural work before json.loads allocates containers. String
+    # contents do not contribute nesting or separators. The existing native
+    # parser then rejects duplicate keys, invalid UTF8, nonfinite values and
+    # malformed JSON. These limits add a finite expansion gate, not authority.
+    from native_observations import _json
+    depth = 0
+    if work_counter is None:
+        work_counter = [0]
+    for match in _USAGE_STRUCTURE.finditer(raw):
+        token = match.group()
+        if token.startswith(b'"'):
+            continue
+        work_counter[0] += 1
+        if token in (b'{', b'['): depth += 1
+        elif token in (b'}', b']'): depth -= 1
+        if depth > 32 or work_counter[0] > MAX_MEASUREMENTS * 256:
+            raise ValueError('Native resource structured expansion exceeds bound')
+    return _json(raw)
+
+
+def usage_projection(stored):
+    """Expand only this journal owner's bounded, authenticated representation.
+
+    The full expanded digest preserves every observation and counter. It does
+    not authenticate a native source independently of the existing journal.
+    """
+    from native_observations import MAX_PROJECTION_BYTES
+    if stored is None:
+        return empty_usage()
+    if not isinstance(stored, dict):
+        raise ValueError('Invalid native resource projection')
+    if len(_usage_bytes(stored)) > MAX_USAGE_BYTES:
+        raise ValueError('Resource projection exceeds bounded journal capacity')
+    if stored.get('schema_version') == 1:
+        value = deepcopy(stored)
+    else:
+        fields = {'schema_version', 'codec', 'expanded_bytes', 'expanded_sha256',
+                  'measurements', 'unknown_events', 'cumulative', 'conflicts', 'source_handles'}
+        if (set(stored) != fields or type(stored.get('schema_version')) is not int
+                or stored['schema_version'] != 2 or stored['codec'] != 'provenance-pages-zlib-v1'
+                or type(stored['expanded_bytes']) is not int
+                or not 0 < stored['expanded_bytes'] <= MAX_PROJECTION_BYTES
+                or not isinstance(stored['expanded_sha256'], str)
+                or any(not isinstance(stored[name], dict) for name in ('measurements', 'unknown_events', 'cumulative', 'conflicts'))
+                or not isinstance(stored['source_handles'], list)):
+            raise ValueError('Invalid native resource representation')
+        value = {k: deepcopy(stored[k]) for k in ('cumulative', 'conflicts', 'source_handles')}
+        value.update(schema_version=1, measurements={}, unknown_events={})
+        remaining = MAX_PROJECTION_BYTES
+        work = [0]
+        try:
+            for name in ('measurements', 'unknown_events'):
+                if len(stored[name]) > MAX_MEASUREMENTS:
+                    raise ValueError('Native resource segment capacity exceeded')
+                for key, segment in stored[name].items():
+                    if (not isinstance(key, str) or not isinstance(segment, dict)
+                            or set(segment) != {'bytes', 'sha256', 'payload'}
+                            or type(segment['bytes']) is not int
+                            or not 0 < segment['bytes'] <= remaining
+                            or not isinstance(segment['sha256'], str)
+                            or not isinstance(segment['payload'], str)):
+                        raise ValueError('Invalid native resource segment')
+                    decoder = zlib.decompressobj()
+                    raw = decoder.decompress(base64.b64decode(segment['payload'], validate=True), segment['bytes'] + 1)
+                    if (not decoder.eof or decoder.unused_data or decoder.unconsumed_tail
+                            or len(raw) != segment['bytes']
+                            or hashlib.sha256(raw).hexdigest() != segment['sha256']):
+                        raise ValueError('Native resource segment integrity mismatch')
+                    remaining -= len(raw)
+                    rows = _bounded_usage_json(raw, work)
+                    if _usage_bytes(rows) != raw or not rows:
+                        raise ValueError('Noncanonical native resource segment')
+                    if len(value[name]) + len(rows) > MAX_MEASUREMENTS:
+                        raise ValueError('Resource measurement capacity reached')
+                    for ident, row in rows.items():
+                        if ident in value[name] or _usage_bucket(row) != key:
+                            raise ValueError('Duplicate or misplaced native resource observation')
+                        value[name][ident] = row
+            value['joined_events'] = _derived_joined(value)
+            expanded = _usage_bytes(value)
+            if (len(expanded) != stored['expanded_bytes']
+                    or hashlib.sha256(expanded).hexdigest() != stored['expanded_sha256']):
+                raise ValueError('Native resource representation integrity mismatch')
+        except (zlib.error, UnicodeError, TypeError, RecursionError, KeyError) as exc:
+            raise ValueError('Invalid native resource representation') from exc
+    keys = set(empty_usage())
+    if (not isinstance(value, dict) or set(value) != keys
+            or type(value.get('schema_version')) is not int or value['schema_version'] != 1
+            or any(not isinstance(value[name], dict) for name in keys - {'schema_version', 'source_handles'})
+            or not isinstance(value['source_handles'], list)):
+        raise ValueError('Invalid expanded native resource projection')
+    _usage_counts(value)
+    return value
+
+
+def _usage_bucket(row):
+    # Source coordinates, not map size or insertion order, keep completed pages
+    # byte-stable across append, cold load, aliases and generation transitions.
+    # Eight 1MiB source-coordinate pages form one provenance segment; this does
+    # not change the reader page limit or read any bytes from the source.
+    if not isinstance(row, dict) or not isinstance(row.get('locator'), dict):
+        raise ValueError('Invalid native resource provenance')
+    parts = [row.get(k) for k in ('source_handle', 'mode', 'generation')]
+    offset = row['locator'].get('offset')
+    if (any(not isinstance(x, str) or not x for x in parts)
+            or type(offset) is not int or offset < 0):
+        raise ValueError('Invalid native resource provenance')
+    return _digest([*parts, offset // (8 * 1024 * 1024)])
+
+
+
+
+def _usage_counts(usage):
+    if (len(usage['joined_events']) > MAX_MEASUREMENTS
+            or sum(len(usage[key]) for key in ('measurements', 'cumulative', 'conflicts', 'unknown_events')) > MAX_MEASUREMENTS):
+        raise ValueError('Resource measurement capacity reached; preserve the unadvanced native cursor')
+
+
+def _derived_joined(usage):
+    """Exact redundant-index reconstruction; no event or alias is retired."""
+    if any(not isinstance(usage.get(k), dict) for k in ('measurements', 'unknown_events')):
+        raise ValueError('Invalid native resource tables')
+    joined = {}
+    def add(event_id, handle):
+        if (not isinstance(event_id, str) or not isinstance(handle, str)
+                or event_id in joined or len(joined) >= MAX_MEASUREMENTS):
+            raise ValueError('Invalid or excessive retained resource observation')
+        joined[event_id] = handle
+    for row in usage['measurements'].values():
+        if not isinstance(row, dict) or not isinstance(row.get('observations'), list):
+            raise ValueError('Invalid retained resource measurement')
+        for item in row['observations']:
+            if not isinstance(item, dict) or set(item) != {'source_handle', 'event_id', 'generation', 'offset', 'length', 'sha256'}:
+                raise ValueError('Invalid retained resource locator')
+            add(item['event_id'], item['source_handle'])
+    for ident, row in usage['unknown_events'].items():
+        if not isinstance(row, dict) or row.get('event_id') != ident:
+            raise ValueError('Invalid retained unknown resource observation')
+        add(ident, row.get('source_handle'))
+    return joined
+
+
+def _store_usage(usage):
+    from native_observations import MAX_PROJECTION_BYTES
+    _usage_counts(usage)
+    raw = _usage_bytes(usage)
+    if len(raw) > MAX_PROJECTION_BYTES:
+        raise ValueError('Expanded resource projection exceeds observation capacity')
+    if _derived_joined(usage) != usage['joined_events']:
+        raise ValueError('Native resource join disagrees with retained observations')
+    stored = {k: deepcopy(usage[k]) for k in ('cumulative', 'conflicts', 'source_handles')}
+    stored.update(schema_version=2, codec='provenance-pages-zlib-v1',
+                  expanded_bytes=len(raw), expanded_sha256=hashlib.sha256(raw).hexdigest())
+    work = [0]
+    for name in ('measurements', 'unknown_events'):
+        pages = {}
+        for key, row in usage[name].items():
+            pages.setdefault(_usage_bucket(row), {})[key] = row
+        stored[name] = {}
+        for key, rows in pages.items():
+            encoded = _usage_bytes(rows)
+            _bounded_usage_json(encoded, work)
+            stored[name][key] = {'bytes': len(encoded), 'sha256': hashlib.sha256(encoded).hexdigest(),
+                                'payload': base64.b64encode(zlib.compress(encoded)).decode('ascii')}
+    if len(_usage_bytes(stored)) > MAX_USAGE_BYTES:
+        raise ValueError('Resource projection exceeds bounded journal capacity')
+    return stored
+
 def ingest_native(state, handle, batch):
     """Join an owner-prepared native batch in the SAME journal transaction.
 
@@ -108,7 +293,7 @@ def ingest_native(state, handle, batch):
     ledger = state.get('extensions', {}).get('workflow', {}).get('budget')
     if ledger is None:
         return
-    usage = ledger.setdefault('native_usage', empty_usage())
+    usage = usage_projection(ledger.get('native_usage'))
     for event in batch['events']:
         if event['kind'] != 'usage.snapshot':
             continue
@@ -173,15 +358,13 @@ def ingest_native(state, handle, batch):
                     lane['known_delta'][name] = lane['known_delta'].get(name, 0) + amount - old[name]
             lane.update(latest=deepcopy(totals), generation=generation,
                         last_offset=offset, last_event_id=event['event_id'])
-    if len(usage['joined_events']) > MAX_MEASUREMENTS or sum(len(usage[key]) for key in ('measurements', 'cumulative', 'conflicts', 'unknown_events')) > MAX_MEASUREMENTS:
-        raise ValueError('Resource measurement capacity reached; preserve the unadvanced native cursor')
-    if len(json.dumps(usage, sort_keys=True, separators=(',', ':')).encode()) > MAX_USAGE_BYTES:
-        raise ValueError('Resource projection exceeds bounded journal capacity')
+    # Assign only after all representation/count/byte checks succeed.
+    ledger['native_usage'] = _store_usage(usage) if usage['joined_events'] else empty_usage()
 
 
 def native_view(state):
     flow = state.get('extensions', {}).get('workflow', {})
-    usage = flow.get('budget', {}).get('native_usage', empty_usage())
+    usage = usage_projection(flow.get('budget', {}).get('native_usage'))
     sources = state.get('extensions', {}).get('native_observations', {}).get('sources', {})
     children = {row['child_id']: row for row in flow.get('retained_children', [])}
     children.update(flow.get('children', {}))
@@ -250,7 +433,7 @@ def summary(state, context=None):
     human = {'reports': reports, 'scope': 'explicit nonoverlapping reported intervals only; unreported intervals remain unknown',
              'known_reported': {name: (sum(row['metrics'][name] for row in reports.values() if row['metrics'][name] is not None)
                                       if any(row['metrics'][name] is not None for row in reports.values()) else None) for name in HUMAN_FIELDS}}
-    return {'status': 'RECONCILIATION_REQUIRED' if ledger.get('native_usage', {}).get('conflicts') else 'TRACKING_WITH_EXPLICIT_UNKNOWNS', 'limits': limits, 'tree': tree,
+    return {'status': 'RECONCILIATION_REQUIRED' if usage_projection(ledger.get('native_usage'))['conflicts'] else 'TRACKING_WITH_EXPLICIT_UNKNOWNS', 'limits': limits, 'tree': tree,
         'human_effort_reporting': human,
         'native': native_view(state), 'billable_cost': None,
         'human_effort': {key: None for key in HUMAN_FIELDS},
@@ -267,7 +450,7 @@ def require_native_headroom(flow):
     ledger = flow.get('budget')
     if not ledger:
         return
-    usage = ledger.get('native_usage', empty_usage())
+    usage = usage_projection(ledger.get('native_usage'))
     if usage['conflicts']:
         raise ValueError('Native resource contradiction requires reconciliation before more work')
     # A confirmed individual producer lower bound alone can establish an

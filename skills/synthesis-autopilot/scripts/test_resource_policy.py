@@ -1,6 +1,5 @@
 """A8 causal and acceptance fixtures; every native file is synthetic."""
 from copy import deepcopy
-import importlib
 import json
 from pathlib import Path
 import sys
@@ -8,6 +7,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_controller import facade, world, engine, invoke, request, start_request, state_of
 from test_workflow import wf, state, context, dispatch_ready, call
+
+__all__ = ["facade", "world", "engine", "wf", "state", "context"]
 
 
 def test_default_controller_exposes_separate_unknown_and_estimated_resources(facade, world):
@@ -53,7 +54,7 @@ def test_actual_native_usage_reaches_journal_resource_projection(facade, world):
     assert accounting['native']['by_producer']['root']['distinct_response_tokens'] == 10
     assert accounting['native']['by_producer']['root']['mode'] == 'synthetic'
     assert accounting['native']['aggregate_tree_usage'] is None
-    assert state['extensions']['workflow']['budget']['native_usage']['measurements']
+    assert __import__('resource_policy').usage_projection(state['extensions']['workflow']['budget']['native_usage'])['measurements']
 
 
 def _claude_usage(world, identity='one', amount=10, *, final=True):
@@ -186,7 +187,7 @@ def test_fanout_reserves_cannot_be_refunded_before_child_audit(wf, state, contex
     ({'domains': ['software', 'research']}, 'investigate_deliver'),
     ({'horizon': 'reboot'}, 'durable_program'), ({'effect': 'external'}, 'durable_program')])
 def test_shape_choice_retains_contract_profile_model_effort(wf, state, context, dimensions, shape):
-    from test_workflow import configured, dimensions as defaults
+    from test_workflow import configured
     from resource_policy import select_policy
     state['contract']['model'] = 'explicit-provider-model'
     state['contract']['reasoning_effort'] = 'explicit-effort'
@@ -472,7 +473,6 @@ def test_budget_cannot_relabel_native_tokens_as_currency(wf, state, context):
 
 
 def test_operator_effort_report_is_current_bound_optional_and_not_measured(facade, world):
-    from test_run_state import command
     from test_workflow import _owner_register
     import autopilot
     state = state_of(world, invoke(facade, world, start_request(world)))
@@ -538,7 +538,7 @@ def test_exact_native_transport_alias_is_not_another_response(world, monkeypatch
     batch['events'][0]['event_id'] = 'sha256:'+'a'*64
     batch['events'][0]['native']['source_handle'] = 'transport-alias'
     resource_policy.ingest_native(state, 'transport-alias', batch)
-    usage = state['extensions']['workflow']['budget']['native_usage']
+    usage = resource_policy.usage_projection(state['extensions']['workflow']['budget']['native_usage'])
     assert len(usage['measurements']) == 1 and usage['conflicts'] == {}
     measured = next(iter(usage['measurements'].values()))
     assert measured['tokens'] == 18 and len(measured['observations']) == 2

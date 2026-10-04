@@ -833,7 +833,7 @@ def execute(
                 enumerate(plan), run_batch, workers=workers,
                 stop_when=lambda outcome: bool(outcome["errors"]),
                 exclusive_when=lambda item: any(
-                    selector.split("::", 1)[0].endswith("/test_managed_native_owner.py")
+                    checks.is_timing_sensitive_selector(selector)
                     for selector in item[1]["selectors"]
                 ),
             )

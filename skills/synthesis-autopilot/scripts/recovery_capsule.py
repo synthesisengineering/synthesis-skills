@@ -47,21 +47,29 @@ def _journal(context):
     """
     histories = {'contract': [], 'profile': []}
     identities = {'contract': None, 'profile': None}
-    prior = head = None
-    for event in run_state._events(Path(context['project']), context['state']['run_id']):
-        prior, head = head, event
-        state = event['state']
+    history = run_state._verified_history(Path(context['project']), context['state']['run_id'])
+    if history is None:
+        events = run_state._events(Path(context['project']), context['state']['run_id'])
+        def rows():
+            for event in events:
+                yield run_state._history_metadata(event), event['state']
+    else:
+        def rows():
+            for row in history['rows']:
+                yield row, history['last']['state'] if row is history['rows'][-1] else None
+    prior = head = head_state = None
+    for event, value in rows():
+        prior, head, head_state = head, event, value
         for field in histories:
-            identity = (state[field + '_revision'], state[field + '_digest'])
+            identity = (event[field + '_revision'], event[field + '_digest'])
             if identity != identities[field]:
                 histories[field].append({'revision': identity[0], 'sha256': identity[1],
                     'journal_revision': event['revision'], 'event_digest': event['digest']})
                 identities[field] = identity
-    if head is None or head['state'] != context['state']:
+    if head is None or head_state != context['state']:
         raise ValueError('recovery capsule requires the exact current verified journal head')
     def metadata(event):
-        return None if event is None else {key: event[key] for key in ('revision','digest','command')} | {
-            'state_digest': run_state._digest(event['state'])}
+        return None if event is None else {key: event[key] for key in ('revision','digest','command','state_digest')}
     return {'head': metadata(head), 'parent': metadata(prior), 'histories': histories}
 
 
@@ -115,7 +123,9 @@ def capture(context):
             'criteria': report, 'waits': deepcopy(state['waits']), 'effects': deepcopy(state['effects']),
             'graph': deepcopy(flow.get('graph')), 'children': deepcopy(flow.get('children', {})),
             'partial_output_refs': _partial_output_refs(state, project),
-            'resources': {'owner_ref': refs.get('workflow'), 'recorded_budget': deepcopy(flow.get('budget')),
+            'resources': {'owner_ref': refs.get('workflow'),
+                          'recorded_budget_ref': {'event_ref': parent_ref, 'pointer': '/state/extensions/workflow/budget',
+                                                  'sha256': run_state._digest(flow.get('budget'))},
                           'interpretation': 'Recorded measured, forecast and unknown values retain their owner semantics'}},
         'artifacts': artifacts, 'extension_refs': refs,
         'local': {'project_root': str(project), 'owner': {key: proof[key] for key in
@@ -142,6 +152,32 @@ def reference(state, project):
     return {'event_ref': _event_ref(Path(project), state, revision), 'pointer': POINTER,
         'sha256': run_state._digest(capsule), 'journal_revision': revision,
         'authority_granted': False, 'current_head': state['revision'] == revision}
+
+
+def _validate_resource_reference(project, state, capsule):
+    resources = capsule.get('obligations', {}).get('resources', {})
+    embedded = {'owner_ref', 'recorded_budget', 'interpretation'}
+    referenced = {'owner_ref', 'recorded_budget_ref', 'interpretation'}
+    if not isinstance(resources, dict) or set(resources) not in (embedded, referenced):
+        raise ValueError('capsule requires exactly one complete resource representation')
+    basis = capsule['basis']['revision']
+    expected_path = _event_ref(project, state, basis)
+    if set(resources) == referenced:
+        ref = resources['recorded_budget_ref']
+        if (not isinstance(ref, dict) or set(ref) != {'event_ref', 'pointer', 'sha256'}
+                or ref['event_ref'] != expected_path or ref['pointer'] != '/state/extensions/workflow/budget'):
+            raise ValueError('capsule budget reference differs from its authenticated parent')
+    parent = run_state._read(safe_path(project / expected_path, project))
+    if (parent.get('digest') != capsule['basis']['event_digest']
+            or run_state._digest(parent['state']) != capsule['basis']['state_digest']):
+        raise ValueError('capsule resource parent differs from its authenticated basis')
+    flow = parent['state'].get('extensions', {}).get('workflow')
+    expected_owner = None if flow is None else {'event_ref': expected_path, 'pointer': '/state/extensions/workflow', 'sha256': run_state._digest(flow)}
+    budget = (flow or {}).get('budget')
+    if (resources.get('owner_ref') != expected_owner
+            or set(resources) == referenced and ref['sha256'] != run_state._digest(budget)
+            or set(resources) == embedded and resources['recorded_budget'] != budget):
+        raise ValueError('capsule resource reference failed owner/digest validation')
 
 
 def _selected_capsule(context, ref):
@@ -175,6 +211,7 @@ def _selected_capsule(context, ref):
     if any(identity not in context['artifacts'] or context['artifacts'][identity]['digest'] != row['digest']
            for identity, row in capsule['artifacts'].items()):
         raise ValueError('recovery capsule artifact/input identities changed or are unavailable')
+    _validate_resource_reference(project, state, capsule)
     return capsule
 
 
@@ -244,6 +281,9 @@ def prepare(context, payload):
         raise ValueError('recovery admission accepts only an optional journal capsule reference')
     read_admission_observation(context)
     _journal(context)
+    retained = context['state'].get('extensions', {}).get('controller', {}).get('checkpoint', {}).get('recovery_capsule')
+    if retained is not None:
+        _validate_resource_reference(Path(context['project']), context['state'], retained)
     if payload['capsule_ref'] is not None:
         _selected_capsule(context, payload['capsule_ref'])
     return {'capsule_ref': payload['capsule_ref'], 'report': _report(context)}

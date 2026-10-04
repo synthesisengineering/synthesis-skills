@@ -1,7 +1,5 @@
 """Real PM builder/admission/journal fixtures for the narrow execution proof."""
 from copy import deepcopy
-import hashlib
-import importlib
 import json
 from pathlib import Path
 import sys
@@ -11,10 +9,15 @@ import pytest
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[1] / 'synthesis-autopilot/scripts'))
-from test_run_admission import world, write_board, SEAT  # noqa: F401
-from test_run_state import engine, create, command  # noqa: F401
+import test_run_admission as admission_fixtures
+import test_run_state as run_fixtures
+from test_run_admission import write_board, SEAT
+from test_run_state import create, command
 import project_state
 import execution_checkpoint as checkpoint
+
+world = admission_fixtures.world
+engine = run_fixtures.engine
 
 
 def build(world, **overrides):
@@ -326,18 +329,65 @@ def test_execution_basis_advances_without_counting_owned_historical_projection_b
  assert checkpoint.validate_execution_basis(view(engine,world,state),receipt)==('EXECUTION_BASIS',[])
 
 
-def test_original_large_inline_history_is_unchanged_across_block_continuation(engine,world):
- state=grow(engine,world);home=engine._home(world['project'],state['run_id'])
- # Preserve the exact old inline representation; no codec existed in this fixture's predecessor.
- for event in list(engine._events(world['project'],state['run_id'])):
-  (home/'events'/f"{event['revision']:012d}.json").write_bytes(engine._json(event)+b'\n')
- (home/'current.json').write_bytes(engine._json(state)+b'\n')
- directory=home/'state-blocks/v1'
- for member in directory.iterdir(): assert member.is_file() and not member.is_symlink();member.unlink()
- directory.rmdir();directory.parent.rmdir()
- old={p.name:p.read_bytes() for p in (home/'events').iterdir()}
- assert engine.load_run(world['project'],state['run_id'])==state
- build(world);receipt=checkpoint.observe_execution_basis(view(engine,world,state))
- state=command(engine,world,state,'transition',{'status':'running'})
- assert checkpoint.validate_execution_basis(view(engine,world,state),receipt)==('EXECUTION_BASIS',[])
- for name,raw in old.items():assert (home/'events'/name).read_bytes()==raw
+def test_original_large_inline_history_is_unchanged_across_block_continuation(engine, world):
+    import journal_storage as storage
+    state = create(engine, world)
+    def retained_inline(state, payload, context):
+        state['extensions']['retained_inline'] = 'x' * (storage.INLINE_BYTES // 2)
+        return state
+    engine.register_command('fixture.inline', retained_inline, allowed_fields=('extensions',))
+    state = command(engine, world, state, 'fixture.inline', {})
+    home = engine._home(world['project'], state['run_id'])
+    construction = world['scratch'] / 'codec-bound-construction'
+    construction.mkdir()
+    # Construct a synthetic predecessor with no codec binding, not codec2 state
+    # relabeled as inline JSON. The existing legacy compiler selects its bytes.
+    previous = ''
+    for original in list(engine._events(world['project'], state['run_id'])):
+        path = home / 'events' / f"{original['revision']:012d}.json"
+        (construction / path.name).write_bytes(path.read_bytes())
+        event = deepcopy(dict(original))
+        event['state']['extensions'].pop('journal_storage')
+        event['previous_digest'] = previous
+        event.pop('digest')
+        event['digest'] = engine._digest(event)
+        previous = event['digest']
+        raw, blocks = storage.encode(event, codec=1)
+        assert not blocks and storage.MARKER not in json.loads(raw)
+        assert raw == engine._json(event) + b'\n'
+        path.write_bytes(raw)
+        state = event['state']
+    raw, blocks = storage.encode(state, codec=1)
+    assert not blocks and len(raw) > storage.INLINE_BYTES // 2
+    (construction / 'current.json').write_bytes((home / 'current.json').read_bytes())
+    (home / 'current.json').write_bytes(raw)
+    old = {p.name: p.read_bytes() for p in (home / 'events').iterdir()}
+    assert all('journal_storage' not in json.loads(raw)['state']['extensions'] for raw in old.values())
+    assert engine.load_run(world['project'], state['run_id']) == state
+    build(world)
+    receipt = checkpoint.observe_execution_basis(view(engine, world, state))
+    def block_successor(state, payload, context):
+        state['extensions']['block_successor'] = 'y' * (2 * storage.INLINE_BYTES)
+        return state
+    engine.register_command('fixture.block', block_successor, allowed_fields=('extensions',))
+    state = command(engine, world, state, 'fixture.block', {})
+    assert state['extensions']['journal_storage'] == {'codec': 2}
+    assert json.loads((home / 'current.json').read_bytes())[storage.MARKER] == 2
+    assert engine.load_run(world['project'], state['run_id']) == state
+    assert checkpoint.validate_execution_basis(view(engine, world, state), receipt) == ('EXECUTION_BASIS', [])
+    for name, raw in old.items():
+        assert (home / 'events' / name).read_bytes() == raw
+
+
+def test_execution_checkpoint_refuses_codec_bound_event_rewritten_as_inline(engine, world):
+    state = grow(engine, world)
+    home = engine._home(world['project'], state['run_id'])
+    event_path = home / 'events' / f"{state['revision']:012d}.json"
+    (world['scratch'] / 'original-codec-event.json').write_bytes(event_path.read_bytes())
+    event = engine._read(event_path)
+    assert event['state']['extensions']['journal_storage'] == {'codec': 2}
+    event_path.write_bytes(engine._json(event) + b'\n')
+    assert engine.load_run(world['project'], state['run_id']) == state
+    build(world)
+    with pytest.raises(ValueError, match='noncanonical|foreign'):
+        checkpoint.observe_execution_basis(view(engine, world, state))

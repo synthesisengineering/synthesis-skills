@@ -51,10 +51,18 @@ def test_concurrent_threads_have_separate_custody(tmp_path):
 def test_parent_death_eof_reaps_thread_command(tmp_path, sig):
     pidfile = tmp_path / "command.pid"
     beat = tmp_path / "beat"
+    # Publish readiness only after the complete PID and first heartbeat exist.
+    # A visible file created by write_text alone can still be empty.
     script = (
-        "import os,time;from pathlib import Path;Path("
-        + repr(str(pidfile))
-        + ").write_text(str(os.getpid()));\nwhile True:\n Path("
+        "import os,time,json,datetime;from pathlib import Path\n"
+        + "ready=Path(" + repr(str(pidfile)) + ");pending=ready.with_suffix('.pending')\n"
+        + "Path(" + repr(str(tmp_path / 'child-identities.json'))
+        + ").write_text(json.dumps({'pid':os.getpid(),'pgid':os.getpgrp(),"
+        + "'parent_pid':os.getppid(),'parent_pgid':os.getpgid(os.getppid()),"
+        + "'at':datetime.datetime.now(datetime.timezone.utc).isoformat()}))\n"
+        + "pending.write_text(str(os.getpid()))\n"
+        + "Path(" + repr(str(beat)) + ").write_text(str(time.monotonic()))\n"
+        + "pending.replace(ready)\nwhile True:\n Path("
         + repr(str(beat))
         + ").write_text(str(time.monotonic()));time.sleep(.02)"
     )
@@ -227,3 +235,63 @@ def test_thread_dispatch_cannot_execute_replaced_module_path(tmp_path, monkeypat
     assert result.stdout == "intended\n" and result.returncode == 0
     assert len(dispatches) == 1 and "-I" in dispatches[0] and "-B" in dispatches[0]
     assert not sentinel.exists()
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGKILL])
+def test_parent_death_waits_for_atomic_readiness(tmp_path, monkeypatch, sig):
+    """Hold the actual child on both sides of the pending-file write."""
+    import ast
+    original = subprocess.Popen
+    pending = tmp_path / "command.pending"
+    pidfile = tmp_path / "command.pid"
+    empty = tmp_path / "pending-empty"
+    complete = tmp_path / "pending-complete"
+    release_empty = tmp_path / "release-empty"
+    release_complete = tmp_path / "release-complete"
+
+    def wait_for(path, proc):
+        until = time.monotonic() + 3
+        while not path.exists() and proc.poll() is None and time.monotonic() < until:
+            time.sleep(.005)
+        assert path.exists(), "synthetic readiness interleaving did not reach barrier"
+
+    def launch(argv, *args, **kwargs):
+        if len(argv) != 2 or Path(argv[1]).name != "parent.py":
+            return original(argv, *args, **kwargs)
+        path = Path(argv[1])
+        text = path.read_text()
+        call = next(node for node in ast.walk(ast.parse(text))
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "submit")
+        script = ast.literal_eval(call.args[1])[2]
+        empty_barrier = ("pending.touch();Path(" + repr(str(empty)) + ").touch()\n"
+                         "while not Path(" + repr(str(release_empty)) + ").exists():time.sleep(.005)\n")
+        complete_barrier = ("Path(" + repr(str(complete)) + ").touch()\n"
+                            "while not Path(" + repr(str(release_complete)) + ").exists():time.sleep(.005)\n")
+        assert script.count("pending.write_text(str(os.getpid()))") == 1
+        assert script.count("pending.replace(ready)") == 1
+        held = script.replace("pending.write_text(str(os.getpid()))",
+                              empty_barrier + "pending.write_text(str(os.getpid()))")
+        held = held.replace("pending.replace(ready)", complete_barrier + "pending.replace(ready)")
+        path.write_text(text.replace(repr(script), repr(held), 1))
+        proc = original(argv, *args, **kwargs)
+        try:
+            wait_for(empty, proc)
+            assert pending.read_bytes() == b"" and not pidfile.exists()
+            release_empty.touch()
+            wait_for(complete, proc)
+            assert int(pending.read_text()) > 1 and not pidfile.exists()
+            assert float((tmp_path / "beat").read_text()) > 0
+            release_complete.touch()
+            return proc
+        except BaseException:
+            # The existing parent's EOF lifeline still owns descendant cleanup.
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=3)
+            proc.stdout.close()
+            proc.stderr.close()
+            raise
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    test_parent_death_eof_reaps_thread_command(tmp_path, sig)

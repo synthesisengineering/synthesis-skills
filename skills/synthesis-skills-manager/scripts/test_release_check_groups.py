@@ -218,6 +218,7 @@ def synthetic_root(tmp_path):
         "evaluation",
         "brand_new_surface",
         "native_cancellation",
+        "managed_native_owner",
     ):
         (directory / ("test_" + name + ".py")).write_text(
             "def test_one():\n    assert True\n"
@@ -240,7 +241,7 @@ def test_actual_pytest_groups_run_every_parameter_and_preserve_full_inventory(
         assert code == 0, payload
         observed.extend(payload["selected"])
         inventories.append(payload["inventory"])
-    assert len(observed) == 7 and len(set(observed)) == 7
+    assert len(observed) == 8 and len(set(observed)) == 8
     assert all(sorted(i) == sorted(observed) for i in inventories)
 
 
@@ -1294,7 +1295,7 @@ def test_native_control_partition_preserves_all_tests_and_finite_bounds():
         )
     ]
     result = groups.partition(nodes)
-    assert set(result) == {"state", "native", "native-control", "evaluation", "core"}
+    assert set(result) == {"state", "native", "native-control", "evaluation", "core", "timing"}
     assert result["native-control"] == nodes[:3]
     assert result["native"] == nodes[3:5]
     assert result["core"] == nodes[5:]
@@ -1740,7 +1741,7 @@ def test_explicit_group_does_not_inherit_acceptance_selection(
         groups.AP + "/test_brand_new_surface.py::test_one",
         groups.AP + "/test_brand_new_surface.py::test_two",
     ]
-    assert len(payload["inventory"]) == 6
+    assert len(payload["inventory"]) == 7
 
 
 @pytest.mark.parametrize("cohort", ["hosted-batch221", "additional-limits"])
@@ -2321,3 +2322,81 @@ def test_ritual_first_failure_retains_traceback_and_success_is_exhaustive(tmp_pa
     script.write_text('def test_first(): assert True\ndef test_second(): assert True\n')
     passed = groups.bounded_run([sys.executable,'-m','pytest',str(script),*command[-2:]], tmp_path, 15, env)
     assert passed.returncode == 0 and '2 passed' in passed.stdout
+
+
+@pytest.mark.parametrize("selector,expected", [
+    ("test_journal_storage.py", True),
+    ("test_journal_storage.py::test_native_history_crosses_snapshot_limit_and_recovers_exactly", True),
+    ("test_journal_storage.py::test_native_history_crosses_snapshot_limit_and_recovers_exactly[x]", True),
+    ("test_journal_storage.py::test_atomic_append_replay_projection_rebuild_and_operator", True),
+    ("test_journal_storage.py::test_atomic_append_replay_projection_rebuild_and_operator_extra", False),
+    ("test_journal_storage.py::TestOther::test_atomic_append_replay_projection_rebuild_and_operator", False),
+    ("test_journal_storage.py::test_operator_refuses_if_final_projection_read_exhausts_same_time_budget", False),
+    ("test_managed_native_owner.py::test_any", True),
+    ("test_managed_native_owner.py", True),
+    ("nested/test_managed_native_owner.py::test_any", False),
+    ("test_managed_native_owner_extra.py::test_any", False),
+])
+def test_timing_selector_is_exact_and_preserves_ordinary_deadline_controls(selector, expected):
+    assert groups.is_timing_sensitive_selector(groups.AP + "/" + selector) is expected
+    assert not groups.is_timing_sensitive_selector("foreign/" + selector)
+
+
+def test_timing_partition_preserves_complete_ids_and_order():
+    journal = groups.AP + "/test_journal_storage.py::"
+    nodes = ids() + [journal + "test_native_history_crosses_snapshot_limit_and_recovers_exactly",
+        journal + "test_atomic_append_replay_projection_rebuild_and_operator[x]",
+        journal + "test_operator_refuses_if_final_projection_read_exhausts_same_time_budget",
+        groups.AP + "/test_managed_native_owner.py::test_any"]
+    split = groups.partition(nodes)
+    assert split["timing"] == [nodes[4], nodes[5], nodes[7]]
+    assert split["state"] == [nodes[0], nodes[6]]
+    assert sum(len(v) for v in split.values()) == len(nodes)
+    assert sorted(sum(split.values(), [])) == sorted(nodes)
+    for name, selected in split.items():
+        assert selected == [n for n in nodes if groups.group_for(n) == name]
+    assert (groups.CHECK_SECONDS, groups.GROUP_SECONDS, groups.ACCEPTANCE_SECONDS) == (900, 880, 6000)
+
+
+def test_registered_timing_classifier_is_bound_before_fixture_mutation(tmp_path, monkeypatch):
+    observer = groups._registered_inventory("timing", tmp_path / "inventory.json")
+    namespace = observer.pytest_collection_modifyitems.__func__.__globals__
+    journal = groups.AP + "/test_journal_storage.py::test_native_history_crosses_snapshot_limit_and_recovers_exactly"
+    monkeypatch.setattr(groups, "is_timing_sensitive_selector", lambda _: False)
+    monkeypatch.setattr(groups, "AP", "foreign")
+    assert namespace["group_for"](journal) == "timing"
+    assert namespace["is_timing_sensitive_selector"].__globals__ is namespace
+
+
+@pytest.mark.parametrize("cancel_before_timing", [False, True])
+def test_actual_scheduler_drains_before_timing_and_preserves_parallel_ordinary_workers(cancel_before_timing):
+    import threading
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    active = set()
+    trace = []
+    def worker(item, cancel):
+        with lock:
+            assert not active if item == "timing" else "timing" not in active
+            active.add(item)
+            trace.append(("start", item, sorted(active)))
+        if item in ("a", "b"):
+            barrier.wait(timeout=5)
+            if cancel_before_timing and item == "b":
+                assert cancel.wait(5)
+        with lock:
+            active.remove(item)
+            trace.append(("end", item, sorted(active)))
+        return item
+    result = groups.bounded_map(["a", "b", "timing", "after"], worker, workers=2,
+        exclusive_when=lambda item: item == "timing",
+        stop_when=lambda value: cancel_before_timing and value == "a")
+    assert any(e[0] == "start" and len(e[2]) == 2 for e in trace)
+    assert not active
+    if cancel_before_timing:
+        assert result == ["a", "b", None, None]
+        assert all(e[1] not in ("timing", "after") for e in trace)
+    else:
+        assert result == ["a", "b", "timing", "after"]
+        timing = next(i for i, e in enumerate(trace) if e[:2] == ("start", "timing"))
+        assert all(next(i for i,e in enumerate(trace) if e[:2] == ("end", n)) < timing for n in ("a", "b"))

@@ -6,6 +6,13 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.45.1 — Preserve acquisition clock precision
+
+Acquisition evidence is checked against the full current timestamp so an
+observation captured earlier in the same second is not mistaken for future
+evidence. Future observations still refuse advancement. Watermark selectors,
+durable timestamps, and displayed values retain their whole-second format.
+
 ## v2.45.0 — Connector evidence and partial source coverage
 
 v2.45.0 (2026-10-02): declared connector adapters connect recorded Slack reads
