@@ -21,6 +21,13 @@ MAX_SOURCES = 512
 MAX_BYTES = 32 * 1024 * 1024
 PLAN_SECONDS = 3600
 READ_SECONDS = 30
+RECOVERY_ROOT_KEYS = (
+    "repo_guard_root",
+    "checkpoint_receipt_root",
+    "coordination_board",
+)
+MAX_RESOLUTION_ISSUES = 8
+MAX_RESOLUTION_ISSUE_CHARS = 256
 
 
 def _digest(value):
@@ -66,7 +73,66 @@ def _yaml(raw):
     return yaml.load(raw, Loader=Strict)
 
 
-def _resolve(index, selected):
+def _recovery_roots(roots=None):
+    if roots is None:
+        roots = dict.fromkeys(RECOVERY_ROOT_KEYS)
+    if not isinstance(roots, dict) or set(roots) != set(RECOVERY_ROOT_KEYS):
+        raise ValueError("exact recovery root mapping required")
+    result = {}
+    for key, value in roots.items():
+        if value is not None and not isinstance(value, (str, Path)):
+            raise ValueError("recovery root must be a path or null")
+        if value is not None and (not str(value) or not Path(value).is_absolute()):
+            raise ValueError("recovery roots must be explicit absolute paths")
+        result[key] = None if value is None else str(records._path(value))
+    return result
+
+
+def _root_identities(roots):
+    # Board files are atomically refreshed by their owner. Bind their directory,
+    # not a replaceable heartbeat inode. Missing roots remain explicitly missing.
+    result = {}
+    for key, value in roots.items():
+        path = None if value is None else Path(value)
+        if path is not None and key == "coordination_board":
+            path = path.parent
+        if path is None or not path.exists():
+            result[key] = None
+        else:
+            path = records._path(path)
+            if not path.is_dir():
+                raise ValueError("recovery root is not a directory")
+            info = path.stat()
+            result[key] = [info.st_dev, info.st_ino]
+    return result
+
+
+def _resolution_refusal(report):
+    issues = report.issues
+    excerpts = [
+        str(issue)[:MAX_RESOLUTION_ISSUE_CHARS]
+        for issue in issues[:MAX_RESOLUTION_ISSUES]
+    ]
+    return ValueError(
+        "causal project resolution refused: "
+        + report.status
+        + "; "
+        + json.dumps(
+            {
+                "issues": excerpts,
+                "issue_count": len(issues),
+                "issues_truncated": len(issues) > len(excerpts)
+                or any(
+                    len(str(issue)) > MAX_RESOLUTION_ISSUE_CHARS
+                    for issue in issues[:MAX_RESOLUTION_ISSUES]
+                ),
+            },
+            ensure_ascii=True,
+        )
+    )
+
+
+def _resolve(index, selected, recovery_roots):
     raw, meta = records._snapshot(index)
 
     # Duplicate keys are rejected before the causal owner reads the index.
@@ -93,12 +159,16 @@ def _resolve(index, selected):
             fetch=False,
             fast_forward_canonical=False,
             refresh_coordination=False,
+            **{
+                key: None if value is None else Path(value)
+                for key, value in recovery_roots.items()
+            },
         )
         if (
             resolved.status not in ("PASS", "LOCAL_RECOVERABLE")
             or not resolved.selected_path
         ):
-            raise ValueError("causal project resolution refused: " + resolved.status)
+            raise _resolution_refusal(resolved)
         path = records._path(resolved.selected_path)
         if path.name != name:
             raise ValueError("registry selection and project identity differ")
@@ -230,7 +300,7 @@ def _project_proposal(project, name, stamp):
     }
 
 
-def propose(index, selected, *, target_format, now=None):
+def propose(index, selected, *, target_format, now=None, recovery_roots=None):
     if (
         type(target_format) is not int
         or target_format != formats.CURRENT_FORMAT
@@ -239,7 +309,9 @@ def propose(index, selected, *, target_format, now=None):
         raise ValueError("only the implemented explicit v1-to-v2 format is available")
     selected = _selection(selected)
     index = records._path(index)
-    index_meta, paths = _resolve(index, selected)
+    roots = _recovery_roots(recovery_roots)
+    identities = _root_identities(roots)
+    index_meta, paths = _resolve(index, selected, roots)
     stamp = _time(now)
     projects = []
     for name, project in zip(selected, paths):
@@ -247,8 +319,12 @@ def propose(index, selected, *, target_format, now=None):
             projects.append(_project_proposal(project, name, stamp))
     if not records._matches(index, index_meta):
         raise ValueError("registry changed during preview")
+    if _root_identities(roots) != identities:
+        raise ValueError("recovery roots changed during preview")
     plan = {
         "schema": 1,
+        "recovery_roots": roots,
+        "recovery_root_identities": identities,
         "operation": "project-format-migration",
         "index": str(index),
         "index_identity": index_meta,
@@ -272,7 +348,23 @@ def _fresh_consent(plan, now=None):
         raise ValueError("migration plan expired or from future")
 
 
-def _validate(plan, approval=None, *, fresh=False, now=None):
+def _check_recovery_roots(plan, *, recovery_roots=None, board=None):
+    roots = _recovery_roots(plan.get("recovery_roots"))
+    if recovery_roots is not None and _recovery_roots(recovery_roots) != roots:
+        raise ValueError("selected machine recovery roots differ from preview")
+    if _root_identities(roots) != plan.get("recovery_root_identities"):
+        raise ValueError("recovery root directory identity changed")
+    if (
+        board is not None
+        and roots["coordination_board"] is not None
+        and str(records._path(board)) != roots["coordination_board"]
+    ):
+        raise ValueError("execution board differs from preview recovery board")
+
+
+def _validate(
+    plan, approval=None, *, fresh=False, now=None, recovery_roots=None, board=None
+):
     if (
         not isinstance(plan, dict)
         or plan.get("schema") != 1
@@ -287,6 +379,7 @@ def _validate(plan, approval=None, *, fresh=False, now=None):
         raise ValueError("exact migration preview consent required")
     if len(records._json(plan)) > records.MAX_MANIFEST_BYTES:
         raise ValueError("migration plan exceeds bound")
+    _check_recovery_roots(plan, recovery_roots=recovery_roots, board=board)
     if fresh:
         _fresh_consent(plan, now)
     selected = _selection(plan["selected"])
@@ -369,6 +462,7 @@ def _fresh_item(plan, item):
 
 
 def _record_apply(plan, item, board, native_payload, *, dry_run):
+    _check_recovery_roots(plan, board=board)
     requests = [
         {"file": o["path"], "create": {"text": o["text"], "mode": o["mode"]}}
         for o in item["outputs"]
@@ -399,10 +493,11 @@ def apply(
     dry_run=False,
     now=None,
     selected_project=None,
+    recovery_roots=None,
 ):
     # Verified completed intents remain inspectable after consent expires.
     # Every not-yet-started project must independently admit fresh consent.
-    _validate(plan, approval_digest)
+    _validate(plan, approval_digest, recovery_roots=recovery_roots, board=board)
     if type(dry_run) is not bool:
         raise ValueError("dry_run must be boolean")
     if selected_project is not None and selected_project not in plan["selected"]:
@@ -464,9 +559,17 @@ def apply(
     }
 
 
-def recover(plan, *, approval_digest, board, native_payload, selected_project=None):
+def recover(
+    plan,
+    *,
+    approval_digest,
+    board,
+    native_payload,
+    selected_project=None,
+    recovery_roots=None,
+):
     # Expiry blocks new effects, not completion of the exact durable commit.
-    _validate(plan, approval_digest)
+    _validate(plan, approval_digest, recovery_roots=recovery_roots, board=board)
     if selected_project is not None and selected_project not in plan["selected"]:
         raise ValueError("recovery selector is not in the approved project set")
     selected = [
@@ -483,6 +586,7 @@ def recover(plan, *, approval_digest, board, native_payload, selected_project=No
                 manifest, _ = records._manifest(active, project)
                 if manifest["id"] != _intent(plan, item):
                     raise ValueError("foreign pending transaction")
+                _check_recovery_roots(plan, recovery_roots=recovery_roots, board=board)
                 out.append(
                     {
                         "id": item["id"],
@@ -508,8 +612,8 @@ def recover(plan, *, approval_digest, board, native_payload, selected_project=No
     }
 
 
-def verify(plan):
-    _validate(plan)
+def verify(plan, *, recovery_roots=None):
+    _validate(plan, recovery_roots=recovery_roots)
     for item in plan["projects"]:
         with records.managed(Path(item["path"])):
             if not _completed(plan, item):

@@ -1872,6 +1872,19 @@ class SystemState:
         self.invites_path = self.state_dir / "consumed-invites.json"
         self.legacy_receipts_path = self.synthesis_dir / "onboarding" / "receipts.json"
 
+    def project_recovery_roots(self) -> dict[str, Path]:
+        """Existing project-state owners for this selected machine context."""
+        board = os.environ.get("SYNTHESIS_COORDINATION_BOARD")
+        return {
+            "repo_guard_root": self.synthesis_dir / "repo-guard",
+            "checkpoint_receipt_root": self.synthesis_dir
+            / "project-state"
+            / "receipts",
+            "coordination_board": Path(board).expanduser()
+            if board
+            else (self.synthesis_dir / "coordination" / "active-sessions.md"),
+        }
+
     def live_receipt_registry_root(self) -> Path:
         """Directory holding the client SessionStart event registry.
 

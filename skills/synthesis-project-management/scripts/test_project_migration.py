@@ -561,3 +561,261 @@ def test_expiry_between_projects_preserves_first_commit_without_starting_second(
         )["projects"][0]["status"]
         == "already-committed"
     )
+
+
+# Recovery roots are discovery evidence, never native mutation authority.
+def recovery_world(world, *, receipt=False):
+    import hashlib
+
+    m, index = setup(world)
+    roots = {
+        "repo_guard_root": world["scratch"] / "guard",
+        "checkpoint_receipt_root": world["scratch"] / "receipts",
+        "coordination_board": world["board"],
+    }
+    for key in ("repo_guard_root", "checkpoint_receipt_root"):
+        roots[key].mkdir()
+    pending = roots["repo_guard_root"] / "pending"
+    pending.mkdir(exist_ok=True)
+    context = world["project"] / "CONTEXT.md"
+    context.write_bytes(context.read_bytes() + b"\nRetained uncommitted source.\n")
+    manifest = pending / "synthetic-owner.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "session_id": "synthetic-owner",
+                "paths": [str(context)],
+                "path_hashes": {
+                    str(context): hashlib.sha256(context.read_bytes()).hexdigest()
+                },
+                "path_kinds": {str(context): "file"},
+            }
+        )
+    )
+    if receipt:
+        (roots["checkpoint_receipt_root"] / "synthetic-checkpoint.json").write_text(
+            json.dumps(
+                {
+                    "project_id": "alpha",
+                    "session_id": "synthetic-owner",
+                    "git_head": git(world["repo"], "rev-parse", "HEAD"),
+                }
+            )
+        )
+    return m, index, roots, manifest
+
+
+@pytest.mark.parametrize("receipt", [False, True])
+def test_actual_dirty_attribution_roots_plan_apply_verify_source_custody(
+    world, receipt
+):
+    m, index, roots, manifest = recovery_world(world, receipt=receipt)
+    before = (world["project"] / "CONTEXT.md").read_bytes()
+    report = m.project_state.resolve_project(
+        "alpha",
+        index,
+        fetch=False,
+        fast_forward_canonical=False,
+        refresh_coordination=False,
+        **roots,
+    )
+    assert report.status == "LOCAL_RECOVERABLE"
+    assert "claim" in {candidate.source for candidate in report.candidates}
+    if receipt:
+        assert "checkpoint-receipt" in {
+            candidate.source for candidate in report.candidates
+        }
+    p = m.propose(
+        index,
+        ["alpha"],
+        target_format=2,
+        recovery_roots=roots,
+        now="2026-01-03T00:00:00+00:00",
+    )
+    assert p["recovery_roots"] == {key: str(value) for key, value in roots.items()}
+    assert run(world, m, p, dry_run=True, recovery_roots=roots)["status"] == "dry-run"
+    assert not (world["project"] / ".synthesis-project.yaml").exists()
+    assert run(world, m, p, recovery_roots=roots)["status"] == "committed"
+    assert m.verify(p, recovery_roots=roots)["status"] == "verified-derived-format"
+    assert (world["project"] / "CONTEXT.md").read_bytes() == before
+    assert manifest.exists()
+    intent = m._intent(p, p["projects"][0])
+    saved = json.loads(
+        (
+            world["project"] / rt.STORE / "completed" / intent / "manifest.json"
+        ).read_text()
+    )
+    assert (
+        saved["sources"][0]["before"]["sha256"]
+        == p["projects"][0]["source"][0]["sha256"]
+    )
+
+
+@pytest.mark.parametrize("bad", ["missing", "wrong-root", "wrong-hash", "foreign-path"])
+def test_actual_dirty_refusal_exposes_original_owner_issue(world, bad):
+    m, index, roots, manifest = recovery_world(world)
+    if bad == "missing":
+        manifest.rename(manifest.with_suffix(".retained"))
+    elif bad == "wrong-root":
+        roots["repo_guard_root"] = world["scratch"] / "wrong-guard"
+    else:
+        data = json.loads(manifest.read_text())
+        if bad == "wrong-hash":
+            data["path_hashes"] = {data["paths"][0]: "0" * 64}
+        else:
+            data["paths"] = [str(world["scratch"] / "foreign-project" / "CONTEXT.md")]
+        manifest.write_text(json.dumps(data))
+    with pytest.raises(
+        ValueError, match="dirty project files lack an exact attributed manifest"
+    ):
+        m.propose(index, ["alpha"], target_format=2, recovery_roots=roots)
+    assert not (world["project"] / ".synthesis-project.yaml").exists()
+
+
+@pytest.mark.parametrize("change", ["selected-root", "directory-replaced", "board"])
+def test_recovery_binding_changes_refuse_before_effect(world, change):
+    m, index, roots, manifest = recovery_world(world)
+    p = m.propose(
+        index,
+        ["alpha"],
+        target_format=2,
+        recovery_roots=roots,
+        now="2026-01-03T00:00:00+00:00",
+    )
+    board = world["board"]
+    if change == "selected-root":
+        roots = {**roots, "repo_guard_root": world["scratch"] / "other-guard"}
+    elif change == "directory-replaced":
+        root = roots["repo_guard_root"]
+        root.rename(root.with_name("retained-guard"))
+        root.mkdir()
+    elif change == "board":
+        board = board.with_name("other-board.md")
+        board.write_bytes(world["board"].read_bytes())
+    with pytest.raises(ValueError):
+        m.apply(
+            p,
+            approval_digest=p["digest"],
+            board=board,
+            native_payload=world["actor"]["native_payload"],
+            recovery_roots=roots,
+            now="2026-01-03T00:01:00+00:00",
+        )
+    assert not (world["project"] / ".synthesis-project.yaml").exists()
+
+
+def test_attribution_does_not_grant_foreign_native_effects(world):
+    from test_run_admission import write_board
+
+    m, index, roots, _ = recovery_world(world)
+    p = m.propose(
+        index,
+        ["alpha"],
+        target_format=2,
+        recovery_roots=roots,
+        now="2026-01-03T00:00:00+00:00",
+    )
+    write_board(world, native="01990000-0000-7000-8000-000000000099")
+    with pytest.raises(
+        rt.RecordTransactionError,
+        match="native event has no unique active coordination seat",
+    ):
+        run(world, m, p, recovery_roots=roots)
+    assert not (world["project"] / ".synthesis-project.yaml").exists()
+
+
+def test_root_bound_interrupted_migration_recovers_same_original_intent(
+    world, monkeypatch
+):
+    m, index, roots, _ = recovery_world(world)
+    p = m.propose(
+        index,
+        ["alpha"],
+        target_format=2,
+        recovery_roots=roots,
+        now="2026-01-03T00:00:00+00:00",
+    )
+    original = rt.os.link
+    calls = 0
+
+    def interrupted(src, dst, **kw):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("synthetic retained interruption")
+        return original(src, dst, **kw)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(rt.os, "link", interrupted)
+        with pytest.raises(OSError):
+            run(world, m, p, recovery_roots=roots)
+    assert (
+        m.recover(
+            p,
+            approval_digest=p["digest"],
+            board=world["board"],
+            native_payload=world["actor"]["native_payload"],
+            recovery_roots=roots,
+        )["status"]
+        == "committed"
+    )
+    assert m.verify(p, recovery_roots=roots)["status"] == "verified-derived-format"
+
+
+def test_refusal_detail_is_bounded_without_hiding_status_or_issue_count():
+    from types import SimpleNamespace
+    import project_migration as m
+
+    report = SimpleNamespace(status="CONFLICT", issues=["x" * 10000] * 100)
+    error = str(m._resolution_refusal(report))
+    assert error.startswith("causal project resolution refused: CONFLICT;")
+    detail = json.loads(error.split("; ", 1)[1])
+    assert detail["issue_count"] == 100 and detail["issues_truncated"] is True
+    assert len(detail["issues"]) == 8 and len(error) < 3000
+
+
+@pytest.fixture(autouse=True)
+def migration_selected_machine(world, monkeypatch):
+    # The CLI fixture selects the same synthetic machine/board as native admission.
+    monkeypatch.setenv("SYNTHESIS_HOME", str(world["scratch"] / "selected-home"))
+    monkeypatch.setenv("SYNTHESIS_COORDINATION_BOARD", str(world["board"]))
+
+
+def test_each_preview_requires_fresh_attribution(world):
+    m, index, roots, manifest = recovery_world(world)
+    assert m.propose(index, ["alpha"], target_format=2, recovery_roots=roots)
+    manifest.rename(manifest.with_suffix(".retained"))
+    with pytest.raises(ValueError, match="exact attributed manifest"):
+        m.propose(index, ["alpha"], target_format=2, recovery_roots=roots)
+
+
+@pytest.mark.parametrize("root_key", ["repo_guard_root", "checkpoint_receipt_root"])
+def test_root_replacement_after_preflight_refuses_first_effect(
+    world, monkeypatch, root_key
+):
+    m, index, roots, _ = recovery_world(world)
+    p = m.propose(
+        index,
+        ["alpha"],
+        target_format=2,
+        recovery_roots=roots,
+        now="2026-01-03T00:00:00+00:00",
+    )
+    original = m._fresh_item
+    calls = 0
+
+    def replace_after_preflight(plan, item):
+        nonlocal calls
+        original(plan, item)
+        calls += 1
+        if calls == 2:
+            root = roots[root_key]
+            root.rename(root.with_name(root.name + "-retained"))
+            root.mkdir()
+
+    monkeypatch.setattr(m, "_fresh_item", replace_after_preflight)
+    with pytest.raises(ValueError, match="recovery root directory identity changed"):
+        run(world, m, p, recovery_roots=roots)
+    assert not (world["project"] / ".synthesis-project.yaml").exists()
+    assert not (world["project"] / rt.STORE).exists()

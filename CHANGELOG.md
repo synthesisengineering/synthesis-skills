@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.7] - 2026-10-04
+
+- Use the selected machine’s repository guard, checkpoint receipts and coordination board when resolving project migration previews.
+- Bind migration plans to those recovery roots and recheck their identity immediately before transaction and recovery operations. Include bounded resolver issue details when a preview is refused.
 ## [4.154.6] - 2026-10-04
 
 - Group retained checkpoint paths with bounded repository discovery instead of repeated per-file Git probes and quadratic membership scans. Revalidate repository topology before publication and retirement.
