@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.6** reduces repeated repository discovery when publishing large retained checkpoints. Nested repositories, links and topology changes remain subject to fresh checks before any effect.
+
 Release **4.154.5** lets complete captured detection-rule diffs pass the commit guard while continuing to reject key material and malformed captures. Existing user policy and claim checks remain active. Source and acceptance checks isolate wall-clock deadline controls while ordinary tests continue in parallel.
 
 Release **4.154.4** reduces repeated journal decoding and state copying during retained-history recovery. Checkpoints bind retained fixture bytes and link identities while applying structured-state validation to the live project state. Native recovery still requires its own completed qualification.
