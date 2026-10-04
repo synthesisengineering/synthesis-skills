@@ -946,6 +946,7 @@ def capture_acceptance_diagnostics(
     )
     fds = []
     anchors = []
+    closed_batches = []
     members = []
     total = 0
     root_fd = None
@@ -1001,6 +1002,53 @@ def capture_acceptance_diagnostics(
             raise ValueError("diagnostic directory identity changed")
         anchors.append((parent, name, fd, custody_identity(info)))
         return fd
+
+    def check_anchors(selected):
+        for parent, name, fd, identity in selected:
+            bound()
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if fd is None:
+                if stamp(info) != identity:
+                    raise ValueError("diagnostic member changed at closure")
+            elif (
+                custody_identity(info) != identity
+                or custody_identity(os.fstat(fd)) != identity
+            ):
+                raise ValueError("diagnostic directory changed at closure")
+        # Close the parent fence after all member checks as well: replacement
+        # during a record stat must not make an old open directory authoritative.
+        for parent, name, fd, identity in selected:
+            if fd is not None:
+                bound()
+                if (custody_identity(os.stat(name, dir_fd=parent, follow_symlinks=False))
+                        != identity or custody_identity(os.fstat(fd)) != identity):
+                    raise ValueError("diagnostic directory changed at closure")
+
+    @contextmanager
+    def batch_directories(parent, group_name, group_identity,
+                          process_name, process_identity, *, remember):
+        # Keep only one batch's descriptors live. Saved names and identities
+        # are evidence to revalidate, never authority to skip a fresh open.
+        first_fd, first_anchor = len(fds), len(anchors)
+        try:
+            group = directory(parent, group_name, group_identity)
+            process = directory(group, process_name, process_identity)
+            yield group, process
+            check_anchors(anchors[first_anchor:])
+            if remember:
+                records = []
+                for record_parent, name, fd, identity in anchors[first_anchor:]:
+                    if fd is None:
+                        if record_parent not in (group, process):
+                            raise ValueError("diagnostic record parent escaped batch")
+                        records.append((record_parent == process, name, identity))
+                closed_batches.append((group_name, group_identity, process_name,
+                                       process_identity, records))
+        finally:
+            for fd in reversed(fds[first_fd:]):
+                os.close(fd)
+            del fds[first_fd:]
+            del anchors[first_anchor:]
 
     def save(parent, name, data):
         bound()
@@ -1230,122 +1278,122 @@ def capture_acceptance_diagnostics(
                     or not process_path.name.startswith("synthesis-required-check-")
                 ):
                     raise ValueError("diagnostic member escaped process custody")
-                group = directory(
-                    temp, group_path.name, batch.get("custody_identity", [])
-                )
-                process = directory(
-                    group, process_path.name, batch.get("process_identity", [])
-                )
-                pins = batch["diagnostic_records"]
-                selection = parse(
+                with batch_directories(
+                    temp, group_path.name, batch.get("custody_identity", []),
+                    process_path.name, batch.get("process_identity", []),
+                    remember=True,
+                ) as (group, process):
+                    pins = batch["diagnostic_records"]
+                    selection = parse(
+                        read(
+                            group,
+                            "selection.json",
+                            f"batch-{index}-selection",
+                            REPORT_BYTES,
+                            expected=pins["selection.json"],
+                        )
+                    )
+                    if selection != expected["selectors"]:
+                        raise ValueError("diagnostic selector custody differs")
                     read(
                         group,
-                        "selection.json",
-                        f"batch-{index}-selection",
-                        REPORT_BYTES,
-                        expected=pins["selection.json"],
+                        "pytest.ini",
+                        f"batch-{index}-config",
+                        4096,
+                        expected=pins["pytest.ini"],
                     )
-                )
-                if selection != expected["selectors"]:
-                    raise ValueError("diagnostic selector custody differs")
-                read(
-                    group,
-                    "pytest.ini",
-                    f"batch-{index}-config",
-                    4096,
-                    expected=pins["pytest.ini"],
-                )
-                inventory = read(
-                    group,
-                    "inventory.json",
-                    f"batch-{index}-inventory",
-                    REPORT_BYTES,
-                    optional=True,
-                    expected=pins["inventory.json"],
-                )
-                progress = read(
-                    group,
-                    "inventory.progress.jsonl",
-                    f"batch-{index}-progress",
-                    REPORT_BYTES,
-                    optional=True,
-                    expected=pins["inventory.progress.jsonl"],
-                )
-                read(
-                    process,
-                    "output.log",
-                    f"batch-{index}-output",
-                    OUTPUT_BYTES + 4096,
-                    expected_hash=batch["output_sha256"],
-                    expected=batch["process_records"]["output.log"],
-                )
-                read(
-                    process,
-                    "result.json",
-                    f"batch-{index}-result",
-                    REPORT_BYTES,
-                    expected=batch["process_records"]["result.json"],
-                )
-                rows = []
-                truncated = False
-                if progress is not None:
-                    truncated = bool(progress and not progress.endswith(b"\n"))
-                    lines = progress.splitlines()
-                    if truncated:
-                        lines = lines[:-1]
-                    rows = [parse(line) for line in lines]
-                    if (
-                        not rows
-                        or len(rows) > MAX_TESTS * 4 + 4
-                        or any(
-                            not isinstance(r, dict)
-                            or type(r.get("sequence")) is not int
-                            or r["sequence"] != i
-                            for i, r in enumerate(rows)
-                        )
-                        or rows[0].get("kind") != "start"
-                    ):
-                        raise ValueError("diagnostic progress sequence refused")
-                complete = (
-                    complete
-                    and inventory is not None
-                    and progress is not None
-                    and not truncated
-                )
-                public["batches"].append(
-                    {
-                        "id": f"batch-{index}",
-                        "selectors": [
-                            s.split("[", 1)[0] for s in expected["selectors"]
-                        ],
-                        "inventory": "PRESENT" if inventory is not None else "MISSING",
-                        "progress": "MISSING"
-                        if progress is None
-                        else "TRUNCATED"
-                        if truncated
-                        else "PRESENT",
-                        "process": "OWNER_FAILURE"
-                        if batch.get("process_failure")
-                        else "EXIT_ZERO"
-                        if batch.get("returncode") == 0
-                        else "EXIT_NONZERO",
-                        "phases": phases(rows, expected["selectors"]),
-                    }
-                )
+                    inventory = read(
+                        group,
+                        "inventory.json",
+                        f"batch-{index}-inventory",
+                        REPORT_BYTES,
+                        optional=True,
+                        expected=pins["inventory.json"],
+                    )
+                    progress = read(
+                        group,
+                        "inventory.progress.jsonl",
+                        f"batch-{index}-progress",
+                        REPORT_BYTES,
+                        optional=True,
+                        expected=pins["inventory.progress.jsonl"],
+                    )
+                    read(
+                        process,
+                        "output.log",
+                        f"batch-{index}-output",
+                        OUTPUT_BYTES + 4096,
+                        expected_hash=batch["output_sha256"],
+                        expected=batch["process_records"]["output.log"],
+                    )
+                    read(
+                        process,
+                        "result.json",
+                        f"batch-{index}-result",
+                        REPORT_BYTES,
+                        expected=batch["process_records"]["result.json"],
+                    )
+                    rows = []
+                    truncated = False
+                    if progress is not None:
+                        truncated = bool(progress and not progress.endswith(b"\n"))
+                        lines = progress.splitlines()
+                        if truncated:
+                            lines = lines[:-1]
+                        rows = [parse(line) for line in lines]
+                        if (
+                            not rows
+                            or len(rows) > MAX_TESTS * 4 + 4
+                            or any(
+                                not isinstance(r, dict)
+                                or type(r.get("sequence")) is not int
+                                or r["sequence"] != i
+                                for i, r in enumerate(rows)
+                            )
+                            or rows[0].get("kind") != "start"
+                        ):
+                            raise ValueError("diagnostic progress sequence refused")
+                    complete = (
+                        complete
+                        and inventory is not None
+                        and progress is not None
+                        and not truncated
+                    )
+                    public["batches"].append(
+                        {
+                            "id": f"batch-{index}",
+                            "selectors": [
+                                s.split("[", 1)[0] for s in expected["selectors"]
+                            ],
+                            "inventory": "PRESENT" if inventory is not None else "MISSING",
+                            "progress": "MISSING"
+                            if progress is None
+                            else "TRUNCATED"
+                            if truncated
+                            else "PRESENT",
+                            "process": "OWNER_FAILURE"
+                            if batch.get("process_failure")
+                            else "EXIT_ZERO"
+                            if batch.get("returncode") == 0
+                            else "EXIT_NONZERO",
+                            "phases": phases(rows, expected["selectors"]),
+                        }
+                    )
             public["status"] = "RETAINED" if complete else "INCOMPLETE"
             public["reason"] = (
                 "CLOSED_DIAGNOSTICS" if complete else "PARTIAL_OR_NOT_ADMITTED"
             )
-        for parent, name, fd, identity in anchors:
-            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-            if fd is None:
-                if stamp(info) != identity:
-                    raise ValueError("diagnostic member changed at closure")
-            elif (
-                custody_identity(info) != identity
-                or custody_identity(os.fstat(fd)) != identity
-            ):
-                raise ValueError("diagnostic directory changed at closure")
+        for group_name, group_identity, process_name, process_identity, records in closed_batches:
+            with batch_directories(
+                temp, group_name, group_identity, process_name, process_identity,
+                remember=False,
+            ) as (group, process):
+                # Every retained record is checked again against its original
+                # content/metadata stamp after all other batches were copied.
+                for in_process, name, identity in records:
+                    anchors.append((process if in_process else group, name,
+                                    None, identity))
+        check_anchors(anchors)
         if custody_identity(root.lstat()) != completed.fixture_identity:
             raise ValueError("diagnostic root changed at closure")
         save(

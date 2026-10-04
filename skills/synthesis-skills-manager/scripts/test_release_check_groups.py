@@ -2400,3 +2400,150 @@ def test_actual_scheduler_drains_before_timing_and_preserves_parallel_ordinary_w
         assert result == ["a", "b", "timing", "after"]
         timing = next(i for i, e in enumerate(trace) if e[:2] == ("start", "timing"))
         assert all(next(i for i,e in enumerate(trace) if e[:2] == ("end", n)) < timing for n in ("a", "b"))
+
+
+def _diagnostic_scope_fixture(tmp_path, count):
+    """The established pinned-record fixture at a selected batch cardinality."""
+    root = tmp_path / "source"
+    root.mkdir()
+    program = "\nimport hashlib, json, os, sys, time\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\nimport release_check_groups as g\nparent = Path(os.environ['TMPDIR']).resolve()\nbatches = []\nfor index in range(int(sys.argv[2])):\n    group = parent / ('synthesis-release-check-' + str(index))\n    group.mkdir(mode=0o700)\n    process = group / 'synthesis-required-check-synthetic'\n    process.mkdir(mode=0o700)\n    selectors = ['test_public.py::test_one']\n    events = [{'sequence': 0, 'kind': 'start'}] + [\n        {'sequence': i + 1, 'kind': 'phase', 'nodeid': selectors[0],\n         'when': when, 'outcome': 'passed', 'duration': 0.001}\n        for i, when in enumerate(('setup', 'call', 'teardown'))]\n    contents = {\n        group / 'selection.json': json.dumps(selectors),\n        group / 'pytest.ini': '[pytest]\\n',\n        group / 'inventory.json': '{}',\n        group / 'inventory.progress.jsonl': ''.join(json.dumps(e) + '\\n' for e in events),\n        process / 'output.log': 'private-output-sentinel',\n        process / 'result.json': '{}',\n    }\n    for path, data in contents.items():\n        path.write_text(data)\n        path.chmod(0o600)\n    identity = g.custody_identity(group.stat())\n    process_identity = g.custody_identity(process.stat())\n    pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, identity)\n            for path in contents if path.parent == group}\n    process_pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, process_identity)\n                    for path in contents if path.parent == process}\n    batches.append({'id': str(index), 'selectors': selectors,\n        'fixture_custody': str(group), 'process_custody': str(process),\n        'custody_identity': identity, 'process_identity': process_identity,\n        'diagnostic_records': pins, 'process_records': process_pins,\n        'output_sha256': hashlib.sha256(b'private-output-sentinel').hexdigest(),\n        'returncode': 0})\nprint(g.encode_acceptance_receipt({'execution': {'batches': batches}}))\n"
+    completed = groups.bounded_run(
+        [sys.executable, "-c", program, str(Path(groups.__file__).parent), str(count)],
+        root, 30,
+    )
+    assert completed.returncode == 0, completed.stdout
+    plan = [{"id": str(i), "selectors": ["test_public.py::test_one"]}
+            for i in range(count)]
+    destination = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    return root, completed, plan, destination
+
+
+@pytest.mark.parametrize("count", [2, 505])
+def test_diagnostic_batch_descriptor_lifetime_is_bounded(tmp_path, monkeypatch, count):
+    import resource
+
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, count)
+    original_open, original_close = os.open, os.close
+    live, opened = set(), {}
+    peak = 0
+    def acquire(name, *args, **kwargs):
+        nonlocal peak
+        fd = original_open(name, *args, **kwargs)
+        live.add(fd)
+        peak = max(peak, len(live))
+        if isinstance(name, str) and name.startswith("synthesis-release-check-"):
+            opened[name] = opened.get(name, 0) + 1
+        return fd
+    def close(fd):
+        try:
+            return original_close(fd)
+        finally:
+            live.discard(fd)
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "close", close)
+    previous = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (min(64, previous[0]), previous[1]))
+    try:
+        receipt = groups.capture_acceptance_diagnostics(
+            completed, root, plan, {}, destination
+        )
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, previous)
+    assert receipt["status"] == "RETAINED" and receipt["export_closed"], receipt
+    assert not live and peak < 32
+    assert opened == {"synthesis-release-check-" + str(i): 2 for i in range(count)}
+    public = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert len(public["records"]) == 2 + 6 * count
+    assert len(public["batches"]) == count and not public["authorizes_release"]
+    assert "private-output-sentinel" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+    assert (groups.DIAGNOSTIC_SECONDS, groups.DIAGNOSTIC_BYTES,
+            groups.DIAGNOSTIC_RECORDS) == (10, 32 * 1024 * 1024, 4096)
+
+
+@pytest.mark.parametrize("mutation", ["record", "group", "process", "symlink", "mode"])
+def test_diagnostic_closed_batch_is_revalidated_after_later_batch(tmp_path, monkeypatch, mutation):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 3)
+    first = Path(completed.fixture_custody) / "tmp/synthesis-release-check-0"
+    process = first / "synthesis-required-check-synthetic"
+    original = os.open
+    changed = []
+    def acquire(name, *args, **kwargs):
+        if name == "synthesis-release-check-2" and not changed:
+            changed.append(True)
+            if mutation == "record":
+                (first / "selection.json").write_text("private-late-record")
+            elif mutation == "mode":
+                first.chmod(0o755)
+            elif mutation == "process":
+                process.rename(first / "retained-process")
+                process.mkdir(mode=0o700)
+            else:
+                retained = first.with_name("retained-original-group")
+                first.rename(retained)
+                if mutation == "symlink":
+                    first.symlink_to(retained, target_is_directory=True)
+                else:
+                    first.mkdir(mode=0o700)
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(os, "open", acquire)
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert changed and receipt["status"] == "REFUSED"
+    document = (Path(destination["path"]) / "diagnostics.json").read_text()
+    assert "private-late-record" not in document and str(tmp_path) not in document
+
+
+@pytest.mark.parametrize("parent", ["group", "process"])
+def test_diagnostic_final_reopen_rechecks_parent_after_member_validation(tmp_path, monkeypatch, parent):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 2)
+    first = Path(completed.fixture_custody) / "tmp/synthesis-release-check-0"
+    process = first / "synthesis-required-check-synthetic"
+    original_open, original_stat = os.open, os.stat
+    opens, active = [], {}
+    changed = []
+    def acquire(name, *args, **kwargs):
+        fd = original_open(name, *args, **kwargs)
+        if name == "synthesis-release-check-0":
+            opens.append(fd)
+            if len(opens) == 2:
+                active["group"] = fd
+        elif name == "synthesis-required-check-synthetic" and kwargs.get("dir_fd") == active.get("group"):
+            active["process"] = fd
+        return fd
+    def inspect(name, *args, **kwargs):
+        info = original_stat(name, *args, **kwargs)
+        selected_name = "selection.json" if parent == "group" else "output.log"
+        if (name == selected_name and kwargs.get("dir_fd") == active.get(parent)
+                and not changed):
+            changed.append(True)
+            selected = first if parent == "group" else process
+            selected.rename(selected.with_name("retained-final-" + parent))
+            selected.mkdir(mode=0o700)
+        return info
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "stat", inspect)
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert changed and receipt["status"] == "REFUSED"
+    assert receipt["authorizes_release"] is False
+
+
+def test_diagnostic_batch_cancellation_closes_all_owned_descriptors(tmp_path, monkeypatch):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 3)
+    original_open, original_close = os.open, os.close
+    live = set()
+    def acquire(name, *args, **kwargs):
+        if name == "synthesis-release-check-1":
+            raise KeyboardInterrupt("private-cancellation-marker")
+        fd = original_open(name, *args, **kwargs)
+        live.add(fd)
+        return fd
+    def close(fd):
+        try:
+            return original_close(fd)
+        finally:
+            live.discard(fd)
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "close", close)
+    with pytest.raises(KeyboardInterrupt):
+        groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert not live

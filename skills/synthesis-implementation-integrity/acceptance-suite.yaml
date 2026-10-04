@@ -7593,6 +7593,30 @@ changed_surfaces:
   - growth-reader-c3c9cd19932ad9c8
   - growth-reader-274ab97d5f6fd819
   - growth-reader-2eb8b3e35492c83c
+  - diagnostic-custody-ea3bf5b9ddedd382
+  - diagnostic-custody-69fc6a375b2d126d
+  - diagnostic-custody-4200af47f69ab0a4
+  - diagnostic-custody-f548ed851c36745a
+  - diagnostic-custody-6189e4a8dfeff662
+  - diagnostic-custody-26faab82cbc62168
+  - diagnostic-custody-02bb3c8dd7c1b8c8
+  - diagnostic-custody-a1d1923205432cdd
+  - diagnostic-custody-1ab4d2edcb66c03a
+  - diagnostic-custody-0c05a1ec99873b1d
+- path: skills/synthesis-skills-manager/scripts/release_check_groups.py
+  cases: &id001
+  - diagnostic-custody-ea3bf5b9ddedd382
+  - diagnostic-custody-69fc6a375b2d126d
+  - diagnostic-custody-4200af47f69ab0a4
+  - diagnostic-custody-f548ed851c36745a
+  - diagnostic-custody-6189e4a8dfeff662
+  - diagnostic-custody-26faab82cbc62168
+  - diagnostic-custody-02bb3c8dd7c1b8c8
+  - diagnostic-custody-a1d1923205432cdd
+  - diagnostic-custody-1ab4d2edcb66c03a
+  - diagnostic-custody-0c05a1ec99873b1d
+- path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
+  cases: *id001
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -25308,3 +25332,53 @@ cases:
   fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_retained_read_failure_closes_handle_and_returns_all_charges[cancel]
   motivating_defect: 'Owned stream and borrowed positional read ownership, growth refusal, bounded accounting and
     cleanup: test_retained_read_failure_closes_handle_and_returns_all_charges[cancel]'
+- id: diagnostic-custody-ea3bf5b9ddedd382
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_batch_descriptor_lifetime_is_bounded[2]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_batch_descriptor_lifetime_is_bounded[2]'
+- id: diagnostic-custody-69fc6a375b2d126d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_batch_descriptor_lifetime_is_bounded[505]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_batch_descriptor_lifetime_is_bounded[505]'
+- id: diagnostic-custody-4200af47f69ab0a4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_closed_batch_is_revalidated_after_later_batch[record]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_closed_batch_is_revalidated_after_later_batch[record]'
+- id: diagnostic-custody-f548ed851c36745a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_closed_batch_is_revalidated_after_later_batch[group]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_closed_batch_is_revalidated_after_later_batch[group]'
+- id: diagnostic-custody-6189e4a8dfeff662
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_closed_batch_is_revalidated_after_later_batch[process]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_closed_batch_is_revalidated_after_later_batch[process]'
+- id: diagnostic-custody-26faab82cbc62168
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_closed_batch_is_revalidated_after_later_batch[symlink]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_closed_batch_is_revalidated_after_later_batch[symlink]'
+- id: diagnostic-custody-02bb3c8dd7c1b8c8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_closed_batch_is_revalidated_after_later_batch[mode]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_closed_batch_is_revalidated_after_later_batch[mode]'
+- id: diagnostic-custody-a1d1923205432cdd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_final_reopen_rechecks_parent_after_member_validation[group]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_final_reopen_rechecks_parent_after_member_validation[group]'
+- id: diagnostic-custody-1ab4d2edcb66c03a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_final_reopen_rechecks_parent_after_member_validation[process]
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_final_reopen_rechecks_parent_after_member_validation[process]'
+- id: diagnostic-custody-0c05a1ec99873b1d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_batch_cancellation_closes_all_owned_descriptors
+  motivating_defect: 'Bounded descriptor lifetime with final directory and member custody revalidation: test_diagnostic_batch_cancellation_closes_all_owned_descriptors'
