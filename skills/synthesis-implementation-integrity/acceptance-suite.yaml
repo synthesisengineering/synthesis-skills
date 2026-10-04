@@ -2606,6 +2606,13 @@ changed_surfaces:
   - native-checkpoint-c6b7eeb42fcbc6c4
   - native-checkpoint-79cc7f40a99b1b8a
   - native-checkpoint-2b6844b7a7c5173f
+  - hosted-source-1719a2ffd5be5056
+  - hosted-source-111476f48fdd0aa2
+  - hosted-source-e393bf42173d9e84
+  - hosted-source-1a27f0e8712cdbe6
+  - hosted-source-4b9f20c4e94777f5
+  - hosted-source-179832a5a44b7f1f
+  - hosted-source-1c9eadf207ee0681
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -4316,6 +4323,10 @@ changed_surfaces:
   - native-checkpoint-ed45224a57e15d70
   - native-checkpoint-bf3d4a227c3d0ca3
   - native-checkpoint-22a48efdaf4e1030
+  - hosted-source-1719a2ffd5be5056
+  - hosted-source-111476f48fdd0aa2
+  - hosted-source-e393bf42173d9e84
+  - hosted-source-1a27f0e8712cdbe6
 - path: skills/synthesis-autopilot/scripts/test_native_replay.py
   cases:
   - final-5f90017857a25f20
@@ -5555,6 +5566,22 @@ changed_surfaces:
   - native-checkpoint-c6b7eeb42fcbc6c4
   - native-checkpoint-79cc7f40a99b1b8a
   - native-checkpoint-2b6844b7a7c5173f
+- path: skills/synthesis-project-management/scripts/test_coordination_process_thread.py
+  cases:
+  - final-1b36b69418d62c5f
+  - final-a7db74a450044a5b
+  - final-1d8c1dbbdc3993b6
+  - final-8ac07ce6e377dbda
+  - final-1a7f8bc45014a236
+  - hosted-source-4b9f20c4e94777f5
+  - hosted-source-179832a5a44b7f1f
+- path: skills/synthesis-project-management/scripts/test_execution_checkpoint.py
+  cases:
+  - final-15bcc664f2224005
+  - final-31db8e5df1a31f97
+  - final-c2b786be532450b0
+  - recovery-6051c6c23201c198
+  - hosted-source-1c9eadf207ee0681
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -20390,3 +20417,45 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_project_state.py::test_working_digest_closes_directory_after_descendant[True]
   motivating_defect: Retained history repeatedly decoded and copied state; checkpoints interpreted retained
     fixture names as live structured state.
+- id: hosted-source-1719a2ffd5be5056
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_operator_currentness_diagnostic_is_closed[diagnostics0-OPERATOR_JOURNAL_TIME_BUDGET]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-111476f48fdd0aa2
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_operator_currentness_diagnostic_is_closed[diagnostics1-OPERATOR_OTHER_CURRENTNESS_REFUSAL]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-e393bf42173d9e84
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_operator_currentness_diagnostic_is_closed[diagnostics2-OPERATOR_OTHER_CURRENTNESS_REFUSAL]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-1a27f0e8712cdbe6
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_operator_currentness_diagnostic_is_closed[diagnostics3-OPERATOR_OTHER_CURRENTNESS_REFUSAL]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-4b9f20c4e94777f5
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_process_thread.py::test_parent_death_waits_for_atomic_readiness[15]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-179832a5a44b7f1f
+  control_class: regression-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_coordination_process_thread.py::test_parent_death_waits_for_atomic_readiness[9]
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.
+- id: hosted-source-1c9eadf207ee0681
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_execution_checkpoint.py::test_execution_checkpoint_refuses_codec_bound_event_rewritten_as_inline
+  motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
+    closed operator failure classification preserves bounded diagnostics.

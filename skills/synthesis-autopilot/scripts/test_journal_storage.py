@@ -34,6 +34,12 @@ def test_native_history_crosses_snapshot_limit_and_recovers_exactly(engine, brid
     assert state['extensions']['native_observations']['sources']['root']['cursor']['first_gap'] is None
     import operator_status
     view = operator_status.inspect_project(world['project'], state['run_id'])['runs'][0]
+    # Closed source-line diagnostics survive the bounded hosted report without
+    # exposing arbitrary operator messages, paths or retained state.
+    if view['currentness'] != 'JOURNAL_VERIFIED_RECORDED_STATE':
+        if view.get('diagnostics') == ['journal verification time budget exhausted; no partial state is accepted']:
+            pytest.fail('OPERATOR_JOURNAL_TIME_BUDGET', pytrace=False)
+        pytest.fail('OPERATOR_OTHER_CURRENTNESS_REFUSAL', pytrace=False)
     assert view['currentness'] == 'JOURNAL_VERIFIED_RECORDED_STATE', view
 
 
@@ -1460,3 +1466,27 @@ def test_bulk_state_copy_preparer_reducer_and_return_are_independent(engine, wor
     fresh = engine.load_run(world['project'], state['run_id'])
     assert fresh['extensions']['ordered-future']['z'] == [1]
     assert 'hostile-preparer' not in fresh['extensions']
+
+
+@pytest.mark.parametrize('diagnostics, expected', [
+    (['journal verification time budget exhausted; no partial state is accepted'], 'OPERATOR_JOURNAL_TIME_BUDGET'),
+    (['foreign path or private value'], 'OPERATOR_OTHER_CURRENTNESS_REFUSAL'),
+    ([], 'OPERATOR_OTHER_CURRENTNESS_REFUSAL'),
+    (['journal verification time budget exhausted; no partial state is accepted', 'extra'], 'OPERATOR_OTHER_CURRENTNESS_REFUSAL'),
+])
+def test_operator_currentness_diagnostic_is_closed(diagnostics, expected):
+    """Execute the exact diagnostic branch without repeating history creation."""
+    import ast
+    import inspect
+    source = inspect.getsource(test_native_history_crosses_snapshot_limit_and_recovers_exactly)
+    body = ast.parse(source).body[0].body
+    branch = next(node for node in body if isinstance(node, ast.If)
+                  and isinstance(node.test, ast.Compare)
+                  and isinstance(node.test.left, ast.Subscript)
+                  and isinstance(node.test.left.value, ast.Name)
+                  and node.test.left.value.id == 'view')
+    selected = ast.fix_missing_locations(ast.Module(body=[branch], type_ignores=[]))
+    with pytest.raises(pytest.fail.Exception) as failure:
+        exec(compile(selected, '<selected currentness diagnostic>', 'exec'),
+             {'view': {'currentness': 'UNVERIFIABLE', 'diagnostics': diagnostics}, 'pytest': pytest})
+    assert str(failure.value) == expected
