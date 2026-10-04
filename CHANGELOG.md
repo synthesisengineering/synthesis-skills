@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.4] - 2026-10-04
 
+- Retain complete native event identities in bounded lossless blocks through explicit owner reconciliation, preserving original enrollment, resource consumption and unresolved history.
+- Validate compressed journal canonical syntax while parsing, avoiding a second serialization without changing canonical bytes or physical custody checks.
+- Retire exact own published attribution during automatic Stop, with native ownership checks, bounded whole-owner work and retained unresolved entries.
 - Preserve subsecond precision when validating newly acquired evidence and continue to reject future timestamps.
 - Reduce bounded journal verification cost by scanning canonical strings and brackets without repeated per-token regular-expression objects.
 - Reuse authenticated journal reads within an operation, with fresh ownership checks and bounded immutable decoding.

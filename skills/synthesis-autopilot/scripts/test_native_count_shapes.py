@@ -128,3 +128,123 @@ def test_stream_nullable_search_is_order_independent_and_item_scoped(tmp_path,re
     _,binding,cursor=source(tmp_path,[row]);events,projection,_=drain(binding,cursor)
     if late_bad:assert not events and projection['gaps']
     else:assert len(events)==1 and not projection['gaps'] and not projection['diagnostics']
+
+
+def _retained_batch(events=()):
+    return {'events': list(events), 'gaps': [], 'diagnostics': [],
+            'source_generation': 'a' * 64, 'coverage': {'scope': 'synthetic retained control'}}
+
+
+def _retained_fact(i):
+    return {'event_id': 'sha256:' + hashlib.sha256(('retained-' + str(i)).encode()).hexdigest(),
+            'kind': 'item.observation', 'semantic_key': None, 'semantic_digest': 'b' * 64,
+            'native': {'generation': 'a' * 64, 'offset': i * 100, 'length': 100, 'subrecord': 0},
+            'mode': 'synthetic', 'status': 'observed', 'data': {'synthetic_index': i}}
+
+
+@pytest.mark.parametrize('count', [16145, 26079])
+def test_retained_full_count_exact_roundtrip_and_journal_codec(tmp_path, count):
+    import time, json
+    import journal_storage
+    begin = time.monotonic()
+    projection = n.retained_projection(n.empty_projection())
+    expected = {}
+    for start in range(0, count, 512):
+        events = [_retained_fact(i) for i in range(start, min(start + 512, count))]
+        expected.update({e['event_id']: n._digest(e) for e in events})
+        projection = n.reduce_observations(projection, _retained_batch(events), event_limit=count)
+    assert dict(n.event_fingerprints(projection)) == expected
+    assert projection['events']['count'] == count and len(projection['events']['blocks']) <= 256
+    assert len(n._canonical(projection)) < n.MAX_PROJECTION_BYTES
+    assert n.reduce_observations(projection, _retained_batch([_retained_fact(0)]), event_limit=count) == projection
+    changed = _retained_fact(0); changed['data']['synthetic_index'] = -1
+    before = copy.deepcopy(projection)
+    with pytest.raises(n.SourceError, match='conflicting'):
+        n.reduce_observations(projection, _retained_batch([changed]), event_limit=count)
+    assert projection == before
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000195'
+    event = home / 'events/000000000001.json'; event.parent.mkdir(parents=True)
+    logical = {'state': {'run_id': '01990000-0000-7000-8000-000000000195', 'revision': 1,
+                        'schema_version': 1, 'extensions': {'journal_storage': {'codec': 2},
+                                                           'native_observations': {'projection': projection}}}}
+    raw, blocks = journal_storage.encode(logical); journal_storage.materialize(home, blocks); event.write_bytes(raw)
+    assert journal_storage.decode(event, json.loads(raw)) == logical
+    metrics = {'synthetic_events': count, 'seconds': time.monotonic() - begin,
+               'projection_bytes': len(n._canonical(projection)), 'physical_blocks': len(blocks),
+               'block_bytes': sum(map(len, blocks.values())), 'native_admission': False}
+    (tmp_path / 'retained-cost.json').write_text(json.dumps(metrics, indent=2))
+    print(json.dumps(metrics, sort_keys=True))
+
+
+@pytest.mark.parametrize('fault', ['count', 'bool', 'codec', 'extra', 'base64', 'noncanonical',
+                                 'hash', 'length', 'order', 'duplicate', 'misplaced', 'expansion'])
+def test_retained_corrupt_blocks_refuse_without_input_mutation(fault):
+    import base64
+    p = n.retained_projection(n.empty_projection())
+    p = n.reduce_observations(p, _retained_batch([_retained_fact(i) for i in range(40)]), event_limit=100)
+    index = p['events']; block = index['blocks'][0]
+    if fault == 'count': index['count'] += 1
+    elif fault == 'bool': block['count'] = True
+    elif fault == 'codec': index['codec'] = 'invented'
+    elif fault == 'extra': block['authority'] = True
+    elif fault == 'base64': block['payload'] = '!' + block['payload'][1:]
+    elif fault == 'noncanonical': block['payload'] += '\n'
+    elif fault == 'hash': block['sha256'] = '0' * 64
+    elif fault == 'length': block['payload'] = base64.b64encode(b'x' * 64).decode()
+    elif fault == 'order': index['blocks'].reverse()
+    elif fault == 'duplicate':
+        raw = base64.b64decode(block['payload']); raw = raw[:64] + raw
+        block.update(count=block['count'] + 1, payload=base64.b64encode(raw).decode(), sha256=hashlib.sha256(raw).hexdigest()); index['count'] += 1
+    elif fault == 'misplaced':
+        raw = base64.b64decode(block['payload']); raw = bytes([(raw[0] + 1) % 256]) + raw[1:]
+        block.update(payload=base64.b64encode(raw).decode(), sha256=hashlib.sha256(raw).hexdigest())
+    else: block['count'] = n.MAX_INDEX_ENTRIES + 1
+    before = copy.deepcopy(p)
+    with pytest.raises(n.SourceError): n.reduce_observations(p, _retained_batch(), event_limit=100)
+    assert p == before
+
+
+def test_retained_skewed_prefix_keeps_per_block_limit_and_prior_state():
+    events = {f'sha256:00{i:062x}': 'a' * 64 for i in range(n.MAX_INDEX_ENTRIES)}
+    p = n.empty_projection(); p['events'] = events
+    p = n.retained_projection(p); before = copy.deepcopy(p)
+    e = _retained_fact(0); e['event_id'] = f'sha256:00{n.MAX_INDEX_ENTRIES:062x}'
+    with pytest.raises(n.SourceError, match='block capacity'):
+        n.reduce_observations(p, _retained_batch([e]), event_limit=n.MAX_INDEX_ENTRIES + 1)
+    assert p == before
+
+
+@pytest.mark.parametrize('limit', [None, True, 0, 1, 524289])
+def test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded(limit):
+    p = n.retained_projection(n.empty_projection())
+    p = n.reduce_observations(p, _retained_batch([_retained_fact(0), _retained_fact(1)]), event_limit=2)
+    before = copy.deepcopy(p)
+    with pytest.raises(n.SourceError): n.reduce_observations(p, _retained_batch(), event_limit=limit)
+    assert p == before and n.MAX_INDEX_ENTRIES == 10000 and n.MAX_PROJECTION_BYTES == 32 * 1024**2
+
+
+def test_retained_encoding_is_deterministic_and_preserves_non_index_fields():
+    p = n.empty_projection(); p['events'] = {_retained_fact(i)['event_id']: n._digest(_retained_fact(i)) for i in range(40)}
+    p['diagnostics'] = [{'code': 'prior_unknown'}]; p['gaps'] = [{'code': 'prior_gap'}]
+    q = copy.deepcopy(p); q['events'] = dict(reversed(list(q['events'].items())))
+    a, b = n.retained_projection(p), n.retained_projection(q)
+    assert a == b and dict(n.event_fingerprints(a)) == p['events']
+    assert {k:v for k,v in a.items() if k not in {'events','schema_version'}} == {k:v for k,v in p.items() if k not in {'events','schema_version'}}
+    assert p['schema_version'] == 1 and n.retained_projection(a) == a
+
+
+def test_retained_aggregate_byte_guard_counts_encoded_projection(monkeypatch):
+    p = n.retained_projection(n.empty_projection()); before = copy.deepcopy(p)
+    monkeypatch.setattr(n, 'MAX_PROJECTION_BYTES', len(n._canonical(p)) + 100)
+    with pytest.raises(n.SourceError, match='capacity'):
+        n.reduce_observations(p, _retained_batch([_retained_fact(0), _retained_fact(1)]), event_limit=2)
+    assert p == before
+
+
+def test_retained_interrupted_reduction_does_not_partially_publish(monkeypatch):
+    p = n.retained_projection(n.empty_projection()); before = copy.deepcopy(p)
+    def interrupted(*args): raise KeyboardInterrupt('synthetic interruption during semantic reduction')
+    monkeypatch.setattr(n, '_usage', interrupted)
+    first, second = _retained_fact(0), _retained_fact(1); second['kind'] = 'usage.snapshot'
+    with pytest.raises(KeyboardInterrupt): n.reduce_observations(p, _retained_batch([first, second]), event_limit=2)
+    assert p == before

@@ -13,8 +13,9 @@ three-layer design). Invoked at WORKFLOW EVENTS, never on a wall-clock timer:
 Design rules (agreed 2026-07-08; companion lesson
 2026-07-08-alert-channel-confidentiality-and-event-driven-checkpoints):
 
-  1. NO background mutation. Stop and producer events write atomic local
-     receipts only. Network publication is an explicit remote-handoff or
+  1. NO background publication. Stop retires only proven own published
+     attribution and records an atomic local receipt. Producer events write
+     local receipts only. Network publication is an explicit remote-handoff or
      day-end event.
   2. RUNTIME REMOTE GUARD: regardless of config, a context repo is published
      only if every push remote matches an allowed private namespace.
@@ -336,6 +337,12 @@ def lifecycle_lock(*, timeout: float | None = None):
 def git(repo: Path, *args: str, timeout: int = 60, env: dict | None = None,
         strip: bool = True, input_text: str | None = None,
         literal_paths: bool = False) -> tuple[int, str, str]:
+    deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("automatic retirement exceeded its observation time")
+        timeout = min(timeout, remaining)
     merged_env = dict(os.environ)
     if env:
         merged_env.update(env)
@@ -1507,6 +1514,9 @@ def load_pending_manifest(session_id: str) -> tuple[Path, list[Path]]:
 
 
 def file_evidence(path: Path) -> dict[str, object]:
+    deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+    if deadline is not None and time.monotonic() >= deadline:
+        raise ValueError("automatic local handoff exceeded its observation time")
     if path.is_symlink():
         return {"path": str(path), "state": "unsafe-non-file"}
     if not path.exists():
@@ -1516,6 +1526,8 @@ def file_evidence(path: Path) -> dict[str, object]:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise ValueError("automatic local handoff exceeded its observation time")
             digest.update(chunk)
     return {
         "path": str(path),
@@ -2025,6 +2037,12 @@ def pending_entry_evidence(data: dict, key: str) -> tuple[str | None, str | None
 
 def git_bytes(repo: Path, *args: str, timeout: int = 60) -> tuple[int, bytes, str]:
     """Run git capturing raw stdout bytes (blob-safe; ``git()`` decodes text)."""
+    deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError("automatic retirement exceeded its observation time")
+        timeout = min(timeout, remaining)
     try:
         r = subprocess.run(
             ["git", "-C", str(repo)] + list(args),
@@ -2438,6 +2456,252 @@ def retire_published_entries(
     return [{**summary, "manifest_removed": False}]
 
 
+def _automatic_landed_snapshot(data: dict, cfg: dict, deadline: float) -> dict:
+    """One bounded typed batch against pinned local publication refs; never publish.
+
+    The ledger has the existing attribution owner's size/shape, not the small
+    publication-receipt envelope. A cursor visits unresolved typed entries on
+    later Stops without dropping them or starving entries farther in the ledger.
+    """
+    import publication_receipt as proof
+
+    roots, selected, parent_roots, ancestor_safe = {}, {}, {}, {}
+    landed, candidates = {}, {}
+    paths = data["paths"]
+    cursor = data.get("automatic_retirement_cursor")
+    if cursor is not None and (not isinstance(cursor, str) or cursor not in paths):
+        raise ValueError("automatic retirement cursor is not in its exact ledger")
+    start = paths.index(cursor) if cursor is not None else 0
+    visited, eligible = 0, 0
+    for offset in range(len(paths)):
+        proof._remaining(deadline)
+        raw = paths[(start + offset) % len(paths)]
+        visited += 1
+        digest, kind = pending_entry_evidence(data, raw)
+        if kind not in {"file", "symlink", "deleted"} or digest is None:
+            continue
+        path = lexical_absolute(Path(raw))
+        if str(path) != raw:
+            continue
+        parent = path.parent
+        if parent not in ancestor_safe:
+            ancestor_safe[parent] = not any(part.is_symlink() for part in (parent, *parent.parents))
+        if not ancestor_safe[parent]:
+            continue
+        if kind == "deleted":
+            if os.path.lexists(path):
+                continue
+        else:
+            try:
+                info = path.lstat()
+            except OSError:
+                continue
+            if ((kind == "file" and (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1))
+                    or (kind == "symlink" and not stat.S_ISLNK(info.st_mode))):
+                continue
+        if parent not in parent_roots:
+            parent_roots[parent] = repo_root_for_path(parent)
+        root = parent_roots[parent]
+        if root is None or not path.is_relative_to(root) or path == root:
+            continue
+        if str(root) not in roots:
+            configured, _reason = configured_repo_identity(root, cfg)
+            guarded, _reason = remote_guard(root, cfg.get("allowed_remote_prefixes", []))
+            if not configured or not guarded:
+                continue
+            if (lock := git_path(root, "index.lock")) is None or lock.exists():
+                continue
+            try:
+                branch = proof._git(root, deadline, "branch", "--show-current").decode()
+                head = proof._git(root, deadline, "rev-parse", "HEAD").decode()
+                remotes = proof._git(root, deadline, "remote").decode().splitlines()
+                if not branch or not remotes:
+                    continue
+                refs = {}
+                for remote in remotes:
+                    ref = f"refs/remotes/{remote}/{branch}"
+                    tip = proof._git(root, deadline, "rev-parse", "--verify", ref).decode()
+                    proof._git(root, deadline, "merge-base", "--is-ancestor", head, tip)
+                    urls = proof._git(root, deadline, "remote", "get-url", "--push", "--all", remote)
+                    refs[remote] = {"ref": ref, "head": tip, "urls_sha256": hashlib.sha256(urls).hexdigest()}
+                roots[str(root)] = {"branch": branch, "head": head, "remotes": refs}
+            except (proof.ProofError, UnicodeError):
+                continue
+        rel = path.relative_to(root).as_posix()
+        selected.setdefault(str(root), []).append((raw, digest, kind, rel))
+        eligible += 1
+        if eligible >= proof.MAX_PATHS:
+            break
+    for root_text, rows in selected.items():
+        root = Path(root_text)
+        identity = roots[root_text]
+        entries = {}
+        # Exact non-recursive path queries return at most this selected batch,
+        # never an entire repository tree. Bound argv as well as record count.
+        batches, batch, argument_bytes = [], [], 0
+        for _raw, _digest, _kind, rel in rows:
+            size = len(os.fsencode(rel)) + 1
+            if size > 16384:
+                continue
+            if batch and argument_bytes + size > 16384:
+                batches.append(batch); batch, argument_bytes = [], 0
+            batch.append(rel); argument_bytes += size
+        if batch:
+            batches.append(batch)
+        for batch in batches:
+            tree = proof._git(root, deadline, "--literal-pathspecs", "ls-tree", "-z", identity["head"], "--", *batch)
+            requested = {os.fsencode(rel) for rel in batch}
+            for record in tree.split(b"\0"):
+                if not record:
+                    continue
+                metadata, separator, name = record.partition(b"\t")
+                fields = metadata.split()
+                if not separator or len(fields) != 3 or name not in requested or name in entries:
+                    raise ValueError("automatic retirement selected tree is malformed")
+                entries[name] = fields
+        for raw, digest, kind, rel in rows:
+            if len(os.fsencode(rel)) + 1 > 16384:
+                continue
+            fields = entries.get(os.fsencode(rel))
+            if kind == "deleted":
+                if fields is None:
+                    try:
+                        removed = proof._git(root, deadline, "--literal-pathspecs", "log", "-1",
+                                             "--format=%H", "--diff-filter=D", identity["head"], "--", rel)
+                        if removed:
+                            landed[raw] = {"repo": root_text, "head": identity["head"], "kind": kind, "sha256": digest}
+                    except proof.ProofError:
+                        pass
+            elif (fields is not None and fields[0] in {"file": {b"100644", b"100755"}, "symlink": {b"120000"}}[kind]
+                  and fields[1] == b"blob" and re.fullmatch(rb"[0-9a-f]{40}|[0-9a-f]{64}", fields[2])):
+                candidates.setdefault(root_text, []).append((raw, digest, kind, fields[2].decode("ascii")))
+    consumed = 0
+    for root_text, rows in candidates.items():
+        root = Path(root_text)
+        oids = list(dict.fromkeys(row[3] for row in rows))
+        rc, sizes, _ = git(root, "cat-file", "--batch-check", input_text="".join(oid + "\n" for oid in oids))
+        if rc:
+            continue
+        admitted = []
+        expected = {}
+        for oid, line in zip(oids, sizes.splitlines(), strict=True):
+            fields = line.split()
+            if len(fields) != 3 or fields[0] != oid or fields[1] != "blob":
+                raise ValueError("automatic retirement batch identity differs")
+            size = int(fields[2])
+            if size < 0:
+                raise ValueError("automatic retirement batch size is invalid")
+            if consumed + size <= proof.MAX_CONTENT:
+                admitted.append(oid); expected[oid] = size; consumed += size
+        if not admitted:
+            continue
+        rc, text, _ = git(root, "cat-file", "--batch", input_text="".join(oid + "\n" for oid in admitted), strip=False)
+        if rc:
+            continue
+        raw_blobs = os.fsencode(text); position = 0; hashes = {}
+        for oid in admitted:
+            end = raw_blobs.find(b"\n", position)
+            header = raw_blobs[position:end].split()
+            size = expected[oid]
+            if end < 0 or header != [oid.encode(), b"blob", str(size).encode()]:
+                raise ValueError("automatic retirement batch response differs")
+            position = end + 1; blob = raw_blobs[position:position + size]; position += size
+            if len(blob) != size or raw_blobs[position:position + 1] != b"\n":
+                raise ValueError("automatic retirement batch content is incomplete")
+            position += 1
+            hashes[oid] = {"file": hashlib.sha256(blob).hexdigest(), "symlink": hashlib.sha256(b"symlink\0" + blob).hexdigest()}
+        if position != len(raw_blobs):
+            raise ValueError("automatic retirement batch has trailing bytes")
+        for raw, digest, kind, oid in rows:
+            if hashes.get(oid, {}).get(kind) == digest:
+                landed[raw] = {"repo": root_text, "head": roots[root_text]["head"], "kind": kind, "sha256": digest}
+    proof._remaining(deadline)
+    next_cursor = paths[(start + visited) % len(paths)] if visited < len(paths) else None
+    return {"landed": landed, "repositories": roots, "next_cursor": next_cursor}
+
+
+def _retire_automatic_landed(payload: dict, cfg: dict, manifest: Path) -> list[dict]:
+    """Narrow only the authenticated native owner's proved landed attribution.
+
+    Caller holds the lifecycle lock. The manifest and existing board lock stay
+    held through the final byte/CAS check and local receipt rebinding. Nothing
+    in this path invokes a commit, fetch, push, full flush or foreign manifest.
+    """
+    if payload.get("hook_event_name") != "Stop":
+        return []
+    import publication_receipt as proof
+    scripts = Path(__file__).resolve().parents[1] / "synthesis-project-management" / "scripts"
+    sys.path.insert(0, str(scripts))
+    import run_admission
+
+    deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None) or time.monotonic() + 25
+    board = Path(os.environ.get("SYNTHESIS_COORDINATION_BOARD",
+                                str(STATE_DIR.parent / "coordination/active-sessions.md")))
+    session_id = payload["session_id"]
+    previous_deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+    _LIFECYCLE_LOCK_STATE.retirement_deadline = deadline
+    try:
+        with run_admission.bounded_lock(manifest.with_suffix(".lock"), timeout=2), \
+                run_admission.bounded_lock(board.parent / ".active-sessions.lock", timeout=2, create=False):
+            binding = run_admission.native_binding(board, payload, readonly=True)
+            if binding["native_session_id"] != session_id:
+                raise ValueError("automatic retirement native authority differs")
+            from coordination_schema import identity_from_uuid
+            seat = identity_from_uuid(binding["session_uuid"])
+            configured_seat = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+            if configured_seat and configured_seat not in {
+                binding["session_uuid"], seat.compact_id, seat.speakable_id
+            }:
+                raise ValueError("automatic retirement configured seat differs")
+            board_limit = board.lstat().st_size
+            manifest_limit = manifest.lstat().st_size
+            board_raw, board_identity = proof._read(board, board_limit, deadline)
+            raw, identity = proof._read(manifest, manifest_limit, deadline)
+            data = proof._json(raw)
+            if (not isinstance(data, dict) or manifest != pending_manifest_path(session_id)
+                    or type(data.get("schema_version")) is not int):
+                raise ValueError("automatic retirement manifest identity is invalid")
+            paths = data.get("paths")
+            remote = data.get("remote_paths", paths)
+            if (data.get("session_id") != session_id or data.get("schema_version") not in (1, 2)
+                    or not isinstance(paths, list) or not isinstance(remote, list)
+                    or any(not isinstance(p, str) or not Path(p).is_absolute() for p in paths + remote)
+                    or len(set(paths)) != len(paths) or len(set(remote)) != len(remote)
+                    or not set(remote) <= set(paths)):
+                raise ValueError("automatic retirement manifest coverage is invalid")
+            snapshot = _automatic_landed_snapshot(data, cfg, deadline)
+            if not snapshot["landed"] and snapshot["next_cursor"] == data.get("automatic_retirement_cursor"):
+                return []
+            if _automatic_landed_snapshot(data, cfg, deadline) != snapshot:
+                raise ValueError("automatic retirement publication proof changed")
+            if run_admission.native_binding(board, payload, readonly=True) != binding:
+                raise ValueError("automatic retirement native admission changed")
+            if proof._read(board, board_limit, deadline) != (board_raw, board_identity):
+                raise ValueError("automatic retirement board changed before publication")
+            if proof._read(manifest, manifest_limit, deadline) != (raw, identity):
+                raise ValueError("automatic retirement manifest changed before publication")
+            retired = set(snapshot["landed"])
+            data["paths"] = [p for p in paths if p not in retired]
+            if "remote_paths" in data:
+                data["remote_paths"] = [p for p in remote if p not in retired]
+            prune_pending_entry_maps(data)
+            if snapshot["next_cursor"] is not None:
+                data["automatic_retirement_cursor"] = snapshot["next_cursor"]
+            else:
+                data.pop("automatic_retirement_cursor", None)
+            data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            atomic_json(manifest, data)
+            rebind_receipt_digest(manifest, hashlib.sha256(raw).hexdigest(),
+                                  {"derived_from_automatic_retirement": data["updated_at"]})
+            return [{"repo": str(manifest), "name": "pending-session",
+                     "action": "retired-own-landed" if retired else "automatic-retirement-progress", "files": len(retired),
+                     "retired_paths": sorted(retired), "publication_evidence": snapshot,
+                     "native_claim_hash": binding["claim_hash"], "alert": None}]
+
+    finally:
+        _LIFECYCLE_LOCK_STATE.retirement_deadline = previous_deadline
+
+
 def _local_handoff_checkpoint_unlocked(
     payload: dict, cfg: dict
 ) -> tuple[list[dict], Path | None]:
@@ -2449,15 +2713,47 @@ def _local_handoff_checkpoint_unlocked(
         manifest, paths = load_pending_manifest(session_id)
     except (OSError, ValueError, TypeError) as exc:
         return [{"repo": "unknown", "name": "pending-session", "action": "failed", "alert": f"invalid pending manifest: {exc}"}], None
-    if not paths:
+    if not paths and not manifest.exists():
         return [], manifest
+    retired = _retire_automatic_landed(payload, cfg, manifest) if paths else []
+    manifest, paths = load_pending_manifest(session_id)
     manifest_digest = hashlib.sha256(manifest.read_bytes()).hexdigest()
 
     grouped: dict[Path, list[Path]] = {}
     stranded: list[dict] = []
     evidence = StrandedEvidence()
+    parent_roots = {}
+    ancestry = {}
+    def observe_ancestry(parent, root=None):
+        for part in (parent, *parent.parents):
+            try:
+                info = part.lstat()
+                current = (info.st_dev, info.st_ino, info.st_mode, info.st_ctime_ns)
+            except FileNotFoundError:
+                current = None
+            if part in ancestry:
+                previous = ancestry[part]
+                # Shared ancestors can receive unrelated sibling entries. Their
+                # identity still closes replacement; repository ancestry also
+                # binds ctime to detect rename-away/read/restore ABA races.
+                inside = root is not None and (part == root or root in part.parents)
+                if previous is None or current is None:
+                    changed = previous != current
+                else:
+                    changed = previous != current if inside else previous[:3] != current[:3]
+                if changed:
+                    raise ValueError("local handoff ancestry changed during observation")
+            else:
+                ancestry[part] = current
     for path in paths:
-        root = repo_root_for_path(path)
+        deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("automatic local handoff exceeded its observation time")
+        if path.parent not in parent_roots:
+            observe_ancestry(path.parent)
+            parent_roots[path.parent] = repo_root_for_path(path.parent)
+            observe_ancestry(path.parent, parent_roots[path.parent] or path.parent)
+        root = None if path.is_symlink() else parent_roots[path.parent]
         if root is not None:
             grouped.setdefault(root, []).append(path)
             continue
@@ -2472,7 +2768,9 @@ def _local_handoff_checkpoint_unlocked(
             record["alert"] += "; the retained local-handoff receipt is left unchanged so that evidence survives"
         stranded.append(record)
 
-    results: list[dict] = list(stranded)
+    for parent, root in parent_roots.items():
+        observe_ancestry(parent, root or parent)
+    results: list[dict] = [*stranded, *retired]
     for repo, repo_paths in sorted(grouped.items(), key=lambda item: str(item[0])):
         branch_rc, branch, _ = git(repo, "branch", "--show-current")
         head_rc, head, _ = git(repo, "rev-parse", "HEAD")
@@ -2498,6 +2796,8 @@ def _local_handoff_checkpoint_unlocked(
         )
 
     receipt = LOCAL_HANDOFF_DIR / f"{hashlib.sha256(session_id.encode('utf-8')).hexdigest()}.json"
+    for parent, root in parent_roots.items():
+        observe_ancestry(parent, root or parent)
     if hashlib.sha256(manifest.read_bytes()).hexdigest() != manifest_digest:
         return [{"repo": str(manifest), "name": "pending-session", "action": "failed", "alert": "attribution changed while recording local evidence; retry this exact session"}], manifest
     if any(item.get("receipt_preserved") for item in stranded):
@@ -2508,7 +2808,7 @@ def _local_handoff_checkpoint_unlocked(
         receipt,
         {
             "schema_version": 1,
-            "readiness": "LOCAL_READY" if results and not any(item.get("alert") for item in results) else "BLOCKED",
+            "readiness": "LOCAL_READY" if not any(item.get("alert") for item in results) else "BLOCKED",
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "session_id": session_id,
             "cwd": payload.get("cwd"),
@@ -2521,8 +2821,15 @@ def _local_handoff_checkpoint_unlocked(
 
 
 def local_handoff_checkpoint(payload: dict, cfg: dict) -> tuple[list[dict], Path | None]:
-    with lifecycle_lock():
-        return _local_handoff_checkpoint_unlocked(payload, cfg)
+    previous = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
+    automatic = payload.get("hook_event_name") == "Stop"
+    if automatic:
+        _LIFECYCLE_LOCK_STATE.retirement_deadline = time.monotonic() + 25
+    try:
+        with lifecycle_lock(timeout=25 if automatic else None):
+            return _local_handoff_checkpoint_unlocked(payload, cfg)
+    finally:
+        _LIFECYCLE_LOCK_STATE.retirement_deadline = previous
 
 
 def _flush_pending_manifests_unlocked(

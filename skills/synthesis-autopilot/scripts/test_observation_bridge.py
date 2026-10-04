@@ -576,3 +576,210 @@ def test_page_reducer_preserves_detachment_from_foreign_aliases(bridge, engine, 
     assert result['extensions']['native_observations']['event_index']
     target = result['extensions']['native_observations']
     assert result['unknown_core_alias'] is not (target if branch == 'extension' else target[branch])
+
+
+def _retained_owner_setup(bridge, engine, world):
+    from datetime import datetime, timedelta, timezone
+    import workflow
+    from test_workflow import dimensions
+    workflow.register_commands(engine.register_command)
+    state = enroll(engine, world, create(engine, world))
+    state = command(engine, world, state, 'workflow.configure', {'dimensions': dimensions(), 'layers': []})
+    state = command(engine, world, state, 'workflow.budget', {'limits': {'units': {'limit': 10, 'enforcement': 'hard'}},
+                    'deadline': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    state = command(engine, world, state, 'workflow.reserve', {'reservation_id': 'retention-one', 'amounts': {'units': 2}, 'category': 'work'})
+    return state
+
+
+def _retained_request(bridge, state, **limits):
+    return {'prior_extension_digest': bridge.native._digest(state['extensions']['native_observations']),
+            'reservation_id': 'retention-one',
+            'limits': {'events': 20000, 'steps': 100, 'work_bytes': 128 * 1024**2, 'wall_millis': 300000, **limits}}
+
+
+def test_retention_owner_exact_migration_current_consumption_and_no_budget_refill(bridge, engine, world):
+    state = _retained_owner_setup(bridge, engine, world)
+    append(world, *pair(world)); state = observe(engine, world, state)
+    before = deepcopy(state); payload = _retained_request(bridge, state)
+    migrated = command(engine, world, state, 'native.retention', payload, command_id='exact-retention')
+    ext = migrated['extensions']['native_observations']; prior = before['extensions']['native_observations']
+    assert dict(bridge.native.event_fingerprints(ext['projection'])) == prior['projection']['events']
+    assert {k:v for k,v in ext.items() if k not in {'projection','projection_digest','retention'}} == {k:v for k,v in prior.items() if k not in {'projection','projection_digest'}}
+    assert migrated['extensions']['workflow'] == before['extensions']['workflow']
+    assert command(engine, world, state, 'native.retention', payload, command_id='exact-retention') == migrated
+    current = engine.inspect_context(migrated, world['actor'])['current_native_events'](list(ext['event_index']))
+    assert current['status'] == 'current'
+    append(world, *pair(world, 'later')); after = observe(engine, world, migrated)
+    grant = after['extensions']['native_observations']['retention']['current']
+    assert grant['steps'] == 2 and grant['decoded_entries'] == 6 and grant['work_bytes'] > ext['retention']['current']['work_bytes']
+    assert len(after['extensions']['native_observations']['event_index']) == 4
+    assert after['extensions']['workflow'] == before['extensions']['workflow']
+    with pytest.raises(ValueError, match='reuse or refill'):
+        command(engine, world, after, 'native.retention', _retained_request(bridge, after))
+    assert engine.load_run(world['project'], after['run_id']) == after
+
+
+@pytest.mark.parametrize('fault', ['digest', 'reservation', 'settled', 'events', 'steps', 'bytes', 'wall', 'owner'])
+def test_retention_admission_refuses_stale_or_unadmitted_owner_limits(bridge, engine, world, fault):
+    from test_run_admission import write_board
+    state = _retained_owner_setup(bridge, engine, world); payload = _retained_request(bridge, state)
+    if fault == 'digest': payload['prior_extension_digest'] = '0' * 64
+    elif fault == 'reservation': payload['reservation_id'] = 'invented'
+    elif fault == 'settled':
+        state = command(engine, world, state, 'workflow.settle', {'reservation_id': 'retention-one', 'actual': {'units': 1}})
+        payload = _retained_request(bridge, state)
+    elif fault == 'events': payload['limits']['events'] = True
+    elif fault == 'steps': payload['limits']['steps'] = 4097
+    elif fault == 'bytes': payload['limits']['work_bytes'] = 1
+    elif fault == 'wall': payload['limits']['wall_millis'] = 900001
+    else: write_board(world, status='released')
+    with pytest.raises(ValueError): command(engine, world, state, 'native.retention', payload)
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_retention_consumed_steps_and_reservation_revocation_stop_before_read(bridge, engine, world, monkeypatch):
+    state = _retained_owner_setup(bridge, engine, world)
+    state = command(engine, world, state, 'native.retention', _retained_request(bridge, state, steps=1))
+    def forbidden(*args, **kwargs): raise AssertionError('source read after exhausted admission')
+    monkeypatch.setattr(bridge.native, 'read_page', forbidden)
+    with pytest.raises(ValueError, match='allowance exhausted'): observe(engine, world, state)
+    assert engine.load_run(world['project'], state['run_id']) == state
+    state = command(engine, world, state, 'workflow.settle', {'reservation_id': 'retention-one', 'actual': {'units': 1}})
+    with pytest.raises(ValueError, match='reserved work envelope'): observe(engine, world, state)
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_retention_fresh_envelope_preserves_prior_limits_and_all_consumption(bridge, engine, world):
+    state = _retained_owner_setup(bridge, engine, world)
+    state = command(engine, world, state, 'native.retention', _retained_request(bridge, state, steps=1))
+    prior = deepcopy(state['extensions']['native_observations']['retention']['current'])
+    state = command(engine, world, state, 'workflow.reserve', {'reservation_id': 'retention-two', 'amounts': {'units': 2}, 'category': 'recovery'})
+    budget = deepcopy(state['extensions']['workflow']['budget'])
+    payload = _retained_request(bridge, state); payload['reservation_id'] = 'retention-two'
+    state = command(engine, world, state, 'native.retention', payload)
+    retention = state['extensions']['native_observations']['retention']
+    assert retention['history'] == [prior] and retention['current']['reservation_id'] == 'retention-two'
+    assert retention['current']['steps'] == 1 and state['extensions']['workflow']['budget'] == budget
+
+
+def test_retention_late_owner_revocation_refuses_journal_publication(bridge, engine, world, monkeypatch):
+    from test_run_admission import write_board
+    state = _retained_owner_setup(bridge, engine, world); original = bridge.native.retained_projection
+    def revoke(projection):
+        result = original(projection); write_board(world, status='released'); return result
+    monkeypatch.setattr(bridge.native, 'retained_projection', revoke)
+    with pytest.raises(ValueError): command(engine, world, state, 'native.retention', _retained_request(bridge, state))
+    assert engine.load_run(world['project'], state['run_id']) == state
+
+
+def test_retention_journal_stale_cas_cannot_rebind_old_projection(bridge, engine, world):
+    state = _retained_owner_setup(bridge, engine, world); payload = _retained_request(bridge, state)
+    advanced = command(engine, world, state, 'progress', {'summary': 'Synthetic intervening writer'})
+    with pytest.raises(ValueError): command(engine, world, state, 'native.retention', payload)
+    assert engine.load_run(world['project'], state['run_id']) == advanced
+
+
+
+def test_retained_historical_subject_uses_current_finite_work_not_old_authority(bridge):
+    from test_native_count_shapes import _retained_fact, _retained_batch
+    native = bridge.native
+    limits = {'events': 20000, 'steps': 4096, 'work_bytes': 16 * 1024**3, 'wall_millis': 300000}
+    subject = {'projection': native.retained_projection(native.empty_projection()),
+               'retention': {'current': {'limits': limits}}}
+    record = {**bridge._historical_projection(subject), 'limits': {'bytes': 1024**3}, 'validation_bytes_charged': 0}
+    expected = {}
+    for start in range(0, 10001, 1000):
+        events = [_retained_fact(i) for i in range(start, min(10001, start + 1000))]
+        expected.update({event['event_id']: native._digest({k: v for k, v in event.items() if k != 'ingested_at'}) for event in events})
+        record['derived_projection'] = bridge._historical_reduce(record, _retained_batch(events))
+    assert dict(native.event_fingerprints(record['derived_projection'])) == expected
+    assert record['validation_bytes_charged'] == record['retention_work']['work_bytes'] > 0
+    assert record['retention_work']['decoded_entries'] > 10001
+    assert record['retention_work']['steps'] == 11
+    before = deepcopy(record); record['limits']['bytes'] = record['validation_bytes_charged']
+    refused = deepcopy(record)
+    with pytest.raises(ValueError, match='finite work'): bridge._historical_reduce(record, _retained_batch([_retained_fact(10001)]))
+    assert record == refused and record['derived_projection'] == before['derived_projection']
+    assert subject['projection']['events']['count'] == 0
+
+
+def test_historical_legacy_subject_does_not_silently_convert(bridge):
+    from test_native_count_shapes import _retained_fact, _retained_batch
+    projection = bridge.native.empty_projection()
+    projection['events'] = {_retained_fact(i)['event_id']: 'f' * 64 for i in range(10000)}
+    assert bridge._historical_projection({'projection': projection}) == {'derived_projection': bridge.native.empty_projection()}
+    record = {'derived_projection': projection}
+    before = deepcopy(record)
+    with pytest.raises(ValueError, match='capacity'): bridge._historical_reduce(record, _retained_batch([_retained_fact(10000)]))
+    assert record == before
+
+
+
+def test_retained_historical_actual_journal_owner_preserves_terminal_subject(bridge, engine, world):
+    from datetime import datetime, timedelta, timezone
+    from test_workflow import dimensions
+    from test_controller import HISTORY_LIMITS
+    old = _retained_owner_setup(bridge, engine, world)
+    old = command(engine, world, old, 'native.retention', _retained_request(bridge, old))
+    append(world, *pair(world, 'retained-historical'))
+    old = observe(engine, world, old)
+    old = command(engine, world, old, 'close', {'status': 'incomplete', 'reason': 'Synthetic terminal retained history'})
+    event = engine._read(engine._home(world['project'], old['run_id']) / 'events' / f"{old['revision']:012d}.json")
+    source = old['extensions']['native_observations']['sources']['root']
+    subject = {'run_id': old['run_id'], 'revision': old['revision'], 'event_digest': event['digest'],
+               'state_digest': engine._digest(old), 'source_handle': 'root', 'source_digest': bridge.native._digest(source)}
+    current = create(engine, world, command_id='fresh-history-owner')
+    current = command(engine, world, current, 'workflow.configure', {'dimensions': dimensions(), 'layers': []})
+    current = command(engine, world, current, 'workflow.budget', {'limits': {'units': {'limit': 10, 'enforcement': 'hard'}},
+                      'deadline': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    before = deepcopy(current['extensions'])
+    for _ in range(10):
+        current = command(engine, world, current, 'native.history', {'subject': subject, 'limits': HISTORY_LIMITS})
+        row = current['extensions']['native_history'][bridge.native._digest(subject)]
+        if row['status'] != 'pending': break
+    assert row['status'] == 'complete' and row['authority_granted'] is False
+    assert row['derived_projection']['schema_version'] == 2
+    # Existing facts are revalidated through exact aliases, never ingested twice.
+    assert row['derived_projection']['events']['count'] == 0
+    assert set(row['source']['replay']['aliases']) == set(old['extensions']['native_observations']['event_index'])
+    assert len(row['source']['replay']['matched']) == 2
+    assert row['retention_work']['steps'] > 0 and row['retention_work']['decoded_entries'] == 0
+    assert row['validation_bytes_charged'] >= row['retention_work']['work_bytes'] > 0
+    assert current['extensions']['workflow'] == before['workflow']
+    assert engine.load_run(world['project'], old['run_id']) == old
+    assert 'native_observations' not in current['extensions']
+
+
+def test_legacy_observation_does_not_compute_unused_retention_cost(bridge, engine, world, monkeypatch):
+    state = enroll(engine, world, create(engine, world)); append(world, *pair(world))
+    def unused(*args, **kwargs): raise AssertionError('legacy path computed unused retention cost')
+    monkeypatch.setattr(bridge, '_retention_cost', unused)
+    result = observe(engine, world, state)
+    assert len(result['extensions']['native_observations']['projection']['events']) == 2
+
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+def test_retained_explicit_generation_replay_keeps_original_gap_and_cancellation(bridge, engine, world, monkeypatch, cancel):
+    from datetime import datetime, timedelta, timezone
+    import workflow
+    from test_workflow import dimensions
+    from test_native_replay import broken_history, replay_to_end, src
+    state = broken_history(engine, world, monkeypatch, cancel=cancel)
+    original_source = deepcopy(src(state))
+    workflow.register_commands(engine.register_command)
+    state = command(engine, world, state, 'workflow.configure', {'dimensions': dimensions(), 'layers': []})
+    state = command(engine, world, state, 'workflow.budget', {'limits': {'units': {'limit': 10, 'enforcement': 'hard'}},
+                    'deadline': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()})
+    state = command(engine, world, state, 'workflow.reserve', {'reservation_id': 'retention-one', 'amounts': {'units': 2}, 'category': 'recovery'})
+    state = command(engine, world, state, 'native.retention', _retained_request(bridge, state))
+    assert src(state) == original_source
+    retained = deepcopy(state['extensions']['native_observations']['retention'])
+    state = replay_to_end(engine, world, state)
+    extension = state['extensions']['native_observations']
+    assert src(state)['replay']['status'] == 'complete'
+    assert src(state)['history'][-1]['cursor'] == original_source['cursor']
+    assert extension['retention']['current']['steps'] > retained['current']['steps']
+    assert extension['projection']['events']['count'] == len(extension['event_index'])
+    assert bridge.current_invalidation(engine.inspect_context(state, world['actor']))['status'] == ('invalidated' if cancel else 'clear')
+    assert state['status'] != 'completed'

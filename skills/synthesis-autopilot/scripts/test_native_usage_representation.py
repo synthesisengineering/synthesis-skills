@@ -177,3 +177,20 @@ def test_writer_checks_structured_bound_before_resource_assignment():
     with pytest.raises(ValueError, match='structured expansion'):
         owner.ingest_native(s, 'root', {'events': [bad]})
     assert s == before
+
+
+def test_retained_native_index_composes_with_existing_usage_debt(tmp_path):
+    import native_observations as native
+    from test_native_observations import source, response_usage, usage, tokens
+    changed = response_usage('same-response', 20); changed['payload']['usage'] = tokens(11)
+    _, binding, cursor = source(tmp_path, [response_usage('same-response', 10), changed, usage(10), usage(4)])
+    batch = native.read_page(binding, cursor)
+    old_state, new_state = state(), state(); prior_budget = deepcopy(ledger(new_state))
+    old = native.reduce_observations(native.empty_projection(), batch)
+    new = native.reduce_observations(native.retained_projection(native.empty_projection()), batch, event_limit=100)
+    owner.ingest_native(old_state, 'root', batch); owner.ingest_native(new_state, 'root', batch)
+    assert old_state == new_state
+    assert owner.usage_projection(ledger(new_state)['native_usage'])['conflicts']
+    assert {k:v for k,v in ledger(new_state).items() if k != 'native_usage'} == prior_budget
+    assert {k:v for k,v in new.items() if k not in {'events','schema_version'}} == {k:v for k,v in old.items() if k not in {'events','schema_version'}}
+    with pytest.raises(ValueError, match='contradiction'): owner.require_native_headroom(new_state['extensions']['workflow'])

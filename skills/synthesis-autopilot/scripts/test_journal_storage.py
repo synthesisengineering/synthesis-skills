@@ -1584,3 +1584,78 @@ def test_compressed_scanner_preserves_independent_mutable_leaf_reads(engine):
     assert second == {'z': [1], 'a': {'b': 2}}
     with pytest.raises(ValueError, match='bound'):
         storage._leaf('zleaf', packed, len(raw) - 1)
+
+
+@pytest.mark.parametrize('reader', ['leaf', 'block'])
+def test_canonical_reader_matches_standard_encoder(reader):
+    import base64, random, zlib
+    rng = random.Random(4188)
+    atoms = [None, True, False, 0, -1, 10**80, -0.0, 0.0, 1e-20, 1e20,
+             'λ', 'é', '😀', '/', '\\', '"', '\\u001f']
+    atoms.extend(chr(i) for i in range(128))
+    values = atoms + [{'a': x, 'z': [x, {'é': x}]} for x in atoms]
+    values.extend({str(i): rng.uniform(-1e90, 1e90) for i in range(20)} for _ in range(50))
+    for value in values:
+        raw = storage.canonical(value)
+        if reader == 'leaf':
+            actual = storage._leaf('zleaf', base64.b64encode(zlib.compress(raw)).decode())
+        else:
+            actual, used = storage._block_node(storage.BLOCK_PREFIX+zlib.compress(raw+b'\n'),limit=storage.MAX_BLOCK_BYTES)
+            assert used == len(raw)+1
+        assert actual == value
+        assert storage.canonical(actual) == raw
+
+
+@pytest.mark.parametrize('raw', [
+    b' {"a":1}', b'{"a":1} ', b'{"a": 1}', b'{"a":1}\n',
+    b'{"z":1,"a":2}', b'{"a":1,"a":1}', b'{"a":-0}', b'{"a":1.00}',
+    b'{"a":1E+20}', b'{"a":1e20}', b'{"a":1e-7}', b'{"a":1e999}',
+    b'{"a":NaN}', b'{"a":Infinity}', b'{"a":-Infinity}',
+    b'{"a":"\\u03bb"}', b'{"a":"\\/"}', b'{"a":"\\u0008"}',
+    b'{"a":"\\u001F"}', b'{"a":"\\ud800"}', b'{"a":"\\x00"}',
+    b'\xef\xbb\xbf{}', '{}'.encode('utf-16'), '{}'.encode('utf-32'),
+    b'{"a":"\xff"}', b'[]true', b'{"a":01}', b'{"a":+1}',
+])
+@pytest.mark.parametrize('reader', ['leaf', 'block'])
+def test_canonical_reader_refusals_match_roundtrip_guard(raw, reader):
+    import base64, zlib
+    def old_guard():
+        storage._compressed_json_bounds(raw)
+        value=json.loads(raw,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite')))
+        if storage.canonical(value) != raw:
+            raise ValueError('noncanonical')
+    with pytest.raises((ValueError,UnicodeError,OverflowError)):
+        old_guard()
+    with pytest.raises((ValueError,UnicodeError,OverflowError)):
+        if reader == 'leaf':
+            storage._leaf('zleaf',base64.b64encode(zlib.compress(raw)).decode())
+        else:
+            storage._block_node(storage.BLOCK_PREFIX+zlib.compress(raw+b'\n'),limit=storage.MAX_BLOCK_BYTES)
+
+
+@pytest.mark.parametrize('reader', ['leaf', 'block'])
+def test_canonical_reader_avoids_reserializing_validated_values(monkeypatch, reader):
+    import base64,zlib
+    raw=storage.canonical({'a':[1,2.5,None], 'z':'λ quote" slash\\'})
+    def forbidden(_):
+        raise AssertionError('a parsed canonical value was serialized again')
+    monkeypatch.setattr(storage,'canonical',forbidden)
+    if reader == 'leaf':
+        value=storage._leaf('zleaf',base64.b64encode(zlib.compress(raw)).decode())
+    else:
+        value,_=storage._block_node(storage.BLOCK_PREFIX+zlib.compress(raw+b'\n'),limit=storage.MAX_BLOCK_BYTES)
+    assert value['a']==[1,2.5,None] and value['z']=='λ quote" slash\\'
+
+
+def test_canonical_reader_reapplies_work_depth_and_returns_fresh_objects(monkeypatch):
+    raw=storage.canonical({'a':{'items':[1]},'b':{'items':[1]}})
+    first=storage._canonical_json(raw);second=storage._canonical_json(raw)
+    first['a']['items'].append(2)
+    assert first['b']==second['a']==second['b']=={'items':[1]}
+    monkeypatch.setattr(storage,'MAX_DEPTH',1)
+    with pytest.raises(ValueError,match='depth'):
+        storage._canonical_json(raw)
+    monkeypatch.setattr(storage,'MAX_DEPTH',64)
+    monkeypatch.setattr(storage,'MAX_BLOCKS',1)
+    with pytest.raises(ValueError,match='work'):
+        storage._canonical_json(raw)

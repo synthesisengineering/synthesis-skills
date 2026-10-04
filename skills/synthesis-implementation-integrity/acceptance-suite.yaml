@@ -2678,6 +2678,70 @@ changed_surfaces:
   - operator-correction-a7252f805d34ce76
   - operator-correction-9e05baf5287d9e16
   - operator-correction-86ae36be0dc905fe
+  - retirement-6de4a5708ff84f58
+  - retirement-45f5fec364e8c14a
+  - retirement-22f9aec8328e8473
+  - retirement-4210c4891878f723
+  - retirement-e8d8e0698bba286c
+  - retirement-e1791691a7c9a5d8
+  - retirement-c84569ce9ea2798d
+  - retirement-dd2823f2207998d6
+  - retirement-65471de1e42b1a11
+  - retirement-268361a1f0938bb1
+  - retirement-9b0c11bca2ff9337
+  - retirement-7396518952ba10b4
+  - retirement-b208c6a6afd8cbd1
+  - retirement-072bff8ad2963a5c
+  - retirement-2d19065e6e7e382e
+  - retirement-a14b2286b22467e3
+  - retirement-89657e42086736f7
+  - retirement-6b460f9200779f04
+  - retirement-b194689d683f2e43
+  - retirement-85566169d753dc79
+  - retirement-2ad9959538491eb7
+  - retirement-216fededd4aa3a0c
+  - retirement-3f3c7f87f16efa16
+  - retirement-a6d32fa6ddd5a754
+  - retirement-d3d57d8638b5f4b8
+  - retirement-d93e11e3afe4837f
+  - retirement-c7b7520f32dc7bdd
+  - retirement-9380327197572995
+  - retirement-01f564ab61d09909
+  - retirement-dab24c69ea24def2
+  - retirement-3c893056cc7daa6b
+  - retirement-d30b017f3d3ee091
+  - retirement-6de4a5708ff84f58
+  - retirement-45f5fec364e8c14a
+  - retirement-22f9aec8328e8473
+  - retirement-4210c4891878f723
+  - retirement-e8d8e0698bba286c
+  - retirement-e1791691a7c9a5d8
+  - retirement-c84569ce9ea2798d
+  - retirement-dd2823f2207998d6
+  - retirement-65471de1e42b1a11
+  - retirement-268361a1f0938bb1
+  - retirement-9b0c11bca2ff9337
+  - retirement-7396518952ba10b4
+  - retirement-b208c6a6afd8cbd1
+  - retirement-072bff8ad2963a5c
+  - retirement-2d19065e6e7e382e
+  - retirement-a14b2286b22467e3
+  - retirement-89657e42086736f7
+  - retirement-6b460f9200779f04
+  - retirement-b194689d683f2e43
+  - retirement-85566169d753dc79
+  - retirement-2ad9959538491eb7
+  - retirement-216fededd4aa3a0c
+  - retirement-3f3c7f87f16efa16
+  - retirement-a6d32fa6ddd5a754
+  - retirement-d3d57d8638b5f4b8
+  - retirement-d93e11e3afe4837f
+  - retirement-c7b7520f32dc7bdd
+  - retirement-9380327197572995
+  - retirement-01f564ab61d09909
+  - retirement-dab24c69ea24def2
+  - retirement-3c893056cc7daa6b
+  - retirement-d30b017f3d3ee091
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -3943,8 +4007,69 @@ changed_surfaces:
   - operator-correction-a7252f805d34ce76
   - operator-correction-9e05baf5287d9e16
   - operator-correction-86ae36be0dc905fe
+  - journal-canonical-a895afa498c24b45
+  - journal-canonical-44dbf9604ee01cf9
+  - journal-canonical-a9443bc6b2a7b73d
+  - journal-canonical-eae0dcbdfd5ea822
+  - journal-canonical-c2d5214eb8c367ac
+  - journal-canonical-2aaa8995ec82eb2a
+  - journal-canonical-13e803870ac489a2
+  - journal-canonical-5e0954473d9c9cb9
+  - journal-canonical-bd16ee96b7a27dfd
+  - journal-canonical-7d5fd4f3b4a4b939
+  - journal-canonical-78a480ba8430d1a6
+  - journal-canonical-71f5b4c243221598
+  - journal-canonical-f266dd58ff88442c
+  - journal-canonical-b2c8e09f896cb6c3
+  - journal-canonical-5e69e35300b48a07
+  - journal-canonical-fe6eac9508e902d7
+  - journal-canonical-e89612864329dc2e
+  - journal-canonical-dde235df71ad441a
+  - journal-canonical-d6021a8f60acb614
+  - journal-canonical-7179c36e08a546bd
+  - journal-canonical-03d0f5cdbcf98a9e
+  - journal-canonical-85fd54a9c9011b23
+  - journal-canonical-a4be0e4a355a6266
+  - journal-canonical-cf9390e4bf7bb816
+  - journal-canonical-6375ac571e54d349
+  - journal-canonical-1c98eece85f63cce
+  - journal-canonical-5fd5b1d9322be2d7
+  - journal-canonical-4a5511efe0df289c
+  - journal-canonical-f35aeed14b9be718
+  - journal-canonical-78ed40e5647c45ff
+  - journal-canonical-80b43a0a79401669
+  - journal-canonical-13cd8be95d5ddbf7
+  - journal-canonical-92d917fbdb220fdb
+  - journal-canonical-c8be099e77cf636c
+  - journal-canonical-bc358ca2bb3e0acc
+  - journal-canonical-54440e4be87bca1c
+  - journal-canonical-1f44f338f1a98cfb
+  - journal-canonical-856a4a1b12c0ad04
+  - journal-canonical-b4719ffefdf70752
+  - journal-canonical-148290840b97f105
+  - journal-canonical-055e31766055fe03
+  - journal-canonical-c6a52cc6342c0046
+  - journal-canonical-596762e42d198a99
+  - journal-canonical-9d61c720e7702557
+  - journal-canonical-cf5572ba020eb0ba
+  - journal-canonical-735e7f011a76bc27
+  - journal-canonical-d3f5e0f8a9673c8c
+  - journal-canonical-17539342455577df
+  - journal-canonical-f13197f241e03961
+  - journal-canonical-bb4b0f52940b9fbc
+  - journal-canonical-b77e7e55f9cdf33e
+  - journal-canonical-4b38201775b08706
+  - journal-canonical-7f54aec9049a5005
+  - journal-canonical-67f543cca20efb0a
+  - journal-canonical-1489e10dacbc76a5
+  - journal-canonical-23d0a965f78786ce
+  - journal-canonical-8fc7dcffa7061a76
+  - journal-canonical-051e92541234668d
+  - journal-canonical-3e1280d0459e11a4
+  - journal-canonical-b6fac9e155d28a48
+  - journal-canonical-ac3acad9ca9a3cdf
 - path: skills/synthesis-autopilot/scripts/observation_bridge.py
-  cases: &id002
+  cases:
   - native-checkpoint-fbf4ca8756278a63
   - native-checkpoint-352353e69734fbb3
   - native-checkpoint-19fa9851328306dc
@@ -3981,8 +4106,52 @@ changed_surfaces:
   - native-checkpoint-66183426978ec22d
   - native-checkpoint-d0425a487553f894
   - native-checkpoint-96efd71d1140abe9
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
 - path: skills/synthesis-autopilot/scripts/recovery_capsule.py
-  cases: &id003
+  cases: &id002
   - final-954912d5a6c39435
   - material-017485a8bb6f997b
   - native-checkpoint-541bac24b6e05cc0
@@ -4506,6 +4675,67 @@ changed_surfaces:
   - operator-correction-a7252f805d34ce76
   - operator-correction-9e05baf5287d9e16
   - operator-correction-86ae36be0dc905fe
+  - journal-canonical-a895afa498c24b45
+  - journal-canonical-44dbf9604ee01cf9
+  - journal-canonical-a9443bc6b2a7b73d
+  - journal-canonical-eae0dcbdfd5ea822
+  - journal-canonical-c2d5214eb8c367ac
+  - journal-canonical-2aaa8995ec82eb2a
+  - journal-canonical-13e803870ac489a2
+  - journal-canonical-5e0954473d9c9cb9
+  - journal-canonical-bd16ee96b7a27dfd
+  - journal-canonical-7d5fd4f3b4a4b939
+  - journal-canonical-78a480ba8430d1a6
+  - journal-canonical-71f5b4c243221598
+  - journal-canonical-f266dd58ff88442c
+  - journal-canonical-b2c8e09f896cb6c3
+  - journal-canonical-5e69e35300b48a07
+  - journal-canonical-fe6eac9508e902d7
+  - journal-canonical-e89612864329dc2e
+  - journal-canonical-dde235df71ad441a
+  - journal-canonical-d6021a8f60acb614
+  - journal-canonical-7179c36e08a546bd
+  - journal-canonical-03d0f5cdbcf98a9e
+  - journal-canonical-85fd54a9c9011b23
+  - journal-canonical-a4be0e4a355a6266
+  - journal-canonical-cf9390e4bf7bb816
+  - journal-canonical-6375ac571e54d349
+  - journal-canonical-1c98eece85f63cce
+  - journal-canonical-5fd5b1d9322be2d7
+  - journal-canonical-4a5511efe0df289c
+  - journal-canonical-f35aeed14b9be718
+  - journal-canonical-78ed40e5647c45ff
+  - journal-canonical-80b43a0a79401669
+  - journal-canonical-13cd8be95d5ddbf7
+  - journal-canonical-92d917fbdb220fdb
+  - journal-canonical-c8be099e77cf636c
+  - journal-canonical-bc358ca2bb3e0acc
+  - journal-canonical-54440e4be87bca1c
+  - journal-canonical-1f44f338f1a98cfb
+  - journal-canonical-856a4a1b12c0ad04
+  - journal-canonical-b4719ffefdf70752
+  - journal-canonical-148290840b97f105
+  - journal-canonical-055e31766055fe03
+  - journal-canonical-c6a52cc6342c0046
+  - journal-canonical-596762e42d198a99
+  - journal-canonical-9d61c720e7702557
+  - journal-canonical-cf5572ba020eb0ba
+  - journal-canonical-735e7f011a76bc27
+  - journal-canonical-d3f5e0f8a9673c8c
+  - journal-canonical-17539342455577df
+  - journal-canonical-f13197f241e03961
+  - journal-canonical-bb4b0f52940b9fbc
+  - journal-canonical-b77e7e55f9cdf33e
+  - journal-canonical-4b38201775b08706
+  - journal-canonical-7f54aec9049a5005
+  - journal-canonical-67f543cca20efb0a
+  - journal-canonical-1489e10dacbc76a5
+  - journal-canonical-23d0a965f78786ce
+  - journal-canonical-8fc7dcffa7061a76
+  - journal-canonical-051e92541234668d
+  - journal-canonical-3e1280d0459e11a4
+  - journal-canonical-b6fac9e155d28a48
+  - journal-canonical-ac3acad9ca9a3cdf
 - path: skills/synthesis-autopilot/scripts/test_native_replay.py
   cases:
   - final-5f90017857a25f20
@@ -4621,10 +4851,134 @@ changed_surfaces:
   - native-checkpoint-366108bbdc18e93e
   - native-checkpoint-f4e84d0efd56d941
   - native-checkpoint-461d3d9254a7d509
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
 - path: skills/synthesis-autopilot/scripts/test_observation_bridge.py
-  cases: *id002
+  cases:
+  - native-checkpoint-fbf4ca8756278a63
+  - native-checkpoint-352353e69734fbb3
+  - native-checkpoint-19fa9851328306dc
+  - native-checkpoint-3296dc9cf0690d89
+  - native-checkpoint-fac3eede74264c87
+  - native-checkpoint-d6c81e885954d20d
+  - native-checkpoint-8c08b9ab07f89e15
+  - native-checkpoint-b23f992a0f85ff33
+  - native-checkpoint-c209b48d41cda137
+  - native-checkpoint-bcb08ad4c65afa53
+  - native-checkpoint-18ed444b1793fe40
+  - native-checkpoint-69dcde206974a07a
+  - native-checkpoint-cf15b37f77ff8c0f
+  - native-checkpoint-272b8c321779e312
+  - native-checkpoint-d91f74d0e48e24d4
+  - native-checkpoint-1a1dda7f5d4c4c94
+  - native-checkpoint-1b2e4aebc732bbde
+  - native-checkpoint-b79d86e61410dd59
+  - native-checkpoint-3ecf6aba8af9bae5
+  - native-checkpoint-2ae57dc6674514aa
+  - native-checkpoint-5d30b03e97f5e01b
+  - native-checkpoint-42b3e858f814312c
+  - native-checkpoint-994f688dfa338e84
+  - native-checkpoint-f19f6f7aec26b566
+  - native-checkpoint-78bef42e6b00209d
+  - native-checkpoint-0d4b08379642b2a6
+  - native-checkpoint-888b9bdcad446bc2
+  - native-checkpoint-473e76ab1913421b
+  - native-checkpoint-0c35e4613a5dff4c
+  - native-checkpoint-26ec80f439bddd22
+  - native-checkpoint-1508db0bca5933ae
+  - native-checkpoint-c7cd64c39fbfc1c0
+  - native-checkpoint-eed6742c3c9c17c0
+  - native-checkpoint-66183426978ec22d
+  - native-checkpoint-d0425a487553f894
+  - native-checkpoint-96efd71d1140abe9
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
 - path: skills/synthesis-autopilot/scripts/test_recovery_capsule.py
-  cases: *id003
+  cases: *id002
 - path: skills/synthesis-autopilot/scripts/test_resource_policy.py
   cases:
   - native-checkpoint-06d9231028292b88
@@ -4704,7 +5058,7 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: *id001
 - path: skills/synthesis-project-management/SKILL.md
-  cases: &id004
+  cases: &id003
   - final-863c438d942f9603
   - final-5527c9c744c4082a
   - final-39325c9f19c371bb
@@ -5024,9 +5378,9 @@ changed_surfaces:
   - native-checkpoint-79cc7f40a99b1b8a
   - native-checkpoint-2b6844b7a7c5173f
 - path: skills/synthesis-project-management/scripts/project_state.py
-  cases: *id004
+  cases: *id003
 - path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases: *id004
+  cases: *id003
 - path: skills/synthesis-project-management/scripts/test_coordination_process_thread.py
   cases:
   - final-1b36b69418d62c5f
@@ -5044,7 +5398,7 @@ changed_surfaces:
   - recovery-6051c6c23201c198
   - hosted-source-1c9eadf207ee0681
 - path: skills/synthesis-daily-rituals/SKILL.md
-  cases: &id005
+  cases: &id004
   - clock-correction-98a47d68373038ff
   - clock-correction-4d3cfb73d863ecdc
   - clock-correction-bded598eea5e4bb4
@@ -5073,9 +5427,187 @@ changed_surfaces:
   - clock-correction-1cec0510bd160ed2
   - clock-correction-5764a83f3afa3835
 - path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
-  cases: *id005
+  cases: *id004
 - path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+  cases: *id004
+- path: skills/synthesis-repo-guard/checkpoint_sync.py
+  cases: &id005
+  - retirement-6de4a5708ff84f58
+  - retirement-45f5fec364e8c14a
+  - retirement-22f9aec8328e8473
+  - retirement-4210c4891878f723
+  - retirement-e8d8e0698bba286c
+  - retirement-e1791691a7c9a5d8
+  - retirement-c84569ce9ea2798d
+  - retirement-dd2823f2207998d6
+  - retirement-65471de1e42b1a11
+  - retirement-268361a1f0938bb1
+  - retirement-9b0c11bca2ff9337
+  - retirement-7396518952ba10b4
+  - retirement-b208c6a6afd8cbd1
+  - retirement-072bff8ad2963a5c
+  - retirement-2d19065e6e7e382e
+  - retirement-a14b2286b22467e3
+  - retirement-89657e42086736f7
+  - retirement-6b460f9200779f04
+  - retirement-b194689d683f2e43
+  - retirement-85566169d753dc79
+  - retirement-2ad9959538491eb7
+  - retirement-216fededd4aa3a0c
+  - retirement-3f3c7f87f16efa16
+  - retirement-a6d32fa6ddd5a754
+  - retirement-d3d57d8638b5f4b8
+  - retirement-d93e11e3afe4837f
+  - retirement-c7b7520f32dc7bdd
+  - retirement-9380327197572995
+  - retirement-01f564ab61d09909
+  - retirement-dab24c69ea24def2
+  - retirement-3c893056cc7daa6b
+  - retirement-d30b017f3d3ee091
+- path: skills/synthesis-repo-guard/test_checkpoint_sync.py
   cases: *id005
+- path: skills/synthesis-onboarding/scripts/release_runtime.py
+  cases: *id005
+- path: skills/synthesis-repo-guard/SKILL.md
+  cases: *id005
+- path: skills/synthesis-autopilot/scripts/native_observations.py
+  cases:
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
+- path: skills/synthesis-autopilot/scripts/test_native_count_shapes.py
+  cases:
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
+- path: skills/synthesis-autopilot/scripts/test_native_observations.py
+  cases:
+  - native-retention-0f458438fc31af18
+  - native-retention-c5eec026d19d403a
+  - native-retention-ef383d97c6c6ab92
+  - native-retention-b1d03b3d0544acc4
+  - native-retention-6a39c7a203ed4973
+  - native-retention-682fee3dc290813d
+  - native-retention-61c39fbc4317effa
+  - native-retention-57ed7ba7bacc2423
+  - native-retention-7c523dfc56ae9387
+  - native-retention-b4dfcc70693fa3c0
+  - native-retention-57b71f20ae55212c
+  - native-retention-df690cdfa44bb2da
+  - native-retention-f0206190d810cc2c
+  - native-retention-df32911b09c6002b
+  - native-retention-6208681748f99eb2
+  - native-retention-c61336e31818d5ab
+  - native-retention-f0cf867d0c489852
+  - native-retention-98ed07bc1c83a832
+  - native-retention-cff9bb3c6cdb5dfd
+  - native-retention-0fa86a23e11211ae
+  - native-retention-e383bb268f51e514
+  - native-retention-418355b32f889673
+  - native-retention-29feda492ec819bd
+  - native-retention-439a21c6b8fdf8fd
+  - native-retention-2c2510cdbde01f8c
+  - native-retention-52dfcd78a9f8e569
+  - native-retention-f9806146a4dc8e72
+  - native-retention-1724d3fb059f9a50
+  - native-retention-f62e4ef827820bac
+  - native-retention-649e2bdf8897f271
+  - native-retention-94a02a8ddf4a827b
+  - native-retention-8fa9a6ef2149f53a
+  - native-retention-455ca7a894e67320
+  - native-retention-470464b3e6615114
+  - native-retention-63246e3219d0a315
+  - native-retention-20c0d97e2f2c06a2
+  - native-retention-0bb159d85fc9ae25
+  - native-retention-319dcc178ed622b4
+  - native-retention-b46d386d0a4759d2
+  - native-retention-5b10e2a7281f8c80
+  - native-retention-c6848c4ff0c55712
+  - native-retention-c68ff0a8eaa67755
+  - native-retention-218404436c8c6c9c
+  - native-retention-927ec72a514e95b5
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -20359,3 +20891,831 @@ cases:
   fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_preserves_independent_mutable_leaf_reads
   motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
     and brackets; optimize lexical work without changing admission or validation limits.
+- id: retirement-6de4a5708ff84f58
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retires_typed_own_landed_preserves_foreign_and_unresolved
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-45f5fec364e8c14a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[hashless]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-22f9aec8328e8473
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[foreign-hash]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-4210c4891878f723
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[typed-conflict]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-e8d8e0698bba286c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[unpublished]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-e1791691a7c9a5d8
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[missing]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-c84569ce9ea2798d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[ancestor-link]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-dd2823f2207998d6
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retains_unproved_entries[remote-missing]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-65471de1e42b1a11
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retires_typed_deletion_and_link[deleted]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-268361a1f0938bb1
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retires_typed_deletion_and_link[symlink]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-9b0c11bca2ff9337
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[native]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-7396518952ba10b4
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[transcript]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-b208c6a6afd8cbd1
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[seat]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-072bff8ad2963a5c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[board]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-2d19065e6e7e382e
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[manifest]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-a14b2286b22467e3
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_refuses_authority_and_cas_changes[proof]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-89657e42086736f7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_malformed_coverage_never_retires[schema]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-6b460f9200779f04
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_malformed_coverage_never_retires[duplicate]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-b194689d683f2e43
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_malformed_coverage_never_retires[remote-only]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-85566169d753dc79
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_malformed_coverage_never_retires[map-kind]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-2ad9959538491eb7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_retirement_receipt_failure_recovers_exact_narrowed_manifest
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-216fededd4aa3a0c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_landed_own_bytes_retire_without_touching_later_foreign_work
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-3f3c7f87f16efa16
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_local_receipt_without_native_stop_never_mutates_attribution
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-a6d32fa6ddd5a754
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_retirement_existing_git_reads_share_finite_deadline
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-d3d57d8638b5f4b8
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_large_existing_ledger_completes_whole_owner[257]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-d93e11e3afe4837f
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_large_existing_ledger_completes_whole_owner[120000]
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-c7b7520f32dc7bdd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_batch_cursor_does_not_starve_later_landed
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-9380327197572995
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_malformed_cursor_preserves_manifest
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-01f564ab61d09909
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_retirement_obeys_whole_stop_observation_bound
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-dab24c69ea24def2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_stop_queries_only_bounded_selected_tree_paths
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-3c893056cc7daa6b
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_receipt_cached_parent_replacement_refuses
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: retirement-d30b017f3d3ee091
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-repo-guard/test_checkpoint_sync.py::test_automatic_receipt_unrelated_shared_sibling_creation_is_allowed
+  motivating_defect: Automatic Stop must retire only exact own published attribution within a bounded
+    authenticated observation, retaining unresolved and foreign entries.
+- id: journal-canonical-a895afa498c24b45
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_avoids_reserializing_validated_values[leaf]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-44dbf9604ee01cf9
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_avoids_reserializing_validated_values[block]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-a9443bc6b2a7b73d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_matches_standard_encoder[leaf]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-eae0dcbdfd5ea822
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_matches_standard_encoder[block]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-c2d5214eb8c367ac
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_reapplies_work_depth_and_returns_fresh_objects
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-2aaa8995ec82eb2a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-
+    {"a":1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-13e803870ac489a2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1}
+    ]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-5e0954473d9c9cb9
+  control_class: positive-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":
+    1}]'
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-bd16ee96b7a27dfd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1}\n]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-7d5fd4f3b4a4b939
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"z":1,"a":2}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-78a480ba8430d1a6
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1,"a":1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-71f5b4c243221598
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":-0}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-f266dd58ff88442c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1.00}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-b2c8e09f896cb6c3
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1E+20}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-5e69e35300b48a07
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1e20}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-fe6eac9508e902d7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1e-7}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-e89612864329dc2e
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":1e999}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-dde235df71ad441a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":NaN}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-d6021a8f60acb614
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":Infinity}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-7179c36e08a546bd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":-Infinity}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-03d0f5cdbcf98a9e
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\u03bb"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-85fd54a9c9011b23
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\/"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-a4be0e4a355a6266
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\u0008"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-cf9390e4bf7bb816
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\u001F"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-6375ac571e54d349
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\ud800"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-1c98eece85f63cce
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\x00"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-5fd5b1d9322be2d7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-\xef\xbb\xbf{}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-4a5511efe0df289c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-\xff\xfe{\x00}\x00]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-f35aeed14b9be718
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-\xff\xfe\x00\x00{\x00\x00\x00}\x00\x00\x00]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-78ed40e5647c45ff
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":"\xff"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-80b43a0a79401669
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-[]true]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-13cd8be95d5ddbf7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":01}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-92d917fbdb220fdb
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[leaf-{"a":+1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-c8be099e77cf636c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-
+    {"a":1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-bc358ca2bb3e0acc
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1}
+    ]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-54440e4be87bca1c
+  control_class: positive-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":
+    1}]'
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-1f44f338f1a98cfb
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1}\n]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-856a4a1b12c0ad04
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"z":1,"a":2}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-b4719ffefdf70752
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1,"a":1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-148290840b97f105
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":-0}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-055e31766055fe03
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1.00}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-c6a52cc6342c0046
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1E+20}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-596762e42d198a99
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1e20}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-9d61c720e7702557
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1e-7}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-cf5572ba020eb0ba
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":1e999}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-735e7f011a76bc27
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":NaN}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-d3f5e0f8a9673c8c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":Infinity}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-17539342455577df
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":-Infinity}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-f13197f241e03961
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\u03bb"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-bb4b0f52940b9fbc
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\/"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-b77e7e55f9cdf33e
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\u0008"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-4b38201775b08706
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\u001F"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-7f54aec9049a5005
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\ud800"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-67f543cca20efb0a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\x00"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-1489e10dacbc76a5
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-\xef\xbb\xbf{}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-23d0a965f78786ce
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-\xff\xfe{\x00}\x00]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-8fc7dcffa7061a76
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-\xff\xfe\x00\x00{\x00\x00\x00}\x00\x00\x00]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-051e92541234668d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":"\xff"}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-3e1280d0459e11a4
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-[]true]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-b6fac9e155d28a48
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":01}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: journal-canonical-ac3acad9ca9a3cdf
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_reader_refusals_match_roundtrip_guard[block-{"a":+1}]
+  motivating_defect: Validate canonical compressed journal values during parsing while retaining exact
+    canonical bytes, physical proofs and finite work bounds.
+- id: native-retention-0f458438fc31af18
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_observations.py::test_retained_index_preserves_cross_page_pairs_aliases_gaps_and_usage
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-c5eec026d19d403a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_owner_exact_migration_current_consumption_and_no_budget_refill
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-ef383d97c6c6ab92
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[digest]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-b1d03b3d0544acc4
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[reservation]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-6a39c7a203ed4973
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[settled]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-682fee3dc290813d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[events]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-61c39fbc4317effa
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[steps]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-57ed7ba7bacc2423
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[bytes]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-7c523dfc56ae9387
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[wall]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-b4dfcc70693fa3c0
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_admission_refuses_stale_or_unadmitted_owner_limits[owner]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-57b71f20ae55212c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_consumed_steps_and_reservation_revocation_stop_before_read
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-df690cdfa44bb2da
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_fresh_envelope_preserves_prior_limits_and_all_consumption
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-f0206190d810cc2c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_late_owner_revocation_refuses_journal_publication
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-df32911b09c6002b
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retention_journal_stale_cas_cannot_rebind_old_projection
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-6208681748f99eb2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retained_historical_subject_uses_current_finite_work_not_old_authority
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-c61336e31818d5ab
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_historical_legacy_subject_does_not_silently_convert
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-f0cf867d0c489852
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retained_historical_actual_journal_owner_preserves_terminal_subject
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-98ed07bc1c83a832
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_legacy_observation_does_not_compute_unused_retention_cost
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-cff9bb3c6cdb5dfd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retained_explicit_generation_replay_keeps_original_gap_and_cancellation[False]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-0fa86a23e11211ae
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_observation_bridge.py::test_retained_explicit_generation_replay_keeps_original_gap_and_cancellation[True]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-e383bb268f51e514
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_full_count_exact_roundtrip_and_journal_codec[16145]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-418355b32f889673
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_full_count_exact_roundtrip_and_journal_codec[26079]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-29feda492ec819bd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[count]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-439a21c6b8fdf8fd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[bool]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-2c2510cdbde01f8c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[codec]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-52dfcd78a9f8e569
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[extra]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-f9806146a4dc8e72
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[base64]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-1724d3fb059f9a50
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[noncanonical]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-f62e4ef827820bac
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[hash]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-649e2bdf8897f271
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[length]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-94a02a8ddf4a827b
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[order]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-8fa9a6ef2149f53a
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[duplicate]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-455ca7a894e67320
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[misplaced]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-470464b3e6615114
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_corrupt_blocks_refuse_without_input_mutation[expansion]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-63246e3219d0a315
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_skewed_prefix_keeps_per_block_limit_and_prior_state
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-20c0d97e2f2c06a2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded[None]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-0bb159d85fc9ae25
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded[True]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-319dcc178ed622b4
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded[0]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-b46d386d0a4759d2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded[1]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-5b10e2a7281f8c80
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_explicit_total_event_allowance_cannot_be_omitted_or_expanded[524289]
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-c6848c4ff0c55712
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_encoding_is_deterministic_and_preserves_non_index_fields
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-c68ff0a8eaa67755
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_aggregate_byte_guard_counts_encoded_projection
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-218404436c8c6c9c
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_count_shapes.py::test_retained_interrupted_reduction_does_not_partially_publish
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.
+- id: native-retention-927ec72a514e95b5
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_native_usage_representation.py::test_retained_native_index_composes_with_existing_usage_debt
+  motivating_defect: Retain complete native event identity under explicitly admitted finite owner resources
+    without discarding history, changing enrollment or refilling prior allowances.

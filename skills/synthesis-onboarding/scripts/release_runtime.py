@@ -2291,3 +2291,16 @@ for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
         ENTRYPOINT_DEPENDENCIES[_entry] = tuple(
             dict.fromkeys((*_deps, *_HERMES_OBSERVATION_DEPS))
         )
+
+
+# Automatic Stop retirement consumes the existing full PM native admission owner.
+# Preserve every prior registration and bind its same source-owned lazy closure.
+ENTRYPOINT_DEPENDENCIES["synthesis-repo-guard/checkpoint_sync.py"] = tuple(
+    dict.fromkeys((
+        *ENTRYPOINT_DEPENDENCIES["synthesis-repo-guard/checkpoint_sync.py"],
+        "synthesis-project-management/scripts/run_admission.py",
+        "synthesis-project-management/scripts/project_state.py",
+        *ENTRYPOINT_DEPENDENCIES["synthesis-project-management/scripts/project_state.py"],
+        *ENTRYPOINT_DEPENDENCIES["synthesis-project-management/scripts/run_admission.py"],
+    ))
+)

@@ -688,7 +688,7 @@ def materialize(home, blocks):
         os.close(fd)
 
 
-def _compressed_json_bounds(raw):
+def _compressed_json_bounds(raw, *, _canonical=False):
     """Bound parser nesting/work before parsing a new compressed leaf.
 
     Existing MAX_DEPTH/MAX_BLOCKS also bound graph traversal separately. Plain
@@ -707,6 +707,16 @@ def _compressed_json_bounds(raw):
         masked = b'""'.join(raw.split(b'"')[::2])
     else:
         masked, strings = re.subn(rb'"[^"\\]*(?:\\.[^"\\]*)*"', b'""', raw)
+    if _canonical:
+        if any(char in masked for char in (b" ", b"\t", b"\r", b"\n")):
+            raise ValueError("compressed snapshot is not canonical JSON")
+        # The standard ensure_ascii=False encoder escapes only quotes,
+        # backslashes and these control characters. Removing exact escape
+        # pairs also distinguishes a literal backslash followed by 'u'.
+        if b"\\" in raw and b"\\" in re.sub(
+            rb'\\(?:["\\bfnrt]|u00(?:0[0-7bef]|1[0-9a-f]))', b"", raw
+        ):
+            raise ValueError("compressed snapshot is not canonical JSON")
     work = strings + sum(masked.count(bytes([c])) for c in (91, 123, 44, 58))
     if work > MAX_BLOCKS:
         raise ValueError("compressed snapshot leaf exceeds JSON work bound")
@@ -719,6 +729,44 @@ def _compressed_json_bounds(raw):
                 raise ValueError("compressed snapshot leaf exceeds JSON depth bound")
         else:
             depth -= 1
+
+
+def _canonical_json(raw):
+    """Validate the existing canonical grammar during the bounded JSON parse.
+
+    Every accepted string token is already the standard encoder's UTF-8 form;
+    key order/uniqueness and number spelling are checked while parsing. This
+    replaces a second complete serialization, never a content/hash check or
+    physical proof. No decoded value or validation result is retained.
+    """
+    _compressed_json_bounds(raw, _canonical=True)
+
+    def ordered(pairs):
+        result = dict(pairs)
+        if len(result) != len(pairs) or list(result) != sorted(result):
+            raise ValueError("compressed snapshot is not canonical JSON")
+        return result
+
+    def integer(token):
+        value = int(token)
+        if token == "-0":
+            raise ValueError("compressed snapshot is not canonical JSON")
+        return value
+
+    def real(token):
+        value = float(token)
+        if repr(value) != token:
+            raise ValueError("compressed snapshot is not canonical JSON")
+        return value
+
+    # Explicit UTF-8 prevents json.loads(bytes) from accepting UTF-16/32 or a
+    # BOM; canonical() always emits UTF-8 without a BOM. The parser still owns
+    # syntax, control characters, trailing bytes and nonfinite-token refusal.
+    return json.loads(
+        raw.decode("utf-8"), object_pairs_hook=ordered,
+        parse_int=integer, parse_float=real,
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")),
+    )
 
 
 def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None):
@@ -734,11 +782,7 @@ def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None):
         if (len(raw) > min(LEAF_BYTES, limit) or not stream.eof
                 or stream.unconsumed_tail or stream.unused_data):
             raise ValueError("compressed snapshot leaf exceeds bound or has trailing data")
-        _compressed_json_bounds(raw)
-        body = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(
-            ValueError("nonfinite JSON")))
-        if canonical(body) != raw:
-            raise ValueError("compressed snapshot leaf is not canonical JSON")
+        body = _canonical_json(raw)
         size = len(raw)
     else:
         size = len(canonical(body))
@@ -760,15 +804,17 @@ def _block_node(raw, *, limit):
         if (len(data) > min(MAX_BLOCK_BYTES, limit) or not stream.eof
                 or stream.unconsumed_tail or stream.unused_data):
             raise ValueError("snapshot block expansion exceeds bound or has trailing data")
-        _compressed_json_bounds(data)
     else:
         data = raw
     if len(data) > limit:
         raise ValueError("snapshot block parsing work exceeds byte bound")
-    node = json.loads(data, parse_constant=lambda _: (_ for _ in ()).throw(
-        ValueError("nonfinite JSON")))
-    if raw.startswith(BLOCK_PREFIX) and canonical(node) + b"\n" != data:
-        raise ValueError("compressed snapshot block is not canonical JSON")
+    if raw.startswith(BLOCK_PREFIX):
+        if not data.endswith(b"\n"):
+            raise ValueError("compressed snapshot block is not canonical JSON")
+        node = _canonical_json(data[:-1])
+    else:
+        node = json.loads(data, parse_constant=lambda _: (_ for _ in ()).throw(
+            ValueError("nonfinite JSON")))
     return node, len(data)
 
 
