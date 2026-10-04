@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.9** stores repeated attribution paths once while retaining complete recorded evidence and existing resource limits. Shared recovery and publication readers validate the indexed form and its original ownership and receipt bindings.
+
 Release **4.154.8** reduces repeated journal framing and member processing within existing resource bounds. Dependency bytes and identities are freshly verified for every read.
 
 Release **4.154.7** resolves project migrations with the selected machine’s recovery roots, rechecks their identity before effects and recovery, and reports bounded diagnostic details when a preview is refused.

@@ -1702,3 +1702,15 @@ def test_policy_loader_ignores_cached_code_with_unchanged_source(
         runtime._policy_reservation({}, {}, consume=False)
     assert helper.read_bytes() == original
     assert cache.is_file()
+
+
+def test_pending_codec_is_in_every_project_state_and_publication_closure():
+    import release_runtime
+    owner = "synthesis-repo-guard/checkpoint_sync.py"
+    for entry, dependencies in release_runtime.ENTRYPOINT_DEPENDENCIES.items():
+        if (entry in {"synthesis-project-management/scripts/project_state.py",
+                      "synthesis-agent-conformance/scripts/conformance.py",
+                      "synthesis-agent-conformance/scripts/session_context.py"}
+                or "synthesis-project-management/scripts/project_state.py" in dependencies
+                or "synthesis-repo-guard/publication_receipt.py" in dependencies):
+            assert owner in dependencies, entry

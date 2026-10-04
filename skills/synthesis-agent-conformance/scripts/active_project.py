@@ -33,6 +33,8 @@ from coordination_schema import (
     selector_matches,
 )
 
+from project_state import decode_pending_manifest
+
 TERMINAL_STATUSES = {"released", "complete", "completed", "closed"}
 
 
@@ -61,6 +63,7 @@ def porcelain_paths(output: str, repo_root: Path) -> set[Path]:
 
 def manifest_records_project(data: dict[str, object], project: Path) -> bool:
     """True when a pending manifest records any path inside the project."""
+    data = decode_pending_manifest(data)
     project_root = project.resolve()
     values = data.get("remote_paths", data.get("paths", []))
     if not isinstance(values, list):
@@ -87,7 +90,7 @@ def project_pending_manifests(
     for path in sorted(pending.glob("*.json")):
         if path.is_symlink():
             raise ValueError(f"pending handoff manifest is a symlink: {path}")
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = decode_pending_manifest(json.loads(path.read_text(encoding="utf-8")))
         session_id = data.get("session_id")
         if not isinstance(session_id, str) or not session_id:
             raise ValueError(f"pending handoff manifest has no session id: {path}")

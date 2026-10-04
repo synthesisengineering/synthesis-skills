@@ -52,6 +52,7 @@ from plan_reference import locate_plan  # noqa: E402
 from active_project import load_and_validate  # noqa: E402
 from project_state import (  # noqa: E402 - sibling owner path
     STATE_FILE,
+    decode_pending_manifest,
     ProjectStateError,
     read_operational_state,
     resolve_project,
@@ -840,7 +841,7 @@ def pending_handoff_count(directory: Path) -> int:
     for path in directory.glob("*.json"):
         if path.is_symlink():
             raise ValueError(f"pending handoff manifest is a symlink: {path}")
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = decode_pending_manifest(json.loads(path.read_text(encoding="utf-8")))
         if not isinstance(data.get("session_id"), str) or not isinstance(
             data.get("paths"), list
         ):

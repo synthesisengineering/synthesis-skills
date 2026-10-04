@@ -2423,6 +2423,9 @@ def test_diagnostic_batch_descriptor_lifetime_is_bounded(tmp_path, monkeypatch, 
     import resource
 
     root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, count)
+    batch_parent_identity = groups.custody_identity(
+        (Path(completed.fixture_custody) / "tmp").stat()
+    )
     original_open, original_close = os.open, os.close
     live, opened = set(), {}
     peak = 0
@@ -2431,7 +2434,12 @@ def test_diagnostic_batch_descriptor_lifetime_is_bounded(tmp_path, monkeypatch, 
         fd = original_open(name, *args, **kwargs)
         live.add(fd)
         peak = max(peak, len(live))
-        if isinstance(name, str) and name.startswith("synthesis-release-check-"):
+        # Destination ancestry may include another acceptance owner's directory
+        # with this prefix, or even the same basename as a selected batch.
+        parent = kwargs.get("dir_fd")
+        if (isinstance(name, str) and name.startswith("synthesis-release-check-")
+                and parent is not None
+                and groups.custody_identity(os.fstat(parent)) == batch_parent_identity):
             opened[name] = opened.get(name, 0) + 1
         return fd
     def close(fd):
@@ -2459,6 +2467,14 @@ def test_diagnostic_batch_descriptor_lifetime_is_bounded(tmp_path, monkeypatch, 
     assert str(tmp_path) not in json.dumps(public)
     assert (groups.DIAGNOSTIC_SECONDS, groups.DIAGNOSTIC_BYTES,
             groups.DIAGNOSTIC_RECORDS) == (10, 32 * 1024 * 1024, 4096)
+
+
+@pytest.mark.parametrize("ancestor", ["synthesis-release-check-hosted-owner", "synthesis-release-check-0"])
+@pytest.mark.parametrize("count", [2, 505])
+def test_diagnostic_batch_descriptor_count_uses_selected_parent(tmp_path, monkeypatch, ancestor, count):
+    nested = tmp_path / ancestor
+    nested.mkdir(mode=0o700)
+    test_diagnostic_batch_descriptor_lifetime_is_bounded(nested, monkeypatch, count)
 
 
 @pytest.mark.parametrize("mutation", ["record", "group", "process", "symlink", "mode"])

@@ -333,3 +333,22 @@ def test_required_ingestion_paths_and_exact_receipt_cas(published):
     assert m.observe(root, native, required_files={str(path): '0' * 64})['status'] == 'UNKNOWN'
     assert m.observe(root, native, required_files={str(repo / 'uncovered'): '0' * 64})['status'] == 'UNKNOWN'
     assert m.observe(root, native, required_files={})['status'] == 'UNKNOWN'
+
+
+
+def test_indexed_publication_uses_raw_digest_and_expanded_paths(published):
+    root, repo, path, native, manifest, raw, results, git = published
+    import checkpoint_sync
+    encoded = checkpoint_sync.encode_pending_manifest(json.loads(raw))
+    new_raw = (json.dumps(encoded) + "\n").encode()
+    manifest.write_bytes(new_raw)
+    m = owner()
+    assert m._manifest(manifest, new_raw, native) == [path.resolve()]
+    proof = m.build(manifest, new_raw, results)
+    destination = root / "publication" / manifest.name
+    destination.parent.mkdir()
+    destination.write_text(json.dumps(proof))
+    manifest.unlink()
+    assert m.observe(root, native)["status"] == "VERIFIED_REMOTE_READY"
+    path.write_text("changed synthetic bytes")
+    assert m.observe(root, native)["status"] == "UNKNOWN"

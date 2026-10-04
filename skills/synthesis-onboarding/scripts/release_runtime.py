@@ -2304,3 +2304,16 @@ ENTRYPOINT_DEPENDENCIES["synthesis-repo-guard/checkpoint_sync.py"] = tuple(
         *ENTRYPOINT_DEPENDENCIES["synthesis-project-management/scripts/run_admission.py"],
     ))
 )
+
+
+# The shared attribution decoder is owned by the existing standalone guard.
+# Bind it wherever project-state/publication readers can be loaded so a removed
+# or altered codec is refused before the entrypoint executes.
+for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
+    if (_entry in {"synthesis-project-management/scripts/project_state.py",
+                   "synthesis-agent-conformance/scripts/conformance.py",
+                   "synthesis-agent-conformance/scripts/session_context.py"}
+            or "synthesis-project-management/scripts/project_state.py" in _deps
+            or "synthesis-repo-guard/publication_receipt.py" in _deps):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys(
+            (*_deps, "synthesis-repo-guard/checkpoint_sync.py")))

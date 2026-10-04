@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.9] - 2026-10-04
+
+- Encode repeated attribution paths once while retaining every path, recorded hash, remote obligation and metadata field within existing byte and path limits.
+- Read the indexed representation through the shared checkpoint, publication, project recovery and session-context owners; retain raw receipt digests and exact ownership checks.
+
 ## [4.154.8] - 2026-10-04
 
 - Reuse charged immutable journal member representations and compiled subtree plans while freshly reading and authenticating each dependency.
