@@ -120,6 +120,7 @@ def dispatch(args, state, source_root):
         verb = args.machine_command
         if verb == "platform":
             import runtime_payload
+
             return runtime_payload.platform_ownership(state.home, state.state_dir)
         if verb == "recover":
             return machine.repair_recover(state, approve_recovery=args.approve_recovery)
@@ -159,17 +160,24 @@ def dispatch(args, state, source_root):
         sys.path.insert(0, str(pm))
     import project_migration as migration
 
+    recovery_roots = state.project_recovery_roots()
     if args.migration_command == "plan":
         selected = (
             machine.project_ids(records._snapshot(args.index)[0])
             if args.all_declared
             else args.select
         )
-        return migration.propose(args.index, selected, target_format=args.target_format)
+        return migration.propose(
+            args.index,
+            selected,
+            target_format=args.target_format,
+            recovery_roots=recovery_roots,
+        )
     plan = records.read_request(args.plan)
     if args.migration_command == "verify":
-        return migration.verify(plan)
+        return migration.verify(plan, recovery_roots=recovery_roots)
     kwargs = {
+        "recovery_roots": recovery_roots,
         "approval_digest": args.approve,
         "board": args.board,
         "native_payload": records.read_request(args.native_payload),
