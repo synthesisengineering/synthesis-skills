@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.4] - 2026-10-04
 
+- Keep hashless local handoff read-only after a seat is released while requiring exact native admission for attribution retirement.
 - Retain complete native event identities in bounded lossless blocks through explicit owner reconciliation, preserving original enrollment, resource consumption and unresolved history.
 - Validate compressed journal canonical syntax while parsing, avoiding a second serialization without changing canonical bytes or physical custody checks.
 - Retire exact own published attribution during automatic Stop, with native ownership checks, bounded whole-owner work and retained unresolved entries.

@@ -2641,21 +2641,8 @@ def _retire_automatic_landed(payload: dict, cfg: dict, manifest: Path) -> list[d
     previous_deadline = getattr(_LIFECYCLE_LOCK_STATE, "retirement_deadline", None)
     _LIFECYCLE_LOCK_STATE.retirement_deadline = deadline
     try:
-        with run_admission.bounded_lock(manifest.with_suffix(".lock"), timeout=2), \
-                run_admission.bounded_lock(board.parent / ".active-sessions.lock", timeout=2, create=False):
-            binding = run_admission.native_binding(board, payload, readonly=True)
-            if binding["native_session_id"] != session_id:
-                raise ValueError("automatic retirement native authority differs")
-            from coordination_schema import identity_from_uuid
-            seat = identity_from_uuid(binding["session_uuid"])
-            configured_seat = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
-            if configured_seat and configured_seat not in {
-                binding["session_uuid"], seat.compact_id, seat.speakable_id
-            }:
-                raise ValueError("automatic retirement configured seat differs")
-            board_limit = board.lstat().st_size
+        with run_admission.bounded_lock(manifest.with_suffix(".lock"), timeout=2):
             manifest_limit = manifest.lstat().st_size
-            board_raw, board_identity = proof._read(board, board_limit, deadline)
             raw, identity = proof._read(manifest, manifest_limit, deadline)
             data = proof._json(raw)
             if (not isinstance(data, dict) or manifest != pending_manifest_path(session_id)
@@ -2669,34 +2656,56 @@ def _retire_automatic_landed(payload: dict, cfg: dict, manifest: Path) -> list[d
                     or len(set(paths)) != len(paths) or len(set(remote)) != len(remote)
                     or not set(remote) <= set(paths)):
                 raise ValueError("automatic retirement manifest coverage is invalid")
-            snapshot = _automatic_landed_snapshot(data, cfg, deadline)
-            if not snapshot["landed"] and snapshot["next_cursor"] == data.get("automatic_retirement_cursor"):
+            # A legacy hashless ledger has nothing the typed retirement owner
+            # can narrow. Ordinary local handoff is still useful after the seat
+            # is released and does not acquire retirement authority. Malformed
+            # maps, any supplied evidence, and retained progress cursors must
+            # continue through the existing noncreating board lock and admission.
+            if ("automatic_retirement_cursor" not in data
+                    and all(isinstance(data.get(field, {}), dict) and not data.get(field, {})
+                            for field in ("content_hashes", "path_hashes", "path_kinds"))):
                 return []
-            if _automatic_landed_snapshot(data, cfg, deadline) != snapshot:
-                raise ValueError("automatic retirement publication proof changed")
-            if run_admission.native_binding(board, payload, readonly=True) != binding:
-                raise ValueError("automatic retirement native admission changed")
-            if proof._read(board, board_limit, deadline) != (board_raw, board_identity):
-                raise ValueError("automatic retirement board changed before publication")
-            if proof._read(manifest, manifest_limit, deadline) != (raw, identity):
-                raise ValueError("automatic retirement manifest changed before publication")
-            retired = set(snapshot["landed"])
-            data["paths"] = [p for p in paths if p not in retired]
-            if "remote_paths" in data:
-                data["remote_paths"] = [p for p in remote if p not in retired]
-            prune_pending_entry_maps(data)
-            if snapshot["next_cursor"] is not None:
-                data["automatic_retirement_cursor"] = snapshot["next_cursor"]
-            else:
-                data.pop("automatic_retirement_cursor", None)
-            data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-            atomic_json(manifest, data)
-            rebind_receipt_digest(manifest, hashlib.sha256(raw).hexdigest(),
-                                  {"derived_from_automatic_retirement": data["updated_at"]})
-            return [{"repo": str(manifest), "name": "pending-session",
-                     "action": "retired-own-landed" if retired else "automatic-retirement-progress", "files": len(retired),
-                     "retired_paths": sorted(retired), "publication_evidence": snapshot,
-                     "native_claim_hash": binding["claim_hash"], "alert": None}]
+            with run_admission.bounded_lock(board.parent / ".active-sessions.lock", timeout=2, create=False):
+                binding = run_admission.native_binding(board, payload, readonly=True)
+                if binding["native_session_id"] != session_id:
+                    raise ValueError("automatic retirement native authority differs")
+                from coordination_schema import identity_from_uuid
+                seat = identity_from_uuid(binding["session_uuid"])
+                configured_seat = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+                if configured_seat and configured_seat not in {
+                    binding["session_uuid"], seat.compact_id, seat.speakable_id
+                }:
+                    raise ValueError("automatic retirement configured seat differs")
+                board_limit = board.lstat().st_size
+                board_raw, board_identity = proof._read(board, board_limit, deadline)
+                snapshot = _automatic_landed_snapshot(data, cfg, deadline)
+                if not snapshot["landed"] and snapshot["next_cursor"] == data.get("automatic_retirement_cursor"):
+                    return []
+                if _automatic_landed_snapshot(data, cfg, deadline) != snapshot:
+                    raise ValueError("automatic retirement publication proof changed")
+                if run_admission.native_binding(board, payload, readonly=True) != binding:
+                    raise ValueError("automatic retirement native admission changed")
+                if proof._read(board, board_limit, deadline) != (board_raw, board_identity):
+                    raise ValueError("automatic retirement board changed before publication")
+                if proof._read(manifest, manifest_limit, deadline) != (raw, identity):
+                    raise ValueError("automatic retirement manifest changed before publication")
+                retired = set(snapshot["landed"])
+                data["paths"] = [p for p in paths if p not in retired]
+                if "remote_paths" in data:
+                    data["remote_paths"] = [p for p in remote if p not in retired]
+                prune_pending_entry_maps(data)
+                if snapshot["next_cursor"] is not None:
+                    data["automatic_retirement_cursor"] = snapshot["next_cursor"]
+                else:
+                    data.pop("automatic_retirement_cursor", None)
+                data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+                atomic_json(manifest, data)
+                rebind_receipt_digest(manifest, hashlib.sha256(raw).hexdigest(),
+                                      {"derived_from_automatic_retirement": data["updated_at"]})
+                return [{"repo": str(manifest), "name": "pending-session",
+                         "action": "retired-own-landed" if retired else "automatic-retirement-progress", "files": len(retired),
+                         "retired_paths": sorted(retired), "publication_evidence": snapshot,
+                         "native_claim_hash": binding["claim_hash"], "alert": None}]
 
     finally:
         _LIFECYCLE_LOCK_STATE.retirement_deadline = previous_deadline

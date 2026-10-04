@@ -2445,3 +2445,155 @@ def test_automatic_receipt_unrelated_shared_sibling_creation_is_allowed(automati
     assert changed and w["manifest"].read_bytes() == before
     assert manifest == w["manifest"] and not any(row.get("alert") for row in results)
     assert (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).is_file()
+
+
+@pytest.mark.parametrize("maps", ["absent", "empty"])
+def test_hashless_stop_handoff_without_retirement_authority_preserves_manifest(automatic_world, maps):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        if maps == "absent":
+            data.pop(field, None)
+        else:
+            data[field] = {}
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    # No admitted retirement owner remains; ordinary local receipt is read-only.
+    w["board"].unlink()
+    w["board"].with_name(".active-sessions.lock").unlink()
+    results, selected = _automatic_call(w)
+    assert selected == w["manifest"]
+    assert all(row["action"] == "local-ready" for row in results)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    receipt = json.loads((MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).read_text())
+    assert receipt["pending_manifest_sha256"] == hashlib.sha256(before[0]).hexdigest()
+    assert not w["board"].exists()
+    assert not w["board"].with_name(".active-sessions.lock").exists()
+
+
+@pytest.mark.parametrize("evidence", [
+    "non_dict", "empty_non_dict", "kind_only", "invalid_hash", "conflicting_hashes",
+    "orphan_hash", "directory", "cursor", "null_cursor", "mixed",
+])
+def test_supplied_retirement_evidence_never_becomes_hashless_handoff(automatic_world, evidence):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        data.pop(field, None)
+    key = str(w["own"])
+    if evidence == "non_dict": data["path_kinds"] = ["invalid"]
+    elif evidence == "empty_non_dict": data["content_hashes"] = []
+    elif evidence == "kind_only": data["path_kinds"] = {key: "file"}
+    elif evidence == "invalid_hash": data["content_hashes"] = {key: "not-a-hash"}
+    elif evidence == "conflicting_hashes":
+        data["content_hashes"] = {key: "a" * 64}
+        data["path_hashes"] = {key: "b" * 64}
+    elif evidence == "orphan_hash": data["content_hashes"] = {str(w["project"] / "other"): "a" * 64}
+    elif evidence == "directory":
+        data["content_hashes"] = {key: "a" * 64}
+        data["path_kinds"] = {key: "directory"}
+    elif evidence in {"cursor", "null_cursor"}:
+        data["automatic_retirement_cursor"] = key if evidence == "cursor" else None
+    else:
+        data["content_hashes"] = {key: hashlib.sha256(w["own"].read_bytes()).hexdigest()}
+        data["path_kinds"] = {key: "file"}
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    lock = w["board"].with_name(".active-sessions.lock")
+    lock.unlink()
+    with pytest.raises(ValueError, match="existing lock disappeared"):
+        _automatic_call(w)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    assert not lock.exists()
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+@pytest.mark.parametrize("defect", ["missing", "symlink", "replaced", "foreign_held", "foreign_board"])
+def test_typed_retirement_stop_preserves_missing_or_foreign_lock_refusal(automatic_world, monkeypatch, defect):
+    import fcntl
+    w = automatic_world
+    lock = w["board"].with_name(".active-sessions.lock")
+    before = w["manifest"].read_bytes(), w["foreign"].read_bytes()
+    held = None
+    if defect == "missing": lock.unlink()
+    elif defect == "symlink":
+        retained = lock.with_name("retained-lock")
+        lock.rename(retained)
+        lock.symlink_to(retained)
+    elif defect == "replaced":
+        original = os.open
+        changed = []
+        def replace_before_open(path, flags, *args, **kwargs):
+            if Path(path) == lock and not changed:
+                lock.rename(lock.with_name("retained-lock"))
+                lock.write_text("different lock inode")
+                changed.append(True)
+            return original(path, flags, *args, **kwargs)
+        monkeypatch.setattr(os, "open", replace_before_open)
+    elif defect == "foreign_held":
+        held = os.open(lock, os.O_RDONLY)
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    else:
+        w["board"].write_text(w["board"].read_text().replace(w["payload"]["session_id"], "01990000-0000-7000-8000-000000000099"))
+    try:
+        with pytest.raises(ValueError):
+            _automatic_call(w)
+    finally:
+        if held is not None:
+            fcntl.flock(held, fcntl.LOCK_UN)
+            os.close(held)
+    assert (w["manifest"].read_bytes(), w["foreign"].read_bytes()) == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+@pytest.mark.parametrize("defect", ["schema", "duplicate", "remote_only", "foreign_session"])
+def test_hashless_stop_still_validates_exact_manifest(automatic_world, defect):
+    w = automatic_world
+    data = json.loads(w["manifest"].read_text())
+    for field in ("content_hashes", "path_hashes", "path_kinds"):
+        data.pop(field, None)
+    if defect == "schema": data["schema_version"] = True
+    elif defect == "duplicate": data["paths"].append(data["paths"][0])
+    elif defect == "remote_only": data["remote_paths"].append(str(w["project"] / "not-covered"))
+    else: data["session_id"] = "foreign"
+    w["manifest"].write_text(json.dumps(data))
+    before = w["manifest"].read_bytes()
+    if defect == "foreign_session":
+        results, selected = _automatic_call(w)
+        assert selected is None
+        assert len(results) == 1 and results[0]["action"] == "failed"
+        assert "invalid pending manifest" in results[0]["alert"]
+    else:
+        with pytest.raises(ValueError, match="manifest"):
+            _automatic_call(w)
+    assert w["manifest"].read_bytes() == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+def test_automatic_stop_transient_git_proof_refusal_preserves_manifest(automatic_world, monkeypatch):
+    w = automatic_world
+    before = w["manifest"].read_bytes()
+    original_snapshot = MODULE._automatic_landed_snapshot
+    original_git = MODULE.git
+    snapshots = []
+    phase = 0
+    refused = []
+    def observe(data, cfg, deadline):
+        nonlocal phase
+        phase += 1
+        result = original_snapshot(data, cfg, deadline)
+        snapshots.append(result)
+        return result
+    def transient(repo, *args, **kwargs):
+        if phase == 2 and args == ("rev-parse", "--show-toplevel"):
+            refused.append(args)
+            return -1, "", "controlled transient Git observation refusal"
+        return original_git(repo, *args, **kwargs)
+    monkeypatch.setattr(MODULE, "_automatic_landed_snapshot", observe)
+    monkeypatch.setattr(MODULE, "git", transient)
+    with pytest.raises(ValueError, match="publication proof changed"):
+        _automatic_call(w)
+    assert refused and len(snapshots) == 2 and snapshots[0] != snapshots[1]
+    assert snapshots[0]["landed"] and not snapshots[1]["landed"]
+    assert w["manifest"].read_bytes() == before
+    assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
