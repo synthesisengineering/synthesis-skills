@@ -2805,3 +2805,36 @@ def test_pending_dictionary_large_repeated_paths_fits_unchanged_byte_limit():
     restored = MODULE.decode_pending_manifest(json.loads(raw))
     assert restored == data
     assert restored["paths"] == paths and restored["remote_paths"] == list(reversed(paths))
+
+
+def test_reader_codec_artifact_exactly_matches_standalone_representation():
+    """One implementation with two required packaging shapes cannot drift."""
+    source = MODULE_PATH.read_text()
+    start = source.index("# A representation bound,")
+    end = source.index("\ndef atomic_json(", start)
+    block = source[start:end].rstrip() + "\n"
+    reader = MODULE_PATH.with_name("pending_manifest.py").read_text()
+    assert reader[reader.index("# A representation bound,"):] == block
+    import ast
+    tree = ast.parse(reader)
+    imports = [node for node in ast.walk(tree)
+               if isinstance(node, (ast.Import, ast.ImportFrom))]
+    assert [ast.dump(node) for node in imports] == [
+        ast.dump(ast.parse("import json").body[0]),
+        ast.dump(ast.parse("from pathlib import Path").body[0]),
+    ]
+
+
+def test_reader_codec_cold_import_does_not_load_lifecycle_or_autopilot(tmp_path):
+    import sys
+    helper = MODULE_PATH.with_name("pending_manifest.py")
+    copied = tmp_path / helper.name
+    copied.write_bytes(helper.read_bytes())
+    script = ("import sys; sys.path.insert(0, sys.argv[1]); "
+              "import pending_manifest as codec; "
+              "p={'schema_version':2,'session_id':'synthetic','paths':['/synthetic/a']}; "
+              "assert codec.decode_pending_manifest(codec.encode_pending_manifest(p))==p; "
+              "assert not {'checkpoint_sync','project_state','run_state','autopilot'} & set(sys.modules)")
+    result = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", script, str(tmp_path)],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr

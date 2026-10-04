@@ -116,6 +116,7 @@ DEPENDENCY_ENGINE_SOURCES = {'run_admission.py': 'synthesis-project-management/s
  'record_rulings.py': 'synthesis-decision-packet/scripts/record_rulings.py',
  'release_runtime.py': 'synthesis-onboarding/scripts/release_runtime.py',
  'publication_receipt.py': 'synthesis-repo-guard/publication_receipt.py',
+ 'pending_manifest.py': 'synthesis-repo-guard/pending_manifest.py',
  'yaml_runtime.py': 'synthesis-agent-conformance/scripts/yaml_runtime.py',
  'yaml/__init__.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py',
  'yaml/composer.py': 'synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py',

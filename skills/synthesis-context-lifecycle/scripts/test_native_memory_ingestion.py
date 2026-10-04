@@ -923,3 +923,39 @@ print(json.dumps({'repeated_identity':True,'committed':True,'deduplicated':True,
     (tmp_path/'cold-owner-result.json').write_text(json.dumps({'argv':command,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr},indent=2)+'\n')
     assert result.returncode==0,result.stderr
     assert json.loads(result.stdout)=={'repeated_identity':True,'committed':True,'deduplicated':True,'foreign_owner_refused':True}
+
+
+
+def test_cold_source_memory_publication_reads_compact_manifest(tmp_path):
+    script = r"""
+import hashlib, json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+sys.path.insert(0, str(Path(sys.argv[1]).parents[1] / "synthesis-agent-conformance/vendor/pyyaml"))
+import context_edit
+_, publication = context_edit._memory_owners()
+codec = sys.modules["pending_manifest"]
+native = "codex:synthetic-cold-memory"
+target = Path(sys.argv[2]).resolve() / "record.md"
+manifest = target.parent / "pending" / (hashlib.sha256(native.encode()).hexdigest() + ".json")
+logical = {"schema_version": 2, "session_id": native, "paths": [str(target)],
+           "remote_paths": [str(target)]}
+raw = json.dumps(codec.encode_pending_manifest(logical)).encode()
+assert publication._manifest(manifest, raw, native) == [target]
+assert Path(codec.__file__).resolve() == Path(sys.argv[3]).resolve()
+assert "checkpoint_sync" not in sys.modules
+"""
+    scripts = Path(owner.__file__).resolve().parent
+    codec = scripts.parents[1] / "synthesis-repo-guard/pending_manifest.py"
+    result = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", script,
+                             str(scripts), str(tmp_path), str(codec)],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
+def test_foreign_loaded_pending_codec_cannot_supply_memory_owner(monkeypatch):
+    import types
+    monkeypatch.setitem(sys.modules, "pending_manifest",
+                        types.SimpleNamespace(__file__="/foreign/pending_manifest.py"))
+    with pytest.raises(owner.ContextEditError, match="another source generation"):
+        owner._memory_owners()

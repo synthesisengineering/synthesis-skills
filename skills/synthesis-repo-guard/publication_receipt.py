@@ -99,7 +99,7 @@ def _git(repo, deadline, *args):
 def _manifest(path, raw, native):
     if len(raw) > MAX_MANIFEST:
         raise ProofError("publication manifest exceeds byte bound")
-    from checkpoint_sync import decode_pending_manifest
+    from pending_manifest import decode_pending_manifest
     try:
         data = decode_pending_manifest(_json(raw))
     except ValueError as exc:

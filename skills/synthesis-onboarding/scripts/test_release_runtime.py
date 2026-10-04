@@ -1714,3 +1714,16 @@ def test_pending_codec_is_in_every_project_state_and_publication_closure():
                 or "synthesis-project-management/scripts/project_state.py" in dependencies
                 or "synthesis-repo-guard/publication_receipt.py" in dependencies):
             assert owner in dependencies, entry
+
+
+def test_pure_pending_codec_is_verified_for_every_reader_closure():
+    owner = "synthesis-repo-guard/pending_manifest.py"
+    for entry, dependencies in runtime.ENTRYPOINT_DEPENDENCIES.items():
+        if (entry in {"synthesis-project-management/scripts/project_state.py",
+                      "synthesis-agent-conformance/scripts/conformance.py",
+                      "synthesis-agent-conformance/scripts/session_context.py",
+                      "synthesis-repo-guard/publication_receipt.py"}
+                or "synthesis-project-management/scripts/project_state.py" in dependencies
+                or "synthesis-repo-guard/publication_receipt.py" in dependencies):
+            assert owner in dependencies, entry
+    assert owner in runtime.RECEIPT_ENTRYPOINTS

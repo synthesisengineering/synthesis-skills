@@ -1086,6 +1086,7 @@ def test_r4_installer_copies_coordination_runtime(tmp_path: Path) -> None:
         "record_rulings.py",
         "release_runtime.py",
         "publication_receipt.py",
+        "pending_manifest.py",
         "yaml_runtime.py",
         "yaml",
         "repo_state.py",

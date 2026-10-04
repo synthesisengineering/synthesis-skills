@@ -37,7 +37,7 @@ _REPO_GUARD = Path(__file__).resolve().parents[2] / "synthesis-repo-guard"
 if str(_REPO_GUARD) not in sys.path:
     sys.path.insert(0, str(_REPO_GUARD))
 import publication_receipt  # noqa: E402 - verified sibling diagnostic owner
-from checkpoint_sync import (  # noqa: E402 - shared pending manifest owner
+from pending_manifest import (  # noqa: E402 - pure pending representation
     decode_pending_manifest, encode_pending_manifest, pending_manifest_bytes,
 )
 from board_grammar import parse_table_rows  # noqa: E402 - sibling owner path

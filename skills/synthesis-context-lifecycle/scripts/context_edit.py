@@ -963,8 +963,10 @@ def _memory_owners():
         return sys.modules[name]
     local = Path(__file__).resolve().parent
     if (local / "coordination_process.py").is_file():
+        load("pending_manifest", local / "pending_manifest.py")
         return (load("ritual_workers", local / "ritual_workers.py"),
                 load("publication_receipt", local / "publication_receipt.py"))
+    load("pending_manifest", skills / "synthesis-repo-guard/pending_manifest.py")
     return (load("ritual_workers", skills / "synthesis-daily-rituals/scripts/ritual_workers.py"),
             load("publication_receipt", skills / "synthesis-repo-guard/publication_receipt.py"))
 

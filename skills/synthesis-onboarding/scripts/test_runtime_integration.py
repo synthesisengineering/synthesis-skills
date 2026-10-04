@@ -109,6 +109,10 @@ GIT_PAYLOADS.update({'skills/synthesis-project-management/scripts/run_admission.
  'skills/synthesis-daily-rituals/scripts/credential_paths.py': ('.synthesis/git-hooks/credential_paths.py',
                                                                 493)})
 
+# Independent full updater fixture includes the pure attribution reader.
+GIT_PAYLOADS["skills/synthesis-repo-guard/pending_manifest.py"] = (
+    ".synthesis/git-hooks/pending_manifest.py", 0o755)
+
 STALE_RELATIVE = "skills/synthesis-project-management/scripts/peer_addressing.py"
 MESSAGE_RELATIVE = "skills/synthesis-message-guard/scripts/message_guard.py"
 DAY_END_RELATIVES = {
