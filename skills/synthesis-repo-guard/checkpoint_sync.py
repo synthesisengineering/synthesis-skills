@@ -2202,9 +2202,12 @@ def retire_per_path_entries(
     """
     if not manifest.exists():
         return []
+    literal_parents: dict[Path, Path] = {}
     def literal_entry(value: object) -> Path:
         path = Path(str(value)).expanduser()
-        return path.parent.resolve(strict=False) / path.name
+        if path.parent not in literal_parents:
+            literal_parents[path.parent] = path.parent.resolve(strict=False)
+        return literal_parents[path.parent] / path.name
 
     current = {
         literal_entry(value)
@@ -2221,6 +2224,7 @@ def retire_per_path_entries(
         except (OSError, RuntimeError, ValueError):
             continue
     by_root: dict[Path, list[Path]] = {}
+    by_root_seen: dict[Path, set[Path]] = {}
     for raw, resolved, is_context in entries:
         literal = literal_entry(raw)
         if not is_context or literal not in current:
@@ -2229,7 +2233,9 @@ def retire_per_path_entries(
         if root is None:
             continue
         bucket = by_root.setdefault(root, [])
-        if literal not in bucket:
+        seen = by_root_seen.setdefault(root, set())
+        if literal not in seen:
+            seen.add(literal)
             bucket.append(literal)
     if not by_root:
         return []
@@ -2888,11 +2894,74 @@ def _flush_pending_manifests_unlocked(
 
         evidence = StrandedEvidence()
         root_cache: dict[Path, Path | None] = {}
+        discovery_bindings: dict[Path, tuple | None] = {}
+        boundary_probes: dict[Path, Path | None] = {}
+
+        def discovery_identity(path: Path) -> tuple | None:
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                return None
+            if stat.S_ISDIR(info.st_mode):
+                return info.st_dev, info.st_ino, info.st_mode
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                    info.st_mtime_ns, info.st_ctime_ns)
+
+        def watch_discovery(path: Path) -> tuple | None:
+            observed = discovery_identity(path)
+            if path in discovery_bindings and discovery_bindings[path] != observed:
+                raise ValueError("repository discovery changed during pending flush")
+            discovery_bindings[path] = observed
+            return observed
+
+        def verify_discovery() -> None:
+            if any(discovery_identity(path) != identity
+                   for path, identity in discovery_bindings.items()):
+                raise ValueError("repository discovery changed during pending flush")
+            # Git configuration, common-dir indirection and worktree metadata can
+            # change inside a stable .git directory. Re-run the authoritative
+            # boundary probes, once per boundary rather than once per file.
+            if any(repo_root_for_path(probe) != root
+                   for probe, root in boundary_probes.items()):
+                raise ValueError("repository discovery changed during pending flush")
+
+        def directory_root(directory: Path, original: Path) -> Path | None:
+            if directory in root_cache:
+                return root_cache[directory]
+            identity = watch_discovery(directory)
+            if identity is None:
+                # Preserve the resolver's missing-parent/worktree inventory
+                # check: passing the missing directory itself would hide that
+                # it was crossed while resolving the original leaf.
+                result = repo_root_for_path(original)
+                boundary_probes[original] = result
+            elif not stat.S_ISDIR(identity[2]):
+                result = None
+            else:
+                marker = watch_discovery(directory / ".git")
+                head = watch_discovery(directory / "HEAD")
+                objects = watch_discovery(directory / "objects")
+                refs = watch_discovery(directory / "refs")
+                bare = (head is not None and stat.S_ISREG(head[2])
+                        and objects is not None and stat.S_ISDIR(objects[2])
+                        and refs is not None and stat.S_ISDIR(refs[2]))
+                if marker is not None or bare or directory == directory.parent:
+                    result = repo_root_for_path(directory)
+                    boundary_probes[directory] = result
+                else:
+                    result = directory_root(directory.parent, original)
+            root_cache[directory] = result
+            return result
 
         def root_of(resolved: Path) -> Path | None:
-            if resolved not in root_cache:
-                root_cache[resolved] = repo_root_for_path(resolved)
-            return root_cache[resolved]
+            # Every distinct ancestry component is observed in this operation.
+            # Reuse verified ancestors, never guess a containing repository.
+            # A leaf symlink cannot inherit its regular sibling's root.
+            resolved = lexical_absolute(resolved)
+            if resolved.is_symlink():
+                return None
+            probe = resolved if resolved.is_dir() else resolved.parent
+            return directory_root(probe, resolved)
 
         if drop_stranded:
             for index, (manifest, data) in enumerate(loaded):
@@ -2905,19 +2974,26 @@ def _flush_pending_manifests_unlocked(
                     outcome = {"repo": str(manifest), "name": "pending-session", "action": "failed", "alert": f"stranded drop failed: {exc}"}
                 drop_results.append(outcome)
                 loaded[index] = (manifest, data)
+            # Drop classification can observe a concurrently reappearing path
+            # and refuse it. Group the surviving obligations from fresh ancestry.
+            root_cache.clear()
+            discovery_bindings.clear()
+            boundary_probes.clear()
 
         grouped: dict[Path, list[Path]] = {}
         source_grouped: dict[Path, list[Path]] = {}
         membership: list[tuple[Path, dict, list[tuple[str, Path, bool]]]] = []
+        grouped_seen: dict[tuple[Path, bool], set[Path]] = {}
         for manifest, data in loaded:
             remote_values = data.get("remote_paths", data["paths"])
             remote_resolved = {
-                Path(str(value)).expanduser().resolve(strict=False) for value in remote_values
+                lexical_absolute(Path(str(value))) for value in remote_values
             }
             entries: list[tuple[str, Path, bool]] = []
             evaluated: set[Path] = set()
-            for value in [*data["paths"], *[v for v in remote_values if v not in data["paths"]]]:
-                resolved = Path(str(value)).expanduser().resolve(strict=False)
+            path_values = set(data["paths"])
+            for value in [*data["paths"], *[v for v in remote_values if v not in path_values]]:
+                resolved = lexical_absolute(Path(str(value)))
                 is_context = resolved in remote_resolved
                 entries.append((str(value), resolved, is_context))
                 if resolved in evaluated:
@@ -2938,15 +3014,19 @@ def _flush_pending_manifests_unlocked(
                     errors.append(record)
                     continue
                 bucket = (grouped if is_context else source_grouped).setdefault(root, [])
-                if resolved not in bucket:
+                seen = grouped_seen.setdefault((root, is_context), set())
+                if resolved not in seen:
+                    seen.add(resolved)
                     bucket.append(resolved)
             membership.append((manifest, data, entries))
 
+        verify_discovery()
         source_results = source_groups_remote_ready(source_grouped)
-        context_results = {
-            repo: checkpoint_explicit_paths(repo, paths, cfg, dry_run=dry_run)
-            for repo, paths in sorted(grouped.items(), key=lambda item: str(item[0]))
-        }
+        context_results = {}
+        for repo, paths in sorted(grouped.items(), key=lambda item: str(item[0])):
+            verify_discovery()
+            context_results[repo] = checkpoint_explicit_paths(repo, paths, cfg, dry_run=dry_run)
+        verify_discovery()
         results = (
             drop_results
             + errors
@@ -2980,6 +3060,7 @@ def _flush_pending_manifests_unlocked(
                     )
                 )
         for manifest, data, entries in membership:
+            verify_discovery()
             results.extend(
                 retire_per_path_entries(
                     manifest, data, entries, root_of, context_results, cfg,

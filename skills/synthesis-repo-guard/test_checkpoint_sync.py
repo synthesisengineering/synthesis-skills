@@ -2597,3 +2597,112 @@ def test_automatic_stop_transient_git_proof_refusal_preserves_manifest(automatic
     assert snapshots[0]["landed"] and not snapshots[1]["landed"]
     assert w["manifest"].read_bytes() == before
     assert not (MODULE.LOCAL_HANDOFF_DIR / w["manifest"].name).exists()
+
+
+def test_flush_batches_directory_discovery_without_quadratic_membership(tmp_path, monkeypatch):
+    repo, _remote, cfg = repository(tmp_path)
+    parent = repo / "projects/alpha/reference"
+    parent.mkdir()
+    values = [str(parent / f"retained-{i}.md") for i in range(12000)]
+    manifest = MODULE.pending_manifest_path("directory-discovery")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"schema_version": 2, "session_id": "directory-discovery",
+                                    "paths": values, "remote_paths": values}))
+    before = manifest.read_bytes()
+    probes = []
+    original = MODULE.repo_root_for_path
+    def observe(path):
+        probes.append(path)
+        return original(path)
+    monkeypatch.setattr(MODULE, "repo_root_for_path", observe)
+    received = []
+    monkeypatch.setattr(MODULE, "checkpoint_explicit_paths", lambda root, paths, cfg, dry_run: received.extend(paths) or {"action": "would-commit", "alert": None})
+    monkeypatch.setattr(MODULE, "retire_per_path_entries", lambda *args, **kwargs: [])
+    results, selected = MODULE.flush_pending_session(cfg, "directory-discovery", dry_run=True)
+    assert selected == [manifest] and not any(item.get("alert") for item in results)
+    assert probes and set(probes) == {repo} and len(probes) <= 5
+    assert set(map(str, received)) == set(values) and len(received) == len(values)
+    assert manifest.read_bytes() == before
+
+
+def test_flush_cached_directory_change_refuses_before_publication(tmp_path, monkeypatch):
+    repo, _remote, cfg = repository(tmp_path)
+    parent = repo / "projects/alpha"
+    manifest = MODULE.pending_manifest_path("boundary-race")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"schema_version": 2, "session_id": "boundary-race",
+                                    "paths": [str(parent / "CONTEXT.md")],
+                                    "remote_paths": [str(parent / "CONTEXT.md")]}))
+    before = manifest.read_bytes()
+    original = MODULE.repo_root_for_path
+    def race(path):
+        root = original(path)
+        if path == repo:
+            parent.rename(parent.with_name("retained-alpha"))
+            parent.mkdir()
+        return root
+    monkeypatch.setattr(MODULE, "repo_root_for_path", race)
+    monkeypatch.setattr(MODULE, "checkpoint_explicit_paths", lambda *args, **kwargs: pytest.fail("publication after changed boundary"))
+    with pytest.raises(ValueError, match="discovery changed"):
+        MODULE.flush_pending_session(cfg, "boundary-race", dry_run=False)
+    assert manifest.read_bytes() == before
+
+
+def test_flush_cached_probe_keeps_nested_root_and_symlink_distinct(tmp_path, monkeypatch):
+    repo, _remote, cfg = repository(tmp_path)
+    parent = repo / "projects/alpha"
+    nested = parent / "nested"
+    command("git", "init", "-q", str(nested))
+    link = parent / "alias.md"
+    link.symlink_to(repo / "unrelated.md")
+    values = [str(parent / "CONTEXT.md"), str(link), str(nested / "new.md")]
+    manifest = MODULE.pending_manifest_path("nested-probes")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"schema_version": 2, "session_id": "nested-probes",
+                                    "paths": values, "remote_paths": values}))
+    before = manifest.read_bytes()
+    received = {}
+    monkeypatch.setattr(MODULE, "checkpoint_explicit_paths", lambda root, paths, cfg, dry_run: received.setdefault(root, paths) and {"action": "would-commit", "alert": None})
+    monkeypatch.setattr(MODULE, "retire_per_path_entries", lambda *args, **kwargs: [])
+    results, _ = MODULE.flush_pending_session(cfg, "nested-probes", dry_run=True)
+    assert received[repo] == [parent / "CONTEXT.md"]
+    assert received[nested] == [nested / "new.md"]
+    assert any(item.get("alert") for item in results)
+    assert manifest.read_bytes() == before
+
+
+@pytest.mark.parametrize("mutation", ["ancestor-link", "nested-repository", "git-file", "git-config"])
+def test_flush_ancestry_and_git_topology_changes_refuse_before_effect(tmp_path, monkeypatch, mutation):
+    repo, _remote, cfg = repository(tmp_path)
+    selected = repo
+    if mutation == "git-file":
+        selected = tmp_path / "selected-worktree"
+        command("git", "worktree", "add", "-q", "--detach", str(selected), cwd=repo)
+    parent = selected / "projects/alpha"
+    target = parent / "CONTEXT.md"
+    manifest = MODULE.pending_manifest_path("topology-refusal")
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"schema_version": 2, "session_id": "topology-refusal",
+                                    "paths": [str(target)], "remote_paths": [str(target)]}))
+    before = manifest.read_bytes();original = MODULE.repo_root_for_path;changed = []
+    def change(path):
+        value = original(path)
+        if not changed and path == selected:
+            changed.append(True)
+            if mutation == "ancestor-link":
+                retained = parent.with_name("retained-alpha")
+                parent.rename(retained);parent.symlink_to(retained, target_is_directory=True)
+            elif mutation == "nested-repository":
+                command("git", "init", "-q", str(parent))
+            elif mutation == "git-file":
+                marker = selected / ".git"
+                marker.write_text("gitdir: " + str(tmp_path / "absent-gitdir") + "\n")
+            else:
+                foreign = tmp_path / "foreign-worktree";foreign.mkdir()
+                command("git", "config", "core.worktree", str(foreign), cwd=selected)
+        return value
+    monkeypatch.setattr(MODULE, "repo_root_for_path", change)
+    monkeypatch.setattr(MODULE, "checkpoint_explicit_paths", lambda *args, **kwargs: pytest.fail("publication through changed topology"))
+    with pytest.raises(ValueError, match="discovery changed"):
+        MODULE.flush_pending_session(cfg, "topology-refusal", dry_run=False)
+    assert changed and manifest.read_bytes() == before

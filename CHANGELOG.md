@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.6] - 2026-10-04
+
+- Group retained checkpoint paths with bounded repository discovery instead of repeated per-file Git probes and quadratic membership scans. Revalidate repository topology before publication and retirement.
+
 ## [4.154.5] - 2026-10-04
 
 - Reduce journal decoding allocations with parse-local key-shape checks while retaining canonical syntax, duplicate-member rejection, finite work limits and independent mutable results.
