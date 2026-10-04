@@ -756,3 +756,130 @@ def test_json_window_has_exact_epoch_bounds(tmp_path):
     current = wm.window("synthetic", "email", now=moment, home=tmp_path)
     assert current["oldest"] == current["from_epoch"] == 1790078400
     assert current["latest"] == current["to_epoch"] == int(moment.timestamp())
+
+
+# Acquisition observations carry subsecond timestamps; the validation clock must
+# retain that precision independently of whole-second durable watermarks.
+def _acquisition_clock_fixture(tmp_path, surface, observed):
+    spec = importlib.util.spec_from_file_location(
+        "_watermark_clock_fixture", SCRIPT.with_name("test_acquisition_evidence.py")
+    )
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    evidence = getattr(helper, "meeting" if surface == "meetings" else "slack")(
+        tmp_path
+    )
+
+    def observations(value):
+        if isinstance(value, dict):
+            if "observed_at" in value:
+                value["observed_at"] = observed.isoformat()
+            for child in value.values():
+                observations(child)
+        elif isinstance(value, list):
+            for child in value:
+                observations(child)
+
+    observations(evidence)
+    return evidence
+
+
+def _set_acquisition_clock(monkeypatch, current):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return current if tz is None else current.astimezone(tz)
+
+    monkeypatch.setattr(MODULE, "datetime", Clock)
+
+
+@pytest.mark.parametrize("surface", ["meetings", "slack"])
+@pytest.mark.parametrize("offset_minutes", [-240, 0, 330])
+@pytest.mark.parametrize("boundary", ["same-second", "exact", "future"])
+def test_acquisition_clock_precision_boundaries(
+    tmp_path, monkeypatch, surface, offset_minutes, boundary
+):
+    current = datetime(2026, 9, 26, 12, 0, 0, 900000, tzinfo=timezone.utc)
+    delta = {"same-second": -100000, "exact": 0, "future": 1}[boundary]
+    observed = (current + timedelta(microseconds=delta)).astimezone(
+        timezone(timedelta(minutes=offset_minutes))
+    )
+    evidence = _acquisition_clock_fixture(tmp_path, surface, observed)
+    _set_acquisition_clock(monkeypatch, current)
+    home = tmp_path / "state"
+    MODULE.begin("fixture", now=current - timedelta(seconds=1), home=home)
+    path = MODULE.store_path("fixture", home)
+    before = path.read_bytes()
+    targets = ["C123"] if surface == "slack" else []
+    if boundary == "future":
+        with pytest.raises(ValueError, match="observation"):
+            MODULE.advance(
+                "fixture", surface, evidence["through"], targets=targets,
+                home=home, acquisition=evidence,
+            )
+        assert path.read_bytes() == before
+    else:
+        result = MODULE.advance(
+            "fixture", surface, evidence["through"], targets=targets,
+            home=home, acquisition=evidence,
+        )
+        assert result["moved"] is True
+        stored = json.loads(path.read_text())["surfaces"][surface]
+        if surface == "slack":
+            stored = stored["targets"]["C123"]
+        assert stored["through"] == evidence["through"]
+        assert datetime.fromisoformat(stored["updated_at"]).microsecond == 0
+
+
+@pytest.mark.parametrize("surface", ["meetings", "slack"])
+@pytest.mark.parametrize("boundary", ["same-second", "exact", "future"])
+def test_acquisition_check_cli_preserves_observation_clock(
+    tmp_path, monkeypatch, capsys, surface, boundary
+):
+    current = datetime(2026, 9, 26, 12, 0, 0, 900000, tzinfo=TZ)
+    delta = {"same-second": -100000, "exact": 0, "future": 1}[boundary]
+    evidence = _acquisition_clock_fixture(
+        tmp_path, surface, current + timedelta(microseconds=delta)
+    )
+    _set_acquisition_clock(monkeypatch, current)
+    path = tmp_path / "evidence.json"
+    path.write_text(json.dumps(evidence))
+    args = [
+        "acquisition-check", "--workspace", "fixture", "--surface", surface,
+        "--through", evidence["through"], "--acquisition-evidence", str(path),
+        "--json",
+    ]
+    if surface == "slack":
+        args += ["--target", "C123"]
+    code = MODULE.main(args)
+    captured = capsys.readouterr()
+    if boundary == "future":
+        assert code == 2 and "observation" in captured.err
+    else:
+        assert code == 0, captured.err
+        assert json.loads(captured.out)["can_advance"] is True
+
+
+@pytest.mark.parametrize("offset_minutes", [-240, 0, 330])
+def test_precise_clock_keeps_now_watermarks_and_windows_at_whole_seconds(
+    tmp_path, monkeypatch, offset_minutes
+):
+    current = datetime(
+        2026, 9, 26, 12, 0, 0, 900000,
+        tzinfo=timezone(timedelta(minutes=offset_minutes)),
+    )
+    _set_acquisition_clock(monkeypatch, current)
+    precise = MODULE.now_local()
+    assert precise == current and precise.microsecond == 900000
+    assert MODULE.parse_moment("now", precise).microsecond == 0
+    MODULE.begin(WS, home=tmp_path)
+    result = MODULE.advance(WS, "chat-fixture", "now", home=tmp_path)
+    window = MODULE.window(WS, "chat-fixture", home=tmp_path)
+    stored = json.loads(MODULE.store_path(WS, tmp_path).read_text())
+    assert result["through"] == MODULE.stamp(precise)
+    assert window["to"] == MODULE.stamp(precise)
+    assert window["to_epoch"] == int(precise.timestamp())
+    assert window["from_epoch"] == window["to_epoch"]
+    assert datetime.fromisoformat(stored["run"]["started_at"]).microsecond == 0
+    for field in ("through", "updated_at"):
+        assert datetime.fromisoformat(stored["surfaces"]["chat-fixture"][field]).microsecond == 0

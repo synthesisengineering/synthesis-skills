@@ -1490,3 +1490,97 @@ def test_operator_currentness_diagnostic_is_closed(diagnostics, expected):
         exec(compile(selected, '<selected currentness diagnostic>', 'exec'),
              {'view': {'currentness': 'UNVERIFIABLE', 'diagnostics': diagnostics}, 'pytest': pytest})
     assert str(failure.value) == expected
+
+
+@pytest.mark.parametrize('raw', [
+    b'{"a":[1,2],"b":"literal [ ] { } : ,"}',
+    '{"a":"unicodé 漢字","b":[true,false,null]}'.encode(),
+    b'{"a":"escaped \\\\" ]","b":[]}',
+    b'{"a":"line\\nslash\\\\","b":{}}',
+    b'"unclosed [[[[', b'"""[[[', b'[[[[0]]]]',
+    b'{"a":0,"a":1}', b'""""""', b'[] } {',
+])
+@pytest.mark.parametrize('depth,work', [(1, 2), (3, 8), (64, 16384)])
+def test_compressed_scanner_keeps_legacy_depth_work_refusals(engine, monkeypatch, raw, depth, work):
+    """Exact old lexical policy remains authoritative for every byte shape."""
+    import re
+    storage = engine.journal_storage
+    monkeypatch.setattr(storage, 'MAX_DEPTH', depth)
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', work)
+
+    def original(data):
+        masked, strings = re.subn(rb'"[^"\\]*(?:\\.[^"\\]*)*"', b'""', data)
+        if strings + sum(masked.count(bytes([c])) for c in (91, 123, 44, 58)) > work:
+            raise ValueError('compressed snapshot leaf exceeds JSON work bound')
+        nested = 0
+        for match in re.finditer(rb'[\[\]{}]', masked):
+            if match.group()[0] in (91, 123):
+                nested += 1
+                if nested > depth:
+                    raise ValueError('compressed snapshot leaf exceeds JSON depth bound')
+            else:
+                nested -= 1
+
+    def outcome(call):
+        try:
+            call(raw)
+        except ValueError as error:
+            return str(error)
+        return None
+
+    assert outcome(storage._compressed_json_bounds) == outcome(original)
+
+
+def test_compressed_scanner_no_escape_path_avoids_per_string_regex(engine, monkeypatch):
+    storage = engine.journal_storage
+    calls = []
+    real = storage.re.subn
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(storage.re, 'subn', counted)
+    storage._compressed_json_bounds(storage.canonical({'literal': '[{}]' * 2000, 'rows': [0, 1]}))
+    assert calls == []
+    storage._compressed_json_bounds(storage.canonical({'escaped': 'quote" and slash\\'}))
+    storage._compressed_json_bounds(b'"unterminated [[[[')
+    assert calls == [1, 1]
+
+
+def test_compressed_scanner_still_checks_exact_bounds_after_warm_read(engine, monkeypatch):
+    storage = engine.journal_storage
+    raw = b'[[[0]]]'
+    storage._compressed_json_bounds(raw)
+    monkeypatch.setattr(storage, 'MAX_DEPTH', 2)
+    with pytest.raises(ValueError, match='depth bound'):
+        storage._compressed_json_bounds(raw)
+    monkeypatch.setattr(storage, 'MAX_DEPTH', 64)
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', 2)
+    with pytest.raises(ValueError, match='work bound'):
+        storage._compressed_json_bounds(raw)
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', 3)
+    storage._compressed_json_bounds(raw)
+
+
+@pytest.mark.parametrize('raw', [b'{"b":0,"a":1}', b'{ "a":1}', b'{"a":0,"a":1}', b'{"a":NaN}', b'{"a":1e999}'])
+def test_compressed_scanner_does_not_admit_noncanonical_leaf(engine, raw):
+    import base64
+    import zlib
+    with pytest.raises((ValueError, OverflowError)):
+        engine.journal_storage._leaf('zleaf', base64.b64encode(zlib.compress(raw)).decode())
+
+
+def test_compressed_scanner_preserves_independent_mutable_leaf_reads(engine):
+    import base64
+    import zlib
+    storage = engine.journal_storage
+    raw = storage.canonical({'z': [1], 'a': {'b': 2}})
+    packed = base64.b64encode(zlib.compress(raw)).decode()
+    first = storage._leaf('zleaf', packed)
+    second = storage._leaf('zleaf', packed)
+    first['z'].append(3)
+    first['a']['b'] = 9
+    assert second == {'z': [1], 'a': {'b': 2}}
+    with pytest.raises(ValueError, match='bound'):
+        storage._leaf('zleaf', packed, len(raw) - 1)

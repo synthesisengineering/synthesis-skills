@@ -39,6 +39,7 @@ STORE_WRITE_LOCK_SECONDS = 5.0
 MARKER = "synthesis_run_storage"
 FIELDS = {MARKER, "root", "sha256", "logical_bytes"}
 DIGEST = re.compile(r"[0-9a-f]{64}")
+_JSON_NON_BRACKETS = bytes(value for value in range(256) if value not in b"[]{}")
 
 
 class DecodedEvent(dict):
@@ -694,16 +695,25 @@ def _compressed_json_bounds(raw):
     historical leaves keep their original <=LEAF_BYTES representation semantics.
     JSON syntax and canonical identity are checked by the JSON parser afterward.
     """
-    # Replace strings in the C regex engine, then count separators in C. Only
-    # brackets need sequential depth work; scalar/key tokens do not need a
-    # Python iteration each. The same conservative token bound is retained.
-    masked, strings = re.subn(rb'"[^"\\]*(?:\\.[^"\\]*)*"', b'""', raw)
+    # Most canonical native-history leaves contain no escapes. Splitting at
+    # quotes then masking the odd spans is exactly the existing string mask
+    # for that case, without scanning every string byte in the regex engine.
+    # Odd quote counts and escaped strings keep the original lexer.
+    quotes = raw.count(b'"')
+    if b"\\" not in raw and quotes % 2 == 0:
+        strings = quotes // 2
+        if strings > MAX_BLOCKS:
+            raise ValueError("compressed snapshot leaf exceeds JSON work bound")
+        masked = b'""'.join(raw.split(b'"')[::2])
+    else:
+        masked, strings = re.subn(rb'"[^"\\]*(?:\\.[^"\\]*)*"', b'""', raw)
     work = strings + sum(masked.count(bytes([c])) for c in (91, 123, 44, 58))
     if work > MAX_BLOCKS:
         raise ValueError("compressed snapshot leaf exceeds JSON work bound")
     depth = 0
-    for token in re.finditer(rb'[\[\]{}]', masked):
-        if token.group()[0] in (91, 123):
+    # The byte filter retains exactly the old bracket matches, in order.
+    for token in masked.translate(None, _JSON_NON_BRACKETS):
+        if token in (91, 123):
             depth += 1
             if depth > MAX_DEPTH:
                 raise ValueError("compressed snapshot leaf exceeds JSON depth bound")

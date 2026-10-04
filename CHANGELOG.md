@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.4] - 2026-10-04
 
+- Preserve subsecond precision when validating newly acquired evidence and continue to reject future timestamps.
+- Reduce bounded journal verification cost by scanning canonical strings and brackets without repeated per-token regular-expression objects.
 - Reuse authenticated journal reads within an operation, with fresh ownership checks and bounded immutable decoding.
 - Store native usage and snapshot provenance in bounded lossless representations, preserving historical observations and durable digests.
 - Reduce repeated state copies while retaining aliases, cycles, insertion order and independent mutable results.

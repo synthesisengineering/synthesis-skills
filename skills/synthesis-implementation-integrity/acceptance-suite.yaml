@@ -2613,6 +2613,71 @@ changed_surfaces:
   - hosted-source-4b9f20c4e94777f5
   - hosted-source-179832a5a44b7f1f
   - hosted-source-1c9eadf207ee0681
+  - clock-correction-98a47d68373038ff
+  - clock-correction-4d3cfb73d863ecdc
+  - clock-correction-bded598eea5e4bb4
+  - clock-correction-6fdb47c96b8f8d1b
+  - clock-correction-d9cfe7f310523d80
+  - clock-correction-bd2914f0c64affff
+  - clock-correction-7e96b0c726c4b80d
+  - clock-correction-e4c67cd70ef6d5e1
+  - clock-correction-980c79aff8b3fdca
+  - clock-correction-add0f9b982f1633e
+  - clock-correction-4614c8d848f636fd
+  - clock-correction-6a28cefd283a4539
+  - clock-correction-dfb76feac0b7d973
+  - clock-correction-a2eb38ab4916c509
+  - clock-correction-23b58556d41e94e7
+  - clock-correction-4b3c74d46cefa933
+  - clock-correction-0a826b342f803d61
+  - clock-correction-05090d4462b7f8d8
+  - clock-correction-a025a3665da5b178
+  - clock-correction-b570e2e20ab4ed89
+  - clock-correction-2f48d65730bfa7e8
+  - clock-correction-a93a91c6704c7a98
+  - clock-correction-e0d609ef719769c1
+  - clock-correction-6ab465b1cbd15639
+  - clock-correction-1be1054c9fb126a7
+  - clock-correction-1cec0510bd160ed2
+  - clock-correction-5764a83f3afa3835
+  - operator-correction-bc4c9f819af710fd
+  - operator-correction-471c2e434d6f6e4d
+  - operator-correction-9311c7c4f773b8b4
+  - operator-correction-24018861861d9a1d
+  - operator-correction-01460692ecba5af8
+  - operator-correction-d024e896f0b5c253
+  - operator-correction-0305c3bccea6e6c6
+  - operator-correction-68920c03182fe5e6
+  - operator-correction-9cb7b8329b1154c4
+  - operator-correction-5e12d19656b7523d
+  - operator-correction-9489febf6085931a
+  - operator-correction-4a3610b882bdac12
+  - operator-correction-feb54ba6b83792b1
+  - operator-correction-054a5fb169d6ac3f
+  - operator-correction-a97ae404d52077f0
+  - operator-correction-a40b2583a18ec646
+  - operator-correction-457fac6d08b125d9
+  - operator-correction-47dfd12e57f276df
+  - operator-correction-44b8d6ac6fb671f9
+  - operator-correction-16070b2ff513c5d7
+  - operator-correction-5964b84c43c5271a
+  - operator-correction-645d0053eb752264
+  - operator-correction-55daec28a30eec53
+  - operator-correction-6b62c4b822bfe8f7
+  - operator-correction-287d036604793f2b
+  - operator-correction-c181c882af0f9bc6
+  - operator-correction-cdf530c9517726e2
+  - operator-correction-67af581809127edd
+  - operator-correction-59bd7d13a8562a70
+  - operator-correction-5f054876d40c5276
+  - operator-correction-55483140ea8bd66d
+  - operator-correction-465a4f279f8af5e5
+  - operator-correction-18ed4897903264bc
+  - operator-correction-6eda12621a84c896
+  - operator-correction-adc91c17c0cd413a
+  - operator-correction-a7252f805d34ce76
+  - operator-correction-9e05baf5287d9e16
+  - operator-correction-86ae36be0dc905fe
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -3510,6 +3575,44 @@ changed_surfaces:
   - native-checkpoint-670b4f3d6ee4e27f
   - native-checkpoint-80630cd388acc3a8
   - native-checkpoint-a286928290c45308
+  - operator-correction-bc4c9f819af710fd
+  - operator-correction-471c2e434d6f6e4d
+  - operator-correction-9311c7c4f773b8b4
+  - operator-correction-24018861861d9a1d
+  - operator-correction-01460692ecba5af8
+  - operator-correction-d024e896f0b5c253
+  - operator-correction-0305c3bccea6e6c6
+  - operator-correction-68920c03182fe5e6
+  - operator-correction-9cb7b8329b1154c4
+  - operator-correction-5e12d19656b7523d
+  - operator-correction-9489febf6085931a
+  - operator-correction-4a3610b882bdac12
+  - operator-correction-feb54ba6b83792b1
+  - operator-correction-054a5fb169d6ac3f
+  - operator-correction-a97ae404d52077f0
+  - operator-correction-a40b2583a18ec646
+  - operator-correction-457fac6d08b125d9
+  - operator-correction-47dfd12e57f276df
+  - operator-correction-44b8d6ac6fb671f9
+  - operator-correction-16070b2ff513c5d7
+  - operator-correction-5964b84c43c5271a
+  - operator-correction-645d0053eb752264
+  - operator-correction-55daec28a30eec53
+  - operator-correction-6b62c4b822bfe8f7
+  - operator-correction-287d036604793f2b
+  - operator-correction-c181c882af0f9bc6
+  - operator-correction-cdf530c9517726e2
+  - operator-correction-67af581809127edd
+  - operator-correction-59bd7d13a8562a70
+  - operator-correction-5f054876d40c5276
+  - operator-correction-55483140ea8bd66d
+  - operator-correction-465a4f279f8af5e5
+  - operator-correction-18ed4897903264bc
+  - operator-correction-6eda12621a84c896
+  - operator-correction-adc91c17c0cd413a
+  - operator-correction-a7252f805d34ce76
+  - operator-correction-9e05baf5287d9e16
+  - operator-correction-86ae36be0dc905fe
 - path: skills/synthesis-autopilot/scripts/controller.py
   cases:
   - final-5f90017857a25f20
@@ -3802,8 +3905,46 @@ changed_surfaces:
   - native-checkpoint-ed45224a57e15d70
   - native-checkpoint-bf3d4a227c3d0ca3
   - native-checkpoint-22a48efdaf4e1030
+  - operator-correction-bc4c9f819af710fd
+  - operator-correction-471c2e434d6f6e4d
+  - operator-correction-9311c7c4f773b8b4
+  - operator-correction-24018861861d9a1d
+  - operator-correction-01460692ecba5af8
+  - operator-correction-d024e896f0b5c253
+  - operator-correction-0305c3bccea6e6c6
+  - operator-correction-68920c03182fe5e6
+  - operator-correction-9cb7b8329b1154c4
+  - operator-correction-5e12d19656b7523d
+  - operator-correction-9489febf6085931a
+  - operator-correction-4a3610b882bdac12
+  - operator-correction-feb54ba6b83792b1
+  - operator-correction-054a5fb169d6ac3f
+  - operator-correction-a97ae404d52077f0
+  - operator-correction-a40b2583a18ec646
+  - operator-correction-457fac6d08b125d9
+  - operator-correction-47dfd12e57f276df
+  - operator-correction-44b8d6ac6fb671f9
+  - operator-correction-16070b2ff513c5d7
+  - operator-correction-5964b84c43c5271a
+  - operator-correction-645d0053eb752264
+  - operator-correction-55daec28a30eec53
+  - operator-correction-6b62c4b822bfe8f7
+  - operator-correction-287d036604793f2b
+  - operator-correction-c181c882af0f9bc6
+  - operator-correction-cdf530c9517726e2
+  - operator-correction-67af581809127edd
+  - operator-correction-59bd7d13a8562a70
+  - operator-correction-5f054876d40c5276
+  - operator-correction-55483140ea8bd66d
+  - operator-correction-465a4f279f8af5e5
+  - operator-correction-18ed4897903264bc
+  - operator-correction-6eda12621a84c896
+  - operator-correction-adc91c17c0cd413a
+  - operator-correction-a7252f805d34ce76
+  - operator-correction-9e05baf5287d9e16
+  - operator-correction-86ae36be0dc905fe
 - path: skills/synthesis-autopilot/scripts/observation_bridge.py
-  cases:
+  cases: &id002
   - native-checkpoint-fbf4ca8756278a63
   - native-checkpoint-352353e69734fbb3
   - native-checkpoint-19fa9851328306dc
@@ -3841,7 +3982,7 @@ changed_surfaces:
   - native-checkpoint-d0425a487553f894
   - native-checkpoint-96efd71d1140abe9
 - path: skills/synthesis-autopilot/scripts/recovery_capsule.py
-  cases:
+  cases: &id003
   - final-954912d5a6c39435
   - material-017485a8bb6f997b
   - native-checkpoint-541bac24b6e05cc0
@@ -4327,6 +4468,44 @@ changed_surfaces:
   - hosted-source-111476f48fdd0aa2
   - hosted-source-e393bf42173d9e84
   - hosted-source-1a27f0e8712cdbe6
+  - operator-correction-bc4c9f819af710fd
+  - operator-correction-471c2e434d6f6e4d
+  - operator-correction-9311c7c4f773b8b4
+  - operator-correction-24018861861d9a1d
+  - operator-correction-01460692ecba5af8
+  - operator-correction-d024e896f0b5c253
+  - operator-correction-0305c3bccea6e6c6
+  - operator-correction-68920c03182fe5e6
+  - operator-correction-9cb7b8329b1154c4
+  - operator-correction-5e12d19656b7523d
+  - operator-correction-9489febf6085931a
+  - operator-correction-4a3610b882bdac12
+  - operator-correction-feb54ba6b83792b1
+  - operator-correction-054a5fb169d6ac3f
+  - operator-correction-a97ae404d52077f0
+  - operator-correction-a40b2583a18ec646
+  - operator-correction-457fac6d08b125d9
+  - operator-correction-47dfd12e57f276df
+  - operator-correction-44b8d6ac6fb671f9
+  - operator-correction-16070b2ff513c5d7
+  - operator-correction-5964b84c43c5271a
+  - operator-correction-645d0053eb752264
+  - operator-correction-55daec28a30eec53
+  - operator-correction-6b62c4b822bfe8f7
+  - operator-correction-287d036604793f2b
+  - operator-correction-c181c882af0f9bc6
+  - operator-correction-cdf530c9517726e2
+  - operator-correction-67af581809127edd
+  - operator-correction-59bd7d13a8562a70
+  - operator-correction-5f054876d40c5276
+  - operator-correction-55483140ea8bd66d
+  - operator-correction-465a4f279f8af5e5
+  - operator-correction-18ed4897903264bc
+  - operator-correction-6eda12621a84c896
+  - operator-correction-adc91c17c0cd413a
+  - operator-correction-a7252f805d34ce76
+  - operator-correction-9e05baf5287d9e16
+  - operator-correction-86ae36be0dc905fe
 - path: skills/synthesis-autopilot/scripts/test_native_replay.py
   cases:
   - final-5f90017857a25f20
@@ -4443,91 +4622,9 @@ changed_surfaces:
   - native-checkpoint-f4e84d0efd56d941
   - native-checkpoint-461d3d9254a7d509
 - path: skills/synthesis-autopilot/scripts/test_observation_bridge.py
-  cases:
-  - native-checkpoint-fbf4ca8756278a63
-  - native-checkpoint-352353e69734fbb3
-  - native-checkpoint-19fa9851328306dc
-  - native-checkpoint-3296dc9cf0690d89
-  - native-checkpoint-fac3eede74264c87
-  - native-checkpoint-d6c81e885954d20d
-  - native-checkpoint-8c08b9ab07f89e15
-  - native-checkpoint-b23f992a0f85ff33
-  - native-checkpoint-c209b48d41cda137
-  - native-checkpoint-bcb08ad4c65afa53
-  - native-checkpoint-18ed444b1793fe40
-  - native-checkpoint-69dcde206974a07a
-  - native-checkpoint-cf15b37f77ff8c0f
-  - native-checkpoint-272b8c321779e312
-  - native-checkpoint-d91f74d0e48e24d4
-  - native-checkpoint-1a1dda7f5d4c4c94
-  - native-checkpoint-1b2e4aebc732bbde
-  - native-checkpoint-b79d86e61410dd59
-  - native-checkpoint-3ecf6aba8af9bae5
-  - native-checkpoint-2ae57dc6674514aa
-  - native-checkpoint-5d30b03e97f5e01b
-  - native-checkpoint-42b3e858f814312c
-  - native-checkpoint-994f688dfa338e84
-  - native-checkpoint-f19f6f7aec26b566
-  - native-checkpoint-78bef42e6b00209d
-  - native-checkpoint-0d4b08379642b2a6
-  - native-checkpoint-888b9bdcad446bc2
-  - native-checkpoint-473e76ab1913421b
-  - native-checkpoint-0c35e4613a5dff4c
-  - native-checkpoint-26ec80f439bddd22
-  - native-checkpoint-1508db0bca5933ae
-  - native-checkpoint-c7cd64c39fbfc1c0
-  - native-checkpoint-eed6742c3c9c17c0
-  - native-checkpoint-66183426978ec22d
-  - native-checkpoint-d0425a487553f894
-  - native-checkpoint-96efd71d1140abe9
+  cases: *id002
 - path: skills/synthesis-autopilot/scripts/test_recovery_capsule.py
-  cases:
-  - final-954912d5a6c39435
-  - material-017485a8bb6f997b
-  - native-checkpoint-541bac24b6e05cc0
-  - native-checkpoint-48b40040bb1eb15f
-  - native-checkpoint-9519c2e4bf4e8daf
-  - native-checkpoint-5d2c82108efd2ba3
-  - native-checkpoint-6a4e249023c8738f
-  - native-checkpoint-114f671cb2cb947c
-  - native-checkpoint-248dcfc5b794915c
-  - native-checkpoint-833f17b79b10923d
-  - native-checkpoint-f1dee494cd790f8d
-  - native-checkpoint-6458d2c0f6006c22
-  - native-checkpoint-0c67c95b25bb21a5
-  - native-checkpoint-7d8d28cfb4960d46
-  - native-checkpoint-ce75a9bbb023edab
-  - native-checkpoint-7c629e09454ecf0a
-  - native-checkpoint-f69fdfd0e184fa81
-  - native-checkpoint-7b8086ec17c28587
-  - native-checkpoint-9a7efd553d64f0fe
-  - native-checkpoint-72e24efe7635f9fc
-  - native-checkpoint-5b7d2ac01fa90e2e
-  - native-checkpoint-95a5462df11f9bfc
-  - native-checkpoint-394bfabc270d8915
-  - native-checkpoint-f594e59415084e82
-  - native-checkpoint-c971b211b1c38487
-  - native-checkpoint-e57389fbf800e34e
-  - native-checkpoint-afbd7ed257d562d1
-  - native-checkpoint-db0a4800761d7d05
-  - native-checkpoint-9fb489b1da90d572
-  - native-checkpoint-4f580a954c2a6cfd
-  - native-checkpoint-44671fa39cbf89b9
-  - native-checkpoint-1e92bcafa5a3055f
-  - native-checkpoint-95c6c9591871adaf
-  - native-checkpoint-0bccb982184eb035
-  - native-checkpoint-13db88eeba10c351
-  - native-checkpoint-8dfc21ba52533534
-  - native-checkpoint-fbaa770e1e922566
-  - native-checkpoint-c1d523132cef68d3
-  - native-checkpoint-98db42a8a14f3032
-  - native-checkpoint-fed786bfbb22f340
-  - native-checkpoint-a6c04fb152bf5aef
-  - native-checkpoint-466f7671c1b87d8c
-  - native-checkpoint-d91c963fb6062bc3
-  - native-checkpoint-af3c400815d1271c
-  - native-checkpoint-e3c51dcd2d777ddb
-  - native-checkpoint-ee57c383fc8bafef
+  cases: *id003
 - path: skills/synthesis-autopilot/scripts/test_resource_policy.py
   cases:
   - native-checkpoint-06d9231028292b88
@@ -4607,7 +4704,7 @@ changed_surfaces:
 - path: skills/synthesis-implementation-integrity/acceptance-suite.yaml
   cases: *id001
 - path: skills/synthesis-project-management/SKILL.md
-  cases:
+  cases: &id004
   - final-863c438d942f9603
   - final-5527c9c744c4082a
   - final-39325c9f19c371bb
@@ -4927,645 +5024,9 @@ changed_surfaces:
   - native-checkpoint-79cc7f40a99b1b8a
   - native-checkpoint-2b6844b7a7c5173f
 - path: skills/synthesis-project-management/scripts/project_state.py
-  cases:
-  - final-863c438d942f9603
-  - final-5527c9c744c4082a
-  - final-39325c9f19c371bb
-  - final-9de9314f12b678b7
-  - final-efaafebee0aa852b
-  - final-99c1db2593f760a2
-  - final-f561389479e367b7
-  - final-9acb9a74050833a7
-  - final-7178a3778ff239ac
-  - final-ad77a0911f7e9c3e
-  - final-0074164e6b709156
-  - final-4e1e9c5052dd4189
-  - final-5cd8b21a3fa1b3c4
-  - final-2291530cb5709dd4
-  - final-799d0c017c8d9f0f
-  - final-9aa92980220fbdb7
-  - final-d06615e098169f94
-  - final-146e863dfef21954
-  - final-bc079d10de8497ec
-  - final-c2081fe02525eab8
-  - final-50e21007f6c20d83
-  - final-ef3435c943fe0e8d
-  - final-fca721a6e8d1a6a3
-  - final-c61227d375229e82
-  - final-38b061b9c34c2e70
-  - final-585373e47fa23532
-  - final-55fd584d315c2093
-  - final-ab16790adcf02960
-  - final-fd044dfd1e968cee
-  - final-8bdbd8c73bb0acb8
-  - final-a2bfd5d678c5bda5
-  - final-d69c36509811dd4a
-  - performance-e3b6de3badda9377
-  - performance-22ed06daf9d3971c
-  - performance-f0a13a6ec7d8356e
-  - performance-615936bb9206c927
-  - performance-34f0af26535855a7
-  - performance-ee901de52c01c926
-  - performance-bf47b9344679043e
-  - performance-a4de85c17cefd13e
-  - performance-16fc9f3fe0f29514
-  - performance-f3d1e2734e34b56c
-  - performance-040e0077aa4a2da5
-  - performance-c0782c0a5ada0fe1
-  - performance-844a8970502091a5
-  - performance-e41c0ccc11f881b8
-  - performance-1ad7c36166ba428a
-  - performance-2161b6ac2a03ea4b
-  - performance-3927c489eadce602
-  - performance-9f065d4c58877e8c
-  - performance-6359ad347ab8b2c0
-  - performance-2de6428912bebbd5
-  - performance-344a8c5942832118
-  - performance-b07ec149e6fdb8bb
-  - native-checkpoint-5dbc6e450e9e2c39
-  - native-checkpoint-d6ad6ea6622b0d57
-  - native-checkpoint-58953e7c2842f507
-  - native-checkpoint-d876e27b810b010c
-  - native-checkpoint-79fa21278831fffc
-  - native-checkpoint-ff6aaf030aa863a5
-  - native-checkpoint-f16fb9133ddcf131
-  - native-checkpoint-bf2c0ee35c0e500f
-  - native-checkpoint-70d555aa9cba0dce
-  - native-checkpoint-19a53246e5d1cd07
-  - native-checkpoint-03fb3b0e05bdd3b4
-  - native-checkpoint-c02849dacd2e4067
-  - native-checkpoint-006487c1c7a8b657
-  - native-checkpoint-1c136719bf6a1642
-  - native-checkpoint-6e4627517eaf8ab4
-  - native-checkpoint-c00d98ab7ca7ed56
-  - native-checkpoint-b5be4664c23d2b94
-  - native-checkpoint-b15964bb7a531b81
-  - native-checkpoint-793d5e62ef776b35
-  - native-checkpoint-ec97ddaa6b8257b5
-  - native-checkpoint-b9c488ab407806e9
-  - native-checkpoint-239be44dc28d4990
-  - native-checkpoint-be5d9be1fe4fb934
-  - native-checkpoint-55dd8a2765a81aaa
-  - native-checkpoint-d397cb57a03973e6
-  - native-checkpoint-d57eec0d3c3edad6
-  - native-checkpoint-fe2491517ac19fd9
-  - native-checkpoint-65a6da1247e1d7b5
-  - native-checkpoint-36747cdb897be3f0
-  - native-checkpoint-5bf6a8406c0aa89c
-  - native-checkpoint-548a1d28f6173d96
-  - native-checkpoint-8e19b32d92e85416
-  - native-checkpoint-e66c455bde9f27a2
-  - native-checkpoint-676d1866d9383b92
-  - native-checkpoint-d814333fb5a97181
-  - native-checkpoint-e8de663293c7603e
-  - native-checkpoint-e5ab338458aab894
-  - native-checkpoint-974760983d1d99af
-  - native-checkpoint-274751d857869845
-  - native-checkpoint-d6344b9e605db628
-  - native-checkpoint-99f9935f244bbff5
-  - native-checkpoint-4f5ea7eadaab6e9f
-  - native-checkpoint-1705118dfab55175
-  - native-checkpoint-e28bc020559225b7
-  - native-checkpoint-9cad43d0436164dc
-  - native-checkpoint-aab20211f0ada361
-  - native-checkpoint-3f3eb4fedb5569d0
-  - native-checkpoint-5ccdef42511f4a15
-  - native-checkpoint-11949279be6609ac
-  - native-checkpoint-21f830f3a6ad1b61
-  - native-checkpoint-64adf5dc566f0bca
-  - native-checkpoint-22c2b069fbd2729d
-  - native-checkpoint-b78756b66ed86da2
-  - native-checkpoint-bb3499ec6098e3bf
-  - native-checkpoint-2c2e3e9e659305aa
-  - native-checkpoint-f44ea87c96828091
-  - native-checkpoint-95943c7a58a47c86
-  - native-checkpoint-d6b659bb54c2e536
-  - native-checkpoint-3c2aca43df982a1e
-  - native-checkpoint-8b6890fc0dc0fddb
-  - native-checkpoint-84d4c3b34049b872
-  - native-checkpoint-93502ed729143926
-  - native-checkpoint-4e29710737ed0b37
-  - native-checkpoint-e9e5fc2d78a40e43
-  - native-checkpoint-cb42f400bb83eefb
-  - native-checkpoint-63fb8f2ab6be52c5
-  - native-checkpoint-c55f35b610be6b0a
-  - native-checkpoint-e162e35ffade0296
-  - native-checkpoint-3ae5275f9251bb6f
-  - native-checkpoint-b114be98fd4a18b9
-  - native-checkpoint-8e1b7c0bdd938f89
-  - native-checkpoint-8f0adbc75a2fa081
-  - native-checkpoint-c7200a8a7b0769cc
-  - native-checkpoint-96370c1bf82e9974
-  - native-checkpoint-c2aabaaaa2d684e3
-  - native-checkpoint-1e60e7d39f193540
-  - native-checkpoint-3c6d83a7708b662e
-  - native-checkpoint-676b372a5609181e
-  - native-checkpoint-43d0d4e53d09b219
-  - native-checkpoint-60e66783315f9d9e
-  - native-checkpoint-d855c80d7cd32df8
-  - native-checkpoint-cf8fadd5ca840601
-  - native-checkpoint-f3b6d2f5e42630c4
-  - native-checkpoint-3594861cfd33ed39
-  - native-checkpoint-feba90702a3659c9
-  - native-checkpoint-7f95995d327f6dfe
-  - native-checkpoint-1bce50f364b2244b
-  - native-checkpoint-be86b7b9ea0b3575
-  - native-checkpoint-31c685c73d76f3cd
-  - native-checkpoint-a7448c556346e2b0
-  - native-checkpoint-ddc5b75ba8af0385
-  - native-checkpoint-0053919dbb9965c9
-  - native-checkpoint-5c139c0c35441483
-  - native-checkpoint-0b786e89c9f3f37e
-  - native-checkpoint-7bab60abfa995949
-  - native-checkpoint-81b04d11cf090aae
-  - native-checkpoint-ee924a6cb0788088
-  - native-checkpoint-5c3c2b60885f197d
-  - native-checkpoint-205c07b1904f7cbf
-  - native-checkpoint-eb8af0ddb8313a4f
-  - native-checkpoint-51743d10f9604867
-  - native-checkpoint-ab1a17e104a82924
-  - native-checkpoint-f428d8a9bd46eff4
-  - native-checkpoint-f6090fc3e960eb9c
-  - native-checkpoint-b9bf1788c7fb0476
-  - native-checkpoint-7dae9d4388ede562
-  - native-checkpoint-275b759beb8a3cc2
-  - native-checkpoint-a1eb7fac3619a2a5
-  - native-checkpoint-f3589f6fcc6d037c
-  - native-checkpoint-4d4f18d51596f7eb
-  - native-checkpoint-73e8a460c11aaf7a
-  - native-checkpoint-9035ea114d7e57bb
-  - native-checkpoint-2cc2e24b31f9753e
-  - native-checkpoint-6d9d5c3ae97416d1
-  - native-checkpoint-d5ef605fceb18f97
-  - native-checkpoint-1eb17569899acbcd
-  - native-checkpoint-825e7946449242a9
-  - native-checkpoint-b19f7f12e6054329
-  - native-checkpoint-3a9492e2f517b3d8
-  - native-checkpoint-2459b035d9b3aced
-  - native-checkpoint-20e5b657e2fc2009
-  - native-checkpoint-44f73ab3dd9887fe
-  - native-checkpoint-a6bf427845f20518
-  - native-checkpoint-3ed8b41c75012b5d
-  - native-checkpoint-c7a518b1888c35eb
-  - native-checkpoint-fd1ad966cc89dfc4
-  - native-checkpoint-75229ff39c96f1c5
-  - native-checkpoint-5f846ddb06b2f6b9
-  - native-checkpoint-24b062cf47c821d8
-  - native-checkpoint-82159191596af9d5
-  - native-checkpoint-573e24545e47530c
-  - native-checkpoint-8d345a06f186cb55
-  - native-checkpoint-98d53ebdcd5dc4ec
-  - native-checkpoint-3fffb8e0fcb5f2e1
-  - native-checkpoint-a510b8a980fea702
-  - native-checkpoint-2e4abfa1a93a95b2
-  - native-checkpoint-62efff4376142f28
-  - native-checkpoint-dfd04af6b3f724c5
-  - native-checkpoint-667e674cc2953ffe
-  - native-checkpoint-2af9a17048138efe
-  - native-checkpoint-4f228850296fb28e
-  - native-checkpoint-5f5da3cba7f96e2f
-  - native-checkpoint-a5c5d1a736b37ada
-  - native-checkpoint-6c1616459eade6da
-  - native-checkpoint-3c2aa72302a70f96
-  - native-checkpoint-46e0965eee67ef38
-  - native-checkpoint-e3061b91ac8977cb
-  - native-checkpoint-f1a8e22fee59ce3b
-  - native-checkpoint-5611d5041103f9bb
-  - native-checkpoint-5961154de6c1d34d
-  - native-checkpoint-80e4461769e18353
-  - native-checkpoint-9234e3c1e8f96c31
-  - native-checkpoint-080c585f89dc3cb0
-  - native-checkpoint-7962756ea018b7cf
-  - native-checkpoint-d8dee5743e04301b
-  - native-checkpoint-250a55c1a6987465
-  - native-checkpoint-96b244123bd786fa
-  - native-checkpoint-82a8b57cc2312f63
-  - native-checkpoint-75f919f2aee4b326
-  - native-checkpoint-5a190ddc45f24514
-  - native-checkpoint-c57e035492e7a16b
-  - native-checkpoint-cca9833a7bba2cd4
-  - native-checkpoint-46df934367f38ab6
-  - native-checkpoint-753cf38cd7573518
-  - native-checkpoint-1334044a83af3f07
-  - native-checkpoint-63f6b0f7464af9c7
-  - native-checkpoint-3261e4c9d9d32d07
-  - native-checkpoint-76e60cb677aed87c
-  - native-checkpoint-7c44e3d00f2013ec
-  - native-checkpoint-796d79b3360aebcf
-  - native-checkpoint-134d6fb12d154a15
-  - native-checkpoint-5efbe1df5ce7d14c
-  - native-checkpoint-74f69afba317d811
-  - native-checkpoint-544456b948c4f618
-  - native-checkpoint-615722914b85c7f0
-  - native-checkpoint-f7a80e50f91a8838
-  - native-checkpoint-432f343cf34b1277
-  - native-checkpoint-2c93e3a8644c8240
-  - native-checkpoint-4e0618d5c46f69f8
-  - native-checkpoint-cab55dffc70ddd4c
-  - native-checkpoint-e3432973f05b5a86
-  - native-checkpoint-fd52dc8cd12d7cde
-  - native-checkpoint-d6f79116bc5b9ca8
-  - native-checkpoint-caf468dc02ac266a
-  - native-checkpoint-54e511da2d740f43
-  - native-checkpoint-b0b7d255ca7a5ba6
-  - native-checkpoint-dfeb052b21b88039
-  - native-checkpoint-9fbeb190f2de8832
-  - native-checkpoint-5367d38ea8172a02
-  - native-checkpoint-f6edbd7af2ce7862
-  - native-checkpoint-a7d9e1ed1a0e2be1
-  - native-checkpoint-4bb25d1c4a88c998
-  - native-checkpoint-66ff2f1dac8f450f
-  - native-checkpoint-86c23a689c755464
-  - native-checkpoint-70795a49a7e663a6
-  - native-checkpoint-f9b439ae6930b647
-  - native-checkpoint-8c7477692ed0ceec
-  - native-checkpoint-6a29449ff9e18ef9
-  - native-checkpoint-5b9823dbc2d7f512
-  - native-checkpoint-0c4b596a753a0451
-  - native-checkpoint-e995d7418bb1a39b
-  - native-checkpoint-a94fd33d6a0ff8e4
-  - native-checkpoint-159795eeaa1be5ce
-  - native-checkpoint-802018eaf1993c55
-  - native-checkpoint-d2d65aa3ca34ecc7
-  - native-checkpoint-58931cca206d48d2
-  - native-checkpoint-6c7e9c2f0d390332
-  - native-checkpoint-0f781d8caccd4546
-  - native-checkpoint-18ffb8808350a208
-  - native-checkpoint-dae8ae5fee710e53
-  - native-checkpoint-43c34ddecc02ccfb
-  - native-checkpoint-53d0427c57fc6028
-  - native-checkpoint-ed1945158c9a43e1
-  - native-checkpoint-f2f39677b1a34fbb
-  - native-checkpoint-f61bd0a0af98576e
-  - native-checkpoint-9756829df3d72005
-  - native-checkpoint-a567801e91d9f9db
-  - native-checkpoint-24401ffe8406cdbe
-  - native-checkpoint-2e1d52c6fad28009
-  - native-checkpoint-ff9e6966c1bc19fb
-  - native-checkpoint-4a3471ae4f54008e
-  - native-checkpoint-b7f9e8e946a0cf0b
-  - native-checkpoint-a8a9aa5844bfc2bd
-  - native-checkpoint-911682dbc967c492
-  - native-checkpoint-9d15e3acfd146e8f
-  - native-checkpoint-9f2df6f17f9ddd90
-  - native-checkpoint-76004ba3c6ea7f14
-  - native-checkpoint-93b403c941927d66
-  - native-checkpoint-9105df864f0a0c34
-  - native-checkpoint-49fa9c46300923f8
-  - native-checkpoint-d80b0cc559b65780
-  - native-checkpoint-7c52159ad7430669
-  - native-checkpoint-07fbd2e72d57c7e6
-  - native-checkpoint-019a4d879ae2c004
-  - native-checkpoint-e5d1fbbe4daf38be
-  - native-checkpoint-56fdc3e36b83bc63
-  - native-checkpoint-2e0e0e2333dfafc1
-  - native-checkpoint-60128a2e8a1e7aaa
-  - native-checkpoint-c914d70b20d0654f
-  - native-checkpoint-2f97240585836fe6
-  - native-checkpoint-a916884dc92c5fc8
-  - native-checkpoint-043ab6de70ca8d08
-  - native-checkpoint-25c1fa4bc47101af
-  - native-checkpoint-e0450f5c15bf01ca
-  - native-checkpoint-f11a6124f42ba821
-  - native-checkpoint-8e2e296dc78cb063
-  - native-checkpoint-793a745b53ba29ae
-  - native-checkpoint-f993096224774760
-  - native-checkpoint-7698828a2393b448
-  - native-checkpoint-8528c673a3e1805d
-  - native-checkpoint-162d96859ee22b91
-  - native-checkpoint-087c1457ec092643
-  - native-checkpoint-7826dddae7367b1c
-  - native-checkpoint-7c38998f1393565a
-  - native-checkpoint-df4dbe7c70d7df8f
-  - native-checkpoint-dc83e143692c577a
-  - native-checkpoint-2fc61253663e5f87
-  - native-checkpoint-d875381599e5a76b
-  - native-checkpoint-7d2d1359dcb342cd
-  - native-checkpoint-a47b0928bc2a6e2c
-  - native-checkpoint-e652663cbb04e8a4
-  - native-checkpoint-c6b7eeb42fcbc6c4
-  - native-checkpoint-79cc7f40a99b1b8a
-  - native-checkpoint-2b6844b7a7c5173f
+  cases: *id004
 - path: skills/synthesis-project-management/scripts/test_project_state.py
-  cases:
-  - final-863c438d942f9603
-  - final-5527c9c744c4082a
-  - final-39325c9f19c371bb
-  - final-9de9314f12b678b7
-  - final-efaafebee0aa852b
-  - final-99c1db2593f760a2
-  - final-f561389479e367b7
-  - final-9acb9a74050833a7
-  - final-7178a3778ff239ac
-  - final-ad77a0911f7e9c3e
-  - final-0074164e6b709156
-  - final-4e1e9c5052dd4189
-  - final-5cd8b21a3fa1b3c4
-  - final-2291530cb5709dd4
-  - final-799d0c017c8d9f0f
-  - final-9aa92980220fbdb7
-  - final-d06615e098169f94
-  - final-146e863dfef21954
-  - final-bc079d10de8497ec
-  - final-c2081fe02525eab8
-  - final-50e21007f6c20d83
-  - final-ef3435c943fe0e8d
-  - final-fca721a6e8d1a6a3
-  - final-c61227d375229e82
-  - final-38b061b9c34c2e70
-  - final-585373e47fa23532
-  - final-55fd584d315c2093
-  - final-ab16790adcf02960
-  - final-fd044dfd1e968cee
-  - final-8bdbd8c73bb0acb8
-  - final-a2bfd5d678c5bda5
-  - final-d69c36509811dd4a
-  - performance-e3b6de3badda9377
-  - performance-22ed06daf9d3971c
-  - performance-f0a13a6ec7d8356e
-  - performance-615936bb9206c927
-  - performance-34f0af26535855a7
-  - performance-ee901de52c01c926
-  - performance-bf47b9344679043e
-  - performance-a4de85c17cefd13e
-  - performance-16fc9f3fe0f29514
-  - performance-f3d1e2734e34b56c
-  - performance-040e0077aa4a2da5
-  - performance-c0782c0a5ada0fe1
-  - performance-844a8970502091a5
-  - performance-e41c0ccc11f881b8
-  - performance-1ad7c36166ba428a
-  - performance-2161b6ac2a03ea4b
-  - performance-3927c489eadce602
-  - performance-9f065d4c58877e8c
-  - performance-6359ad347ab8b2c0
-  - performance-2de6428912bebbd5
-  - performance-344a8c5942832118
-  - performance-b07ec149e6fdb8bb
-  - native-checkpoint-5dbc6e450e9e2c39
-  - native-checkpoint-d6ad6ea6622b0d57
-  - native-checkpoint-58953e7c2842f507
-  - native-checkpoint-d876e27b810b010c
-  - native-checkpoint-79fa21278831fffc
-  - native-checkpoint-ff6aaf030aa863a5
-  - native-checkpoint-f16fb9133ddcf131
-  - native-checkpoint-bf2c0ee35c0e500f
-  - native-checkpoint-70d555aa9cba0dce
-  - native-checkpoint-19a53246e5d1cd07
-  - native-checkpoint-03fb3b0e05bdd3b4
-  - native-checkpoint-c02849dacd2e4067
-  - native-checkpoint-006487c1c7a8b657
-  - native-checkpoint-1c136719bf6a1642
-  - native-checkpoint-6e4627517eaf8ab4
-  - native-checkpoint-c00d98ab7ca7ed56
-  - native-checkpoint-b5be4664c23d2b94
-  - native-checkpoint-b15964bb7a531b81
-  - native-checkpoint-793d5e62ef776b35
-  - native-checkpoint-ec97ddaa6b8257b5
-  - native-checkpoint-b9c488ab407806e9
-  - native-checkpoint-239be44dc28d4990
-  - native-checkpoint-be5d9be1fe4fb934
-  - native-checkpoint-55dd8a2765a81aaa
-  - native-checkpoint-d397cb57a03973e6
-  - native-checkpoint-d57eec0d3c3edad6
-  - native-checkpoint-fe2491517ac19fd9
-  - native-checkpoint-65a6da1247e1d7b5
-  - native-checkpoint-36747cdb897be3f0
-  - native-checkpoint-5bf6a8406c0aa89c
-  - native-checkpoint-548a1d28f6173d96
-  - native-checkpoint-8e19b32d92e85416
-  - native-checkpoint-e66c455bde9f27a2
-  - native-checkpoint-676d1866d9383b92
-  - native-checkpoint-d814333fb5a97181
-  - native-checkpoint-e8de663293c7603e
-  - native-checkpoint-e5ab338458aab894
-  - native-checkpoint-974760983d1d99af
-  - native-checkpoint-274751d857869845
-  - native-checkpoint-d6344b9e605db628
-  - native-checkpoint-99f9935f244bbff5
-  - native-checkpoint-4f5ea7eadaab6e9f
-  - native-checkpoint-1705118dfab55175
-  - native-checkpoint-e28bc020559225b7
-  - native-checkpoint-9cad43d0436164dc
-  - native-checkpoint-aab20211f0ada361
-  - native-checkpoint-3f3eb4fedb5569d0
-  - native-checkpoint-5ccdef42511f4a15
-  - native-checkpoint-11949279be6609ac
-  - native-checkpoint-21f830f3a6ad1b61
-  - native-checkpoint-64adf5dc566f0bca
-  - native-checkpoint-22c2b069fbd2729d
-  - native-checkpoint-b78756b66ed86da2
-  - native-checkpoint-bb3499ec6098e3bf
-  - native-checkpoint-2c2e3e9e659305aa
-  - native-checkpoint-f44ea87c96828091
-  - native-checkpoint-95943c7a58a47c86
-  - native-checkpoint-d6b659bb54c2e536
-  - native-checkpoint-3c2aca43df982a1e
-  - native-checkpoint-8b6890fc0dc0fddb
-  - native-checkpoint-84d4c3b34049b872
-  - native-checkpoint-93502ed729143926
-  - native-checkpoint-4e29710737ed0b37
-  - native-checkpoint-e9e5fc2d78a40e43
-  - native-checkpoint-cb42f400bb83eefb
-  - native-checkpoint-63fb8f2ab6be52c5
-  - native-checkpoint-c55f35b610be6b0a
-  - native-checkpoint-e162e35ffade0296
-  - native-checkpoint-3ae5275f9251bb6f
-  - native-checkpoint-b114be98fd4a18b9
-  - native-checkpoint-8e1b7c0bdd938f89
-  - native-checkpoint-8f0adbc75a2fa081
-  - native-checkpoint-c7200a8a7b0769cc
-  - native-checkpoint-96370c1bf82e9974
-  - native-checkpoint-c2aabaaaa2d684e3
-  - native-checkpoint-1e60e7d39f193540
-  - native-checkpoint-3c6d83a7708b662e
-  - native-checkpoint-676b372a5609181e
-  - native-checkpoint-43d0d4e53d09b219
-  - native-checkpoint-60e66783315f9d9e
-  - native-checkpoint-d855c80d7cd32df8
-  - native-checkpoint-cf8fadd5ca840601
-  - native-checkpoint-f3b6d2f5e42630c4
-  - native-checkpoint-3594861cfd33ed39
-  - native-checkpoint-feba90702a3659c9
-  - native-checkpoint-7f95995d327f6dfe
-  - native-checkpoint-1bce50f364b2244b
-  - native-checkpoint-be86b7b9ea0b3575
-  - native-checkpoint-31c685c73d76f3cd
-  - native-checkpoint-a7448c556346e2b0
-  - native-checkpoint-ddc5b75ba8af0385
-  - native-checkpoint-0053919dbb9965c9
-  - native-checkpoint-5c139c0c35441483
-  - native-checkpoint-0b786e89c9f3f37e
-  - native-checkpoint-7bab60abfa995949
-  - native-checkpoint-81b04d11cf090aae
-  - native-checkpoint-ee924a6cb0788088
-  - native-checkpoint-5c3c2b60885f197d
-  - native-checkpoint-205c07b1904f7cbf
-  - native-checkpoint-eb8af0ddb8313a4f
-  - native-checkpoint-51743d10f9604867
-  - native-checkpoint-ab1a17e104a82924
-  - native-checkpoint-f428d8a9bd46eff4
-  - native-checkpoint-f6090fc3e960eb9c
-  - native-checkpoint-b9bf1788c7fb0476
-  - native-checkpoint-7dae9d4388ede562
-  - native-checkpoint-275b759beb8a3cc2
-  - native-checkpoint-a1eb7fac3619a2a5
-  - native-checkpoint-f3589f6fcc6d037c
-  - native-checkpoint-4d4f18d51596f7eb
-  - native-checkpoint-73e8a460c11aaf7a
-  - native-checkpoint-9035ea114d7e57bb
-  - native-checkpoint-2cc2e24b31f9753e
-  - native-checkpoint-6d9d5c3ae97416d1
-  - native-checkpoint-d5ef605fceb18f97
-  - native-checkpoint-1eb17569899acbcd
-  - native-checkpoint-825e7946449242a9
-  - native-checkpoint-b19f7f12e6054329
-  - native-checkpoint-3a9492e2f517b3d8
-  - native-checkpoint-2459b035d9b3aced
-  - native-checkpoint-20e5b657e2fc2009
-  - native-checkpoint-44f73ab3dd9887fe
-  - native-checkpoint-a6bf427845f20518
-  - native-checkpoint-3ed8b41c75012b5d
-  - native-checkpoint-c7a518b1888c35eb
-  - native-checkpoint-fd1ad966cc89dfc4
-  - native-checkpoint-75229ff39c96f1c5
-  - native-checkpoint-5f846ddb06b2f6b9
-  - native-checkpoint-24b062cf47c821d8
-  - native-checkpoint-82159191596af9d5
-  - native-checkpoint-573e24545e47530c
-  - native-checkpoint-8d345a06f186cb55
-  - native-checkpoint-98d53ebdcd5dc4ec
-  - native-checkpoint-3fffb8e0fcb5f2e1
-  - native-checkpoint-a510b8a980fea702
-  - native-checkpoint-2e4abfa1a93a95b2
-  - native-checkpoint-62efff4376142f28
-  - native-checkpoint-dfd04af6b3f724c5
-  - native-checkpoint-667e674cc2953ffe
-  - native-checkpoint-2af9a17048138efe
-  - native-checkpoint-4f228850296fb28e
-  - native-checkpoint-5f5da3cba7f96e2f
-  - native-checkpoint-a5c5d1a736b37ada
-  - native-checkpoint-6c1616459eade6da
-  - native-checkpoint-3c2aa72302a70f96
-  - native-checkpoint-46e0965eee67ef38
-  - native-checkpoint-e3061b91ac8977cb
-  - native-checkpoint-f1a8e22fee59ce3b
-  - native-checkpoint-5611d5041103f9bb
-  - native-checkpoint-5961154de6c1d34d
-  - native-checkpoint-80e4461769e18353
-  - native-checkpoint-9234e3c1e8f96c31
-  - native-checkpoint-080c585f89dc3cb0
-  - native-checkpoint-7962756ea018b7cf
-  - native-checkpoint-d8dee5743e04301b
-  - native-checkpoint-250a55c1a6987465
-  - native-checkpoint-96b244123bd786fa
-  - native-checkpoint-82a8b57cc2312f63
-  - native-checkpoint-75f919f2aee4b326
-  - native-checkpoint-5a190ddc45f24514
-  - native-checkpoint-c57e035492e7a16b
-  - native-checkpoint-cca9833a7bba2cd4
-  - native-checkpoint-46df934367f38ab6
-  - native-checkpoint-753cf38cd7573518
-  - native-checkpoint-1334044a83af3f07
-  - native-checkpoint-63f6b0f7464af9c7
-  - native-checkpoint-3261e4c9d9d32d07
-  - native-checkpoint-76e60cb677aed87c
-  - native-checkpoint-7c44e3d00f2013ec
-  - native-checkpoint-796d79b3360aebcf
-  - native-checkpoint-134d6fb12d154a15
-  - native-checkpoint-5efbe1df5ce7d14c
-  - native-checkpoint-74f69afba317d811
-  - native-checkpoint-544456b948c4f618
-  - native-checkpoint-615722914b85c7f0
-  - native-checkpoint-f7a80e50f91a8838
-  - native-checkpoint-432f343cf34b1277
-  - native-checkpoint-2c93e3a8644c8240
-  - native-checkpoint-4e0618d5c46f69f8
-  - native-checkpoint-cab55dffc70ddd4c
-  - native-checkpoint-e3432973f05b5a86
-  - native-checkpoint-fd52dc8cd12d7cde
-  - native-checkpoint-d6f79116bc5b9ca8
-  - native-checkpoint-caf468dc02ac266a
-  - native-checkpoint-54e511da2d740f43
-  - native-checkpoint-b0b7d255ca7a5ba6
-  - native-checkpoint-dfeb052b21b88039
-  - native-checkpoint-9fbeb190f2de8832
-  - native-checkpoint-5367d38ea8172a02
-  - native-checkpoint-f6edbd7af2ce7862
-  - native-checkpoint-a7d9e1ed1a0e2be1
-  - native-checkpoint-4bb25d1c4a88c998
-  - native-checkpoint-66ff2f1dac8f450f
-  - native-checkpoint-86c23a689c755464
-  - native-checkpoint-70795a49a7e663a6
-  - native-checkpoint-f9b439ae6930b647
-  - native-checkpoint-8c7477692ed0ceec
-  - native-checkpoint-6a29449ff9e18ef9
-  - native-checkpoint-5b9823dbc2d7f512
-  - native-checkpoint-0c4b596a753a0451
-  - native-checkpoint-e995d7418bb1a39b
-  - native-checkpoint-a94fd33d6a0ff8e4
-  - native-checkpoint-159795eeaa1be5ce
-  - native-checkpoint-802018eaf1993c55
-  - native-checkpoint-d2d65aa3ca34ecc7
-  - native-checkpoint-58931cca206d48d2
-  - native-checkpoint-6c7e9c2f0d390332
-  - native-checkpoint-0f781d8caccd4546
-  - native-checkpoint-18ffb8808350a208
-  - native-checkpoint-dae8ae5fee710e53
-  - native-checkpoint-43c34ddecc02ccfb
-  - native-checkpoint-53d0427c57fc6028
-  - native-checkpoint-ed1945158c9a43e1
-  - native-checkpoint-f2f39677b1a34fbb
-  - native-checkpoint-f61bd0a0af98576e
-  - native-checkpoint-9756829df3d72005
-  - native-checkpoint-a567801e91d9f9db
-  - native-checkpoint-24401ffe8406cdbe
-  - native-checkpoint-2e1d52c6fad28009
-  - native-checkpoint-ff9e6966c1bc19fb
-  - native-checkpoint-4a3471ae4f54008e
-  - native-checkpoint-b7f9e8e946a0cf0b
-  - native-checkpoint-a8a9aa5844bfc2bd
-  - native-checkpoint-911682dbc967c492
-  - native-checkpoint-9d15e3acfd146e8f
-  - native-checkpoint-9f2df6f17f9ddd90
-  - native-checkpoint-76004ba3c6ea7f14
-  - native-checkpoint-93b403c941927d66
-  - native-checkpoint-9105df864f0a0c34
-  - native-checkpoint-49fa9c46300923f8
-  - native-checkpoint-d80b0cc559b65780
-  - native-checkpoint-7c52159ad7430669
-  - native-checkpoint-07fbd2e72d57c7e6
-  - native-checkpoint-019a4d879ae2c004
-  - native-checkpoint-e5d1fbbe4daf38be
-  - native-checkpoint-56fdc3e36b83bc63
-  - native-checkpoint-2e0e0e2333dfafc1
-  - native-checkpoint-60128a2e8a1e7aaa
-  - native-checkpoint-c914d70b20d0654f
-  - native-checkpoint-2f97240585836fe6
-  - native-checkpoint-a916884dc92c5fc8
-  - native-checkpoint-043ab6de70ca8d08
-  - native-checkpoint-25c1fa4bc47101af
-  - native-checkpoint-e0450f5c15bf01ca
-  - native-checkpoint-f11a6124f42ba821
-  - native-checkpoint-8e2e296dc78cb063
-  - native-checkpoint-793a745b53ba29ae
-  - native-checkpoint-f993096224774760
-  - native-checkpoint-7698828a2393b448
-  - native-checkpoint-8528c673a3e1805d
-  - native-checkpoint-162d96859ee22b91
-  - native-checkpoint-087c1457ec092643
-  - native-checkpoint-7826dddae7367b1c
-  - native-checkpoint-7c38998f1393565a
-  - native-checkpoint-df4dbe7c70d7df8f
-  - native-checkpoint-dc83e143692c577a
-  - native-checkpoint-2fc61253663e5f87
-  - native-checkpoint-d875381599e5a76b
-  - native-checkpoint-7d2d1359dcb342cd
-  - native-checkpoint-a47b0928bc2a6e2c
-  - native-checkpoint-e652663cbb04e8a4
-  - native-checkpoint-c6b7eeb42fcbc6c4
-  - native-checkpoint-79cc7f40a99b1b8a
-  - native-checkpoint-2b6844b7a7c5173f
+  cases: *id004
 - path: skills/synthesis-project-management/scripts/test_coordination_process_thread.py
   cases:
   - final-1b36b69418d62c5f
@@ -5582,6 +5043,39 @@ changed_surfaces:
   - final-c2b786be532450b0
   - recovery-6051c6c23201c198
   - hosted-source-1c9eadf207ee0681
+- path: skills/synthesis-daily-rituals/SKILL.md
+  cases: &id005
+  - clock-correction-98a47d68373038ff
+  - clock-correction-4d3cfb73d863ecdc
+  - clock-correction-bded598eea5e4bb4
+  - clock-correction-6fdb47c96b8f8d1b
+  - clock-correction-d9cfe7f310523d80
+  - clock-correction-bd2914f0c64affff
+  - clock-correction-7e96b0c726c4b80d
+  - clock-correction-e4c67cd70ef6d5e1
+  - clock-correction-980c79aff8b3fdca
+  - clock-correction-add0f9b982f1633e
+  - clock-correction-4614c8d848f636fd
+  - clock-correction-6a28cefd283a4539
+  - clock-correction-dfb76feac0b7d973
+  - clock-correction-a2eb38ab4916c509
+  - clock-correction-23b58556d41e94e7
+  - clock-correction-4b3c74d46cefa933
+  - clock-correction-0a826b342f803d61
+  - clock-correction-05090d4462b7f8d8
+  - clock-correction-a025a3665da5b178
+  - clock-correction-b570e2e20ab4ed89
+  - clock-correction-2f48d65730bfa7e8
+  - clock-correction-a93a91c6704c7a98
+  - clock-correction-e0d609ef719769c1
+  - clock-correction-6ab465b1cbd15639
+  - clock-correction-1be1054c9fb126a7
+  - clock-correction-1cec0510bd160ed2
+  - clock-correction-5764a83f3afa3835
+- path: skills/synthesis-daily-rituals/scripts/sync_watermark.py
+  cases: *id005
+- path: skills/synthesis-daily-rituals/scripts/test_sync_watermark.py
+  cases: *id005
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -20459,3 +19953,409 @@ cases:
   fixture: ../synthesis-project-management/scripts/test_execution_checkpoint.py::test_execution_checkpoint_refuses_codec_bound_event_rewritten_as_inline
   motivating_defect: Hosted fixtures exposed incomplete PID publication and unauthentic historical representation;
     closed operator failure classification preserves bounded diagnostics.
+- id: clock-correction-98a47d68373038ff
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second--240-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-4d3cfb73d863ecdc
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second--240-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-bded598eea5e4bb4
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second-0-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-6fdb47c96b8f8d1b
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second-0-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-d9cfe7f310523d80
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second-330-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-bd2914f0c64affff
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[same-second-330-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-7e96b0c726c4b80d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact--240-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-e4c67cd70ef6d5e1
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact--240-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-980c79aff8b3fdca
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact-0-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-add0f9b982f1633e
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact-0-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-4614c8d848f636fd
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact-330-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-6a28cefd283a4539
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[exact-330-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-dfb76feac0b7d973
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future--240-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-a2eb38ab4916c509
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future--240-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-23b58556d41e94e7
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future-0-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-4b3c74d46cefa933
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future-0-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-0a826b342f803d61
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future-330-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-05090d4462b7f8d8
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_clock_precision_boundaries[future-330-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-a025a3665da5b178
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[same-second-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-b570e2e20ab4ed89
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[same-second-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-2f48d65730bfa7e8
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[exact-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-a93a91c6704c7a98
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[exact-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-e0d609ef719769c1
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[future-meetings]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-6ab465b1cbd15639
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_acquisition_check_cli_preserves_observation_clock[future-slack]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-1be1054c9fb126a7
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_precise_clock_keeps_now_watermarks_and_windows_at_whole_seconds[-240]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-1cec0510bd160ed2
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_precise_clock_keeps_now_watermarks_and_windows_at_whole_seconds[0]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: clock-correction-5764a83f3afa3835
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_sync_watermark.py::test_precise_clock_keeps_now_watermarks_and_windows_at_whole_seconds[330]
+  motivating_defect: Subsecond acquisition evidence must compare against an equally precise current clock
+    while true future evidence remains refused.
+- id: operator-correction-bc4c9f819af710fd
+  control_class: negative-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-{"a":[1,2],"b":"literal
+    [ ] { } : ,"}]'
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-471c2e434d6f6e4d
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-{"a":"unicod\xc3\xa9
+    \xe6\xbc\xa2\xe5\xad\x97","b":[true,false,null]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-9311c7c4f773b8b4
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-{"a":"escaped
+    \\" ]","b":[]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-24018861861d9a1d
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-{"a":"line\nslash\\","b":{}}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-01460692ecba5af8
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-"unclosed
+    [[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-d024e896f0b5c253
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-"""[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-0305c3bccea6e6c6
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-[[[[0]]]]]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-68920c03182fe5e6
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-{"a":0,"a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-9cb7b8329b1154c4
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-""""""]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-5e12d19656b7523d
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[1-2-[]
+    } {]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-9489febf6085931a
+  control_class: negative-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-{"a":[1,2],"b":"literal
+    [ ] { } : ,"}]'
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-4a3610b882bdac12
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-{"a":"unicod\xc3\xa9
+    \xe6\xbc\xa2\xe5\xad\x97","b":[true,false,null]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-feb54ba6b83792b1
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-{"a":"escaped
+    \\" ]","b":[]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-054a5fb169d6ac3f
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-{"a":"line\nslash\\","b":{}}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-a97ae404d52077f0
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-"unclosed
+    [[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-a40b2583a18ec646
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-"""[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-457fac6d08b125d9
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-[[[[0]]]]]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-47dfd12e57f276df
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-{"a":0,"a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-44b8d6ac6fb671f9
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-""""""]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-16070b2ff513c5d7
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[3-8-[]
+    } {]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-5964b84c43c5271a
+  control_class: negative-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-{"a":[1,2],"b":"literal
+    [ ] { } : ,"}]'
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-645d0053eb752264
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-{"a":"unicod\xc3\xa9
+    \xe6\xbc\xa2\xe5\xad\x97","b":[true,false,null]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-55daec28a30eec53
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-{"a":"escaped
+    \\" ]","b":[]}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-6b62c4b822bfe8f7
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-{"a":"line\nslash\\","b":{}}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-287d036604793f2b
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-"unclosed
+    [[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-c181c882af0f9bc6
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-"""[[[]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-cdf530c9517726e2
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-[[[[0]]]]]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-67af581809127edd
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-{"a":0,"a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-59bd7d13a8562a70
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-""""""]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-5f054876d40c5276
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_keeps_legacy_depth_work_refusals[64-16384-[]
+    } {]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-55483140ea8bd66d
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_no_escape_path_avoids_per_string_regex
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-465a4f279f8af5e5
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_still_checks_exact_bounds_after_warm_read
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-18ed4897903264bc
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_does_not_admit_noncanonical_leaf[{"b":0,"a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-6eda12621a84c896
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_does_not_admit_noncanonical_leaf[{
+    "a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-adc91c17c0cd413a
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_does_not_admit_noncanonical_leaf[{"a":0,"a":1}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-a7252f805d34ce76
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_does_not_admit_noncanonical_leaf[{"a":NaN}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-9e05baf5287d9e16
+  control_class: negative-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_does_not_admit_noncanonical_leaf[{"a":1e999}]
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
+- id: operator-correction-86ae36be0dc905fe
+  control_class: positive-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_compressed_scanner_preserves_independent_mutable_leaf_reads
+  motivating_defect: Measured bounded journal verification spends repeated work scanning canonical strings
+    and brackets; optimize lexical work without changing admission or validation limits.
