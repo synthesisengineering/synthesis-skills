@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.8] - 2026-10-04
+
+- Reuse charged immutable journal member representations and compiled subtree plans while freshly reading and authenticating each dependency.
+- Reduce repeated canonical framing, member sorting and physical-handle churn within the existing shared memory, handle, work and cancellation limits.
+
 ## [4.154.7] - 2026-10-04
 
 - Use the selected machine’s repository guard, checkpoint receipts and coordination board when resolving project migration previews.

@@ -778,15 +778,12 @@ def _event_paths(project, run_id):
     return files
 
 
-def _check_event(event, run_id, revision, previous, previous_codec, commands):
+def _check_event_fields(event, state, body_digest, run_id, revision, previous, previous_codec, commands):
     if not isinstance(event, dict):
         raise RunStateError("event must be an object")
     digest = event.get("digest")
-    body = {key: value for key, value in event.items() if key != "digest"}
-    body_digest = event.verified_body_digest if isinstance(event, journal_storage.DecodedEvent) else _digest(body)
     if digest != body_digest or event.get("previous_digest") != previous or event.get("revision") != revision or event.get("schema_version") != SCHEMA:
         raise RunStateError("event chain failed integrity/schema validation")
-    state = event.get("state")
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA or state.get("run_id") != run_id or state.get("revision") != revision or state.get("status") not in STATUSES:
         raise RunStateError("event state identity is invalid")
     codec = journal_storage.codec_for(state)
@@ -797,6 +794,54 @@ def _check_event(event, run_id, revision, previous, previous_codec, commands):
         raise RunStateError("event stream contains duplicate command IDs")
     commands.add(event["command_id"])
     return digest, codec
+
+
+def _check_event(event, run_id, revision, previous, previous_codec, commands):
+    if not isinstance(event, dict):
+        raise RunStateError("event must be an object")
+    body = {key: value for key, value in event.items() if key != "digest"}
+    body_digest = event.verified_body_digest if isinstance(event, journal_storage.DecodedEvent) else _digest(body)
+    return _check_event_fields(event, event.get("state"), body_digest, run_id,
+                               revision, previous, previous_codec, commands)
+
+
+def _read_event_projection(path, *, include_full_state=False):
+    try:
+        raw = journal_storage.read_regular(path, MAX_JSON_BYTES)
+        value = json.loads(raw, parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+        return journal_storage.decode_event_projection(path, value, include_full_state=include_full_state)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RunStateError(f"unreadable state at {path}: {exc}") from exc
+
+
+def _operator_events(project, run_id, *, deadline):
+    files = _event_paths(project, run_id)
+    previous, previous_codec, commands = "", 1, set()
+    initial_state = None
+    for revision, path in enumerate(files, 1):
+        if time.monotonic() > deadline:
+            raise RunStateError("operator journal exceeds time bound")
+        if path.name != f"{revision:012d}.json":
+            raise RunStateError("event sequence has a gap or unexpected entry")
+        event = _read_event_projection(path, include_full_state=revision == len(files))
+        previous, previous_codec = _check_event_fields(event.header, event.identity,
+            event.verified_body_digest, run_id, revision, previous, previous_codec, commands)
+        if revision == 1 and event.identity.get("successor"):
+            full = _read_event_projection(path, include_full_state=True)
+            _check_event_fields(full.header, full.identity, full.verified_body_digest,
+                                run_id, 1, "", 1, set())
+            if full.header["digest"] != previous:
+                raise RunStateError("initial successor event changed during verification")
+            initial_state = full.full_state
+        yield event
+    if initial_state is not None:
+        if event.full_state.get("successor") != initial_state["successor"]:
+            raise RunStateError("successor lineage changed within its journal")
+        parents = _successor_chain(project, initial_state["successor"]["predecessor"],
+                                   min(deadline, time.monotonic() + MAX_SUCCESSOR_SECONDS))
+        _successor_inheritance(initial_state, parents[0])
+    if time.monotonic() > deadline:
+        raise RunStateError("operator journal exceeds time bound")
 
 
 def _events(project, run_id, *, verify_successor=True):

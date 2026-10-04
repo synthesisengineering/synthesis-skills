@@ -8,6 +8,7 @@ blocks remain inert and count against the run's storage budget.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -16,11 +17,16 @@ import errno
 import fcntl
 import hashlib
 import json
+import marshal
 import os
 from pathlib import Path
+from operator import itemgetter
+from itertools import chain
+import sys
 import re
 import stat
 import time
+from threading import RLock
 import uuid
 import zlib
 
@@ -64,6 +70,178 @@ class DecodedEvent(dict):
         digest.update(raw[:offset])
         digest.update(raw[offset + len(field) + 1 : -1])
         self.verified_body_digest = digest.hexdigest()
+
+
+class VerifiedEventProjection:
+    """Explicit authenticated owner view; never an ordinary complete event."""
+    __slots__ = ("header", "identity", "verified_body_digest", "full_state")
+
+    def __init__(self, event, body_digest, full_state=None):
+        if not isinstance(body_digest, str) or not DIGEST.fullmatch(body_digest):
+            raise ValueError("projection has no complete event body authentication")
+        self.header = {key: value for key, value in event.items() if key != "state"}
+        self.identity = event.get("state")
+        self.verified_body_digest = body_digest
+        self.full_state = full_state
+
+
+class _Selection:
+    __slots__ = ("value", "kind", "keys", "length")
+
+    def __init__(self, value, kind, keys=(), length=0):
+        self.value, self.kind, self.keys, self.length = value, kind, keys, length
+
+
+def _selection_key(selection, key):
+    if selection is None:
+        return None
+    fields = {
+        "event": {"state": "state", "digest": None, "previous_digest": None,
+                  "revision": None, "schema_version": None, "command_id": None},
+        "state": {"run_id": None, "revision": None, "schema_version": None,
+                  "status": None, "successor": None, "extensions": "extensions"},
+        "extensions": {"journal_storage": None, "workflow": "workflow"},
+        "workflow": {"progress": None},
+    }
+    return fields.get(selection, {}).get(key, "skip")
+
+
+def _select_value(value, selection):
+    if selection is None:
+        return value
+    kind = "dict" if isinstance(value, dict) else "list" if isinstance(value, list) else "str" if isinstance(value, str) else "scalar"
+    keys = tuple(value) if kind == "dict" else ()
+    if selection == "skip":
+        selected = None
+    elif kind == "dict":
+        selected = {}
+        for key, item in value.items():
+            child_selection = _selection_key(selection, key)
+            if child_selection != "skip":
+                child = _select_value(item, child_selection)
+                selected[key] = child.value if isinstance(child, _Selection) else child
+    else:
+        selected = value
+    return _Selection(selected, kind, keys, len(value) if kind != "scalar" else 0)
+
+
+class _PlanCache(OrderedDict):
+    """Exact pure-plan residency; callers hold the existing shared pool lock."""
+
+    def __init__(self, *args, **kwargs):
+        self._retained_bytes = 0
+        super().__init__()
+        self.update(*args, **kwargs)
+
+    @property
+    def retained_bytes(self):
+        return self._retained_bytes
+
+    def __setitem__(self, key, value):
+        cost = value[-1]
+        if type(cost) is not int or cost < 0:
+            raise ValueError("snapshot plan has invalid residency cost")
+        old = self.get(key)
+        super().__setitem__(key, value)
+        self._retained_bytes += cost - (old[-1] if old is not None else 0)
+
+    def __delitem__(self, key):
+        cost = self[key][-1]
+        super().__delitem__(key)
+        self._retained_bytes -= cost
+
+    def pop(self, key, *default):
+        if len(default) > 1:
+            raise TypeError("pop expected at most two arguments")
+        if key not in self:
+            if default:
+                return default[0]
+            raise KeyError(key)
+        value = self[key]
+        del self[key]
+        return value
+
+    def popitem(self, last=True):
+        if not self:
+            raise KeyError("dictionary is empty")
+        key = next(reversed(self)) if last else next(iter(self))
+        return key, self.pop(key)
+
+    def clear(self):
+        super().clear()
+        self._retained_bytes = 0
+
+    def update(self, *args, **kwargs):
+        if len(args) > 1:
+            raise TypeError("update expected at most one argument")
+        if args:
+            source = args[0]
+            entries = ((key, source[key]) for key in source.keys()) if hasattr(source, "keys") else source
+            for key, value in entries:
+                self[key] = value
+        for key, value in kwargs.items():
+            self[key] = value
+
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def __ior__(self, other):
+        self.update(other)
+        return self
+
+    def copy(self):
+        return type(self)(self)
+
+
+def _remember_canonical_plan(memo, key, result, raw, ranges, dependencies,
+                             references, parsed, expanded, depth):
+    # No full historical mutable value serialization. Shape is sufficient only
+    # on the explicit skipped branch; selected/full readers have different keys.
+    with memo["budget"]["lock"]:
+        compiler = _COMPILATION.get()
+        cb = compiler["bytes"] if compiler is not None else 0
+        cc = len(compiler["entries"]) if compiler is not None else 0
+        removable = memo["plans"].retained_bytes
+        if (memo["closed"] or memo["budget"]["bytes"] - removable + cb + len(raw) > MAX_LOGICAL_BYTES
+                or memo["budget"]["count"] - len(memo["plans"]) + cc >= MAX_BLOCKS):
+            return
+    payload = marshal.dumps((result.kind, result.keys, result.length), 4)
+    metadata = (ranges, dependencies, references, parsed, expanded, depth)
+    indexed = _member_span_leaf(raw, ranges)
+    cost = len(key[0]) + len(key[1]) + len(payload) + len(raw) + len(marshal.dumps(metadata, 4)) + _entry_index_cost(indexed)
+    with memo["budget"]["lock"]:
+        if memo["closed"] or key in memo["plans"]:
+            return
+        compiler = _COMPILATION.get()
+        cb = compiler["bytes"] if compiler is not None else 0
+        cc = len(compiler["entries"]) if compiler is not None else 0
+        if cost > MAX_LOGICAL_BYTES - cb:
+            return
+        while (memo["budget"]["bytes"] + cb + cost > MAX_LOGICAL_BYTES
+               or memo["budget"]["count"] + cc >= MAX_BLOCKS):
+            if not memo["plans"]:
+                return
+            _, old = memo["plans"].popitem(last=False)
+            memo["bytes"] -= old[-1]
+            memo["budget"]["bytes"] -= old[-1]
+            memo["budget"]["count"] -= 1
+        memo["plans"][key] = (payload, raw, ranges, dependencies, references,
+                               parsed, expanded, depth, indexed, cost)
+        memo["bytes"] += cost
+        memo["budget"]["bytes"] += cost
+        memo["budget"]["count"] += 1
+
+
+def decode_event_projection(path, descriptor, *, include_full_state=False, _identities=None):
+    if include_full_state or not isinstance(descriptor, dict) or descriptor.get(MARKER) != 1:
+        event = decode(path, descriptor, _identities=_identities)
+        if not isinstance(event, dict):
+            raise ValueError("event must be an object")
+        body = event.verified_body_digest if isinstance(event, DecodedEvent) else _hash(canonical({key: value for key, value in event.items() if key != "digest"}))
+        return VerifiedEventProjection(event, body, event.get("state") if include_full_state else None)
+    return _decode(path, descriptor, _identities=_identities, _selection="event")
 
 
 def canonical(value):
@@ -144,30 +322,165 @@ def _lock_store(fd, *, exclusive):
     raise ValueError("snapshot store is busy; bounded lock wait exhausted")
 
 
-def _read_at(parent, name, limit, *, _identity=None):
+def _file_fingerprint(st):
+    return (st.st_dev, st.st_ino, st.st_mode, st.st_nlink, st.st_size,
+            st.st_mtime_ns, st.st_ctime_ns)
+
+
+class _HandleChanged(ValueError):
+    pass
+
+
+def _read_at(parent, name, limit, *, _identity=None, _fd=None, _opened=None):
     if type(limit) is not int or limit < 0:
         raise ValueError("snapshot read byte budget exhausted")
-    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-    with os.fdopen(fd, "rb") as stream:
-        before = os.fstat(stream.fileno())
+    fd = _fd if _fd is not None else os.open(
+        name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    try:
+        before = os.fstat(fd)
+        if _opened is not None and _file_fingerprint(before) != _opened:
+            raise _HandleChanged("snapshot handle metadata changed")
         if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
             raise ValueError("snapshot file is not a bounded regular file")
-        raw = stream.read(before.st_size + 1)
-        after = os.fstat(stream.fileno())
+        # Positional reads give each occurrence a fresh independent read even
+        # when a scoped handle is reused. No shared seek offset is authoritative.
+        chunks, size = [], 0
+        while size <= before.st_size:
+            chunk = os.pread(fd, before.st_size + 1 - size, size)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size == before.st_size:
+                break
+        raw = chunks[0] if len(chunks) == 1 else b"".join(chunks)
+        after = os.fstat(fd)
         present = os.stat(name, dir_fd=parent, follow_symlinks=False)
-
-        def fingerprint(st):
-            return (st.st_dev, st.st_ino, st.st_mode, st.st_nlink, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
-
-        if (
-            len(raw) > limit
-            or fingerprint(before) != fingerprint(after)
-            or fingerprint(after) != fingerprint(present)
-        ):
+        if (len(raw) != before.st_size or len(raw) > limit
+                or _file_fingerprint(before) != _file_fingerprint(after)
+                or _file_fingerprint(after) != _file_fingerprint(present)):
             raise ValueError("snapshot file changed during read")
         if _identity is not None:
-            _identity.append(fingerprint(after))
+            _identity.append(_file_fingerprint(after))
         return raw
+    finally:
+        if _fd is None:
+            os.close(fd)
+
+
+_DIRECTORY_IDENTITY = ContextVar("journal_open_directory_identity", default=None)
+
+
+def _evict_handle(budget):
+    # Probation absorbs one-use scans. Frequently reused descriptors survive
+    # those scans, under the same shared 256-handle and byte/count ceilings.
+    for queue in ("handle_probation", "handle_protected"):
+        for owner in budget["memos"]:
+            selected = owner[queue]
+            if selected:
+                key, _ = selected.popitem(last=False)
+                fd, cost, _ = owner["handles"].pop(key)
+                os.close(fd)
+                owner["bytes"] -= cost
+                budget["bytes"] -= cost
+                budget["count"] -= 1
+                return True
+    return False
+
+
+def _read_block(parent, name, limit, memo, identity):
+    """Reuse only handles; re-read and revalidate current path identity each time."""
+    if memo is None:
+        return _read_at(parent, name, limit, _identity=identity)
+    with memo["budget"]["lock"]:
+        if memo["closed"]:
+            return _read_at(parent, name, limit, _identity=identity)
+        bound = _DIRECTORY_IDENTITY.get()
+        if bound is not None and bound[0] == parent and bound[2]:
+            directory_key = bound[1]
+        else:
+            directory = os.fstat(parent)
+            directory_key = (directory.st_dev, directory.st_ino)
+        key = (*directory_key, name)
+        handles = memo["handles"]
+        probation, protected = memo["handle_probation"], memo["handle_protected"]
+        compiler = _COMPILATION.get()
+        compiled_bytes = compiler["bytes"] if compiler is not None else 0
+        compiled_count = len(compiler["entries"]) if compiler is not None else 0
+        found = handles.get(key)
+        if found is None:
+            while (sum(len(item["handles"]) for item in memo["budget"]["memos"])
+                    >= min(256, MAX_BLOCKS)
+                    or memo["budget"]["count"] + compiled_count >= MAX_BLOCKS):
+                if not _evict_handle(memo["budget"]):
+                    break
+            # Include the two queue references in the existing byte accounting.
+            cost = len(name) + 96
+            if (not MAX_BLOCKS or memo["budget"]["count"] + compiled_count >= MAX_BLOCKS
+                    or memo["budget"]["bytes"] + compiled_bytes + cost > MAX_LOGICAL_BYTES):
+                return _read_at(parent, name, limit, _identity=identity)
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=parent)
+            except OSError as exc:
+                if exc.errno not in {errno.EMFILE, errno.ENFILE}:
+                    raise
+                while _evict_handle(memo["budget"]):
+                    pass
+                return _read_at(parent, name, limit, _identity=identity)
+            try:
+                found = (fd, cost, _file_fingerprint(os.fstat(fd)))
+            except BaseException:
+                os.close(fd)
+                raise
+            memo["bytes"] += cost
+            memo["budget"]["bytes"] += cost
+            memo["budget"]["count"] += 1
+            handles[key] = found
+            # Charged pure normalization records prior use, not file authority.
+            # Include retained subtrees: recurring object/list/map blocks must
+            # not restart probation merely because their proof is a plan rather
+            # than a leaf. The fresh open/read/fingerprint/hash still runs.
+            digest = name[:-5] if name.endswith(".json") else None
+            known = digest in memo["entries"] or (
+                (digest, False) in memo["plans"]
+                or (digest, True) in memo["plans"]
+                or (digest, "canonical-skip") in memo["plans"])
+            if known:
+                protected[key] = None
+            else:
+                probation[key] = None
+        else:
+            probation.pop(key, None)
+            protected.pop(key, None)
+            protected[key] = None
+        # Both ceilings are shared by nested owners. No extra history or ghost
+        # metadata is retained; the two existing queue references stay charged.
+        owners = memo["budget"]["memos"]
+        protected_count = (len(owners[0]["handle_protected"]) if len(owners) == 1 else
+                           sum(len(owner["handle_protected"]) for owner in owners))
+        while protected_count > min(192, max(0, MAX_BLOCKS * 3 // 4)):
+            for owner in owners:
+                if owner["handle_protected"]:
+                    demoted, _ = owner["handle_protected"].popitem(last=False)
+                    owner["handle_probation"][demoted] = None
+                    protected_count -= 1
+                    break
+        try:
+            return _read_at(parent, name, limit, _identity=identity,
+                            _fd=found[0], _opened=found[2])
+        except BaseException as exc:
+            handles.pop(key)
+            probation.pop(key, None)
+            protected.pop(key, None)
+            os.close(found[0])
+            memo["bytes"] -= found[1]
+            memo["budget"]["bytes"] -= found[1]
+            memo["budget"]["count"] -= 1
+            if isinstance(exc, _HandleChanged):
+                # A fresh open enforces any changed access/ACL permissions.
+                return _read_at(parent, name, limit, _identity=identity)
+            raise
 
 
 def read_regular(path, limit, *, _identities=None):
@@ -323,6 +636,161 @@ def compilation_scope():
     finally:
         _COMPILATION.reset(token)
 
+
+
+_NORMALIZATION = ContextVar("journal_legacy_normalization", default=None)
+_PURE_CACHE_LOCK = RLock()
+
+
+def _normalization_policy():
+    return (LEAF_BYTES, MAX_BLOCK_BYTES, MAX_LOGICAL_BYTES, MAX_BLOCKS, MAX_DEPTH)
+
+
+@contextmanager
+def normalization_scope():
+    """Fresh bounded pure codec1 normalization, never retained authority.
+
+    Every physical read/hash and per-reference charge still runs. The only binary
+    values loaded here are self-produced marshal bytes of the standard JSON
+    decoder's builtin values; no binary input is read from storage or a caller.
+    Nested scopes have fresh entries and share the same finite residency budget.
+    """
+    parent = _NORMALIZATION.get()
+    if parent is not None and parent["closed"]:
+        parent = None
+    budget = parent["budget"] if parent is not None else {"bytes": 0, "count": 0, "memos": [], "lock": _PURE_CACHE_LOCK}
+    memo = {"entries": {}, "plans": _PlanCache(), "handles": OrderedDict(), "handle_probation": OrderedDict(), "handle_protected": OrderedDict(), "bytes": 0, "budget": budget, "policy": _normalization_policy(), "closed": False}
+    with budget["lock"]:
+        budget["memos"].append(memo)
+    token = _NORMALIZATION.set(memo)
+    try:
+        yield
+    finally:
+        try:
+            with budget["lock"]:
+                budget["bytes"] -= memo["bytes"]
+                budget["count"] -= len(memo["entries"]) + len(memo["handles"]) + len(memo["plans"])
+                for fd, _, _ in memo["handles"].values():
+                    os.close(fd)
+                memo["handles"].clear()
+                memo["handle_probation"].clear()
+                memo["handle_protected"].clear()
+                memo["entries"].clear()
+                memo["plans"].clear()
+                memo["bytes"] = 0
+                memo["closed"] = True
+                budget["memos"][:] = [item for item in budget["memos"] if item is not memo]
+        finally:
+            _NORMALIZATION.reset(token)
+
+
+def _normalization_memo():
+    memo = _NORMALIZATION.get()
+    if memo is not None and memo["closed"]:
+        return None
+    if memo is not None:
+        with memo["budget"]["lock"]:
+            policy = _normalization_policy()
+            compiler = _COMPILATION.get()
+            compiled_bytes = compiler["bytes"] if compiler is not None else 0
+            compiled_count = len(compiler["entries"]) if compiler is not None else 0
+            if (any(item["policy"] != policy for item in memo["budget"]["memos"])
+                    or memo["budget"]["bytes"] + compiled_bytes > MAX_LOGICAL_BYTES
+                    or memo["budget"]["count"] + compiled_count > MAX_BLOCKS):
+                # A nested policy change cannot leave outer optional residency above
+                # the new bound. These are pure caches, so discard all active entries.
+                for item in memo["budget"]["memos"]:
+                    item["entries"].clear()
+                    item["plans"].clear()
+                    for fd, _, _ in item["handles"].values():
+                        os.close(fd)
+                    item["handles"].clear()
+                    item["handle_probation"].clear()
+                    item["handle_protected"].clear()
+                    item["bytes"] = 0
+                    item["policy"] = policy
+                memo["budget"]["bytes"] = memo["budget"]["count"] = 0
+                if compiler is not None:
+                    compiler["entries"].clear()
+                    compiler["bytes"] = 0
+    return memo
+
+
+def _remember_plan(memo, key, result, raw, members, dependencies,
+                   references, parsed, expanded, depth, *, _ranges=None):
+    """Retain pure compilation only; current filesystem proofs never enter it."""
+    # Admission is optional. Large, changing event ancestors must not spend
+    # repeated serialization work or evict common smaller subtrees. Refuse
+    # before constructing payloads; the ordinary decoder remains authoritative.
+    if parsed > LEAF_BYTES * 8 or raw is None and members is None:
+        return raw
+    if raw is None:
+        raw = b"{" + b",".join(members[name] for name in sorted(members)) + b"}"
+    payload = marshal.dumps(result, 4)
+    # One canonical backing buffer plus offsets; no per-member byte copies.
+    # Ordinary callers still reconstruct a fresh independent mutable value.
+    member_items = _ranges
+    if member_items is None and members is not None:
+        member_items = _canonical_members(result, raw)
+    metadata = (member_items, dependencies, references, parsed, expanded, depth)
+    indexed = _member_span_leaf(raw, member_items)
+    cost = len(key[0]) + len(payload) + len(raw) + len(marshal.dumps(metadata, 4)) + _entry_index_cost(indexed)
+    with memo["budget"]["lock"]:
+        if memo["closed"] or key in memo["plans"]:
+            return raw
+        compiler = _COMPILATION.get()
+        compiled_bytes = compiler["bytes"] if compiler is not None else 0
+        compiled_count = len(compiler["entries"]) if compiler is not None else 0
+        plan_allowance = MAX_LOGICAL_BYTES // 4
+        if cost > plan_allowance:
+            return raw
+        plan_bytes = memo["plans"].retained_bytes
+        while (plan_bytes + cost > plan_allowance
+               or memo["budget"]["bytes"] + compiled_bytes + cost > MAX_LOGICAL_BYTES
+               or memo["budget"]["count"] + compiled_count >= MAX_BLOCKS):
+            if not memo["plans"]:
+                return raw
+            _, old = memo["plans"].popitem(last=False)
+            memo["bytes"] -= old[-1]
+            memo["budget"]["bytes"] -= old[-1]
+            memo["budget"]["count"] -= 1
+            plan_bytes -= old[-1]
+        memo["plans"][key] = (payload, raw, member_items, dependencies,
+                               references, parsed, expanded, depth, indexed, cost)
+        memo["bytes"] += cost
+        memo["budget"]["bytes"] += cost
+        memo["budget"]["count"] += 1
+    return raw
+
+
+def _normalization_resident():
+    memo = _normalization_memo()
+    return (memo["budget"]["bytes"], memo["budget"]["count"]) if memo is not None else (0, 0)
+
+
+def _canonical_members(value, raw):
+    """Offsets into self-produced canonical dict bytes, never external framing."""
+    text = raw.decode("utf-8")
+    decoder = json.JSONDecoder()
+    position, byte_position = 1, 1
+    members = []
+    for key in sorted(value):
+        start = position
+        observed, end = decoder.raw_decode(text, position)
+        if observed != key or text[end:end + 1] != ":":
+            return None
+        _, position = decoder.raw_decode(text, end + 1)
+        size = len(text[start:position].encode("utf-8"))
+        members.append((key, byte_position, byte_position + size))
+        byte_position += size
+        if text[position:position + 1] == ",":
+            position += 1
+            byte_position += 1
+        elif text[position:] != "}":
+            return None
+    if text[position:] != "}" or byte_position != len(raw) - 1:
+        return None
+    return tuple(members)
 
 def encode(value, *, codec=None):
     selected = codec_for(value) if codec is None else codec
@@ -524,23 +992,24 @@ def encode(value, *, codec=None):
         if len(raw_item) < 2048:
             return compile_node(item, depth, raw_item)
         key = _hash(raw_item)
-        found = memo["entries"].get(key)
-        if found is not None:
-            # Keep recently useful leaf blocks while old full-state entries
-            # leave the same aggregate physical-byte allowance first.
-            del memo["entries"][key]
-            memo["entries"][key] = found
-            node_raw, child_blocks, child_refs, child_bytes, child_depth = found
-            if (references + child_refs > MAX_BLOCKS or expansion_bytes + child_bytes > MAX_LOGICAL_BYTES
-                    or depth + child_depth > MAX_DEPTH):
-                raise ValueError("compiled subtree exceeds enclosing snapshot bounds")
-            references += child_refs
-            expansion_bytes += child_bytes
-            seen_depth(depth + child_depth)
-            blocks.update(child_blocks)
-            if len(blocks) > MAX_BLOCKS:
-                raise ValueError("snapshot exceeds its block count bound")
-            return json.loads(node_raw)
+        with _PURE_CACHE_LOCK:
+            found = memo["entries"].get(key)
+            if found is not None:
+                # Keep recently useful leaf blocks while old full-state entries
+                # leave the same aggregate physical-byte allowance first.
+                del memo["entries"][key]
+                memo["entries"][key] = found
+                node_raw, child_blocks, child_refs, child_bytes, child_depth = found
+                if (references + child_refs > MAX_BLOCKS or expansion_bytes + child_bytes > MAX_LOGICAL_BYTES
+                        or depth + child_depth > MAX_DEPTH):
+                    raise ValueError("compiled subtree exceeds enclosing snapshot bounds")
+                references += child_refs
+                expansion_bytes += child_bytes
+                seen_depth(depth + child_depth)
+                blocks.update(child_blocks)
+                if len(blocks) > MAX_BLOCKS:
+                    raise ValueError("snapshot exceeds its block count bound")
+                return json.loads(node_raw)
         before_refs, before_bytes = references, expansion_bytes
         mark = [depth]
         depth_marks.append(mark)
@@ -554,15 +1023,21 @@ def encode(value, *, codec=None):
             return result  # Optional compile reuse cannot narrow encoding.
         node_raw = canonical(result)
         cost = len(node_raw) + sum(map(len, child_blocks.values()))
-        if cost <= MAX_LOGICAL_BYTES:
-            while (memo["bytes"] + cost > MAX_LOGICAL_BYTES
-                   or len(memo["entries"]) >= MAX_BLOCKS):
-                oldest = next(iter(memo["entries"]))
-                old_node, old_blocks, *_ = memo["entries"].pop(oldest)
-                memo["bytes"] -= len(old_node) + sum(map(len, old_blocks.values()))
-            memo["entries"][key] = (node_raw, child_blocks, references - before_refs,
-                                    expansion_bytes - before_bytes, mark[0] - depth)
-            memo["bytes"] += cost
+        with _PURE_CACHE_LOCK:
+            if key in memo["entries"]:
+                return result
+            normal_bytes, normal_count = _normalization_resident()
+            if cost <= MAX_LOGICAL_BYTES - normal_bytes:
+                while (memo["bytes"] + cost + normal_bytes > MAX_LOGICAL_BYTES
+                       or len(memo["entries"]) + normal_count >= MAX_BLOCKS):
+                    if not memo["entries"]:
+                        return result
+                    oldest = next(iter(memo["entries"]))
+                    old_node, old_blocks, *_ = memo["entries"].pop(oldest)
+                    memo["bytes"] -= len(old_node) + sum(map(len, old_blocks.values()))
+                memo["entries"][key] = (node_raw, child_blocks, references - before_refs,
+                                        expansion_bytes - before_bytes, mark[0] - depth)
+                memo["bytes"] += cost
         return result
 
     root = visit(value, raw_item=raw[:-1])
@@ -781,7 +1256,7 @@ def _canonical_json(raw):
     return value
 
 
-def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None):
+def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None, _raw=None):
     if kind == "zleaf":
         if not isinstance(body, str):
             raise ValueError("invalid compressed snapshot leaf")
@@ -797,11 +1272,14 @@ def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None):
         body = _canonical_json(raw)
         size = len(raw)
     else:
-        size = len(canonical(body))
+        raw = canonical(body)
+        size = len(raw)
     if size > min(LEAF_BYTES, limit):
         raise ValueError("snapshot leaf exceeds byte bound")
     if _charge is not None:
         _charge.append(size)
+    if _raw is not None:
+        _raw.append(raw)
     return body
 
 
@@ -830,7 +1308,580 @@ def _block_node(raw, *, limit):
     return node, len(data)
 
 
+def _indexed_leaf(raw, ranges):
+    """Pure field references owned and charged by their existing cache entry."""
+    if ranges is None:
+        return "leaf", raw, ranges
+    fields = tuple((key, raw, None, start, end) for key, start, end in ranges)
+    return "leaf", raw, ranges, fields
+
+
+def _summarized_leaf(raw, ranges):
+    """Derive pure byte/width metadata from already authenticated leaf framing.
+
+    Two-member maps need at most two width comparisons, so retain their smaller
+    index representation. Larger maps amortize an immutable summary over uses.
+    This changes representation only; all retention admission limits still apply.
+    """
+    stream = _indexed_leaf(raw, ranges)
+    if ranges is None or len(ranges) <= 2:
+        return stream
+    summary = (len(raw), len(ranges), max(end - start + 1 for _, start, end in ranges))
+    return (*stream, summary)
+
+
+class _MemberParts(tuple):
+    """Owned immutable member bytes; the existing entry charges every object."""
+    __slots__ = ()
+
+
+def _member_span_leaf(raw, ranges):
+    """Prepare repeated member joins without retaining physical authority.
+
+    Keep small leaves' direct backing references. For summarized maps, each
+    canonical member is copied once into owned immutable bytes. The entry still
+    owns its complete raw leaf; the copied payload, object headers, new offsets
+    and all tuple slots are additional residency, admitted by the same owner.
+    """
+    if ranges is None or len(ranges) <= 2:
+        return _summarized_leaf(raw, ranges)
+    fields = _MemberParts((key, raw[start:end], None, 0, end - start)
+                          for key, start, end in ranges)
+    summary = (len(raw), len(ranges), max(end - start + 1 for _, start, end in ranges))
+    return "leaf", raw, ranges, fields, summary
+
+
+def _leaf_summary(stream):
+    if len(stream) == 5:
+        return stream[4]
+    raw, ranges = stream[1:3]
+    return (len(raw), len(ranges),
+            max((end - start + 1 for _, start, end in ranges), default=1))
+
+
+def _index_cost(stream):
+    # Key/range objects already belong to the existing entry. Charge every new
+    # tuple/reference slot and summary integer conservatively, including interned
+    # integers; owned member buffers and their offsets are charged below.
+    cost = sys.getsizeof(stream)
+    if len(stream) >= 4:
+        cost += sys.getsizeof(stream[3]) + sum(map(sys.getsizeof, stream[3]))
+    if len(stream) == 5:
+        cost += sys.getsizeof(stream[4]) + sum(map(sys.getsizeof, stream[4]))
+    if len(stream) >= 4 and type(stream[3]) is _MemberParts:
+        # Distinct bytes own their payload/header, even when contents repeat.
+        # New offset integers are charged conservatively, including interned 0.
+        cost += sum(sys.getsizeof(raw) + sys.getsizeof(start) + sys.getsizeof(end)
+                    for _, raw, _, start, end in stream[3])
+    return cost
+
+
+def _entry_index_cost(stream):
+    # Both retained leaf and plan tuples gained exactly one reference slot.
+    return _index_cost(stream) + sys.getsizeof((None,)) - sys.getsizeof(())
+
+
+def _stream_index(node):
+    """Transfer immutable member references, without copying canonical bytes."""
+    kind, data, extra = node[:3]
+    if kind == "leaf":
+        if len(node) >= 4:
+            return node[3]
+        if extra is None:
+            raise ValueError("snapshot map has no canonical member framing")
+        return [(key, data, None, start, end) for key, start, end in extra]
+    if kind == "cached":
+        if extra is None:
+            raise ValueError("cached snapshot map has no member framing")
+        return [(key, raw, None, 0, len(raw)) for key, raw in extra]
+    if kind == "members":
+        return data
+    if kind == "map-spans":
+        return [field for child in data for field in _stream_index(child)]
+    if kind == "map-chunks":
+        return extra
+    raise ValueError("snapshot map has invalid canonical type")
+
+
+def _stream_member(key, encoded, child):
+    yield encoded
+    yield b":"
+    yield from _stream_value(child)
+
+
+def _stream_members(node):
+    """Sorted immutable member views for top-level event digest selection."""
+    for key, raw, child, start, end in _stream_index(node):
+        if child is None:
+            yield key, (memoryview(raw)[start:end],)
+        else:
+            yield key, _stream_member(key, raw, child)
+
+
+def _stream_interior(parts):
+    # Retain at most one chunk to remove the two proven container delimiters.
+    first = True
+    previous = None
+    for part in parts:
+        if not part:
+            continue
+        if first:
+            part = memoryview(part)[1:]
+            first = False
+        if previous is not None:
+            yield previous
+        previous = part
+    if previous is None:
+        raise ValueError("empty canonical container stream")
+    yield memoryview(previous)[:-1]
+
+
+def _stream_tokens(node):
+    """One nonrecursive frame; child tuples are consumed by the outer walk."""
+    kind, data, extra = node[:3]
+    interior = kind == "interior"
+    if interior:
+        kind, data, extra = data[:3]
+    if kind in {"leaf", "cached"}:
+        yield memoryview(data)[1:-1] if interior else data
+    elif kind == "map-chunks":
+        for index, part in enumerate(data):
+            start = 1 if interior and index == 0 else 0
+            end = len(part) - (1 if interior and index == len(data) - 1 else 0)
+            yield memoryview(part)[start:end]
+    elif kind == "members":
+        if not interior:
+            yield b"{"
+        # Coalesce here, before member tokens traverse the outer generator
+        # layers. Retain only one leaf-sized byte batch, never a whole state.
+        pending, size = [], 0
+        index = 0
+        while index < len(data):
+            if index:
+                if size == LEAF_BYTES:
+                    yield pending[0] if len(pending) == 1 else b"".join(pending)
+                    pending, size = [], 0
+                pending.append(b",")
+                size += 1
+            _, raw, child, start, end = data[index]
+            index += 1
+            if child is None:
+                # Equality of bytes is insufficient: only adjacent offsets in
+                # the same authenticated backing buffer may share one span.
+                while index < len(data):
+                    _, next_raw, next_child, next_start, next_end = data[index]
+                    if next_child is not None or next_raw is not raw or next_start != end + 1:
+                        break
+                    end = next_end
+                    index += 1
+                length = end - start
+                if size + length > LEAF_BYTES:
+                    if pending:
+                        yield pending[0] if len(pending) == 1 else b"".join(pending)
+                        pending, size = [], 0
+                part = memoryview(raw)[start:end]
+                if length >= LEAF_BYTES:
+                    yield part
+                else:
+                    pending.append(part)
+                    size += length
+            else:
+                if pending:
+                    yield pending[0] if len(pending) == 1 else b"".join(pending)
+                    pending, size = [], 0
+                yield raw
+                yield b":"
+                yield child
+        if pending:
+            yield pending[0] if len(pending) == 1 else b"".join(pending)
+        if not interior:
+            yield b"}"
+    elif kind in {"array", "list", "text", "map-spans"}:
+        if not interior:
+            yield b"{" if kind == "map-spans" else b'"' if kind == "text" else b"["
+        first = True
+        for child in data:
+            if not first and kind != "text":
+                yield b","
+            first = False
+            yield ("interior", child, None) if kind in {"list", "text", "map-spans"} else child
+        if not interior:
+            yield b"}" if kind == "map-spans" else b'"' if kind == "text" else b"]"
+    else:
+        raise ValueError("snapshot has invalid canonical stream type")
+
+
+def _stream_value(node):
+    # Stack depth is already bounded by physical traversal. Map routing layers
+    # were flattened by that traversal, so they cause no generator re-entry.
+    stack = [iter(_stream_tokens(node))]
+    while stack:
+        part = next(stack[-1], None)
+        if part is None:
+            stack.pop()
+        elif isinstance(part, tuple):
+            stack.append(iter(_stream_tokens(part)))
+        else:
+            yield part
+
+
+def _join_canonical(parts, size):
+    if size > MAX_LOGICAL_BYTES:
+        raise ValueError("snapshot logical content exceeds its byte bound")
+    return b"".join(parts)
+
+
+def _pack_stream(node):
+    """Compile one bounded canonical buffer and member offsets in one walk."""
+    if node[0] in {"leaf", "cached"}:
+        raw = node[1]
+        if node[0] == "leaf" or node[2] is None:
+            return raw, node[2]
+        position, ranges = 1, []
+        for key, member in node[2]:
+            ranges.append((key, position, position + len(member)))
+            position += len(member) + 1
+        return raw, tuple(ranges)
+    if node[0] == "map-spans":
+        return _pack_map(node[1])
+    if node[0] == "map-chunks":
+        return _pack_stream(("members", node[2], None))
+    if node[0] != "members":
+        kind, children, _ = node[:3]
+        if all(child[0] == "leaf" for child in children):
+            if kind in {"list", "text"}:
+                chunks = [memoryview(child[1])[1:-1] for child in children]
+            else:
+                chunks = [child[1] for child in children]
+            separator = b"" if kind == "text" else b","
+            size = 2 + sum(map(len, chunks)) + max(0, len(chunks) - 1) * len(separator)
+            if size > MAX_LOGICAL_BYTES:
+                raise ValueError("snapshot logical content exceeds its byte bound")
+            middle = separator.join(chunks)
+            return ((b'"' + middle + b'"') if kind == "text" else
+                    b"[" + middle + b"]"), None
+        parts = list(_stream_value(node))
+        return _join_canonical(parts, sum(map(len, parts))), None
+    parts = [b"{"]
+    size, ranges = 1, []
+    for key, raw, child, start, end in node[1]:
+        if ranges:
+            parts.append(b",")
+            size += 1
+        begin = size
+        if child is None:
+            parts.append(memoryview(raw)[start:end])
+            size += end - start
+        else:
+            parts.extend((raw, b":"))
+            size += len(raw) + 1
+            if child[0] == "leaf":
+                parts.append(child[1])
+                size += len(child[1])
+            else:
+                for part in _stream_value(child):
+                    parts.append(part)
+                    size += len(part)
+        ranges.append((key, begin, size))
+    parts.append(b"}")
+    return _join_canonical(parts, size + 1), tuple(ranges)
+
+
+def _map_stream(children, *, _budget=None):
+    """Borrow whole ordered map interiors; retain no cross-read authority.
+
+    Disjoint sorted child key ranges already prove canonical ordering. Keep
+    references to their authenticated buffers instead of expanding every member
+    into a Python token recipe only to coalesce it again at the digest sink.
+    Interleaved or structured children keep the complete member-order path.
+    """
+    if all(child[0] == "leaf" and child[2] is not None for child in children):
+        ordered = sorted((child for child in children if child[2]),
+                         key=lambda child: child[2][0][0])
+        if all(left[2][-1][0] < right[2][0][0]
+               for left, right in zip(ordered, ordered[1:])):
+            return "map-spans", tuple(ordered), None
+    fields = tuple(sorted(chain.from_iterable(map(_stream_index, children)),
+                          key=itemgetter(0)))
+    owned_parts = all(len(child) >= 4 and type(child[3]) is _MemberParts
+                      for child in children)
+    if _budget is not None and all(child[0] == "leaf" for child in children):
+        # One-use canonical payload, never a resident plan. Reserve the complete
+        # map before allocating its first leaf-sized chunk. The monotonic ledger
+        # is shared by every map in this descriptor, including live ancestors.
+        # Child lengths already include their braces and internal commas.
+        # Ordering interleaved disjoint keys cannot change member byte lengths.
+        # Fold summaries over children, not every field in each retained leaf.
+        interior_bytes, nonempty, width = 0, 0, 1
+        for child in children:
+            child_bytes, member_count, child_width = _leaf_summary(child)
+            if member_count:
+                interior_bytes += child_bytes - 2
+                nonempty += 1
+                width = max(width, child_width)
+        size = 2 + interior_bytes + max(0, nonempty - 1)
+        if size <= _budget[0] - _budget[1] and width <= LEAF_BYTES:
+            _budget[1] += size
+            # Largest member width determines a conservative batch cardinality.
+            # Each group adds one leading delimiter and at most count-1 commas;
+            # the final brace is its own one-byte chunk. No join exceeds LEAF.
+            count = max(1, LEAF_BYTES // width)
+            chunks = []
+            for offset in range(0, len(fields), count):
+                group = fields[offset:offset + count]
+                parts = (map(itemgetter(1), group) if owned_parts else
+                         (memoryview(raw)[start:end] for _, raw, _, start, end in group))
+                middle = b",".join(parts)
+                chunks.append((b"{" if offset == 0 else b",") + middle)
+            if not fields:
+                chunks.append(b"{")
+            chunks.append(b"}")
+            return "map-chunks", tuple(chunks), fields
+    return "members", fields, None
+
+
+def _pack_map(children):
+    """Join disjoint ordered map spans directly, with an interleaving fallback."""
+    nonempty = [child for child in children if child[2]]
+    if not nonempty:
+        return b"{}", ()
+    nonempty.sort(key=lambda child: child[2][0][0])
+    if all(left[2][-1][0] < right[2][0][0]
+           for left, right in zip(nonempty, nonempty[1:])):
+        parts, ranges, size = [b"{"], [], 1
+        for child in nonempty:
+            if ranges:
+                parts.append(b",")
+                size += 1
+            raw, child_ranges = child[1:3]
+            offset = size - 1
+            ranges.extend((key, start + offset, end + offset)
+                          for key, start, end in child_ranges)
+            parts.append(memoryview(raw)[1:-1])
+            size += len(raw) - 2
+        parts.append(b"}")
+        return _join_canonical(parts, size + 1), tuple(ranges)
+    fields = []
+    for child in children:
+        fields.extend(_stream_index(child))
+    fields.sort(key=itemgetter(0))
+    return _pack_stream(("members", fields, None))
+
+
+def _plan_preflight(memo, references, parsed, expanded):
+    """Check optional bounded residency before compiling canonical buffers."""
+    if references < 4 or max(parsed, expanded) > LEAF_BYTES * 8:
+        return False
+    with memo["budget"]["lock"]:
+        compiler = _COMPILATION.get()
+        compiled_bytes = compiler["bytes"] if compiler is not None else 0
+        compiled_count = len(compiler["entries"]) if compiler is not None else 0
+        removable = memo["plans"].retained_bytes
+        remaining_count = memo["budget"]["count"] - len(memo["plans"]) + compiled_count
+        remaining_bytes = memo["budget"]["bytes"] - removable + compiled_bytes
+        # This is only a conservative early decline, never a grant. The exact
+        # payload/buffer/offset/dependency cost is checked again on admission.
+        return (not memo["closed"] and remaining_count < MAX_BLOCKS
+                and remaining_bytes + expanded < MAX_LOGICAL_BYTES
+                and expanded <= MAX_LOGICAL_BYTES // 4)
+
+
+def _stream_batches(parts):
+    """Coalesce small authenticated chunks with one leaf-sized transient buffer."""
+    pending, size = [], 0
+    for part in parts:
+        if not part:
+            continue
+        if len(part) >= LEAF_BYTES:
+            if pending:
+                yield b"".join(pending)
+                pending, size = [], 0
+            yield part
+            continue
+        if size + len(part) > LEAF_BYTES:
+            yield b"".join(pending)
+            pending, size = [], 0
+        pending.append(part)
+        size += len(part)
+    if pending:
+        yield b"".join(pending)
+
+
+def _authenticate_stream(value, stream, descriptor):
+    """Hash canonical spans with one indexed walk and one bounded byte batch."""
+    digest = hashlib.sha256()
+    total = 0
+    event = (isinstance(value, dict) and "state" in value and "digest" in value
+             and "schema_version" in value)
+    body = hashlib.sha256() if event else None
+    pending, size = [], 0
+    included = True
+
+    def consume(chunk, include_body=True):
+        nonlocal total
+        total += len(chunk)
+        if total > descriptor["logical_bytes"] or total > MAX_LOGICAL_BYTES:
+            raise ValueError("snapshot logical content exceeds its byte bound")
+        digest.update(chunk)
+        if include_body and body is not None:
+            body.update(chunk)
+
+    def flush():
+        nonlocal pending, size
+        if pending:
+            consume(b"".join(pending), included)
+            pending, size = [], 0
+
+    def emit(part):
+        nonlocal size
+        length = len(part)
+        if not length:
+            return
+        if length >= LEAF_BYTES:
+            flush()
+            consume(part, included)
+        else:
+            if size + length > LEAF_BYTES:
+                flush()
+            pending.append(part)
+            size += length
+
+    def walk(node):
+        # Frames index children in their admitted graph rather than eagerly
+        # pushing every child. Interior wrappers occupy the same frame, so
+        # stack depth cannot exceed the physical traversal's existing bound.
+        stack = [[node, -1, False]]
+        while stack:
+            frame = stack[-1]
+            kind, data, _ = frame[0][:3]
+            if kind == "interior":
+                frame[0], frame[2] = data, True
+                continue
+            interior = frame[2]
+            if kind in {"leaf", "cached"}:
+                emit(memoryview(data)[1:-1] if interior else data)
+                stack.pop()
+                continue
+            if kind == "map-chunks":
+                index = max(0, frame[1])
+                if index == len(data):
+                    stack.pop()
+                    continue
+                part = data[index]
+                start = 1 if interior and index == 0 else 0
+                end = len(part) - (1 if interior and index == len(data) - 1 else 0)
+                emit(memoryview(part)[start:end])
+                frame[1] = index + 1
+                continue
+            if kind not in {"members", "array", "list", "text", "map-spans"}:
+                raise ValueError("snapshot has invalid canonical stream type")
+            if frame[1] < 0:
+                if not interior:
+                    emit(b"{" if kind in {"members", "map-spans"} else b'"' if kind == "text" else b"[")
+                frame[1] = 0
+            index = frame[1]
+            if index == len(data):
+                if not interior:
+                    emit(b"}" if kind in {"members", "map-spans"} else b'"' if kind == "text" else b"]")
+                stack.pop()
+                continue
+            if kind == "members":
+                # Batch member fragments before sink dispatch: interleaved maps
+                # must not call emit separately for every field and separator.
+                # Payload and fragment references are bounded by LEAF_BYTES;
+                # a large existing span takes the uncopied direct path below.
+                parts, batch_bytes, next_index = [], 0, index
+                while next_index < len(data):
+                    _, raw, child, start, end = data[next_index]
+                    after = next_index + 1
+                    if child is None:
+                        while after < len(data):
+                            _, next_raw, next_child, next_start, next_end = data[after]
+                            if next_child is not None or next_raw is not raw or next_start != end + 1:
+                                break
+                            end = next_end
+                            after += 1
+                        width = end - start
+                    elif child[0] in {"leaf", "cached"}:
+                        width = len(raw) + 1 + len(child[1])
+                    else:
+                        break
+                    needed = width + (1 if next_index else 0)
+                    if batch_bytes + needed > LEAF_BYTES:
+                        break
+                    if next_index:
+                        parts.append(b",")
+                    if child is None:
+                        parts.append(memoryview(raw)[start:end])
+                    else:
+                        parts.extend((raw, b":", child[1]))
+                    batch_bytes += needed
+                    next_index = after
+                if parts:
+                    frame[1] = next_index
+                    emit(b"".join(parts))
+                    continue
+            if index and kind != "text":
+                emit(b",")
+            if kind == "members":
+                _, raw, child, start, end = data[index]
+                index += 1
+                if child is None:
+                    # Coalesce only neighboring ranges in the very same
+                    # authenticated backing buffer; equal bytes are not enough.
+                    while index < len(data):
+                        _, next_raw, next_child, next_start, next_end = data[index]
+                        if next_child is not None or next_raw is not raw or next_start != end + 1:
+                            break
+                        end = next_end
+                        index += 1
+                    frame[1] = index
+                    emit(memoryview(raw)[start:end])
+                else:
+                    frame[1] = index
+                    emit(raw)
+                    emit(b":")
+                    stack.append([child, -1, False])
+            else:
+                frame[1] = index + 1
+                stack.append([data[index], -1, kind in {"list", "text", "map-spans"}])
+
+    if event:
+        consume(b"{")
+        first = first_body = True
+        for key, raw, child, start, end in _stream_index(stream):
+            if not first:
+                consume(b",", False)
+            first = False
+            included = key != "digest"
+            if included and not first_body:
+                body.update(b",")
+            if included:
+                first_body = False
+            if child is None:
+                emit(memoryview(raw)[start:end])
+            else:
+                emit(raw)
+                emit(b":")
+                walk(child)
+            # Inclusion changes only between top-level members. Never carry
+            # pending bytes across that boundary or the two digest comma rules.
+            flush()
+        consume(b"}")
+    else:
+        walk(stream)
+        flush()
+    consume(b"\n", False)
+    if total != descriptor["logical_bytes"] or digest.hexdigest() != descriptor["sha256"]:
+        raise ValueError("snapshot logical content digest or size mismatch")
+    return body.hexdigest() if body is not None else None
+
+
 def decode(path, descriptor, *, _physical=None, _identities=None):
+    return _decode(path, descriptor, _physical=_physical, _identities=_identities)
+
+
+def _decode(path, descriptor, *, _physical=None, _identities=None, _selection=None):
     if not isinstance(descriptor, dict) or MARKER not in descriptor:
         return descriptor
     if (
@@ -853,26 +1904,88 @@ def decode(path, descriptor, *, _physical=None, _identities=None):
     expanded = 0
     expanded_bytes = 0
     parsed_bytes = 0
+    legacy = descriptor[MARKER] == 1
+    memo = _normalization_memo() if legacy else None
+    physical_trace, depth_trace = [], []
+    compaction_budget = [min(descriptor["logical_bytes"], MAX_LOGICAL_BYTES), 0]
 
-    def visit(digest, depth=0):
+    def visit(digest, depth=0, need_members=False, selection=None):
         nonlocal expanded, expanded_bytes, parsed_bytes
+        before_refs, before_parsed, before_expanded = expanded, parsed_bytes, expanded_bytes
+        trace_start, depth_start = len(physical_trace), len(depth_trace)
+        depth_trace.append(depth)
         expanded += 1
         if depth > MAX_DEPTH or expanded > MAX_BLOCKS:
             raise ValueError("snapshot expansion exceeds depth or reference bound")
+        retained = None
+        physical_raw = None
         if isinstance(digest, str):
             if not DIGEST.fullmatch(digest) or digest in active:
                 raise ValueError("invalid or cyclic snapshot block reference")
             active.add(digest)
+            physical_trace.append(digest)
             if digest not in cache:
                 identity = []
-                raw = _read_at(block_fd, digest + ".json", MAX_BLOCK_BYTES, _identity=identity)
+                raw = _read_block(block_fd, digest + ".json", MAX_BLOCK_BYTES, memo, identity)
                 if _identities is not None:
                     _identities[directory / (digest + ".json")] = identity[0]
                 if _hash(raw) != digest:
                     raise ValueError("snapshot block digest mismatch")
                 cache[digest] = raw
-            # Only authenticated bytes are cached, never decoded mutable nodes.
-            node, charge = _block_node(cache[digest], limit=MAX_LOGICAL_BYTES - parsed_bytes)
+            # Exact current bytes are authenticated above even when pure leaf
+            # normalization can be reused. No physical proof is memoized.
+            physical_raw = cache[digest]
+            plan = None
+            if memo is not None:
+                with memo["budget"]["lock"]:
+                    key = (digest, "canonical-skip") if selection == "skip" else (digest, need_members)
+                    if selection not in {None, "skip"}:
+                        key = (digest, "projection-uncached")
+                    plan = memo["plans"].pop(key, None)
+                    if plan is not None:
+                        memo["plans"][key] = plan
+            if plan is not None:
+                payload, logical, member_items, dependencies, refs, parsed, content, height, indexed, _ = plan
+                if (depth + height > MAX_DEPTH or expanded + refs - 1 > MAX_BLOCKS
+                        or parsed_bytes + parsed > MAX_LOGICAL_BYTES
+                        or expanded_bytes + content > MAX_LOGICAL_BYTES):
+                    raise ValueError("snapshot expansion exceeds cached subtree bounds")
+                if any(item != digest and item in active for item in dependencies):
+                    raise ValueError("invalid or cyclic snapshot block reference")
+                # The plan authenticates no file. Every dependency is freshly
+                # read/hashed once in this descriptor, exactly as the raw cache
+                # did on the ordinary recursive path.
+                for item in dependencies:
+                    if item not in cache:
+                        identity = []
+                        raw = _read_block(block_fd, item + ".json", MAX_BLOCK_BYTES, memo, identity)
+                        if _identities is not None:
+                            _identities[directory / (item + ".json")] = identity[0]
+                        if _hash(raw) != item:
+                            raise ValueError("snapshot block digest mismatch")
+                        cache[item] = raw
+                expanded += refs - 1
+                parsed_bytes += parsed
+                expanded_bytes += content
+                physical_trace.extend(dependencies[1:])
+                depth_trace.append(depth + height)
+                if selection == "skip":
+                    shape, keys, length = marshal.loads(payload)
+                    result = _Selection(None, shape, keys, length)
+                else:
+                    result = marshal.loads(payload)
+                members = None
+                active.remove(digest)
+                stream = indexed
+                return result, logical, members, stream
+            retained = memo["entries"].get(digest) if memo is not None else None
+            if retained is not None:
+                payload, leaf_raw, member_ranges, charge, _cost, shape, indexed = retained
+                if charge > MAX_LOGICAL_BYTES - parsed_bytes:
+                    raise ValueError("snapshot block parsing work exceeds byte bound")
+                node = ["leaf", shape if selection == "skip" else marshal.loads(payload)]
+            else:
+                node, charge = _block_node(physical_raw, limit=MAX_LOGICAL_BYTES - parsed_bytes)
             parsed_bytes += charge
         else:
             node = digest
@@ -880,76 +1993,205 @@ def decode(path, descriptor, *, _physical=None, _identities=None):
             raise ValueError("invalid snapshot block shape")
         kind, body = node
         if kind in {"leaf", "zleaf"}:
+            admitted_index = None
             charge = []
-            body = _leaf(kind, body, _charge=charge)
-            leaf_bytes = charge[0]
+            raw_leaf = [] if legacy else None
+            if retained is not None:
+                leaf_bytes = len(leaf_raw)
+                if leaf_bytes > LEAF_BYTES:
+                    raise ValueError("snapshot leaf exceeds byte bound")
+            else:
+                body = _leaf(kind, body, _charge=charge, _raw=raw_leaf)
+                leaf_bytes = charge[0]
+                leaf_raw = raw_leaf[0] if legacy else None
+                member_ranges = None
+                if legacy and type(body) is dict:
+                    member_ranges = _canonical_members(body, leaf_raw)
+                # Only plain physical leaves parsed by the standard JSON owner
+                # enter this private cache. Marshal bytes are never external.
+                if (memo is not None and kind == "leaf" and physical_raw is not None
+                        and not physical_raw.startswith(BLOCK_PREFIX)):
+                    payload = marshal.dumps(body, 4)
+                    shape = _select_value(body, "skip")
+                    indexed = _member_span_leaf(leaf_raw, member_ranges)
+                    cost = len(payload) + len(leaf_raw) + len(marshal.dumps(member_ranges, 4)) + len(digest) + len(marshal.dumps((shape.kind, shape.keys, shape.length), 4)) + _entry_index_cost(indexed)
+                    with memo["budget"]["lock"]:
+                        compiler = _COMPILATION.get()
+                        compiled_bytes = compiler["bytes"] if compiler is not None else 0
+                        compiled_count = len(compiler["entries"]) if compiler is not None else 0
+                        if (not memo["closed"] and digest not in memo["entries"]
+                                and memo["budget"]["bytes"] + compiled_bytes + cost <= MAX_LOGICAL_BYTES
+                                and memo["budget"]["count"] + compiled_count < MAX_BLOCKS):
+                            memo["entries"][digest] = (payload, leaf_raw, member_ranges, len(physical_raw), cost, shape, indexed)
+                            admitted_index = indexed
+                            memo["bytes"] += cost
+                            memo["budget"]["bytes"] += cost
+                            memo["budget"]["count"] += 1
             if leaf_bytes > LEAF_BYTES:
                 raise ValueError("snapshot leaf exceeds byte bound")
             expanded_bytes += leaf_bytes
             if expanded_bytes > MAX_LOGICAL_BYTES:
                 raise ValueError("snapshot expanded content exceeds its byte bound")
-            result = body
+            result = body if isinstance(body, _Selection) else _select_value(body, selection)
+            # Reuse the pure representation on the admitting read too. Its full
+            # metadata cost was charged above; physical and logical checks still
+            # precede every use. Refused admissions keep the uncached framing.
+            stream = (indexed if retained is not None else admitted_index
+                      if admitted_index is not None else ("leaf", leaf_raw, member_ranges)) if legacy else None
+            raw_value, members = leaf_raw, None
         elif kind == "object" and isinstance(body, list):
-            result = {}
+            result, members = {}, {}
+            complete_keys = set()
+            stream_children = []
             for pair in body:
-                if (
-                    not isinstance(pair, list)
-                    or len(pair) != 2
-                    or not isinstance(pair[0], str)
-                    or pair[0] in result
-                ):
+                if (not isinstance(pair, list) or len(pair) != 2
+                        or not isinstance(pair[0], str) or pair[0] in complete_keys):
                     raise ValueError("snapshot object has invalid or duplicate keys")
-                expanded_bytes += len(canonical(pair[0]))
+                complete_keys.add(pair[0])
+                key_raw = canonical(pair[0])
+                expanded_bytes += len(key_raw)
                 if expanded_bytes > MAX_LOGICAL_BYTES:
                     raise ValueError("snapshot expanded keys exceed their byte bound")
-                result[pair[0]] = visit(pair[1], depth + 1)
+                child_selection = _selection_key(selection, pair[0])
+                child, child_raw, _, child_stream = visit(pair[1], depth + 1, selection=child_selection)
+                if child_selection != "skip":
+                    result[pair[0]] = child.value if isinstance(child, _Selection) else child
+                if legacy:
+                    stream_children.append((pair[0], key_raw, child_stream, 0, 0))
+            if selection is not None:
+                result = _Selection(None if selection == "skip" else result, "dict", tuple(complete_keys), len(complete_keys))
+            raw_value = None
+            stream = ("members", tuple(sorted(stream_children, key=itemgetter(0))), None) if legacy else None
         elif kind in {"map", "list", "array", "text"} and isinstance(body, list):
             result = {} if kind == "map" else "" if kind == "text" else []
+            complete_keys, logical_length = set(), 0
+            members = None
+            stream_children = []
             for ref in body:
-                child = visit(ref, depth + 1)
+                child_selection = selection if kind == "map" else ("skip" if selection == "skip" else None)
+                child, child_raw, child_members, child_stream = visit(ref, depth + 1, kind == "map", child_selection)
+                shape = child.kind if isinstance(child, _Selection) else "dict" if isinstance(child, dict) else "list" if isinstance(child, list) else "str" if isinstance(child, str) else "scalar"
+                value = child.value if isinstance(child, _Selection) else child
+                length = child.length if isinstance(child, _Selection) else len(child) if shape != "scalar" else 0
+                if legacy and kind != "map" and (kind != "list" or length):
+                    stream_children.append(child_stream)
                 if kind == "map":
-                    if not isinstance(child, dict) or set(result) & set(child):
+                    keys = child.keys if isinstance(child, _Selection) else child.keys() if shape == "dict" else ()
+                    if shape != "dict" or complete_keys.intersection(keys):
                         raise ValueError("snapshot map overlaps or has invalid type")
-                    result.update(child)
+                    complete_keys.update(keys)
+                    if selection != "skip":
+                        result.update(value)
+                    if legacy:
+                        stream_children.append(child_stream)
                 elif kind == "array":
-                    result.append(child)
+                    logical_length += 1
+                    if selection != "skip":
+                        result.append(value)
                 elif kind == "list":
-                    if not isinstance(child, list):
+                    if shape != "list":
                         raise ValueError("invalid snapshot list segment")
-                    result.extend(child)
+                    logical_length += length
+                    if selection != "skip":
+                        result.extend(value)
                 else:
-                    if not isinstance(child, str):
+                    if shape != "str":
                         raise ValueError("invalid snapshot text segment")
-                    result += child
+                    logical_length += length
+                    if selection != "skip":
+                        result += value
+            if selection is not None:
+                shape = "dict" if kind == "map" else "str" if kind == "text" else "list"
+                result = _Selection(None if selection == "skip" else result, shape, tuple(complete_keys), len(complete_keys) if kind == "map" else logical_length)
+            if legacy and kind == "map":
+                if _selection is None:
+                    raw_value, ranges = _pack_map(stream_children)
+                    stream = ("leaf", raw_value, ranges)
+                else:
+                    stream = _map_stream(stream_children, _budget=compaction_budget)
+                    raw_value = None
+            else:
+                stream = (kind, tuple(stream_children), None) if legacy else None
+                raw_value = None
         else:
             raise ValueError("unknown snapshot node encoding")
+        if legacy and _selection is None and kind not in {"leaf", "zleaf"} and stream[0] != "leaf":
+            raw_value, ranges = _pack_stream(stream)
+            stream = ("leaf", raw_value, ranges)
         if isinstance(digest, str):
             active.remove(digest)
-        return result
+            if (memo is not None and selection == "skip" and kind not in {"leaf", "zleaf"}
+                    and _plan_preflight(memo, expanded - before_refs,
+                                        parsed_bytes - before_parsed,
+                                        expanded_bytes - before_expanded)):
+                raw_value, ranges = _pack_stream(stream)
+                stream = ("leaf", raw_value, ranges)
+                _remember_canonical_plan(memo, (digest, "canonical-skip"), result,
+                    raw_value, stream[2], tuple(dict.fromkeys(physical_trace[trace_start:])),
+                    expanded - before_refs, parsed_bytes - before_parsed,
+                    expanded_bytes - before_expanded, max(depth_trace[depth_start:]) - depth)
+            if (memo is not None and selection is None and kind not in {"leaf", "zleaf"}
+                    and _plan_preflight(memo, expanded - before_refs,
+                                        parsed_bytes - before_parsed,
+                                        expanded_bytes - before_expanded)):
+                raw_value, ranges = _pack_stream(stream)
+                raw_value = _remember_plan(
+                    memo, (digest, need_members), result, raw_value,
+                    None,
+                    tuple(dict.fromkeys(physical_trace[trace_start:])),
+                    expanded - before_refs, parsed_bytes - before_parsed,
+                    expanded_bytes - before_expanded,
+                    max(depth_trace[depth_start:]) - depth, _ranges=ranges,
+                )
+                # Use this freshly authenticated compilation immediately, even
+                # when optional retention declined it. Rewalking the old token
+                # graph would discard the work just performed above.
+                stream = ("leaf", raw_value, ranges)
+        return result, raw_value, members if need_members else None, stream
 
+    directory_binding = directory_token = None
     try:
+        directory_stat = os.fstat(block_fd)
+        directory_binding = [block_fd, (directory_stat.st_dev, directory_stat.st_ino), True]
+        directory_token = _DIRECTORY_IDENTITY.set(directory_binding)
         _lock_store(block_fd, exclusive=False)
-        value = visit(descriptor["root"])
-        raw = canonical(value) + b"\n"
-        if (
-            len(raw) != descriptor["logical_bytes"]
-            or _hash(raw) != descriptor["sha256"]
-        ):
-            raise ValueError("snapshot logical content digest or size mismatch")
+        value, raw_value, _, stream = visit(descriptor["root"], selection=_selection)
+        if isinstance(value, _Selection):
+            value = value.value
+        body_digest = None
+        if legacy:
+            body_digest = _authenticate_stream(value, stream, descriptor)
+        else:
+            raw = canonical(value) + b"\n"
+            if len(raw) != descriptor["logical_bytes"] or _hash(raw) != descriptor["sha256"]:
+                raise ValueError("snapshot logical content digest or size mismatch")
         if codec_for(value) != descriptor[MARKER] and isinstance(value, dict) and ("run_id" in value or "state" in value):
             raise ValueError("snapshot codec differs from authenticated state")
         _same_directory(directory, block_fd)
         if _physical is not None:
             _physical.update(block_paths(home, cache))
+        if _selection is not None:
+            if not isinstance(value, dict):
+                raise ValueError("event must be an object")
+            return VerifiedEventProjection(value, body_digest)
         if (
             isinstance(value, dict)
             and "state" in value
             and "digest" in value
             and "schema_version" in value
         ):
+            if legacy:
+                result = DecodedEvent.__new__(DecodedEvent)
+                dict.__init__(result, value)
+                result.verified_body_digest = body_digest
+                return result
             return DecodedEvent(value, raw)
         return value
     finally:
+        if directory_binding is not None:
+            directory_binding[2] = False
+        if directory_token is not None:
+            _DIRECTORY_IDENTITY.reset(directory_token)
         os.close(block_fd)
 
 

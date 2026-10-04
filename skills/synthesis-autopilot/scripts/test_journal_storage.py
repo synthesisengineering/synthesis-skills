@@ -1732,3 +1732,1878 @@ def test_canonical_key_shape_reuse_cannot_relax_next_parse_order_or_work(monkeyp
         storage._canonical_json(raw)
     monkeypatch.setattr(storage, 'MAX_BLOCKS', 16384)
     assert storage._canonical_json(raw)[0]['a'] == []
+
+
+@pytest.mark.parametrize("kind", ["leaf", "object", "map", "list", "array", "text"])
+def test_legacy_normalization_stream_is_exact_and_returns_independent_values(tmp_path, kind):
+    left = {"z": {"β": 1, "a": ["\\", -0.0]}, "b": 2}
+    right = {"a": {"é": 1, "A": 2}}
+    if kind == "leaf": node, expected = [kind, left], left
+    elif kind == "object": node, expected = [kind, [["z", ["leaf", left]], ["a", ["leaf", right]]]], {"z": left, "a": right}
+    elif kind == "map": node, expected = [kind, [["leaf", left], ["leaf", right]]], {**left, **right}
+    elif kind == "list": node, expected = [kind, [["leaf", [left]], ["leaf", [right]]]], [left, right]
+    elif kind == "array": node, expected = [kind, [["leaf", left], ["leaf", right]]], [left, right]
+    else: node, expected = [kind, [["leaf", "é\\"], ["leaf", "\n漢"]]], "é\\\n漢"
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000777"
+    home.mkdir(parents=True)
+    raw = json.dumps(node, ensure_ascii=False).encode() + b"\n"
+    digest = hashlib.sha256(raw).hexdigest()
+    storage.materialize(home, {digest: raw})
+    logical = storage.canonical(expected) + b"\n"
+    descriptor = {storage.MARKER: 1, "root": digest, "sha256": hashlib.sha256(logical).hexdigest(), "logical_bytes": len(logical)}
+    with storage.normalization_scope():
+        first = storage.decode(home / "current.json", descriptor)
+        second = storage.decode(home / "current.json", descriptor)
+    assert first == second == expected
+    if isinstance(expected, dict): assert list(first) == list(expected)
+    if kind != "text":
+        assert first is not second
+        nested = first["z"] if kind == "object" else first if isinstance(first, dict) else first[0]
+        assert list(nested["z"]) == ["β", "a"]
+        nested["z"]["a"].append("changed")
+        assert second == expected
+    assert storage._NORMALIZATION.get() is None
+
+
+def test_legacy_normalization_is_bounded_nested_fresh_and_cleared_on_cancel(tmp_path, monkeypatch):
+    value = {"outer": ["x" * 400, {"z": 0, "a": 1}]}
+    monkeypatch.setattr(storage, "INLINE_BYTES", 0)
+    path = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000779/current.json"
+    path.parent.mkdir(parents=True)
+    raw_descriptor, blocks = storage.encode(value, codec=1)
+    storage.materialize(path.parent, blocks)
+    descriptor = json.loads(raw_descriptor)
+    with storage.normalization_scope():
+        storage.decode(path, descriptor)
+        outer = storage._NORMALIZATION.get()
+        assert outer["entries"] and outer["bytes"] <= storage.MAX_LOGICAL_BYTES
+        before = outer["bytes"]
+        try:
+            with storage.normalization_scope():
+                assert not storage._NORMALIZATION.get()["entries"]
+                storage.decode(path, descriptor)
+                assert outer["budget"]["bytes"] <= storage.MAX_LOGICAL_BYTES
+                raise KeyboardInterrupt
+        except KeyboardInterrupt: pass
+        assert storage._NORMALIZATION.get() is outer and outer["budget"]["bytes"] == before
+        monkeypatch.setattr(storage, "LEAF_BYTES", 3)
+        with pytest.raises(ValueError): storage.decode(path, descriptor)
+        assert not outer["entries"]
+    assert storage._NORMALIZATION.get() is None
+
+
+def test_legacy_normalization_hit_still_authenticates_and_charges_each_reference(tmp_path, monkeypatch):
+    value = {"outer": ["x" * 400]}
+    monkeypatch.setattr(storage, "INLINE_BYTES", 0)
+    path = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000779/current.json"
+    path.parent.mkdir(parents=True)
+    raw_descriptor, blocks = storage.encode(value, codec=1)
+    storage.materialize(path.parent, blocks)
+    descriptor = json.loads(raw_descriptor)
+    target = storage.home_for(path) / "state-blocks/v1" / (descriptor["root"] + ".json")
+    with storage.normalization_scope():
+        storage.decode(path, descriptor)
+        original = target.read_bytes()
+        before = target.stat()
+        changed = original.replace(b"xxx", b"yyy", 1)
+        assert changed != original and len(changed) == len(original)
+        target.write_bytes(changed)
+        os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        with pytest.raises(ValueError, match="digest"): storage.decode(path, descriptor)
+        target.write_bytes(original)
+        assert storage.decode(path, descriptor) == value
+    assert storage._NORMALIZATION.get() is None
+
+
+def test_legacy_fragment_budget_fallback_and_compiler_share_residency(tmp_path, monkeypatch):
+    value = {"z" + str(i): {"z": i, "a": i} for i in range(8)}
+    raw = json.dumps(["map", [["leaf", value]]]).encode() + b"\n"
+    digest = hashlib.sha256(raw).hexdigest()
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000778"
+    home.mkdir(parents=True); storage.materialize(home, {digest: raw})
+    logical = storage.canonical(value) + b"\n"
+    descriptor = {storage.MARKER: 1, "root": digest, "sha256": hashlib.sha256(logical).hexdigest(), "logical_bytes": len(logical)}
+    monkeypatch.setattr(storage, "MAX_BLOCKS", 3)
+    with storage.normalization_scope(), storage.compilation_scope():
+        assert storage.decode(home / "current.json", descriptor) == value
+        storage.encode(value, codec=2)
+        assert storage._NORMALIZATION.get()["budget"]["bytes"] + storage._COMPILATION.get()["bytes"] <= storage.MAX_LOGICAL_BYTES
+
+
+def test_legacy_nested_policy_change_releases_all_optional_residency(tmp_path, monkeypatch):
+    value = {"x": "x" * 1000}
+    monkeypatch.setattr(storage, "INLINE_BYTES", 0)
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000780"
+    home.mkdir(parents=True)
+    raw, blocks = storage.encode(value, codec=1)
+    storage.materialize(home, blocks)
+    with storage.compilation_scope(), storage.normalization_scope():
+        storage.decode(home / "current.json", json.loads(raw))
+        outer = storage._NORMALIZATION.get()
+        assert outer["entries"]
+        with storage.normalization_scope():
+            monkeypatch.setattr(storage, "MAX_LOGICAL_BYTES", 128)
+            storage._normalization_memo()
+            assert not outer["entries"]
+            assert outer["budget"]["bytes"] == outer["budget"]["count"] == 0
+            assert storage._COMPILATION.get()["bytes"] == 0
+        assert not outer["entries"]
+    assert storage._NORMALIZATION.get() is None
+
+
+def test_legacy_normalization_copied_contexts_close_out_of_order(tmp_path, monkeypatch):
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+    value = {"z": ["x" * 200], "a": 1}
+    monkeypatch.setattr(storage, "INLINE_BYTES", 0)
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000781"
+    home.mkdir(parents=True)
+    raw, blocks = storage.encode(value, codec=1)
+    storage.materialize(home, blocks)
+    descriptor = json.loads(raw)
+    async def run():
+        first_entered, second_entered, first_closed = (asyncio.Event() for _ in range(3))
+        async def first():
+            with storage.normalization_scope():
+                assert storage.decode(home / "current.json", descriptor) == value
+                first_entered.set()
+                await second_entered.wait()
+            first_closed.set()
+        async def second():
+            await first_entered.wait()
+            with storage.normalization_scope():
+                assert storage.decode(home / "current.json", descriptor) == value
+                second_entered.set()
+                await first_closed.wait()
+        await asyncio.gather(first(), second())
+    with storage.normalization_scope():
+        outer = storage._NORMALIZATION.get()
+        asyncio.run(run())
+        assert storage._NORMALIZATION.get() is outer
+        assert outer["budget"]["bytes"] == outer["budget"]["count"] == 0
+        def threaded():
+            with storage.normalization_scope():
+                return storage.decode(home / "current.json", descriptor)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            contexts = [copy_context(), copy_context()]
+            results = list(pool.map(lambda ctx: ctx.run(threaded), contexts))
+        assert results == [value, value] and results[0] is not results[1]
+        assert outer["budget"]["bytes"] == outer["budget"]["count"] == 0
+    assert storage._NORMALIZATION.get() is None
+
+
+def test_legacy_normalization_inherited_closed_scope_cannot_retain_entries(tmp_path, monkeypatch):
+    from contextvars import copy_context
+    monkeypatch.setattr(storage, "INLINE_BYTES", 0)
+    value = {"z": "x" * 200}
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000782"
+    home.mkdir(parents=True)
+    raw, blocks = storage.encode(value, codec=1)
+    storage.materialize(home, blocks)
+    descriptor = json.loads(raw)
+    with storage.normalization_scope():
+        storage.decode(home / "current.json", descriptor)
+        old = storage._NORMALIZATION.get()
+        retained_context = copy_context()
+        assert old["entries"]
+    assert old["closed"] and not old["entries"] and old["bytes"] == 0
+    assert retained_context.run(storage._normalization_memo) is None
+    assert retained_context.run(storage.decode, home / "current.json", descriptor) == value
+    assert not old["entries"] and old["budget"]["bytes"] == 0
+    def fresh():
+        with storage.normalization_scope():
+            memo = storage._NORMALIZATION.get()
+            assert memo["budget"] is not old["budget"]
+            assert storage.decode(home / "current.json", descriptor) == value
+        assert memo["closed"] and not memo["entries"]
+    retained_context.run(fresh)
+
+
+@pytest.mark.parametrize('change', ['replacement', 'symlink', 'directory', 'permissions'])
+def test_scoped_handles_revalidate_path_and_reopen_changed_metadata(tmp_path, monkeypatch, change):
+    directory = tmp_path / 'blocks'
+    directory.mkdir()
+    target = directory / 'a.json'
+    target.write_bytes(b'fresh')
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    original_open = os.open
+    opened = []
+    def capture(name, flags, *args, **kwargs):
+        if name == 'a.json':
+            opened.append(name)
+            if change == 'permissions' and len(opened) > 1:
+                raise PermissionError('synthetic changed permission admission')
+        return original_open(name, flags, *args, **kwargs)
+    monkeypatch.setattr(os, 'open', capture)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage._read_block(parent, 'a.json', 20, memo, []) == b'fresh'
+            fd = next(iter(memo['handles'].values()))[0]
+            if change == 'permissions':
+                target.chmod(0o400)
+            else:
+                target.rename(directory / 'retained-original')
+                if change == 'replacement': target.write_bytes(b'other')
+                elif change == 'symlink': target.symlink_to(directory / 'retained-original')
+                else: target.mkdir()
+            if change == 'replacement':
+                assert storage._read_block(parent, 'a.json', 20, memo, []) == b'other'
+                assert len(opened) == 2
+            else:
+                with pytest.raises((ValueError, OSError)):
+                    storage._read_block(parent, 'a.json', 20, memo, [])
+            assert not memo['handles']
+            with pytest.raises(OSError): os.fstat(fd)
+            if change == 'permissions': assert len(opened) == 2
+    finally:
+        os.close(parent)
+
+
+def test_scoped_handle_reuse_reads_each_occurrence_and_closes_after_cancel(tmp_path, monkeypatch):
+    from contextvars import copy_context
+    target = tmp_path / 'a.json'
+    target.write_bytes(b'fresh')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original_open, original_pread = os.open, os.pread
+    calls = {'open': 0, 'pread': 0}
+    def capture_open(*args, **kwargs):
+        calls['open'] += 1
+        return original_open(*args, **kwargs)
+    def capture_read(*args, **kwargs):
+        calls['pread'] += 1
+        return original_pread(*args, **kwargs)
+    monkeypatch.setattr(os, 'open', capture_open)
+    monkeypatch.setattr(os, 'pread', capture_read)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            with storage.normalization_scope():
+                memo = storage._normalization_memo()
+                for _ in range(3):
+                    assert storage._read_block(parent, 'a.json', 20, memo, []) == b'fresh'
+                assert calls == {'open': 1, 'pread': 3}
+                fd = next(iter(memo['handles'].values()))[0]
+                copied = copy_context()
+                raise KeyboardInterrupt
+        with pytest.raises(OSError): os.fstat(fd)
+        assert memo['closed'] and not memo['handles']
+        assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+        assert copied.run(storage._normalization_memo) is None
+    finally:
+        os.close(parent)
+
+
+def test_scoped_handle_failed_initial_fstat_closes_unadopted_descriptor(tmp_path, monkeypatch):
+    (tmp_path / 'a.json').write_bytes(b'fresh')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original_open, original_fstat = os.open, os.fstat
+    created = []
+    def capture(*args, **kwargs):
+        fd = original_open(*args, **kwargs)
+        created.append(fd)
+        return fd
+    def fail(fd):
+        if fd in created: raise OSError('synthetic post-open fstat failure')
+        return original_fstat(fd)
+    monkeypatch.setattr(os, 'open', capture)
+    monkeypatch.setattr(os, 'fstat', fail)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            with pytest.raises(OSError, match='post-open'):
+                storage._read_block(parent, 'a.json', 20, memo, [])
+            assert not memo['handles'] and memo['budget']['count'] == 0
+        assert len(created) == 1
+        with pytest.raises(OSError): original_fstat(created[0])
+    finally:
+        os.close(parent)
+
+
+@pytest.mark.parametrize('bound', ['bytes', 'entries'])
+def test_scoped_handles_share_existing_compilation_allowance(tmp_path, monkeypatch, bound):
+    (tmp_path / 'a.json').write_bytes(b'fresh')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with storage.compilation_scope(), storage.normalization_scope():
+            compiler = storage._COMPILATION.get()
+            if bound == 'bytes': compiler['bytes'] = storage.MAX_LOGICAL_BYTES
+            else: compiler['entries'] = {str(i): () for i in range(storage.MAX_BLOCKS)}
+            memo = storage._normalization_memo()
+            assert storage._read_block(parent, 'a.json', 20, memo, []) == b'fresh'
+            assert not memo['handles']
+            assert memo['budget']['bytes'] + compiler['bytes'] <= storage.MAX_LOGICAL_BYTES
+            assert memo['budget']['count'] + len(compiler['entries']) <= storage.MAX_BLOCKS
+    finally:
+        os.close(parent)
+
+
+def subtree_plan_fixture(tmp_path):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000787'
+    home.mkdir(parents=True)
+    blocks, refs, expected = {}, [], {}
+    for index in range(5):
+        value = {'z': ['retained-' + str(index) + ':' + 'x' * 600], 'a': index}
+        raw = json.dumps(['leaf', value]).encode() + b'\n'
+        digest = hashlib.sha256(raw).hexdigest()
+        blocks[digest] = raw
+        refs.append(['field-' + str(index), digest])
+        expected['field-' + str(index)] = value
+    raw = json.dumps(['object', refs]).encode() + b'\n'
+    root = hashlib.sha256(raw).hexdigest()
+    blocks[root] = raw
+    storage.materialize(home, blocks)
+    logical = storage.canonical(expected) + b'\n'
+    descriptor = {storage.MARKER: 1, 'root': root,
+                  'sha256': hashlib.sha256(logical).hexdigest(), 'logical_bytes': len(logical)}
+    return home / 'current.json', descriptor, blocks, expected
+
+
+def test_subtree_plan_hit_authenticates_all_dependencies_and_copies_values(tmp_path, monkeypatch):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    original_read, original_node = storage._read_block, storage._block_node
+    reads, parses = [], []
+    def read(parent, name, limit, memo, identity):
+        reads.append(name)
+        return original_read(parent, name, limit, memo, identity)
+    def node(raw, *, limit):
+        parses.append(len(raw))
+        return original_node(raw, limit=limit)
+    monkeypatch.setattr(storage, '_read_block', read)
+    monkeypatch.setattr(storage, '_block_node', node)
+    with storage.normalization_scope():
+        first = storage.decode(path, descriptor)
+        memo = storage._normalization_memo()
+        plan = memo['plans'][(descriptor['root'], False)]
+        assert set(plan[3]) == set(blocks) and plan[4] == 6 and plan[7] == 1
+        reads.clear(); parses.clear()
+        second = storage.decode(path, descriptor)
+        assert set(reads) == {name + '.json' for name in blocks}
+        assert len(reads) == 6 and not parses
+        first['field-0']['z'].append('changed')
+        assert second == expected and first != second
+        assert list(second['field-0']) == ['z', 'a']
+    assert not memo['plans'] and memo['budget']['count'] == 0
+
+
+@pytest.mark.parametrize('fault', ['changed', 'missing', 'symlink'])
+def test_subtree_plan_hit_never_trusts_a_retained_dependency(tmp_path, fault):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    child = next(key for key in blocks if key != descriptor['root'])
+    target = path.parent / 'state-blocks/v1' / (child + '.json')
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        assert storage._normalization_memo()['plans']
+        if fault == 'changed':
+            before = target.stat()
+            target.write_bytes(target.read_bytes().replace(b'retained', b'mutated!', 1))
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            target.rename(target.with_suffix('.retained'))
+            if fault == 'symlink': target.symlink_to(target.with_suffix('.retained'))
+        with pytest.raises((OSError, ValueError)):
+            storage.decode(path, descriptor)
+
+
+def test_subtree_plan_composition_charges_every_reference_under_original_limit(tmp_path, monkeypatch):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    raw = json.dumps(['array', [descriptor['root']] * 3]).encode() + b'\n'
+    digest = hashlib.sha256(raw).hexdigest()
+    storage.materialize(path.parent, {digest: raw})
+    logical = storage.canonical([expected] * 3) + b'\n'
+    outer = {storage.MARKER: 1, 'root': digest,
+             'sha256': hashlib.sha256(logical).hexdigest(), 'logical_bytes': len(logical)}
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', 16)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        assert (descriptor['root'], False) in storage._normalization_memo()['plans']
+        with pytest.raises(ValueError, match='bound'):
+            storage.decode(path, outer)
+
+
+def test_subtree_plan_closes_with_copied_context_and_policy_change(tmp_path, monkeypatch):
+    from contextvars import copy_context
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        memo = storage._normalization_memo()
+        assert memo['plans']
+        copied = copy_context()
+        monkeypatch.setattr(storage, 'MAX_DEPTH', 0)
+        with pytest.raises(ValueError, match='bound'):
+            storage.decode(path, descriptor)
+        assert not memo['plans']
+    assert copied.run(storage._normalization_memo) is None
+    assert memo['closed'] and not memo['plans']
+
+
+def test_subtree_plan_optional_admission_precedes_payload_serialization(monkeypatch):
+    with storage.normalization_scope():
+        memo = storage._NORMALIZATION.get()
+        monkeypatch.setattr(storage.marshal, 'dumps', lambda *_a: pytest.fail('rejected plan serialized'))
+        raw = b'{}'
+        assert storage._remember_plan(memo, ('a' * 64, False), {}, raw, None,
+                                      (), 4, storage.LEAF_BYTES * 8 + 1, 2, 1) == raw
+        assert not memo['plans'] and not memo['budget']['count']
+
+
+def test_subtree_plan_residency_leaves_existing_budget_for_leaf_compilation(monkeypatch):
+    monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', 64 * 1024)
+    with storage.normalization_scope():
+        memo = storage._NORMALIZATION.get()
+        for index in range(12):
+            value = {'x': str(index) + 'x' * 1800}
+            raw = storage.canonical(value)
+            storage._remember_plan(memo, (f'{index:064x}', False), value, raw, None,
+                                   (), 4, len(raw), len(raw), 1)
+            assert sum(item[-1] for item in memo['plans'].values()) <= storage.MAX_LOGICAL_BYTES // 4
+            assert memo['bytes'] == memo['budget']['bytes'] <= storage.MAX_LOGICAL_BYTES
+        assert memo['plans'] and len(memo['plans']) < 12
+    assert memo['bytes'] == memo['budget']['bytes'] == 0
+
+
+@pytest.mark.parametrize('variant', ['unicode', 'numeric', 'nested-digest'])
+def test_streamed_event_authentication_avoids_full_snapshot_encoding(tmp_path, monkeypatch, variant):
+    values = {'unicode': {'é': '\\"\n漢', 'A': ['😀', '\u0000']},
+              'numeric': {'minus': -0.0, 'float': 1.234e-20, 'integer': 123456789},
+              'nested-digest': {'digest': {'digest': 'retained'}, 'text': '"digest":"outside"'}}
+    value = {'schema_version': 1, 'actor': {'id': 'fixture'}, 'state': {
+        'run_id': '01990000-0000-7000-8000-000000000799', 'revision': 1,
+        'schema_version': 1, 'payload': values[variant]}}
+    body_digest = hashlib.sha256(storage.canonical(value)).hexdigest()
+    value['digest'] = body_digest
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000799'
+    home.mkdir(parents=True)
+    node = ['object', [[key, ['leaf', item]] for key, item in value.items()]]
+    raw = json.dumps(node, ensure_ascii=False).encode() + b'\n'
+    physical = hashlib.sha256(raw).hexdigest()
+    storage.materialize(home, {physical: raw})
+    logical = storage.canonical(value) + b'\n'
+    descriptor = {storage.MARKER: 1, 'root': physical,
+                  'sha256': hashlib.sha256(logical).hexdigest(), 'logical_bytes': len(logical)}
+    canonical = storage.canonical
+    def no_whole_snapshot(item):
+        assert item != value, 'whole snapshot was encoded again'
+        return canonical(item)
+    monkeypatch.setattr(storage, 'canonical', no_whole_snapshot)
+    with storage.normalization_scope():
+        first = storage.decode(home/'current.json', descriptor)
+        second = storage.decode(home/'current.json', descriptor)
+        assert (physical, False) in storage._NORMALIZATION.get()['plans']
+        assert first == second == value
+        assert first.verified_body_digest == second.verified_body_digest == body_digest
+        assert first['state'] is not second['state']
+        first['state']['modified'] = True
+        assert second == value
+    for field, changed in [('sha256', '0' * 64), ('logical_bytes', len(logical) - 1)]:
+        with pytest.raises(ValueError, match='logical content'):
+            storage.decode(home/'current.json', {**descriptor, field: changed})
+
+
+def test_stream_batching_preserves_every_byte_and_bounds_small_chunk_buffer(monkeypatch):
+    monkeypatch.setattr(storage, 'LEAF_BYTES', 7)
+    parts = [b'', b'{', b'"a":', memoryview(b'123456789'), b',', b'"b"', b':', b'[]', b'}']
+    batches = list(storage._stream_batches(iter(parts)))
+    assert b''.join(batches) == b''.join(parts)
+    assert all(len(piece) <= 7 or piece is parts[3] for piece in batches)
+    assert len(batches) < len([piece for piece in parts if piece])
+
+
+def test_stream_index_flattens_map_routing_and_preserves_interleaved_members():
+    import journal_storage
+    raw = b'{"a":1,"c":3}'
+    leaf = ("leaf", raw, (("a", 1, 6), ("c", 7, 12)))
+    child = ("leaf", b'2', None)
+    fields = journal_storage._stream_index(leaf) + [("b", b'"b"', child, 0, 0)]
+    fields.sort(key=lambda item: item[0])
+    stream = ("members", tuple(fields), None)
+    assert b"".join(journal_storage._stream_value(stream)) == b'{"a":1,"b":2,"c":3}'
+    contiguous = ("members", tuple(journal_storage._stream_index(leaf)), None)
+    parts = list(journal_storage._stream_value(contiguous))
+    assert len(parts) == 3 and bytes(parts[1]) == b'"a":1,"c":3'
+    assert parts[1].obj is raw
+
+
+def test_iterative_stream_flattens_nested_list_and_text_interiors():
+    import journal_storage
+    leaf = lambda raw: ("leaf", raw, None)
+    lists = ("list", (("list", (leaf(b'[1]'), leaf(b'[2]')), None), leaf(b'[3,4]')), None)
+    texts = ("text", (("text", (leaf(b'"a"'), leaf(b'"\\n"')), None), leaf(b'"b"')), None)
+    root = ("array", (lists, texts), None)
+    assert b"".join(journal_storage._stream_value(root)) == b'[[1,2,3,4],"a\\nb"]'
+
+
+def test_offset_plan_members_reference_one_canonical_buffer(tmp_path):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        plan = storage._NORMALIZATION.get()['plans'][(descriptor['root'], False)]
+        raw, ranges = plan[1:3]
+        assert all(isinstance(start, int) and isinstance(end, int) for key, start, end in ranges)
+        assert [key for key, start, end in ranges] == sorted(expected)
+        assert b'{' + b','.join(raw[start:end] for key, start, end in ranges) + b'}' == raw
+        second = storage.decode(path, descriptor)
+        assert second == expected
+        second['field-0']['z'].append('new')
+        assert storage.decode(path, descriptor) == expected
+
+
+def test_offset_plan_preflight_refuses_before_canonical_copy(monkeypatch):
+    with storage.normalization_scope():
+        memo = storage._NORMALIZATION.get()
+        monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', 16)
+        assert not storage._plan_preflight(memo, 4, 20, 20)
+
+
+def test_offset_map_composition_handles_disjoint_and_interleaved_ranges():
+    def leaf(raw, ranges):
+        return ("leaf", raw, ranges)
+    a = leaf(b'{"a":1,"c":3}', (("a", 1, 6), ("c", 7, 12)))
+    b = leaf(b'{"b":2}', (("b", 1, 6),))
+    raw, ranges = storage._pack_map([a, b])
+    assert raw == b'{"a":1,"b":2,"c":3}'
+    assert b'{' + b','.join(raw[start:end] for _, start, end in ranges) + b'}' == raw
+    d = leaf(b'{"d":4}', (("d", 1, 6),))
+    assert storage._pack_map([d, a])[0] == b'{"a":1,"c":3,"d":4}'
+
+
+def test_composed_buffers_enforce_logical_bound_before_join(monkeypatch):
+    monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', 4)
+    with pytest.raises(ValueError, match='logical content'):
+        storage._join_canonical([b'12345'], 5)
+    with pytest.raises(ValueError, match='logical content'):
+        storage._pack_stream(('array', [('leaf', b'1234', None)], None))
+
+
+def _verified_projection_fixture(tmp_path, *, missing_digest=False):
+    import journal_storage as store
+    home = tmp_path / "resources/autopilot-runs/01990000-0000-7000-8000-000000000777"
+    blocks = {}
+    def block(node):
+        raw = store.canonical(node) + b"\n"
+        key = hashlib.sha256(raw).hexdigest()
+        blocks[key] = raw
+        return key
+    hidden = [block(["leaf", {"hidden": i}]) for i in range(3)]
+    hidden_root = block(["array", hidden])
+    state = {"run_id": home.name, "revision": 1, "schema_version": 1,
+             "status": "recovering", "hidden": [{"hidden": i} for i in range(3)],
+             "extensions": {"workflow": {"progress": {"task": [{"meaningful": True, "attempt_id": "a", "evidence_ids": []}]}}}}
+    body = {"state": state, "revision": 1, "schema_version": 1,
+            "previous_digest": "", "command_id": "one"}
+    event = dict(body, digest=hashlib.sha256(store.canonical(body)).hexdigest())
+    if missing_digest:
+        event.pop("digest")
+    state_root = block(["object", [[key, hidden_root if key == "hidden" else block(["leaf", value])] for key, value in state.items()]])
+    root = block(["object", [[key, state_root if key == "state" else block(["leaf", value])] for key, value in event.items()]])
+    store.materialize(home, blocks)
+    raw = store.canonical(event) + b"\n"
+    descriptor = {store.MARKER: 1, "root": root, "sha256": hashlib.sha256(raw).hexdigest(), "logical_bytes": len(raw)}
+    return home / "events/000000000001.json", descriptor, event, hidden_root, hidden
+
+
+def test_verified_projection_cache_is_separate_and_selected_values_are_independent(tmp_path):
+    import journal_storage as store
+    path, descriptor, event, hidden_root, _ = _verified_projection_fixture(tmp_path)
+    with store.normalization_scope():
+        first = store.decode_event_projection(path, descriptor)
+        assert not isinstance(first, dict)
+        assert (hidden_root, "canonical-skip") in store._NORMALIZATION.get()["plans"]
+        assert "hidden" not in first.identity
+        first.identity["extensions"]["workflow"]["progress"]["task"][0]["evidence_ids"].append("mutation")
+        second = store.decode_event_projection(path, descriptor)
+        assert second.identity["extensions"]["workflow"]["progress"]["task"][0]["evidence_ids"] == []
+        assert store.decode(path, descriptor) == event
+        assert store.decode_event_projection(path, descriptor, include_full_state=True).full_state == event["state"]
+        assert store._normalization_resident()[0] <= store.MAX_LOGICAL_BYTES
+
+
+def test_verified_projection_rejects_absent_event_digest(tmp_path):
+    import journal_storage as store
+    path, descriptor, _, _, _ = _verified_projection_fixture(tmp_path, missing_digest=True)
+    with pytest.raises(ValueError, match="complete event body authentication"):
+        store.decode_event_projection(path, descriptor)
+
+
+@pytest.mark.parametrize("fault", ["content", "missing", "symlink"])
+def test_verified_projection_plan_requires_every_fresh_hidden_dependency(tmp_path, fault):
+    import journal_storage as store
+    path, descriptor, _, _, hidden = _verified_projection_fixture(tmp_path)
+    target = store.home_for(path) / "state-blocks/v1" / (hidden[1] + ".json")
+    with store.normalization_scope():
+        store.decode_event_projection(path, descriptor)
+        if fault == "content":
+            target.write_bytes(target.read_bytes().replace(b":1", b":9"))
+        else:
+            preserved = target.with_suffix(".preserved")
+            target.rename(preserved)
+            if fault == "symlink":
+                target.symlink_to(preserved)
+        with pytest.raises((OSError, ValueError)):
+            store.decode_event_projection(path, descriptor)
+
+
+def test_scoped_handle_probation_scan_retains_reused_handles_and_fresh_reads(tmp_path, monkeypatch):
+    for index in range(304):
+        (tmp_path / f'{index}.json').write_bytes(str(index).encode())
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    original_open, original_read = os.open, os.pread
+    calls = {'open': 0, 'pread': 0}
+    def opened(*args, **kwargs):
+        calls['open'] += 1
+        return original_open(*args, **kwargs)
+    def read(*args, **kwargs):
+        calls['pread'] += 1
+        return original_read(*args, **kwargs)
+    monkeypatch.setattr(os, 'open', opened)
+    monkeypatch.setattr(os, 'pread', read)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            for _ in range(2):
+                for index in range(4):
+                    assert storage._read_block(parent, f'{index}.json', 10, memo, []) == str(index).encode()
+            hot = {key: value[0] for key, value in memo['handles'].items()}
+            for index in range(4, 304):
+                assert storage._read_block(parent, f'{index}.json', 10, memo, []) == str(index).encode()
+                assert sum(len(item['handles']) for item in memo['budget']['memos']) <= 256
+            assert all(memo['handles'][key][0] == fd for key, fd in hot.items())
+            for index in range(4):
+                assert storage._read_block(parent, f'{index}.json', 10, memo, []) == str(index).encode()
+            assert calls == {'open': 304, 'pread': 312}
+            assert memo['budget']['count'] == len(memo['handles']) == 256
+        assert not memo['handle_probation'] and not memo['handle_protected']
+        assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+    finally:
+        os.close(parent)
+
+
+def test_decode_directory_binding_failure_closes_descriptor(tmp_path, monkeypatch):
+    path, descriptor, _, _, _ = _verified_projection_fixture(tmp_path)
+    original_open, original_stat = os.open, os.fstat
+    opened = []
+    def capture(name, *args, **kwargs):
+        fd = original_open(name, *args, **kwargs)
+        if name == 'v1': opened.append(fd)
+        return fd
+    def fail(fd):
+        if fd in opened: raise OSError('synthetic directory binding failure')
+        return original_stat(fd)
+    monkeypatch.setattr(os, 'open', capture)
+    monkeypatch.setattr(os, 'fstat', fail)
+    with pytest.raises(OSError, match='directory binding'):
+        storage.decode_event_projection(path, descriptor)
+    assert len(opened) == 1
+    with pytest.raises(OSError): original_stat(opened[0])
+    assert storage._DIRECTORY_IDENTITY.get() is None
+
+
+def test_decode_directory_binding_invalidates_inherited_context(tmp_path, monkeypatch):
+    from contextvars import copy_context
+    path, descriptor, event, _, _ = _verified_projection_fixture(tmp_path)
+    original = storage._read_block
+    captured = []
+    def read(parent, name, limit, memo, identity):
+        binding = storage._DIRECTORY_IDENTITY.get()
+        assert binding[0] == parent and binding[2] is True
+        captured.append((copy_context(), binding))
+        return original(parent, name, limit, memo, identity)
+    monkeypatch.setattr(storage, '_read_block', read)
+    with storage.normalization_scope():
+        actual = storage.decode_event_projection(path, descriptor)
+        assert actual.header['digest'] == event['digest']
+        assert captured
+        assert all(binding[2] is False for _, binding in captured)
+        assert all(context.run(storage._DIRECTORY_IDENTITY.get)[2] is False for context, _ in captured)
+    assert storage._DIRECTORY_IDENTITY.get() is None
+
+
+def test_projection_skipped_leaf_shape_avoids_discarded_value_deserialization(tmp_path, monkeypatch):
+    path, descriptor, event, hidden_root, hidden = _verified_projection_fixture(tmp_path)
+    with storage.normalization_scope():
+        storage.decode_event_projection(path, descriptor)
+        memo = storage._normalization_memo()
+        old = memo['plans'].pop((hidden_root, 'canonical-skip'))
+        memo['bytes'] -= old[-1]
+        memo['budget']['bytes'] -= old[-1]
+        memo['budget']['count'] -= 1
+        blocked = {memo['entries'][key][0] for key in hidden}
+        original = storage.marshal.loads
+        def loads(raw):
+            assert raw not in blocked, 'discarded hidden values were deserialized'
+            return original(raw)
+        monkeypatch.setattr(storage.marshal, 'loads', loads)
+        assert storage.decode_event_projection(path, descriptor).header['digest'] == event['digest']
+        assert (hidden_root, 'canonical-skip') in memo['plans']
+
+
+def test_plan_resident_accounting_all_mutations_are_exact():
+    from collections import OrderedDict
+    cache = storage._PlanCache()
+    def exact():
+        assert cache.retained_bytes == sum(value[-1] for value in cache.values())
+        assert cache.retained_bytes >= 0
+    cache['a'] = ('a', 7)
+    exact()
+    cache['b'] = ('b', 19)
+    exact()
+    cache['a'] = ('replaced', 3)
+    exact()
+    cache.move_to_end('a', last=False)
+    exact()
+    cache.update({'c': ('c', 8)}, d=('d', 2))
+    exact()
+    assert cache.setdefault('c', ('ignored', 99)) == ('c', 8)
+    cache.setdefault('e', ('e', 4))
+    exact()
+    cache |= OrderedDict([('b', ('changed', 1)), ('f', ('f', 5))])
+    exact()
+    copy = cache.copy()
+    assert copy.retained_bytes == cache.retained_bytes and list(copy.items()) == list(cache.items())
+    assert cache.pop('missing', None) is None
+    with pytest.raises(KeyError): cache.pop('missing')
+    exact()
+    cache.popitem(last=False)
+    exact()
+    cache.popitem()
+    exact()
+    del cache['b']
+    exact()
+    cache.pop('c')
+    exact()
+    before = list(cache.items()), cache.retained_bytes
+    with pytest.raises(ValueError): cache['bad'] = ('bad', -1)
+    assert (list(cache.items()), cache.retained_bytes) == before
+    cache.clear()
+    exact()
+    assert cache.retained_bytes == 0
+    assert copy.retained_bytes > 0
+
+
+def test_plan_resident_accounting_admission_eviction_policy_and_nested_scope(tmp_path, monkeypatch):
+    path, descriptor, _, _, _ = _verified_projection_fixture(tmp_path)
+    def exact(memo):
+        assert memo['plans'].retained_bytes == sum(value[-1] for value in memo['plans'].values())
+        assert memo['budget']['bytes'] >= sum(item['plans'].retained_bytes for item in memo['budget']['memos'])
+    with storage.normalization_scope():
+        outer = storage._normalization_memo()
+        storage.decode_event_projection(path, descriptor)
+        assert outer['plans'].retained_bytes > 0
+        exact(outer)
+        with storage.normalization_scope():
+            inner = storage._normalization_memo()
+            storage.decode_event_projection(path, descriptor)
+            assert inner['plans'].retained_bytes > 0
+            exact(inner)
+            assert inner['budget'] is outer['budget']
+            # The same admission owner evicts old pure plans under its byte cap.
+            monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', outer['budget']['bytes'] + 256)
+            current = storage._normalization_memo()
+            assert current is inner
+            assert inner['plans'].retained_bytes == outer['plans'].retained_bytes == 0
+            assert inner['budget']['bytes'] == inner['budget']['count'] == 0
+            exact(inner)
+        assert inner['plans'].retained_bytes == 0 and inner['closed']
+        exact(outer)
+    assert outer['plans'].retained_bytes == 0 and outer['closed']
+
+
+def test_plan_resident_accounting_owner_eviction_and_compiler_pressure(tmp_path, monkeypatch):
+    del tmp_path
+    with storage.compilation_scope(), storage.normalization_scope():
+        memo = storage._normalization_memo()
+        compiler = storage._COMPILATION.get()
+        monkeypatch.setattr(storage, 'MAX_LOGICAL_BYTES', 2048)
+        memo = storage._normalization_memo()
+        for index in range(12):
+            raw = storage.canonical({'key': 'value' * 10})
+            storage._remember_plan(memo, (str(index), False), {'key': 'value' * 10}, raw,
+                                   None, ('a', 'b', 'c', 'd'), 4, 100, 100, 2)
+            assert memo['plans'].retained_bytes == sum(value[-1] for value in memo['plans'].values())
+            assert memo['budget']['bytes'] == memo['plans'].retained_bytes
+            assert memo['budget']['bytes'] <= storage.MAX_LOGICAL_BYTES
+        assert 0 < len(memo['plans']) < 12
+        compiler['bytes'] = storage.MAX_LOGICAL_BYTES
+        memo = storage._normalization_memo()
+        assert memo['plans'].retained_bytes == 0
+        assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+        assert compiler['bytes'] == 0
+
+
+def test_plan_resident_accounting_cancellation_closes_all_residency(tmp_path):
+    from contextvars import copy_context
+    path, descriptor, _, _, _ = _verified_projection_fixture(tmp_path)
+    with pytest.raises(KeyboardInterrupt):
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            storage.decode_event_projection(path, descriptor)
+            assert memo['plans'].retained_bytes > 0
+            copied = copy_context()
+            raise KeyboardInterrupt
+    assert memo['plans'].retained_bytes == memo['budget']['bytes'] == memo['budget']['count'] == 0
+    assert copied.run(storage._normalization_memo) is None
+
+
+def test_member_token_coalescing_preserves_framing_and_leaf_bound(monkeypatch):
+    monkeypatch.setattr(storage, 'LEAF_BYTES', 257)
+    value = {f'{index:05}': f'雪-{index}' for index in range(1000)}
+    fields = []
+    for key, item in value.items():
+        raw = storage.canonical({key: item})
+        fields.append((key, raw, None, 1, len(raw) - 1))
+    node = ('members', fields, None)
+    chunks = list(storage._stream_value(node))
+    assert b''.join(chunks) == storage.canonical(value)
+    assert all(len(chunk) <= storage.LEAF_BYTES for chunk in chunks)
+    assert len(chunks) < len(fields) // 5
+    assert b''.join(storage._stream_value(('interior', node, None))) == storage.canonical(value)[1:-1]
+    assert b''.join(storage._stream_value(('members', (), None))) == b'{}'
+    assert b''.join(storage._stream_value(('interior', ('members', (), None), None))) == b''
+
+
+def test_member_token_coalescing_crosses_child_and_large_view_boundaries(monkeypatch):
+    monkeypatch.setattr(storage, 'LEAF_BYTES', 32)
+    value = {'a': 1, 'b': {'nested': 'x' * 100}, 'c': 'y' * 100, 'd': 4}
+    shared = storage.canonical({'c': value['c'], 'd': 4})
+    offsets = storage._canonical_members({'c': value['c'], 'd': 4}, shared)
+    node = ('members', [('a', b'{"a":1}', None, 1, 6),
+                        ('b', b'"b"', ('leaf', storage.canonical(value['b']), None), 0, 0)]
+            + [(key, shared, None, start, end) for key, start, end in offsets], None)
+    chunks = list(storage._stream_value(node))
+    assert b''.join(chunks) == storage.canonical(value)
+    assert any(isinstance(chunk, memoryview) and chunk.obj is shared for chunk in chunks)
+    # Large chunks are existing immutable backing views/leaf data, not a newly
+    # allocated whole-container byte buffer; pending joined chunks stay bounded.
+    assert all(len(chunk) <= storage.LEAF_BYTES or isinstance(chunk, memoryview)
+               or chunk == storage.canonical(value['b']) for chunk in chunks)
+
+
+def test_large_interleaved_map_projection_keeps_exact_full_and_body_digests(tmp_path):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000796'
+    state = {'schema_version': 1, 'run_id': home.name, 'revision': 1, 'status': 'recovering',
+             'hidden': {f'{index:05}': '雪' + str(index) + 'x' * 145 for index in range(8000)},
+             'extensions': {'workflow': {'progress': {}}}}
+    body = {'state': state, 'schema_version': 1, 'revision': 1,
+            'previous_digest': '', 'command_id': 'complete-map'}
+    event = dict(body, digest=hashlib.sha256(storage.canonical(body)).hexdigest())
+    raw_descriptor, blocks = storage.encode(event, codec=1)
+    descriptor = json.loads(raw_descriptor)
+    assert descriptor[storage.MARKER] == 1 and len(blocks) > 4
+    storage.materialize(home, blocks)
+    path = home / 'events/000000000001.json'
+    with storage.normalization_scope():
+        projection = storage.decode_event_projection(path, descriptor)
+        assert projection.header['digest'] == projection.verified_body_digest == event['digest']
+        assert 'hidden' not in projection.identity
+        assert storage.decode(path, descriptor) == event
+
+
+@pytest.mark.parametrize('batch_bytes', [1, 7, 32, 65536])
+def test_iterative_digest_has_exact_nested_framing_without_generator_chain(monkeypatch, batch_bytes):
+    leaf = lambda value: ('leaf', storage.canonical(value), None)
+    fields = lambda rows: ('members', [(key, storage.canonical(key), child, 0, 0)
+                                      for key, child in sorted(rows)], None)
+    nested_list = ('list', [('array', [leaf(1)], None),
+                            ('list', [('array', [leaf({'q': '雪'})], None)], None)], None)
+    nested_text = ('text', [leaf('a'), ('text', [leaf('雪'), leaf('\n"')], None)], None)
+    state = {'digest': 'nested-kept', 'list': [1, {'q': '雪'}], 'text': 'a雪\n"'}
+    state_stream = fields([('digest', leaf('nested-kept')), ('list', nested_list),
+                           ('text', nested_text)])
+    value = {'0-first': [], 'digest': 'top-omitted', 'schema_version': 1,
+             'state': state, 'z-last': {}}
+    stream = fields([('0-first', ('array', [], None)), ('digest', leaf('top-omitted')),
+                     ('schema_version', leaf(1)), ('state', state_stream),
+                     ('z-last', fields([]))])
+    raw = storage.canonical(value) + b'\n'
+    descriptor = {'logical_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+    expected_body = hashlib.sha256(storage.canonical({key: child for key, child in value.items()
+                                                     if key != 'digest'})).hexdigest()
+    def forbidden(*args, **kwargs):
+        raise AssertionError('digest path re-entered the nested generator chain')
+    for name in ['_stream_tokens', '_stream_value', '_stream_member', '_stream_members', '_stream_batches']:
+        monkeypatch.setattr(storage, name, forbidden)
+    monkeypatch.setattr(storage, 'LEAF_BYTES', batch_bytes)
+    assert storage._authenticate_stream(value, stream, descriptor) == expected_body
+
+
+def test_iterative_digest_passes_large_backing_view_without_materializing_member(monkeypatch):
+    value = {'large': 'x' * (storage.LEAF_BYTES * 3)}
+    raw = storage.canonical(value)
+    stream = ('members', [('large', raw, None, 1, len(raw) - 1)], None)
+    descriptor = {'logical_bytes': len(raw) + 1,
+                  'sha256': hashlib.sha256(raw + b'\n').hexdigest()}
+    original = hashlib.sha256
+    observations = []
+    class Digest:
+        def __init__(self): self.inner = original()
+        def update(self, chunk):
+            observations.append((isinstance(chunk, memoryview), len(chunk),
+                                 isinstance(chunk, memoryview) and chunk.obj is raw))
+            self.inner.update(chunk)
+        def hexdigest(self): return self.inner.hexdigest()
+    monkeypatch.setattr(storage.hashlib, 'sha256', Digest)
+    assert storage._authenticate_stream(value, stream, descriptor) is None
+    assert (True, len(raw) - 2, True) in observations
+
+
+@pytest.mark.parametrize('fault', ['size', 'digest'])
+def test_iterative_digest_rejects_exact_size_or_hash_mismatch(fault):
+    raw = b'{"a":1}'
+    descriptor = {'logical_bytes': len(raw) + 1,
+                  'sha256': hashlib.sha256(raw + b'\n').hexdigest()}
+    if fault == 'size': descriptor['logical_bytes'] -= 1
+    else: descriptor['sha256'] = '0' * 64
+    with pytest.raises(ValueError, match='snapshot logical content'):
+        storage._authenticate_stream({'a': 1}, ('leaf', raw, None), descriptor)
+
+
+def test_iterative_digest_handles_admitted_depth_without_wrapper_stack_growth():
+    value, stream = None, ('leaf', b'null', None)
+    # Each list/array pair adds two physical nodes and one logical bracket.
+    for _ in range(storage.MAX_DEPTH // 2):
+        value = [value]
+        stream = ('list', [('array', [stream], None)], None)
+    raw = storage.canonical(value) + b'\n'
+    descriptor = {'logical_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+    assert storage._authenticate_stream(value, stream, descriptor) is None
+
+
+def test_iterative_digest_cancellation_releases_scoped_physical_handles(tmp_path, monkeypatch):
+    path, descriptor, _, _, _ = _verified_projection_fixture(tmp_path)
+    original = hashlib.sha256
+    class InterruptedDigest:
+        def update(self, chunk):
+            raise KeyboardInterrupt('synthetic digest-sink cancellation')
+    def digest(*args, **kwargs):
+        return original(*args, **kwargs) if args else InterruptedDigest()
+    with pytest.raises(KeyboardInterrupt, match='synthetic digest-sink cancellation'):
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            monkeypatch.setattr(storage.hashlib, 'sha256', digest)
+            storage.decode_event_projection(path, descriptor)
+    assert memo['closed'] and not memo['handles']
+    assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+@pytest.mark.parametrize('representation', ['span', 'leaf', 'cached'])
+def test_member_batch_reduces_actual_sink_dispatch_for_interleaved_fields(monkeypatch, representation):
+    import cProfile
+    monkeypatch.setattr(storage, 'LEAF_BYTES', 256)
+    value = {f'{index:05}': f'雪-{index}' for index in range(2000)}
+    fields = []
+    for key, item in value.items():
+        if representation == 'span':
+            raw = storage.canonical({key: item})
+            fields.append((key, raw, None, 1, len(raw) - 1))
+        else:
+            fields.append((key, storage.canonical(key),
+                           (representation, storage.canonical(item), None), 0, 0))
+    raw = storage.canonical(value) + b'\n'
+    descriptor = {'logical_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+    profile = cProfile.Profile()
+    profile.enable()
+    try:
+        assert storage._authenticate_stream(value, ('members', fields, None), descriptor) is None
+    finally:
+        profile.disable()
+    # This asserts the measured operation count, not an elapsed-time threshold:
+    # the sink must receive bounded batches rather than each individual token.
+    emits = sum(row.callcount for row in profile.getstats()
+                if hasattr(row.code, 'co_name') and row.code.co_name == 'emit')
+    assert 0 < emits < len(fields) // 4
+
+
+@pytest.mark.parametrize('batch_bytes', [22, 23, 37])
+def test_member_batch_exact_boundary_child_transition_and_large_borrow(monkeypatch, batch_bytes):
+    monkeypatch.setattr(storage, 'LEAF_BYTES', batch_bytes)
+    leaf = lambda value: ('leaf', storage.canonical(value), None)
+    nested = ('members', [('d', b'"d"', leaf(1), 0, 0)], None)
+    large = {'c': '雪' * 100}
+    borrowed = storage.canonical(large)
+    state = {'a': '1234567890123456', 'b': {'d': 1}, 'c': large['c'], 'd': 0}
+    state_stream = ('members', [('a', b'"a"', leaf(state['a']), 0, 0),
+                                ('b', b'"b"', nested, 0, 0),
+                                ('c', borrowed, None, 1, len(borrowed) - 1),
+                                ('d', b'"d"', leaf(0), 0, 0)], None)
+    value = {'digest': 'omit-only-this', 'schema_version': 1, 'state': state}
+    stream = ('members', [('digest', b'"digest"', leaf(value['digest']), 0, 0),
+                          ('schema_version', b'"schema_version"', leaf(1), 0, 0),
+                          ('state', b'"state"', state_stream, 0, 0)], None)
+    raw = storage.canonical(value) + b'\n'
+    descriptor = {'logical_bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+    expected_body = hashlib.sha256(storage.canonical({key: child for key, child in value.items()
+                                                     if key != 'digest'})).hexdigest()
+    original = hashlib.sha256
+    borrowed_seen = []
+    class Digest:
+        def __init__(self): self.inner = original()
+        def update(self, chunk):
+            if isinstance(chunk, memoryview) and chunk.obj is borrowed:
+                borrowed_seen.append(len(chunk))
+            self.inner.update(chunk)
+        def hexdigest(self): return self.inner.hexdigest()
+    monkeypatch.setattr(storage.hashlib, 'sha256', Digest)
+    assert storage._authenticate_stream(value, stream, descriptor) == expected_body
+    assert borrowed_seen and all(length == len(borrowed) - 2 for length in borrowed_seen)
+
+
+@pytest.mark.parametrize("order", ["ordered", "reversed", "interleaved"])
+def test_descriptor_map_spans_preserve_full_event_and_body_framing(order):
+    import journal_storage as storage
+    groups = [{f"k{n:05d}": "é\\\"" * 3 for n in range(i * 80, (i + 1) * 80)} for i in range(8)]
+    if order == "reversed":
+        groups.reverse()
+    elif order == "interleaved":
+        groups = [{f"k{n:05d}": "é\\\"" * 3 for n in range(i, 640, 8)} for i in range(8)]
+    children = []
+    expected = {}
+    for group in groups:
+        raw = storage.canonical(group)
+        children.append(("leaf", raw, storage._canonical_members(group, raw)))
+        expected.update(group)
+    stream = storage._map_stream(children)
+    canonical = storage.canonical(expected)
+    assert b"".join(storage._stream_value(stream)) == canonical
+    assert storage._pack_stream(stream)[0] == canonical
+    descriptor = {"logical_bytes": len(canonical) + 1, "sha256": storage._hash(canonical + b"\n")}
+    assert storage._authenticate_stream(expected, stream, descriptor) is None
+    event = {"schema_version": 1, "state": expected, "digest": "nested exclusion stays ordinary"}
+    node = ("members", (("digest", b'"digest"', ("leaf", storage.canonical(event["digest"]), None), 0, 0),
+                         ("schema_version", b'"schema_version"', ("leaf", b"1", None), 0, 0),
+                         ("state", b'"state"', stream, 0, 0)), None)
+    raw = storage.canonical(event)
+    descriptor = {"logical_bytes": len(raw) + 1, "sha256": storage._hash(raw + b"\n")}
+    assert storage._authenticate_stream(event, node, descriptor) == storage._hash(storage.canonical({k: v for k, v in event.items() if k != "digest"}))
+    if order != "interleaved":
+        assert stream[0] == "map-spans"
+        assert all(a is b for a, b in zip(stream[1], sorted(children, key=lambda child: child[2][0][0])))
+
+
+def test_descriptor_map_spans_empty_nested_and_member_order_are_exact():
+    import journal_storage as storage
+    raw_a, raw_b = b'{"a":1}', b'{"b":2}'
+    a = ("leaf", raw_a, (("a", 1, len(raw_a) - 1),))
+    b = ("leaf", raw_b, (("b", 1, len(raw_b) - 1),))
+    empty = ("leaf", b"{}", ())
+    child = storage._map_stream([b, empty, a])
+    nested = storage._map_stream([child, empty])
+    assert b"".join(storage._stream_value(nested)) == b'{"a":1,"b":2}'
+    assert [field[0] for field in storage._stream_index(child)] == ["a", "b"]
+    assert b"".join(storage._stream_value(storage._map_stream([empty]))) == b"{}"
+
+
+def test_descriptor_map_spans_avoid_per_member_token_work_and_owned_map_copy(monkeypatch):
+    import cProfile
+    import journal_storage as storage
+    groups = [{f"key{n:06d}": n for n in range(i * 2000, (i + 1) * 2000)} for i in range(20)]
+    expected = {}; children = []
+    for group in groups:
+        raw = storage.canonical(group)
+        children.append(("leaf", raw, storage._canonical_members(group, raw)))
+        expected.update(group)
+    stream = storage._map_stream(children)
+    assert stream[0] == "map-spans"
+    raw = storage.canonical(expected)
+    descriptor = {"logical_bytes": len(raw) + 1, "sha256": storage._hash(raw + b"\n")}
+    def forbidden(*args, **kwargs):
+        raise AssertionError("ordered physical spans must not expand every member or copy a whole map")
+    monkeypatch.setattr(storage, "_stream_index", forbidden)
+    monkeypatch.setattr(storage, "_pack_map", forbidden)
+    monkeypatch.setattr(storage, "_pack_stream", forbidden)
+    profiler = cProfile.Profile(); profiler.enable()
+    storage._authenticate_stream(expected, stream, descriptor)
+    profiler.disable()
+    emits = sum(row.callcount for row in profiler.getstats() if getattr(row.code, "co_name", "") == "emit")
+    assert emits <= 2 + 2 * len(children)
+
+
+@pytest.mark.parametrize("leaf", [32, 97, 65536])
+def test_descriptor_chunk_ledger_and_exact_nested_event_framing(monkeypatch, leaf):
+    import journal_storage as storage
+    monkeypatch.setattr(storage, "LEAF_BYTES", leaf)
+    groups = [{f"k{n:04d}": n for n in range(i, 120, 12)} for i in range(12)]
+    # Small physical children stay within the selected leaf bound.
+    children = []
+    for group in groups:
+        for key, value in group.items():
+            item = {key: value};raw = storage.canonical(item)
+            children.append(("leaf", raw, storage._canonical_members(item, raw)))
+    # Put alternating keys in each leaf to exercise interleaved order admission.
+    children = []
+    for i in range(60):
+        item = {f"k{i:04d}": i, f"k{i+60:04d}": i+60};raw = storage.canonical(item)
+        assert len(raw) <= leaf
+        children.append(("leaf", raw, storage._canonical_members(item, raw)))
+    expected = {f"k{n:04d}": n for n in range(120)}
+    raw = storage.canonical(expected);budget = [len(raw), 0]
+    stream = storage._map_stream(children, _budget=budget)
+    assert stream[0] == "map-chunks" and budget[1] == len(raw)
+    assert all(0 < len(part) <= leaf for part in stream[1])
+    assert sum(map(len, stream[1])) == len(raw)
+    assert b"".join(storage._stream_value(stream)) == raw
+    assert b"".join(storage._stream_value(("interior", stream, None))) == raw[1:-1]
+    # No quota is refunded while a prior compiled map can still be live.
+    assert storage._map_stream(children, _budget=budget)[0] == "members"
+    assert budget[1] == len(raw)
+    event = {"state": {"nested": [expected]}, "digest": "nested digest unaffected", "schema_version": 1}
+    nested = ("members", (("nested", b'"nested"', ("array", (stream,), None), 0, 0),), None)
+    node = ("members", (("digest", b'"digest"', ("leaf", storage.canonical(event["digest"]), None), 0, 0), ("schema_version", b'"schema_version"', ("leaf", b"1", None), 0, 0), ("state", b'"state"', nested, 0, 0)), None)
+    canonical = storage.canonical(event)
+    desc = {"logical_bytes": len(canonical)+1, "sha256": storage._hash(canonical+b"\n")}
+    assert storage._authenticate_stream(event,node,desc) == storage._hash(storage.canonical({k:v for k,v in event.items() if k != "digest"}))
+
+
+def test_descriptor_chunk_budget_refusal_precedes_payload_allocation(monkeypatch):
+    import journal_storage as storage
+    a={"a":1,"z":3};b={"b":2,"y":4};children=[]
+    for value in [a,b]:
+        raw=storage.canonical(value);children.append(("leaf",raw,storage._canonical_members(value,raw)))
+    budget=[1,0];stream=storage._map_stream(children,_budget=budget)
+    assert stream[0]=="members" and budget==[1,0]
+    assert b"".join(storage._stream_value(stream))==storage.canonical(a|b)
+
+
+
+def test_descriptor_chunk_large_compiled_leaf_member_declines_before_reservation():
+    import journal_storage as storage
+    large = {"a": "x" * (storage.LEAF_BYTES + 1), "z": 1}
+    other = {"b": 2, "y": 3}
+    children = []
+    for value in [large, other]:
+        raw = storage.canonical(value)
+        children.append(("leaf", raw, storage._canonical_members(value, raw)))
+    budget = [storage.MAX_LOGICAL_BYTES, 0]
+    stream = storage._map_stream(children, _budget=budget)
+    assert stream[0] == "members" and budget[1] == 0
+    expected = large | other
+    raw = storage.canonical(expected)
+    desc = {"logical_bytes": len(raw)+1, "sha256": storage._hash(raw+b"\n")}
+    assert storage._authenticate_stream(expected, stream, desc) is None
+
+
+
+def test_indexed_leaf_reuses_immutable_fields_and_charges_every_new_reference():
+    import sys
+    import journal_storage as storage
+    value = {"é": [1, 2], "a": {"z": True}}
+    raw = storage.canonical(value); ranges = storage._canonical_members(value, raw)
+    stream = storage._indexed_leaf(raw, ranges)
+    fields = storage._stream_index(stream)
+    assert fields is storage._stream_index(stream)
+    assert type(fields) is tuple and all(type(item) is tuple for item in fields)
+    assert all(item[1] is raw and item[2] is None for item in fields)
+    assert storage._index_cost(stream) == sys.getsizeof(stream) + sys.getsizeof(fields) + sum(map(sys.getsizeof, fields))
+    assert b"".join(storage._stream_value(stream)) == raw
+    assert storage._pack_stream(stream) == (raw, ranges)
+
+
+def test_indexed_retained_plan_keeps_fresh_dependency_reads_and_field_identity(tmp_path, monkeypatch):
+    import journal_storage as storage
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        memo = storage._normalization_memo();plan = memo["plans"][(descriptor["root"], False)]
+        indexed = plan[-2]; assert indexed[0] == "leaf"
+        fields = storage._stream_index(indexed)
+        assert fields is storage._stream_index(indexed)
+        assert plan[-1] >= storage._index_cost(indexed)
+        reads = [];original = storage._read_block
+        def read(parent,name,limit,active_memo,identity):
+            reads.append(name);return original(parent,name,limit,active_memo,identity)
+        monkeypatch.setattr(storage,"_read_block",read)
+        second = storage.decode(path,descriptor)
+        assert second == expected and set(reads) == {name+".json" for name in blocks}
+        second["field-0"]["z"].append("changed")
+        assert storage.decode(path,descriptor) == expected
+    assert memo["closed"] and not memo["plans"] and memo["budget"]["bytes"] == 0
+
+
+def test_indexed_leaf_residency_is_released_on_policy_change_and_cancel(tmp_path, monkeypatch):
+    import journal_storage as storage
+    path, descriptor, _, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        memo = storage._normalization_memo()
+        assert any(len(entry[-1]) == 4 for entry in memo["entries"].values())
+        monkeypatch.setattr(storage,"MAX_LOGICAL_BYTES",storage.MAX_LOGICAL_BYTES-1)
+        assert storage._normalization_memo() is memo
+        assert not memo["entries"] and not memo["plans"]
+    assert memo["budget"]["bytes"] == 0 and memo["closed"]
+
+
+
+@pytest.mark.parametrize("value", [7, [1, 2], "text"])
+def test_indexed_nonmap_stream_tuple_is_charged(value):
+    import sys
+    import journal_storage as storage
+    raw = storage.canonical(value)
+    stream = storage._indexed_leaf(raw, None)
+    assert len(stream) == 3 and storage._index_cost(stream) == sys.getsizeof(stream)
+    assert storage._pack_stream(stream) == (raw, None)
+
+
+
+def test_indexed_entry_charges_added_slot_for_leaf_and_plan():
+    import sys
+    import journal_storage as storage
+    stream = storage._indexed_leaf(b"1", None)
+    added = storage._entry_index_cost(stream) - storage._index_cost(stream)
+    assert added == sys.getsizeof((None,) * 7) - sys.getsizeof((None,) * 6)
+    assert added == sys.getsizeof((None,) * 10) - sys.getsizeof((None,) * 9)
+
+
+@pytest.mark.parametrize("value", [{}, {"a": 1}, {"a": 1, "z": 2},
+    {"é": "雪", "a": [1, 2], "z": {"q": True}, "quote\"": "line\n"}])
+def test_child_summary_exact_canonical_size_count_width_and_small_fallback(value):
+    raw = storage.canonical(value)
+    ranges = storage._canonical_members(value, raw)
+    stream = storage._summarized_leaf(raw, ranges)
+    assert storage._leaf_summary(stream) == (
+        len(raw), len(value), max((end - start + 1 for _, start, end in ranges), default=1))
+    assert len(stream) == (5 if len(value) > 2 else 4)
+    assert b"".join(storage._stream_value(stream)) == raw
+    assert storage._pack_stream(stream) == (raw, ranges)
+    assert storage._stream_index(stream) is stream[3]
+    if len(stream) == 5:
+        assert type(stream[4]) is tuple and all(type(item) is int for item in stream[4])
+        with pytest.raises(TypeError):
+            stream[4][0] = 0
+
+
+@pytest.mark.parametrize("value", [None, {}, {"a": 1, "z": 2},
+    {"a": "雪", "b": 2, "c": 3, "d": 4}])
+def test_child_summary_charges_all_added_retained_objects_and_reference_slots(value):
+    import sys
+    raw = storage.canonical(value)
+    ranges = storage._canonical_members(value, raw) if isinstance(value, dict) else None
+    stream = storage._summarized_leaf(raw, ranges)
+    expected = sys.getsizeof(stream)
+    if len(stream) >= 4:
+        expected += sys.getsizeof(stream[3]) + sum(sys.getsizeof(row) for row in stream[3])
+    if len(stream) == 5:
+        expected += sys.getsizeof(stream[4]) + sum(sys.getsizeof(item) for item in stream[4])
+    assert storage._index_cost(stream) == expected
+    slot = sys.getsizeof((None,) * 7) - sys.getsizeof((None,) * 6)
+    assert storage._entry_index_cost(stream) == expected + slot
+    assert slot == sys.getsizeof((None,) * 10) - sys.getsizeof((None,) * 9)
+
+
+def test_child_summary_interleaved_unicode_map_uses_retained_summaries_without_field_rescan():
+    class Ranges(tuple):
+        def __iter__(self):
+            raise AssertionError("authenticated child framing was scanned again")
+    groups = [{f"{index:04d}-é": "雪\n\"" + str(index) for index in range(part, 180, 3)}
+              for part in range(3)]
+    children = []
+    for value in groups:
+        raw = storage.canonical(value)
+        stream = storage._summarized_leaf(raw, storage._canonical_members(value, raw))
+        # Only iteration is forbidden: ordering still reads authenticated endpoints.
+        children.append((stream[0], stream[1], Ranges(stream[2]), stream[3], stream[4]))
+    expected = {key: value for group in groups for key, value in group.items()}
+    raw = storage.canonical(expected)
+    budget = [len(raw), 0]
+    stream = storage._map_stream(children, _budget=budget)
+    assert stream[0] == "map-chunks" and budget == [len(raw), len(raw)]
+    assert b"".join(storage._stream_value(stream)) == raw
+    assert all(len(part) <= storage.LEAF_BYTES for part in stream[1])
+    descriptor = {"logical_bytes": len(raw) + 1, "sha256": storage._hash(raw + b"\n")}
+    assert storage._authenticate_stream(expected, stream, descriptor) is None
+
+
+def test_child_summary_empty_nested_and_interleaved_maps_preserve_framing():
+    def leaf(value):
+        raw = storage.canonical(value)
+        return storage._summarized_leaf(raw, storage._canonical_members(value, raw))
+    groups = [{"a": "雪", "e": [1], "i": {}}, {"b": 2, "f": 6, "j": 10}]
+    expected = groups[0] | groups[1]
+    raw = storage.canonical(expected)
+    budget = [len(raw), 0]
+    first = storage._map_stream([leaf({}), leaf(groups[0]), leaf(groups[1])], _budget=budget)
+    assert first[0] == "map-chunks" and budget[1] == len(raw)
+    parent = storage._map_stream([first, leaf({"c": 3, "g": 7, "k": 11})],
+                                 _budget=[storage.MAX_LOGICAL_BYTES, 0])
+    assert parent[0] == "members"
+    assert b"".join(storage._stream_value(parent)) == storage.canonical(expected | {"c": 3, "g": 7, "k": 11})
+    assert b"".join(storage._stream_value(("interior", first, None))) == raw[1:-1]
+    assert b"".join(storage._stream_value(storage._map_stream([leaf({}), leaf({})]))) == b"{}"
+
+
+def test_child_summary_oversized_compiled_member_declines_before_reservation():
+    groups = [{"a": "x" * (storage.LEAF_BYTES + 1), "d": 4, "g": 7},
+              {"b": 2, "e": 5, "h": 8}]
+    children = []
+    for value in groups:
+        raw = storage.canonical(value)
+        children.append(storage._summarized_leaf(raw, storage._canonical_members(value, raw)))
+    assert len(children[0]) == 5 and children[0][4][2] > storage.LEAF_BYTES
+    budget = [storage.MAX_LOGICAL_BYTES, 0]
+    stream = storage._map_stream(children, _budget=budget)
+    assert stream[0] == "members" and budget[1] == 0
+    assert b"".join(storage._stream_value(stream)) == storage.canonical(groups[0] | groups[1])
+
+
+def test_child_summary_retained_admissions_charge_bytes_and_keep_fresh_dependency_reads(tmp_path, monkeypatch):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000799'
+    value = {f'key-{index:03}': '雪' + str(index) for index in range(128)}
+    physical = storage.canonical(["leaf", value]) + b"\n"
+    digest = storage._hash(physical)
+    logical = storage.canonical(value) + b"\n"
+    blocks = {digest: physical}
+    descriptor = {storage.MARKER: 1, "root": digest,
+                  "sha256": storage._hash(logical), "logical_bytes": len(logical)}
+    storage.materialize(home, blocks)
+    path = home / 'current.json'
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == value
+        memo = storage._normalization_memo()
+        summarized = [entry for entry in memo['entries'].values() if len(entry[-1]) == 5]
+        assert summarized
+        assert all(entry[4] >= storage._entry_index_cost(entry[-1]) for entry in summarized)
+        expected_cost = sum(sum(entry[4] for entry in owner['entries'].values())
+                            + owner['plans'].retained_bytes
+                            + sum(handle[1] for handle in owner['handles'].values())
+                            for owner in memo['budget']['memos'])
+        expected_count = sum(len(owner['entries']) + len(owner['plans']) + len(owner['handles'])
+                             for owner in memo['budget']['memos'])
+        assert memo['budget']['bytes'] == expected_cost
+        assert memo['budget']['count'] == expected_count
+        reads = []
+        original = storage._read_block
+        def read(parent, name, limit, active_memo, identity):
+            reads.append(name)
+            return original(parent, name, limit, active_memo, identity)
+        monkeypatch.setattr(storage, '_read_block', read)
+        result = storage.decode(path, descriptor)
+        assert result == value and set(reads) == {name + '.json' for name in blocks}
+        result['key-000'] = 'changed consumer'
+        assert storage.decode(path, descriptor) == value
+    assert memo['closed'] and memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+def test_child_summary_first_admission_uses_exact_charged_stream_and_refusal_falls_back(tmp_path, monkeypatch):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000800'
+    value = {f'key-{index:03}': '雪' + str(index) for index in range(128)}
+    physical = storage.canonical(['leaf', value]) + b'\n'
+    digest = storage._hash(physical)
+    logical = storage.canonical(value) + b'\n'
+    descriptor = {storage.MARKER: 1, 'root': digest,
+                  'sha256': storage._hash(logical), 'logical_bytes': len(logical)}
+    storage.materialize(home, {digest: physical})
+    path = home / 'current.json'
+    original = storage._authenticate_stream
+    observations = []
+    def authenticate(decoded, stream, bound):
+        memo = storage._normalization_memo()
+        entry = memo['entries'].get(digest)
+        observations.append((len(stream), entry is not None and stream is entry[-1]))
+        return original(decoded, stream, bound)
+    monkeypatch.setattr(storage, '_authenticate_stream', authenticate)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == value
+        assert observations == [(5, True)]
+    # Force only optional metadata admission to fail; decoded limits stay intact.
+    original_cost = storage._entry_index_cost
+    monkeypatch.setattr(storage, '_entry_index_cost', lambda stream: original_cost(stream) + storage.MAX_LOGICAL_BYTES)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == value
+        assert observations[-1] == (3, False)
+        assert not storage._normalization_memo()['entries']
+
+
+@pytest.mark.parametrize('fault', ['replacement', 'cancellation'])
+def test_child_summary_first_admission_does_not_cache_physical_authority_or_survive_cancel(tmp_path, monkeypatch, fault):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000801'
+    value = {f'key-{index:03}': '雪' + str(index) for index in range(128)}
+    physical = storage.canonical(['leaf', value]) + b'\n'
+    digest = storage._hash(physical)
+    logical = storage.canonical(value) + b'\n'
+    descriptor = {storage.MARKER: 1, 'root': digest,
+                  'sha256': storage._hash(logical), 'logical_bytes': len(logical)}
+    storage.materialize(home, {digest: physical})
+    path = home / 'current.json'
+    original = storage._authenticate_stream
+    def authenticate(decoded, stream, bound):
+        entry = storage._normalization_memo()['entries'][digest]
+        assert len(stream) == 5 and stream is entry[-1]
+        raise KeyboardInterrupt('first-use digest cancellation')
+    if fault == 'cancellation':
+        monkeypatch.setattr(storage, '_authenticate_stream', authenticate)
+        with pytest.raises(KeyboardInterrupt, match='first-use digest cancellation'):
+            with storage.normalization_scope():
+                memo = storage._normalization_memo()
+                storage.decode(path, descriptor)
+    else:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage.decode(path, descriptor) == value
+            target = home / 'state-blocks/v1' / (digest + '.json')
+            assert target.read_bytes() == physical
+            replacement = target.with_name('replacement.tmp')
+            replacement.write_bytes(physical.replace(b'key-000', b'key-999'))
+            replacement.replace(target)
+            with pytest.raises(ValueError, match='digest mismatch'):
+                storage.decode(path, descriptor)
+    assert storage._authenticate_stream is original or fault == 'cancellation'
+    assert memo['closed'] and not memo['entries'] and not memo['plans'] and not memo['handles']
+    assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+@pytest.mark.parametrize('interior', [False, True])
+def test_singleton_member_final_flush_preserves_borrowed_backing(interior):
+    raw = b'{"a":1,"c":3}'
+    leaf = ('leaf', raw, (('a', 1, 6), ('c', 7, 12)))
+    node = ('members', tuple(storage._stream_index(leaf)), None)
+    if interior:
+        node = ('interior', node, None)
+    parts = list(storage._stream_value(node))
+    borrowed = [part for part in parts if isinstance(part, memoryview)]
+    assert len(borrowed) == 1 and borrowed[0].obj is raw
+    assert bytes(borrowed[0]) == raw[1:-1]
+    assert b''.join(parts) == (raw[1:-1] if interior else raw)
+
+
+@pytest.mark.parametrize('bound', [7, 11])
+def test_singleton_member_capacity_flush_keeps_single_view_and_bounds_multispan_batch(monkeypatch, bound):
+    monkeypatch.setattr(storage, 'LEAF_BYTES', bound)
+    fields, backing = [], []
+    for key, value in [('a', 1), ('b', 2), ('c', 3), ('d', 4)]:
+        raw = storage.canonical({key: value})
+        backing.append(raw)
+        fields.append((key, raw, None, 1, len(raw) - 1))
+    parts = list(storage._stream_value(('members', tuple(fields), None)))
+    assert b''.join(parts) == b'{"a":1,"b":2,"c":3,"d":4}'
+    assert all(len(part) <= bound for part in parts)
+    assert any(isinstance(part, memoryview) and part.obj is backing[-1] for part in parts)
+    # Separate buffers really do require a bounded join; byte equality alone
+    # must not be used to claim they share one borrowed backing allocation.
+    assert any(type(part) is bytes and len(part) > 1 for part in parts)
+
+
+def test_singleton_member_nested_flush_preserves_identity_across_structured_transition():
+    raw = b'{"a":1,"c":3}'
+    leaf = ('leaf', raw, (('a', 1, 6), ('c', 7, 12)))
+    child = ('members', tuple(storage._stream_index(leaf)), None)
+    node = ('members', (('child', b'"child"', child, 0, 0),
+                        ('tail', b'"tail"', ('leaf', b'4', None), 0, 0)), None)
+    parts = list(storage._stream_value(node))
+    assert b''.join(parts) == b'{"child":{"a":1,"c":3},"tail":4}'
+    assert any(isinstance(part, memoryview) and part.obj is raw for part in parts)
+    value = {'child': {'a': 1, 'c': 3}, 'tail': 4}
+    logical = storage.canonical(value) + b'\n'
+    descriptor = {'logical_bytes': len(logical), 'sha256': storage._hash(logical)}
+    assert storage._authenticate_stream(value, node, descriptor) is None
+
+
+
+def _retained_handle_leaf_fixture(tmp_path, count):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000987'
+    blocks = home / 'state-blocks/v1'
+    blocks.mkdir(parents=True)
+    fixtures = []
+    for index in range(count):
+        value = {'index': index}
+        physical = storage.canonical(['leaf', value]) + b'\n'
+        digest = storage._hash(physical)
+        logical = storage.canonical(value) + b'\n'
+        (blocks / (digest + '.json')).write_bytes(physical)
+        fixtures.append((value, physical, digest, {storage.MARKER: 1, 'root': digest,
+                        'sha256': storage._hash(logical), 'logical_bytes': len(logical)}))
+    return home / 'current.json', blocks, fixtures
+
+
+def test_retained_leaf_second_admission_uses_existing_charged_history_and_fresh_read(tmp_path, monkeypatch):
+    path, directory, fixtures = _retained_handle_leaf_fixture(tmp_path, 1)
+    value, physical, digest, descriptor = fixtures[0]
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    original = os.pread
+    calls = []
+    def read(*args):
+        calls.append(args[0])
+        return original(*args)
+    monkeypatch.setattr(os, 'pread', read)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage.decode(path, descriptor) == value
+            entry = memo['entries'][digest]
+            key = next(iter(memo['handles']))
+            assert key in memo['handle_probation']
+            assert storage._evict_handle(memo['budget'])
+            bytes_before, count_before = memo['budget']['bytes'], memo['budget']['count']
+            assert storage._read_block(parent, digest + '.json', storage.MAX_BLOCK_BYTES, memo, []) == physical
+            assert memo['entries'][digest] is entry and key in memo['handle_protected']
+            assert memo['budget']['bytes'] == bytes_before + memo['handles'][key][1]
+            assert memo['budget']['count'] == count_before + 1
+            assert len(calls) == 2
+            # Queue priority cannot make a later same-size mutation authoritative.
+            (directory / (digest + '.json')).write_bytes(physical.replace(b'0', b'9'))
+            with pytest.raises(ValueError, match='digest mismatch'):
+                storage.decode(path, descriptor)
+    finally:
+        os.close(parent)
+    assert memo['closed'] and memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+def test_retained_leaf_absence_keeps_new_handle_in_probation(tmp_path):
+    (tmp_path / 'unseen.json').write_bytes(b'fresh')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage._read_block(parent, 'unseen.json', 10, memo, []) == b'fresh'
+            key = next(iter(memo['handles']))
+            assert key in memo['handle_probation'] and not memo['handle_protected']
+            assert not memo['entries'] and not memo['plans']
+    finally:
+        os.close(parent)
+
+
+def test_retained_leaf_admission_reuses_hot_entries_after_probation_eviction(tmp_path):
+    path, directory, fixtures = _retained_handle_leaf_fixture(tmp_path, 80)
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            for value, _, _, descriptor in fixtures:
+                assert storage.decode(path, descriptor) == value
+            while storage._evict_handle(memo['budget']):
+                pass
+            for _, physical, digest, _ in fixtures:
+                assert storage._read_block(parent, digest + '.json', storage.MAX_BLOCK_BYTES, memo, []) == physical
+            hot = dict(memo['handles'])
+            assert len(memo['handle_protected']) == 80
+            for index in range(300):
+                name = f'new-{index}.json'
+                (directory / name).write_bytes(b'one use')
+                assert storage._read_block(parent, name, 20, memo, []) == b'one use'
+            assert all(memo['handles'][key] is handle for key, handle in hot.items())
+            assert len(memo['handles']) == 256
+    finally:
+        os.close(parent)
+
+
+def test_shared_protected_handle_limit_spans_nested_owners_and_cancellation(tmp_path):
+    for index in range(256):
+        (tmp_path / f'{index}.json').write_bytes(b'fresh')
+    parent = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    fds = []
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            with storage.normalization_scope():
+                outer = storage._normalization_memo()
+                for index in range(128):
+                    for _ in range(2):
+                        assert storage._read_block(parent, f'{index}.json', 10, outer, []) == b'fresh'
+                assert len(outer['handle_protected']) == 128
+                with storage.normalization_scope():
+                    inner = storage._normalization_memo()
+                    for index in range(128, 256):
+                        for _ in range(2):
+                            assert storage._read_block(parent, f'{index}.json', 10, inner, []) == b'fresh'
+                        assert sum(len(owner['handle_protected']) for owner in inner['budget']['memos']) <= 192
+                    assert sum(len(owner['handles']) for owner in inner['budget']['memos']) == 256
+                    assert sum(len(owner['handle_protected']) for owner in inner['budget']['memos']) == 192
+                    assert inner['budget']['bytes'] == sum(owner['bytes'] for owner in inner['budget']['memos'])
+                    fds = [v[0] for owner in inner['budget']['memos'] for v in owner['handles'].values()]
+                    raise KeyboardInterrupt
+        assert outer['closed'] and inner['closed']
+        assert outer['budget']['bytes'] == outer['budget']['count'] == 0
+        for fd in fds:
+            with pytest.raises(OSError):
+                os.fstat(fd)
+    finally:
+        os.close(parent)
+
+
+
+def test_retained_leaf_priority_does_not_borrow_another_memos_history(tmp_path):
+    path, directory, fixtures = _retained_handle_leaf_fixture(tmp_path, 1)
+    value, physical, digest, descriptor = fixtures[0]
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with storage.normalization_scope():
+            outer = storage._normalization_memo()
+            assert storage.decode(path, descriptor) == value
+            assert digest in outer['entries']
+            with storage.normalization_scope():
+                inner = storage._normalization_memo()
+                assert not inner['entries']
+                assert storage._read_block(parent, digest + '.json', storage.MAX_BLOCK_BYTES, inner, []) == physical
+                key = next(iter(inner['handles']))
+                assert key in inner['handle_probation'] and not inner['handle_protected']
+                assert digest in outer['entries'] and not inner['entries']
+            assert inner['closed'] and not inner['handles']
+            assert outer['budget']['bytes'] == outer['bytes']
+    finally:
+        os.close(parent)
+
+
+
+def test_retained_subtree_plan_prior_use_promotes_without_new_residency(tmp_path, monkeypatch):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    directory = path.parent / 'state-blocks/v1'
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    original_read = os.pread
+    reads = []
+    def read(*args):
+        reads.append(args[0])
+        return original_read(*args)
+    monkeypatch.setattr(os, 'pread', read)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage.decode(path, descriptor) == expected
+            digest = descriptor['root']
+            plan = memo['plans'][(digest, False)]
+            assert digest not in memo['entries']
+            while storage._evict_handle(memo['budget']):
+                pass
+            before_bytes, before_count = memo['budget']['bytes'], memo['budget']['count']
+            reads.clear()
+            assert storage._read_block(parent, digest + '.json', storage.MAX_BLOCK_BYTES, memo, []) == blocks[digest]
+            key = next(iter(memo['handles']))
+            assert key in memo['handle_protected'] and len(reads) == 1
+            assert memo['plans'][(digest, False)] is plan
+            assert memo['budget']['bytes'] == before_bytes + memo['handles'][key][1]
+            assert memo['budget']['count'] == before_count + 1
+            assert storage.decode(path, descriptor) == expected
+            assert len(reads) == 1 + len(blocks)
+    finally:
+        os.close(parent)
+
+
+@pytest.mark.parametrize('fault', ['changed', 'missing', 'symlink'])
+def test_retained_subtree_priority_keeps_every_fresh_dependency_refusal(tmp_path, fault):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        memo = storage._normalization_memo()
+        assert storage.decode(path, descriptor) == expected
+        while storage._evict_handle(memo['budget']):
+            pass
+        assert storage.decode(path, descriptor) == expected
+        assert any(key[-1] == descriptor['root'] + '.json' for key in memo['handle_protected'])
+        child = next(key for key in blocks if key != descriptor['root'])
+        target = path.parent / 'state-blocks/v1' / (child + '.json')
+        if fault == 'changed':
+            before = target.stat()
+            target.write_bytes(target.read_bytes().replace(b'retained', b'mutated!', 1))
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            target.rename(target.with_suffix('.retained'))
+            if fault == 'symlink':
+                target.symlink_to(target.with_suffix('.retained'))
+        with pytest.raises((OSError, ValueError)):
+            storage.decode(path, descriptor)
+    assert memo['closed'] and not memo['handles']
+    assert memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+
+def test_retained_canonical_skip_plan_admission_still_authenticates_hidden_bytes(tmp_path):
+    path, descriptor, event, hidden_root, hidden = _verified_projection_fixture(tmp_path)
+    directory = storage.home_for(path) / 'state-blocks/v1'
+    parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        with storage.normalization_scope():
+            memo = storage._normalization_memo()
+            assert storage.decode_event_projection(path, descriptor).header['digest'] == event['digest']
+            plan = memo['plans'][(hidden_root, 'canonical-skip')]
+            assert hidden_root not in memo['entries']
+            while storage._evict_handle(memo['budget']):
+                pass
+            before_bytes, before_count = memo['budget']['bytes'], memo['budget']['count']
+            name = hidden_root + '.json'
+            expected = (directory / name).read_bytes()
+            assert storage._read_block(parent, name, storage.MAX_BLOCK_BYTES, memo, []) == expected
+            key = next(iter(memo['handles']))
+            assert key in memo['handle_protected']
+            assert memo['plans'][(hidden_root, 'canonical-skip')] is plan
+            assert memo['budget']['bytes'] == before_bytes + memo['handles'][key][1]
+            assert memo['budget']['count'] == before_count + 1
+            target = directory / (hidden[1] + '.json')
+            target.write_bytes(target.read_bytes().replace(b':1', b':9'))
+            with pytest.raises(ValueError, match='digest mismatch'):
+                storage.decode_event_projection(path, descriptor)
+    finally:
+        os.close(parent)
+
+
+@pytest.mark.parametrize('value', [None, {}, {'a': 1}, {'a': 1, 'z': 2},
+    {'quote"': 'line\n', 'é': '雪', 'a': [1, {'x': False}], 'z': None}])
+def test_owned_member_parts_preserve_interfaces_bytes_and_exact_added_charges(value):
+    import sys
+    raw = storage.canonical(value)
+    ranges = storage._canonical_members(value, raw) if isinstance(value, dict) else None
+    stream = storage._member_span_leaf(raw, ranges)
+    assert stream[1] is raw and stream[2] is ranges
+    assert b''.join(storage._stream_value(stream)) == raw
+    assert storage._pack_stream(stream) == (raw, ranges)
+    expected = sys.getsizeof(stream)
+    if len(stream) >= 4:
+        expected += sys.getsizeof(stream[3]) + sum(map(sys.getsizeof, stream[3]))
+    if len(stream) == 5:
+        expected += sys.getsizeof(stream[4]) + sum(map(sys.getsizeof, stream[4]))
+        assert type(stream[3]) is storage._MemberParts
+        for field, (key, start, end) in zip(stream[3], ranges):
+            assert field == (key, raw[start:end], None, 0, end - start)
+            assert type(field[1]) is bytes and field[1] is not raw
+            expected += sys.getsizeof(field[1]) + sys.getsizeof(field[3]) + sys.getsizeof(field[4])
+        with pytest.raises(TypeError):
+            stream[3][0] = stream[3][0]
+        assert not hasattr(stream[3], '__dict__')
+    else:
+        assert stream == storage._summarized_leaf(raw, ranges)
+    assert storage._index_cost(stream) == expected
+    assert storage._entry_index_cost(stream) == expected + sys.getsizeof((None,)) - sys.getsizeof(())
+
+
+def test_owned_member_parts_interleaved_join_avoids_reconstructing_views(monkeypatch):
+    groups = [{f'{index:04d}-é': '雪"\n' + str(index) for index in range(part, 180, 3)}
+              for part in range(3)]
+    children = []
+    for value in groups:
+        raw = storage.canonical(value)
+        children.append(storage._member_span_leaf(raw, storage._canonical_members(value, raw)))
+    identities = [tuple(id(field[1]) for field in child[3]) for child in children]
+    expected = {key: value for group in groups for key, value in group.items()}
+    raw = storage.canonical(expected)
+    def forbidden(*args):
+        raise AssertionError('owned member bytes were rewrapped as views')
+    with monkeypatch.context() as scope:
+        scope.setattr(storage, 'memoryview', forbidden, raising=False)
+        stream = storage._map_stream(children, _budget=[len(raw), 0])
+    assert stream[0] == 'map-chunks'
+    assert all(len(part) <= storage.LEAF_BYTES for part in stream[1])
+    assert b''.join(storage._stream_value(stream)) == raw
+    assert storage._authenticate_stream(expected, stream,
+        {'logical_bytes': len(raw) + 1, 'sha256': storage._hash(raw + b'\n')}) is None
+    assert identities == [tuple(id(field[1]) for field in child[3]) for child in children]
+    parent = storage._map_stream([stream, storage._summarized_leaf(b'{"q":1}', (('q', 1, 6),))])
+    assert b''.join(storage._stream_value(parent)) == storage.canonical(expected | {'q': 1})
+
+
+def _owned_member_fixture(tmp_path):
+    home = tmp_path / 'resources/autopilot-runs/01990000-0000-7000-8000-000000000899'
+    value = {f'key-{index:03d}': f'value-{index:03d}' for index in range(128)}
+    physical = storage.canonical(['leaf', value]) + b'\n'
+    digest = storage._hash(physical)
+    logical = storage.canonical(value) + b'\n'
+    descriptor = {storage.MARKER: 1, 'root': digest,
+                  'sha256': storage._hash(logical), 'logical_bytes': len(logical)}
+    storage.materialize(home, {digest: physical})
+    return home / 'current.json', descriptor, digest, value
+
+
+def test_owned_member_parts_real_admission_reuses_objects_and_refusal_keeps_fallback(tmp_path, monkeypatch):
+    path, descriptor, digest, value = _owned_member_fixture(tmp_path)
+    with storage.normalization_scope():
+        memo = storage._normalization_memo()
+        assert storage.decode(path, descriptor) == value
+        entry = memo['entries'][digest]
+        fields = entry[-1][3]
+        assert type(fields) is storage._MemberParts
+        parts = tuple(field[1] for field in fields)
+        assert entry[4] >= storage._entry_index_cost(entry[-1])
+        with monkeypatch.context() as scope:
+            def forbidden(*args):
+                raise AssertionError('already admitted leaf was compiled again')
+            scope.setattr(storage, '_member_span_leaf', forbidden)
+            result = storage.decode(path, descriptor)
+        assert result == value and all(a is b for a, b in zip(parts, (f[1] for f in memo['entries'][digest][-1][3])))
+        result['key-000'] = 'changed consumer'
+        assert storage.decode(path, descriptor) == value
+    assert memo['closed'] and not memo['entries'] and memo['budget']['bytes'] == 0
+    # References retained by this test are immutable owned bytes, not dangling views.
+    assert parts[0] == b'"key-000":"value-000"'
+    cost = storage._entry_index_cost
+    monkeypatch.setattr(storage, '_entry_index_cost', lambda stream: cost(stream) + storage.MAX_LOGICAL_BYTES)
+    observed = []
+    original = storage._authenticate_stream
+    def authenticate(decoded, stream, bound):
+        observed.append(len(stream))
+        return original(decoded, stream, bound)
+    monkeypatch.setattr(storage, '_authenticate_stream', authenticate)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == value
+        assert not storage._normalization_memo()['entries'] and observed == [3]
+
+
+@pytest.mark.parametrize('fault', ['same_size_mutation', 'missing', 'symlink'])
+def test_owned_member_parts_do_not_authenticate_changed_physical_bytes(tmp_path, fault):
+    path, descriptor, digest, value = _owned_member_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == value
+        memo = storage._normalization_memo()
+        assert type(memo['entries'][digest][-1][3]) is storage._MemberParts
+        target = path.parent / 'state-blocks/v1' / (digest + '.json')
+        if fault == 'same_size_mutation':
+            before = target.stat()
+            target.write_bytes(target.read_bytes().replace(b'value-000', b'other-000'))
+            os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+        else:
+            retained = target.with_suffix('.preserved')
+            target.rename(retained)
+            if fault == 'symlink':
+                target.symlink_to(retained)
+        with pytest.raises((OSError, ValueError)):
+            storage.decode(path, descriptor)
+    assert memo['closed'] and memo['budget']['bytes'] == memo['budget']['count'] == 0
+
+
+def test_owned_member_parts_nested_pool_charges_and_cancellation_release(tmp_path):
+    path, descriptor, digest, value = _owned_member_fixture(tmp_path)
+    with pytest.raises(KeyboardInterrupt):
+        with storage.normalization_scope():
+            outer = storage._normalization_memo()
+            assert storage.decode(path, descriptor) == value
+            with storage.normalization_scope():
+                inner = storage._normalization_memo()
+                assert storage.decode(path, descriptor) == value
+                assert inner['budget'] is outer['budget']
+                assert inner['entries'][digest][-1][3] is not outer['entries'][digest][-1][3]
+                expected = sum(sum(entry[4] for entry in owner['entries'].values())
+                    + owner['plans'].retained_bytes + sum(handle[1] for handle in owner['handles'].values())
+                    for owner in inner['budget']['memos'])
+                assert inner['budget']['bytes'] == expected <= storage.MAX_LOGICAL_BYTES
+                assert inner['budget']['count'] <= storage.MAX_BLOCKS
+                raise KeyboardInterrupt('owned member cancellation')
+    assert inner['closed'] and outer['closed']
+    assert not inner['entries'] and not outer['entries']
+    assert outer['budget']['bytes'] == outer['budget']['count'] == 0
+
+
+def test_owned_member_parts_duplicate_map_keys_are_still_refused(tmp_path):
+    path, descriptor, digest, value = _owned_member_fixture(tmp_path)
+    physical = storage.canonical(['map', [digest, digest]]) + b'\n'
+    root = storage._hash(physical)
+    storage.materialize(path.parent, {root: physical})
+    descriptor = dict(descriptor, root=root)
+    with storage.normalization_scope():
+        with pytest.raises(ValueError, match='overlaps'):
+            storage.decode(path, descriptor)
+
+
+def test_owned_member_parts_real_plan_admission_reuses_charged_parts(tmp_path, monkeypatch):
+    path, descriptor, blocks, expected = subtree_plan_fixture(tmp_path)
+    with storage.normalization_scope():
+        assert storage.decode(path, descriptor) == expected
+        memo = storage._normalization_memo()
+        plan = memo['plans'][(descriptor['root'], False)]
+        indexed = plan[-2]
+        assert type(indexed[3]) is storage._MemberParts
+        assert plan[-1] >= storage._entry_index_cost(indexed)
+        parts = tuple(field[1] for field in indexed[3])
+        calls = []
+        original = storage._read_block
+        def read(parent, name, limit, active_memo, identity):
+            calls.append(name)
+            return original(parent, name, limit, active_memo, identity)
+        monkeypatch.setattr(storage, '_read_block', read)
+        result = storage.decode(path, descriptor)
+        assert result == expected and set(calls) == {name + '.json' for name in blocks}
+        assert memo['plans'][(descriptor['root'], False)] is plan
+        assert all(a is b for a, b in zip(parts, (field[1] for field in indexed[3])))
+        result['field-0']['z'].append('changed consumer')
+        assert storage.decode(path, descriptor) == expected
+    assert memo['closed'] and not memo['plans'] and memo['budget']['bytes'] == 0

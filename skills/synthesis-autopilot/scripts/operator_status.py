@@ -126,13 +126,13 @@ def _run(project, run_id, deadline):
     progress_revisions = {}
     # Stream the owner-validated chain. Journal order, not dictionary order or
     # wall-clock monotonicity, determines when useful progress was committed.
-    for last in run_state._events(project, run_id):
+    for last in run_state._operator_events(project, run_id, deadline=deadline):
         _check_deadline(deadline)
-        for task_id, entry in _measured_progress(last["state"]):
+        for task_id, entry in _measured_progress(last.identity):
             identity = (task_id, entry["attempt_id"], run_state._digest(entry))
-            progress_revisions.setdefault(identity, last["state"]["revision"])
+            progress_revisions.setdefault(identity, last.identity["revision"])
     _check_deadline(deadline)
-    state = last["state"]
+    state = last.full_state
     if state.get("owner", {}).get("project_root") != str(project):
         raise ValueError("journal belongs to another project root")
     diagnostics = []
@@ -168,7 +168,7 @@ def _run(project, run_id, deadline):
     continuation = ext.get("capabilities", {}).get("continuation") or {}
     view = {
         "run_id": run_id, "project_id": state["owner"].get("project_id"), "revision": state["revision"],
-        "journal_head": last["digest"], "status": display, "recorded_status": status,
+        "journal_head": last.header["digest"], "status": display, "recorded_status": status,
         "created_at": state.get("created_at"), "updated_at": state.get("updated_at"),
         "owner": {key: state["owner"].get(key) for key in ("session_uuid", "native_ref")},
         "scope": [_text(x) for x in state.get("contract", {}).get("scope", [])[:16]],
@@ -252,13 +252,14 @@ def inspect_project(project, run_id=None, *, limit=DEFAULT_PAGE_SIZE, cursor=Non
                    if offset + limit < total else None)
     rows = []
     deadline = time.monotonic() + MAX_JOURNAL_SECONDS
-    for identity in ids:
-        try:
-            rows.append(_run(project, identity, deadline))
-        except (OSError, ValueError, TypeError, KeyError) as error:
-            rows.append({"run_id": identity, "status": "unhealthy", "recorded_status": "UNKNOWN",
-                         "currentness": "UNVERIFIABLE", "authority_granted": False,
-                         "diagnostics": [_text(str(error))], "questions": [], "current_acceptance": "UNKNOWN"})
+    with run_state.journal_storage.normalization_scope():
+        for identity in ids:
+            try:
+                rows.append(_run(project, identity, deadline))
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                rows.append({"run_id": identity, "status": "unhealthy", "recorded_status": "UNKNOWN",
+                             "currentness": "UNVERIFIABLE", "authority_granted": False,
+                             "diagnostics": [_text(str(error))], "questions": [], "current_acceptance": "UNKNOWN"})
     return {"schema_version": SCHEMA, "project": str(project), "observed_at": datetime.now(timezone.utc).isoformat(),
             "scope": "READ_ONLY_OPERATOR_VIEW", "authority_granted": False, "runs": rows,
             "pagination": {"total": total, "offset": offset, "limit": limit, "next_cursor": next_cursor,
