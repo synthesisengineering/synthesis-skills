@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [4.154.5] - 2026-10-04
 
+- Reduce journal decoding allocations with parse-local key-shape checks while retaining canonical syntax, duplicate-member rejection, finite work limits and independent mutable results.
+- Correct the explicit-group fixture inventory expectation to include its additional test while keeping selected-group execution unchanged.
 - Run wall-clock deadline controls exclusively in both source checks and acceptance, using one shared selector classification while ordinary checks remain parallel.
 
 - Select the journal codec before binding prepared-launch projection hashes, and verify historical transitions with faithfully encoded fixtures.

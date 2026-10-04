@@ -1741,7 +1741,7 @@ def test_explicit_group_does_not_inherit_acceptance_selection(
         groups.AP + "/test_brand_new_surface.py::test_one",
         groups.AP + "/test_brand_new_surface.py::test_two",
     ]
-    assert len(payload["inventory"]) == 6
+    assert len(payload["inventory"]) == 7
 
 
 @pytest.mark.parametrize("cohort", ["hosted-batch221", "additional-limits"])

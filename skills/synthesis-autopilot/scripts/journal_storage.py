@@ -720,6 +720,8 @@ def _compressed_json_bounds(raw, *, _canonical=False):
     work = strings + sum(masked.count(bytes([c])) for c in (91, 123, 44, 58))
     if work > MAX_BLOCKS:
         raise ValueError("compressed snapshot leaf exceeds JSON work bound")
+    if _canonical and b"-0" in masked and re.search(rb'(?:^|[:,\[])-0(?=[,}\]]|$)', masked):
+        raise ValueError("compressed snapshot is not canonical JSON")
     depth = 0
     # The byte filter retains exactly the old bracket matches, in order.
     for token in masked.translate(None, _JSON_NON_BRACKETS):
@@ -729,28 +731,34 @@ def _compressed_json_bounds(raw, *, _canonical=False):
                 raise ValueError("compressed snapshot leaf exceeds JSON depth bound")
         else:
             depth -= 1
+    # After successful JSON syntax parsing, every outside-string colon is one
+    # object member. A discarded duplicate lowers the decoded member total.
+    return masked.count(b":") if _canonical else None
 
 
 def _canonical_json(raw):
     """Validate the existing canonical grammar during the bounded JSON parse.
 
-    Every accepted string token is already the standard encoder's UTF-8 form;
-    key order/uniqueness and number spelling are checked while parsing. This
-    replaces a second complete serialization, never a content/hash check or
-    physical proof. No decoded value or validation result is retained.
+    Every accepted string token is already the standard encoder's UTF-8 form.
+    The bounded lexical member count and standard decoder dictionaries jointly
+    check uniqueness; key ordering and number spelling remain checked. Only
+    immutable key shapes are reused inside this one parse. No decoded value or
+    validation result survives it; physical and logical hashes remain fresh.
     """
-    _compressed_json_bounds(raw, _canonical=True)
+    expected_members = _compressed_json_bounds(raw, _canonical=True)
+    decoded_members = 0
+    ordered_shapes = set()
 
-    def ordered(pairs):
-        result = dict(pairs)
-        if len(result) != len(pairs) or list(result) != sorted(result):
-            raise ValueError("compressed snapshot is not canonical JSON")
-        return result
-
-    def integer(token):
-        value = int(token)
-        if token == "-0":
-            raise ValueError("compressed snapshot is not canonical JSON")
+    def ordered(value):
+        nonlocal decoded_members
+        decoded_members += len(value)
+        keys = tuple(value)
+        # This set belongs to one bounded parse. Its total key positions cannot
+        # exceed the lexer's MAX_BLOCKS work budget; values are never retained.
+        if keys not in ordered_shapes:
+            if keys != tuple(sorted(keys)):
+                raise ValueError("compressed snapshot is not canonical JSON")
+            ordered_shapes.add(keys)
         return value
 
     def real(token):
@@ -759,14 +767,18 @@ def _canonical_json(raw):
             raise ValueError("compressed snapshot is not canonical JSON")
         return value
 
-    # Explicit UTF-8 prevents json.loads(bytes) from accepting UTF-16/32 or a
-    # BOM; canonical() always emits UTF-8 without a BOM. The parser still owns
-    # syntax, control characters, trailing bytes and nonfinite-token refusal.
-    return json.loads(
-        raw.decode("utf-8"), object_pairs_hook=ordered,
-        parse_int=integer, parse_float=real,
+    # The standard decoder constructs every dictionary once, before calling
+    # object_hook. Counting all decoded members catches duplicates even in a
+    # discarded value: each duplicate key loses one member, never gains one.
+    # Integer spelling -0 was refused by the same bounded lexical pass above.
+    # Explicit UTF-8 and existing number/escape guards retain canonical grammar.
+    value = json.loads(
+        raw.decode("utf-8"), object_hook=ordered, parse_float=real,
         parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")),
     )
+    if decoded_members != expected_members:
+        raise ValueError("compressed snapshot is not canonical JSON")
+    return value
 
 
 def _leaf(kind, body, limit=LEAF_BYTES, *, _charge=None):

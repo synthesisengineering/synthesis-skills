@@ -2957,6 +2957,114 @@ changed_surfaces:
   - timing-isolation-7373795c721d9f6b
   - timing-isolation-54484f392dae804d
   - timing-isolation-2341a3b3d7f322b7
+  - verified-decode-99c4c3ea7aba5b6a
+  - verified-decode-ec6190a990c3acc7
+  - verified-decode-6b5312f52f1b9c62
+  - verified-decode-edb4d621ea5a33ed
+  - verified-decode-d73e72970574fe1c
+  - verified-decode-7b2068d903cbaa1f
+  - verified-decode-38a5d4ffc730e6f5
+  - verified-decode-7969ec4cacecc5fd
+  - verified-decode-0e6577c051f0daf4
+  - verified-decode-520259756b9d256f
+  - verified-decode-19776420920ea422
+  - verified-decode-95c1283bb56f4ecd
+  - verified-decode-a957505d2a0f0cc1
+  - verified-decode-b609c2aa00d0f4e8
+  - verified-decode-d2c5ad526c916d98
+  - verified-decode-f8b466700e5e3fcd
+  - verified-decode-89b587943e387471
+  - verified-decode-c1894c5a21973de5
+  - verified-decode-c8200ad3de2fb970
+  - verified-decode-80e911ae5cbe3080
+  - verified-decode-850e73cdc49b0518
+  - verified-decode-086b689c5b84e854
+  - verified-decode-5d2d712e5f56df5a
+  - verified-decode-dc9e52188b7b69ee
+  - verified-decode-cef0a81b4607313e
+  - verified-decode-d5aaca8a9e9d5d46
+  - verified-decode-e9898ae129b88e12
+  - verified-decode-99c4c3ea7aba5b6a
+  - verified-decode-ec6190a990c3acc7
+  - verified-decode-6b5312f52f1b9c62
+  - verified-decode-edb4d621ea5a33ed
+  - verified-decode-d73e72970574fe1c
+  - verified-decode-7b2068d903cbaa1f
+  - verified-decode-38a5d4ffc730e6f5
+  - verified-decode-7969ec4cacecc5fd
+  - verified-decode-0e6577c051f0daf4
+  - verified-decode-520259756b9d256f
+  - verified-decode-19776420920ea422
+  - verified-decode-95c1283bb56f4ecd
+  - verified-decode-a957505d2a0f0cc1
+  - verified-decode-b609c2aa00d0f4e8
+  - verified-decode-d2c5ad526c916d98
+  - verified-decode-f8b466700e5e3fcd
+  - verified-decode-89b587943e387471
+  - verified-decode-c1894c5a21973de5
+  - verified-decode-c8200ad3de2fb970
+  - verified-decode-80e911ae5cbe3080
+  - verified-decode-850e73cdc49b0518
+  - verified-decode-086b689c5b84e854
+  - verified-decode-5d2d712e5f56df5a
+  - verified-decode-dc9e52188b7b69ee
+  - verified-decode-cef0a81b4607313e
+  - verified-decode-d5aaca8a9e9d5d46
+  - verified-decode-e9898ae129b88e12
+  - verified-decode-99c4c3ea7aba5b6a
+  - verified-decode-ec6190a990c3acc7
+  - verified-decode-6b5312f52f1b9c62
+  - verified-decode-edb4d621ea5a33ed
+  - verified-decode-d73e72970574fe1c
+  - verified-decode-7b2068d903cbaa1f
+  - verified-decode-38a5d4ffc730e6f5
+  - verified-decode-7969ec4cacecc5fd
+  - verified-decode-0e6577c051f0daf4
+  - verified-decode-520259756b9d256f
+  - verified-decode-19776420920ea422
+  - verified-decode-95c1283bb56f4ecd
+  - verified-decode-a957505d2a0f0cc1
+  - verified-decode-b609c2aa00d0f4e8
+  - verified-decode-d2c5ad526c916d98
+  - verified-decode-f8b466700e5e3fcd
+  - verified-decode-89b587943e387471
+  - verified-decode-c1894c5a21973de5
+  - verified-decode-c8200ad3de2fb970
+  - verified-decode-80e911ae5cbe3080
+  - verified-decode-850e73cdc49b0518
+  - verified-decode-086b689c5b84e854
+  - verified-decode-5d2d712e5f56df5a
+  - verified-decode-dc9e52188b7b69ee
+  - verified-decode-cef0a81b4607313e
+  - verified-decode-d5aaca8a9e9d5d46
+  - verified-decode-e9898ae129b88e12
+  - verified-decode-99c4c3ea7aba5b6a
+  - verified-decode-ec6190a990c3acc7
+  - verified-decode-6b5312f52f1b9c62
+  - verified-decode-edb4d621ea5a33ed
+  - verified-decode-d73e72970574fe1c
+  - verified-decode-7b2068d903cbaa1f
+  - verified-decode-38a5d4ffc730e6f5
+  - verified-decode-7969ec4cacecc5fd
+  - verified-decode-0e6577c051f0daf4
+  - verified-decode-520259756b9d256f
+  - verified-decode-19776420920ea422
+  - verified-decode-95c1283bb56f4ecd
+  - verified-decode-a957505d2a0f0cc1
+  - verified-decode-b609c2aa00d0f4e8
+  - verified-decode-d2c5ad526c916d98
+  - verified-decode-f8b466700e5e3fcd
+  - verified-decode-89b587943e387471
+  - verified-decode-c1894c5a21973de5
+  - verified-decode-c8200ad3de2fb970
+  - verified-decode-80e911ae5cbe3080
+  - verified-decode-850e73cdc49b0518
+  - verified-decode-086b689c5b84e854
+  - verified-decode-5d2d712e5f56df5a
+  - verified-decode-dc9e52188b7b69ee
+  - verified-decode-cef0a81b4607313e
+  - verified-decode-d5aaca8a9e9d5d46
+  - verified-decode-e9898ae129b88e12
 - path: .codex-plugin/plugin.json
   cases: *id001
 - path: .muse-plugin/plugin.json
@@ -19906,3 +20014,167 @@ cases:
   fixture: scripts/test_acceptance_suite.py::test_acceptance_uses_shared_timing_classifier_without_changing_case_plan
   motivating_defect: Shared timing classification isolates actual wall-clock deadline controls in both execution
     callers while preserving complete source partition, ordinary concurrency, cancellation and original limits.
+- id: verified-decode-99c4c3ea7aba5b6a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[-0]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-ec6190a990c3acc7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[[-0]]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-6b5312f52f1b9c62
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[[0,-0]]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-edb4d621ea5a33ed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[{"a":-0}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-d73e72970574fe1c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[{"a":[-0]}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-7b2068d903cbaa1f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_integer_negative_zero_remains_refused[{"a":{"b":-0}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-38a5d4ffc730e6f5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_key_shape_reuse_cannot_relax_next_parse_order_or_work
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-7969ec4cacecc5fd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_accepts_exact_strings_numbers_and_fresh_values[value0]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-0e6577c051f0daf4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_accepts_exact_strings_numbers_and_fresh_values[value1]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-520259756b9d256f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_accepts_exact_strings_numbers_and_fresh_values[value2]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-19776420920ea422
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_accepts_exact_strings_numbers_and_fresh_values[value3]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-95c1283bb56f4ecd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-[{"a":0,"a":1},{"b":2}]]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-a957505d2a0f0cc1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":"literal
+    : , { } -0","a":null}]'
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-b609c2aa00d0f4e8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":0,"a":1}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-d2c5ad526c916d98
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":[],"a":{"b":{"c":0,"c":1}}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-f8b466700e5e3fcd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":{"b":0,"b":1},"a":0}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-89b587943e387471
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":{"b":0,"b":1},"a":{"b":2,"b":3}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-c1894c5a21973de5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":{"b":0,"b":1},"z":{"b":2,"b":3}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-c8200ad3de2fb970
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[block-{"a":{"b":0},"a":{"c":1}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-80e911ae5cbe3080
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-[{"a":0,"a":1},{"b":2}]]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-850e73cdc49b0518
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: '../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":"literal
+    : , { } -0","a":null}]'
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-086b689c5b84e854
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":0,"a":1}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-5d2d712e5f56df5a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":[],"a":{"b":{"c":0,"c":1}}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-dc9e52188b7b69ee
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":{"b":0,"b":1},"a":0}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-cef0a81b4607313e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":{"b":0,"b":1},"a":{"b":2,"b":3}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-d5aaca8a9e9d5d46
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":{"b":0,"b":1},"z":{"b":2,"b":3}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.
+- id: verified-decode-e9898ae129b88e12
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_journal_storage.py::test_canonical_member_count_refuses_duplicates_in_discarded_values[leaf-{"a":{"b":0},"a":{"c":1}}]
+  motivating_defect: Avoid journal decoding pair-list allocation while retaining canonical numeric, ordering, duplicate-member,
+    work-limit and mutable-value checks.

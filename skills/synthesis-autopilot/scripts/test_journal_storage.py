@@ -1659,3 +1659,76 @@ def test_canonical_reader_reapplies_work_depth_and_returns_fresh_objects(monkeyp
     monkeypatch.setattr(storage,'MAX_BLOCKS',1)
     with pytest.raises(ValueError,match='work'):
         storage._canonical_json(raw)
+
+
+@pytest.mark.parametrize('raw', [
+    b'{"a":0,"a":1}', b'{"a":{"b":0},"a":{"c":1}}',
+    b'{"a":{"b":0,"b":1},"a":0}', b'[{"a":0,"a":1},{"b":2}]',
+    b'{"a":[],"a":{"b":{"c":0,"c":1}}}',
+    b'{"a":"literal : , { } -0","a":null}',
+    b'{"a":{"b":0,"b":1},"z":{"b":2,"b":3}}',
+    b'{"a":{"b":0,"b":1},"a":{"b":2,"b":3}}',
+])
+@pytest.mark.parametrize('reader', ['leaf', 'block'])
+def test_canonical_member_count_refuses_duplicates_in_discarded_values(raw, reader):
+    import base64
+    import zlib
+    import journal_storage as storage
+    with pytest.raises(ValueError):
+        if reader == 'leaf':
+            storage._leaf('zleaf', base64.b64encode(zlib.compress(raw)).decode())
+        else:
+            storage._block_node(storage.BLOCK_PREFIX + zlib.compress(raw + b'\n'),
+                                limit=storage.MAX_LOGICAL_BYTES)
+
+
+@pytest.mark.parametrize('value', [
+    {'a': ':,{}[]-0', 'b': [{'same': 1}, {'same': 2}]},
+    {'a': '\\" : -0', 'b': {'a': 'é漢字', 'b': '\n\t\r\x00'}},
+    [{'a': {'same': []}}, {'a': {'same': []}}],
+    [0, -1, 0.0, -0.0, 1e-7, 1e20, {'a': -0.0}],
+])
+def test_canonical_member_count_accepts_exact_strings_numbers_and_fresh_values(value):
+    import journal_storage as storage
+    raw = storage.canonical(value)
+    first = storage._canonical_json(raw)
+    second = storage._canonical_json(raw)
+    assert storage.canonical(first) == raw == storage.canonical(second)
+    def mutable_ids(item):
+        found = []
+        if isinstance(item, dict):
+            found.append(id(item))
+            for child in item.values():
+                found.extend(mutable_ids(child))
+        elif isinstance(item, list):
+            found.append(id(item))
+            for child in item:
+                found.extend(mutable_ids(child))
+        return found
+    first_ids, second_ids = mutable_ids(first), mutable_ids(second)
+    assert len(first_ids) == len(set(first_ids))
+    assert len(second_ids) == len(set(second_ids))
+    assert not set(first_ids) & set(second_ids)
+
+
+@pytest.mark.parametrize('raw', [b'-0', b'[-0]', b'{"a":-0}', b'[0,-0]',
+                                 b'{"a":[-0]}', b'{"a":{"b":-0}}'])
+def test_canonical_integer_negative_zero_remains_refused(raw):
+    import journal_storage as storage
+    with pytest.raises(ValueError, match='canonical'):
+        storage._canonical_json(raw)
+
+
+def test_canonical_key_shape_reuse_cannot_relax_next_parse_order_or_work(monkeypatch):
+    import journal_storage as storage
+    raw = storage.canonical([{'a': [], 'z': {}} for _ in range(20)])
+    first = storage._canonical_json(raw)
+    first[0]['a'].append('mutated')
+    assert not first[1]['a']
+    with pytest.raises(ValueError, match='canonical'):
+        storage._canonical_json(b'{"z":0,"a":1}')
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', 2)
+    with pytest.raises(ValueError, match='work'):
+        storage._canonical_json(raw)
+    monkeypatch.setattr(storage, 'MAX_BLOCKS', 16384)
+    assert storage._canonical_json(raw)[0]['a'] == []
