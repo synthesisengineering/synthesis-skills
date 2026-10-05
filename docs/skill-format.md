@@ -7,9 +7,10 @@ enforces the checkable parts on every skill marked `format: v5`.
 
 ## Why these rules
 
-- Claude Code re-attaches only the first 5,000 tokens of each loaded skill
-  after compaction, and a single file read stops at 25,000 tokens. Whatever
-  must survive belongs at the top, and no file may outgrow one read.
+- Codex cuts a plugin's SKILL.md at 8,000 bytes (in its source, not its docs),
+  Claude Code re-attaches only the first 5,000 tokens of each loaded skill after
+  compaction, and a single file read stops at 25,000 tokens. So SKILL.md stays
+  under 8,000 bytes, and no linked file outgrows one read.
 - Skill descriptions share a budget of about 1% of the context window, so a
   description says when to use the skill in one or two sentences.
 - Models follow structure they can see. A table of contents near the top tells
@@ -26,8 +27,8 @@ enforces the checkable parts on every skill marked `format: v5`.
    3. `## Contents`: every section below and every linked file, each with one
       line saying what it holds and when to read it.
    4. The procedure and the rest.
-3. **Size:** SKILL.md at most 250 lines, so the purpose, binding rules and
-   contents sit inside the first 5,000 tokens. Each linked file at most 1,500
+3. **Size:** SKILL.md at most 8,000 bytes (Codex truncates beyond that), so
+   the purpose, binding rules and contents always arrive whole. Each linked file at most 1,500
    lines; a linked file over 150 lines opens with its own short contents list.
 4. **Split by when it's needed.** Material needed only for one step, one
    situation or one reader goes in `references/<topic>.md`, linked from

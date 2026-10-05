@@ -29,8 +29,9 @@ def _check(skill_md: Path) -> list[str]:
         if not re.search(rf"^{field}:", front, re.M):
             problems.append(f"frontmatter lacks {field}")
     lines = text.splitlines()
-    if len(lines) > 250:
-        problems.append(f"SKILL.md is {len(lines)} lines (limit 250)")
+    size = len(text.encode("utf-8"))
+    if size > 8000:
+        problems.append(f"SKILL.md is {size} bytes (Codex truncates past 8,000)")
     headings = [line for line in lines if line.startswith("## ")]
     if headings[:2] != ["## Binding rules", "## Contents"]:
         problems.append(f"first sections must be Binding rules then Contents, found {headings[:2]}")
