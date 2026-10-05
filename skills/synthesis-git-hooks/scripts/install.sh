@@ -59,6 +59,7 @@ for source in \
     "$SKILLS_DIR/synthesis-decision-packet/scripts/record_rulings.py" \
     "$SKILLS_DIR/synthesis-onboarding/scripts/release_runtime.py" \
     "$SKILLS_DIR/synthesis-repo-guard/publication_receipt.py" \
+    "$SKILLS_DIR/synthesis-repo-guard/pending_manifest.py" \
     "$SKILLS_DIR/synthesis-agent-conformance/scripts/yaml_runtime.py" \
     "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py" \
     "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/composer.py" \
@@ -146,6 +147,8 @@ cp -f "$SKILLS_DIR/synthesis-onboarding/scripts/release_runtime.py" "$HOME/.synt
 chmod 755 "$HOME/.synthesis/git-hooks/release_runtime.py"
 cp -f "$SKILLS_DIR/synthesis-repo-guard/publication_receipt.py" "$HOME/.synthesis/git-hooks/publication_receipt.py"
 chmod 755 "$HOME/.synthesis/git-hooks/publication_receipt.py"
+cp -f "$SKILLS_DIR/synthesis-repo-guard/pending_manifest.py" "$HOME/.synthesis/git-hooks/pending_manifest.py"
+chmod 755 "$HOME/.synthesis/git-hooks/pending_manifest.py"
 cp -f "$SKILLS_DIR/synthesis-agent-conformance/scripts/yaml_runtime.py" "$HOME/.synthesis/git-hooks/yaml_runtime.py"
 chmod 755 "$HOME/.synthesis/git-hooks/yaml_runtime.py"
 cp -f "$SKILLS_DIR/synthesis-agent-conformance/vendor/pyyaml/yaml/__init__.py" "$HOME/.synthesis/git-hooks/yaml/__init__.py"

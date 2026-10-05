@@ -2706,3 +2706,135 @@ def test_flush_ancestry_and_git_topology_changes_refuse_before_effect(tmp_path, 
     with pytest.raises(ValueError, match="discovery changed"):
         MODULE.flush_pending_session(cfg, "topology-refusal", dry_run=False)
     assert changed and manifest.read_bytes() == before
+
+
+
+def _indexed_manifest_fixture():
+    return {"schema_version": 2, "session_id": "indexed-synthetic-owner",
+            "paths": ["/synthetic/z", "/synthetic/é"],
+            "remote_paths": ["/synthetic/é", "/synthetic/z"],
+            "content_hashes": {"/synthetic/é": "a" * 64, "/synthetic/z": "deleted"},
+            "path_hashes": {"/retained/old-path": "b" * 64},
+            "path_kinds": {"/synthetic/z": "deleted", "/synthetic/é": "symlink"},
+            "retired_worktrees": [{"retained": [1, False, None]}],
+            "unknown_extension": {"owner_note": ["é", {"paths": ["/inert"]}]}}
+
+
+def test_pending_dictionary_roundtrip_preserves_every_field_and_order():
+    value = _indexed_manifest_fixture()
+    before = json.dumps(value, ensure_ascii=False)
+    encoded = MODULE.encode_pending_manifest(value)
+    assert encoded["path_encoding"] == "path-index-v1"
+    assert encoded["paths"] == [0, 1] and encoded["remote_paths"] == [1, 0]
+    decoded = MODULE.decode_pending_manifest(json.loads(json.dumps(encoded)))
+    assert decoded == value and list(decoded["content_hashes"]) == list(value["content_hashes"])
+    assert MODULE.encode_pending_manifest(encoded) == encoded
+    assert json.dumps(value, ensure_ascii=False) == before
+    assert decoded["path_hashes"] == value["path_hashes"]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("path_encoding", "unknown"), ("schema_version", True), ("schema_version", 1),
+    ("path_table", ["/x", "/x"]), ("path_table", ["relative"]),
+    ("path_table", ["/x/../y"]), ("paths", [True]), ("paths", [-1]),
+    ("paths", [999]), ("paths", [0, 0]), ("paths", ["0"]),
+    ("remote_paths", [0, 0]), ("remote_paths", [False]),
+    ("content_hashes", {"00": "x"}), ("content_hashes", {"+0": "x"}),
+    ("content_hashes", {"１": "x"}), ("content_hashes", {"999": "x"}),
+    ("content_hashes", []), ("path_hashes", {"-1": "x"}),
+])
+def test_pending_dictionary_refuses_malformed_references(field, value):
+    encoded = MODULE.encode_pending_manifest(_indexed_manifest_fixture())
+    encoded[field] = value
+    with pytest.raises(ValueError):
+        MODULE.decode_pending_manifest(encoded)
+
+
+def test_pending_dictionary_count_unused_and_missing_marker_refuse(monkeypatch):
+    encoded = MODULE.encode_pending_manifest(_indexed_manifest_fixture())
+    encoded["path_table"].append("/unused")
+    with pytest.raises(ValueError, match="unreferenced"):
+        MODULE.decode_pending_manifest(encoded)
+    del encoded["path_encoding"]
+    with pytest.raises(ValueError, match="no encoding"):
+        MODULE.decode_pending_manifest(encoded)
+    monkeypatch.setattr(MODULE, "PENDING_PATH_LIMIT", 1)
+    with pytest.raises(ValueError, match="path list"):
+        MODULE.encode_pending_manifest(_indexed_manifest_fixture())
+    # One current path fits the list bound. A separate retained map key is
+    # the second distinct dictionary member and reaches only the union bound.
+    orphan = {"schema_version": 2, "session_id": "synthetic-union-owner",
+              "paths": ["/current"], "content_hashes": {"/retained": "a" * 64}}
+    with pytest.raises(ValueError, match="dictionary exceeds its ceiling"):
+        MODULE.encode_pending_manifest(orphan)
+
+
+def test_pending_dictionary_missing_optional_fields_remain_missing():
+    data = {"schema_version": 2, "session_id": "synthetic", "paths": []}
+    assert MODULE.decode_pending_manifest(MODULE.encode_pending_manifest(data)) == data
+
+
+def test_pending_postimage_digest_matches_atomic_encoded_write(tmp_path, monkeypatch):
+    data = _indexed_manifest_fixture()
+    encoded_bytes = (json.dumps(MODULE.encode_pending_manifest(data), separators=(",", ":")) + "\n").encode()
+    monkeypatch.setattr(MODULE, "PENDING_MANIFEST_LIMIT", len(encoded_bytes) + 1)
+    target = MODULE.PENDING_DIR / "postimage.json"
+    raw = MODULE.pending_manifest_bytes(data)
+    assert json.loads(raw)["path_encoding"] == "path-index-v1"
+    digest = MODULE.json_digest(data)
+    MODULE.atomic_json(target, data)
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == digest
+    assert MODULE.decode_pending_manifest(json.loads(target.read_bytes())) == data
+    assert raw == target.read_bytes()
+    # The exact same serializer is used when replay compares persisted postimages.
+    saved = json.loads(json.dumps({"manifest_after": data}))
+    assert MODULE.json_digest(saved["manifest_after"]) == digest
+
+
+def test_pending_dictionary_large_repeated_paths_fits_unchanged_byte_limit():
+    prefix = "/synthetic/" + "a" * 190 + "/" + "b" * 190 + "/"
+    paths = [prefix + str(n) for n in range(120000)]
+    data = {"schema_version": 2, "session_id": "large-synthetic-owner",
+            "paths": paths, "remote_paths": list(reversed(paths)),
+            "content_hashes": dict.fromkeys(paths, "a" * 64),
+            "unknown_extension": {"still": "retained"}}
+    expanded = (json.dumps(data, separators=(",", ":")) + "\n").encode()
+    assert len(expanded) > 128 * 1024 * 1024
+    raw = MODULE.pending_manifest_bytes(data)
+    assert len(raw) < 128 * 1024 * 1024
+    restored = MODULE.decode_pending_manifest(json.loads(raw))
+    assert restored == data
+    assert restored["paths"] == paths and restored["remote_paths"] == list(reversed(paths))
+
+
+def test_reader_codec_artifact_exactly_matches_standalone_representation():
+    """One implementation with two required packaging shapes cannot drift."""
+    source = MODULE_PATH.read_text()
+    start = source.index("# A representation bound,")
+    end = source.index("\ndef atomic_json(", start)
+    block = source[start:end].rstrip() + "\n"
+    reader = MODULE_PATH.with_name("pending_manifest.py").read_text()
+    assert reader[reader.index("# A representation bound,"):] == block
+    import ast
+    tree = ast.parse(reader)
+    imports = [node for node in ast.walk(tree)
+               if isinstance(node, (ast.Import, ast.ImportFrom))]
+    assert [ast.dump(node) for node in imports] == [
+        ast.dump(ast.parse("import json").body[0]),
+        ast.dump(ast.parse("from pathlib import Path").body[0]),
+    ]
+
+
+def test_reader_codec_cold_import_does_not_load_lifecycle_or_autopilot(tmp_path):
+    import sys
+    helper = MODULE_PATH.with_name("pending_manifest.py")
+    copied = tmp_path / helper.name
+    copied.write_bytes(helper.read_bytes())
+    script = ("import sys; sys.path.insert(0, sys.argv[1]); "
+              "import pending_manifest as codec; "
+              "p={'schema_version':2,'session_id':'synthetic','paths':['/synthetic/a']}; "
+              "assert codec.decode_pending_manifest(codec.encode_pending_manifest(p))==p; "
+              "assert not {'checkpoint_sync','project_state','run_state','autopilot'} & set(sys.modules)")
+    result = subprocess.run([sys.executable, "-I", "-S", "-B", "-c", script, str(tmp_path)],
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr

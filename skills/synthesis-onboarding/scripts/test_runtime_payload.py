@@ -112,6 +112,11 @@ SOURCE_FILES["git-hooks"].update({'skills/synthesis-project-management/scripts/r
                                                                 493)})
 
 
+# Independent expected membership includes the new pure registry reader.
+SOURCE_FILES["git-hooks"]["skills/synthesis-repo-guard/pending_manifest.py"] = (
+    ".synthesis/git-hooks/pending_manifest.py", 0o755)
+
+
 class Receipts(EngineReceipts):
     def __init__(self, path):
         super().__init__(path)

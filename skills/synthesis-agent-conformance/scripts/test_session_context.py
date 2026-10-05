@@ -1962,3 +1962,26 @@ def test_ephemeral_callback_candidate_has_no_live_or_latest_authority(
     monkeypatch.delenv("SYNTHESIS_CALLBACK_OBSERVATION")
     assert not MODULE.record_live_receipt(payload, destination)
     assert before == sorted(p.read_bytes() for p in destination.parent.rglob("*.json"))
+
+
+
+def test_indexed_pending_handoff_count_and_project_selection(tmp_path):
+    import session_context
+    import active_project
+    import project_state
+    import hashlib
+    pending = tmp_path / "pending"; pending.mkdir()
+    native = "indexed-synthetic-owner"
+    logical = {"schema_version": 2, "session_id": native,
+               "paths": [str(tmp_path / "project" / "entry")],
+               "remote_paths": [str(tmp_path / "project" / "entry")]}
+    target = pending / (hashlib.sha256(native.encode()).hexdigest() + ".json")
+    encoded = project_state.encode_pending_manifest(logical)
+    target.write_text(json.dumps(encoded))
+    assert session_context.pending_handoff_count(pending) == 1
+    assert active_project.project_pending_manifests(tmp_path / "project", tmp_path) == [(target, logical)]
+    encoded["paths"] = [True]; target.write_text(json.dumps(encoded))
+    with pytest.raises(ValueError):
+        session_context.pending_handoff_count(pending)
+    with pytest.raises(ValueError):
+        active_project.project_pending_manifests(tmp_path / "project", tmp_path)

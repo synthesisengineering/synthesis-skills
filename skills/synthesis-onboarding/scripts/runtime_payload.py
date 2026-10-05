@@ -51,7 +51,7 @@ INTRODUCED_DEPENDENCIES = {"skills/synthesis-git-hooks/scripts/pre-merge-commit"
  'skills/synthesis-project-management/scripts/coordination_process.py': ('skills/synthesis-project-management/scripts/coordination.py',)}
 
 # Exact source and destination membership for the coordinator registry closure.
-REGISTRY_DEPENDENCIES = {'skills/synthesis-project-management/scripts/run_admission.py': ('.synthesis/git-hooks/run_admission.py',
+REGISTRY_DEPENDENCIES = {'skills/synthesis-repo-guard/pending_manifest.py': ('.synthesis/git-hooks/pending_manifest.py', 493), 'skills/synthesis-project-management/scripts/run_admission.py': ('.synthesis/git-hooks/run_admission.py',
                                                                   493),
  'skills/synthesis-project-management/scripts/project_state.py': ('.synthesis/git-hooks/project_state.py',
                                                                   493),

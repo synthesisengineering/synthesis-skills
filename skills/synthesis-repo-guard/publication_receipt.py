@@ -99,7 +99,11 @@ def _git(repo, deadline, *args):
 def _manifest(path, raw, native):
     if len(raw) > MAX_MANIFEST:
         raise ProofError("publication manifest exceeds byte bound")
-    data = _json(raw)
+    from pending_manifest import decode_pending_manifest
+    try:
+        data = decode_pending_manifest(_json(raw))
+    except ValueError as exc:
+        raise ProofError("invalid pending path representation") from exc
     expected = hashlib.sha256(native.encode()).hexdigest() + ".json"
     if (not native or data.get("session_id") != native or path.name != expected
             or path.parent.name != "pending" or type(data.get("schema_version")) is not int

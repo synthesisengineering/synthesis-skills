@@ -1353,6 +1353,18 @@ for _entry, _dependencies in tuple(ENTRYPOINT_DEPENDENCIES.items()):
             "synthesis-project-management/scripts/plan_reference.py",
             "synthesis-repo-guard/publication_receipt.py")))
 
+# The generated pure representation artifact is the executable reader dependency.
+# Keep prior receipt members, but do not import the lifecycle owner for decoding.
+for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
+    if (_entry in {"synthesis-project-management/scripts/project_state.py",
+                   "synthesis-agent-conformance/scripts/conformance.py",
+                   "synthesis-agent-conformance/scripts/session_context.py",
+                   "synthesis-repo-guard/publication_receipt.py"}
+            or "synthesis-project-management/scripts/project_state.py" in _deps
+            or "synthesis-repo-guard/publication_receipt.py" in _deps):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys(
+            (*_deps, "synthesis-repo-guard/pending_manifest.py")))
+
 OPTIONAL_ENTRYPOINT_DEPENDENCIES = frozenset(
     {"synthesis-bitbucket/scripts/pr_queue.py"}
 )
@@ -2304,3 +2316,16 @@ ENTRYPOINT_DEPENDENCIES["synthesis-repo-guard/checkpoint_sync.py"] = tuple(
         *ENTRYPOINT_DEPENDENCIES["synthesis-project-management/scripts/run_admission.py"],
     ))
 )
+
+
+# The shared attribution decoder is owned by the existing standalone guard.
+# Bind it wherever project-state/publication readers can be loaded so a removed
+# or altered codec is refused before the entrypoint executes.
+for _entry, _deps in list(ENTRYPOINT_DEPENDENCIES.items()):
+    if (_entry in {"synthesis-project-management/scripts/project_state.py",
+                   "synthesis-agent-conformance/scripts/conformance.py",
+                   "synthesis-agent-conformance/scripts/session_context.py"}
+            or "synthesis-project-management/scripts/project_state.py" in _deps
+            or "synthesis-repo-guard/publication_receipt.py" in _deps):
+        ENTRYPOINT_DEPENDENCIES[_entry] = tuple(dict.fromkeys(
+            (*_deps, "synthesis-repo-guard/checkpoint_sync.py")))

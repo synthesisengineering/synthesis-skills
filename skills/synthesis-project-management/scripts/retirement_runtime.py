@@ -40,6 +40,7 @@ CROSS_SKILL_SOURCES = {
     "record_rulings.py": "synthesis-decision-packet/scripts/record_rulings.py",
     "release_runtime.py": "synthesis-onboarding/scripts/release_runtime.py",
     "publication_receipt.py": "synthesis-repo-guard/publication_receipt.py",
+    "pending_manifest.py": "synthesis-repo-guard/pending_manifest.py",
 }
 YAML_SCRIPTS = ("__init__.py", "composer.py", "constructor.py", "cyaml.py", "dumper.py",
                 "emitter.py", "error.py", "events.py", "loader.py", "nodes.py", "parser.py",

@@ -967,6 +967,29 @@ def diagnostic_output_gate(
         os.close(fd)
 
 
+def _diagnostic_summary(receipt: dict | None) -> str:
+    """Only fixed owner codes may cross the public log boundary."""
+    reasons = {
+        "CLOSED_DIAGNOSTICS", "PARTIAL_OR_NOT_ADMITTED",
+        "RUNNER_RECEIPT_UNAVAILABLE", "CUSTODY_OR_LIMIT_REFUSED",
+        "DEADLINE", "RECORD_LIMIT", "BYTE_LIMIT", "EXPORTER_REFUSED",
+        "OUTPUT_GATE_REFUSED", "OUTPUT_GATE_DEADLINE", "OWNER_CUSTODY_UNAVAILABLE",
+    }
+    stages = {
+        "SELECTORS", "ROOT", "RUNNER_RECORDS", "BATCH_RECORDS",
+        "SOURCE_CLOSURE", "LOCAL_INDEX", "PUBLIC_EXPORT", "OUTPUT_GATE",
+    }
+    def closed(key, allowed):
+        value = receipt.get(key) if isinstance(receipt, dict) else None
+        return value if type(value) is str and value in allowed else "UNCLASSIFIED"
+    return (
+        "diagnostic custody " + closed("status", {"RETAINED", "INCOMPLETE", "REFUSED"})
+        + "; reason=" + closed("reason", reasons)
+        + "; stage=" + closed("stage", stages)
+        + "; never release authority"
+    )
+
+
 def consume_acceptance(
     repo: Path, result: Result, dry_run: bool
 ) -> AcceptanceAuthority | None:
@@ -1034,7 +1057,7 @@ def consume_acceptance(
             return None
     diagnostic_deadline = time.monotonic() + ACCEPTANCE_SECONDS
     completed = bounded_run(command, cwd=repo, timeout=ACCEPTANCE_SECONDS, suite=True)
-    diagnostic_status = None
+    diagnostic_status = {"status": "REFUSED", "reason": "OWNER_CUSTODY_UNAVAILABLE", "stage": "ROOT"}
     diagnostic_final_deadline = min(
         diagnostic_deadline, time.monotonic() + DIAGNOSTIC_SECONDS
     )
@@ -1059,11 +1082,13 @@ def consume_acceptance(
                 deadline=diagnostic_final_deadline,
             )
         except (OSError, ValueError, KeyError, TypeError):
-            diagnostic_status = {"status": "REFUSED"}
+            diagnostic_status = {"status": "REFUSED", "reason": "EXPORTER_REFUSED", "stage": "ROOT"}
     if diagnostic_path is not None:
         if output_gate is not None:
+            gate_reason = "OUTPUT_GATE_REFUSED"
             try:
                 if time.monotonic() >= diagnostic_final_deadline:
+                    gate_reason = "OUTPUT_GATE_DEADLINE"
                     raise ValueError("diagnostic finalization deadline")
                 diagnostic_output_gate(
                     output_gate,
@@ -1073,16 +1098,16 @@ def consume_acceptance(
                     ),
                 )
             except (OSError, ValueError, KeyError, TypeError):
-                diagnostic_status = {"status": "REFUSED"}
+                # Keep an already-classified refusal if finalization also fails.
+                if not diagnostic_status or diagnostic_status.get("status") != "REFUSED":
+                    diagnostic_status = {"status": "REFUSED", "reason": gate_reason, "stage": "OUTPUT_GATE"}
         diagnostics_ok = (
             diagnostic_status is not None and diagnostic_status["status"] == "RETAINED"
         )
         result.add(
             "checks.acceptance.diagnostics",
             diagnostics_ok,
-            "diagnostic custody "
-            + (diagnostic_status or {"status": "UNAVAILABLE"})["status"]
-            + "; never release authority",
+            _diagnostic_summary(diagnostic_status),
         )
         if not diagnostics_ok and completed.returncode == 0:
             return None

@@ -925,6 +925,60 @@ def prepare_diagnostics_destination(path: Path, source: Path) -> dict:
             os.close(fd)
 
 
+
+def decode_acceptance_diagnostics(data: str | bytes) -> dict:
+    """Read diagnostics.json in direct or bounded lossless transport form.
+
+    The transport reuses the receipt codec's checked size, hash, depth and
+    compression framing. A diagnostic document never supplies release authority.
+    Callers must use this reader rather than assume every artifact is direct JSON.
+    """
+    document = parse_acceptance_json(data, max_bytes=DIAGNOSTIC_BYTES)
+    if not isinstance(document, dict):
+        raise ValueError("invalid diagnostic document")
+    if document.get("schema") == "acceptance-diagnostics-transport-v1":
+        if (set(document) != {"schema", "authorizes_release", "decoder", "payload"}
+                or document["authorizes_release"] is not False
+                or document["decoder"] != "release_check_groups.decode_acceptance_diagnostics"
+                or not isinstance(document["payload"], dict)):
+            raise ValueError("invalid diagnostic transport")
+        document = decode_acceptance_receipt(json.dumps(
+            document["payload"], sort_keys=True, separators=(",", ":"), allow_nan=False))
+    if (document.get("schema") != "acceptance-diagnostics-v1"
+            or document.get("authorizes_release") is not False):
+        raise ValueError("invalid diagnostic schema or authority")
+    return document
+
+
+def _diagnostic_export_bytes(public: dict, remaining: int) -> tuple[bytes, bytes]:
+    """Select a complete physical representation, charging its exact manifest."""
+    def serialize(value):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                          allow_nan=False).encode("ascii")
+
+    def manifest(data, encoding):
+        return serialize({"schema": 1, "authorizes_release": False,
+            "status": public["status"], "encoding": encoding,
+            "members": [{"path": "diagnostics.json", "size": len(data),
+                         "sha256": hashlib.sha256(data).hexdigest()}]})
+
+    data = serialize(public)
+    index = manifest(data, "json")
+    if len(data) + len(index) <= remaining:
+        return data, index
+    # Only the already-sanitized public object enters this existing lossless codec.
+    # Raw records stay byte-exact in local custody; no record or field is omitted.
+    data = serialize({"schema": "acceptance-diagnostics-transport-v1",
+        "authorizes_release": False,
+        "decoder": "release_check_groups.decode_acceptance_diagnostics",
+        "payload": parse_acceptance_json(encode_acceptance_receipt(public),
+                                         max_bytes=OUTPUT_BYTES)})
+    index = manifest(data, "diagnostic-json-zlib-base64-v1")
+    if len(data) + len(index) > remaining:
+        raise ValueError("diagnostic export exceeds complete byte budget")
+    return data, index
+
+
 def capture_acceptance_diagnostics(
     completed,
     source: Path,
@@ -946,11 +1000,15 @@ def capture_acceptance_diagnostics(
     )
     fds = []
     anchors = []
+    closed_batches = []
     members = []
     total = 0
+    stored_bytes = 0
     root_fd = None
     raw_fd = None
     export_closed = False
+    refusal_reason = "CUSTODY_OR_LIMIT_REFUSED"
+    stage = "SELECTORS"
     public = {
         "schema": "acceptance-diagnostics-v1",
         "authorizes_release": False,
@@ -974,12 +1032,16 @@ def capture_acceptance_diagnostics(
     }
 
     def bound():
-        if (
-            time.monotonic() >= until
-            or len(members) >= DIAGNOSTIC_RECORDS
-            or total > DIAGNOSTIC_BYTES
-        ):
-            raise ValueError("diagnostic budget refused")
+        nonlocal refusal_reason
+        if time.monotonic() >= until:
+            refusal_reason = "DEADLINE"
+        elif len(members) >= DIAGNOSTIC_RECORDS:
+            refusal_reason = "RECORD_LIMIT"
+        elif total > DIAGNOSTIC_BYTES:
+            refusal_reason = "BYTE_LIMIT"
+        else:
+            return
+        raise ValueError("diagnostic budget refused")
 
     def stamp(info):
         return _progress_stamp(info)
@@ -1002,8 +1064,61 @@ def capture_acceptance_diagnostics(
         anchors.append((parent, name, fd, custody_identity(info)))
         return fd
 
+    def check_anchors(selected):
+        for parent, name, fd, identity in selected:
+            bound()
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if fd is None:
+                if stamp(info) != identity:
+                    raise ValueError("diagnostic member changed at closure")
+            elif (
+                custody_identity(info) != identity
+                or custody_identity(os.fstat(fd)) != identity
+            ):
+                raise ValueError("diagnostic directory changed at closure")
+        # Close the parent fence after all member checks as well: replacement
+        # during a record stat must not make an old open directory authoritative.
+        for parent, name, fd, identity in selected:
+            if fd is not None:
+                bound()
+                if (custody_identity(os.stat(name, dir_fd=parent, follow_symlinks=False))
+                        != identity or custody_identity(os.fstat(fd)) != identity):
+                    raise ValueError("diagnostic directory changed at closure")
+
+    @contextmanager
+    def batch_directories(parent, group_name, group_identity,
+                          process_name, process_identity, *, remember):
+        # Keep only one batch's descriptors live. Saved names and identities
+        # are evidence to revalidate, never authority to skip a fresh open.
+        first_fd, first_anchor = len(fds), len(anchors)
+        try:
+            group = directory(parent, group_name, group_identity)
+            process = directory(group, process_name, process_identity)
+            yield group, process
+            check_anchors(anchors[first_anchor:])
+            if remember:
+                records = []
+                for record_parent, name, fd, identity in anchors[first_anchor:]:
+                    if fd is None:
+                        if record_parent not in (group, process):
+                            raise ValueError("diagnostic record parent escaped batch")
+                        records.append((record_parent == process, name, identity))
+                closed_batches.append((group_name, group_identity, process_name,
+                                       process_identity, records))
+        finally:
+            for fd in reversed(fds[first_fd:]):
+                os.close(fd)
+            del fds[first_fd:]
+            del anchors[first_anchor:]
+
     def save(parent, name, data):
+        nonlocal stored_bytes, refusal_reason
         bound()
+        if stored_bytes + len(data) > DIAGNOSTIC_BYTES:
+            refusal_reason = "BYTE_LIMIT"
+            raise ValueError("diagnostic complete byte budget refused")
+        # Reserve before writing; even a partial failed write remains charged.
+        stored_bytes += len(data)
         fd = os.open(
             name,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -1029,7 +1144,7 @@ def capture_acceptance_diagnostics(
     def read(
         parent, name, label, cap, *, optional=False, expected_hash=None, expected=None
     ):
-        nonlocal total
+        nonlocal total, refusal_reason
         bound()
         try:
             fd = os.open(
@@ -1048,9 +1163,11 @@ def capture_acceptance_diagnostics(
                 or before.st_uid != os.getuid()
                 or before.st_mode & 0o022
                 or before.st_size > cap
-                or total + before.st_size > DIAGNOSTIC_BYTES
             ):
                 raise ValueError("diagnostic record refused")
+            if total + before.st_size > DIAGNOSTIC_BYTES:
+                refusal_reason = "BYTE_LIMIT"
+                raise ValueError("diagnostic byte budget refused")
             raw = bytearray()
             while len(raw) < before.st_size:
                 bound()
@@ -1168,6 +1285,7 @@ def capture_acceptance_diagnostics(
                     )
                 ):
                     raise ValueError("non-public diagnostic selector")
+        stage = "ROOT"
         root = Path(completed.fixture_custody)
         if root.resolve(strict=True) != root:
             raise ValueError("diagnostic process custody alias")
@@ -1184,6 +1302,7 @@ def capture_acceptance_diagnostics(
         local = directory(root_fd, "diagnostics")
         os.mkdir("raw", 0o700, dir_fd=local)
         raw_fd = directory(local, "raw")
+        stage = "RUNNER_RECORDS"
         raw = read(
             root_fd,
             "output.log",
@@ -1212,6 +1331,7 @@ def capture_acceptance_diagnostics(
             temp = directory(root_fd, "tmp")
             public["not_admitted_batches"] = len(plan) - len(batches)
             complete = len(batches) == len(plan)
+            stage = "BATCH_RECORDS"
             for index, batch in enumerate(batches):
                 bound()
                 expected = plan[index]
@@ -1230,135 +1350,137 @@ def capture_acceptance_diagnostics(
                     or not process_path.name.startswith("synthesis-required-check-")
                 ):
                     raise ValueError("diagnostic member escaped process custody")
-                group = directory(
-                    temp, group_path.name, batch.get("custody_identity", [])
-                )
-                process = directory(
-                    group, process_path.name, batch.get("process_identity", [])
-                )
-                pins = batch["diagnostic_records"]
-                selection = parse(
+                with batch_directories(
+                    temp, group_path.name, batch.get("custody_identity", []),
+                    process_path.name, batch.get("process_identity", []),
+                    remember=True,
+                ) as (group, process):
+                    pins = batch["diagnostic_records"]
+                    selection = parse(
+                        read(
+                            group,
+                            "selection.json",
+                            f"batch-{index}-selection",
+                            REPORT_BYTES,
+                            expected=pins["selection.json"],
+                        )
+                    )
+                    if selection != expected["selectors"]:
+                        raise ValueError("diagnostic selector custody differs")
                     read(
                         group,
-                        "selection.json",
-                        f"batch-{index}-selection",
-                        REPORT_BYTES,
-                        expected=pins["selection.json"],
+                        "pytest.ini",
+                        f"batch-{index}-config",
+                        4096,
+                        expected=pins["pytest.ini"],
                     )
-                )
-                if selection != expected["selectors"]:
-                    raise ValueError("diagnostic selector custody differs")
-                read(
-                    group,
-                    "pytest.ini",
-                    f"batch-{index}-config",
-                    4096,
-                    expected=pins["pytest.ini"],
-                )
-                inventory = read(
-                    group,
-                    "inventory.json",
-                    f"batch-{index}-inventory",
-                    REPORT_BYTES,
-                    optional=True,
-                    expected=pins["inventory.json"],
-                )
-                progress = read(
-                    group,
-                    "inventory.progress.jsonl",
-                    f"batch-{index}-progress",
-                    REPORT_BYTES,
-                    optional=True,
-                    expected=pins["inventory.progress.jsonl"],
-                )
-                read(
-                    process,
-                    "output.log",
-                    f"batch-{index}-output",
-                    OUTPUT_BYTES + 4096,
-                    expected_hash=batch["output_sha256"],
-                    expected=batch["process_records"]["output.log"],
-                )
-                read(
-                    process,
-                    "result.json",
-                    f"batch-{index}-result",
-                    REPORT_BYTES,
-                    expected=batch["process_records"]["result.json"],
-                )
-                rows = []
-                truncated = False
-                if progress is not None:
-                    truncated = bool(progress and not progress.endswith(b"\n"))
-                    lines = progress.splitlines()
-                    if truncated:
-                        lines = lines[:-1]
-                    rows = [parse(line) for line in lines]
-                    if (
-                        not rows
-                        or len(rows) > MAX_TESTS * 4 + 4
-                        or any(
-                            not isinstance(r, dict)
-                            or type(r.get("sequence")) is not int
-                            or r["sequence"] != i
-                            for i, r in enumerate(rows)
-                        )
-                        or rows[0].get("kind") != "start"
-                    ):
-                        raise ValueError("diagnostic progress sequence refused")
-                complete = (
-                    complete
-                    and inventory is not None
-                    and progress is not None
-                    and not truncated
-                )
-                public["batches"].append(
-                    {
-                        "id": f"batch-{index}",
-                        "selectors": [
-                            s.split("[", 1)[0] for s in expected["selectors"]
-                        ],
-                        "inventory": "PRESENT" if inventory is not None else "MISSING",
-                        "progress": "MISSING"
-                        if progress is None
-                        else "TRUNCATED"
-                        if truncated
-                        else "PRESENT",
-                        "process": "OWNER_FAILURE"
-                        if batch.get("process_failure")
-                        else "EXIT_ZERO"
-                        if batch.get("returncode") == 0
-                        else "EXIT_NONZERO",
-                        "phases": phases(rows, expected["selectors"]),
-                    }
-                )
+                    inventory = read(
+                        group,
+                        "inventory.json",
+                        f"batch-{index}-inventory",
+                        REPORT_BYTES,
+                        optional=True,
+                        expected=pins["inventory.json"],
+                    )
+                    progress = read(
+                        group,
+                        "inventory.progress.jsonl",
+                        f"batch-{index}-progress",
+                        REPORT_BYTES,
+                        optional=True,
+                        expected=pins["inventory.progress.jsonl"],
+                    )
+                    read(
+                        process,
+                        "output.log",
+                        f"batch-{index}-output",
+                        OUTPUT_BYTES + 4096,
+                        expected_hash=batch["output_sha256"],
+                        expected=batch["process_records"]["output.log"],
+                    )
+                    read(
+                        process,
+                        "result.json",
+                        f"batch-{index}-result",
+                        REPORT_BYTES,
+                        expected=batch["process_records"]["result.json"],
+                    )
+                    rows = []
+                    truncated = False
+                    if progress is not None:
+                        truncated = bool(progress and not progress.endswith(b"\n"))
+                        lines = progress.splitlines()
+                        if truncated:
+                            lines = lines[:-1]
+                        rows = [parse(line) for line in lines]
+                        if (
+                            not rows
+                            or len(rows) > MAX_TESTS * 4 + 4
+                            or any(
+                                not isinstance(r, dict)
+                                or type(r.get("sequence")) is not int
+                                or r["sequence"] != i
+                                for i, r in enumerate(rows)
+                            )
+                            or rows[0].get("kind") != "start"
+                        ):
+                            raise ValueError("diagnostic progress sequence refused")
+                    complete = (
+                        complete
+                        and inventory is not None
+                        and progress is not None
+                        and not truncated
+                    )
+                    public["batches"].append(
+                        {
+                            "id": f"batch-{index}",
+                            "selectors": [
+                                s.split("[", 1)[0] for s in expected["selectors"]
+                            ],
+                            "inventory": "PRESENT" if inventory is not None else "MISSING",
+                            "progress": "MISSING"
+                            if progress is None
+                            else "TRUNCATED"
+                            if truncated
+                            else "PRESENT",
+                            "process": "OWNER_FAILURE"
+                            if batch.get("process_failure")
+                            else "EXIT_ZERO"
+                            if batch.get("returncode") == 0
+                            else "EXIT_NONZERO",
+                            "phases": phases(rows, expected["selectors"]),
+                        }
+                    )
             public["status"] = "RETAINED" if complete else "INCOMPLETE"
             public["reason"] = (
                 "CLOSED_DIAGNOSTICS" if complete else "PARTIAL_OR_NOT_ADMITTED"
             )
-        for parent, name, fd, identity in anchors:
-            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
-            if fd is None:
-                if stamp(info) != identity:
-                    raise ValueError("diagnostic member changed at closure")
-            elif (
-                custody_identity(info) != identity
-                or custody_identity(os.fstat(fd)) != identity
-            ):
-                raise ValueError("diagnostic directory changed at closure")
+        stage = "SOURCE_CLOSURE"
+        for group_name, group_identity, process_name, process_identity, records in closed_batches:
+            with batch_directories(
+                temp, group_name, group_identity, process_name, process_identity,
+                remember=False,
+            ) as (group, process):
+                # Every retained record is checked again against its original
+                # content/metadata stamp after all other batches were copied.
+                for in_process, name, identity in records:
+                    anchors.append((process if in_process else group, name,
+                                    None, identity))
+        check_anchors(anchors)
         if custody_identity(root.lstat()) != completed.fixture_identity:
             raise ValueError("diagnostic root changed at closure")
+        stage = "LOCAL_INDEX"
         save(
             local,
             "index.json",
             json.dumps(
                 {"schema": 1, "members": members, "authorizes_release": False},
-                sort_keys=True,
-            ).encode(),
+                sort_keys=True, separators=(",", ":"), allow_nan=False,
+            ).encode("ascii"),
         )
     except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError):
         public["status"] = "REFUSED"
-        public["reason"] = "CUSTODY_OR_LIMIT_REFUSED"
+        public["reason"] = refusal_reason
         public["batches"] = []
     finally:
         for fd in reversed(fds):
@@ -1368,7 +1490,12 @@ def capture_acceptance_diagnostics(
     ]
     if destination is not None:
         path = Path(destination["path"])
+        primary_refusal = (
+            (public["reason"], stage) if public["status"] == "REFUSED" else None
+        )
         try:
+            if primary_refusal is None:
+                stage = "PUBLIC_EXPORT"
             bound()
             with _diagnostic_directory_chain(path, until) as (
                 fd,
@@ -1382,25 +1509,15 @@ def capture_acceptance_diagnostics(
                 with os.scandir(fd) as entries:
                     if next(entries, None) is not None:
                         raise ValueError("diagnostic destination has unindexed members")
-                data = json.dumps(public, sort_keys=True).encode()
-                if total + len(data) > DIAGNOSTIC_BYTES:
-                    raise ValueError("diagnostic export too large")
+                try:
+                    data, manifest_data = _diagnostic_export_bytes(
+                        public, DIAGNOSTIC_BYTES - stored_bytes)
+                except ValueError:
+                    refusal_reason = "BYTE_LIMIT"
+                    raise
+                bound()
                 diagnostic_identity = save(fd, "diagnostics.json", data)
-                manifest = {
-                    "schema": 1,
-                    "authorizes_release": False,
-                    "status": public["status"],
-                    "members": [
-                        {
-                            "path": "diagnostics.json",
-                            "size": len(data),
-                            "sha256": hashlib.sha256(data).hexdigest(),
-                        }
-                    ],
-                }
-                manifest_identity = save(
-                    fd, "manifest.json", json.dumps(manifest, sort_keys=True).encode()
-                )
+                manifest_identity = save(fd, "manifest.json", manifest_data)
                 os.fsync(fd)
                 names = set()
                 with os.scandir(fd) as entries:
@@ -1430,12 +1547,19 @@ def capture_acceptance_diagnostics(
                 export_closed = True
         except (OSError, ValueError, KeyError):
             public["status"] = "REFUSED"
+            if primary_refusal is None:
+                public["reason"] = refusal_reason
+            else:
+                public["reason"], stage = primary_refusal
     return {
         "status": public["status"],
         "authorizes_release": False,
         "export_closed": export_closed,
         "record_count": len(members),
         "raw_bytes": total,
+        "stored_bytes": stored_bytes,
+        "reason": public["reason"],
+        "stage": stage,
     }
 
 

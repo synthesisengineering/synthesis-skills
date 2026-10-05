@@ -2400,3 +2400,357 @@ def test_actual_scheduler_drains_before_timing_and_preserves_parallel_ordinary_w
         assert result == ["a", "b", "timing", "after"]
         timing = next(i for i, e in enumerate(trace) if e[:2] == ("start", "timing"))
         assert all(next(i for i,e in enumerate(trace) if e[:2] == ("end", n)) < timing for n in ("a", "b"))
+
+
+def _diagnostic_scope_fixture(tmp_path, count):
+    """The established pinned-record fixture at a selected batch cardinality."""
+    root = tmp_path / "source"
+    root.mkdir()
+    program = "\nimport hashlib, json, os, sys, time\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\nimport release_check_groups as g\nparent = Path(os.environ['TMPDIR']).resolve()\nbatches = []\nfor index in range(int(sys.argv[2])):\n    group = parent / ('synthesis-release-check-' + str(index))\n    group.mkdir(mode=0o700)\n    process = group / 'synthesis-required-check-synthetic'\n    process.mkdir(mode=0o700)\n    selectors = ['test_public.py::test_one']\n    events = [{'sequence': 0, 'kind': 'start'}] + [\n        {'sequence': i + 1, 'kind': 'phase', 'nodeid': selectors[0],\n         'when': when, 'outcome': 'passed', 'duration': 0.001}\n        for i, when in enumerate(('setup', 'call', 'teardown'))]\n    contents = {\n        group / 'selection.json': json.dumps(selectors),\n        group / 'pytest.ini': '[pytest]\\n',\n        group / 'inventory.json': '{}',\n        group / 'inventory.progress.jsonl': ''.join(json.dumps(e) + '\\n' for e in events),\n        process / 'output.log': 'private-output-sentinel',\n        process / 'result.json': '{}',\n    }\n    for path, data in contents.items():\n        path.write_text(data)\n        path.chmod(0o600)\n    identity = g.custody_identity(group.stat())\n    process_identity = g.custody_identity(process.stat())\n    pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, identity)\n            for path in contents if path.parent == group}\n    process_pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, process_identity)\n                    for path in contents if path.parent == process}\n    batches.append({'id': str(index), 'selectors': selectors,\n        'fixture_custody': str(group), 'process_custody': str(process),\n        'custody_identity': identity, 'process_identity': process_identity,\n        'diagnostic_records': pins, 'process_records': process_pins,\n        'output_sha256': hashlib.sha256(b'private-output-sentinel').hexdigest(),\n        'returncode': 0})\nprint(g.encode_acceptance_receipt({'execution': {'batches': batches}}))\n"
+    completed = groups.bounded_run(
+        [sys.executable, "-c", program, str(Path(groups.__file__).parent), str(count)],
+        root, 30,
+    )
+    assert completed.returncode == 0, completed.stdout
+    plan = [{"id": str(i), "selectors": ["test_public.py::test_one"]}
+            for i in range(count)]
+    destination = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    return root, completed, plan, destination
+
+
+@pytest.mark.parametrize("count", [2, 505])
+def test_diagnostic_batch_descriptor_lifetime_is_bounded(tmp_path, monkeypatch, count):
+    import resource
+
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, count)
+    batch_parent_identity = groups.custody_identity(
+        (Path(completed.fixture_custody) / "tmp").stat()
+    )
+    original_open, original_close = os.open, os.close
+    live, opened = set(), {}
+    peak = 0
+    def acquire(name, *args, **kwargs):
+        nonlocal peak
+        fd = original_open(name, *args, **kwargs)
+        live.add(fd)
+        peak = max(peak, len(live))
+        # Destination ancestry may include another acceptance owner's directory
+        # with this prefix, or even the same basename as a selected batch.
+        parent = kwargs.get("dir_fd")
+        if (isinstance(name, str) and name.startswith("synthesis-release-check-")
+                and parent is not None
+                and groups.custody_identity(os.fstat(parent)) == batch_parent_identity):
+            opened[name] = opened.get(name, 0) + 1
+        return fd
+    def close(fd):
+        try:
+            return original_close(fd)
+        finally:
+            live.discard(fd)
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "close", close)
+    previous = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (min(64, previous[0]), previous[1]))
+    try:
+        receipt = groups.capture_acceptance_diagnostics(
+            completed, root, plan, {}, destination
+        )
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, previous)
+    assert receipt["status"] == "RETAINED" and receipt["export_closed"], receipt
+    assert not live and peak < 32
+    assert opened == {"synthesis-release-check-" + str(i): 2 for i in range(count)}
+    public = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert len(public["records"]) == 2 + 6 * count
+    assert len(public["batches"]) == count and not public["authorizes_release"]
+    assert "private-output-sentinel" not in json.dumps(public)
+    assert str(tmp_path) not in json.dumps(public)
+    assert (groups.DIAGNOSTIC_SECONDS, groups.DIAGNOSTIC_BYTES,
+            groups.DIAGNOSTIC_RECORDS) == (10, 32 * 1024 * 1024, 4096)
+
+
+@pytest.mark.parametrize("ancestor", ["synthesis-release-check-hosted-owner", "synthesis-release-check-0"])
+@pytest.mark.parametrize("count", [2, 505])
+def test_diagnostic_batch_descriptor_count_uses_selected_parent(tmp_path, monkeypatch, ancestor, count):
+    nested = tmp_path / ancestor
+    nested.mkdir(mode=0o700)
+    test_diagnostic_batch_descriptor_lifetime_is_bounded(nested, monkeypatch, count)
+
+
+@pytest.mark.parametrize("mutation", ["record", "group", "process", "symlink", "mode"])
+def test_diagnostic_closed_batch_is_revalidated_after_later_batch(tmp_path, monkeypatch, mutation):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 3)
+    first = Path(completed.fixture_custody) / "tmp/synthesis-release-check-0"
+    process = first / "synthesis-required-check-synthetic"
+    original = os.open
+    changed = []
+    def acquire(name, *args, **kwargs):
+        if name == "synthesis-release-check-2" and not changed:
+            changed.append(True)
+            if mutation == "record":
+                (first / "selection.json").write_text("private-late-record")
+            elif mutation == "mode":
+                first.chmod(0o755)
+            elif mutation == "process":
+                process.rename(first / "retained-process")
+                process.mkdir(mode=0o700)
+            else:
+                retained = first.with_name("retained-original-group")
+                first.rename(retained)
+                if mutation == "symlink":
+                    first.symlink_to(retained, target_is_directory=True)
+                else:
+                    first.mkdir(mode=0o700)
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(os, "open", acquire)
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert changed and receipt["status"] == "REFUSED"
+    document = (Path(destination["path"]) / "diagnostics.json").read_text()
+    assert "private-late-record" not in document and str(tmp_path) not in document
+
+
+@pytest.mark.parametrize("parent", ["group", "process"])
+def test_diagnostic_final_reopen_rechecks_parent_after_member_validation(tmp_path, monkeypatch, parent):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 2)
+    first = Path(completed.fixture_custody) / "tmp/synthesis-release-check-0"
+    process = first / "synthesis-required-check-synthetic"
+    original_open, original_stat = os.open, os.stat
+    opens, active = [], {}
+    changed = []
+    def acquire(name, *args, **kwargs):
+        fd = original_open(name, *args, **kwargs)
+        if name == "synthesis-release-check-0":
+            opens.append(fd)
+            if len(opens) == 2:
+                active["group"] = fd
+        elif name == "synthesis-required-check-synthetic" and kwargs.get("dir_fd") == active.get("group"):
+            active["process"] = fd
+        return fd
+    def inspect(name, *args, **kwargs):
+        info = original_stat(name, *args, **kwargs)
+        selected_name = "selection.json" if parent == "group" else "output.log"
+        if (name == selected_name and kwargs.get("dir_fd") == active.get(parent)
+                and not changed):
+            changed.append(True)
+            selected = first if parent == "group" else process
+            selected.rename(selected.with_name("retained-final-" + parent))
+            selected.mkdir(mode=0o700)
+        return info
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "stat", inspect)
+    receipt = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert changed and receipt["status"] == "REFUSED"
+    assert receipt["authorizes_release"] is False
+
+
+def test_diagnostic_batch_cancellation_closes_all_owned_descriptors(tmp_path, monkeypatch):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 3)
+    original_open, original_close = os.open, os.close
+    live = set()
+    def acquire(name, *args, **kwargs):
+        if name == "synthesis-release-check-1":
+            raise KeyboardInterrupt("private-cancellation-marker")
+        fd = original_open(name, *args, **kwargs)
+        live.add(fd)
+        return fd
+    def close(fd):
+        try:
+            return original_close(fd)
+        finally:
+            live.discard(fd)
+    monkeypatch.setattr(os, "open", acquire)
+    monkeypatch.setattr(os, "close", close)
+    with pytest.raises(KeyboardInterrupt):
+        groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert not live
+
+
+@pytest.mark.parametrize("limit,reason", [
+    ("deadline", "DEADLINE"), ("records", "RECORD_LIMIT"), ("bytes", "BYTE_LIMIT"),
+])
+def test_diagnostic_refusal_keeps_closed_reason_without_artifact(tmp_path, monkeypatch, limit, reason):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    options = {}
+    if limit == "deadline":
+        options["deadline"] = time.monotonic() - 1
+    elif limit == "records":
+        monkeypatch.setattr(groups, "DIAGNOSTIC_RECORDS", 1)
+    else:
+        monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", 1)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target, **options)
+    assert result["status"] == "REFUSED" and result["reason"] == reason
+    assert result["authorizes_release"] is False and result["export_closed"] is False
+    assert result["stage"] in {"ROOT", "RUNNER_RECORDS"}
+    assert "private-output-sentinel" not in json.dumps(result)
+    assert str(tmp_path) not in json.dumps(result)
+
+
+def test_diagnostic_current_batch_shape_retains_every_raw_byte(tmp_path):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 510)
+    started = time.monotonic()
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert result["status"] == "RETAINED" and result["export_closed"]
+    assert result["reason"] == "CLOSED_DIAGNOSTICS"
+    assert time.monotonic() - started < groups.DIAGNOSTIC_SECONDS == 10
+    local = Path(completed.fixture_custody) / "diagnostics"
+    inventory = json.loads((local / "index.json").read_text())
+    assert len(inventory["members"]) == result["record_count"] == 3062
+    import hashlib
+    for member in inventory["members"]:
+        raw = (local / "raw" / member["raw_member"]).read_bytes()
+        assert len(raw) == member["size"] and hashlib.sha256(raw).hexdigest() == member["sha256"]
+    document = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert len(document["batches"]) == 510 and len(document["records"]) == 3062
+    assert all("raw_member" not in row for row in document["records"])
+    assert not document["authorizes_release"] and "private-output-sentinel" not in json.dumps(document)
+    assert (groups.DIAGNOSTIC_RECORDS, groups.DIAGNOSTIC_BYTES) == (4096, 32 * 1024 * 1024)
+
+
+def test_diagnostic_secondary_export_deadline_keeps_first_reason_and_stage(tmp_path, monkeypatch):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    clock = [0.0]
+    original_close = os.close
+    import stat
+    def close_after_refusal(fd):
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            clock[0] = 20.0
+        return original_close(fd)
+    monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", 1)
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(os, "close", close_after_refusal)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED" and not result["export_closed"]
+    assert (result["reason"], result["stage"]) == ("BYTE_LIMIT", "RUNNER_RECORDS")
+    assert list(Path(target["path"]).iterdir()) == []
+
+
+def _diagnostic_pressure_fixture(tmp_path, padding=24000):
+    """Current complete plan, every selected phase, private subtests and output."""
+    import release
+    owner = release._acceptance_runner()
+    source = Path(__file__).resolve().parents[3]
+    manifest, errors = owner.validate_manifest(source / release.ACCEPTANCE_MANIFEST, source)
+    assert manifest is not None, errors
+    plan = owner.batch_plan(owner.case_contract(manifest, source))
+    assert 2 + 6 * len(plan) < groups.DIAGNOSTIC_RECORDS
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan))
+    program = "\nimport hashlib, json, os, sys, time\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\nimport release_check_groups as g\nparent = Path(os.environ['TMPDIR']).resolve()\nbatches = []\nplan = json.loads(Path(sys.argv[3]).read_text())\nby_file = {}\nfor row in plan:\n    key = row['id'].rsplit(':',1)[0]\n    by_file.setdefault(key, []).extend(s for s in row['selectors'] if s not in by_file.get(key, []))\nfor index in range(int(sys.argv[2])):\n    group = parent / ('synthesis-release-check-' + str(index))\n    group.mkdir(mode=0o700)\n    process = group / 'synthesis-required-check-synthetic'\n    process.mkdir(mode=0o700)\n    selectors = plan[index]['selectors']\n    inventory = by_file[plan[index]['id'].rsplit(':',1)[0]]\n    events = [{'sequence': 0, 'kind': 'start'}, {'sequence': 1, 'kind': 'collection', 'inventory': inventory, 'selected': selectors}]\n    phases = {}\n    for node in selectors:\n        phases[node] = {}\n        for when in ('setup', 'call', 'teardown'):\n            row = {'outcome': 'passed', 'duration': 0.001, 'wasxfail': None}\n            phases[node][when] = row\n            events.append({'sequence': len(events), 'kind': 'phase', 'nodeid': node, 'when': when, **row})\n    events.append({'sequence': len(events), 'kind': 'subtest', 'nodeid': selectors[0], 'when': 'call', 'outcome': 'passed', 'duration': 0.001, 'parameters': 'SYNTHETIC_PRIVATE_PARAMETER', 'captured': 'SYNTHETIC_PRIVATE_CAPTURE'})\n    events.append({'sequence': len(events), 'kind': 'sessionfinish', 'exitstatus': 0, 'errors': []})\n    contents = {\n        group / 'selection.json': json.dumps(selectors),\n        group / 'pytest.ini': '[pytest]\\n',\n        group / 'inventory.json': json.dumps({'inventory': inventory, 'selected': selectors, 'phases': phases, 'group': 'acceptance', 'exitstatus': 0, 'errors': [], 'subtests': {}}),\n        group / 'inventory.progress.jsonl': ''.join(json.dumps(e) + '\\n' for e in events),\n        process / 'output.log': 'private-output-sentinel' * 48 + 'x' * int(sys.argv[4]),\n        process / 'result.json': json.dumps({'args': ['python', '-m', 'pytest', *selectors], 'returncode': 0, 'stdout': 'SYNTHETIC_PRIVATE_CAPTURE' * 24, 'stderr': '', 'seconds': 1.0}),\n    }\n    for path, data in contents.items():\n        path.write_text(data)\n        path.chmod(0o600)\n    identity = g.custody_identity(group.stat())\n    process_identity = g.custody_identity(process.stat())\n    pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, identity)\n            for path in contents if path.parent == group}\n    process_pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, process_identity)\n                    for path in contents if path.parent == process}\n    batches.append({'id': plan[index]['id'], 'selectors': selectors,\n        'fixture_custody': str(group), 'process_custody': str(process),\n        'custody_identity': identity, 'process_identity': process_identity,\n        'diagnostic_records': pins, 'process_records': process_pins,\n        'output_sha256': hashlib.sha256(('private-output-sentinel' * 48 + 'x' * int(sys.argv[4])).encode()).hexdigest(),\n        'returncode': 0})\nprint(g.encode_acceptance_receipt({'execution': {'batches': batches}}))\n"
+    root = tmp_path / "source"
+    root.mkdir()
+    completed = groups.bounded_run([sys.executable, "-c", program,
+        str(Path(groups.__file__).parent), str(len(plan)), str(plan_file), str(padding)],
+        root, 30)
+    assert completed.returncode == 0, completed.stdout
+    destination = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    return root, completed, plan, destination
+
+
+def test_diagnostic_full_plan_pressure_is_lossless_and_completely_charged(tmp_path):
+    import hashlib
+    root, completed, plan, destination = _diagnostic_pressure_fixture(tmp_path)
+    started = time.monotonic()
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert result["status"] == "RETAINED" and result["export_closed"], result
+    assert time.monotonic() - started < groups.DIAGNOSTIC_SECONDS == 10
+    local = Path(completed.fixture_custody) / "diagnostics"
+    public_path = Path(destination["path"])
+    wire = (public_path / "diagnostics.json").read_bytes()
+    assert json.loads(wire)["schema"] == "acceptance-diagnostics-transport-v1"
+    document = groups.decode_acceptance_diagnostics(wire)
+    assert document["schema"] == "acceptance-diagnostics-v1"
+    assert len(document["batches"]) == len(plan)
+    assert sum(len(b["phases"]) for b in document["batches"]) == sum(
+        3 * len(b["selectors"]) + 1 for b in plan)
+    inventory = json.loads((local / "index.json").read_bytes())
+    assert len(inventory["members"]) == result["record_count"] == 2 + 6 * len(plan)
+    raw_bytes = 0
+    for member in inventory["members"]:
+        data = (local / "raw" / member["raw_member"]).read_bytes()
+        raw_bytes += len(data)
+        assert len(data) == member["size"]
+        assert hashlib.sha256(data).hexdigest() == member["sha256"]
+    assert raw_bytes == result["raw_bytes"]
+    stored = raw_bytes + (local / "index.json").stat().st_size + sum(
+        (public_path / name).stat().st_size for name in ("diagnostics.json", "manifest.json"))
+    assert stored == result["stored_bytes"] <= groups.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
+    assert raw_bytes + len(json.dumps(document, sort_keys=True).encode()) > groups.DIAGNOSTIC_BYTES
+    for marker in ("SYNTHETIC_PRIVATE_PARAMETER", "SYNTHETIC_PRIVATE_CAPTURE",
+                   "private-output-sentinel", str(tmp_path)):
+        assert marker not in json.dumps(document) and marker.encode() not in wire
+    published = json.loads((public_path / "manifest.json").read_bytes())
+    assert published["encoding"] == "diagnostic-json-zlib-base64-v1"
+    assert published["members"] == [{"path": "diagnostics.json", "size": len(wire),
+                                    "sha256": hashlib.sha256(wire).hexdigest()}]
+    assert not document["authorizes_release"] and not published["authorizes_release"]
+
+
+@pytest.mark.parametrize("encoding", ["direct", "transport"])
+def test_diagnostic_representation_exact_boundary_includes_manifest(encoding):
+    document = {"schema": "acceptance-diagnostics-v1", "authorizes_release": False,
+                "status": "RETAINED", "records": [{"id": "public"}] * 1000}
+    room = groups.DIAGNOSTIC_BYTES if encoding == "direct" else 2000
+    data, manifest = groups._diagnostic_export_bytes(document, room)
+    assert groups.decode_acceptance_diagnostics(data) == document
+    exact = len(data) + len(manifest)
+    assert sum(map(len, groups._diagnostic_export_bytes(document, exact))) == exact
+    if encoding == "transport":
+        with pytest.raises(ValueError):
+            groups._diagnostic_export_bytes(document, exact - 1)
+    else:
+        compressed = groups._diagnostic_export_bytes(document, exact - 1)
+        assert groups.decode_acceptance_diagnostics(compressed[0]) == document
+        assert sum(map(len, compressed)) < exact
+
+
+def test_diagnostic_local_index_is_inside_aggregate_without_destination(tmp_path, monkeypatch):
+    root, completed, plan, _ = _diagnostic_scope_fixture(tmp_path, 2)
+    raw_total = sum((Path(completed.fixture_custody) / name).stat().st_size
+                    for name in ("output.log", "result.json"))
+    receipt = groups.decode_acceptance_receipt(completed.stdout)
+    for batch in receipt["execution"]["batches"]:
+        for name in ("selection.json", "pytest.ini", "inventory.json", "inventory.progress.jsonl"):
+            raw_total += (Path(batch["fixture_custody"]) / name).stat().st_size
+        for name in ("output.log", "result.json"):
+            raw_total += (Path(batch["process_custody"]) / name).stat().st_size
+    monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", raw_total + 1)
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, None)
+    assert (result["status"], result["reason"], result["stage"]) == ("REFUSED", "BYTE_LIMIT", "LOCAL_INDEX")
+    assert result["raw_bytes"] == result["stored_bytes"] == raw_total
+    assert not (Path(completed.fixture_custody) / "diagnostics/index.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["authority", "schema", "extra", "duplicate",
+    "payload-hash", "payload-size", "payload-trailing", "payload-truncated", "payload-expansion"])
+def test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload(mutation):
+    import base64
+    document = {"schema": "acceptance-diagnostics-v1", "authorizes_release": False,
+                "status": "RETAINED", "records": ["public"] * 1000}
+    data, _ = groups._diagnostic_export_bytes(document, 2000)
+    wire = json.loads(data)
+    if mutation == "authority":
+        document["authorizes_release"] = True
+        wire["payload"] = json.loads(groups.encode_acceptance_receipt(document))
+    elif mutation == "schema":
+        document["schema"] = "acceptance-receipt"
+        wire["payload"] = json.loads(groups.encode_acceptance_receipt(document))
+    elif mutation == "extra":
+        wire["unknown"] = "private-marker"
+    elif mutation == "duplicate":
+        data = data[:-1] + b',"authorizes_release":false}'
+    elif mutation == "payload-hash":
+        wire["payload"]["payload_sha256"] = "0" * 64
+    elif mutation == "payload-size":
+        wire["payload"]["payload_bytes"] += 1
+    elif mutation == "payload-expansion":
+        wire["payload"]["payload_bytes"] = 1
+    else:
+        packed = base64.b64decode(wire["payload"]["payload"])
+        packed = packed + b"x" if mutation == "payload-trailing" else packed[:-1]
+        wire["payload"]["payload"] = base64.b64encode(packed).decode()
+    if mutation != "duplicate":
+        data = json.dumps(wire).encode()
+    with pytest.raises(ValueError):
+        groups.decode_acceptance_diagnostics(data)

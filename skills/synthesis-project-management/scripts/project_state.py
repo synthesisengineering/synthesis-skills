@@ -37,6 +37,9 @@ _REPO_GUARD = Path(__file__).resolve().parents[2] / "synthesis-repo-guard"
 if str(_REPO_GUARD) not in sys.path:
     sys.path.insert(0, str(_REPO_GUARD))
 import publication_receipt  # noqa: E402 - verified sibling diagnostic owner
+from pending_manifest import (  # noqa: E402 - pure pending representation
+    decode_pending_manifest, encode_pending_manifest, pending_manifest_bytes,
+)
 from board_grammar import parse_table_rows  # noqa: E402 - sibling owner path
 from plan_reference import PlanReference, resolve_plan_target  # noqa: E402 - sibling owner path
 
@@ -1139,7 +1142,9 @@ def _manifest_inventory(
         for path in sorted(directory.glob("*.json")):
             try:
                 payload = _load_json(path)
-            except ProjectStateError as exc:
+                if kind == "manifest":
+                    payload = decode_pending_manifest(payload)
+            except (ProjectStateError, ValueError) as exc:
                 issues.append(str(exc))
                 continue
             payload["_kind"] = kind
@@ -3114,6 +3119,10 @@ def _observer_pending_scope(
     if own.exists():
         observer_native_identity(payload)
         attribution, snapshot = _observer_local_json(own)
+        try:
+            attribution = decode_pending_manifest(attribution)
+        except ValueError as exc:
+            raise ProjectStateError("invalid pending path representation") from exc
         if (
             attribution.get("session_id") != native
             or type(attribution.get("schema_version")) is not int

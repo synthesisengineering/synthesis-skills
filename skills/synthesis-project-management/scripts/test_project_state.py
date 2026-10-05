@@ -3287,3 +3287,26 @@ def test_working_digest_closes_directory_after_descendant(tmp_path, monkeypatch,
     with pytest.raises(state.ProjectStateError, match="changed after capture"):
         state._working_digest(project)
     assert calls == [leaf, leaf]
+
+
+
+def test_indexed_manifest_inventory_preserves_logical_hash_evidence(tmp_path):
+    target = tmp_path / "entry"
+    target.write_text("exact synthetic bytes")
+    root = tmp_path / "guard"
+    pending = root / "pending"; pending.mkdir(parents=True)
+    native = "indexed-synthetic-owner"
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    logical = {"schema_version": 2, "session_id": native, "paths": [str(target)],
+               "remote_paths": [], "content_hashes": {str(target): digest},
+               "path_kinds": {str(target): "file"}, "unknown": {"keep": True}}
+    path = pending / (hashlib.sha256(native.encode()).hexdigest() + ".json")
+    path.write_text(json.dumps(state.encode_pending_manifest(logical)))
+    manifests, issues = state._manifest_inventory(root)
+    assert not issues and len(manifests) == 1
+    assert {key: manifests[0][key] for key in logical} == logical
+    assert state._manifest_for_dirty([{"path": str(target), "sha256": digest, "kind": "file"}], manifests) == native
+    encoded = json.loads(path.read_text()); encoded["paths"] = [False]
+    path.write_text(json.dumps(encoded))
+    found, issues = state._manifest_inventory(root)
+    assert not found and issues
