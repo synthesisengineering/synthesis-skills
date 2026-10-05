@@ -75,6 +75,18 @@ def pre_tool_use(payload):
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
+def stop(payload):
+    """Revise the reply once if it defers work or quotes words with no source (S15)."""
+    try:
+        from synthesis import paths, reply_check
+        reason = reply_check.check(payload, paths.config())
+    except Exception:
+        return 0  # fail open: a turn-end check that fails closed loops forever
+    if reason:
+        print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
 def main(argv):
     event = argv[1] if len(argv) > 1 else ""
     try:
@@ -88,7 +100,7 @@ def main(argv):
         except Exception:
             pass  # a failed self-update must never block a session; doctor reports it
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
-               "pre-tool-use": pre_tool_use}.get(event)
+               "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
     return handler(payload) if handler else 0
 
 
