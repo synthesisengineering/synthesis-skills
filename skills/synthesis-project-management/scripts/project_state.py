@@ -629,6 +629,7 @@ class _ManifestPathObservations:
 
     def __init__(self):
         self.parents: dict[Path, tuple | None] = {}
+        self.normalized: dict[str, str | None] = {}
         self.directories: dict[Path, tuple] = {}
         self.missing: set[Path] = set()
         self.fallback: dict[Path, tuple | None] = {}
@@ -690,6 +691,11 @@ class _ManifestPathObservations:
         return observation
 
     def __call__(self, value: str) -> str | None:
+        if value not in self.normalized:
+            self.normalized[value] = self._normalize(value)
+        return self.normalized[value]
+
+    def _normalize(self, value: str) -> str | None:
         path = Path(value)
         if not path.is_absolute() or ".." in path.parts or str(path) != value:
             return None
@@ -790,6 +796,80 @@ def _dirty_entry_identity(path: Path) -> tuple:
         os.close(fd)
 
 
+
+class _DirtyPathObservations:
+    """One scan's directory stack; identities outlive closed descriptors.
+
+    Only the current ancestor chain holds descriptors. Every directory admitted
+    by descriptor identity is checked again before the scan can return.
+    """
+    def __init__(self):
+        self.stack = []
+        self.observed = {}
+        self.missing = set()
+
+    def close(self):
+        while self.stack:
+            _path, fd, _identity = self.stack.pop()
+            os.close(fd)
+
+    def parent(self, path):
+        if self.stack and self.stack[-1][0] == path.parent:
+            return os.dup(self.stack[-1][1]), None
+        wanted = [Path(path.anchor)]
+        current = wanted[0]
+        for part in path.parent.parts[1:]:
+            current = current / part
+            wanted.append(current)
+        shared = 0
+        while (shared < len(wanted) and shared < len(self.stack)
+               and self.stack[shared][0] == wanted[shared]):
+            shared += 1
+        while len(self.stack) > shared:
+            _path, fd, _identity = self.stack.pop()
+            os.close(fd)
+        for current in wanted[shared:]:
+            name = current.name if self.stack else current.anchor
+            parent_fd = self.stack[-1][1] if self.stack else None
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                             dir_fd=parent_fd)
+            except FileNotFoundError:
+                if not self.stack:
+                    raise
+                self.missing.add(current)
+                return os.dup(self.stack[-1][1]), name
+            try:
+                info = os.fstat(fd)
+                identity = (info.st_dev, info.st_ino, info.st_mode)
+                if current in self.observed and self.observed[current] != identity:
+                    raise ProjectStateError("dirty path ancestor changed during capture")
+                self.observed[current] = identity
+                self.stack.append((current, fd, identity))
+            except BaseException:
+                os.close(fd)
+                raise
+        return os.dup(self.stack[-1][1]), None
+
+    def verify(self):
+        # Descendants first, then the ancestors that name them. A missing leaf
+        # is checked through its descriptor by _dirty_leaf_snapshot itself.
+        for path in self.missing:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                continue
+            raise ProjectStateError("dirty path ancestor changed during capture")
+        for path, expected in sorted(
+                self.observed.items(), key=lambda item: len(item[0].parts), reverse=True):
+            try:
+                info = path.lstat()
+            except OSError as exc:
+                raise ProjectStateError("dirty path ancestor changed during capture") from exc
+            if (info.st_dev, info.st_ino, info.st_mode) != expected:
+                raise ProjectStateError("dirty path ancestor changed during capture")
+
+
 def _dirty_leaf_snapshot(
     path: Path,
     *,
@@ -799,6 +879,7 @@ def _dirty_leaf_snapshot(
     _require_directory: bool = False,
     _recursive: bool = True,
     _expected: tuple | None = None,
+    _path_observations: _DirtyPathObservations | None = None,
 ) -> dict[str, str]:
     """Hash ordinary bytes or describe a leaf; never dereference evidence links.
 
@@ -838,21 +919,26 @@ def _dirty_leaf_snapshot(
         raise ProjectStateError("deleted dirty path appeared during capture")
 
     try:
-        fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        current = Path(path.anchor)
-        for part in path.parent.parts[1:]:
-            current = current / part
-            try:
-                child = os.open(
-                    part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
-                )
-            except FileNotFoundError:
-                # Git reports tracked deletions even after a whole directory is gone.
-                return missing(part)
-            os.close(fd)
-            fd = child
-            info = os.fstat(fd)
-            ancestors.append((current, (info.st_dev, info.st_ino, info.st_mode)))
+        if _path_observations is not None:
+            fd, missing_part = _path_observations.parent(path)
+            if missing_part is not None:
+                return missing(missing_part)
+        else:
+            fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            current = Path(path.anchor)
+            for part in path.parent.parts[1:]:
+                current = current / part
+                try:
+                    child = os.open(
+                        part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
+                    )
+                except FileNotFoundError:
+                    # Git reports tracked deletions even after a whole directory is gone.
+                    return missing(part)
+                os.close(fd)
+                fd = child
+                info = os.fstat(fd)
+                ancestors.append((current, (info.st_dev, info.st_ino, info.st_mode)))
         try:
             before = os.stat(path.name, dir_fd=fd, follow_symlinks=False)
         except FileNotFoundError:
@@ -1040,84 +1126,91 @@ def _dirty_project_files(worktree: Path, relative: str) -> list[dict[str, str]]:
     fields = raw.split(b"\0")[:-1]
     found = {}
     tree_budget = {}
+    project_parts = project.parts
+    path_observations = _DirtyPathObservations()
     offset = 0
-    while offset < len(fields):
-        field = fields[offset]
-        offset += 1
-        if (
-            len(field) < 4
-            or field[2:3] != b" "
-            or any(char not in b" MADRCUT?!" for char in field[:2])
-            or field[:2] == b"  "
-            or (any(char in b"?!" for char in field[:2]) and field[:2] != b"??")
-        ):
-            raise ProjectStateError("invalid dirty Git status record")
-        status = field[:2].decode("ascii")
-        spelling = os.fsdecode(field[3:])
-        directory_record = spelling.endswith("/")
-        if directory_record:
-            if status != "??":
-                raise ProjectStateError(
-                    "directory notation requires an untracked Git record"
-                )
-            spelling = spelling[:-1]
-        name = _dirty_path_name(spelling)
-        paths = [name]
-        if "R" in status or "C" in status:
-            if offset == len(fields):
-                raise ProjectStateError("incomplete dirty Git rename/copy record")
-            original = _dirty_path_name(os.fsdecode(fields[offset]))
+    try:
+        while offset < len(fields):
+            field = fields[offset]
             offset += 1
-            if "R" in status:
-                paths.append(original)
-        scoped = [name for name in paths if name.is_relative_to(project)]
-        if not scoped:
-            raise ProjectStateError("dirty Git record is outside the selected project")
-        for name in scoped:
-            path = worktree / name
-            key = str(path)
-            if key in found:
-                # A rename can recreate its source as an untracked entry.
-                found[key]["status"] += ";" + status
-                continue
-            local = name.relative_to(project)
-            control = len(local.parts) == 1 and local.name in {
-                STATE_FILE,
-                "CONTEXT.md",
-                "REFERENCE.md",
-                "AGENTS.md",
-                "CLAUDE.md",
-            }
-            snapshot = _dirty_leaf_snapshot(
-                path,
-                control=control,
-                _tree_budget=tree_budget,
-                _require_directory=directory_record,
-            )
-            if directory_record and snapshot["kind"] != "directory":
-                raise ProjectStateError("dirty Git directory record changed type")
-            found[key] = {"path": key, "status": status, **snapshot}
-    if tree_budget.get("observed"):
-        tree_budget["active_started"] = time.monotonic()
-        try:
-            for path, expected in tree_budget["observed"].items():
-                _dirty_tree_bound(tree_budget)
-                try:
-                    actual = _dirty_entry_identity(path)
-                except OSError as exc:
+            if (
+                len(field) < 4
+                or field[2:3] != b" "
+                or any(char not in b" MADRCUT?!" for char in field[:2])
+                or field[:2] == b"  "
+                or (any(char in b"?!" for char in field[:2]) and field[:2] != b"??")
+            ):
+                raise ProjectStateError("invalid dirty Git status record")
+            status = field[:2].decode("ascii")
+            spelling = os.fsdecode(field[3:])
+            directory_record = spelling.endswith("/")
+            if directory_record:
+                if status != "??":
                     raise ProjectStateError(
-                        "dirty subtree changed after inventory"
-                    ) from exc
-                if actual != expected:
-                    raise ProjectStateError("dirty subtree changed after inventory")
-        finally:
-            tree_budget["seconds"] = (
-                tree_budget.get("seconds", 0.0)
-                + time.monotonic()
-                - tree_budget.pop("active_started")
-            )
-            _dirty_tree_bound(tree_budget)
-    return [found[key] for key in sorted(found)]
+                        "directory notation requires an untracked Git record"
+                    )
+                spelling = spelling[:-1]
+            name = _dirty_path_name(spelling)
+            paths = [name]
+            if "R" in status or "C" in status:
+                if offset == len(fields):
+                    raise ProjectStateError("incomplete dirty Git rename/copy record")
+                original = _dirty_path_name(os.fsdecode(fields[offset]))
+                offset += 1
+                if "R" in status:
+                    paths.append(original)
+            scoped = [name for name in paths if name.parts[:len(project_parts)] == project_parts]
+            if not scoped:
+                raise ProjectStateError("dirty Git record is outside the selected project")
+            for name in scoped:
+                path = worktree / name
+                key = str(path)
+                if key in found:
+                    # A rename can recreate its source as an untracked entry.
+                    found[key]["status"] += ";" + status
+                    continue
+                local_parts = name.parts[len(project_parts):]
+                control = len(local_parts) == 1 and local_parts[0] in {
+                    STATE_FILE,
+                    "CONTEXT.md",
+                    "REFERENCE.md",
+                    "AGENTS.md",
+                    "CLAUDE.md",
+                }
+                snapshot = _dirty_leaf_snapshot(
+                    path,
+                    control=control,
+                    _tree_budget=tree_budget,
+                    _require_directory=directory_record,
+                    _path_observations=path_observations,
+                )
+                if directory_record and snapshot["kind"] != "directory":
+                    raise ProjectStateError("dirty Git directory record changed type")
+                found[key] = {"path": key, "status": status, **snapshot}
+        if tree_budget.get("observed"):
+            tree_budget["active_started"] = time.monotonic()
+            try:
+                for path, expected in tree_budget["observed"].items():
+                    _dirty_tree_bound(tree_budget)
+                    try:
+                        actual = _dirty_entry_identity(path)
+                    except OSError as exc:
+                        raise ProjectStateError(
+                            "dirty subtree changed after inventory"
+                        ) from exc
+                    if actual != expected:
+                        raise ProjectStateError("dirty subtree changed after inventory")
+            finally:
+                tree_budget["seconds"] = (
+                    tree_budget.get("seconds", 0.0)
+                    + time.monotonic()
+                    - tree_budget.pop("active_started")
+                )
+                _dirty_tree_bound(tree_budget)
+        path_observations.verify()
+        return [found[key] for key in sorted(found)]
+    finally:
+        path_observations.close()
 
 
 def _manifest_inventory(
@@ -1387,6 +1480,88 @@ def _safe_fast_forward(
     return True, None
 
 
+
+def _project_selection_unchanged(
+    repo: Path,
+    relative: str,
+    index_path: Path,
+    project_id: str,
+    entry: str,
+    canonical_project_prefix: str,
+    worktree_records: list[tuple[Path, str, str | None]],
+    ref_snapshot: dict[str, str],
+    history_frontier: tuple,
+    metadata_by_commit: dict,
+    authoritative: list[Candidate],
+    project_observations: dict,
+    replacement_base: str,
+) -> bool:
+    """Close a read against its project causes, not unrelated repository churn.
+
+    A changed candidate must be an existing identity advancing along its history
+    with the identical project commit, tree and timestamp. This is one bounded
+    revalidation, never a retry or a cache across resolutions. New/deleted names,
+    branch/path changes and altered history interpretation remain unresolved.
+    """
+    worktrees = _worktrees(repo)
+    refs = _project_refs(repo)
+
+    def fixed_inputs() -> bool:
+        return (
+            _project_history_frontier(repo) == history_frontier
+            and os.environ.get("GIT_REPLACE_REF_BASE", "refs/replace/") == replacement_base
+            and str((repo / relative).resolve()) == canonical_project_prefix
+            and _index_entry(index_path.read_text(encoding="utf-8"), project_id) == entry
+        )
+
+    if not fixed_inputs():
+        return False
+    if worktrees == worktree_records and refs == ref_snapshot:
+        return True
+    if [(path, branch) for path, _, branch in worktrees] != [
+        (path, branch) for path, _, branch in worktree_records
+    ] or refs.keys() != ref_snapshot.keys():
+        return False
+
+    changed = set()
+    for name, head in refs.items():
+        old = ref_snapshot[name]
+        if head == old:
+            continue
+        if (
+            not name.startswith(("refs/heads/", "refs/remotes/"))
+            or name.endswith("/HEAD")
+            or name.startswith(replacement_base)
+        ):
+            return False
+        changed.add((old, head))
+    for (_, old, _), (_, head, _) in zip(worktree_records, worktrees):
+        if old != head:
+            changed.add((old, head))
+    if not changed or any(not _is_ancestor(repo, old, head) for old, head in changed):
+        return False
+    fresh = _project_metadata_at(
+        repo, _trees_at(repo, (head for _, head in changed), relative), relative
+    )
+    if any(fresh[head] != metadata_by_commit.get(old) for old, head in changed):
+        return False
+
+    # HEAD movement used to reject all concurrent dirty/path changes too.
+    # Preserve paths, including absent projects, in every initial worktree.
+    for worktree, expected in project_observations.items():
+        project = Path(worktree) / relative
+        if expected is None or _manifest_parent_snapshot(project) != expected:
+            return False
+    for candidate in authoritative:
+        if _dirty_project_files(Path(candidate.worktree), relative) != candidate.dirty_files:
+            return False
+    return (
+        _worktrees(repo) == worktrees
+        and _project_refs(repo) == refs
+        and fixed_inputs()
+    )
+
+
 def _resolve_project_unlocked(
     project_id: str,
     index_path: Path,
@@ -1432,6 +1607,11 @@ def _resolve_project_unlocked(
         fetch_succeeded = False
 
     worktree_records = _worktrees(repo)
+    project_observations = {
+        str(worktree): _manifest_parent_snapshot(worktree / relative)
+        for worktree, _, _ in worktree_records
+    }
+    replacement_base = os.environ.get("GIT_REPLACE_REF_BASE", "refs/replace/")
     ref_snapshot = _project_refs(repo)
     history_frontier = _project_history_frontier(repo)
     tree_by_commit = _trees_at(
@@ -1547,7 +1727,8 @@ def _resolve_project_unlocked(
             project_id in json.dumps(payload, sort_keys=True)
             or any(
                 (normalized := manifest_paths(path)) is not None
-                and Path(normalized).is_relative_to(canonical_project_prefix)
+                and (normalized == canonical_project_prefix
+                     or normalized.startswith(canonical_project_prefix.rstrip("/") + "/"))
                 for path in payload.get("paths", [])
                 if isinstance(path, str)
             )
@@ -1683,11 +1864,10 @@ def _resolve_project_unlocked(
     # A pinned object is immutable; the selection that named it is not. Reject a
     # moving inventory before reporting success or attempting an optional owner
     # fast-forward. This also prevents cached alias metadata masking a ref race.
-    if (
-        _worktrees(repo) != worktree_records
-        or _project_refs(repo) != ref_snapshot
-        or _project_history_frontier(repo) != history_frontier
-        or str((repo / relative).resolve()) != canonical_project_prefix
+    if not _project_selection_unchanged(
+        repo, relative, index_path, project_id, entry, canonical_project_prefix,
+        worktree_records, ref_snapshot, history_frontier, metadata_by_commit,
+        authoritative, project_observations, replacement_base,
     ):
         issues.append(
             "Git project selection changed during resolution; retry a fresh read"
