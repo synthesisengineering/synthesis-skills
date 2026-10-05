@@ -271,13 +271,7 @@ def validate_org_manifest(data: Any, path: Path | str = "manifest") -> dict[str,
     )
     if not isinstance(ecosystem.get("plugin", True), bool):
         raise ContractError("ecosystem.plugin must be true or false")
-    clients = ecosystem.get("clients", ["claude", "codex"])
-    if (
-        not isinstance(clients, list)
-        or not clients
-        or set(clients) - {"claude", "codex"}
-    ):
-        raise ContractError("ecosystem.clients must contain only claude and codex")
+    _organization_clients(ecosystem)
     channel = ecosystem.get("channel", "stable")
     if channel not in ("stable", "edge"):
         raise ContractError("ecosystem.channel must be stable or edge")
@@ -1571,6 +1565,16 @@ def validate_desired_state(value: Any) -> dict[str, Any]:
     return value
 
 
+def _organization_clients(ecosystem):
+    clients = ecosystem.get("clients", ["claude", "codex"])
+    if (not isinstance(clients, list) or not clients
+            or any(not isinstance(client, str) for client in clients)
+            or len(clients) != len(set(clients))
+            or set(clients) - {"claude", "codex"}):
+        raise ContractError("ecosystem.clients must contain unique claude and/or codex entries")
+    return set(clients)
+
+
 def validate_additive_organization(desired, manifest, entry):
     """An organization overlay cannot take over the installation's policy."""
     ecosystem = manifest.get("ecosystem") or {}
@@ -1582,12 +1586,13 @@ def validate_additive_organization(desired, manifest, entry):
         raise ContractError(
             "organization release policy conflicts with the existing installation"
         )
-    if sorted(ecosystem.get("clients", ["claude", "codex"])) != sorted(
-        desired["clients"]
-    ):
-        raise ContractError(
-            "organization clients conflict with the existing installation"
-        )
+    supported = _organization_clients(ecosystem)
+    selected = desired["clients"]
+    if (not isinstance(selected, list) or not selected
+            or any(not isinstance(client, str) for client in selected)
+            or len(selected) != len(set(selected))
+            or not set(selected).issubset(supported)):
+        raise ContractError("organization clients conflict with the existing installation")
     if ecosystem.get("plugin", True) is not True:
         raise ContractError("organization cannot disable the existing public plugin")
     workspace = manifest["org"]["workspace"]

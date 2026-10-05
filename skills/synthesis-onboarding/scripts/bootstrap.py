@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -39,6 +40,18 @@ from system_contract import (  # noqa: E402 - source contract must precede relea
     verify_materialized_release,
     descriptor_fields,
 )
+
+
+def _path_guidance(launcher: Path) -> None:
+    launcher = Path(launcher).expanduser().absolute()
+    directory = launcher.parent
+    entries = {Path(item or ".").expanduser().absolute() for item in os.environ.get("PATH", "").split(os.pathsep)}
+    if directory not in entries:
+        print(
+            "The synthesis launcher is installed at %s. To use synthesis from your shell, add this to your shell startup file:\n  export PATH=%s:\"$PATH\""
+            % (launcher, shlex.quote(str(directory))),
+            file=sys.stderr,
+        )
 
 
 def _tracked_files(source: Path) -> list[str]:
@@ -444,6 +457,8 @@ def main(argv: list[str] | None = None) -> int:
                 "selected generation differs from the expected release digest; active installation preserved"
             )
         activate_cli(generation, descriptor, args.launcher, args.active_descriptor)
+        if not getattr(parsed, "json", False):
+            _path_guidance(args.launcher)
     except (ContractError, OSError) as exc:
         print("Synthesis bootstrap refused: %s" % exc, file=sys.stderr)
         return 1

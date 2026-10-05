@@ -3513,7 +3513,7 @@ def _ask(prompt, default=""):
             "guided init needs a terminal; use --profile and --answers for a non-interactive run"
         )
     suffix = " [%s]" % default if default else ""
-    print("%s%s: " % (prompt, suffix), end="", flush=True)
+    print("%s%s: " % (prompt, suffix), end="", flush=True, file=sys.stderr)
     try:
         value = stream.readline()
     finally:

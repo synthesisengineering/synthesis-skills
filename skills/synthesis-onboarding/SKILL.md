@@ -67,6 +67,34 @@ curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skil
 
 Full correspondence setup also requires explicit, reviewed transport declarations. Follow [the correspondence setup owner](references/message-guard-onboarding.md) before selecting the full profile. Missing declarations leave that layer NOT_CONFIGURED and install no fresh message guard hook; skills-only and modular selections retain their own scope.
 
+For unattended organization enrollment without personal correspondence setup,
+install the selected local clients first, then add the organization overlay:
+
+```bash
+synthesis setup --profile skills-only --clients codex
+synthesis enroll --org-repo https://example.test/team/config.git
+```
+
+Use `--clients claude` or `--clients claude,codex` when those are the intended
+local clients. The organization's manifest declares the clients it supports;
+it must include every selected local client. Enrollment does not silently add
+or remove a local client. This two-command route does not select the full
+profile, grant repository access, or bypass reviewed message-guard declarations.
+Keep `setup --org-repo` for its existing full-profile workflow.
+
+If a new shell cannot find `synthesis`, bootstrap prints the installed launcher
+and the exact PATH addition. Add that directory to the shell startup file, or
+invoke the printed launcher path. The usual location is `~/.local/bin/synthesis`;
+bootstrap does not edit shell startup files.
+
+Claude Desktop's bundled executable is a bounded discovery fallback after PATH
+and standard CLI locations. Only the known version/build layout and at most four
+executable candidates are inspected and locally probed with `--version`.
+This confirms a usable executable, not authentication or a loaded synthesis
+session. An explicit `SYNTHESIS_CLAUDE_BIN` remains authoritative. For a terminal
+installation independent of the Desktop layout, use the vendor's Claude Code CLI
+installer.
+
 After bootstrap, use the installed public command:
 
 ```bash

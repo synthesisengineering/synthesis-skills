@@ -15,6 +15,19 @@ import project_state as state
 import coordination as engine
 
 
+
+@pytest.fixture(autouse=True)
+def _hermetic_native_identity(monkeypatch):
+    # Tests set the identities they need explicitly. A real Claude Code, Codex
+    # or Muse caller's native identity must never leak into a fixture: it made
+    # test_stop_honors_open_release_requests resolve the running agent and fail
+    # inside any Claude Code shell (2026-10-05).
+    for key in ("SYNTHESIS_COORDINATION_SESSION", "SYNTHESIS_CLIENT_SESSION_REF",
+                "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_HOST_SESSION_ID",
+                "CLAUDECODE", "MUSE_SESSION_ID"):
+        monkeypatch.delenv(key, raising=False)
+
+
 def test_manifest_parent_observations_share_prefixes_and_recheck(tmp_path, monkeypatch):
     tmp_path = tmp_path.resolve()
     common = tmp_path / "shared" / "deep" / "prefix"

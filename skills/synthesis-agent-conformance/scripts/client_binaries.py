@@ -15,9 +15,9 @@ that spawn a client binary therefore resolve it in this order:
    instead of silently testing a different installation.
 2. ``PATH`` via :func:`shutil.which`. Discovered Codex candidates must pass a
    bounded local ``--version`` probe: an executable launcher can outlive its CLI.
-3. Documented stable install locations. These are vendor install paths, not
-   version-numbered plugin caches, so consulting them as fallbacks does not
-   create a dependency on client-owned cache layout.
+3. Stable install locations, followed by a bounded discovery of Claude Desktop's
+   bundled executable. Bundle candidates must pass the same local version probe.
+   This fallback does not establish authentication or native client loading.
 
 Callers treat ``None`` as "binary unavailable" and report a structured check
 failure; they never let ``FileNotFoundError`` escape as a crash.
@@ -26,6 +26,7 @@ failure; they never let ``FileNotFoundError`` escape as a crash.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -38,11 +39,14 @@ ENV_OVERRIDES = {
     "muse": "SYNTHESIS_MUSE_BIN",
 }
 
+CLAUDE_DESKTOP_ROOT = "~/Library/Application Support/Claude/claude-code"
+
 WELL_KNOWN_LOCATIONS = {
     "claude": (
         "~/.local/bin/claude",
         "/opt/homebrew/bin/claude",
         "/usr/local/bin/claude",
+        CLAUDE_DESKTOP_ROOT,
     ),
     "codex": (
         "~/.local/bin/codex",
@@ -65,6 +69,34 @@ PROBE_TIMEOUT_SECONDS = 2.0
 
 def _executable(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
+
+
+def _claude_desktop_candidates() -> list[Path]:
+    """Inspect only the known version/build layout, without a recursive search."""
+    root = Path(CLAUDE_DESKTOP_ROOT).expanduser()
+    def directories(parent, pattern, limit):
+        found = []
+        try:
+            with os.scandir(parent) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= limit:
+                        return []
+                    if entry.is_dir(follow_symlinks=False) and re.fullmatch(pattern, entry.name):
+                        found.append(Path(entry.path))
+        except OSError:
+            return []
+        return found
+    versions = directories(root, r"[0-9]+\.[0-9]+\.[0-9]+", 128)
+    versions.sort(key=lambda item: tuple(int(part) for part in item.name.split(".")), reverse=True)
+    candidates = []
+    for version in versions:
+        for build in sorted(directories(version, r"[0-9a-fA-F]{8,64}", 32), reverse=True):
+            binary = build / "claude.app/Contents/MacOS/claude"
+            if _executable(binary) and binary.resolve().is_relative_to(root.resolve()):
+                candidates.append(binary)
+                if len(candidates) == 4:
+                    return candidates
+    return candidates
 
 
 def _codex_launcher_works(path: Path) -> bool | None:
@@ -116,6 +148,13 @@ def resolve_client_binary(name: str, *, locations=None) -> str | None:
     candidates = ([found] if found else []) + list(
         WELL_KNOWN_LOCATIONS.get(name, ()) if locations is None else locations
     )
+    bundled = set()
+    desktop_root = Path(CLAUDE_DESKTOP_ROOT).expanduser().absolute()
+    desktop_locations = [item for item in candidates if Path(item).expanduser().absolute() == desktop_root]
+    if name == "claude" and desktop_locations:
+        desktop = _claude_desktop_candidates()
+        bundled = {str(path) for path in desktop}
+        candidates = [item for item in candidates if item not in desktop_locations] + desktop
     seen: set[str] = set()
     for candidate in candidates:
         path = Path(candidate).expanduser().absolute()
@@ -125,7 +164,7 @@ def resolve_client_binary(name: str, *, locations=None) -> str | None:
         seen.add(identity)
         if not _executable(path):
             continue
-        if name == "codex":
+        if name == "codex" or str(path) in bundled:
             healthy = _codex_launcher_works(path)
             if healthy is None:
                 return None  # A surviving probe must not be hidden by a fallback.
@@ -139,7 +178,7 @@ def missing_binary_detail(name: str) -> str:
     """Uniform detail string for a structured check failure."""
     override_key = ENV_OVERRIDES.get(name, f"SYNTHESIS_{name.upper()}_BIN")
     return (
-        f"{name} usable binary not found on PATH or in documented install locations; "
+        f"{name} usable binary not found on PATH or in supported install locations; "
         f"set {override_key} to the CLI path if it is installed elsewhere"
     )
 

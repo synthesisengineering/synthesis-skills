@@ -185,11 +185,11 @@ def _strict_json(raw):
     return json.loads(raw, object_pairs_hook=pairs)
 
 
-def _reference(path, key=None):
+def _reference(path, key=None, *, deadline=None):
     reference = _owner_path(path)
     if not os.path.lexists(reference):
         return None
-    raw, meta, _ = read_regular(reference, limit=OWNER_REFERENCE_BYTES)
+    raw, meta, _ = read_regular(reference, limit=OWNER_REFERENCE_BYTES, deadline=deadline)
     if meta.st_uid != os.getuid() or stat.S_IMODE(meta.st_mode) != 0o600:
         raise ValueError("snapshot owner reference is unsafe")
     envelope = _strict_json(raw)
@@ -212,12 +212,19 @@ def _reference(path, key=None):
 
 
 def publish_owner_reference(path, session_id, *, deadline=None):
-    """Caller holds .snapshot.lock; retain the source, publish a bounded hint."""
+    """Caller holds .snapshot.lock; retain the source, publish a bounded hint.
+
+    Explicit maintenance passes None to derive the owner from this fresh payload
+    read. Writers still provide their expected session, which must match exactly.
+    Neither form grants edit attribution or trusts a caller-provided observation.
+    """
     deadline = time.monotonic() + SNAPSHOT_SECONDS if deadline is None else deadline
     _remaining(deadline)
     raw, meta, identity = read_regular(path, deadline=deadline)
     data = _strict_json(raw)
     _remaining(deadline)
+    if session_id is None and isinstance(data, dict):
+        session_id = data.get("session_id")
     if (not isinstance(session_id, str) or not session_id or len(session_id) > 256
             or not isinstance(data, dict) or data.get("session_id") != session_id
             or meta.st_uid != os.getuid() or meta.st_mode & 0o022):
@@ -379,6 +386,10 @@ def index_retained(root):
             paths.append(path)
             if len(paths) > SNAPSHOT_FILES:
                 raise ValueError("snapshot directory count ceiling; evidence retained")
+        key_path = directory / ".owner-key"
+        key = (_owner_key(directory, create=True, deadline=deadline)
+               if any(path.suffix == ".json" for path in paths) else None)
+        key_identity = _identity(key_path.lstat()) if key is not None else None
         count = 0
         for path in sorted(paths):
             _remaining(deadline)
@@ -387,17 +398,18 @@ def index_retained(root):
             count += 1
             if count > SNAPSHOT_FILES:
                 raise ValueError("snapshot count ceiling; evidence retained")
-            body = _reference(path)
+            body = _reference(path, key, deadline=deadline)
             if body is not None and body["identity"] == list(_identity(path.lstat())):
                 result["unchanged"] += 1
                 continue
-            raw, _meta, _identity_value = read_regular(path, deadline=deadline)
-            data = _strict_json(raw)
-            if not isinstance(data, dict):
-                raise ValueError("snapshot ownership cannot be reconciled")
-            publish_owner_reference(path, data.get("session_id"), deadline=deadline)
+            publish_owner_reference(path, None, deadline=deadline)
             result["indexed"] += 1
         _remaining(deadline)
+        if key is not None and (
+            _identity(key_path.lstat()) != key_identity
+            or not hmac.compare_digest(_owner_key(directory, deadline=deadline), key)
+        ):
+            raise RuntimeError("snapshot owner key changed during indexing; evidence retained")
     return result
 
 

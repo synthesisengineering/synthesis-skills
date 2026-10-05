@@ -743,6 +743,9 @@ def _resume_binding(project, state, actor, payload):
     return proof
 
 
+EVENT_ENUMERATION_ATTEMPTS = 8
+
+
 def _event_paths(project, run_id):
     home = _home(project, run_id)
     directory = safe_path(home / "events", Path(project).resolve())
@@ -750,28 +753,39 @@ def _event_paths(project, run_id):
         raise RunStateError("run has no committed events")
     # Bound physical enumeration before materialization, including interrupted
     # staging entries. Staging is retained evidence, not an unlimited allowance.
-    files = []
     enumeration_deadline = time.monotonic() + MAX_SUCCESSOR_SECONDS
-    before = directory.lstat()
     fields = ("st_dev", "st_ino", "st_mode", "st_mtime_ns", "st_ctime_ns")
     def signature(info):
         return tuple(getattr(info, key) for key in fields)
-    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        if signature(before) != signature(os.fstat(fd)):
-            raise RunStateError("event directory changed before enumeration")
-        # Path.iterdir uses os.listdir on supported Python versions. scandir
-        # streams from this verified descriptor instead of allocating all names.
-        with os.scandir(fd) as entries:
-            for count, entry in enumerate(entries, 1):
-                if count > MAX_EVENTS or time.monotonic() > enumeration_deadline:
-                    raise RunStateError("event directory exceeds the bounded enumeration limit")
-                if not entry.name.startswith(".run-"):
-                    files.append(directory / entry.name)
-        if signature(before) != signature(os.fstat(fd)) or signature(before) != signature(directory.lstat()):
-            raise RunStateError("event directory changed during enumeration")
-    finally:
-        os.close(fd)
+    # Events are append-only, so a concurrent writer can change the directory
+    # while a reader (for example a cancellation check) enumerates it. Re-read
+    # until one pass sees a stable directory, within a small bounded number of
+    # attempts, instead of refusing on the first concurrent append.
+    for attempt in range(EVENT_ENUMERATION_ATTEMPTS):
+        files = []
+        before = directory.lstat()
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            stable = signature(before) == signature(os.fstat(fd))
+            if stable:
+                # scandir streams from this verified descriptor instead of
+                # allocating all names at once.
+                with os.scandir(fd) as entries:
+                    for count, entry in enumerate(entries, 1):
+                        if count > MAX_EVENTS or time.monotonic() > enumeration_deadline:
+                            raise RunStateError("event directory exceeds the bounded enumeration limit")
+                        if not entry.name.startswith(".run-"):
+                            files.append(directory / entry.name)
+                stable = (signature(before) == signature(os.fstat(fd))
+                          and signature(before) == signature(directory.lstat()))
+        finally:
+            os.close(fd)
+        if stable:
+            break
+        if time.monotonic() > enumeration_deadline:
+            raise RunStateError("event directory exceeds the bounded enumeration limit")
+    else:
+        raise RunStateError("event directory kept changing during enumeration")
     files.sort()
     if not files or len(files) > MAX_EVENTS:
         raise RunStateError("event stream is empty or exceeds supported replay limit")

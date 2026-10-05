@@ -1218,3 +1218,52 @@ def test_trusted_preparer_gets_exact_verified_journal_head(engine, world):
     readback = engine.inspect_context(current, world['actor'])
     assert readback['journal_head']['revision'] == current['revision']
     assert 'admission_observation' not in readback
+
+
+
+def test_event_enumeration_rereads_after_a_concurrent_append(tmp_path, monkeypatch):
+    # Regression 2026-10-05 (PR 221): a cancellation check enumerated the
+    # append-only event directory while the run's writer appended an event,
+    # and the reader refused with "event directory changed during
+    # enumeration". It must re-read and return a stable listing instead.
+    import uuid as uuid_module
+    import run_state
+    run_id = str(uuid_module.uuid4())
+    events = tmp_path / "resources" / "autopilot-runs" / run_id / "events"
+    events.mkdir(parents=True)
+    (events / "000000000001.json").write_text("{}")
+    real_scandir = run_state.os.scandir
+    appended = {"done": False}
+
+    def scandir_with_concurrent_append(target):
+        handle = real_scandir(target)
+        if not appended["done"]:
+            appended["done"] = True
+            (events / "000000000002.json").write_text("{}")
+        return handle
+
+    monkeypatch.setattr(run_state.os, "scandir", scandir_with_concurrent_append)
+    names = [path.name for path in run_state._event_paths(tmp_path, run_id)]
+    assert names == ["000000000001.json", "000000000002.json"]
+    assert appended["done"]
+
+
+def test_event_enumeration_still_refuses_a_directory_that_never_settles(tmp_path, monkeypatch):
+    import uuid as uuid_module
+    import run_state
+    run_id = str(uuid_module.uuid4())
+    events = tmp_path / "resources" / "autopilot-runs" / run_id / "events"
+    events.mkdir(parents=True)
+    (events / "000000000001.json").write_text("{}")
+    real_scandir = run_state.os.scandir
+    counter = {"n": 1}
+
+    def scandir_always_appending(target):
+        handle = real_scandir(target)
+        counter["n"] += 1
+        (events / ("%012d.json" % counter["n"])).write_text("{}")
+        return handle
+
+    monkeypatch.setattr(run_state.os, "scandir", scandir_always_appending)
+    with pytest.raises(run_state.RunStateError, match="kept changing"):
+        run_state._event_paths(tmp_path, run_id)

@@ -2061,6 +2061,15 @@ def test_lifecycle_rejects_invalid_finite_bound(tmp_path, bound):
 
 
 # Automatic retirement is separately admitted; ordinary local receipts are read-only.
+def _observed_process_group(pid):
+    try:
+        return os.getpgid(pid)
+    except ProcessLookupError:
+        # A short-lived child can exit between Popen and this observation.
+        # Keep the missing identity explicit; do not invent a process group.
+        return None
+
+
 @pytest.fixture
 def automatic_world(tmp_path, monkeypatch):
     scripts = MODULE_PATH.parents[1] / "synthesis-project-management" / "scripts"
@@ -2070,7 +2079,7 @@ def automatic_world(tmp_path, monkeypatch):
     def recorded(*args, **kwargs):
         process = original_popen(*args, **kwargs)
         with (tmp_path / "automatic-processes.jsonl").open("a") as stream:
-            stream.write(json.dumps({"pid": process.pid, "pgid": os.getpgid(process.pid),
+            stream.write(json.dumps({"pid": process.pid, "pgid": _observed_process_group(process.pid),
                                      "argv": args[0] if args else kwargs.get("args")}) + "\n")
         return process
     monkeypatch.setattr(subprocess, "Popen", recorded)

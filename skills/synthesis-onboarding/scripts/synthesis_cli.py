@@ -1486,14 +1486,14 @@ def _quiet_engine_runner(
     engine_args: list[str], verbose: bool = False
 ) -> dict[str, Any]:
     stdout = io.StringIO()
-    stderr = io.StringIO()
     structured_args = list(engine_args)
     if "--json" not in structured_args:
         structured_args.append("--json")
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    # Prompts and errors use stderr and must remain visible while input is read.
+    with contextlib.redirect_stdout(stdout):
         code = onboard.main(structured_args)
     if verbose or code:
-        combined = stdout.getvalue() + stderr.getvalue()
+        combined = stdout.getvalue()
         if combined:
             print(
                 combined, end="" if combined.endswith("\n") else "\n", file=sys.stderr

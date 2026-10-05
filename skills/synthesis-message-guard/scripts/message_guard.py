@@ -1808,16 +1808,23 @@ def _peer_board_owner():
         sys.path.remove(str(root))
 
 
+# The coordination board grows with history (about 2 MiB on 2026-10-05);
+# keep the peer check well above that so growth cannot silently block sends.
+PEER_BOARD_MAX_BYTES = 16 * 1024 * 1024
+
+
 def _board_has_active_ref(content, ref):
     """Named schema columns and canonical nonterminal status, never prose matches."""
-    if not isinstance(content, str) or len(content.encode("utf-8")) > 4 * 1024 * 1024:
+    if not isinstance(content, str) or len(content.encode("utf-8")) > PEER_BOARD_MAX_BYTES:
         raise ValueError("peer board exceeds the bounded parser input")
     owner = _peer_board_owner()
     rows = owner.parse_table_rows(content, strict=True)
-    matches = [row for row in rows if row.get("client session ref") == ref]
-    # Two rows asserting the same native identity are ambiguous, even if one
-    # would independently appear eligible.
-    return len(matches) == 1 and owner.active_status(matches[0]["status"])
+    # Released rows are history: a long-lived desktop session keeps one client
+    # ref across many released seats. Only two or more nonterminal rows that
+    # assert the same native identity are ambiguous.
+    active = [row for row in rows
+              if row.get("client session ref") == ref and owner.active_status(row["status"])]
+    return len(active) == 1
 
 
 def peer_send_resolution_failures(tool_name, tool_input, cfg):
@@ -1844,7 +1851,7 @@ def peer_send_resolution_failures(tool_name, tool_input, cfg):
         peer.get("board", "~/.synthesis/coordination/active-sessions.md")
     )
     try:
-        content = _doctor_regular_bytes(board, limit=4 * 1024 * 1024).decode("utf-8")
+        content = _doctor_regular_bytes(board, limit=PEER_BOARD_MAX_BYTES).decode("utf-8")
         if _board_has_active_ref(content, "ccd:" + target) or _board_has_active_ref(content, target):
             return True, []
     except (OSError, ValueError, ImportError, AttributeError, RuntimeError) as exc:

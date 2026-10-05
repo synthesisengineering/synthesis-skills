@@ -27,8 +27,10 @@ replacement. A JSON journal is not transferable permission. A changed claim,
 foreign owner, alias, symlink, hardlink or different source inode refuses the
 operation. No protective hook is disabled.
 
-A transaction covers files beneath one project on one filesystem. Registry
-edits outside that project and deletion remain separate owner operations.
+A transaction covers files beneath one project on one filesystem. The registry
+owner also uses this journal for its exact `@registry` target, with the shared
+registry lock and separate registry claim. Arbitrary outside targets and deletion
+are not transaction operations.
 Explicit `create` requests contain UTF-8 `text` and a nonexecutable `mode`
 (0600 or 0644); the target must be absent. The owner uses atomic no-clobber
 linking, not an overwriting rename, and authenticates its exact two-name
@@ -100,6 +102,41 @@ The transaction keeps up to 128 files, 1,000 operations per file, 8 MiB per file
 Capacity exhaustion refuses further writes without deleting history. Retain
 all preparation/completion artifacts through the project's normal evidence
 custody; do not clear a store to silence a refusal.
+
+## Publishing completed record edits
+
+Transaction completion means the local record mutation committed. It does not
+mean `REMOTE_READY`. Completion receipts include `publication.required_files`,
+an exact SHA-256 map covering the changed targets, shared history, completed
+manifest, commit decision and preserved source copies for that transaction.
+Registry edits include `projects/index.yaml` in the same selection. Keep the
+journals tracked alongside the records: do not add an ignore rule, exclude the
+store from the context doctor, or delete it to make readiness pass.
+
+Before remote handoff, the agent runs the existing editor's read-only selection:
+
+```bash
+python3 scripts/context_edit.py transaction-publication --project /absolute/project
+```
+
+Its `required_files` includes all retained transaction-store bytes, failed
+preparations and current target bytes. The owner verifies completed history and
+commit bindings and archived source digests, refuses unfinished active intent, unsafe files, changing bytes
+or membership, and returns `remote_ready: false`. Historical journals retain
+their original native/inode/path evidence; a selection never replays it or
+turns it into authority on another checkout. Missing or corrupted custody must
+be reconciled before publication. Bounded selection refusal never means a
+partially listed store is complete.
+
+Use the current session's exact claims and ordinary attribution/publication
+owner for those selected files. Stage and commit only the reviewed selection,
+including the journals, while preserving every unrelated staged path; verify
+the actual selected committed blobs, then publish through the existing guarded
+remote-handoff owner. A receipt does not grant disclosure or Git authority.
+Run context doctor at remote readiness after publication and verify the
+ordinary publication receipt/remote refs. Neither the plan nor a local commit
+asserts remote delivery. A later transaction changes history and creates new
+journal bytes, so obtain a fresh selection before the next handoff.
 
 ### Optional resolver fast-forward
 

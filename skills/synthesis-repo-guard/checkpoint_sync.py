@@ -60,7 +60,7 @@ import tempfile
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 # The retirement reconciler can be staged alone and run after source removal.
@@ -409,14 +409,16 @@ def inherited_lifecycle_lock_fd(path: Path) -> int | None:
 
 
 @contextmanager
-def lifecycle_lock(*, timeout: float | None = None):
-    """Own exclusive global mutation; exclude shared per-owner attribution."""
+def lifecycle_lock(*, timeout: float | None = None, shared: bool = False):
+    """Own global mutation, or a brief shared read of pending evidence."""
 
     if timeout is not None and (type(timeout) not in (int, float)
                                 or not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("lifecycle timeout must be a finite positive number")
     depth = getattr(_LIFECYCLE_LOCK_STATE, "depth", 0)
     if depth:
+        if getattr(_LIFECYCLE_LOCK_STATE, "shared", False) and not shared:
+            raise ValueError("cannot upgrade a shared lifecycle observation to mutation authority")
         _LIFECYCLE_LOCK_STATE.depth = depth + 1
         try:
             yield
@@ -434,12 +436,12 @@ def lifecycle_lock(*, timeout: float | None = None):
     if inherited is None:
         try:
             if timeout is None:
-                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                fcntl.flock(descriptor, fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
             else:
                 deadline = time.monotonic() + timeout
                 while True:
                     try:
-                        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
                         break
                     except BlockingIOError:
                         if time.monotonic() >= deadline:
@@ -449,10 +451,12 @@ def lifecycle_lock(*, timeout: float | None = None):
             os.close(descriptor)
             raise
     _LIFECYCLE_LOCK_STATE.depth = 1
+    _LIFECYCLE_LOCK_STATE.shared = shared
     try:
         yield
     finally:
         _LIFECYCLE_LOCK_STATE.depth = 0
+        _LIFECYCLE_LOCK_STATE.shared = False
         if inherited is None:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
             os.close(descriptor)
@@ -2975,6 +2979,55 @@ def local_handoff_checkpoint(payload: dict, cfg: dict) -> tuple[list[dict], Path
         _LIFECYCLE_LOCK_STATE.retirement_deadline = previous
 
 
+def _preview_manifest(manifest: Path) -> tuple[bytes, tuple, list[tuple[Path, tuple]]]:
+    """Capture one bounded manifest; release writer locks before decoding or Git work."""
+    import publication_receipt as receipt
+
+    deadline = time.monotonic() + 10.0
+    with lifecycle_lock(timeout=10.0, shared=True):
+        lock_path = manifest.with_suffix(".lock")
+        descriptor = open_lock_file(lock_path)
+        try:
+            while True:
+                if time.monotonic() >= deadline:
+                    raise ValueError("pending preview lock wait exceeded its time ceiling")
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+            held = os.fstat(descriptor)
+            current = lock_path.lstat()
+            if (held.st_dev, held.st_ino) != (current.st_dev, current.st_ino):
+                raise ValueError("pending preview lock changed while acquiring it")
+            parents = []
+            for path in manifest.parents:
+                info = path.lstat()
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("pending preview parent is not a directory")
+                parents.append((path, (info.st_dev, info.st_ino, info.st_mode)))
+            raw, identity = receipt._read(manifest, PENDING_MANIFEST_LIMIT, deadline)
+            return raw, identity, parents
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+
+
+def _verify_preview_manifest(manifest: Path, identity: tuple,
+                             parents: list[tuple[Path, tuple]]) -> None:
+    import publication_receipt as receipt
+
+    try:
+        for path, expected in parents:
+            info = path.lstat()
+            if (info.st_dev, info.st_ino, info.st_mode) != expected:
+                raise ValueError("pending manifest parent changed during dry-run")
+        if receipt._identity(manifest.lstat()) != identity:
+            raise ValueError("pending manifest changed during dry-run")
+    except OSError as exc:
+        raise ValueError("pending manifest changed during dry-run") from exc
+
+
 def _flush_pending_manifests_unlocked(
     cfg: dict,
     manifests: list[Path],
@@ -2991,24 +3044,31 @@ def _flush_pending_manifests_unlocked(
     errors: list[dict] = []
     drop_results: list[dict] = []
     locks = []
+    preview_bindings = []
     try:
         for manifest in manifests:
             lock_path = manifest.with_suffix(".lock")
+            if not dry_run:
+                try:
+                    descriptor = open_lock_file(lock_path)
+                except (OSError, ValueError) as exc:
+                    errors.append({"repo": str(lock_path), "name": "pending-session", "action": "failed", "alert": str(exc)})
+                    continue
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                lock = os.fdopen(descriptor, "a+", encoding="utf-8")
+                locks.append(lock)
+                if manifest.is_symlink():
+                    errors.append({"repo": str(manifest), "name": "pending-session", "action": "failed", "alert": "pending manifest is a symlink"})
+                    continue
+                if not manifest.exists():
+                    continue
             try:
-                descriptor = open_lock_file(lock_path)
-            except (OSError, ValueError) as exc:
-                errors.append({"repo": str(lock_path), "name": "pending-session", "action": "failed", "alert": str(exc)})
-                continue
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-            lock = os.fdopen(descriptor, "a+", encoding="utf-8")
-            locks.append(lock)
-            if manifest.is_symlink():
-                errors.append({"repo": str(manifest), "name": "pending-session", "action": "failed", "alert": "pending manifest is a symlink"})
-                continue
-            if not manifest.exists():
-                continue
-            try:
-                data = decode_pending_manifest(json.loads(manifest.read_text(encoding="utf-8")))
+                if dry_run:
+                    raw, identity, parents = _preview_manifest(manifest)
+                    preview_bindings.append((manifest, identity, parents))
+                    data = decode_pending_manifest(json.loads(raw))
+                else:
+                    data = decode_pending_manifest(json.loads(manifest.read_text(encoding="utf-8")))
                 session_id = data.get("session_id")
                 if not isinstance(session_id, str) or pending_manifest_path(session_id) != manifest:
                     raise ValueError("manifest filename or session mismatch")
@@ -3195,6 +3255,8 @@ def _flush_pending_manifests_unlocked(
                     dry_run=dry_run,
                 )
             )
+        for manifest, identity, parents in preview_bindings:
+            _verify_preview_manifest(manifest, identity, parents)
         return results, [manifest for manifest, _data in loaded]
     finally:
         for lock in reversed(locks):
@@ -3211,6 +3273,15 @@ def _flush_all_pending_unlocked(
 
 
 def flush_all_pending(cfg: dict, *, dry_run: bool) -> tuple[list[dict], list[Path]]:
+    if dry_run:
+        validate_state_paths(PENDING_DIR)
+        manifests = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+        result = _flush_pending_manifests_unlocked(cfg, manifests, dry_run=True)
+        validate_state_paths(PENDING_DIR)
+        current = sorted(PENDING_DIR.glob("*.json")) if PENDING_DIR.is_dir() else []
+        if current != manifests:
+            raise ValueError("pending manifest set changed during dry-run")
+        return result
     with lifecycle_lock():
         return _flush_all_pending_unlocked(cfg, dry_run=dry_run)
 
@@ -3270,7 +3341,7 @@ def flush_pending_session(
             }
         ], []
     manifest = pending_manifest_path(session_id)
-    with lifecycle_lock():
+    with nullcontext() if dry_run else lifecycle_lock():
         validate_state_paths(PENDING_DIR, manifest)
         if manifest.is_symlink():
             return [

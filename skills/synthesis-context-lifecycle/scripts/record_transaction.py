@@ -811,7 +811,124 @@ def _finish(project, active, manifest, digest, history):
         "status": "committed",
         "files": len(manifest["files"]),
         "journal": str(destination),
+        "publication": {
+            "status": "PUBLICATION_REQUIRED",
+            "remote_ready": False,
+            "required_files": _publication_files([
+                *[_target(project, item["path"]) for item in manifest["files"]],
+                active.parent / "history.json", destination / "manifest.json",
+                destination / "commit.json",
+                *[destination / "sources" / item["archive"]
+                  for item in manifest.get("sources", [])],
+            ]),
+        },
     }
+
+
+def _publication_files(paths):
+    """Exact durable bytes to select, not authority to stage, commit or send."""
+    if len(paths) > MAX_HISTORY:
+        raise RecordTransactionError("publication selection exceeds bounded path count")
+    result, total = {}, 0
+    for path in sorted(set(map(Path, paths))):
+        raw, meta = _snapshot(path)
+        total += len(raw)
+        # Output/source custody already has a 32 MiB transaction bound; its
+        # manifest and shared history each have their separate 1 MiB bound.
+        if total > MAX_TOTAL_BYTES + 2 * MAX_MANIFEST_BYTES:
+            raise RecordTransactionError("publication selection exceeds bounded bytes")
+        result[str(path)] = meta["sha256"]
+    return result
+
+
+def publication_plan(project):
+    """Select complete retained journal custody and current effect bytes.
+
+    Completed manifests describe historical evidence, never fresh native or
+    filesystem authority. Their old inode/path bindings are not replayed on a
+    new checkout. The ordinary guarded publisher owns all Git/network effects.
+    """
+    project = _path(project)
+    with _lock(project.parent), managed(project):
+        store = _path(project / STORE, project)
+        initial = sorted(p for p in project.iterdir()
+                         if p.name.startswith(STORE + ".init-"))
+        if not store.exists() and not initial:
+            return {"status": "NO_TRANSACTION_CUSTODY", "remote_ready": False,
+                    "required_files": {}}
+        history = _history(store) if store.exists() else {"completed": {}}
+        completed = _path(store / "completed", project)
+        names = sorted(p.name for p in completed.iterdir()) if completed.exists() else []
+        if set(names) != set(history["completed"]):
+            raise RecordTransactionError("completed journal membership differs from history")
+        paths = []
+        for ident in names:
+            journal = _path(completed / ident, project)
+            manifest, raw = _read_json(journal / "manifest.json")
+            if _digest(raw) != history["completed"][ident] or manifest.get("id") != ident:
+                raise RecordTransactionError("completed manifest differs from history")
+            commit, _ = _read_json(journal / "commit.json")
+            if commit != {"manifest_sha256": _digest(raw)}:
+                raise RecordTransactionError("completed commit decision differs from manifest")
+            files = manifest.get("files")
+            if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES:
+                raise RecordTransactionError("completed target list exceeds bound")
+            for item in files:
+                if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                    raise RecordTransactionError("invalid completed target path")
+                target = _target(project, item["path"])
+                if STORE in Path(item["path"]).parts:
+                    raise RecordTransactionError("completed target overlaps journal custody")
+                paths.append(target)
+            sources = manifest.get("sources", [])
+            if not isinstance(sources, list) or len(sources) > 512:
+                raise RecordTransactionError("completed source custody exceeds bound")
+            for index, item in enumerate(sources):
+                if (not isinstance(item, dict)
+                        or set(item) != {"path", "before", "archive"}
+                        or item["archive"] != str(index) + ".source"):
+                    raise RecordTransactionError("invalid completed source custody")
+                before = item["before"]
+                if (not isinstance(before, dict)
+                        or type(before.get("bytes")) is not int
+                        or not 0 <= before["bytes"] <= MAX_FILE_BYTES
+                        or not isinstance(before.get("sha256"), str)
+                        or not re.fullmatch("[a-f0-9]{64}", before["sha256"])):
+                    raise RecordTransactionError("invalid completed source digest")
+                # Source inputs can legitimately change after completion. Bind
+                # the retained copy, never reactivate old inode/native authority.
+                data, meta = _snapshot(journal / "sources" / item["archive"])
+                if len(data) != before["bytes"] or meta["sha256"] != before["sha256"]:
+                    raise RecordTransactionError("completed source custody changed")
+        # Preserve failed preparation residues too. They do not grant effects,
+        # but silently omitting them would leave remote recovery incomplete.
+        roots = ([store] if store.exists() else []) + initial
+        directories, pending = {}, list(roots)
+        while pending:
+            directory = _path(pending.pop(), project)
+            before = directory.stat()
+            if not stat.S_ISDIR(before.st_mode):
+                raise RecordTransactionError("journal custody root is not a directory")
+            members = sorted(directory.iterdir())
+            directories[directory] = (before.st_dev, before.st_ino, before.st_mtime_ns,
+                                      before.st_ctime_ns, [p.name for p in members])
+            if len(paths) + len(directories) + len(pending) + len(members) > MAX_HISTORY:
+                raise RecordTransactionError("journal publication inventory exceeds bound")
+            for member in members:
+                info = _path(member, project).lstat()
+                if stat.S_ISDIR(info.st_mode): pending.append(member)
+                elif stat.S_ISREG(info.st_mode): paths.append(member)
+                else: raise RecordTransactionError("journal custody contains a non-regular member")
+        required = _publication_files(paths)
+        for directory, expected in directories.items():
+            info = _path(directory, project).stat()
+            if (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_ctime_ns,
+                    sorted(p.name for p in directory.iterdir())) != expected:
+                raise RecordTransactionError("journal membership changed during publication selection")
+        if _publication_files(paths) != required:
+            raise RecordTransactionError("publication bytes changed during selection")
+        return {"status": "PUBLICATION_REQUIRED", "remote_ready": False,
+                "required_files": required, "transactions": names}
 
 
 def _commit(project, active, manifest, digest, history, board, payload):

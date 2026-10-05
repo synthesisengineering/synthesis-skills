@@ -44,22 +44,41 @@ def repository_slug(url: str) -> str:
 
 
 def _git(*args: str, cwd: Path | None = None, timeout: int = 600) -> str:
-    proc = subprocess.run(
-        ["git", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", *args],
-        cwd=str(cwd) if cwd else None,
-        env=_git_environment(),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=timeout,
-        check=False,
-    )
-    if proc.returncode:
-        raise ContractError(
-            "organization repository operation failed: %s"
-            % ((proc.stderr or proc.stdout).strip().splitlines()[-1] if (proc.stderr or proc.stdout).strip() else "git failed")
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", *args],
+            cwd=str(cwd) if cwd else None,
+            env=_git_environment(),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise ContractError(_git_failure_detail(args, "Git exceeded the %s second timeout." % timeout, exc.stderr, exc.stdout)) from exc
+    except OSError as exc:
+        raise ContractError(_git_failure_detail(args, "Git could not start: %s" % exc)) from exc
+    if proc.returncode:
+        raise ContractError(_git_failure_detail(args, "Git exited with status %s." % proc.returncode, proc.stderr, proc.stdout))
     return proc.stdout.strip()
+
+
+def _git_failure_detail(args, summary, *streams):
+    """Keep the first cause and final remedy even when Git reports several lines."""
+    details = []
+    for stream in streams:
+        if isinstance(stream, bytes):
+            stream = stream.decode("utf-8", errors="replace")
+        if stream and stream.strip():
+            details.append(stream.strip())
+    detail = "\n".join(details)
+    detail = re.sub(r"(https?://)[^\s/@]+@", r"\1[redacted]@", detail)
+    if len(detail) > 65536:
+        detail = detail[:32768] + "\n[Git diagnostic truncated]\n" + detail[-32768:]
+    operation = args[0] if args else "operation"
+    guidance = "Verify the declared repository URL and repository access (SSH key or HTTPS credentials), then retry the same operation."
+    return "organization repository operation failed (%s): %s\n%s\n%s" % (operation, summary, detail or "Git returned no diagnostic output.", guidance)
 
 
 def canonical_remote(url: str) -> str:
@@ -104,7 +123,7 @@ def acquire_repository(
             or git_directory.is_symlink()
         ):
             raise ContractError("organization repository destination is not a real Git clone")
-        origin = _git("remote", "get-url", "origin", cwd=root)
+        origin = _git("config", "--local", "--get-all", "remote.origin.url", cwd=root)
         if canonical_remote(origin) != canonical_remote(url):
             raise ContractError("existing organization clone has the wrong remote")
         if _git("status", "--porcelain", cwd=root):
@@ -129,7 +148,7 @@ def acquire_repository(
             _git("clone", "--origin", "origin", url, str(staging))
             if expected_commit:
                 _git("checkout", "--detach", expected_commit, cwd=staging)
-            staged_origin = _git("remote", "get-url", "origin", cwd=staging)
+            staged_origin = _git("config", "--local", "--get-all", "remote.origin.url", cwd=staging)
             if canonical_remote(staged_origin) != canonical_remote(url):
                 raise ContractError(
                     "organization clone transport does not match the declared remote"
@@ -144,7 +163,7 @@ def acquire_repository(
         finally:
             if staging.exists():
                 shutil.rmtree(staging)
-    origin = _git("remote", "get-url", "origin", cwd=root)
+    origin = _git("config", "--local", "--get-all", "remote.origin.url", cwd=root)
     if canonical_remote(origin) != canonical_remote(url):
         raise ContractError("organization clone transport does not match the declared remote")
     commit = _git("rev-parse", "HEAD^{commit}", cwd=root)

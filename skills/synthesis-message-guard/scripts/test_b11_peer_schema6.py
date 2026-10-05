@@ -168,3 +168,40 @@ def test_installed_message_payload_closure_exact_and_missing_dependency_refuses(
     assert run() == [True, []]
     (dest / "board_grammar.py").rename(dest / "retained-board-grammar.py")
     assert run()[0] is True and run()[1]
+
+
+
+def _rows_with_shared_ref(statuses):
+    rows = []
+    taken = []
+    for index, status in enumerate(statuses):
+        identity = c.new_identity(taken)
+        taken.append(identity)
+        rows.append(c.Session(
+            session_uuid=identity.session_uuid, compact_id=identity.compact_id,
+            speakable_id=identity.speakable_id, legacy_id="", agent="synthetic",
+            machine="machine-one", project="synthetic", started="t", heartbeat="t",
+            mode="interactive", workspaces=[], goal="synthetic-%d" % index, claims=[],
+            context_role="none", status=status, client_ref="ccd:destination",
+            person="p-one", standing_role="role-one"))
+    return rows
+
+
+@pytest.mark.parametrize("statuses, admitted", [
+    (["released", "released", "released", "active"], True),
+    (["released", "active", "released"], True),
+    (["active", "active", "released"], False),
+    (["released", "released"], False),
+])
+def test_released_rows_sharing_a_desktop_ref_are_history_not_ambiguity(tmp_path, statuses, admitted):
+    # Regression 2026-10-05: a long-lived desktop session carried eight
+    # released rows and one active row under one client ref, and the guard
+    # refused its correctly resolved address as ambiguous.
+    b = tmp_path / "board.md"
+    b.write_text(c.replace_table(c.template(), _rows_with_shared_ref(statuses)))
+    cfg = {"peer_send_resolution": {"tool_pattern": r"^synthetic_peer_send$",
+                                    "target_field": "session_id", "board": str(b)}}
+    handled, fails = g.peer_send_resolution_failures(
+        "synthetic_peer_send", {"session_id": "destination"}, cfg)
+    assert handled
+    assert (fails == []) is admitted

@@ -1308,6 +1308,8 @@ def main(argv: list[str] | None = None) -> int:
     batch = sub.add_parser("apply", parents=[common])
     batch.add_argument("--edits", required=True, type=Path, help="JSON array of ordered single-file edits")
 
+    publication = sub.add_parser("transaction-publication")
+    publication.add_argument("--project", type=Path, required=True)
     for command in ("apply-transaction", "recover-transaction"):
         transaction = sub.add_parser(command)
         transaction.add_argument("--project", type=Path, required=True)
@@ -1359,6 +1361,9 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("stdin may supply only one operand; use the file flags for other operands")
 
     try:
+        if args.command == "transaction-publication":
+            print(json.dumps(record_transaction.publication_plan(args.project), sort_keys=True))
+            return 0
         if args.command == "registry-patch":
             result = patch_registry(args.project, args.entry,
                 record_transaction.read_request(args.fields), args.expected_sha256,

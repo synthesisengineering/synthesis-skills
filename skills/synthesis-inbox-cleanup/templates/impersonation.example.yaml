@@ -1,0 +1,14 @@
+# Copy into private ~/.synthesis/inbox-cleanup/impersonation.yaml and replace
+# these synthetic values with approved identity names and EXACT mailbox addresses.
+# No domain wildcards, guessed aliases, plus-tag or dot normalization.
+principal:
+  names:
+    - Casey Morgan
+    - C. Morgan
+  addresses:
+    - casey@example.test
+    - casey.work@example.test
+# Optional brands mapping replaces the built-in brand seed. Domain/subdomain
+# permission applies only to brands, never to the principal addresses above.
+# brands:
+#   Example Brand: [example.test]

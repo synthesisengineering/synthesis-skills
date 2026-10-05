@@ -40,9 +40,30 @@ So the high-yield phish forges no domain at all — it sends through infrastruct
 that passes every check (a survey platform, a form host) and puts the impersonated
 brand in the display name. "The domain checks out" is therefore not a safety verdict.
 
-Reports only; removal stays a human-reviewed step, because a false positive here is
-a legitimate vendor notice. Brand→domain map in
-`~/.synthesis/inbox-cleanup/impersonation.yaml`, seeded in-script.
+Reports only; removal stays a human-reviewed step. The private
+`~/.synthesis/inbox-cleanup/impersonation.yaml` must declare `principal.names`
+(the approved display name and aliases) and `principal.addresses` (exact allowed
+sender addresses). Use `templates/impersonation.example.yaml` as the shape and
+replace its synthetic values; never infer identities from email content. An
+entire shared provider domain is never a principal allowlist. Address matching
+normalizes ASCII case and IDNA domains, without stripping plus tags or dots.
+Name matching uses Unicode NFKC, case folding, format-control removal and
+collapsed whitespace; other look-alike names remain outside this exact-name
+rule. Named sender groups claiming a principal identity require review, even
+when empty or containing an allowed mailbox. Encoded names are parsed before
+display-only decoding so punctuation cannot change the sender structure. An
+allowed From address is not proof of authentication or safety.
+
+`scan_impersonation.py --check-config` validates this private configuration
+without importing mail configuration or accessing credentials. Missing or
+invalid principal configuration refuses before connecting; it must not look
+like a clean scan. The optional `brands` map retains the separate brand-domain
+rules; omitting it selects the built-in seed. Preserve existing brand entries
+when adding the principal policy. Install the reviewed public engine through
+the existing runtime installer, then configure and validate the private policy
+under its owning session's claim. Never overwrite private config during a
+plugin/runtime update. Actual mail scanning remains a separate authorized,
+read-only operation; synthetic source checks do not prove live coverage.
 
 **Also recorded here as a standing rule: a human sender is not the same as your
 mail.** On a catch-all domain, misdirected business threads between real people

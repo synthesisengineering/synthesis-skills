@@ -42,7 +42,7 @@ def test_existing_clone_with_wrong_remote_is_rejected(tmp_path: Path, monkeypatc
         organization,
         "_git",
         lambda *args, **kwargs: "https://example.test/wrong.git"
-        if args[:3] == ("remote", "get-url", "origin")
+        if args[:4] == ("config", "--local", "--get-all", "remote.origin.url")
         else "",
     )
     with pytest.raises(system_contract.ContractError, match="wrong remote"):
@@ -60,7 +60,7 @@ def test_verify_only_never_fetches_or_clones(tmp_path: Path, monkeypatch) -> Non
 
     def fake_git(*args, **kwargs):
         calls.append(args)
-        if args[:3] == ("remote", "get-url", "origin"):
+        if args[:4] == ("config", "--local", "--get-all", "remote.origin.url"):
             return "https://example.test/group/config.git"
         if args[:2] == ("status", "--porcelain"):
             return ""

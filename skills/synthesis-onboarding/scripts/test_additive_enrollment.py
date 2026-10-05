@@ -95,7 +95,7 @@ def test_enroll_conflict_is_pre_mutation(tmp_path, monkeypatch, capsys, conflict
     state, base = base_state(tmp_path, "full")
     manifest = org_fixture(tmp_path, monkeypatch)
     if conflict == "clients":
-        manifest["ecosystem"]["clients"] = ["claude", "codex"]
+        manifest["ecosystem"]["clients"] = ["claude"]
     elif conflict == "channel":
         manifest["ecosystem"]["channel"] = "edge"
     elif conflict == "pin":
