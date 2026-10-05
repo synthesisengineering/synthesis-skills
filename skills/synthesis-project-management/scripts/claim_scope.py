@@ -84,6 +84,19 @@ def plain(value: str) -> str:
     return re.sub(r"`(.+?)`", r"\1", unbolded).replace("\0GLOB\0", "**").strip()
 
 
+_DECLARED = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*:")
+
+
+def declared_claim(value: str) -> bool:
+    """A scheme-prefixed claim: create:, release-train:, prep-share:.
+
+    The one classification an identity snapshot and every consumer inside it
+    share. These claims never resolve as physical paths; a creation
+    reservation names its own absent subtree without resolving the other side.
+    """
+    return _DECLARED.match(plain(value)) is not None
+
+
 def split_values(value: str) -> list[str]:
     clean = plain(value)
     if not clean or clean.lower().startswith("released"):
@@ -440,8 +453,8 @@ class ClaimScopeResolver:
         claimants = {}
         targets = {}
         for claim, workspaces in claims:
-            if re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", plain(claim)):
-                continue
+            if declared_claim(claim):
+                continue  # conflicts() never resolves these physically
             target = self._physical(claim, workspaces)
             key = self._identity_prefix(target) if Path(target).is_absolute() and (focused is None or (claim, tuple(workspaces)) in focused) else None
             physical.append((claim, workspaces, target, key))
@@ -769,25 +782,34 @@ class ClaimScopeResolver:
 
     def conflicts(self, left: str, right: str, *, left_workspaces=(), right_workspaces=()) -> bool:
         raw_left, raw_right = self._lexical(plain, left), self._lexical(plain, right)
+        virtual_left = _DECLARED.match(raw_left) is not None
+        virtual_right = _DECLARED.match(raw_right) is not None
         # Creation-only reservations name an absent physical subtree. They
         # participate in collision detection but are never file-edit authority
         # or an assertion of registered Git identity.
         if raw_left.startswith("create:") or raw_right.startswith("create:"):
-            def target(raw, workspaces):
+            def target(raw, claim, declared, workspaces):
                 if raw.startswith("create:"):
                     value = raw[len("create:"):]
                     path = Path(value)
                     if not path.is_absolute() or ".." in path.parts or any(c in value for c in "*?["):
                         raise ClaimIdentityError("invalid creation reservation path")
                     return os.path.realpath(value)
-                return self._physical(raw, workspaces)
-            a, b = target(raw_left, left_workspaces), target(raw_right, right_workspaces)
+                if declared:
+                    # release-train:/prep-share: name no filesystem subtree, so
+                    # no reservation can intersect one. The snapshot skips
+                    # them by the same predicate; never invent a path here.
+                    return None
+                # The board spelling is the snapshot key; _physical applies plain().
+                return self._physical(claim, workspaces)
+            a = target(raw_left, left, virtual_left, left_workspaces)
+            b = target(raw_right, right, virtual_right, right_workspaces)
+            if a is None or b is None:
+                return False
             if Path(a).is_absolute() == Path(b).is_absolute():
                 return _patterns_intersect(_parts(a), _parts(b))
             absolute, relative = (_parts(a), _parts(b)) if Path(a).is_absolute() else (_parts(b), _parts(a))
             return _mixed_paths_intersect(absolute, relative)
-        virtual_left = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_left) is not None
-        virtual_right = re.match(r"^[A-Za-z][A-Za-z0-9_-]*:", raw_right) is not None
         if virtual_left or virtual_right:
             return virtual_left and virtual_right and _segments_intersect(raw_left, raw_right)
         a, b = self._physical(left, left_workspaces), self._physical(right, right_workspaces)

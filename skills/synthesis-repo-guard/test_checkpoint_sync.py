@@ -1946,6 +1946,65 @@ def test_prepared_retirement_cannot_replace_or_strip_original_claim_binding(tmp_
         assert worktree.exists()
 
 
+def test_completed_retirement_is_history_when_the_same_path_is_retired_again(tmp_path, monkeypatch):
+    """2026-10-05: a session retired a worktree (worktree and local branch
+    removed, remote branch kept). A later session recreated the worktree at
+    the same path on the same head to delete the remote branch, and the
+    finished intent from the first session refused it as a foreign owner."""
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "reused-worktree"
+    command("git", "worktree", "add", "-qb", "feature/reused", str(worktree), cwd=repo)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    first = retirement_claim_binding()
+    with MODULE.lifecycle_lock():
+        _, intent, _ = MODULE.prepare_retirement_intent(
+            worktree, repo, head, "origin", "origin/main",
+            expect_active=True, dry_run=False, claims_runtime=first)
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    with MODULE.lifecycle_lock():
+        MODULE.complete_retirement_intent(intent)
+    finished = intent.read_bytes()
+    assert json.loads(finished)["state"] == "completed"
+
+    command("git", "worktree", "add", "-q", str(worktree), "feature/reused", cwd=repo)
+    second = {**first, "sha256": "b" * 64}
+    with MODULE.lifecycle_lock():
+        prepared, again, _ = MODULE.prepare_retirement_intent(
+            worktree, repo, head, "origin", "origin/main",
+            expect_active=True, dry_run=False, claims_runtime=second)
+
+    assert again == intent and prepared["action"] == "retirement-prepared"
+    current = json.loads(intent.read_text(encoding="utf-8"))
+    assert current["state"] == "prepared" and current["claims_runtime"] == second
+    history = list((state / "retired-worktrees" / "history").glob(f"{intent.stem}-*.json"))
+    assert [path.read_bytes() for path in history] == [finished]
+    assert sorted(path.name for path in (state / "retired-worktrees").glob("*.json")) == [intent.name]
+
+
+def test_completed_retirement_still_reconciles_when_its_worktree_is_gone(tmp_path, monkeypatch):
+    repo, _remote, _cfg = repository(tmp_path)
+    worktree = tmp_path / "gone-worktree"
+    command("git", "worktree", "add", "-qb", "feature/gone", str(worktree), cwd=repo)
+    head = command("git", "rev-parse", "HEAD", cwd=worktree)
+    state = tmp_path / "state"
+    monkeypatch.setattr(MODULE, "PENDING_DIR", state / "pending")
+    monkeypatch.setattr(MODULE, "RETIREMENT_DIR", state / "retired-worktrees")
+    binding = retirement_claim_binding()
+    with MODULE.lifecycle_lock():
+        _, intent, _ = MODULE.prepare_retirement_intent(
+            worktree, repo, head, "origin", "origin/main",
+            expect_active=True, dry_run=False, claims_runtime=binding)
+    command("git", "worktree", "remove", str(worktree), cwd=repo)
+    with MODULE.lifecycle_lock():
+        MODULE.complete_retirement_intent(intent)
+        repeated, _ = MODULE.complete_retirement_intent(intent)
+    assert repeated["action"] == "retired-worktree-reconciled"
+    assert not (state / "retired-worktrees" / "history").exists()
+
+
 @pytest.mark.parametrize("mode", ["shared", "unlocked"])
 def test_inherited_lifecycle_refuses_nonexclusive_descriptor_without_upgrading(tmp_path, monkeypatch, mode):
     import fcntl

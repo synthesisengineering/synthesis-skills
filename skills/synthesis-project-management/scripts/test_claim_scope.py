@@ -245,3 +245,26 @@ def test_passive_lexical_preview_cannot_promote_an_unrelated_native_failure(tmp_
     monkeypatch.setattr(claim_scope.ClaimScopeResolver, "_native_location", unavailable)
     with claim_scope.ClaimScopeResolver().snapshot(claims, focus=[own]) as candidates:
         assert candidates == {own}
+
+
+def test_snapshot_resolves_exactly_the_physical_keys_it_observed(checkouts):
+    """Declared non-filesystem claims never resolve; unexplained paths still refuse."""
+    root, sibling = checkouts
+    observed = str(root / "projects" / "one")
+    marked = "`" + str(root / "projects" / "two") + "`"
+    unobserved = str(sibling / "projects" / "two")
+    reservation = "create:" + str(root.parent / "new-tree")
+    claims = [(observed, ()), (marked, ()), (reservation, ()), ("release-train:fixture", ())]
+    resolver = claim_scope.ClaimScopeResolver()
+    with resolver.snapshot(claims):
+        assert resolver.conflicts(reservation, "release-train:fixture") is False
+        assert resolver.conflicts("release-train:fixture", reservation) is False
+        assert resolver.conflicts(reservation, observed) is False
+        assert resolver.conflicts(marked, reservation) is False
+        assert resolver.conflicts(observed, "create:" + observed) is True
+        with pytest.raises(claim_scope.ClaimIdentityError, match="unobserved physical path"):
+            resolver.conflicts(reservation, unobserved)
+        with pytest.raises(claim_scope.ClaimIdentityError, match="unobserved physical path"):
+            resolver._physical(unobserved, ())
+    with pytest.raises(claim_scope.ClaimIdentityError, match="invalid creation reservation"):
+        claim_scope.claim_conflicts("create:relative/tree", "release-train:fixture")

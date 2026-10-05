@@ -2338,9 +2338,6 @@ def _tag(session: Session) -> str:
     return f"{session.label} ({session.project} · {session.agent})"
 
 
-_VIRTUAL_CLAIM_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*:")
-
-
 def _report_unverifiable_owner(
     problems: list[str],
     seen: set[tuple[str, str]],
@@ -2367,8 +2364,8 @@ def _report_unverifiable_owner(
         (left, left_claim, left.workspaces),
         (right, right_claim, right.workspaces),
     ):
-        if _VIRTUAL_CLAIM_RE.match(claim_scope.plain(claim)) is not None:
-            continue
+        if claim_scope.declared_claim(claim):
+            continue  # the snapshot never resolves declared claims physically
         try:
             scopes._scope_identity(scopes._physical(claim, workspaces))
         except claim_scope.NoVerifiedCheckout:

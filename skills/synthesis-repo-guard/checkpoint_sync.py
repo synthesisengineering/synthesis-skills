@@ -1140,12 +1140,17 @@ def prepare_retirement_intent(
         )
         if dry_run:
             return result, None, touched
-        if intent.exists():
-            prior = load_retirement_intent(intent)
-            if prior.get("claims_runtime") != claims_runtime:
-                raise ValueError("prepared retirement has a different retained claim owner/runtime")
+        prior = load_retirement_intent(intent) if intent.exists() else None
+        # A completed intent for a worktree that exists again describes a
+        # finished retirement of an earlier checkout at this path. It is
+        # history, not a retirement in flight, so it binds no owner.
+        finished = prior is not None and prior["state"] == "completed" and expect_active
+        if prior is not None and not finished and prior.get("claims_runtime") != claims_runtime:
+            raise ValueError("prepared retirement has a different retained claim owner/runtime")
         if expect_active:
             verify_retirement_identity(linked_identity, worktree, repository, active=True)
+        if finished:
+            preserve_completed_retirement(intent, prior)
         prepared_at = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         reconciler_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         atomic_json(
@@ -1174,6 +1179,20 @@ def prepare_retirement_intent(
         return result, intent, touched
     finally:
         release_manifest_locks(locks)
+
+
+def preserve_completed_retirement(intent: Path, prior: dict) -> Path:
+    """Move a finished intent into history before its path is retired again."""
+    history = RETIREMENT_DIR / "history"
+    stamp = re.sub(r"[^0-9A-Za-z]", "", str(prior.get("completed_at") or "")) or "undated"
+    target = history / f"{intent.stem}-{stamp}.json"
+    validate_state_paths(history, target)
+    history.mkdir(parents=True, exist_ok=True)
+    validate_state_paths(history, target)
+    if os.path.lexists(target):
+        raise ValueError(f"retirement history already holds {target}")
+    os.replace(intent, target)
+    return target
 
 
 def load_retirement_intent(intent: Path) -> dict:

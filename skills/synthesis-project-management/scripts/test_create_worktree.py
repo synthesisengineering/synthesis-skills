@@ -356,7 +356,6 @@ def test_fixture_expiry_after_reservation_preserves_evidence(world, monkeypatch)
 
 
 def test_durable_target_cannot_depend_on_temporary_common_git(world, monkeypatch, synthetic_storage_policy):
-    import fleet_paths
     board, own, repo, target = world
     synthetic_storage_policy([repo])
     before = board.read_bytes()
@@ -366,7 +365,6 @@ def test_durable_target_cannot_depend_on_temporary_common_git(world, monkeypatch
 
 
 def test_durable_creation_positive_keeps_normal_identity_claim_gates(world, monkeypatch, synthetic_storage_policy):
-    import fleet_paths
     board, own, repo, target = world
     synthetic_storage_policy([target.parent / "declared-temp"])
     result = W.create(board, own.compact_id, target, repo, "durable-fixture")
@@ -384,6 +382,58 @@ def test_cli_temporary_refusal_preserves_all_inputs(world, monkeypatch, capsys):
                    "--branch", "cli-risk"]) == 10
     assert "temporary" in capsys.readouterr().err
     assert board.read_bytes() == before and not target.exists()
+
+@pytest.mark.parametrize("peer_virtual", ["release-train:synthesis-skills", "release-train:*"])
+def test_creation_beside_live_peer_virtual_claim_admits(world, peer_virtual):
+    """Reported 2026-10-05: create refused with an unobserved physical path.
+
+    The creator already held its main checkout; a live peer held a declared
+    non-filesystem claim. The identity snapshot never resolves such claims,
+    so the creation-reservation comparison must not resolve one either.
+    """
+    from dataclasses import replace
+
+    board, own, repo, target = world
+    own = replace(own, claims=[str(repo)])
+    peer = row(2, claims=[peer_virtual, str(target.parent / "elsewhere")])
+    board.write_text(C.replace_table(C.template(), [own, peer]))
+    result = W.create(board, own.compact_id, target, repo, "feature/fixture", fixture_deadline=time.time() + 120)
+    assert result["status"] == "created-awaiting-workspace-and-edit-claim"
+    sessions = C.rows(board.read_text())
+    assert sessions == [own, peer]
+    assert git(target, "branch", "--show-current").strip() == "feature/fixture"
+    assert C.validate_sessions(sessions) == []
+
+
+def test_peer_virtual_claim_never_masks_a_physical_creation_collision(world, monkeypatch):
+    board, own, repo, target = world
+    peer = row(2, claims=["release-train:synthesis-skills", str(target)])
+    board.write_text(C.replace_table(C.template(), [own, peer]))
+    before = board.read_bytes()
+    monkeypatch.setattr(
+        W, "_git", lambda *_: pytest.fail("dependent Git ran after refused claim")
+    )
+    with pytest.raises(ValueError, match="overlaps") as refused:
+        W.create(board, own.compact_id, target, repo, "feature/fixture", fixture_deadline=time.time() + 120)
+    assert "unverifiable" not in str(refused.value)
+    assert not target.exists() and board.read_bytes() == before
+
+
+def test_claim_beside_peer_reservation_resolves_its_own_spelling(world):
+    """The snapshot keys a claim by its board spelling; so must the reservation pair."""
+    board, own, repo, target = world
+    peer = row(2, claims=["create:" + str(target)])
+    board.write_text(C.replace_table(C.template(), [own, peer]))
+    from test_coordination import claim_args
+
+    marked = "`" + str(repo / "other") + "`"
+    args = claim_args(board, session_id=own.compact_id, project=own.project,
+                      workspace=f"{repo} @ main", area=marked)
+    assert C.command_claim(args) == 0
+    sessions = C.rows(board.read_text())
+    assert str(repo / "other") in sessions[0].claims
+    assert sessions[1] == peer and not target.exists()
+
 
 def test_owned_create_reservation_survives_unrelated_claim(world):
     board, own, repo, target=world

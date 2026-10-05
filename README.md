@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.13** fixes the defects other sessions reported on 2026-10-05: blocked Gmail and Chat sends from Claude Code, refused peer sends to desktop sessions, the missing Muse message-guard hook, colleague onboarding failures, an UNRESOLVED record-currency check on every Stop, and a finished worktree retirement blocking the next one at the same path.
+
 Release **4.154.12** keeps worktree retirement working on large coordination boards: claim cleanup reads only the owner's row. A retained retirement whose owner seat has since closed can now finish, while an active owner still proves its identity.
 
 Release **4.154.11** keeps project recovery valid when an unrelated repository commit leaves the selected project unchanged. Dirty-file scans reduce repeated path parsing and directory opens while freshly checking file bytes and directory identities.
