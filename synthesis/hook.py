@@ -81,6 +81,12 @@ def main(argv):
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
+    if event == "session-start" and len(argv) > 2 and argv[2]:
+        try:  # keep the stable runtime in step with the plugin the harness loaded
+            from synthesis import install
+            install.install(argv[2])
+        except Exception:
+            pass  # a failed self-update must never block a session; doctor reports it
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
                "pre-tool-use": pre_tool_use}.get(event)
     return handler(payload) if handler else 0

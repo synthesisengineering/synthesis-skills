@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/synthesis/hook.py\" session-start",
-            "timeout": 5
+            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; [ -x \"$h\" ] || python3 -S \"$1/synthesis/install.py\" \"$1\" >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
+            "timeout": 10
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/synthesis/hook.py\" user-prompt-submit",
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" user-prompt-submit",
             "timeout": 5
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/synthesis/hook.py\" pre-tool-use",
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" pre-tool-use",
             "timeout": 5
           }
         ]
