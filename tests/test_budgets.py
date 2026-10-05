@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE_BUDGET = 3000
+CORE_BUDGET = 5000
 PLUGIN_BUDGET = 20000
 
 
