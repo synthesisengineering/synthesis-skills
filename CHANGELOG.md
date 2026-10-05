@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.12] - 2026-10-05
+
+- Read only the claim owner's row during worktree retirement, so claim cleanup no longer fails when a large coordination board's full status reply exceeds the retained runtime's output limit.
+- Let a retained retirement finish after its claim owner's seat is released or archived. That owner holds no live claims; an active owner still has to prove its native identity.
+- Add regression coverage for oversized boards, released and absent owners, and the exact row reply.
+
 ## [4.154.11] - 2026-10-05
 
 - Recheck the selected project and its working-tree identities when the repository advances, allowing unrelated commits while refusing project replacement or newly appearing worktrees.

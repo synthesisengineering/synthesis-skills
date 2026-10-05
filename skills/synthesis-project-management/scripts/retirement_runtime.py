@@ -270,8 +270,11 @@ def process_owner(executable, digest):
 # This follows the existing yaml_runtime verified in-memory module loader pattern.
 # The child never reopens retained code or resources after their byte snapshot.
 _EXECUTOR = r"""
-import hashlib, importlib.abc, importlib.util, json, os, stat, sys, types
-fd, digest, wire_digest, limit, root = sys.argv[1:6]
+import contextlib, hashlib, importlib.abc, importlib.util, io, json, os, stat, sys, types
+fd, digest, wire_digest, limit, root, mode = sys.argv[1:7]
+if mode != 'run' and not (mode.startswith('row=') and mode[4:]):
+    raise ValueError('invalid retained runtime invocation mode')
+select = mode[4:] if mode != 'run' else ''
 fd, limit = int(fd), int(limit)
 info = os.fstat(fd)
 if not stat.S_ISREG(info.st_mode) or info.st_size > limit or info.st_nlink != 0:
@@ -319,16 +322,49 @@ class VerifiedModules(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 loader = VerifiedModules()
 sys.meta_path.insert(0, loader)
 filename = os.path.join(root, 'scripts/coordination.py')
-sys.argv = [filename, *sys.argv[6:]]
+sys.argv = [filename, *sys.argv[7:]]
 main = types.ModuleType('__main__')
 main.__file__, main.__loader__ = filename, loader
 main.__package__, main.__spec__ = None, None
 sys.modules['__main__'] = main
-exec(compile(contents['scripts/coordination.py'], filename, 'exec'), main.__dict__)
+code = compile(contents['scripts/coordination.py'], filename, 'exec')
+if not select:
+    exec(code, main.__dict__)
+    raise SystemExit(0)
+# Row projection: the owner's complete read and its status rule stay inside
+# this verified child. Only the selected row crosses the bounded process
+# boundary, so the reply does not grow with every other session on the board.
+# The owner's diagnostics are held here and re-emitted only on failure; the
+# bounded transport merges stderr into the one machine-readable reply.
+captured, diagnostics, status = io.StringIO(), io.StringIO(), 0
+try:
+    with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(diagnostics):
+        exec(code, main.__dict__)
+except SystemExit as exited:
+    status = exited.code
+except BaseException:
+    sys.stderr.write(diagnostics.getvalue()[-65536:])
+    raise
+if status not in (None, 0):
+    sys.stderr.write(diagnostics.getvalue()[-65536:])
+    raise SystemExit(status)
+sessions = json.loads(captured.getvalue())['sessions']
+if not isinstance(sessions, list):
+    raise ValueError('coordination status lacks a sessions list')
+matches = [row for row in sessions if isinstance(row, dict)
+           and select in (row.get('session_uuid'), row.get('compact_id'), row.get('speakable_id'))]
+if len(matches) > 1:
+    raise ValueError('coordination session selector is ambiguous')
+selected = matches[0] if matches else None
+if selected is not None and not isinstance(selected.get('status'), str):
+    raise ValueError('coordination row lacks a status')
+import board_grammar
+active = selected is not None and board_grammar.active_status(selected['status'])
+sys.stdout.write(json.dumps({'session': selected, 'active': active}, sort_keys=True))
 """
 
 
-def invoke(store, digest, board, arguments):
+def invoke(store, digest, board, arguments, *, select=""):
     executable = verify(store, digest)
     bounded = process_owner(executable, digest)
     root, manifest, contents = verify(store, digest, snapshot=True)
@@ -348,12 +384,40 @@ def invoke(store, digest, board, arguments):
         result = bounded.run(
             [sys.executable, "-I", "-B", "-c", _EXECUTOR, str(descriptor), digest,
              hashlib.sha256(wire).hexdigest(), str(limit), str(root),
+             "row=" + select if select else "run",
              "--board", str(board), *arguments],
             cwd=executable.parent, timeout=INVOKE_TIMEOUT, output_bytes=INVOKE_OUTPUT_BYTES,
             pass_fds=(descriptor,),
         )
     verify(store, digest)
     return result
+
+
+def row(store, digest, board, selector):
+    """Read one board row through the retained owner with a row-sized reply.
+
+    The owner's complete status read and its status rule run inside the
+    verified child; only the selected row and whether it is active cross the
+    bounded process boundary. An absent row is reported as None and inactive.
+    """
+    if not isinstance(selector, str) or not selector.strip():
+        raise ValueError("retained coordination row read requires a session selector")
+    result = invoke(store, digest, board, ["status", "--json"], select=selector.strip())
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or result.stdout.strip() or "coordination row read failed")
+    data = json.loads(result.stdout)
+    session = data.get("session") if isinstance(data, dict) else None
+    if (not isinstance(data, dict) or set(data) != {"session", "active"}
+            or type(data["active"]) is not bool
+            or (session is None and data["active"])
+            or (session is not None and (
+                not isinstance(session, dict)
+                or not isinstance(session.get("session_uuid"), str)
+                or not isinstance(session.get("status"), str)
+                or not isinstance(session.get("claims"), list)
+                or not isinstance(session.get("workspaces"), list)))):
+        raise ValueError("invalid retained coordination row projection")
+    return session, data["active"]
 
 
 def owner(store, digest, board, session):
@@ -377,6 +441,14 @@ def prepare(source, store, board):
 
 
 def authenticate(data, store, board):
+    """Bind a retained retirement to its claim owner's current board row.
+
+    Returns None without a retained binding; otherwise the pinned board, the
+    owner's UUID, its row and whether it is active. An active owner still
+    requires the caller's native ownership proof. A released or absent owner
+    holds no live claims on the pinned board, so nothing remains to narrow and
+    no caller ownership is asserted or required.
+    """
     if data is None:
         if os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip():
             raise ValueError("retirement intent has no retained claim runtime; no live-source fallback is authorized")
@@ -388,13 +460,20 @@ def authenticate(data, store, board):
             or not isinstance(data["session_uuid"], str) or not data["session_uuid"]
             or not isinstance(data["native"], dict)):
         raise ValueError("invalid retained retirement claim binding")
-    from_session = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
-    if not from_session:
-        raise ValueError("retirement intent requires its original authenticated claim owner")
     expected_board = safe_path(data["board"])
     if board is not None and safe_path(board) != expected_board:
         raise ValueError("retirement board differs from the pinned claim board")
+    holder, active = row(store, data["sha256"], expected_board, data["session_uuid"])
+    if holder is not None and holder["session_uuid"] != data["session_uuid"]:
+        raise ValueError("retained claim owner row does not match the retirement intent")
+    binding = {"board": expected_board, "session_uuid": data["session_uuid"],
+               "row": holder, "active": active}
+    if not active:
+        return binding
+    from_session = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+    if not from_session:
+        raise ValueError("retirement intent requires its original authenticated claim owner")
     proof = owner(store, data["sha256"], expected_board, from_session)
     if proof != {"session_uuid": data["session_uuid"], "native": data["native"]}:
         raise ValueError("caller differs from the retirement intent's native owner")
-    return expected_board
+    return binding
