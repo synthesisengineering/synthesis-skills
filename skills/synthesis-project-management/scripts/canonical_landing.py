@@ -217,7 +217,7 @@ def is_git_push(argv: list[str]) -> bool:
     return index < len(argv) and argv[index] == 'push'
 
 
-def inspect_push(payload: dict, workdir: Path) -> dict:
+def inspect_push(payload: dict, workdir: Path, *, candidate_branch: bool = False) -> dict:
     """Return a supported immutable target, or an explicit observation boundary."""
     tool_input = payload.get('tool_input') or {}
     command = str(tool_input.get('command') or tool_input.get('cmd') or '')
@@ -258,8 +258,12 @@ def inspect_push(payload: dict, workdir: Path) -> dict:
     source, separator, destination = refspec.partition(':')
     if not separator:
         destination = source
-    if destination not in {'main', 'refs/heads/main'}:
+    if not candidate_branch and destination not in {'main', 'refs/heads/main'}:
         return {'scope': 'not_applicable', 'reason': 'push does not name refs/heads/main'}
+    if candidate_branch:
+        destination = destination if destination.startswith('refs/heads/') else 'refs/heads/' + destination
+        if git(repo, 'check-ref-format', destination, check=False).returncode:
+            return dict(result, reason='candidate publication requires one literal branch destination')
     if not source or source.startswith(('-', '+')) or any(v in source for v in '*?$`[]{}~^:'):
         return dict(result, reason='landing requires one literal local branch, HEAD, or commit source')
     candidates = [source]
@@ -286,7 +290,116 @@ def inspect_push(payload: dict, workdir: Path) -> dict:
         return dict(result, reason='landing requires one configured push destination')
     return {'scope': 'supported', 'repo': str(repo), 'common_dir': str(common),
             'remote': remote, 'push_url': urls[0], 'source': source, 'source_oid': source_oid,
-            'remote_ref': 'refs/heads/main'}
+            'remote_ref': destination if candidate_branch else 'refs/heads/main'}
+
+
+def candidate_publication_target(payload: dict, workdir: Path) -> dict | None:
+    """Identify declared acceptance candidates before a supported shell push.
+
+    This is metadata admission, not site approval or a successful test receipt.
+    Deleted manifests remain declarations through HEAD history. Ordinary repos
+    without an acceptance declaration or release owner retain their behavior.
+    """
+    command = payload.get('tool_input') or {}
+    syntax = parse_shell(str(command.get('command') or command.get('cmd') or ''))
+    def direct_ci(words):
+        argv = unwrap_argv(words)
+        return bool(argv and Path(argv[0]).name == 'gh' and any(
+            argv[index:index + 2] in (['workflow', 'run'], ['run', 'rerun'])
+            for index in range(1, len(argv) - 1)))
+    dispatches = [unwrap_argv(words) for words in syntax.commands if direct_ci(words)]
+    dispatches.extend(unwrap_argv(words) for _owner, script in syntax.nested_commands
+                      for words in parse_shell(script).commands if direct_ci(words))
+    pushes = [unwrap_argv(words) for words in syntax.commands
+              if is_git_push(unwrap_argv(words))]
+    pushes.extend(unwrap_argv(words) for _owner, script in syntax.nested_commands
+                  for words in parse_shell(script).commands if is_git_push(unwrap_argv(words)))
+    if not pushes and not dispatches:
+        return None
+    if len(pushes) > 1:
+        for argv in pushes:
+            import shlex
+            if candidate_publication_target({'tool_input': {'command': shlex.join(argv)}}, workdir):
+                raise RuntimeError('candidate publication requires one separately inspected push')
+        return None
+    if syntax.dynamic_indices:
+        raise RuntimeError('dynamic push context cannot establish candidate membership')
+    repo = workdir
+    args = pushes[0][1:] if pushes else []
+    while args[:1] == ['-C'] and len(args) >= 2:
+        path = Path(os.path.expanduser(args[1]))
+        repo = path if path.is_absolute() else repo / path
+        args = args[2:]
+    if pushes and args[:1] != ['push']:
+        raise RuntimeError('Git global overrides cannot establish candidate repository identity')
+    if dispatches and any(word in ('--repo', '-R') or word.startswith(('--repo=', '-R'))
+                          for words in dispatches for word in words):
+        raise RuntimeError('remote CI repository overrides cannot establish local candidate identity')
+    probe = git(repo, 'rev-parse', '--show-toplevel', check=False)
+    if probe.returncode:
+        return None  # Git itself refuses a non-repository push.
+    repo = Path(probe.stdout.strip()).resolve()
+    policies = []
+    for policy, manifest, owner in (
+        ('public', 'skills/synthesis-implementation-integrity/acceptance-suite.yaml',
+         'skills/synthesis-skills-manager/scripts/release.py'),
+        ('private', 'acceptance-suite.yaml', 'agent-control/scripts/private_release.py'),
+    ):
+        history = out(repo, 'log', '-1', '--format=%H', 'HEAD', '--', manifest, owner)
+        if (repo / manifest).exists() or history:
+            policies.append((policy, manifest))
+    if not policies:
+        return None
+    if len(policies) != 1:
+        raise RuntimeError('candidate acceptance policy is ambiguous')
+    if dispatches:
+        raise RuntimeError('direct workflow dispatch lacks an authoritative local-to-remote candidate binding; publish the validated explicit candidate push')
+    target = inspect_push(payload, workdir, candidate_branch=True)
+    if target['scope'] != 'supported':
+        raise RuntimeError('candidate publication refused: ' + target.get('reason', 'unbound push'))
+    if target['repo'] != str(repo):
+        raise RuntimeError('candidate repository changed during target inspection')
+    return dict(target, policy=policies[0][0], manifest=policies[0][1])
+
+
+def validate_candidate_publication(target: dict, change_base: str, acceptance) -> dict:
+    """Use the verified acceptance owner, with an independently selected base."""
+    repo = Path(target['repo'])
+    if not OID.fullmatch(change_base or ''):
+        raise RuntimeError('candidate admission requires an exact boundary-selected base commit')
+    refuse_external_effects(repo, status_only=True)
+    if out(repo, 'rev-parse', '--verify', 'HEAD^{commit}') != target['source_oid']:
+        raise RuntimeError('candidate push source does not equal inspected HEAD')
+    validated, errors = acceptance.validate_manifest(repo / target['manifest'], repo)
+    if errors or validated is None:
+        raise RuntimeError('candidate acceptance metadata refused: ' + '; '.join(errors))
+    if validated['document']['schema'] != 2:
+        raise RuntimeError('candidate publication requires schema-2 exact Git membership')
+    if validated['document']['receipt_consumer'] != target['receipt_consumer']:
+        raise RuntimeError('candidate acceptance consumer does not match its release owner')
+    evidence = acceptance.authoritative_git_evidence(validated, repo, change_base, uuid.uuid4().hex)
+    if evidence['change_head'] != target['source_oid']:
+        raise RuntimeError('candidate HEAD changed during membership validation')
+    if out(repo, 'rev-parse', '--verify', 'HEAD^{commit}') != target['source_oid']:
+        raise RuntimeError('candidate HEAD changed before publication admission')
+    # Status alone does not expose assume-unchanged/skip-worktree bytes. Bind
+    # the manifest and every referenced fixture to the actual outgoing commit.
+    files = {validated['manifest'], *(case['fixture_file'] for case in validated['cases'])}
+    for path in sorted(files):
+        relative = path.relative_to(repo).as_posix()
+        blob = out(repo, 'rev-parse', '--verify', target['source_oid'] + ':' + relative)
+        current = git(repo, 'hash-object', '--stdin', input_text=path.read_bytes().decode('utf-8')).stdout.strip()
+        if blob != current:
+            raise RuntimeError('candidate metadata or fixture differs from outgoing HEAD: ' + relative)
+    if git(repo, 'status', '--porcelain=v1', '--untracked-files=all').stdout.strip():
+        raise RuntimeError('candidate worktree changed during publication admission')
+    if out(repo, 'rev-parse', '--verify', 'HEAD^{commit}') != target['source_oid']:
+        raise RuntimeError('candidate HEAD changed at publication admission')
+    if out(repo, 'rev-parse', '--verify', '--end-of-options', target['source'] + '^{commit}') != target['source_oid']:
+        raise RuntimeError('candidate push source ref changed during admission')
+    if out(repo, 'remote', 'get-url', '--push', '--all', target['remote']).splitlines() != [target['push_url']]:
+        raise RuntimeError('candidate push destination changed during admission')
+    return evidence
 
 
 def actor_directory(identity: dict) -> Path:

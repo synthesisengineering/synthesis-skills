@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import hashlib
 import shlex
-import os
 import subprocess
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -181,6 +180,7 @@ def test_foreign_authority_blocks_even_disjoint_canonical_paths(setup, foreign_a
 def test_yielded_push_is_retried_by_completion_without_shell_snapshot(setup, tool):
     fixture = setup
     receipt = landing.capture_before(fixture.payload, fixture.linked)
+    assert receipt['source_oid'] == fixture.target
     assert landing.process_after(fixture.payload)[0]['remote_published'] == 'unverified'
     assert git(fixture.canonical, 'rev-parse', 'HEAD') == fixture.old
     git(fixture.linked, 'push', '-q', 'origin', 'feature:main')
@@ -660,3 +660,134 @@ def test_released_but_changed_row_is_not_silently_accepted_as_cleanup(setup):
     landing.land(receipt, path)
     assert receipt['claim_cleanup'] == 'pending_recovery'
     assert landing.BOARD.read_bytes() == before
+
+
+@pytest.fixture
+def candidate_repo(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    scripts = Path(__file__).resolve().parents[2] / 'synthesis-implementation-integrity/scripts'
+    spec = importlib.util.spec_from_file_location('candidate_acceptance_test_owner', scripts / 'acceptance_suite.py')
+    acceptance = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = acceptance
+    sys.path.insert(0, str(scripts))
+    spec.loader.exec_module(acceptance)
+    repo = tmp_path / 'candidate'
+    subprocess.run(['git', 'init', '-qb', 'feature', str(repo)], check=True)
+    for key, value in [('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid'), ('core.hooksPath', '/dev/null')]:
+        git(repo, 'config', key, value)
+    (repo / 'tool.py').write_text('# base\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-qm', 'base')
+    base = git(repo, 'rev-parse', 'HEAD')
+    git(repo, 'remote', 'add', 'origin', str(tmp_path / 'unused-local-remote'))
+    (repo / 'tool.py').write_text('# candidate\n')
+    (repo / 'test_probe.py').write_text('def test_probe():\n    assert True\n')
+    manifest = repo / 'acceptance-suite.yaml'
+    document = dict(schema=2, suite='candidate-fixture', membership='closed',
+                    production_entry_point='tool.py', enforcing_boundary='candidate admission',
+                    receipt_consumer='candidate-fixture.consume-acceptance.v1',
+                    change_base_policy='boundary-supplied-git-diff', expected_status='pass',
+                    unverified_remainder='synthetic metadata only',
+                    changed_surfaces=[dict(path=path, cases=['probe']) for path in
+                                      ('tool.py', 'test_probe.py', 'acceptance-suite.yaml')],
+                    cases=[dict(id='probe', control_class='acceptance-test', fixture='test_probe.py::test_probe',
+                                motivating_defect='reject incomplete code candidates')])
+    manifest.write_text(json.dumps(document))
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-qm', 'candidate')
+    payload = {'tool_input': {'cmd': 'git push origin HEAD:feature'}}
+    return SimpleNamespace(repo=repo, base=base, acceptance=acceptance, document=document,
+                           manifest=manifest, payload=payload)
+
+
+def candidate_target(fixture):
+    target = landing.candidate_publication_target(fixture.payload, fixture.repo)
+    assert target['policy'] == 'private'
+    target['receipt_consumer'] = fixture.document['receipt_consumer']
+    return target
+
+
+def test_candidate_exact_membership_allows_feature_push(candidate_repo):
+    f = candidate_repo
+    target = candidate_target(f)
+    receipt = landing.validate_candidate_publication(target, f.base, f.acceptance)
+    assert receipt['change_head'] == git(f.repo, 'rev-parse', 'HEAD')
+    assert target['remote_ref'] == 'refs/heads/feature'
+    assert landing.inspect_push(f.payload, f.repo)['scope'] == 'not_applicable'
+
+
+@pytest.mark.parametrize('defect', ['missing', 'unmapped', 'stale', 'wrong-head', 'hidden-by-index',
+                                  'wrong-consumer', 'untracked-fixture', 'wrong-base', 'destination-race'])
+def test_candidate_membership_refuses_before_push(candidate_repo, defect):
+    f = candidate_repo
+    target = candidate_target(f)
+    base = f.base
+    if defect == 'missing':
+        f.manifest.unlink()
+    elif defect == 'unmapped':
+        f.document['cases'].append(dict(f.document['cases'][0], id='unmapped'))
+        f.manifest.write_text(json.dumps(f.document))
+    elif defect == 'stale':
+        (f.repo / 'later.py').write_text('# unassociated change\n')
+    elif defect == 'wrong-head':
+        target['source_oid'] = f.base
+    elif defect == 'hidden-by-index':
+        git(f.repo, 'update-index', '--assume-unchanged', 'test_probe.py')
+        (f.repo / 'test_probe.py').write_text('def test_probe():\n    assert False\n')
+    elif defect == 'wrong-consumer':
+        target['receipt_consumer'] = 'wrong.consume-acceptance.v1'
+    elif defect == 'untracked-fixture':
+        git(f.repo, 'rm', '--cached', 'test_probe.py')
+        (f.repo / '.git/info/exclude').write_text('test_probe.py\n')
+    elif defect == 'wrong-base':
+        base = 'HEAD~1'
+    elif defect == 'destination-race':
+        git(f.repo, 'remote', 'set-url', 'origin', str(f.repo / 'other-remote'))
+    if defect in {'missing', 'unmapped', 'stale', 'untracked-fixture'}:
+        git(f.repo, 'add', '-A')
+        git(f.repo, 'commit', '-qm', 'fixture defect')
+        target = candidate_target(f)
+    messages = {'missing': 'manifest', 'unmapped': 'not mapped', 'stale': 'changed path',
+                'wrong-head': 'does not equal', 'hidden-by-index': 'differs from outgoing',
+                'wrong-consumer': 'consumer', 'untracked-fixture': 'changed paths|Git',
+                'wrong-base': 'exact boundary', 'destination-race': 'destination changed'}
+    with pytest.raises((RuntimeError, f.acceptance.ManifestError), match=messages[defect]):
+        landing.validate_candidate_publication(target, base, f.acceptance)
+
+
+@pytest.mark.parametrize('command', ['git push', 'git push origin HEAD:feature --force',
+                                    'sh -c "git push origin HEAD:feature"',
+                                    'git push origin HEAD:feature && git push origin HEAD:other',
+                                    'git --git-dir /untrusted push origin HEAD:feature',
+                                    'gh workflow run ci.yml --ref feature'])
+def test_candidate_unsupported_push_cannot_silently_skip(candidate_repo, command):
+    with pytest.raises(RuntimeError):
+        landing.candidate_publication_target({'tool_input': {'cmd': command}}, candidate_repo.repo)
+
+
+def test_ordinary_repository_push_is_not_candidate(tmp_path):
+    repo = tmp_path / 'ordinary'
+    subprocess.run(['git', 'init', '-qb', 'main', str(repo)], check=True)
+    for key, value in [('user.name', 'Fixture'), ('user.email', 'fixture@example.invalid'), ('core.hooksPath', '/dev/null')]:
+        git(repo, 'config', key, value)
+    (repo / 'note.txt').write_text('ordinary\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-qm', 'ordinary')
+    assert landing.candidate_publication_target({'tool_input': {'cmd': 'git push origin main'}}, repo) is None
+
+
+def test_candidate_moving_explicit_source_ref_is_refused(candidate_repo, monkeypatch):
+    f = candidate_repo
+    git(f.repo, 'branch', 'outgoing')
+    f.payload['tool_input']['cmd'] = 'git push origin outgoing:feature'
+    target = candidate_target(f)
+    original = f.acceptance.authoritative_git_evidence
+    def move_after_evidence(*args):
+        receipt = original(*args)
+        git(f.repo, 'update-ref', 'refs/heads/outgoing', f.base)
+        return receipt
+    monkeypatch.setattr(f.acceptance, 'authoritative_git_evidence', move_after_evidence)
+    with pytest.raises(RuntimeError, match='source ref changed'):
+        landing.validate_candidate_publication(target, f.base, f.acceptance)
+    assert git(f.repo, 'rev-parse', 'HEAD') == target['source_oid']
