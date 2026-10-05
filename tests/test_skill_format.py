@@ -44,7 +44,10 @@ def _check(skill_md: Path) -> list[str]:
     return problems
 
 
-@pytest.mark.parametrize("skill_md", v5_skills(), ids=lambda p: p.parent.name)
+V5_SKILLS = v5_skills()
+
+
+@pytest.mark.parametrize("skill_md", V5_SKILLS, ids=[p.parent.name for p in V5_SKILLS])
 def test_v5_skill_follows_the_format(skill_md):
     assert _check(skill_md) == []
 
