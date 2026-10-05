@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.12** keeps worktree retirement working on large coordination boards: claim cleanup reads only the owner's row. A retained retirement whose owner seat has since closed can now finish, while an active owner still proves its identity.
+
 Release **4.154.11** keeps project recovery valid when an unrelated repository commit leaves the selected project unchanged. Dirty-file scans reduce repeated path parsing and directory opens while freshly checking file bytes and directory identities.
 
 Release **4.154.10** adds exact candidate membership validation to the existing publication command owner. Control-plane callers can reject incomplete test coverage metadata and changed source references before a supported Git push.

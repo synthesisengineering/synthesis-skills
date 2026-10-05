@@ -160,20 +160,33 @@ def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only:
     inventing an owner. Runs after verified retirement completion on both the fresh
     and resumed paths; retries use the same native ownership checks and
     never acquire or release a foreign row.
+
+    The retained read returns only the owner's row, so its reply does not grow
+    with the board. A released or absent owner holds no live claims: nothing
+    remains to narrow, and completion records that instead of waiting for an
+    owner that can no longer authenticate.
     """
     if worktree.exists() or worktree.is_symlink():
         print(f"retire-worktree WARNING: removed-worktree path has been recreated: {worktree}; no claims changed", file=sys.stderr)
         return False
+    session_id = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
+    binding = None
     if claims_runtime is not None:
         try:
             retirement_runtime = retirement_runtime_owner()
-            board = retirement_runtime.authenticate(claims_runtime, RETIREMENT_RUNTIME_DIR, board)
+            binding = retirement_runtime.authenticate(claims_runtime, RETIREMENT_RUNTIME_DIR, board)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             print(f"retire-worktree WARNING: retained claim runtime refused: {exc}", file=sys.stderr)
             return False
+        board = binding["board"]
+        if not binding["active"]:
+            state = binding["row"]["status"] if binding["row"] is not None else "absent"
+            print(f"retire-worktree: claim owner {binding['session_uuid']} is {state} on "
+                  f"{board}; it holds no live claims; nothing narrowed")
+            return True
+        session_id = binding["session_uuid"]
     coordination = Path(__file__).resolve().parent / "coordination.py"
     retired = os.path.realpath(worktree)
-    session_id = os.environ.get("SYNTHESIS_COORDINATION_SESSION", "").strip()
     base_cmd = [sys.executable, str(coordination)]
     if board is not None:
         base_cmd += ["--board", str(board)]
@@ -184,35 +197,35 @@ def _narrow_retired_claims(worktree: Path, board: Path | None, *, diagnose_only:
             f"--session <id> --release {shlex.quote(str(worktree))}",
         )
         return True
-    try:
-        completed = (
-            retirement_runtime.invoke(RETIREMENT_RUNTIME_DIR, claims_runtime["sha256"], board, ["status", "--json"])
-            if claims_runtime is not None else subprocess.run(
+    if binding is not None:
+        row = binding["row"]
+    else:
+        try:
+            completed = subprocess.run(
                 base_cmd + ["status", "--json"],
                 capture_output=True, text=True, timeout=60,
                 env={**os.environ, "LC_ALL": "C"},
             )
+            if completed.returncode != 0:
+                raise ValueError(completed.stderr.strip() or completed.stdout.strip() or "coordination status failed")
+            sessions = json.loads(completed.stdout)["sessions"]
+            if not isinstance(sessions, list):
+                raise ValueError("coordination status lacks a sessions list")
+        except Exception as exc:
+            print(
+                f"retire-worktree WARNING: cannot read board for claim narrowing: {exc}",
+                file=sys.stderr,
+            )
+            return False
+        row = next(
+            (candidate for candidate in sessions
+             if session_id in (
+                 candidate.get("session_uuid"),
+                 candidate.get("compact_id"),
+                 candidate.get("speakable_id"),
+             )),
+            None,
         )
-        if completed.returncode != 0:
-            raise ValueError(completed.stderr.strip() or completed.stdout.strip() or "coordination status failed")
-        sessions = json.loads(completed.stdout)["sessions"]
-        if not isinstance(sessions, list):
-            raise ValueError("coordination status lacks a sessions list")
-    except Exception as exc:
-        print(
-            f"retire-worktree WARNING: cannot read board for claim narrowing: {exc}",
-            file=sys.stderr,
-        )
-        return False
-    row = next(
-        (candidate for candidate in sessions
-         if session_id in (
-             candidate.get("session_uuid"),
-             candidate.get("compact_id"),
-             candidate.get("speakable_id"),
-         )),
-        None,
-    )
     if row is None:
         print(f"retire-worktree: no board row for session {session_id}; nothing narrowed")
         return True

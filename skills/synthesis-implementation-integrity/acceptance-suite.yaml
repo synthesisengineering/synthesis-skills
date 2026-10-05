@@ -13,444 +13,327 @@ unverified_remainder: Source and controlled consumers do not establish actual in
   permission qualification, cold survival, provider permissions, model-token savings or comparative superiority.
   Final publication binds the actual authenticated Git boundary.
 changed_surfaces:
-- path: skills/synthesis-project-management/scripts/project_state.py
+- path: skills/synthesis-project-management/scripts/retire_worktree.py
   cases:
-  - final-863c438d942f9603
-  - final-5527c9c744c4082a
-  - final-39325c9f19c371bb
-  - final-9de9314f12b678b7
-  - final-efaafebee0aa852b
-  - final-99c1db2593f760a2
-  - final-f561389479e367b7
-  - final-9acb9a74050833a7
-  - final-7178a3778ff239ac
-  - final-ad77a0911f7e9c3e
-  - final-0074164e6b709156
-  - final-4e1e9c5052dd4189
-  - final-5cd8b21a3fa1b3c4
-  - final-2291530cb5709dd4
-  - final-799d0c017c8d9f0f
-  - final-9aa92980220fbdb7
-  - final-d06615e098169f94
-  - final-146e863dfef21954
-  - final-bc079d10de8497ec
-  - final-c2081fe02525eab8
-  - final-50e21007f6c20d83
-  - final-ef3435c943fe0e8d
-  - final-fca721a6e8d1a6a3
-  - final-c61227d375229e82
-  - final-38b061b9c34c2e70
-  - final-585373e47fa23532
-  - final-55fd584d315c2093
-  - final-ab16790adcf02960
-  - final-fd044dfd1e968cee
-  - final-8bdbd8c73bb0acb8
-  - final-a2bfd5d678c5bda5
-  - final-d69c36509811dd4a
-  - performance-e3b6de3badda9377
-  - performance-22ed06daf9d3971c
-  - performance-f0a13a6ec7d8356e
-  - performance-615936bb9206c927
-  - performance-34f0af26535855a7
-  - performance-ee901de52c01c926
-  - performance-bf47b9344679043e
-  - performance-a4de85c17cefd13e
-  - performance-16fc9f3fe0f29514
-  - performance-f3d1e2734e34b56c
-  - performance-040e0077aa4a2da5
-  - performance-c0782c0a5ada0fe1
-  - performance-844a8970502091a5
-  - performance-e41c0ccc11f881b8
-  - performance-1ad7c36166ba428a
-  - performance-2161b6ac2a03ea4b
-  - performance-3927c489eadce602
-  - performance-9f065d4c58877e8c
-  - performance-6359ad347ab8b2c0
-  - performance-2de6428912bebbd5
-  - performance-344a8c5942832118
-  - performance-b07ec149e6fdb8bb
-  - native-checkpoint-5dbc6e450e9e2c39
-  - native-checkpoint-d6ad6ea6622b0d57
-  - native-checkpoint-58953e7c2842f507
-  - native-checkpoint-d876e27b810b010c
-  - native-checkpoint-79fa21278831fffc
-  - native-checkpoint-ff6aaf030aa863a5
-  - native-checkpoint-f16fb9133ddcf131
-  - native-checkpoint-bf2c0ee35c0e500f
-  - native-checkpoint-70d555aa9cba0dce
-  - native-checkpoint-19a53246e5d1cd07
-  - native-checkpoint-03fb3b0e05bdd3b4
-  - native-checkpoint-c02849dacd2e4067
-  - native-checkpoint-006487c1c7a8b657
-  - native-checkpoint-1c136719bf6a1642
-  - native-checkpoint-6e4627517eaf8ab4
-  - native-checkpoint-c00d98ab7ca7ed56
-  - native-checkpoint-b5be4664c23d2b94
-  - native-checkpoint-b15964bb7a531b81
-  - native-checkpoint-793d5e62ef776b35
-  - native-checkpoint-ec97ddaa6b8257b5
-  - native-checkpoint-b9c488ab407806e9
-  - native-checkpoint-239be44dc28d4990
-  - native-checkpoint-be5d9be1fe4fb934
-  - native-checkpoint-55dd8a2765a81aaa
-  - native-checkpoint-d397cb57a03973e6
-  - native-checkpoint-d57eec0d3c3edad6
-  - native-checkpoint-fe2491517ac19fd9
-  - native-checkpoint-65a6da1247e1d7b5
-  - native-checkpoint-36747cdb897be3f0
-  - native-checkpoint-5bf6a8406c0aa89c
-  - native-checkpoint-548a1d28f6173d96
-  - native-checkpoint-8e19b32d92e85416
-  - native-checkpoint-e66c455bde9f27a2
-  - native-checkpoint-676d1866d9383b92
-  - native-checkpoint-d814333fb5a97181
-  - native-checkpoint-e8de663293c7603e
-  - native-checkpoint-e5ab338458aab894
-  - native-checkpoint-974760983d1d99af
-  - native-checkpoint-274751d857869845
-  - native-checkpoint-d6344b9e605db628
-  - native-checkpoint-99f9935f244bbff5
-  - native-checkpoint-4f5ea7eadaab6e9f
-  - native-checkpoint-1705118dfab55175
-  - native-checkpoint-e28bc020559225b7
-  - native-checkpoint-9cad43d0436164dc
-  - native-checkpoint-aab20211f0ada361
-  - native-checkpoint-3f3eb4fedb5569d0
-  - native-checkpoint-5ccdef42511f4a15
-  - native-checkpoint-11949279be6609ac
-  - native-checkpoint-21f830f3a6ad1b61
-  - native-checkpoint-64adf5dc566f0bca
-  - native-checkpoint-22c2b069fbd2729d
-  - native-checkpoint-b78756b66ed86da2
-  - native-checkpoint-bb3499ec6098e3bf
-  - native-checkpoint-2c2e3e9e659305aa
-  - native-checkpoint-f44ea87c96828091
-  - native-checkpoint-95943c7a58a47c86
-  - native-checkpoint-d6b659bb54c2e536
-  - native-checkpoint-3c2aca43df982a1e
-  - native-checkpoint-8b6890fc0dc0fddb
-  - native-checkpoint-84d4c3b34049b872
-  - native-checkpoint-93502ed729143926
-  - native-checkpoint-4e29710737ed0b37
-  - native-checkpoint-e9e5fc2d78a40e43
-  - native-checkpoint-cb42f400bb83eefb
-  - native-checkpoint-63fb8f2ab6be52c5
-  - native-checkpoint-c55f35b610be6b0a
-  - native-checkpoint-e162e35ffade0296
-  - native-checkpoint-3ae5275f9251bb6f
-  - native-checkpoint-b114be98fd4a18b9
-  - native-checkpoint-8e1b7c0bdd938f89
-  - native-checkpoint-8f0adbc75a2fa081
-  - native-checkpoint-c7200a8a7b0769cc
-  - native-checkpoint-96370c1bf82e9974
-  - native-checkpoint-c2aabaaaa2d684e3
-  - native-checkpoint-1e60e7d39f193540
-  - native-checkpoint-3c6d83a7708b662e
-  - native-checkpoint-676b372a5609181e
-  - native-checkpoint-43d0d4e53d09b219
-  - native-checkpoint-60e66783315f9d9e
-  - native-checkpoint-d855c80d7cd32df8
-  - native-checkpoint-cf8fadd5ca840601
-  - native-checkpoint-f3b6d2f5e42630c4
-  - native-checkpoint-3594861cfd33ed39
-  - native-checkpoint-feba90702a3659c9
-  - native-checkpoint-7f95995d327f6dfe
-  - native-checkpoint-1bce50f364b2244b
-  - native-checkpoint-be86b7b9ea0b3575
-  - native-checkpoint-31c685c73d76f3cd
-  - native-checkpoint-a7448c556346e2b0
-  - native-checkpoint-ddc5b75ba8af0385
-  - native-checkpoint-0053919dbb9965c9
-  - native-checkpoint-5c139c0c35441483
-  - native-checkpoint-0b786e89c9f3f37e
-  - native-checkpoint-7bab60abfa995949
-  - native-checkpoint-81b04d11cf090aae
-  - native-checkpoint-ee924a6cb0788088
-  - native-checkpoint-5c3c2b60885f197d
-  - native-checkpoint-205c07b1904f7cbf
-  - native-checkpoint-eb8af0ddb8313a4f
-  - native-checkpoint-51743d10f9604867
-  - native-checkpoint-ab1a17e104a82924
-  - native-checkpoint-f428d8a9bd46eff4
-  - native-checkpoint-f6090fc3e960eb9c
-  - native-checkpoint-b9bf1788c7fb0476
-  - native-checkpoint-7dae9d4388ede562
-  - native-checkpoint-275b759beb8a3cc2
-  - native-checkpoint-a1eb7fac3619a2a5
-  - native-checkpoint-f3589f6fcc6d037c
-  - native-checkpoint-4d4f18d51596f7eb
-  - native-checkpoint-73e8a460c11aaf7a
-  - native-checkpoint-9035ea114d7e57bb
-  - native-checkpoint-2cc2e24b31f9753e
-  - native-checkpoint-6d9d5c3ae97416d1
-  - native-checkpoint-d5ef605fceb18f97
-  - native-checkpoint-1eb17569899acbcd
-  - native-checkpoint-825e7946449242a9
-  - native-checkpoint-b19f7f12e6054329
-  - native-checkpoint-3a9492e2f517b3d8
-  - native-checkpoint-2459b035d9b3aced
-  - native-checkpoint-20e5b657e2fc2009
-  - native-checkpoint-44f73ab3dd9887fe
-  - native-checkpoint-a6bf427845f20518
-  - native-checkpoint-3ed8b41c75012b5d
-  - native-checkpoint-c7a518b1888c35eb
-  - native-checkpoint-fd1ad966cc89dfc4
-  - native-checkpoint-75229ff39c96f1c5
-  - native-checkpoint-5f846ddb06b2f6b9
-  - native-checkpoint-24b062cf47c821d8
-  - native-checkpoint-82159191596af9d5
-  - native-checkpoint-573e24545e47530c
-  - native-checkpoint-8d345a06f186cb55
-  - native-checkpoint-98d53ebdcd5dc4ec
-  - native-checkpoint-3fffb8e0fcb5f2e1
-  - native-checkpoint-a510b8a980fea702
-  - native-checkpoint-2e4abfa1a93a95b2
-  - native-checkpoint-62efff4376142f28
-  - native-checkpoint-dfd04af6b3f724c5
-  - native-checkpoint-667e674cc2953ffe
-  - native-checkpoint-2af9a17048138efe
-  - native-checkpoint-4f228850296fb28e
-  - native-checkpoint-5f5da3cba7f96e2f
-  - native-checkpoint-a5c5d1a736b37ada
-  - native-checkpoint-6c1616459eade6da
-  - native-checkpoint-3c2aa72302a70f96
-  - native-checkpoint-46e0965eee67ef38
-  - native-checkpoint-e3061b91ac8977cb
-  - native-checkpoint-f1a8e22fee59ce3b
-  - native-checkpoint-5611d5041103f9bb
-  - native-checkpoint-5961154de6c1d34d
-  - native-checkpoint-80e4461769e18353
-  - native-checkpoint-9234e3c1e8f96c31
-  - native-checkpoint-080c585f89dc3cb0
-  - native-checkpoint-7962756ea018b7cf
-  - native-checkpoint-d8dee5743e04301b
-  - native-checkpoint-250a55c1a6987465
-  - native-checkpoint-96b244123bd786fa
-  - native-checkpoint-82a8b57cc2312f63
-  - native-checkpoint-75f919f2aee4b326
-  - native-checkpoint-5a190ddc45f24514
-  - native-checkpoint-c57e035492e7a16b
-  - native-checkpoint-cca9833a7bba2cd4
-  - native-checkpoint-46df934367f38ab6
-  - native-checkpoint-753cf38cd7573518
-  - native-checkpoint-1334044a83af3f07
-  - native-checkpoint-63f6b0f7464af9c7
-  - native-checkpoint-3261e4c9d9d32d07
-  - native-checkpoint-76e60cb677aed87c
-  - native-checkpoint-7c44e3d00f2013ec
-  - native-checkpoint-796d79b3360aebcf
-  - native-checkpoint-134d6fb12d154a15
-  - native-checkpoint-5efbe1df5ce7d14c
-  - native-checkpoint-74f69afba317d811
-  - native-checkpoint-544456b948c4f618
-  - native-checkpoint-615722914b85c7f0
-  - native-checkpoint-f7a80e50f91a8838
-  - native-checkpoint-432f343cf34b1277
-  - native-checkpoint-2c93e3a8644c8240
-  - native-checkpoint-4e0618d5c46f69f8
-  - native-checkpoint-cab55dffc70ddd4c
-  - native-checkpoint-e3432973f05b5a86
-  - native-checkpoint-fd52dc8cd12d7cde
-  - native-checkpoint-d6f79116bc5b9ca8
-  - native-checkpoint-caf468dc02ac266a
-  - native-checkpoint-54e511da2d740f43
-  - native-checkpoint-b0b7d255ca7a5ba6
-  - native-checkpoint-dfeb052b21b88039
-  - native-checkpoint-9fbeb190f2de8832
-  - native-checkpoint-5367d38ea8172a02
-  - native-checkpoint-f6edbd7af2ce7862
-  - native-checkpoint-a7d9e1ed1a0e2be1
-  - native-checkpoint-4bb25d1c4a88c998
-  - native-checkpoint-66ff2f1dac8f450f
-  - native-checkpoint-86c23a689c755464
-  - native-checkpoint-70795a49a7e663a6
-  - native-checkpoint-f9b439ae6930b647
-  - native-checkpoint-8c7477692ed0ceec
-  - native-checkpoint-6a29449ff9e18ef9
-  - native-checkpoint-5b9823dbc2d7f512
-  - native-checkpoint-0c4b596a753a0451
-  - native-checkpoint-e995d7418bb1a39b
-  - native-checkpoint-a94fd33d6a0ff8e4
-  - native-checkpoint-159795eeaa1be5ce
-  - native-checkpoint-802018eaf1993c55
-  - native-checkpoint-d2d65aa3ca34ecc7
-  - native-checkpoint-58931cca206d48d2
-  - native-checkpoint-6c7e9c2f0d390332
-  - native-checkpoint-0f781d8caccd4546
-  - native-checkpoint-18ffb8808350a208
-  - native-checkpoint-dae8ae5fee710e53
-  - native-checkpoint-43c34ddecc02ccfb
-  - native-checkpoint-53d0427c57fc6028
-  - native-checkpoint-ed1945158c9a43e1
-  - native-checkpoint-f2f39677b1a34fbb
-  - native-checkpoint-f61bd0a0af98576e
-  - native-checkpoint-9756829df3d72005
-  - native-checkpoint-a567801e91d9f9db
-  - native-checkpoint-24401ffe8406cdbe
-  - native-checkpoint-2e1d52c6fad28009
-  - native-checkpoint-ff9e6966c1bc19fb
-  - native-checkpoint-4a3471ae4f54008e
-  - native-checkpoint-b7f9e8e946a0cf0b
-  - native-checkpoint-a8a9aa5844bfc2bd
-  - native-checkpoint-911682dbc967c492
-  - native-checkpoint-9d15e3acfd146e8f
-  - native-checkpoint-9f2df6f17f9ddd90
-  - native-checkpoint-76004ba3c6ea7f14
-  - native-checkpoint-93b403c941927d66
-  - native-checkpoint-9105df864f0a0c34
-  - native-checkpoint-49fa9c46300923f8
-  - native-checkpoint-d80b0cc559b65780
-  - native-checkpoint-7c52159ad7430669
-  - native-checkpoint-07fbd2e72d57c7e6
-  - native-checkpoint-019a4d879ae2c004
-  - native-checkpoint-e5d1fbbe4daf38be
-  - native-checkpoint-56fdc3e36b83bc63
-  - native-checkpoint-2e0e0e2333dfafc1
-  - native-checkpoint-60128a2e8a1e7aaa
-  - native-checkpoint-c914d70b20d0654f
-  - native-checkpoint-2f97240585836fe6
-  - native-checkpoint-a916884dc92c5fc8
-  - native-checkpoint-043ab6de70ca8d08
-  - native-checkpoint-25c1fa4bc47101af
-  - native-checkpoint-e0450f5c15bf01ca
-  - native-checkpoint-f11a6124f42ba821
-  - native-checkpoint-8e2e296dc78cb063
-  - native-checkpoint-793a745b53ba29ae
-  - native-checkpoint-f993096224774760
-  - native-checkpoint-7698828a2393b448
-  - native-checkpoint-8528c673a3e1805d
-  - native-checkpoint-162d96859ee22b91
-  - native-checkpoint-087c1457ec092643
-  - native-checkpoint-7826dddae7367b1c
-  - native-checkpoint-7c38998f1393565a
-  - native-checkpoint-df4dbe7c70d7df8f
-  - native-checkpoint-dc83e143692c577a
-  - native-checkpoint-2fc61253663e5f87
-  - native-checkpoint-d875381599e5a76b
-  - native-checkpoint-7d2d1359dcb342cd
-  - native-checkpoint-a47b0928bc2a6e2c
-  - native-checkpoint-e652663cbb04e8a4
-  - native-checkpoint-c6b7eeb42fcbc6c4
-  - native-checkpoint-79cc7f40a99b1b8a
-  - native-checkpoint-2b6844b7a7c5173f
-  - attribution-format-796adabd68f8e0a1
-  - project-resolver-db3867d471322221
-  - project-resolver-5092cbb9ab846f80
-  - project-resolver-3acf2dbacbb0063e
-  - project-resolver-1e9ddd43d6a54649
-  - project-resolver-710cdd679db4b50d
-  - project-resolver-51b02abe40d47dfb
-  - project-resolver-5cc20208aa55e22c
-  - project-resolver-8808a263fd386385
-  - project-resolver-824117d1e5cf2a88
-  - project-resolver-6b89b917f9ad099c
-  - project-resolver-2b9b7a8c8ce19963
-  - project-resolver-a791158d96a46a1d
-  - project-resolver-f4f566916d06d781
-  - project-resolver-d6ad619abe7fea20
-  - project-resolver-fb8de005c106dfd8
-  - project-resolver-912ff2462ed4479c
-  - project-resolver-f13bde7bf7207053
-  - project-resolver-44c1d7adce2ff727
-  - project-resolver-f1eb6fa16494e0d8
-  - project-resolver-d748c8bcf7561aa5
-  - project-resolver-4f04866103fea2cb
-  - project-resolver-0a856eadf694e899
-  - project-resolver-1561b4def70ec053
-  - project-resolver-2a9e5ce9a561f8ae
-  - project-resolver-d50a11caaf687638
-  - project-resolver-2943f8f8e1b952c7
-  - project-resolver-b5394197dbe305ac
-  - project-resolver-1ccfe465b4573d04
-  - project-resolver-4707b0f5544c4430
-  - project-resolver-4d6fc0fc4c9121d0
-  - project-resolver-f69e725cf5961cc5
-  - project-resolver-b3d2501653e7c429
-  - project-resolver-dd4ea66ec190aae9
-  - project-resolver-dd321dd97131dbc1
-  - project-resolver-0b6c350ce91d12e2
-  - project-resolver-4d2022aae226480b
-  - project-resolver-af2e6429942360ee
-- path: skills/synthesis-project-management/scripts/test_project_selection_causality.py
+  - retirement-claims-0e74541faaea17f1
+  - retirement-claims-5eea26c4b2e8d73b
+  - retirement-claims-e26df1544f50ca65
+  - retirement-claims-8be0b17169cad039
+  - retirement-claims-1e6f23f693368dd1
+  - retirement-claims-74eb4eb689248080
+  - retirement-claims-67f12da02beadd94
+  - retirement-claims-e4a8e242c4f2b054
+  - retirement-claims-15cf30101aa97878
+  - retirement-claims-36ace5d4d1dc9c50
+  - retirement-claims-d88681a826cf4cc8
+  - final-6b766648b551b7d1
+  - retirement-claims-ef23fd9a4d6b752f
+  - retirement-claims-275fd7f49da60478
+  - retirement-claims-2d7ca24ff3102038
+  - retirement-claims-baadfad5a21688b9
+  - retirement-claims-a43e8ccc2839dfc2
+  - retirement-claims-baf89d9cedadfe02
+  - retirement-claims-79bbbdbb625e4cb7
+  - retirement-claims-bfb586d1d9a2a22a
+  - retirement-claims-f251aea1a81f74b3
+  - retirement-claims-c0e3faf47e4b5242
+  - retirement-claims-196fc5a00f43a2ff
+  - retirement-claims-f052706d229e1878
+  - retirement-claims-5b4478bb5ae2f894
+  - retirement-claims-f1dbe933c2886ca0
+  - retirement-claims-bee494ff92ffdf72
+  - retirement-claims-489fac8eef2a24aa
+  - retirement-claims-a023dbe2699418f6
+  - retirement-claims-cdb3bec24423a61c
+  - retirement-claims-1e00ff90a47a8284
+  - retirement-claims-bc58e20f1e3458d2
+  - retirement-claims-490cebafbcedf743
+  - retirement-claims-aaaf3d8671189465
+  - retirement-claims-8e88bb5468fe5722
+  - retirement-claims-7032ae2f4b5c75a5
+  - retirement-claims-29e51770ffa40feb
+  - retirement-claims-f1e9e0ecd647c133
+  - retirement-claims-d071ca045bf16fd3
+  - retirement-claims-1b8840fba5d06875
+  - retirement-claims-a6a1faa9b78b48a6
+  - retirement-claims-d02594af6f780475
+  - retirement-claims-c7963b813efb6d25
+  - retirement-claims-a838d00f7a4073db
+  - retirement-claims-932702ad06bf0b86
+  - retirement-claims-6b3dd72f26f84b7f
+  - retirement-claims-2c1c8e57e509565f
+  - retirement-claims-6e6081c4308cfc6f
+  - retirement-claims-b57422933a877573
+  - retirement-claims-acc2b0328bd71a01
+  - retirement-claims-b07126628bda8f64
+  - retirement-claims-e603110871d98581
+  - retirement-claims-137ad82b78856add
+  - retirement-claims-4e236d5740e52ca5
+  - retirement-claims-4689710328812346
+  - retirement-claims-819c8ab1a1ea6400
+  - retirement-claims-89e39b5c3f6f3fd0
+  - retirement-claims-c8c691137744b296
+  - retirement-claims-4913e7bae3e565c9
+  - retirement-claims-b586360f5d928feb
+  - retirement-claims-f6254a86aa0429b4
+  - retirement-claims-d5584b4320eb7c17
+  - final-caed20758fc9857f
+  - final-162f3aa68c8afe58
+  - final-290bf9ade038e048
+  - final-27a8a19ec300136c
+  - final-44e50978595154d4
+  - final-47634a8b5df5d3cf
+  - final-f12bc6a6dc63ca22
+  - public-ready-contention-e93b1ad00477cff1
+  - public-ready-contention-67bb9c3e4c7a3fcd
+  - public-ready-contention-85f117d2f8b88fa7
+  - public-ready-contention-e3943c3a6e35573a
+  - final-c1c24de7376cc951
+  - final-946214d510105344
+  - retirement-claims-af65834fcdd34c63
+  - retirement-claims-5f6e66c2d1407f47
+  - retirement-claims-a6c4d4d5ea87040f
+  - retirement-claims-1cd2f4446ae0f13d
+  - retirement-claims-74a2a641a5828c9f
+  - retirement-claims-1d310bbc4401c851
+  - retirement-claims-5425a01d17fc0b0f
+  - retirement-claims-609477c1372c47ab
+  - retirement-claims-53e1fa9ebb4aee1b
+  - retirement-claims-0b37afbad734b274
+  - retirement-claims-447350fe8bf28b6b
+  - retirement-claims-d9f8656f1bcfc867
+  - retirement-claims-6aa4c98f81070e67
+  - retirement-claims-7b8402f1e6e0f6ef
+  - retirement-claims-c1ab361d0ceea9ea
+  - retirement-claims-a6d7e45509a689f7
+  - retirement-claims-0dd6cf4577489973
+  - retirement-claims-5a06f96df23c11c5
+  - retirement-claims-d6b78a0687dd9fd8
+  - retirement-claims-c6712355f28c0be2
+  - retirement-claims-e3834e7ea061fad9
+  - retirement-claims-46ba8c1a8d59cc51
+  - retirement-claims-d90cc6f90a9d3061
+  - retirement-claims-691b71174a7d6f81
+  - retirement-claims-4f7f922b8e285538
+  - retirement-claims-fd82ce8aaeceb44e
+  - retirement-claims-9e14db8ecef4ad71
+  - retirement-claims-51e12854e669e5d9
+  - retirement-claims-e9c5b8a3c05f38a3
+  - final-b21c1393f48b0760
+  - retirement-claims-345a1f9e44c8623e
+  - retirement-claims-c50e2b792c792699
+  - retirement-claims-c657bdd38f59e6bb
+  - retirement-claims-0f788c46d92adc54
+  - retirement-claims-bbaf8dbc8eff0450
+  - retirement-claims-36829cd417aaabb8
+  - final-91c2a3249d2e09bd
+  - final-6429d4c7877d799a
+  - retirement-claims-79a324ea55bbf17e
+  - retirement-claims-d1ebc9d901f316c2
+  - retirement-claims-9435972683aecf51
+  - retirement-claims-ffa46b211521bb1e
+  - retirement-claims-afc9da2a127e9e65
+  - final-ee85a2171b67640d
+  - final-13e8e960d55c655a
+  - registry-runtime-d7bf610b33eca9e5
+  - retirement-claims-03fdbb4792ea3bea
+  - retirement-claims-f51b91f5066fcab5
+  - retirement-claims-d76782973fc8cada
+  - retirement-claims-3e2ceee7103dfeba
+  - retirement-claims-ba20150f1e6cf75f
+  - retirement-claims-5105c0476e9bb853
+  - retirement-claims-2a8542f96df5a966
+  - retirement-claims-3fbe4fa3a4d42db8
+  - retirement-claims-0e9d41bb9ac173d2
+  - retirement-claims-c549becbef3089f7
+  - retirement-claims-dc593265c265a967
+  - retirement-claims-0bc1d3841b8aaf74
+  - retirement-claims-72876b91e8283f20
+  - retirement-claims-6684d6c1bc1a04a4
+  - retirement-claims-a69428257c032e9e
+  - retirement-claims-c34ab674970d9bed
+  - retirement-claims-42f447a809c76598
+  - retirement-claims-46b9e34d26aa4b9e
+  - retirement-claims-0a4098ad9ba0de2d
+  - retirement-claims-4f0de2f3c3f051ea
+  - retirement-claims-3f62f3e84b926cce
+  - retirement-claims-820f2b6f43592490
+  - retirement-claims-463df8d711d27162
+  - retirement-claims-51f24723c24fae73
+  - retirement-claims-3c824413f9c05438
+  - retirement-claims-c3f379251600ba07
+  - retirement-claims-8a6514150374430a
+  - retirement-claims-e7f37d5c1336be91
+  - final-feeba738c7f806b6
+- path: skills/synthesis-project-management/scripts/retirement_runtime.py
   cases:
-  - project-resolver-fb8de005c106dfd8
-  - project-resolver-912ff2462ed4479c
-  - project-resolver-f13bde7bf7207053
-  - project-resolver-44c1d7adce2ff727
-  - project-resolver-f1eb6fa16494e0d8
-  - project-resolver-d748c8bcf7561aa5
-  - project-resolver-4f04866103fea2cb
-  - project-resolver-0a856eadf694e899
-  - project-resolver-1561b4def70ec053
-  - project-resolver-2a9e5ce9a561f8ae
-  - project-resolver-d50a11caaf687638
-  - project-resolver-2943f8f8e1b952c7
-  - project-resolver-b5394197dbe305ac
-  - project-resolver-1ccfe465b4573d04
-  - project-resolver-4707b0f5544c4430
-  - project-resolver-4d6fc0fc4c9121d0
-  - project-resolver-f69e725cf5961cc5
-  - project-resolver-b3d2501653e7c429
-  - project-resolver-dd4ea66ec190aae9
-  - project-resolver-dd321dd97131dbc1
-  - project-resolver-0b6c350ce91d12e2
-  - project-resolver-4d2022aae226480b
-  - project-resolver-af2e6429942360ee
-- path: skills/synthesis-project-management/scripts/test_project_resolution_scan_cost.py
-  cases:
-  - project-resolver-db3867d471322221
-  - project-resolver-5092cbb9ab846f80
-  - project-resolver-3acf2dbacbb0063e
-  - project-resolver-1e9ddd43d6a54649
-  - project-resolver-710cdd679db4b50d
-  - project-resolver-51b02abe40d47dfb
-  - project-resolver-5cc20208aa55e22c
-  - project-resolver-8808a263fd386385
-  - project-resolver-824117d1e5cf2a88
-  - project-resolver-6b89b917f9ad099c
-  - project-resolver-2b9b7a8c8ce19963
-  - project-resolver-a791158d96a46a1d
-  - project-resolver-f4f566916d06d781
-  - project-resolver-d6ad619abe7fea20
-- path: skills/synthesis-project-management/SKILL.md
+  - retirement-claims-0e74541faaea17f1
+  - retirement-claims-5eea26c4b2e8d73b
+  - retirement-claims-e26df1544f50ca65
+  - retirement-claims-8be0b17169cad039
+  - retirement-claims-1e6f23f693368dd1
+  - retirement-claims-74eb4eb689248080
+  - retirement-claims-67f12da02beadd94
+  - retirement-claims-e4a8e242c4f2b054
+  - retirement-claims-15cf30101aa97878
+  - retirement-claims-36ace5d4d1dc9c50
+  - retirement-claims-d88681a826cf4cc8
+  - final-6b766648b551b7d1
+  - retirement-claims-ef23fd9a4d6b752f
+  - retirement-claims-275fd7f49da60478
+  - retirement-claims-2d7ca24ff3102038
+  - retirement-claims-baadfad5a21688b9
+  - retirement-claims-a43e8ccc2839dfc2
+  - retirement-claims-baf89d9cedadfe02
+  - retirement-claims-79bbbdbb625e4cb7
+  - retirement-claims-bfb586d1d9a2a22a
+  - retirement-claims-f251aea1a81f74b3
+  - retirement-claims-c0e3faf47e4b5242
+  - retirement-claims-196fc5a00f43a2ff
+  - retirement-claims-f052706d229e1878
+  - retirement-claims-5b4478bb5ae2f894
+  - retirement-claims-f1dbe933c2886ca0
+  - retirement-claims-bee494ff92ffdf72
+  - retirement-claims-489fac8eef2a24aa
+  - retirement-claims-a023dbe2699418f6
+  - retirement-claims-cdb3bec24423a61c
+  - retirement-claims-1e00ff90a47a8284
+  - retirement-claims-bc58e20f1e3458d2
+  - retirement-claims-490cebafbcedf743
+  - retirement-claims-aaaf3d8671189465
+  - retirement-claims-8e88bb5468fe5722
+  - retirement-claims-7032ae2f4b5c75a5
+  - retirement-claims-29e51770ffa40feb
+  - retirement-claims-f1e9e0ecd647c133
+  - retirement-claims-d071ca045bf16fd3
+  - retirement-claims-1b8840fba5d06875
+  - retirement-claims-a6a1faa9b78b48a6
+  - retirement-claims-d02594af6f780475
+  - retirement-claims-c7963b813efb6d25
+  - retirement-claims-a838d00f7a4073db
+  - retirement-claims-932702ad06bf0b86
+  - retirement-claims-6b3dd72f26f84b7f
+  - retirement-claims-2c1c8e57e509565f
+  - retirement-claims-6e6081c4308cfc6f
+  - retirement-claims-b57422933a877573
+  - retirement-claims-acc2b0328bd71a01
+  - retirement-claims-b07126628bda8f64
+  - retirement-claims-e603110871d98581
+  - retirement-claims-137ad82b78856add
+  - retirement-claims-4e236d5740e52ca5
+  - retirement-claims-4689710328812346
+  - retirement-claims-819c8ab1a1ea6400
+  - retirement-claims-89e39b5c3f6f3fd0
+  - retirement-claims-c8c691137744b296
+  - retirement-claims-4913e7bae3e565c9
+  - retirement-claims-b586360f5d928feb
+  - retirement-claims-f6254a86aa0429b4
+  - retirement-claims-d5584b4320eb7c17
+  - final-caed20758fc9857f
+  - final-162f3aa68c8afe58
+  - final-290bf9ade038e048
+  - final-27a8a19ec300136c
+  - final-44e50978595154d4
+  - final-47634a8b5df5d3cf
+  - final-f12bc6a6dc63ca22
+  - public-ready-contention-e93b1ad00477cff1
+  - public-ready-contention-67bb9c3e4c7a3fcd
+  - public-ready-contention-85f117d2f8b88fa7
+  - public-ready-contention-e3943c3a6e35573a
+  - final-c1c24de7376cc951
+  - final-946214d510105344
+  - retirement-claims-af65834fcdd34c63
+  - retirement-claims-5f6e66c2d1407f47
+  - retirement-claims-a6c4d4d5ea87040f
+  - retirement-claims-1cd2f4446ae0f13d
+  - retirement-claims-74a2a641a5828c9f
+  - retirement-claims-1d310bbc4401c851
+  - retirement-claims-5425a01d17fc0b0f
+  - retirement-claims-609477c1372c47ab
+  - retirement-claims-53e1fa9ebb4aee1b
+  - retirement-claims-0b37afbad734b274
+  - retirement-claims-447350fe8bf28b6b
+  - retirement-claims-d9f8656f1bcfc867
+  - retirement-claims-6aa4c98f81070e67
+  - retirement-claims-7b8402f1e6e0f6ef
+  - retirement-claims-c1ab361d0ceea9ea
+  - retirement-claims-a6d7e45509a689f7
+  - retirement-claims-0dd6cf4577489973
+  - retirement-claims-5a06f96df23c11c5
+  - retirement-claims-d6b78a0687dd9fd8
+  - retirement-claims-c6712355f28c0be2
+  - retirement-claims-e3834e7ea061fad9
+  - retirement-claims-46ba8c1a8d59cc51
+  - retirement-claims-d90cc6f90a9d3061
+  - retirement-claims-691b71174a7d6f81
+  - retirement-claims-4f7f922b8e285538
+  - retirement-claims-fd82ce8aaeceb44e
+  - retirement-claims-9e14db8ecef4ad71
+  - retirement-claims-51e12854e669e5d9
+  - retirement-claims-e9c5b8a3c05f38a3
+  - final-b21c1393f48b0760
+  - retirement-claims-345a1f9e44c8623e
+  - retirement-claims-c50e2b792c792699
+  - retirement-claims-c657bdd38f59e6bb
+  - retirement-claims-0f788c46d92adc54
+  - retirement-claims-bbaf8dbc8eff0450
+  - retirement-claims-36829cd417aaabb8
+  - final-91c2a3249d2e09bd
+  - final-6429d4c7877d799a
+  - retirement-claims-79a324ea55bbf17e
+  - retirement-claims-d1ebc9d901f316c2
+  - retirement-claims-9435972683aecf51
+  - retirement-claims-ffa46b211521bb1e
+  - retirement-claims-afc9da2a127e9e65
+  - final-ee85a2171b67640d
+  - final-13e8e960d55c655a
+  - registry-runtime-d7bf610b33eca9e5
+  - retirement-claims-03fdbb4792ea3bea
+  - retirement-claims-f51b91f5066fcab5
+  - retirement-claims-d76782973fc8cada
+  - retirement-claims-3e2ceee7103dfeba
+  - retirement-claims-ba20150f1e6cf75f
+  - retirement-claims-5105c0476e9bb853
+  - retirement-claims-2a8542f96df5a966
+  - retirement-claims-3fbe4fa3a4d42db8
+  - retirement-claims-0e9d41bb9ac173d2
+  - retirement-claims-c549becbef3089f7
+  - retirement-claims-dc593265c265a967
+  - retirement-claims-0bc1d3841b8aaf74
+  - retirement-claims-72876b91e8283f20
+  - retirement-claims-6684d6c1bc1a04a4
+  - retirement-claims-a69428257c032e9e
+  - retirement-claims-c34ab674970d9bed
+  - retirement-claims-42f447a809c76598
+  - retirement-claims-46b9e34d26aa4b9e
+  - retirement-claims-0a4098ad9ba0de2d
+  - retirement-claims-4f0de2f3c3f051ea
+  - retirement-claims-3f62f3e84b926cce
+  - retirement-claims-820f2b6f43592490
+  - retirement-claims-463df8d711d27162
+  - retirement-claims-51f24723c24fae73
+  - retirement-claims-3c824413f9c05438
+  - retirement-claims-c3f379251600ba07
+  - retirement-claims-8a6514150374430a
+  - retirement-claims-e7f37d5c1336be91
+  - final-feeba738c7f806b6
+- path: skills/synthesis-project-management/scripts/test_retirement_claim_read.py
   cases: &id001
-  - project-resolver-db3867d471322221
-  - project-resolver-5092cbb9ab846f80
-  - project-resolver-3acf2dbacbb0063e
-  - project-resolver-1e9ddd43d6a54649
-  - project-resolver-710cdd679db4b50d
-  - project-resolver-51b02abe40d47dfb
-  - project-resolver-5cc20208aa55e22c
-  - project-resolver-8808a263fd386385
-  - project-resolver-824117d1e5cf2a88
-  - project-resolver-6b89b917f9ad099c
-  - project-resolver-2b9b7a8c8ce19963
-  - project-resolver-a791158d96a46a1d
-  - project-resolver-f4f566916d06d781
-  - project-resolver-d6ad619abe7fea20
-  - project-resolver-fb8de005c106dfd8
-  - project-resolver-912ff2462ed4479c
-  - project-resolver-f13bde7bf7207053
-  - project-resolver-44c1d7adce2ff727
-  - project-resolver-f1eb6fa16494e0d8
-  - project-resolver-d748c8bcf7561aa5
-  - project-resolver-4f04866103fea2cb
-  - project-resolver-0a856eadf694e899
-  - project-resolver-1561b4def70ec053
-  - project-resolver-2a9e5ce9a561f8ae
-  - project-resolver-d50a11caaf687638
-  - project-resolver-2943f8f8e1b952c7
-  - project-resolver-b5394197dbe305ac
-  - project-resolver-1ccfe465b4573d04
-  - project-resolver-4707b0f5544c4430
-  - project-resolver-4d6fc0fc4c9121d0
-  - project-resolver-f69e725cf5961cc5
-  - project-resolver-b3d2501653e7c429
-  - project-resolver-dd4ea66ec190aae9
-  - project-resolver-dd321dd97131dbc1
-  - project-resolver-0b6c350ce91d12e2
-  - project-resolver-4d2022aae226480b
-  - project-resolver-af2e6429942360ee
+  - retirement-claims-0e74541faaea17f1
+  - retirement-claims-5eea26c4b2e8d73b
+  - retirement-claims-e26df1544f50ca65
+  - retirement-claims-8be0b17169cad039
+  - retirement-claims-1e6f23f693368dd1
+  - retirement-claims-74eb4eb689248080
+  - retirement-claims-67f12da02beadd94
+  - retirement-claims-e4a8e242c4f2b054
+  - retirement-claims-15cf30101aa97878
+  - retirement-claims-36ace5d4d1dc9c50
+  - retirement-claims-d88681a826cf4cc8
+- path: skills/synthesis-project-management/references/parallel-agent-protocol.md
+  cases: *id001
+- path: skills/synthesis-project-management/SKILL.md
+  cases: *id001
 - path: .claude-plugin/plugin.json
   cases: *id001
 - path: .codex-plugin/plugin.json
@@ -3727,6 +3610,135 @@ changed_surfaces:
   - project-resolver-0b6c350ce91d12e2
   - project-resolver-4d2022aae226480b
   - project-resolver-af2e6429942360ee
+  - retirement-claims-0e74541faaea17f1
+  - retirement-claims-5eea26c4b2e8d73b
+  - retirement-claims-e26df1544f50ca65
+  - retirement-claims-8be0b17169cad039
+  - retirement-claims-1e6f23f693368dd1
+  - retirement-claims-74eb4eb689248080
+  - retirement-claims-67f12da02beadd94
+  - retirement-claims-e4a8e242c4f2b054
+  - retirement-claims-15cf30101aa97878
+  - retirement-claims-36ace5d4d1dc9c50
+  - retirement-claims-d88681a826cf4cc8
+  - retirement-claims-ef23fd9a4d6b752f
+  - retirement-claims-275fd7f49da60478
+  - retirement-claims-2d7ca24ff3102038
+  - retirement-claims-baadfad5a21688b9
+  - retirement-claims-a43e8ccc2839dfc2
+  - retirement-claims-baf89d9cedadfe02
+  - retirement-claims-79bbbdbb625e4cb7
+  - retirement-claims-bfb586d1d9a2a22a
+  - retirement-claims-f251aea1a81f74b3
+  - retirement-claims-c0e3faf47e4b5242
+  - retirement-claims-196fc5a00f43a2ff
+  - retirement-claims-f052706d229e1878
+  - retirement-claims-5b4478bb5ae2f894
+  - retirement-claims-f1dbe933c2886ca0
+  - retirement-claims-bee494ff92ffdf72
+  - retirement-claims-489fac8eef2a24aa
+  - retirement-claims-a023dbe2699418f6
+  - retirement-claims-cdb3bec24423a61c
+  - retirement-claims-1e00ff90a47a8284
+  - retirement-claims-bc58e20f1e3458d2
+  - retirement-claims-490cebafbcedf743
+  - retirement-claims-aaaf3d8671189465
+  - retirement-claims-8e88bb5468fe5722
+  - retirement-claims-7032ae2f4b5c75a5
+  - retirement-claims-29e51770ffa40feb
+  - retirement-claims-f1e9e0ecd647c133
+  - retirement-claims-d071ca045bf16fd3
+  - retirement-claims-1b8840fba5d06875
+  - retirement-claims-a6a1faa9b78b48a6
+  - retirement-claims-d02594af6f780475
+  - retirement-claims-c7963b813efb6d25
+  - retirement-claims-a838d00f7a4073db
+  - retirement-claims-932702ad06bf0b86
+  - retirement-claims-6b3dd72f26f84b7f
+  - retirement-claims-2c1c8e57e509565f
+  - retirement-claims-6e6081c4308cfc6f
+  - retirement-claims-b57422933a877573
+  - retirement-claims-acc2b0328bd71a01
+  - retirement-claims-b07126628bda8f64
+  - retirement-claims-e603110871d98581
+  - retirement-claims-137ad82b78856add
+  - retirement-claims-4e236d5740e52ca5
+  - retirement-claims-4689710328812346
+  - retirement-claims-819c8ab1a1ea6400
+  - retirement-claims-89e39b5c3f6f3fd0
+  - retirement-claims-c8c691137744b296
+  - retirement-claims-4913e7bae3e565c9
+  - retirement-claims-b586360f5d928feb
+  - retirement-claims-f6254a86aa0429b4
+  - retirement-claims-d5584b4320eb7c17
+  - retirement-claims-af65834fcdd34c63
+  - retirement-claims-5f6e66c2d1407f47
+  - retirement-claims-a6c4d4d5ea87040f
+  - retirement-claims-1cd2f4446ae0f13d
+  - retirement-claims-74a2a641a5828c9f
+  - retirement-claims-1d310bbc4401c851
+  - retirement-claims-5425a01d17fc0b0f
+  - retirement-claims-609477c1372c47ab
+  - retirement-claims-53e1fa9ebb4aee1b
+  - retirement-claims-0b37afbad734b274
+  - retirement-claims-447350fe8bf28b6b
+  - retirement-claims-d9f8656f1bcfc867
+  - retirement-claims-6aa4c98f81070e67
+  - retirement-claims-7b8402f1e6e0f6ef
+  - retirement-claims-c1ab361d0ceea9ea
+  - retirement-claims-a6d7e45509a689f7
+  - retirement-claims-0dd6cf4577489973
+  - retirement-claims-5a06f96df23c11c5
+  - retirement-claims-d6b78a0687dd9fd8
+  - retirement-claims-c6712355f28c0be2
+  - retirement-claims-e3834e7ea061fad9
+  - retirement-claims-46ba8c1a8d59cc51
+  - retirement-claims-d90cc6f90a9d3061
+  - retirement-claims-691b71174a7d6f81
+  - retirement-claims-4f7f922b8e285538
+  - retirement-claims-fd82ce8aaeceb44e
+  - retirement-claims-9e14db8ecef4ad71
+  - retirement-claims-51e12854e669e5d9
+  - retirement-claims-e9c5b8a3c05f38a3
+  - retirement-claims-345a1f9e44c8623e
+  - retirement-claims-c50e2b792c792699
+  - retirement-claims-c657bdd38f59e6bb
+  - retirement-claims-0f788c46d92adc54
+  - retirement-claims-bbaf8dbc8eff0450
+  - retirement-claims-36829cd417aaabb8
+  - retirement-claims-79a324ea55bbf17e
+  - retirement-claims-d1ebc9d901f316c2
+  - retirement-claims-9435972683aecf51
+  - retirement-claims-ffa46b211521bb1e
+  - retirement-claims-afc9da2a127e9e65
+  - retirement-claims-03fdbb4792ea3bea
+  - retirement-claims-f51b91f5066fcab5
+  - retirement-claims-d76782973fc8cada
+  - retirement-claims-3e2ceee7103dfeba
+  - retirement-claims-ba20150f1e6cf75f
+  - retirement-claims-5105c0476e9bb853
+  - retirement-claims-2a8542f96df5a966
+  - retirement-claims-3fbe4fa3a4d42db8
+  - retirement-claims-0e9d41bb9ac173d2
+  - retirement-claims-c549becbef3089f7
+  - retirement-claims-dc593265c265a967
+  - retirement-claims-0bc1d3841b8aaf74
+  - retirement-claims-72876b91e8283f20
+  - retirement-claims-6684d6c1bc1a04a4
+  - retirement-claims-a69428257c032e9e
+  - retirement-claims-c34ab674970d9bed
+  - retirement-claims-42f447a809c76598
+  - retirement-claims-46b9e34d26aa4b9e
+  - retirement-claims-0a4098ad9ba0de2d
+  - retirement-claims-4f0de2f3c3f051ea
+  - retirement-claims-3f62f3e84b926cce
+  - retirement-claims-820f2b6f43592490
+  - retirement-claims-463df8d711d27162
+  - retirement-claims-51f24723c24fae73
+  - retirement-claims-3c824413f9c05438
+  - retirement-claims-c3f379251600ba07
+  - retirement-claims-8a6514150374430a
+  - retirement-claims-e7f37d5c1336be91
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -22104,3 +22116,680 @@ cases:
   expected_status: pass
   fixture: ../synthesis-project-management/scripts/test_project_selection_causality.py::test_unrelated_linked_worktree_advance_keeps_selection
   motivating_defect: 'Verify fresh project selection and bounded dirty-file scanning: test_unrelated_linked_worktree_advance_keeps_selection'
+- id: retirement-claims-0e74541faaea17f1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_oversized_board_retirement_narrows_through_row_sized_read
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_oversized_board_retirement_narrows_through_row_sized_read'
+- id: retirement-claims-5eea26c4b2e8d73b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_released_owner_lets_any_caller_finish_retained_retirement
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_released_owner_lets_any_caller_finish_retained_retirement'
+- id: retirement-claims-e26df1544f50ca65
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_absent_owner_row_finishes_without_narrowing
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_absent_owner_row_finishes_without_narrowing'
+- id: retirement-claims-8be0b17169cad039
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_active_owner_still_requires_its_native_proof
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_active_owner_still_requires_its_native_proof'
+- id: retirement-claims-1e6f23f693368dd1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[empty]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[empty]'
+- id: retirement-claims-74eb4eb689248080
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[absent-active]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[absent-active]'
+- id: retirement-claims-67f12da02beadd94
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[non-boolean]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[non-boolean]'
+- id: retirement-claims-e4a8e242c4f2b054
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[missing-workspaces]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[missing-workspaces]'
+- id: retirement-claims-15cf30101aa97878
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[extra-field]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[extra-field]'
+- id: retirement-claims-36ace5d4d1dc9c50
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_shape_is_exact[not-json]
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_shape_is_exact[not-json]'
+- id: retirement-claims-d88681a826cf4cc8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_claim_read.py::test_row_projection_refuses_unreadable_board_and_empty_selector
+  motivating_defect: 'Bound retirement claim reads to the owner row and finish closed-owner retirements: test_row_projection_refuses_unreadable_board_and_empty_selector'
+- id: retirement-claims-ef23fd9a4d6b752f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retires_squash_merged_worktree_by_identical_tree
+  motivating_defect: 'Inspected changed-owner contract: retires squash merged worktree by identical tree'
+- id: retirement-claims-275fd7f49da60478
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_squash_merged_worktree_with_extra_commits
+  motivating_defect: 'Inspected changed-owner contract: refuses squash merged worktree with extra commits'
+- id: retirement-claims-2d7ca24ff3102038
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_uses_verified_base_despite_stale_branch_upstream
+  motivating_defect: 'Inspected changed-owner contract: retirement uses verified base despite stale branch upstream'
+- id: retirement-claims-baadfad5a21688b9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_resumed_retirement_uses_intent_base_despite_stale_upstream
+  motivating_defect: 'Inspected changed-owner contract: resumed retirement uses intent base despite stale upstream'
+- id: retirement-claims-a43e8ccc2839dfc2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_unmerged_branch
+  motivating_defect: 'Inspected changed-owner contract: refuses unmerged branch'
+- id: retirement-claims-baf89d9cedadfe02
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_dirty_worktree
+  motivating_defect: 'Inspected changed-owner contract: refuses dirty worktree'
+- id: retirement-claims-79bbbdbb625e4cb7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_ignored_only_worktree_and_names_files
+  motivating_defect: 'Inspected changed-owner contract: refuses ignored only worktree and names files'
+- id: retirement-claims-bfb586d1d9a2a22a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_main_worktree_and_wrong_repository
+  motivating_defect: 'Inspected changed-owner contract: refuses main worktree and wrong repository'
+- id: retirement-claims-f251aea1a81f74b3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_refuses_when_cwd_is_inside_target
+  motivating_defect: 'Inspected changed-owner contract: refuses when cwd is inside target'
+- id: retirement-claims-c0e3faf47e4b5242
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_mismatch_refuses_named_and_detached_worktrees
+  motivating_defect: 'Inspected changed-owner contract: branch mismatch refuses named and detached worktrees'
+- id: retirement-claims-196fc5a00f43a2ff
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retires_verified_detached_worktree_without_branch_mutation[False]
+  motivating_defect: 'Inspected changed-owner contract: retires verified detached worktree without branch mutation
+    [False]'
+- id: retirement-claims-f052706d229e1878
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retires_verified_detached_worktree_without_branch_mutation[True]
+  motivating_defect: 'Inspected changed-owner contract: retires verified detached worktree without branch mutation
+    [True]'
+- id: retirement-claims-5b4478bb5ae2f894
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_unmerged_detached_worktree_is_preserved
+  motivating_defect: 'Inspected changed-owner contract: unmerged detached worktree is preserved'
+- id: retirement-claims-f1dbe933c2886ca0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_no_fetch_escape_hatch_is_rejected
+  motivating_defect: 'Inspected changed-owner contract: no fetch escape hatch is rejected'
+- id: retirement-claims-bee494ff92ffdf72
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_local_verification_base_is_rejected
+  motivating_defect: 'Inspected changed-owner contract: local verification base is rejected'
+- id: retirement-claims-489fac8eef2a24aa
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_ambiguous_short_base_refusal_carries_git_diagnosis
+  motivating_defect: 'Inspected changed-owner contract: ambiguous short base refusal carries git diagnosis'
+- id: retirement-claims-a023dbe2699418f6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_revision_expression_base_is_rejected
+  motivating_defect: 'Inspected changed-owner contract: revision expression base is rejected'
+- id: retirement-claims-cdb3bec24423a61c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_reconciles_session_manifest_and_invalidates_receipt
+  motivating_defect: 'Inspected changed-owner contract: retirement reconciles session manifest and invalidates receipt'
+- id: retirement-claims-1e00ff90a47a8284
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_invalid_manifest_blocks_retirement_before_worktree_removal
+  motivating_defect: 'Inspected changed-owner contract: invalid manifest blocks retirement before worktree removal'
+- id: retirement-claims-bc58e20f1e3458d2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_invalid_retirement_history_blocks_removal
+  motivating_defect: 'Inspected changed-owner contract: invalid retirement history blocks removal'
+- id: retirement-claims-490cebafbcedf743
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_staged_reconciler_survives_source_removal
+  motivating_defect: 'Inspected changed-owner contract: staged reconciler survives source removal'
+- id: retirement-claims-aaaf3d8671189465
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_helper_invoked_from_target_completes_after_target_removal
+  motivating_defect: 'Inspected changed-owner contract: helper invoked from target completes after target removal'
+- id: retirement-claims-8e88bb5468fe5722
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_helper_resumes_from_prepared_intent_after_interruption
+  motivating_defect: 'Inspected changed-owner contract: helper resumes from prepared intent after interruption'
+- id: retirement-claims-7032ae2f4b5c75a5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_resume_uses_intent_pinned_reconciler_after_source_changes
+  motivating_defect: 'Inspected changed-owner contract: resume uses intent pinned reconciler after source changes'
+- id: retirement-claims-29e51770ffa40feb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_resume_refuses_remote_different_from_intent
+  motivating_defect: 'Inspected changed-owner contract: resume refuses remote different from intent'
+- id: retirement-claims-f1e9e0ecd647c133
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_remote_branch_advance_blocks_delete
+  motivating_defect: 'Inspected changed-owner contract: remote branch advance blocks delete'
+- id: retirement-claims-d071ca045bf16fd3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_local_branch_delete_failure_never_touches_remote
+  motivating_defect: 'Inspected changed-owner contract: local branch delete failure never touches remote'
+- id: retirement-claims-1b8840fba5d06875
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_remote_delete_uses_compare_and_delete_lease
+  motivating_defect: 'Inspected changed-owner contract: remote delete uses compare and delete lease'
+- id: retirement-claims-a6a1faa9b78b48a6
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_local_branch_advance_at_delete_boundary_keeps_branch_and_remote
+  motivating_defect: 'Inspected changed-owner contract: local branch advance at delete boundary keeps branch and
+    remote'
+- id: retirement-claims-d02594af6f780475
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_config_lock_contention_preserves_local_branch_and_config
+  motivating_defect: 'Inspected changed-owner contract: config lock contention preserves local branch and config'
+- id: retirement-claims-c7963b813efb6d25
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_cleanup_retains_unverified_local_state[checked-out]
+  motivating_defect: 'Inspected changed-owner contract: branch cleanup retains unverified local state [checked-out]'
+- id: retirement-claims-a838d00f7a4073db
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_cleanup_retains_unverified_local_state[symbolic]
+  motivating_defect: 'Inspected changed-owner contract: branch cleanup retains unverified local state [symbolic]'
+- id: retirement-claims-932702ad06bf0b86
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_cleanup_retains_unverified_local_state[ref-locked]
+  motivating_defect: 'Inspected changed-owner contract: branch cleanup retains unverified local state [ref-locked]'
+- id: retirement-claims-6b3dd72f26f84b7f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_branch_cleanup_retains_unverified_local_state[wrong-base]
+  motivating_defect: 'Inspected changed-owner contract: branch cleanup retains unverified local state [wrong-base]'
+- id: retirement-claims-2c1c8e57e509565f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_delete_refuses_checkout_created_after_helper_snapshot[worktree-add]
+  motivating_defect: 'Inspected changed-owner contract: native delete refuses checkout created after helper snapshot
+    [worktree-add]'
+- id: retirement-claims-6e6081c4308cfc6f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_delete_refuses_checkout_created_after_helper_snapshot[switch]
+  motivating_defect: 'Inspected changed-owner contract: native delete refuses checkout created after helper snapshot
+    [switch]'
+- id: retirement-claims-b57422933a877573
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_delete_uses_pinned_base_if_branch_and_remote_base_advance
+  motivating_defect: 'Inspected changed-owner contract: native delete uses pinned base if branch and remote base
+    advance'
+- id: retirement-claims-acc2b0328bd71a01
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_selection_handles_upstream_variants_without_persistent_override[remote]
+  motivating_defect: 'Inspected changed-owner contract: native base selection handles upstream variants without
+    persistent override [remote]'
+- id: retirement-claims-b07126628bda8f64
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_selection_handles_upstream_variants_without_persistent_override[local]
+  motivating_defect: 'Inspected changed-owner contract: native base selection handles upstream variants without
+    persistent override [local]'
+- id: retirement-claims-e603110871d98581
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_selection_handles_upstream_variants_without_persistent_override[none]
+  motivating_defect: 'Inspected changed-owner contract: native base selection handles upstream variants without
+    persistent override [none]'
+- id: retirement-claims-137ad82b78856add
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_selection_handles_upstream_variants_without_persistent_override[multiple]
+  motivating_defect: 'Inspected changed-owner contract: native base selection handles upstream variants without
+    persistent override [multiple]'
+- id: retirement-claims-4e236d5740e52ca5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_native_base_pin_cleanup_cannot_delete_a_changed_pin
+  motivating_defect: 'Inspected changed-owner contract: native base pin cleanup cannot delete a changed pin'
+- id: retirement-claims-4689710328812346
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_advances_behind_main_worktree
+  motivating_defect: 'Inspected changed-owner contract: retirement advances behind main worktree'
+- id: retirement-claims-819c8ab1a1ea6400
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_dirty_main_worktree
+  motivating_defect: 'Inspected changed-owner contract: retirement refuses dirty main worktree'
+- id: retirement-claims-89e39b5c3f6f3fd0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_ahead_main_worktree
+  motivating_defect: 'Inspected changed-owner contract: retirement refuses ahead main worktree'
+- id: retirement-claims-c8c691137744b296
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_refuses_diverged_main_worktree
+  motivating_defect: 'Inspected changed-owner contract: retirement refuses diverged main worktree'
+- id: retirement-claims-4913e7bae3e565c9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retirement_leaves_main_on_other_branch_alone
+  motivating_defect: 'Inspected changed-owner contract: retirement leaves main on other branch alone'
+- id: retirement-claims-b586360f5d928feb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_under_retired_matches_tree_cells_only
+  motivating_defect: 'Inspected changed-owner contract: under retired matches tree cells only'
+- id: retirement-claims-f6254a86aa0429b4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retire_narrows_caller_cells_under_removed_worktree
+  motivating_defect: 'Inspected changed-owner contract: retire narrows caller cells under removed worktree'
+- id: retirement-claims-d5584b4320eb7c17
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retire_worktree.py::test_retire_without_session_identity_warns_not_fails
+  motivating_defect: 'Inspected changed-owner contract: retire without session identity warns not fails'
+- id: retirement-claims-af65834fcdd34c63
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_clients_complete_own_source_without_bytecode_side_effects[native0]
+  motivating_defect: 'Inspected changed-owner contract: native clients complete own source without bytecode side
+    effects [native0]'
+- id: retirement-claims-5f6e66c2d1407f47
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_clients_complete_own_source_without_bytecode_side_effects[native1]
+  motivating_defect: 'Inspected changed-owner contract: native clients complete own source without bytecode side
+    effects [native1]'
+- id: retirement-claims-a6c4d4d5ea87040f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_clients_complete_own_source_without_bytecode_side_effects[native2]
+  motivating_defect: 'Inspected changed-owner contract: native clients complete own source without bytecode side
+    effects [native2]'
+- id: retirement-claims-1cd2f4446ae0f13d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_bad_source_dependency_refuses_before_removal[missing]
+  motivating_defect: 'Inspected changed-owner contract: bad source dependency refuses before removal [missing]'
+- id: retirement-claims-74a2a641a5828c9f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_bad_source_dependency_refuses_before_removal[symlink]
+  motivating_defect: 'Inspected changed-owner contract: bad source dependency refuses before removal [symlink]'
+- id: retirement-claims-1d310bbc4401c851
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_bad_source_dependency_refuses_before_removal[hardlink]
+  motivating_defect: 'Inspected changed-owner contract: bad source dependency refuses before removal [hardlink]'
+- id: retirement-claims-5425a01d17fc0b0f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_bad_source_dependency_refuses_before_removal[writable]
+  motivating_defect: 'Inspected changed-owner contract: bad source dependency refuses before removal [writable]'
+- id: retirement-claims-609477c1372c47ab
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_bad_source_dependency_refuses_before_removal[fifo]
+  motivating_defect: 'Inspected changed-owner contract: bad source dependency refuses before removal [fifo]'
+- id: retirement-claims-53e1fa9ebb4aee1b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[missing]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [missing]'
+- id: retirement-claims-0b37afbad734b274
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[symlink]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [symlink]'
+- id: retirement-claims-447350fe8bf28b6b
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[hardlink]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [hardlink]'
+- id: retirement-claims-d9f8656f1bcfc867
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[writable]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [writable]'
+- id: retirement-claims-6aa4c98f81070e67
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[fifo]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [fifo]'
+- id: retirement-claims-7b8402f1e6e0f6ef
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[bytes]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [bytes]'
+- id: retirement-claims-c1ab361d0ceea9ea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[extra]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [extra]'
+- id: retirement-claims-a6d7e45509a689f7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_runtime_refuses_changed_members[directory-link]
+  motivating_defect: 'Inspected changed-owner contract: retained runtime refuses changed members [directory-link]'
+- id: retirement-claims-0dd6cf4577489973
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_preflight_refuses_wrong_owner_without_removing_target[wrong-native]
+  motivating_defect: 'Inspected changed-owner contract: native preflight refuses wrong owner without removing target
+    [wrong-native]'
+- id: retirement-claims-5a06f96df23c11c5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_preflight_refuses_wrong_owner_without_removing_target[missing-identity]
+  motivating_defect: 'Inspected changed-owner contract: native preflight refuses wrong owner without removing target
+    [missing-identity]'
+- id: retirement-claims-d6b78a0687dd9fd8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_preflight_refuses_wrong_owner_without_removing_target[wrong-selector]
+  motivating_defect: 'Inspected changed-owner contract: native preflight refuses wrong owner without removing target
+    [wrong-selector]'
+- id: retirement-claims-c6712355f28c0be2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_native_preflight_refuses_wrong_owner_without_removing_target[board-alias]
+  motivating_defect: 'Inspected changed-owner contract: native preflight refuses wrong owner without removing target
+    [board-alias]'
+- id: retirement-claims-e3834e7ea061fad9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_real_interruption_retains_runtime_and_exact_owner_retry[SIGTERM]
+  motivating_defect: 'Inspected changed-owner contract: real interruption retains runtime and exact owner retry
+    [SIGTERM]'
+- id: retirement-claims-46ba8c1a8d59cc51
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_real_interruption_retains_runtime_and_exact_owner_retry[SIGINT]
+  motivating_defect: 'Inspected changed-owner contract: real interruption retains runtime and exact owner retry
+    [SIGINT]'
+- id: retirement-claims-d90cc6f90a9d3061
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_staged_runtime_store_alias_is_refused
+  motivating_defect: 'Inspected changed-owner contract: staged runtime store alias is refused'
+- id: retirement-claims-691b71174a7d6f81
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_capacities_are_enforced
+  motivating_defect: 'Inspected changed-owner contract: runtime capacities are enforced'
+- id: retirement-claims-4f7f922b8e285538
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_late_runtime_damage_remains_incomplete_and_never_adopts_live_source[bytes-prepare]
+  motivating_defect: 'Inspected changed-owner contract: late runtime damage remains incomplete and never adopts
+    live source [bytes-prepare]'
+- id: retirement-claims-fd82ce8aaeceb44e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_late_runtime_damage_remains_incomplete_and_never_adopts_live_source[bytes-complete]
+  motivating_defect: 'Inspected changed-owner contract: late runtime damage remains incomplete and never adopts
+    live source [bytes-complete]'
+- id: retirement-claims-9e14db8ecef4ad71
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_late_runtime_damage_remains_incomplete_and_never_adopts_live_source[missing-prepare]
+  motivating_defect: 'Inspected changed-owner contract: late runtime damage remains incomplete and never adopts
+    live source [missing-prepare]'
+- id: retirement-claims-51e12854e669e5d9
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_late_runtime_damage_remains_incomplete_and_never_adopts_live_source[missing-complete]
+  motivating_defect: 'Inspected changed-owner contract: late runtime damage remains incomplete and never adopts
+    live source [missing-complete]'
+- id: retirement-claims-e9c5b8a3c05f38a3
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_lifecycle_contention_refuses_boundedly_and_retry_completes
+  motivating_defect: 'Inspected changed-owner contract: lifecycle contention refuses boundedly and retry completes'
+- id: retirement-claims-345a1f9e44c8623e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_bootstrap_refuses_unsafe_owner[missing]
+  motivating_defect: 'Inspected changed-owner contract: runtime bootstrap refuses unsafe owner [missing]'
+- id: retirement-claims-c50e2b792c792699
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_bootstrap_refuses_unsafe_owner[symlink]
+  motivating_defect: 'Inspected changed-owner contract: runtime bootstrap refuses unsafe owner [symlink]'
+- id: retirement-claims-c657bdd38f59e6bb
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_bootstrap_refuses_unsafe_owner[hardlink]
+  motivating_defect: 'Inspected changed-owner contract: runtime bootstrap refuses unsafe owner [hardlink]'
+- id: retirement-claims-0f788c46d92adc54
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_bootstrap_refuses_unsafe_owner[writable]
+  motivating_defect: 'Inspected changed-owner contract: runtime bootstrap refuses unsafe owner [writable]'
+- id: retirement-claims-bbaf8dbc8eff0450
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_runtime_bootstrap_refuses_unsafe_owner[fifo]
+  motivating_defect: 'Inspected changed-owner contract: runtime bootstrap refuses unsafe owner [fifo]'
+- id: retirement-claims-36829cd417aaabb8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_state_preflight_checks_actual_ancestor_identity
+  motivating_defect: 'Inspected changed-owner contract: state preflight checks actual ancestor identity'
+- id: retirement-claims-79a324ea55bbf17e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_source_storage_detail_refuses_unsafe_member[missing]
+  motivating_defect: 'Inspected changed-owner contract: source storage detail refuses unsafe member [missing]'
+- id: retirement-claims-d1ebc9d901f316c2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_source_storage_detail_refuses_unsafe_member[symlink]
+  motivating_defect: 'Inspected changed-owner contract: source storage detail refuses unsafe member [symlink]'
+- id: retirement-claims-9435972683aecf51
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_source_storage_detail_refuses_unsafe_member[hardlink]
+  motivating_defect: 'Inspected changed-owner contract: source storage detail refuses unsafe member [hardlink]'
+- id: retirement-claims-ffa46b211521bb1e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_source_storage_detail_refuses_unsafe_member[writable]
+  motivating_defect: 'Inspected changed-owner contract: source storage detail refuses unsafe member [writable]'
+- id: retirement-claims-afc9da2a127e9e65
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_source_storage_detail_refuses_unsafe_member[fifo]
+  motivating_defect: 'Inspected changed-owner contract: source storage detail refuses unsafe member [fifo]'
+- id: retirement-claims-03fdbb4792ea3bea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_release_yaml_cold_execution_and_pin_refusal[False]
+  motivating_defect: 'Inspected changed-owner contract: retained release yaml cold execution and pin refusal [False]'
+- id: retirement-claims-f51b91f5066fcab5
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_runtime.py::test_retained_release_yaml_cold_execution_and_pin_refusal[True]
+  motivating_defect: 'Inspected changed-owner contract: retained release yaml cold execution and pin refusal [True]'
+- id: retirement-claims-d76782973fc8cada
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[timeout]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [timeout]'
+- id: retirement-claims-3e2ceee7103dfeba
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[overflow]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [overflow]'
+- id: retirement-claims-ba20150f1e6cf75f
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[parent-exit]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [parent-exit]'
+- id: retirement-claims-5105c0476e9bb853
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[success]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [success]'
+- id: retirement-claims-2a8542f96df5a966
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[SIGINT]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [SIGINT]'
+- id: retirement-claims-3fbe4fa3a4d42db8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_retained_invoke_owns_descendants_through_every_terminal_path[SIGTERM]
+  motivating_defect: 'Inspected changed-owner contract: retained invoke owns descendants through every terminal
+    path [SIGTERM]'
+- id: retirement-claims-0e9d41bb9ac173d2
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[timeout]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [timeout]'
+- id: retirement-claims-c549becbef3089f7
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[overflow]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [overflow]'
+- id: retirement-claims-dc593265c265a967
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[parent-exit]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [parent-exit]'
+- id: retirement-claims-0bc1d3841b8aaf74
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[success]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [success]'
+- id: retirement-claims-72876b91e8283f20
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[SIGINT]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [SIGINT]'
+- id: retirement-claims-6684d6c1bc1a04a4
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_custody_pid_publication_survives_writer_preemption[SIGTERM]
+  motivating_defect: 'Inspected changed-owner contract: custody pid publication survives writer preemption [SIGTERM]'
+- id: retirement-claims-a69428257c032e9e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_exact_retained_process_owner_ignores_ambient_module_cache
+  motivating_defect: 'Inspected changed-owner contract: exact retained process owner ignores ambient module cache'
+- id: retirement-claims-c34ab674970d9bed
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_changed_code_after_verify_cannot_execute
+  motivating_defect: 'Inspected changed-owner contract: changed code after verify cannot execute'
+- id: retirement-claims-42f447a809c76598
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_process_owner_dependency_is_required_before_execution[missing]
+  motivating_defect: 'Inspected changed-owner contract: process owner dependency is required before execution [missing]'
+- id: retirement-claims-46b9e34d26aa4b9e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_process_owner_dependency_is_required_before_execution[symlink]
+  motivating_defect: 'Inspected changed-owner contract: process owner dependency is required before execution [symlink]'
+- id: retirement-claims-0a4098ad9ba0de2d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_process_owner_dependency_is_required_before_execution[hardlink]
+  motivating_defect: 'Inspected changed-owner contract: process owner dependency is required before execution [hardlink]'
+- id: retirement-claims-4f0de2f3c3f051ea
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_process_owner_dependency_is_required_before_execution[writable]
+  motivating_defect: 'Inspected changed-owner contract: process owner dependency is required before execution [writable]'
+- id: retirement-claims-3f62f3e84b926cce
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_process_owner_dependency_is_required_before_execution[fifo]
+  motivating_defect: 'Inspected changed-owner contract: process owner dependency is required before execution [fifo]'
+- id: retirement-claims-820f2b6f43592490
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_late_dispatch_replacement_never_executes_unverified_bytes[coordination.py]
+  motivating_defect: 'Inspected changed-owner contract: late dispatch replacement never executes unverified bytes
+    [coordination.py]'
+- id: retirement-claims-463df8d711d27162
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_late_dispatch_replacement_never_executes_unverified_bytes[coordination_schema.py]
+  motivating_defect: 'Inspected changed-owner contract: late dispatch replacement never executes unverified bytes
+    [coordination_schema.py]'
+- id: retirement-claims-51f24723c24fae73
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_late_dispatch_replacement_never_executes_unverified_bytes[wordlist]
+  motivating_defect: 'Inspected changed-owner contract: late dispatch replacement never executes unverified bytes
+    [wordlist]'
+- id: retirement-claims-3c824413f9c05438
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_transport_tampering_fails_before_any_source_execution[wire]
+  motivating_defect: 'Inspected changed-owner contract: transport tampering fails before any source execution [wire]'
+- id: retirement-claims-c3f379251600ba07
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_transport_tampering_fails_before_any_source_execution[manifest]
+  motivating_defect: 'Inspected changed-owner contract: transport tampering fails before any source execution [manifest]'
+- id: retirement-claims-8a6514150374430a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_transport_tampering_fails_before_any_source_execution[member]
+  motivating_defect: 'Inspected changed-owner contract: transport tampering fails before any source execution [member]'
+- id: retirement-claims-e7f37d5c1336be91
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-project-management/scripts/test_retirement_process.py::test_verified_loader_does_not_read_unadmitted_resources
+  motivating_defect: 'Inspected changed-owner contract: verified loader does not read unadmitted resources'

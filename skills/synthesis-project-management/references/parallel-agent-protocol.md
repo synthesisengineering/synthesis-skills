@@ -642,6 +642,14 @@ exact pinned reconciler, completes reconciliation idempotently, and then
 finishes branch cleanup. Optional remote deletion uses a compare-and-delete
 lease and refuses an advanced or differently sourced branch.
 
+Claim cleanup reads only the claim owner's row. The retained runtime runs its
+pinned status read inside the verified child and returns that one row, so the
+reply stays row-sized however many sessions the board holds. An active owner
+must still prove its native identity before any narrowing or retry. A released
+or absent owner holds no live claims on the pinned board; the helper records
+that nothing was narrowed and completes the remaining verified steps for any
+caller, because no seat can authenticate as a closed owner.
+
 ## Handoff queue mechanics
 
 `handoff.py` payloads are stored as durable files under
