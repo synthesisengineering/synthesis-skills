@@ -2563,3 +2563,64 @@ def test_diagnostic_batch_cancellation_closes_all_owned_descriptors(tmp_path, mo
     with pytest.raises(KeyboardInterrupt):
         groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
     assert not live
+
+
+@pytest.mark.parametrize("limit,reason", [
+    ("deadline", "DEADLINE"), ("records", "RECORD_LIMIT"), ("bytes", "BYTE_LIMIT"),
+])
+def test_diagnostic_refusal_keeps_closed_reason_without_artifact(tmp_path, monkeypatch, limit, reason):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    options = {}
+    if limit == "deadline":
+        options["deadline"] = time.monotonic() - 1
+    elif limit == "records":
+        monkeypatch.setattr(groups, "DIAGNOSTIC_RECORDS", 1)
+    else:
+        monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", 1)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target, **options)
+    assert result["status"] == "REFUSED" and result["reason"] == reason
+    assert result["authorizes_release"] is False and result["export_closed"] is False
+    assert result["stage"] in {"ROOT", "RUNNER_RECORDS"}
+    assert "private-output-sentinel" not in json.dumps(result)
+    assert str(tmp_path) not in json.dumps(result)
+
+
+def test_diagnostic_current_batch_shape_retains_every_raw_byte(tmp_path):
+    root, completed, plan, destination = _diagnostic_scope_fixture(tmp_path, 510)
+    started = time.monotonic()
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert result["status"] == "RETAINED" and result["export_closed"]
+    assert result["reason"] == "CLOSED_DIAGNOSTICS"
+    assert time.monotonic() - started < groups.DIAGNOSTIC_SECONDS == 10
+    local = Path(completed.fixture_custody) / "diagnostics"
+    inventory = json.loads((local / "index.json").read_text())
+    assert len(inventory["members"]) == result["record_count"] == 3062
+    import hashlib
+    for member in inventory["members"]:
+        raw = (local / "raw" / member["raw_member"]).read_bytes()
+        assert len(raw) == member["size"] and hashlib.sha256(raw).hexdigest() == member["sha256"]
+    document = json.loads((Path(destination["path"]) / "diagnostics.json").read_text())
+    assert len(document["batches"]) == 510 and len(document["records"]) == 3062
+    assert all("raw_member" not in row for row in document["records"])
+    assert not document["authorizes_release"] and "private-output-sentinel" not in json.dumps(document)
+    assert (groups.DIAGNOSTIC_RECORDS, groups.DIAGNOSTIC_BYTES) == (4096, 32 * 1024 * 1024)
+
+
+def test_diagnostic_secondary_export_deadline_keeps_first_reason_and_stage(tmp_path, monkeypatch):
+    root, completed = diagnostic_fixture(tmp_path)
+    target = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    clock = [0.0]
+    original_close = os.close
+    import stat
+    def close_after_refusal(fd):
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            clock[0] = 20.0
+        return original_close(fd)
+    monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", 1)
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(os, "close", close_after_refusal)
+    result = groups.capture_acceptance_diagnostics(completed, root, [], {}, target)
+    assert result["status"] == "REFUSED" and not result["export_closed"]
+    assert (result["reason"], result["stage"]) == ("BYTE_LIMIT", "RUNNER_RECORDS")
+    assert list(Path(target["path"]).iterdir()) == []

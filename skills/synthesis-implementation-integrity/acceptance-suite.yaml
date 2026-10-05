@@ -7811,6 +7811,19 @@ changed_surfaces:
   - runtime-closure-a437d93afb019c28
   - runtime-closure-0eb182fcb77ff695
   - runtime-closure-c35575dd1a708f8c
+  - diagnostic-reason-f7ae72770987b278
+  - diagnostic-reason-4b7ef7319e315ece
+  - diagnostic-reason-86c764140881af20
+  - diagnostic-reason-7421ee7347998301
+  - diagnostic-reason-e223dbf37d743306
+  - diagnostic-reason-468a749cae79bcc8
+  - diagnostic-reason-bbf14272d400accc
+  - diagnostic-reason-28335b4a786513a1
+  - diagnostic-reason-813c18b8cc460974
+  - diagnostic-reason-7c9468b9ed491db0
+  - diagnostic-reason-b8e578be7dbaea4a
+  - diagnostic-reason-9905a32dfa0bfdba
+  - diagnostic-reason-8f5532ec4545d573
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
   - attribution-format-6b9e8a3499ff05df
@@ -7900,6 +7913,19 @@ changed_surfaces:
   - diagnostic-custody-a1d1923205432cdd
   - diagnostic-custody-1ab4d2edcb66c03a
   - diagnostic-custody-0c05a1ec99873b1d
+  - diagnostic-reason-f7ae72770987b278
+  - diagnostic-reason-4b7ef7319e315ece
+  - diagnostic-reason-86c764140881af20
+  - diagnostic-reason-7421ee7347998301
+  - diagnostic-reason-e223dbf37d743306
+  - diagnostic-reason-468a749cae79bcc8
+  - diagnostic-reason-bbf14272d400accc
+  - diagnostic-reason-28335b4a786513a1
+  - diagnostic-reason-813c18b8cc460974
+  - diagnostic-reason-7c9468b9ed491db0
+  - diagnostic-reason-b8e578be7dbaea4a
+  - diagnostic-reason-9905a32dfa0bfdba
+  - diagnostic-reason-8f5532ec4545d573
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - diagnostic-custody-ea3bf5b9ddedd382
@@ -7916,6 +7942,19 @@ changed_surfaces:
   - diagnostic-parent-01eca02c2e6b33b5
   - diagnostic-parent-be56abc2e29dccd5
   - diagnostic-parent-6d8948fe104e65fc
+  - diagnostic-reason-f7ae72770987b278
+  - diagnostic-reason-4b7ef7319e315ece
+  - diagnostic-reason-86c764140881af20
+  - diagnostic-reason-7421ee7347998301
+  - diagnostic-reason-e223dbf37d743306
+  - diagnostic-reason-468a749cae79bcc8
+  - diagnostic-reason-bbf14272d400accc
+  - diagnostic-reason-28335b4a786513a1
+  - diagnostic-reason-813c18b8cc460974
+  - diagnostic-reason-7c9468b9ed491db0
+  - diagnostic-reason-b8e578be7dbaea4a
+  - diagnostic-reason-9905a32dfa0bfdba
+  - diagnostic-reason-8f5532ec4545d573
 - path: skills/synthesis-context-lifecycle/scripts/context_edit.py
   cases:
   - runtime-closure-34997e42d6e817b2
@@ -7973,6 +8012,36 @@ changed_surfaces:
   - runtime-closure-a437d93afb019c28
   - runtime-closure-0eb182fcb77ff695
   - runtime-closure-c35575dd1a708f8c
+- path: skills/synthesis-skills-manager/scripts/release.py
+  cases:
+  - diagnostic-reason-f7ae72770987b278
+  - diagnostic-reason-4b7ef7319e315ece
+  - diagnostic-reason-86c764140881af20
+  - diagnostic-reason-7421ee7347998301
+  - diagnostic-reason-e223dbf37d743306
+  - diagnostic-reason-468a749cae79bcc8
+  - diagnostic-reason-bbf14272d400accc
+  - diagnostic-reason-28335b4a786513a1
+  - diagnostic-reason-813c18b8cc460974
+  - diagnostic-reason-7c9468b9ed491db0
+  - diagnostic-reason-b8e578be7dbaea4a
+  - diagnostic-reason-9905a32dfa0bfdba
+  - diagnostic-reason-8f5532ec4545d573
+- path: skills/synthesis-skills-manager/scripts/test_release.py
+  cases:
+  - diagnostic-reason-f7ae72770987b278
+  - diagnostic-reason-4b7ef7319e315ece
+  - diagnostic-reason-86c764140881af20
+  - diagnostic-reason-7421ee7347998301
+  - diagnostic-reason-e223dbf37d743306
+  - diagnostic-reason-468a749cae79bcc8
+  - diagnostic-reason-bbf14272d400accc
+  - diagnostic-reason-28335b4a786513a1
+  - diagnostic-reason-813c18b8cc460974
+  - diagnostic-reason-7c9468b9ed491db0
+  - diagnostic-reason-b8e578be7dbaea4a
+  - diagnostic-reason-9905a32dfa0bfdba
+  - diagnostic-reason-8f5532ec4545d573
 cases:
 - id: final-42c5721991f12696
   control_class: acceptance-test
@@ -25933,3 +26002,68 @@ cases:
   expected_status: pass
   fixture: ../synthesis-onboarding/scripts/test_runtime_payload.py::test_registry_dependency_introduction_requires_custody_and_cold_execution[skills/synthesis-repo-guard/pending_manifest.py]
   motivating_defect: 'Cold reader dependency and standalone checkpoint closure: test_registry_dependency_introduction_requires_custody_and_cold_execution[skills/synthesis-repo-guard/pending_manifest.py]'
+- id: diagnostic-reason-f7ae72770987b278
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_refusal_keeps_closed_reason_without_artifact[deadline-DEADLINE]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_refusal_keeps_closed_reason_without_artifact[deadline-DEADLINE]'
+- id: diagnostic-reason-4b7ef7319e315ece
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_refusal_keeps_closed_reason_without_artifact[records-RECORD_LIMIT]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_refusal_keeps_closed_reason_without_artifact[records-RECORD_LIMIT]'
+- id: diagnostic-reason-86c764140881af20
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_refusal_keeps_closed_reason_without_artifact[bytes-BYTE_LIMIT]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_refusal_keeps_closed_reason_without_artifact[bytes-BYTE_LIMIT]'
+- id: diagnostic-reason-7421ee7347998301
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_current_batch_shape_retains_every_raw_byte
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_current_batch_shape_retains_every_raw_byte'
+- id: diagnostic-reason-e223dbf37d743306
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_secondary_export_deadline_keeps_first_reason_and_stage
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_secondary_export_deadline_keeps_first_reason_and_stage'
+- id: diagnostic-reason-468a749cae79bcc8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[/private/foreign-secret]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[/private/foreign-secret]'
+- id: diagnostic-reason-bbf14272d400accc
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[DEADLINE\nprivate-value]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[DEADLINE\nprivate-value]'
+- id: diagnostic-reason-28335b4a786513a1
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[value2]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[value2]'
+- id: diagnostic-reason-813c18b8cc460974
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[value3]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[value3]'
+- id: diagnostic-reason-7c9468b9ed491db0
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[42]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[42]'
+- id: diagnostic-reason-b8e578be7dbaea4a
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_rejects_nonclosed_values[None]
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_rejects_nonclosed_values[None]'
+- id: diagnostic-reason-9905a32dfa0bfdba
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_diagnostic_public_summary_keeps_fixed_refusal
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_diagnostic_public_summary_keeps_fixed_refusal'
+- id: diagnostic-reason-8f5532ec4545d573
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumer_reports_reason_without_artifact_or_authority
+  motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_actual_consumer_reports_reason_without_artifact_or_authority'

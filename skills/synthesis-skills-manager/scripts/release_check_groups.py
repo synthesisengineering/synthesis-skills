@@ -952,6 +952,8 @@ def capture_acceptance_diagnostics(
     root_fd = None
     raw_fd = None
     export_closed = False
+    refusal_reason = "CUSTODY_OR_LIMIT_REFUSED"
+    stage = "SELECTORS"
     public = {
         "schema": "acceptance-diagnostics-v1",
         "authorizes_release": False,
@@ -975,12 +977,16 @@ def capture_acceptance_diagnostics(
     }
 
     def bound():
-        if (
-            time.monotonic() >= until
-            or len(members) >= DIAGNOSTIC_RECORDS
-            or total > DIAGNOSTIC_BYTES
-        ):
-            raise ValueError("diagnostic budget refused")
+        nonlocal refusal_reason
+        if time.monotonic() >= until:
+            refusal_reason = "DEADLINE"
+        elif len(members) >= DIAGNOSTIC_RECORDS:
+            refusal_reason = "RECORD_LIMIT"
+        elif total > DIAGNOSTIC_BYTES:
+            refusal_reason = "BYTE_LIMIT"
+        else:
+            return
+        raise ValueError("diagnostic budget refused")
 
     def stamp(info):
         return _progress_stamp(info)
@@ -1077,7 +1083,7 @@ def capture_acceptance_diagnostics(
     def read(
         parent, name, label, cap, *, optional=False, expected_hash=None, expected=None
     ):
-        nonlocal total
+        nonlocal total, refusal_reason
         bound()
         try:
             fd = os.open(
@@ -1096,9 +1102,11 @@ def capture_acceptance_diagnostics(
                 or before.st_uid != os.getuid()
                 or before.st_mode & 0o022
                 or before.st_size > cap
-                or total + before.st_size > DIAGNOSTIC_BYTES
             ):
                 raise ValueError("diagnostic record refused")
+            if total + before.st_size > DIAGNOSTIC_BYTES:
+                refusal_reason = "BYTE_LIMIT"
+                raise ValueError("diagnostic byte budget refused")
             raw = bytearray()
             while len(raw) < before.st_size:
                 bound()
@@ -1216,6 +1224,7 @@ def capture_acceptance_diagnostics(
                     )
                 ):
                     raise ValueError("non-public diagnostic selector")
+        stage = "ROOT"
         root = Path(completed.fixture_custody)
         if root.resolve(strict=True) != root:
             raise ValueError("diagnostic process custody alias")
@@ -1232,6 +1241,7 @@ def capture_acceptance_diagnostics(
         local = directory(root_fd, "diagnostics")
         os.mkdir("raw", 0o700, dir_fd=local)
         raw_fd = directory(local, "raw")
+        stage = "RUNNER_RECORDS"
         raw = read(
             root_fd,
             "output.log",
@@ -1260,6 +1270,7 @@ def capture_acceptance_diagnostics(
             temp = directory(root_fd, "tmp")
             public["not_admitted_batches"] = len(plan) - len(batches)
             complete = len(batches) == len(plan)
+            stage = "BATCH_RECORDS"
             for index, batch in enumerate(batches):
                 bound()
                 expected = plan[index]
@@ -1383,6 +1394,7 @@ def capture_acceptance_diagnostics(
             public["reason"] = (
                 "CLOSED_DIAGNOSTICS" if complete else "PARTIAL_OR_NOT_ADMITTED"
             )
+        stage = "SOURCE_CLOSURE"
         for group_name, group_identity, process_name, process_identity, records in closed_batches:
             with batch_directories(
                 temp, group_name, group_identity, process_name, process_identity,
@@ -1396,6 +1408,7 @@ def capture_acceptance_diagnostics(
         check_anchors(anchors)
         if custody_identity(root.lstat()) != completed.fixture_identity:
             raise ValueError("diagnostic root changed at closure")
+        stage = "LOCAL_INDEX"
         save(
             local,
             "index.json",
@@ -1406,7 +1419,7 @@ def capture_acceptance_diagnostics(
         )
     except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError):
         public["status"] = "REFUSED"
-        public["reason"] = "CUSTODY_OR_LIMIT_REFUSED"
+        public["reason"] = refusal_reason
         public["batches"] = []
     finally:
         for fd in reversed(fds):
@@ -1416,7 +1429,12 @@ def capture_acceptance_diagnostics(
     ]
     if destination is not None:
         path = Path(destination["path"])
+        primary_refusal = (
+            (public["reason"], stage) if public["status"] == "REFUSED" else None
+        )
         try:
+            if primary_refusal is None:
+                stage = "PUBLIC_EXPORT"
             bound()
             with _diagnostic_directory_chain(path, until) as (
                 fd,
@@ -1432,6 +1450,7 @@ def capture_acceptance_diagnostics(
                         raise ValueError("diagnostic destination has unindexed members")
                 data = json.dumps(public, sort_keys=True).encode()
                 if total + len(data) > DIAGNOSTIC_BYTES:
+                    refusal_reason = "BYTE_LIMIT"
                     raise ValueError("diagnostic export too large")
                 diagnostic_identity = save(fd, "diagnostics.json", data)
                 manifest = {
@@ -1478,12 +1497,18 @@ def capture_acceptance_diagnostics(
                 export_closed = True
         except (OSError, ValueError, KeyError):
             public["status"] = "REFUSED"
+            if primary_refusal is None:
+                public["reason"] = refusal_reason
+            else:
+                public["reason"], stage = primary_refusal
     return {
         "status": public["status"],
         "authorizes_release": False,
         "export_closed": export_closed,
         "record_count": len(members),
         "raw_bytes": total,
+        "reason": public["reason"],
+        "stage": stage,
     }
 
 

@@ -6874,3 +6874,38 @@ def test_source_catalog_timing_owner_drains_actual_scheduler(tmp_path, monkeypat
     assert any(e[0] == "start" and len(e[2]) == 2 for e in trace)
     assert [e[1] for e in trace if e[0] == "start"][-2:] == ["timing", "after"]
     assert not active
+
+
+@pytest.mark.parametrize("value", [
+    "/private/foreign-secret", "DEADLINE\nprivate-value", ["DEADLINE"],
+    {"private": "value"}, 42, None,
+])
+def test_diagnostic_public_summary_rejects_nonclosed_values(value):
+    text = release._diagnostic_summary({"status": value, "reason": value, "stage": value})
+    assert text == (
+        "diagnostic custody UNCLASSIFIED; reason=UNCLASSIFIED; "
+        "stage=UNCLASSIFIED; never release authority"
+    )
+
+
+def test_diagnostic_public_summary_keeps_fixed_refusal():
+    assert release._diagnostic_summary({
+        "status": "REFUSED", "reason": "BYTE_LIMIT", "stage": "BATCH_RECORDS",
+    }) == (
+        "diagnostic custody REFUSED; reason=BYTE_LIMIT; "
+        "stage=BATCH_RECORDS; never release authority"
+    )
+
+
+def test_actual_consumer_reports_reason_without_artifact_or_authority(tmp_path, monkeypatch, capsys):
+    repo, git, base, pr_base, accepted = real_acceptance_fixture(tmp_path, monkeypatch)
+    destination = tmp_path / "public"
+    monkeypatch.setenv("SYNTHESIS_ACCEPTANCE_DIAGNOSTICS", str(destination))
+    import release_check_groups as checks
+    monkeypatch.setattr(checks, "DIAGNOSTIC_BYTES", 1)
+    result = release.Result()
+    assert release.consume_acceptance(repo, result, False) is None
+    output = capsys.readouterr().out
+    assert "reason=BYTE_LIMIT; stage=RUNNER_RECORDS" in output
+    assert "never release authority" in output
+    assert list(destination.iterdir()) == []
