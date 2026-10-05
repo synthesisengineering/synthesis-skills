@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.11] - 2026-10-05
+
+- Recheck the selected project and its working-tree identities when the repository advances, allowing unrelated commits while refusing project replacement or newly appearing worktrees.
+- Reduce repeated dirty-file path parsing and directory opens within each scan, retaining fresh file reads, ancestor checks and existing resource limits.
+- Add regression coverage for selection races, directory replacement, path collisions and request-local scan reuse.
+
 ## [4.154.10] - 2026-10-05
 
 - Add candidate admission to the existing publication command owner, binding test coverage metadata to the exact outgoing commit and selected release base.

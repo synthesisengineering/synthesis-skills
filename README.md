@@ -18,6 +18,8 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
+Release **4.154.11** keeps project recovery valid when an unrelated repository commit leaves the selected project unchanged. Dirty-file scans reduce repeated path parsing and directory opens while freshly checking file bytes and directory identities.
+
 Release **4.154.10** adds exact candidate membership validation to the existing publication command owner. Control-plane callers can reject incomplete test coverage metadata and changed source references before a supported Git push.
 
 Release **4.154.8** reduces repeated journal framing and member processing within existing resource bounds. Dependency bytes and identities are freshly verified for every read.
