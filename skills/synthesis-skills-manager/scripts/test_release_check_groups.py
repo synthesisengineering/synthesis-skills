@@ -2624,3 +2624,133 @@ def test_diagnostic_secondary_export_deadline_keeps_first_reason_and_stage(tmp_p
     assert result["status"] == "REFUSED" and not result["export_closed"]
     assert (result["reason"], result["stage"]) == ("BYTE_LIMIT", "RUNNER_RECORDS")
     assert list(Path(target["path"]).iterdir()) == []
+
+
+def _diagnostic_pressure_fixture(tmp_path, padding=24000):
+    """Current complete plan, every selected phase, private subtests and output."""
+    import release
+    owner = release._acceptance_runner()
+    source = Path(__file__).resolve().parents[3]
+    manifest, errors = owner.validate_manifest(source / release.ACCEPTANCE_MANIFEST, source)
+    assert manifest is not None, errors
+    plan = owner.batch_plan(owner.case_contract(manifest, source))
+    assert 2 + 6 * len(plan) < groups.DIAGNOSTIC_RECORDS
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(plan))
+    program = "\nimport hashlib, json, os, sys, time\nfrom pathlib import Path\nsys.path.insert(0, sys.argv[1])\nimport release_check_groups as g\nparent = Path(os.environ['TMPDIR']).resolve()\nbatches = []\nplan = json.loads(Path(sys.argv[3]).read_text())\nby_file = {}\nfor row in plan:\n    key = row['id'].rsplit(':',1)[0]\n    by_file.setdefault(key, []).extend(s for s in row['selectors'] if s not in by_file.get(key, []))\nfor index in range(int(sys.argv[2])):\n    group = parent / ('synthesis-release-check-' + str(index))\n    group.mkdir(mode=0o700)\n    process = group / 'synthesis-required-check-synthetic'\n    process.mkdir(mode=0o700)\n    selectors = plan[index]['selectors']\n    inventory = by_file[plan[index]['id'].rsplit(':',1)[0]]\n    events = [{'sequence': 0, 'kind': 'start'}, {'sequence': 1, 'kind': 'collection', 'inventory': inventory, 'selected': selectors}]\n    phases = {}\n    for node in selectors:\n        phases[node] = {}\n        for when in ('setup', 'call', 'teardown'):\n            row = {'outcome': 'passed', 'duration': 0.001, 'wasxfail': None}\n            phases[node][when] = row\n            events.append({'sequence': len(events), 'kind': 'phase', 'nodeid': node, 'when': when, **row})\n    events.append({'sequence': len(events), 'kind': 'subtest', 'nodeid': selectors[0], 'when': 'call', 'outcome': 'passed', 'duration': 0.001, 'parameters': 'SYNTHETIC_PRIVATE_PARAMETER', 'captured': 'SYNTHETIC_PRIVATE_CAPTURE'})\n    events.append({'sequence': len(events), 'kind': 'sessionfinish', 'exitstatus': 0, 'errors': []})\n    contents = {\n        group / 'selection.json': json.dumps(selectors),\n        group / 'pytest.ini': '[pytest]\\n',\n        group / 'inventory.json': json.dumps({'inventory': inventory, 'selected': selectors, 'phases': phases, 'group': 'acceptance', 'exitstatus': 0, 'errors': [], 'subtests': {}}),\n        group / 'inventory.progress.jsonl': ''.join(json.dumps(e) + '\\n' for e in events),\n        process / 'output.log': 'private-output-sentinel' * 48 + 'x' * int(sys.argv[4]),\n        process / 'result.json': json.dumps({'args': ['python', '-m', 'pytest', *selectors], 'returncode': 0, 'stdout': 'SYNTHETIC_PRIVATE_CAPTURE' * 24, 'stderr': '', 'seconds': 1.0}),\n    }\n    for path, data in contents.items():\n        path.write_text(data)\n        path.chmod(0o600)\n    identity = g.custody_identity(group.stat())\n    process_identity = g.custody_identity(process.stat())\n    pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, identity)\n            for path in contents if path.parent == group}\n    process_pins = {path.name: g.diagnostic_record(path, time.monotonic() + 10, process_identity)\n                    for path in contents if path.parent == process}\n    batches.append({'id': plan[index]['id'], 'selectors': selectors,\n        'fixture_custody': str(group), 'process_custody': str(process),\n        'custody_identity': identity, 'process_identity': process_identity,\n        'diagnostic_records': pins, 'process_records': process_pins,\n        'output_sha256': hashlib.sha256(('private-output-sentinel' * 48 + 'x' * int(sys.argv[4])).encode()).hexdigest(),\n        'returncode': 0})\nprint(g.encode_acceptance_receipt({'execution': {'batches': batches}}))\n"
+    root = tmp_path / "source"
+    root.mkdir()
+    completed = groups.bounded_run([sys.executable, "-c", program,
+        str(Path(groups.__file__).parent), str(len(plan)), str(plan_file), str(padding)],
+        root, 30)
+    assert completed.returncode == 0, completed.stdout
+    destination = groups.prepare_diagnostics_destination(tmp_path / "public", root)
+    return root, completed, plan, destination
+
+
+def test_diagnostic_full_plan_pressure_is_lossless_and_completely_charged(tmp_path):
+    import hashlib
+    root, completed, plan, destination = _diagnostic_pressure_fixture(tmp_path)
+    started = time.monotonic()
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, destination)
+    assert result["status"] == "RETAINED" and result["export_closed"], result
+    assert time.monotonic() - started < groups.DIAGNOSTIC_SECONDS == 10
+    local = Path(completed.fixture_custody) / "diagnostics"
+    public_path = Path(destination["path"])
+    wire = (public_path / "diagnostics.json").read_bytes()
+    assert json.loads(wire)["schema"] == "acceptance-diagnostics-transport-v1"
+    document = groups.decode_acceptance_diagnostics(wire)
+    assert document["schema"] == "acceptance-diagnostics-v1"
+    assert len(document["batches"]) == len(plan)
+    assert sum(len(b["phases"]) for b in document["batches"]) == sum(
+        3 * len(b["selectors"]) + 1 for b in plan)
+    inventory = json.loads((local / "index.json").read_bytes())
+    assert len(inventory["members"]) == result["record_count"] == 2 + 6 * len(plan)
+    raw_bytes = 0
+    for member in inventory["members"]:
+        data = (local / "raw" / member["raw_member"]).read_bytes()
+        raw_bytes += len(data)
+        assert len(data) == member["size"]
+        assert hashlib.sha256(data).hexdigest() == member["sha256"]
+    assert raw_bytes == result["raw_bytes"]
+    stored = raw_bytes + (local / "index.json").stat().st_size + sum(
+        (public_path / name).stat().st_size for name in ("diagnostics.json", "manifest.json"))
+    assert stored == result["stored_bytes"] <= groups.DIAGNOSTIC_BYTES == 32 * 1024 * 1024
+    assert raw_bytes + len(json.dumps(document, sort_keys=True).encode()) > groups.DIAGNOSTIC_BYTES
+    for marker in ("SYNTHETIC_PRIVATE_PARAMETER", "SYNTHETIC_PRIVATE_CAPTURE",
+                   "private-output-sentinel", str(tmp_path)):
+        assert marker not in json.dumps(document) and marker.encode() not in wire
+    published = json.loads((public_path / "manifest.json").read_bytes())
+    assert published["encoding"] == "diagnostic-json-zlib-base64-v1"
+    assert published["members"] == [{"path": "diagnostics.json", "size": len(wire),
+                                    "sha256": hashlib.sha256(wire).hexdigest()}]
+    assert not document["authorizes_release"] and not published["authorizes_release"]
+
+
+@pytest.mark.parametrize("encoding", ["direct", "transport"])
+def test_diagnostic_representation_exact_boundary_includes_manifest(encoding):
+    document = {"schema": "acceptance-diagnostics-v1", "authorizes_release": False,
+                "status": "RETAINED", "records": [{"id": "public"}] * 1000}
+    room = groups.DIAGNOSTIC_BYTES if encoding == "direct" else 2000
+    data, manifest = groups._diagnostic_export_bytes(document, room)
+    assert groups.decode_acceptance_diagnostics(data) == document
+    exact = len(data) + len(manifest)
+    assert sum(map(len, groups._diagnostic_export_bytes(document, exact))) == exact
+    if encoding == "transport":
+        with pytest.raises(ValueError):
+            groups._diagnostic_export_bytes(document, exact - 1)
+    else:
+        compressed = groups._diagnostic_export_bytes(document, exact - 1)
+        assert groups.decode_acceptance_diagnostics(compressed[0]) == document
+        assert sum(map(len, compressed)) < exact
+
+
+def test_diagnostic_local_index_is_inside_aggregate_without_destination(tmp_path, monkeypatch):
+    root, completed, plan, _ = _diagnostic_scope_fixture(tmp_path, 2)
+    raw_total = sum((Path(completed.fixture_custody) / name).stat().st_size
+                    for name in ("output.log", "result.json"))
+    receipt = groups.decode_acceptance_receipt(completed.stdout)
+    for batch in receipt["execution"]["batches"]:
+        for name in ("selection.json", "pytest.ini", "inventory.json", "inventory.progress.jsonl"):
+            raw_total += (Path(batch["fixture_custody"]) / name).stat().st_size
+        for name in ("output.log", "result.json"):
+            raw_total += (Path(batch["process_custody"]) / name).stat().st_size
+    monkeypatch.setattr(groups, "DIAGNOSTIC_BYTES", raw_total + 1)
+    result = groups.capture_acceptance_diagnostics(completed, root, plan, {}, None)
+    assert (result["status"], result["reason"], result["stage"]) == ("REFUSED", "BYTE_LIMIT", "LOCAL_INDEX")
+    assert result["raw_bytes"] == result["stored_bytes"] == raw_total
+    assert not (Path(completed.fixture_custody) / "diagnostics/index.json").exists()
+
+
+@pytest.mark.parametrize("mutation", ["authority", "schema", "extra", "duplicate",
+    "payload-hash", "payload-size", "payload-trailing", "payload-truncated", "payload-expansion"])
+def test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload(mutation):
+    import base64
+    document = {"schema": "acceptance-diagnostics-v1", "authorizes_release": False,
+                "status": "RETAINED", "records": ["public"] * 1000}
+    data, _ = groups._diagnostic_export_bytes(document, 2000)
+    wire = json.loads(data)
+    if mutation == "authority":
+        document["authorizes_release"] = True
+        wire["payload"] = json.loads(groups.encode_acceptance_receipt(document))
+    elif mutation == "schema":
+        document["schema"] = "acceptance-receipt"
+        wire["payload"] = json.loads(groups.encode_acceptance_receipt(document))
+    elif mutation == "extra":
+        wire["unknown"] = "private-marker"
+    elif mutation == "duplicate":
+        data = data[:-1] + b',"authorizes_release":false}'
+    elif mutation == "payload-hash":
+        wire["payload"]["payload_sha256"] = "0" * 64
+    elif mutation == "payload-size":
+        wire["payload"]["payload_bytes"] += 1
+    elif mutation == "payload-expansion":
+        wire["payload"]["payload_bytes"] = 1
+    else:
+        packed = base64.b64decode(wire["payload"]["payload"])
+        packed = packed + b"x" if mutation == "payload-trailing" else packed[:-1]
+        wire["payload"]["payload"] = base64.b64encode(packed).decode()
+    if mutation != "duplicate":
+        data = json.dumps(wire).encode()
+    with pytest.raises(ValueError):
+        groups.decode_acceptance_diagnostics(data)

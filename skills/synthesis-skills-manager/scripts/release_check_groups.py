@@ -925,6 +925,60 @@ def prepare_diagnostics_destination(path: Path, source: Path) -> dict:
             os.close(fd)
 
 
+
+def decode_acceptance_diagnostics(data: str | bytes) -> dict:
+    """Read diagnostics.json in direct or bounded lossless transport form.
+
+    The transport reuses the receipt codec's checked size, hash, depth and
+    compression framing. A diagnostic document never supplies release authority.
+    Callers must use this reader rather than assume every artifact is direct JSON.
+    """
+    document = parse_acceptance_json(data, max_bytes=DIAGNOSTIC_BYTES)
+    if not isinstance(document, dict):
+        raise ValueError("invalid diagnostic document")
+    if document.get("schema") == "acceptance-diagnostics-transport-v1":
+        if (set(document) != {"schema", "authorizes_release", "decoder", "payload"}
+                or document["authorizes_release"] is not False
+                or document["decoder"] != "release_check_groups.decode_acceptance_diagnostics"
+                or not isinstance(document["payload"], dict)):
+            raise ValueError("invalid diagnostic transport")
+        document = decode_acceptance_receipt(json.dumps(
+            document["payload"], sort_keys=True, separators=(",", ":"), allow_nan=False))
+    if (document.get("schema") != "acceptance-diagnostics-v1"
+            or document.get("authorizes_release") is not False):
+        raise ValueError("invalid diagnostic schema or authority")
+    return document
+
+
+def _diagnostic_export_bytes(public: dict, remaining: int) -> tuple[bytes, bytes]:
+    """Select a complete physical representation, charging its exact manifest."""
+    def serialize(value):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                          allow_nan=False).encode("ascii")
+
+    def manifest(data, encoding):
+        return serialize({"schema": 1, "authorizes_release": False,
+            "status": public["status"], "encoding": encoding,
+            "members": [{"path": "diagnostics.json", "size": len(data),
+                         "sha256": hashlib.sha256(data).hexdigest()}]})
+
+    data = serialize(public)
+    index = manifest(data, "json")
+    if len(data) + len(index) <= remaining:
+        return data, index
+    # Only the already-sanitized public object enters this existing lossless codec.
+    # Raw records stay byte-exact in local custody; no record or field is omitted.
+    data = serialize({"schema": "acceptance-diagnostics-transport-v1",
+        "authorizes_release": False,
+        "decoder": "release_check_groups.decode_acceptance_diagnostics",
+        "payload": parse_acceptance_json(encode_acceptance_receipt(public),
+                                         max_bytes=OUTPUT_BYTES)})
+    index = manifest(data, "diagnostic-json-zlib-base64-v1")
+    if len(data) + len(index) > remaining:
+        raise ValueError("diagnostic export exceeds complete byte budget")
+    return data, index
+
+
 def capture_acceptance_diagnostics(
     completed,
     source: Path,
@@ -949,6 +1003,7 @@ def capture_acceptance_diagnostics(
     closed_batches = []
     members = []
     total = 0
+    stored_bytes = 0
     root_fd = None
     raw_fd = None
     export_closed = False
@@ -1057,7 +1112,13 @@ def capture_acceptance_diagnostics(
             del anchors[first_anchor:]
 
     def save(parent, name, data):
+        nonlocal stored_bytes, refusal_reason
         bound()
+        if stored_bytes + len(data) > DIAGNOSTIC_BYTES:
+            refusal_reason = "BYTE_LIMIT"
+            raise ValueError("diagnostic complete byte budget refused")
+        # Reserve before writing; even a partial failed write remains charged.
+        stored_bytes += len(data)
         fd = os.open(
             name,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -1414,8 +1475,8 @@ def capture_acceptance_diagnostics(
             "index.json",
             json.dumps(
                 {"schema": 1, "members": members, "authorizes_release": False},
-                sort_keys=True,
-            ).encode(),
+                sort_keys=True, separators=(",", ":"), allow_nan=False,
+            ).encode("ascii"),
         )
     except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError):
         public["status"] = "REFUSED"
@@ -1448,26 +1509,15 @@ def capture_acceptance_diagnostics(
                 with os.scandir(fd) as entries:
                     if next(entries, None) is not None:
                         raise ValueError("diagnostic destination has unindexed members")
-                data = json.dumps(public, sort_keys=True).encode()
-                if total + len(data) > DIAGNOSTIC_BYTES:
+                try:
+                    data, manifest_data = _diagnostic_export_bytes(
+                        public, DIAGNOSTIC_BYTES - stored_bytes)
+                except ValueError:
                     refusal_reason = "BYTE_LIMIT"
-                    raise ValueError("diagnostic export too large")
+                    raise
+                bound()
                 diagnostic_identity = save(fd, "diagnostics.json", data)
-                manifest = {
-                    "schema": 1,
-                    "authorizes_release": False,
-                    "status": public["status"],
-                    "members": [
-                        {
-                            "path": "diagnostics.json",
-                            "size": len(data),
-                            "sha256": hashlib.sha256(data).hexdigest(),
-                        }
-                    ],
-                }
-                manifest_identity = save(
-                    fd, "manifest.json", json.dumps(manifest, sort_keys=True).encode()
-                )
+                manifest_identity = save(fd, "manifest.json", manifest_data)
                 os.fsync(fd)
                 names = set()
                 with os.scandir(fd) as entries:
@@ -1507,6 +1557,7 @@ def capture_acceptance_diagnostics(
         "export_closed": export_closed,
         "record_count": len(members),
         "raw_bytes": total,
+        "stored_bytes": stored_bytes,
         "reason": public["reason"],
         "stage": stage,
     }

@@ -7824,6 +7824,19 @@ changed_surfaces:
   - diagnostic-reason-b8e578be7dbaea4a
   - diagnostic-reason-9905a32dfa0bfdba
   - diagnostic-reason-8f5532ec4545d573
+  - diagnostic-byte-956d86d5b2986578
+  - diagnostic-byte-8e4cb7054b283a9c
+  - diagnostic-byte-6b02d56e99800dbd
+  - diagnostic-byte-c64fb5dc33dccace
+  - diagnostic-byte-fbabaf9e49ed6382
+  - diagnostic-byte-bd5e9c476117be07
+  - diagnostic-byte-90558f6b8b910593
+  - diagnostic-byte-a94e43092fda4cc8
+  - diagnostic-byte-3cd3b02646436444
+  - diagnostic-byte-d17abb37e99e016e
+  - diagnostic-byte-432f76f1df21451d
+  - diagnostic-byte-a9a8f32da658f510
+  - diagnostic-byte-543c69c52b163480
 - path: skills/synthesis-onboarding/scripts/release_runtime.py
   cases:
   - attribution-format-6b9e8a3499ff05df
@@ -7926,6 +7939,19 @@ changed_surfaces:
   - diagnostic-reason-b8e578be7dbaea4a
   - diagnostic-reason-9905a32dfa0bfdba
   - diagnostic-reason-8f5532ec4545d573
+  - diagnostic-byte-956d86d5b2986578
+  - diagnostic-byte-8e4cb7054b283a9c
+  - diagnostic-byte-6b02d56e99800dbd
+  - diagnostic-byte-c64fb5dc33dccace
+  - diagnostic-byte-fbabaf9e49ed6382
+  - diagnostic-byte-bd5e9c476117be07
+  - diagnostic-byte-90558f6b8b910593
+  - diagnostic-byte-a94e43092fda4cc8
+  - diagnostic-byte-3cd3b02646436444
+  - diagnostic-byte-d17abb37e99e016e
+  - diagnostic-byte-432f76f1df21451d
+  - diagnostic-byte-a9a8f32da658f510
+  - diagnostic-byte-543c69c52b163480
 - path: skills/synthesis-skills-manager/scripts/test_release_check_groups.py
   cases:
   - diagnostic-custody-ea3bf5b9ddedd382
@@ -7955,6 +7981,19 @@ changed_surfaces:
   - diagnostic-reason-b8e578be7dbaea4a
   - diagnostic-reason-9905a32dfa0bfdba
   - diagnostic-reason-8f5532ec4545d573
+  - diagnostic-byte-956d86d5b2986578
+  - diagnostic-byte-8e4cb7054b283a9c
+  - diagnostic-byte-6b02d56e99800dbd
+  - diagnostic-byte-c64fb5dc33dccace
+  - diagnostic-byte-fbabaf9e49ed6382
+  - diagnostic-byte-bd5e9c476117be07
+  - diagnostic-byte-90558f6b8b910593
+  - diagnostic-byte-a94e43092fda4cc8
+  - diagnostic-byte-3cd3b02646436444
+  - diagnostic-byte-d17abb37e99e016e
+  - diagnostic-byte-432f76f1df21451d
+  - diagnostic-byte-a9a8f32da658f510
+  - diagnostic-byte-543c69c52b163480
 - path: skills/synthesis-context-lifecycle/scripts/context_edit.py
   cases:
   - runtime-closure-34997e42d6e817b2
@@ -26067,3 +26106,68 @@ cases:
   expected_status: pass
   fixture: ../synthesis-skills-manager/scripts/test_release.py::test_actual_consumer_reports_reason_without_artifact_or_authority
   motivating_defect: 'Closed diagnostic refusal reason and stage without raw private detail: test_actual_consumer_reports_reason_without_artifact_or_authority'
+- id: diagnostic-byte-956d86d5b2986578
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_full_plan_pressure_is_lossless_and_completely_charged
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_full_plan_pressure_is_lossless_and_completely_charged'
+- id: diagnostic-byte-8e4cb7054b283a9c
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_representation_exact_boundary_includes_manifest[direct]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_representation_exact_boundary_includes_manifest[direct]'
+- id: diagnostic-byte-6b02d56e99800dbd
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_representation_exact_boundary_includes_manifest[transport]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_representation_exact_boundary_includes_manifest[transport]'
+- id: diagnostic-byte-c64fb5dc33dccace
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_local_index_is_inside_aggregate_without_destination
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_local_index_is_inside_aggregate_without_destination'
+- id: diagnostic-byte-fbabaf9e49ed6382
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[authority]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[authority]'
+- id: diagnostic-byte-bd5e9c476117be07
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[schema]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[schema]'
+- id: diagnostic-byte-90558f6b8b910593
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[extra]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[extra]'
+- id: diagnostic-byte-a94e43092fda4cc8
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[duplicate]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[duplicate]'
+- id: diagnostic-byte-3cd3b02646436444
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-hash]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-hash]'
+- id: diagnostic-byte-d17abb37e99e016e
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-size]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-size]'
+- id: diagnostic-byte-432f76f1df21451d
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-trailing]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-trailing]'
+- id: diagnostic-byte-a9a8f32da658f510
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-truncated]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-truncated]'
+- id: diagnostic-byte-543c69c52b163480
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-skills-manager/scripts/test_release_check_groups.py::test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-expansion]
+  motivating_defect: 'Lossless complete diagnostic byte accounting and transport: test_diagnostic_transport_refuses_ambiguous_corrupt_or_authorizing_payload[payload-expansion]'
