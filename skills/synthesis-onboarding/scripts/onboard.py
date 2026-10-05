@@ -885,6 +885,14 @@ def _kernel_sync_entry(data):
     return None
 
 
+def message_guard_hook_path(client):
+    paths = {"claude": ".claude/settings.json", "codex": ".codex/hooks.json",
+             "muse": ".config/muse/settings.json"}
+    if client not in paths:
+        raise ValueError("unsupported message guard client")
+    return HOME / paths[client]
+
+
 def ensure_message_guard_hook(
     report, receipts, path, engine_path, dry_run, tool_names=(), preserve_existing=False
 ):
@@ -3852,11 +3860,7 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
                     "retained message state requires its owner; fresh setup cannot adopt it"
                 )
             for client in clients_wanted:
-                hook_path = HOME / (
-                    ".claude/settings.json"
-                    if client == "claude"
-                    else ".codex/hooks.json"
-                )
+                hook_path = message_guard_hook_path(client)
                 if os.path.lexists(hook_path):
                     if hook_path.is_symlink() or hook_path.resolve() != hook_path:
                         raise ValueError("aliased client hooks require their owner")
@@ -3942,6 +3946,11 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
         # An explicitly reviewed transport/policy mapping is owner-managed;
         # regenerating the generic template would invalidate that review.
         report.add("personal-policy", OK, "existing owner message policy preserved")
+    phase_message_guard_runtime(report, receipts, message_config, clients_wanted, dry_run, existing_message_policy)
+
+
+def phase_message_guard_runtime(report, receipts, message_config, clients_wanted, dry_run, existing_message_policy=True):
+    message_dir = HOME / ".synthesis/message-guard"
     engine_source = (
         source_root()
         / "skills"
@@ -4040,10 +4049,8 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
             )
             return
     for client in clients_wanted:
-        if client == "claude":
-            hook_path = HOME / ".claude" / "settings.json"
-        else:
-            hook_path = HOME / ".codex" / "hooks.json"
+        hook_path = message_guard_hook_path(client)
+        if client == "codex":
             ensure_codex_hooks_feature(
                 report, receipts, HOME / ".codex" / "config.toml", dry_run
             )
@@ -4060,6 +4067,44 @@ def phase_personal_policy(report, receipts, answers, clients_wanted, dry_run):
             ],
             preserve_existing=existing_message_policy,
         )
+
+
+def repair_message_guard(args):
+    """Converge only an already reviewed guard and its explicit client hooks."""
+    import stat
+
+    report = Report(dry_run=args.dry_run, as_json=args.json)
+    try:
+        clients = [name.strip() for name in (args.clients or "").split(",") if name.strip()]
+        if not clients or len(clients) != len(set(clients)):
+            raise ValueError("message-guard-repair requires explicit unique --clients")
+        paths = [message_guard_hook_path(client) for client in clients]
+        state = HOME / ".synthesis/message-guard"
+        config = state / "patterns.json"
+        message_guard_activation_preflight(source_root(), configuration_path=config, state_directory=state)
+        raw = config.read_bytes()
+        message_config = json.loads(raw)
+        names = [name for row in message_config["message_capabilities"] for name in row.get("tool_names", [])]
+        # Validate every selected merge before installing any runtime bytes.
+        for path in paths:
+            if path.parent.resolve() != path.parent:
+                raise ValueError("aliased client hooks require their owner")
+            if os.path.lexists(path):
+                meta = path.lstat()
+                if (not stat.S_ISREG(meta.st_mode) or meta.st_nlink != 1
+                        or meta.st_uid != os.getuid() or meta.st_mode & 0o022):
+                    raise ValueError("client hooks require an owned regular file")
+                existing = load_answers(path)
+                merge_message_guard_hook(existing, state / "message_guard.py", names)
+        receipts = Receipts(STATE_DIR / "receipts.json")
+        phase_message_guard_runtime(report, receipts, message_config, clients, args.dry_run)
+        if config.read_bytes() != raw:
+            raise ValueError("message policy changed during runtime repair")
+        if not args.dry_run:
+            receipts.save()
+    except (ContractError, OSError, ValueError, TypeError, KeyError) as exc:
+        report.add("hooks-gates", ERROR, "message guard repair refused", hint=str(exc))
+    return finish(report, args, report.exit_code())
 
 
 def phase_kernel_runtime(report, receipts, clients_wanted, dry_run):
@@ -4087,11 +4132,7 @@ def phase_kernel_runtime(report, receipts, clients_wanted, dry_run):
             target.chmod(0o755 if name.endswith(".py") else 0o644)
     engine = runtime_dir / "kernel_sync.py"
     for client in clients_wanted:
-        hook_path = (
-            HOME / ".claude" / "settings.json"
-            if client == "claude"
-            else HOME / ".codex" / "hooks.json"
-        )
+        hook_path = message_guard_hook_path(client)
         ensure_kernel_sync_hook(report, receipts, hook_path, engine, client, dry_run)
 
 
@@ -6085,6 +6126,7 @@ def build_parser():
         default="install",
         choices=[
             "message-guard-plan",
+            "message-guard-repair",
             "install",
             "enroll",
             "update",
@@ -6184,10 +6226,14 @@ def main(argv=None):
             print(json.dumps({"status": "NOT_CONFIGURED", "error": str(exc)}))
             return 2
     if args.dry_run:
+        if args.command == "message-guard-repair":
+            return repair_message_guard(args)
         return _main_unlocked(argv)
     with engine_lock(
         STATE_DIR, read_only=args.command in {"doctor", "uninstall-doctor"}
     ):
+        if args.command == "message-guard-repair":
+            return repair_message_guard(args)
         try:
             recover_copy_transactions(
                 STATE_DIR,

@@ -85,7 +85,8 @@ composing agent                      engine (stdlib python, fail closed)
   grounding," which was false and pointed at the wrong repair. Passed sends are
   appended to `log.jsonl` with the full ledger for audit.
 - **Wiring:** equivalent `PreToolUse` entries in Claude Code's
-  `~/.claude/settings.json` and Codex's `~/.codex/hooks.json`, each matching
+  `~/.claude/settings.json`, Codex's `~/.codex/hooks.json`, and Muse's
+  `~/.config/muse/settings.json`, each matching
   the send/draft tool family across all MCP servers by name pattern. The doctor
   requires every installed client to carry the guard.
 
@@ -257,6 +258,48 @@ constructor and MIME helper never send or file drafts.
 ```
 
 ## Owner-managed capability enrollment
+
+### Exact client spelling repair
+
+`--client-capability-check` accepts an array of the complete client catalog
+envelopes described below. It checks each supplied client's actual gated tool
+names against the configured declarations; a dispatch registry checks every tool.
+An incomplete catalog, duplicate client, unknown name or ambiguous declaration
+cannot count as coverage. Supplied catalog provenance remains unverified by this
+local check. Set `MESSAGE_GUARD_CLIENT_INVENTORIES` to a file containing that array
+when running doctor; every active client then needs its own complete catalog.
+For legacy gate configurations, doctor also detects missing members of the known
+exact workspace Gmail draft, Gmail send and chat send spelling pairs, even when
+a broad hook matcher matches. A finite dispatch registry uses its stored exact
+enrollment. Supplied current catalogs must match its enrolled client, tool names
+and descriptor hashes; unobserved spelling variants are not required.
+
+`--client-capability-plan` takes the same array and proposes only the three known
+`workspace_mcp` / `workspace-mcp` spelling pairs. It copies the existing explicit
+transport declaration, including its body and format mapping, into an additive
+name entry. It never normalizes arbitrary hyphens or underscores, changes a
+channel, or edits a dispatch registry. Other transports use the complete
+enrollment review below. Regex defaults already cover both Gmail spellings.
+
+To apply an authorized proposal, the configuration owner supplies
+`--client-capability-apply` with exactly `inventories`, `expected_config_sha256`
+(the SHA-256 of the actual configuration bytes),
+`reviewed_configuration_sha256` (from the exact plan), and `owner_review`
+(`source` plus an aware, non-future `reviewed_at`). The existing standalone owner
+locks the repair, checks both hashes, archives exact configuration and migration
+preimages, preserves pending ledger bytes and dispositions, and rebinds the
+migration record to the current engine. An already complete configuration keeps
+its exact bytes. This operation grants no message, draft or publication approval.
+Failures retain partial effects and preimages for reconciliation; never fabricate
+a successful migration receipt or rerun an uncertain apply without inspecting it.
+
+After successful owner migration, run the existing onboarding engine's narrow
+`message-guard-repair --clients claude,codex,muse` command with the selected
+clients. It installs the reviewed engine and actual nested `hooks.PreToolUse`
+wiring, preserves unrelated settings and existing broader hooks, and saves
+ordinary installation receipts. It does not enroll Muse as a Claude/Codex plugin
+client or change the selected model. Verify doctor and real client loading
+separately; installation is not native invocation evidence.
 
 A transport whose native schema has no format selector declares `fixed_format: plain` or `fixed_format: html` in its owner capability, together with its actual
 `body_field`. This is mutually exclusive with `format_field`, `html_value`, and

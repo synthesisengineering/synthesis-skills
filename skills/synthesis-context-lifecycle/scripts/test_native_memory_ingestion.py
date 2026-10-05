@@ -959,3 +959,28 @@ def test_foreign_loaded_pending_codec_cannot_supply_memory_owner(monkeypatch):
                         types.SimpleNamespace(__file__="/foreign/pending_manifest.py"))
     with pytest.raises(owner.ContextEditError, match="another source generation"):
         owner._memory_owners()
+
+
+@pytest.mark.parametrize('harness,expected', [('claude', 'PENDING_ACTIVE_HARNESS'), ('codex', 'EXPORT_REQUIRED')])
+def test_memory_probe_uses_board_contract_for_retained_history(capture, harness, expected):
+    world, store, _, _ = capture
+    workers, _ = owner._memory_owners()
+    board = world['board']
+    raw = board.read_bytes() + b'\n<!-- retained synthetic history: ' + b'x' * (2 * 1024 * 1024) + b' -->\n'
+    board.write_bytes(raw)
+    result = workers.memory_probe(store, harness=harness, machine='fixture-machine', board=board)
+    assert result['status'] == expected
+    assert result['model_calls'] == 0
+    assert board.read_bytes() == raw
+    assert (store / 'opaque.bin').read_bytes() == b'opaque synthetic native bytes'
+    if expected == 'EXPORT_REQUIRED':
+        assert result['board_sha256'] == digest(raw)
+
+
+def test_memory_probe_still_refuses_existing_board_limit(capture):
+    world, store, _, _ = capture
+    workers, _ = owner._memory_owners()
+    from board_grammar import MAX_MESSAGE_BOARD_BYTES
+    world['board'].write_bytes(b'x' * (MAX_MESSAGE_BOARD_BYTES + 1))
+    with pytest.raises(ValueError, match='bound|limit'):
+        workers.memory_probe(store, harness='codex', machine='fixture-machine', board=world['board'])

@@ -215,3 +215,30 @@ def test_all_scope_requires_required_success_in_every_plane(status):
 def test_invalid_utf8_evidence_is_never_replaced(raw):
     with pytest.raises(r.ReportError, match="invalid"):
         r.decode(raw)
+
+
+@pytest.mark.parametrize('source_status,expected', [
+    ('PASS', 'PASS'), ('LOCAL_RECOVERABLE', 'PASS'),
+    ('CONFLICT', 'FAIL'), ('UNKNOWN', 'UNKNOWN')])
+def test_project_recovery_report_serializes_owner_outcomes(monkeypatch, tmp_path, source_status, expected):
+    from types import SimpleNamespace
+    observed = SimpleNamespace(status=source_status, selected_head=None,
+                               selected_path=None, issues=[])
+    monkeypatch.setattr(conformance, 'resolve_durable_project', lambda *a, **k: observed)
+    checks = conformance.project_state_recovery_checks(tmp_path / 'project', tmp_path / 'board')
+    payload = r.build([c.serialized() for c in checks], BINDING, 'continuity', NOW)
+    assert payload['status'] == expected
+    assert payload['ok'] is (expected == 'PASS')
+    assert source_status in payload['checks'][0]['detail']
+    assert payload['planes']['native'] == 'UNKNOWN'
+
+
+def test_pending_client_report_serializes_without_success():
+    check = conformance.Check('parity.clients-current', None,
+        'held by a live fixture seat', required=False, plane='installed', outcome='PENDING')
+    assert check.status == 'PENDING'
+    payload = r.build([check.serialized()], BINDING, 'parity', NOW)
+    assert payload['status'] == 'UNKNOWN'
+    assert payload['checks'][0]['status'] == 'UNKNOWN'
+    assert 'PENDING' in payload['checks'][0]['detail']
+    assert payload['ok'] is False

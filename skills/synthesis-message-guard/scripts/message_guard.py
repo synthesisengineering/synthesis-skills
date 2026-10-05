@@ -453,6 +453,203 @@ def capability_for(tool_name, cfg):
     return matches[0]
 
 
+# These are observed native spellings of three transports, not a normalization
+# rule. Applying a proposal remains the configuration owner's reviewed action.
+CLIENT_TOOL_SPELLINGS = tuple(
+    (("mcp__workspace_mcp__" + action, "mcp__workspace-mcp__" + action), channel)
+    for action, channel in (
+        ("draft_gmail_message", "email"),
+        ("send_gmail_message", "email"),
+        ("send_message", "human-text"),
+    )
+)
+
+
+def client_capability_check(inventories, cfg):
+    """Resolve complete supplied client catalogs without granting authority."""
+    if not isinstance(inventories, list) or len(inventories) > 3:
+        raise ValueError("at most one complete inventory per supported client required")
+    clients, seen = [], set()
+    for inventory in inventories:
+        snapshot = inventory_snapshot(inventory)
+        client = snapshot["client"]
+        if client in seen:
+            raise ValueError("duplicate client inventory")
+        seen.add(client)
+        if cfg.get("_capability_registry"):
+            # A finite dispatch enrollment owns its exact client, descriptors,
+            # and complete tool set; legacy spelling pairs cannot enlarge it.
+            capability_readiness(inventory, cfg)
+        resolved, unresolved = [], []
+        for tool in snapshot["tools"]:
+            name = tool["name"]
+            # Gate installations inspect their correspondence scope. Dispatch
+            # registries must classify the entire native catalog.
+            if not cfg.get("_capability_registry") and (
+                not any(re.search(p, name) for p in cfg["gated_tool_patterns"])
+                or any(re.search(p, name) for p in cfg["exempt_tool_patterns"])
+            ):
+                continue
+            try:
+                capability = capability_for(name, cfg)
+                resolved.append({"name": name, "channel": capability["channel"]})
+            except ValueError:
+                unresolved.append(name)
+        clients.append({"client": client, "inventory_digest": snapshot["inventory_digest"],
+                        "resolved": resolved, "unresolved": unresolved})
+    return {"status": "OWNER_REVIEW_REQUIRED" if any(c["unresolved"] for c in clients)
+            else "DECLARED_CLIENT_INVENTORIES_CLASSIFIED", "clients": clients,
+            "native_inventory_provenance_verified": False, "message_authority_granted": False,
+            "read_only": True}
+
+
+def client_capability_plan(inventories, cfg):
+    """Propose only known exact spelling additions to explicit declarations."""
+    initial = client_capability_check(inventories, cfg)
+    if cfg.get("_capability_registry"):
+        raise ValueError("dispatch registries require their complete enrollment owner")
+    proposed = json.loads(json.dumps(cfg))
+    additions = []
+    for client in initial["clients"]:
+        for name in client["unresolved"]:
+            pairs = [(names, channel) for names, channel in CLIENT_TOOL_SPELLINGS if name in names]
+            if not pairs:
+                raise ValueError("unrecognized exact client spelling requires enrollment: " + name)
+            names, channel = pairs[0]
+            other = next(tool for tool in names if tool != name)
+            entry = capability_for(other, proposed)
+            if other not in entry.get("tool_names", []) or entry["channel"] != channel:
+                raise ValueError("spelling proposal requires an exact matching transport declaration")
+            # A conflicting target is never repaired by changing its channel or
+            # precedence. Zero matches is the only permitted additive case.
+            try:
+                existing = capability_for(name, proposed)
+            except ValueError:
+                matches = [row for row in proposed["message_capabilities"]
+                           if name in row.get("tool_names", []) or
+                           (row.get("tool_pattern") and re.search(row["tool_pattern"], name))]
+                if matches:
+                    raise ValueError("ambiguous target spelling requires owner review")
+                entry["tool_names"].append(name)
+                additions.append({"client": client["client"], "source": other, "tool": name})
+            else:
+                if existing != entry:
+                    raise ValueError("client spelling has a distinct declaration")
+    validate_config(proposed)
+    result = client_capability_check(inventories, proposed)
+    result.update(status="READY_FOR_CONFIGURATION_REVIEW", additions=additions,
+                  effective_configuration=proposed,
+                  configuration_sha256=hashlib.sha256(json.dumps(proposed, sort_keys=True, separators=(",", ":")).encode()).hexdigest())
+    return result
+
+
+def declared_spelling_gaps(cfg):
+    """Catch known cross-client drift even without claiming a live catalog."""
+    if cfg.get("_capability_registry"):
+        # Dispatch doctors validate the stored enrollment separately. Requiring
+        # an absent alias here would invent a tool outside that finite catalog.
+        return []
+    gaps = []
+    for names, expected_channel in CLIENT_TOOL_SPELLINGS:
+        if not any(name in row.get("tool_names", []) for row in cfg.get("message_capabilities", []) for name in names):
+            continue
+        for name in names:
+            try:
+                if capability_for(name, cfg)["channel"] != expected_channel:
+                    raise ValueError("wrong channel")
+            except ValueError:
+                gaps.append(name)
+    return gaps
+
+
+def client_capability_apply(request, cfg):
+    """Apply a digest-bound owner review; retain config and migration preimages."""
+    import fcntl
+    import tempfile
+
+    required = {"inventories", "expected_config_sha256", "reviewed_configuration_sha256", "owner_review"}
+    if not isinstance(request, dict) or set(request) != required:
+        raise ValueError("exact client repair request fields required")
+    review = request["owner_review"]
+    if (not isinstance(review, dict) or set(review) != {"source", "reviewed_at"}
+            or not isinstance(review["source"], str) or not review["source"].strip()
+            or len(review["source"]) > 4096 or not isinstance(review["reviewed_at"], str)):
+        raise ValueError("attributed configuration owner review required")
+    moment = datetime.fromisoformat(review["reviewed_at"].replace("Z", "+00:00"))
+    if moment.tzinfo is None or moment > datetime.now(timezone.utc):
+        raise ValueError("owner review must be aware and not future")
+    path, root = Path(config_path()).absolute(), Path(state_dir()).absolute()
+    if root.resolve() != root or path.parent != root:
+        raise ValueError("client repair requires the ordinary unaliased configuration owner root")
+    lock = root / ".configuration-repair.lock"
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    try:
+        identity = os.fstat(fd)
+        if (not stat.S_ISREG(identity.st_mode) or identity.st_nlink != 1
+                or identity.st_uid != os.getuid() or identity.st_mode & 0o077):
+            raise ValueError("unsafe configuration repair lock")
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        raw = _migration_bytes(path)
+        if hashlib.sha256(raw).hexdigest() != request["expected_config_sha256"]:
+            raise ValueError("configuration changed since owner review")
+        current = _migration_json(raw)
+        if current != cfg:
+            raise ValueError("effective configuration does not equal the retained owner bytes")
+        proposal = client_capability_plan(request["inventories"], current)
+        if proposal["configuration_sha256"] != request["reviewed_configuration_sha256"]:
+            raise ValueError("owner review does not bind the spelling proposal")
+        replacement = (json.dumps(proposal["effective_configuration"], indent=2) + "\n").encode()
+        # An already repaired config is kept byte-for-byte, including formatting.
+        if not proposal["additions"]:
+            replacement = raw
+        pending = _migration_pending(root)
+        history = Path(tempfile.mkdtemp(prefix="client-repair-", dir=root))
+        (history / "patterns.json").write_bytes(raw)
+        (history / "patterns.json").chmod(0o600)
+        record_path = root / "engine-migration.json"
+        previous_record = _migration_bytes(record_path) if os.path.lexists(record_path) else None
+        if previous_record is not None:
+            (history / "engine-migration.json").write_bytes(previous_record)
+            (history / "engine-migration.json").chmod(0o600)
+
+        def replace_owned(target, body, expected):
+            actual = _migration_bytes(target) if os.path.lexists(target) else None
+            if actual != expected or _migration_pending(root) != pending:
+                raise ValueError("configuration or pending custody changed during repair")
+            mode = stat.S_IMODE(target.stat().st_mode) if expected is not None else 0o600
+            temporary_fd, temporary_name = tempfile.mkstemp(prefix=".client-repair-", dir=root)
+            with os.fdopen(temporary_fd, "wb") as stream:
+                os.fchmod(stream.fileno(), mode)
+                stream.write(body)
+                stream.flush()
+                os.fsync(stream.fileno())
+            actual = _migration_bytes(target) if os.path.lexists(target) else None
+            if actual != expected or _migration_pending(root) != pending:
+                raise ValueError("owner compare-and-swap refused changed custody")
+            os.replace(temporary_name, target)
+            parent_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+
+        if replacement != raw:
+            replace_owned(path, replacement, raw)
+        plan = migration_preflight(plan=True)
+        if plan["status"] != "OWNER_REVIEW_REQUIRED":
+            raise ValueError("repaired configuration still refuses migration: " + str(plan))
+        record = dict(plan["required_record"], owner_review=review)
+        replace_owned(record_path, (json.dumps(record, indent=2) + "\n").encode(), previous_record)
+        result = migration_preflight()
+        if result["status"] != "READY_FOR_OWNER_ACTIVATION" or _migration_pending(root) != pending:
+            raise ValueError("configuration repair did not close exact migration custody")
+        return {"status": "READY_FOR_OWNER_ACTIVATION", "configuration_sha256": hashlib.sha256(_migration_bytes(path)).hexdigest(),
+                "additions": proposal["additions"], "history": str(history), "pending_count": len(pending),
+                "message_authority_granted": False, "native_inventory_provenance_verified": False}
+    finally:
+        os.close(fd)
+
+
 def inventory_snapshot(inventory):
     """A supplied native catalog is evidence input, not an invented live observation."""
     if not isinstance(inventory, dict) or inventory.get("client") not in (
@@ -873,6 +1070,28 @@ def html_inspection(value, *, allow_breaks=False):
     if parser.stack:
         parser.failures.append("unclosed HTML element")
     return "".join(parser.text).strip(), parser.failures
+
+
+
+def scan_message_text(value, compiled_block, compiled_warn):
+    """Scan wire and visible prose without discarding Slack link destinations."""
+    import html
+
+    def link_text(match):
+        destination, label = match.group(1), match.group(2)
+        # Slack angle links are not HTML tags. Keep both their visible label
+        # and destination as text before the HTML/entity inspection pass.
+        visible = html.unescape(label or destination)
+        return html.escape(visible + (" " + destination if label else ""))
+
+    inspectable = re.sub(
+        r"<(https?://[^\s<>|]+|mailto:[^\s<>|]+)(?:\|([^<>]*))?>",
+        link_text, value,
+    )
+    rendered = html_inspection(inspectable, allow_breaks=True)[0]
+    blocks, warns = scan_text(value, compiled_block, compiled_warn)
+    visible_blocks, visible_warns = scan_text(rendered, compiled_block, compiled_warn)
+    return list(dict.fromkeys(blocks + visible_blocks)), list(dict.fromkeys(warns + visible_warns))
 
 
 def paragraph_failures(value):
@@ -1716,12 +1935,8 @@ def run_gate(payload=None, dispatch=False):
             block("could not locate outgoing message text; unknown shape fails closed")
         warns = []
         for field, text in fields:
-            hits, field_warns = scan_text(text, cblock, cwarn)
-            # Scan rendered text too: markup and entities must not hide wording.
-            rendered = html_inspection(text, allow_breaks=True)[0]
-            rendered_hits, rendered_warns = scan_text(rendered, cblock, cwarn)
-            hits += rendered_hits
-            warns += field_warns + rendered_warns
+            hits, field_warns = scan_message_text(text, cblock, cwarn)
+            warns += field_warns
             if hits:
                 block(
                     "register scan failed in %s — %s"
@@ -2307,6 +2522,15 @@ def run_doctor():
             os.path.expanduser("~/.config/muse/settings.json"),
         )
     )
+    client_coverage = None
+    inventory_path = os.environ.get("MESSAGE_GUARD_CLIENT_INVENTORIES")
+    if inventory_path:
+        try:
+            client_coverage = client_capability_check(
+                _migration_json(_migration_bytes(Path(inventory_path).absolute())), cfg
+            )
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            report(False, "complete client capability inventories", str(exc))
     active_clients = 0
     for label, executable, environment_key, default_path in client_configs:
         config_file = os.environ.get(environment_key, default_path)
@@ -2320,6 +2544,14 @@ def run_doctor():
             print("  ok  %s hook wiring: client is not installed" % label)
             continue
         active_clients += 1
+        gaps = declared_spelling_gaps(cfg)
+        report(not gaps, "%s exact client tool spellings resolve" % label,
+               ", ".join(gaps) if gaps else "known declared transports; native catalog freshness remains unverified")
+        if inventory_path and client_coverage is not None:
+            coverage = next((row for row in client_coverage["clients"] if row["client"] == executable), None)
+            report(coverage is not None and not coverage["unresolved"],
+                   "%s supplied complete catalog capability resolution" % label,
+                   json.dumps(coverage) if coverage else "no complete inventory for this active client")
         try:
             wired = hook_config_covers(config_file, sample_tools)
             settings = json.loads(_doctor_regular_bytes(config_file))
@@ -2816,7 +3048,17 @@ def read_json_input():
 def program_mode(mode):
     try:
         data = read_json_input()
-        cfg, *_ = load_config()
+        if mode in ("--client-capability-plan", "--client-capability-apply", "--client-capability-check"):
+            cfg = _migration_json(_migration_bytes(Path(config_path()).absolute()))
+            registry_path = os.environ.get("MESSAGE_GUARD_CAPABILITIES")
+            if registry_path:
+                registry = _migration_json(_migration_bytes(Path(registry_path).absolute()))
+                validate_capability_registry(registry)
+                cfg["message_capabilities"] = registry["capabilities"]
+                cfg["_capability_registry"] = registry
+            cfg, *_ = validate_config(cfg)
+        else:
+            cfg, *_ = load_config()
         if mode == "--message-sha":
             print(message_digest(data["tool_name"], data["tool_input"]))
         elif mode == "--message-ledger-path":
@@ -2845,6 +3087,14 @@ def program_mode(mode):
             report = monitor_email_records(data, cfg)
             print(json.dumps(report))
             return 2 if report["violations"] else 0
+        elif mode == "--client-capability-plan":
+            print(json.dumps(client_capability_plan(data, cfg)))
+        elif mode == "--client-capability-apply":
+            print(json.dumps(client_capability_apply(data, cfg)))
+        elif mode == "--client-capability-check":
+            result = client_capability_check(data, cfg)
+            print(json.dumps(result))
+            return 2 if result["status"] == "OWNER_REVIEW_REQUIRED" else 0
         elif mode == "--capability-plan":
             print(json.dumps(capability_plan(data, cfg)))
         elif mode == "--capability-enroll":
@@ -3206,6 +3456,9 @@ def main():
         "--monitor-email",
         "--capability-check",
         "--capability-plan",
+        "--client-capability-plan",
+        "--client-capability-apply",
+        "--client-capability-check",
         "--capability-enroll",
         "--capability-readiness",
     ):
@@ -3222,7 +3475,7 @@ def main():
         except Exception as exc:
             print("config error: %s" % exc, file=sys.stderr)
             sys.exit(2)
-        hits, warns = scan_text(sys.stdin.read(), cblock, cwarn)
+        hits, warns = scan_message_text(sys.stdin.read(), cblock, cwarn)
         for n, s in hits:
             print("BLOCK [%s] %r" % (n, s))
         for n, s in warns:
