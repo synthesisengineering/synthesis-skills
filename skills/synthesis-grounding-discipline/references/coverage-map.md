@@ -12,4 +12,6 @@ Every part of the 1.1.1 SKILL.md and where it lives now. Nothing was removed.
 | The Self-Check | SKILL.md (verbatim) |
 | Relationship to Other Skills | references/background.md (verbatim) |
 | The Underlying Principle | references/background.md (verbatim) |
-| `depends_on`, `source_repo`, `source_type` metadata | Dropped as unused by any harness |
+| `depends_on`, `source_repo`, `source_type` metadata | Kept (the installer and source checks read them) |
+
+Links moved into `references/` gained one `../` so they still resolve.

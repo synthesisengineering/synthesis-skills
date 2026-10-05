@@ -5,14 +5,28 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Tree of Thought
 
 A reasoning technique that simulates multiple domain experts brainstorming step by step, critiquing each other's work, backtracking on flaws, and converging on a well-vetted conclusion.
+
+## Binding rules
+
+1. **Use it where a single line of reasoning could converge early on a wrong answer:** no obvious single answer, real trade-offs, or expertise from several fields. Skip it for simple lookups, single-answer tasks, or when speed matters more than depth.
+2. **Match the experts to the problem,** named by specific expertise: three by default, four only for four genuinely distinct domains, and at least one whose domain creates productive tension with the others.
+3. **At every step each expert critiques their own reasoning and every other expert's,** and checks it against their domain knowledge.
+4. **Backtrack to the flaw, and admit error.** An expert who finds a flaw returns to where it occurred; one who realizes they are wrong says so and starts a new line of thought.
+5. **Each expert states the likelihood that their current assertion is correct,** and the process continues until the experts converge.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives.
+- How it works, Template 1 (general-purpose), Template 2 (domain-expert variant), Guidance for choosing experts, When to use tree of thought, When NOT to use tree of thought: below.
 
 ## How it works
 

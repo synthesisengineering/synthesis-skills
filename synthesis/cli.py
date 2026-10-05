@@ -41,16 +41,25 @@ def cmd_who(args) -> int:
         if s.stale and not args.all:
             continue
         age = int((now - s.seen) / 60)
-        print(f"{s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}")
+        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}")
         for c in s.claims:
             print(f"    {c}")
     return 0
 
 
 def cmd_msg(args) -> int:
-    board.message(args.to, _session(args), args.text)
+    try:
+        board.message(args.to, _session(args), args.text, durable=args.durable)
+    except board.AddressError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
     print(f"sent to {args.to}")
     return 0
+
+
+def cmd_worktree(args) -> int:
+    from synthesis import worktree
+    return worktree.main((["--session", args.session] if args.session else []) + args.rest)
 
 
 def cmd_inbox(args) -> int:
@@ -118,10 +127,14 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("who", help="list live sessions and claims")
     s.add_argument("--all", action="store_true")
     s.set_defaults(fn=cmd_who)
-    s = sub.add_parser("msg", help="message a session id or project:<id>")
+    s = sub.add_parser("msg", help="message a session id, short name or project:<id>")
     s.add_argument("to")
     s.add_argument("text")
+    s.add_argument("--durable", action="store_true", help="reach every session that works on the project")
     s.set_defaults(fn=cmd_msg)
+    s = sub.add_parser("worktree", help="create, retire or land a worktree", add_help=False)
+    s.add_argument("rest", nargs=argparse.REMAINDER)
+    s.set_defaults(fn=cmd_worktree)
     sub.add_parser("inbox", help="show and mark unread messages").set_defaults(fn=cmd_inbox)
     s = sub.add_parser("use", help="set this session's active project")
     s.add_argument("project")
@@ -138,6 +151,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "worktree" in argv:  # hand everything after it to the worktree command untouched
+        split = argv.index("worktree")
+        args = parser().parse_args(argv[:split] + ["worktree"])
+        args.rest = argv[split + 1:]
+        return cmd_worktree(args)
     args = parser().parse_args(argv)
     return args.fn(args)
 

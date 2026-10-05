@@ -6,14 +6,27 @@ user-invocable: false
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Response Merger
 
 Merge multiple LLM responses into a single, comprehensive, unified document that preserves all detail from every input.
+
+## Binding rules
+
+1. **This is a merge, not a summary.** Do not simplify, shorten or reduce any level of detail, and do not omit minor details from any response.
+2. **The unified document is significantly longer and more detailed than even the longest single input response,** and no section carries less detail than its counterpart in any input.
+3. **Plan before writing:** how each response's key points integrate, where context from the prompts belongs, what structure serves the combined content, and where responses overlap or contribute something unique.
+4. **Deliver the plan first, then the unified document.**
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives.
+- Input, Process (Steps 1 to 3), Output structure, Related: below.
 
 ## Input
 

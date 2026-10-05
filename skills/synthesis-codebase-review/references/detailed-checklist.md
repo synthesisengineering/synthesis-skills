@@ -7,6 +7,12 @@ This file contains the full detailed review checklist for the synthesis-codebase
 - **Enterprise** (Tier 3) — Apply to large-scale, multi-team, or regulated systems
 - **Mission-Critical** (Tier 4) — Apply to financial, healthcare, infrastructure, or high-stakes systems
 
+Contents:
+- 1 to 8: Architecture & System Design; Secrets, Credentials & Sensitive Data; Code Duplication & Reusability; Code Quality, Efficiency & Optimization; Clean Code & Software Engineering Principles; Code Readability & AI/Human Maintainability; Testing; Security
+- 9 to 13, for larger systems: Multi-Tenancy and Identity & SSO (Tier 3+); Scalability & Performance, Reliability and Observability (Tier 2+)
+- 14 to 16: Deployment & Operations; Licensing & Legal; Developer Experience
+- Addenda: Open Source Software; Closed-Source Software; Industry-Specific (financial services, healthcare, e-commerce, government)
+
 ---
 
 ## 1. Architecture & System Design
@@ -524,7 +530,7 @@ Include this section if the project is open source. Key areas:
 
 ---
 
-## Proprietary Software Addendum
+## Closed-Source Software Addendum
 
 Include this section for proprietary/closed-source software:
 

@@ -5,7 +5,8 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -13,6 +14,24 @@ metadata:
 # LLM Setup
 
 Configure Claude Projects, ChatGPT GPTs, Gemini Gems, and other LLM platforms using compiled AI Knowledge content from the ragbot system.
+
+## Binding rules
+
+1. **Edit `source/` files, never the generated output.** CI/CD rebuilds `all-knowledge.md` on every push to `source/`, so a hand edit to it is overwritten.
+2. **Take instructions from `compiled/{project}/instructions/`:** the file for that platform (`claude.md`, `chatgpt.md`, `gemini.md`), or the closest match for any other LLM.
+3. **Recompile instructions only when they change** (`ragbot compile --project {name}`); knowledge concatenation needs no manual step.
+4. **Deliver knowledge per platform:** GitHub sync for Claude; upload `all-knowledge.md` to ChatGPT and Gemini, and upload it again after source changes.
+5. **Compile where the audience matches.** A compilation includes only repos the compiling user can access, which is what keeps personal content out of team and client projects.
+6. **Verify each project** with a representative query before calling it set up.
+
+## Contents
+
+- [references/platform-setup.md](references/platform-setup.md): click-by-click setup for Claude Projects, ChatGPT GPTs, Gemini Gems and other LLMs. Read when creating or configuring a project on one of them.
+- [references/compilation-and-inheritance.md](references/compilation-and-inheritance.md): how compilation and inheritance decide what content each project gets, the privacy model, and the `ragbot compile` options. Read before compiling, or when choosing which repo to compile in.
+- [references/troubleshooting.md](references/troubleshooting.md): fixes for instructions too long, knowledge not used, inheritance not working, and content from the wrong repo. Read when a project misbehaves.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives (ruling D8).
+- Configuration, Architecture overview, Output structure: below. The settings to adjust and what the system produces.
+- Step-by-step workflow, Updating projects: below. The procedure for a new project and for keeping one current.
 
 ## Configuration
 
@@ -55,109 +74,6 @@ ai-knowledge-{name}/
 - ChatGPT: Upload `all-knowledge.md`
 - Gemini: Upload `all-knowledge.md` (works within the 10-file Gem limit)
 
-## Claude Projects setup
-
-### Custom instructions
-
-1. Create a new Claude Project (or open an existing one).
-2. Go to Project Knowledge, then Custom Instructions.
-3. Copy content from `compiled/{project}/instructions/claude.md`.
-4. Paste into the custom instructions field.
-
-### Knowledge files
-
-**Option A: GitHub sync (recommended)**
-1. Connect your GitHub account to Claude.
-2. Sync the repository containing your ai-knowledge repo.
-3. Claude indexes `all-knowledge.md` and source files automatically.
-
-**Option B: Manual upload**
-1. Go to Project Knowledge, then Files.
-2. Upload `all-knowledge.md` from the repo root.
-
-## ChatGPT GPT setup
-
-### Creating a GPT
-
-1. Go to https://chat.openai.com/gpts/editor
-2. Click "Create a GPT".
-3. Configure:
-   - **Name**: Your project name
-   - **Description**: Brief description
-   - **Instructions**: Copy from `compiled/{project}/instructions/chatgpt.md`
-
-### Knowledge files
-
-1. In the GPT editor, go to the Knowledge section.
-2. Upload `all-knowledge.md` from the repo root.
-
-## Gemini Gems setup
-
-### Creating a Gem
-
-1. Go to https://gemini.google.com/gems
-2. Create a new Gem.
-3. Paste instructions from `compiled/{project}/instructions/gemini.md`.
-
-### Knowledge files
-
-1. Upload `all-knowledge.md` from the repo root.
-2. This single file contains all runbooks and datasets merged together.
-3. Works well within Gemini's 10-file limit per Gem.
-
-## Other LLMs (Grok, etc.)
-
-1. Copy instructions from `compiled/{project}/instructions/` (use the closest match).
-2. Upload `all-knowledge.md` from the repo root.
-
-## Compilation and inheritance
-
-### How it works
-
-Each user compiles projects in their own repo. What content gets included depends on inheritance.
-
-**Example: Compiling in ai-knowledge-personal:**
-```
-compiled/
-├── personal/                     # Baseline (ragbot + personal)
-├── company/                      # personal + company merged
-├── client-a/                     # personal + company + client-a merged
-└── client-b/                     # personal + client-b merged
-```
-
-**Example: Compiling in ai-knowledge-company (team member without access to personal):**
-```
-compiled/
-├── company/                      # Baseline (ragbot + company, NO personal)
-├── client-a/                     # company + client-a (NO personal)
-└── client-c/                     # company + client-c
-```
-
-### Privacy model
-
-Content is only included if the user has access to the source repo:
-- Private content (ai-knowledge-{personal}) only appears in that user's compilations
-- Team members get team content but not personal content
-- Clients only get client-specific content
-
-### Running instruction compilation
-
-```bash
-# Compile instructions for a project
-ragbot compile --project {name}
-
-# Without LLM API calls (just assemble)
-ragbot compile --project {name} --no-llm
-
-# Force recompile (ignore cache)
-ragbot compile --project {name} --force
-
-# Verbose output
-ragbot compile --project {name} --verbose
-```
-
-Knowledge concatenation (`all-knowledge.md`) is handled automatically by CI/CD -- no manual step needed.
-
 ## Step-by-step workflow
 
 1. **Compile instructions** (only if instructions changed):
@@ -186,25 +102,3 @@ ragbot compile --project {name} --force
 **LLM sync:**
 - Claude: GitHub sync auto-updates
 - ChatGPT/Gemini: Re-upload `all-knowledge.md` after source changes
-
-## Troubleshooting
-
-### "Instructions too long"
-- Move detailed content to knowledge files
-- Check manifest.yaml for token counts
-- Keep instructions focused on identity and behavior
-
-### "Knowledge not being used"
-- Verify `all-knowledge.md` was uploaded correctly
-- Check if content is in instructions vs knowledge
-- For Claude: ensure GitHub sync is active and pointing to the repo
-
-### "Inheritance not working"
-- Verify `my-projects.yaml` exists in the personal repo
-- Check inheritance chain in compile-config.yaml
-- Run with `--verbose` to see inheritance resolution
-
-### "Content from wrong repo appearing"
-- Check which repo you are compiling in
-- Verify you have access to expected repos
-- Remember: content only comes from repos you can access

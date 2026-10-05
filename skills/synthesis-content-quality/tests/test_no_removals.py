@@ -36,9 +36,31 @@ def is_subsequence(baseline: list[str], current: list[str]) -> bool:
     return all(any(candidate == required for candidate in iterator) for required in baseline)
 
 
+def is_v5_skill(path: Path) -> bool:
+    """A skill restructured into the v5 format keeps its text across SKILL.md and references/."""
+    return path.name == "SKILL.md" and re.search(r"^\s*format:\s*v5\s*$", path.read_text(encoding="utf-8"), re.M) is not None
+
+
+def skill_folder_lines(skill_md: Path) -> list[str]:
+    hashes: list[str] = []
+    for path in sorted(skill_md.parent.rglob("*.md")):
+        hashes.extend(line_hashes(path.read_text(encoding="utf-8")))
+    return hashes
+
+
+def contains_all(baseline: list[str], pool: list[str]) -> bool:
+    from collections import Counter
+
+    have = Counter(pool)
+    need = Counter(baseline)
+    return all(have[h] >= n for h, n in need.items())
+
+
 def count(pattern: str, relative_path: str) -> int:
-    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-    return len(re.findall(pattern, text, flags=re.MULTILINE))
+    """Count in one file, or across a skill folder's markdown when given its directory."""
+    target = REPO_ROOT / relative_path
+    files = sorted(target.rglob("*.md")) if target.is_dir() else [target]
+    return sum(len(re.findall(pattern, f.read_text(encoding="utf-8"), flags=re.MULTILINE)) for f in files)
 
 
 class NoRemovalsTests(unittest.TestCase):
@@ -92,11 +114,17 @@ class NoRemovalsTests(unittest.TestCase):
             if not path.is_file():
                 failures.append(f"missing file: {relative}")
                 continue
-            current = line_hashes(path.read_text(encoding="utf-8"))
             expected = self.transformed_baseline(
                 relative,
                 record["ordered_nonblank_line_sha256"],
             )
+            if is_v5_skill(path):
+                # v5 moves text verbatim into references/ and keeps the old frontmatter in
+                # references/coverage-map.md, so every line must survive somewhere in the folder.
+                if not contains_all(expected, skill_folder_lines(path)):
+                    failures.append(f"baseline line missing from the v5 skill folder: {relative}")
+                continue
+            current = line_hashes(path.read_text(encoding="utf-8"))
             if not is_subsequence(expected, current):
                 failures.append(
                     "baseline line changed, removed, reordered, or changed outside "
@@ -146,8 +174,8 @@ class NoRemovalsTests(unittest.TestCase):
                 "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
                 86,
             ),
-            "pitfalls": (r"^\d+\. \*\*", "skills/synthesis-writing-pitfalls/SKILL.md", 22),
-            "craft principles": (r"^\*\*[^*]+\.\*\*", "skills/synthesis-writing-craft/SKILL.md", 30),
+            "pitfalls": (r"^\d+\. \*\*", "skills/synthesis-writing-pitfalls/references/catalog.md", 22),
+            "craft principles": (r"^\*\*[^*]+\.\*\*", "skills/synthesis-writing-craft", 30),
         }
         for label, (pattern, path, minimum) in assertions.items():
             with self.subTest(label=label):

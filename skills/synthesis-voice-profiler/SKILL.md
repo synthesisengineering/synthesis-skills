@@ -1,21 +1,37 @@
 ---
 name: synthesis-voice-profiler
-description: "Generate a structured writing voice profile from sample texts and diagnostic questions. Outputs an agent-instruction voice section that other skills automatically consume. Use when asked to: create voice profile, analyze writing style, extract voice, profile my writing, build voice section, writing DNA, style analysis."
+description: "Build a writing voice profile from the user's samples and diagnostic questions, output as a voice section for CLAUDE.md or AGENTS.md that writing skills consume. Use when asked to create a voice profile, analyze writing style, extract voice, profile my writing or build a voice section."
 license: "CC0-1.0"
 user-invocable: true
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Voice Profiler
 
 A utility that analyzes your writing samples and generates a structured voice profile for agent instruction files such as `CLAUDE.md` or `AGENTS.md`. Once added, every skill that says to apply voice and style preferences from agent instructions will automatically use your profile. You run this once and update it when your style evolves.
 
----
+## Binding rules
+
+1. **Profile only the user's own writing:** 3-5 samples they are proud of, at least 300 words each, not collaborative or heavily edited by others. Anyone else's hand in the samples profiles someone else.
+2. **Ask 3-5 diagnostic questions, only about what the samples leave ambiguous;** never ask about a pattern the samples already show.
+3. **Analyze all six dimensions,** including the negative constraints, which are found by absence across every sample.
+4. **Adapt the template to the analysis:** add sections where patterns are strong and remove sections where the writer has no strong preference.
+5. **The user reviews the profile and you revise it** until it reads as a mirror they recognize, not a prescription they would resist.
+6. **The output is a section for the agent instruction file** (`CLAUDE.md` or `AGENTS.md`). That file is the integration layer, so no other wiring is needed.
+
+## Contents
+
+- [references/diagnostics-and-analysis.md](references/diagnostics-and-analysis.md): the ten-question bank for Step 2 and the checklist under each of the six analysis dimensions for Step 3. Read it after reading the samples, before asking questions.
+- [references/profile-template.md](references/profile-template.md): the voice profile template for Step 4. Read it when writing the profile.
+- [references/integration.md](references/integration.md): which skills consume the profile and how. Read it when the user asks how the profile will be used.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives.
+- What This Produces, Process (Steps 1 to 5), When to Re-Run: below.
 
 ## What This Produces
 
@@ -26,8 +42,6 @@ A structured voice profile section formatted for direct paste into your global o
 - **Contextual notes** — how your voice shifts across different content types
 
 This output integrates with the existing synthesis skills ecosystem. Skills like synthesis-article-writing, synthesis-blog-refresh, synthesis-concise-messaging, and synthesis-content-distribution already look for voice preferences in agent instructions; this skill generates what they consume.
-
----
 
 ## Process
 
@@ -46,94 +60,19 @@ If the user provides URLs, fetch and read them. If they provide filenames, read 
 
 After reading the samples, ask 3-5 targeted questions to surface preferences that sample analysis alone cannot reveal. Adapt the questions based on what the samples show — do not ask about patterns already evident.
 
-**Question bank** (select 3-5 based on what the samples leave ambiguous):
-
-1. **Formality range:** "Your samples lean [formal/casual/mixed]. Is that representative, or do you deliberately shift formality for different audiences?"
-2. **Jargon tolerance:** "I notice you [use/avoid] technical terminology. Do you prefer domain-specific language when writing for peers, or do you always aim for accessibility?"
-3. **Structure preference:** "Do you prefer short, punchy paragraphs or longer, developed ones? Your samples show [observed pattern] — is that intentional?"
-4. **Rhetorical devices:** "I see you [use/rarely use] rhetorical questions, fragments, and direct reader address. Are there devices you specifically like or dislike?"
-5. **Humor and tone:** "How important is humor or wit in your writing? Your samples [show evidence/lack evidence] of it."
-6. **Forbidden patterns:** "Are there specific words, phrases, or writing patterns you actively avoid? Many writers have a 'never use' list."
-7. **Punctuation style:** "I notice [em-dash usage / semicolon avoidance / serial comma preference / etc.]. Is that a conscious choice?"
-8. **Opening strategy:** "How do you prefer to open a piece — anecdote, bold claim, question, context-setting?"
-9. **Conclusion style:** "How do you prefer to end — call to action, callback to the opening, forward-looking, or just stop when done?"
-10. **Content length:** "Do you tend toward concise or comprehensive? Your samples suggest [pattern]."
+Select the questions from the question bank in [references/diagnostics-and-analysis.md](references/diagnostics-and-analysis.md).
 
 ### Step 3: Analyze
 
 With samples read and questions answered, analyze across six dimensions:
 
-**Lexical Profile:**
-- Characteristic vocabulary — words and phrases that recur across samples
-- Vocabulary the writer avoids — notably absent words or categories
-- Register — formal, conversational, technical, hybrid
-- Jargon level — specialist terms vs. plain language
-
-**Syntactic Signature:**
-- Average sentence length and variation pattern
-- Paragraph length and structure
-- Use of fragments, run-ons, or deliberately long sentences
-- List usage — bulleted, numbered, inline, or avoided
-
-**Rhetorical Devices:**
-- Questions (rhetorical, genuine, leading)
-- Analogies and metaphors (original vs. borrowed, frequency)
-- Direct reader address ("you")
-- Repetition for emphasis
-- Understatement or overstatement as a tool
-
-**Structural Patterns:**
-- Opening approach (anecdote, claim, question, scene)
-- Transition style (explicit connectives, white space, thematic)
-- Section organization (progressive, thematic, narrative)
-- Closing approach (callback, action, restatement, abrupt)
-
-**Tonal Identity:**
-- Confidence level — assertive, tentative, measured
-- Humor — present/absent, dry/overt, frequency
-- Emotional register — controlled, expressive, matter-of-fact
-- Relationship to reader — peer, teacher, advisor, reporter
-
-**Negative Constraints:**
-- Words and phrases the writer never uses (identified by absence across all samples)
-- Structural patterns avoided (e.g., never uses bullet lists, never uses subheadings)
-- Tonal patterns avoided (e.g., never sycophantic, never hedging)
-- AI-typical patterns already absent from this writer's work
+Lexical Profile, Syntactic Signature, Rhetorical Devices, Structural Patterns, Tonal Identity, and Negative Constraints. What to look for under each is in [references/diagnostics-and-analysis.md](references/diagnostics-and-analysis.md).
 
 ### Step 4: Generate the Voice Profile
 
 Output the profile in this format, ready for the user to paste into an agent instruction file:
 
-```markdown
-## Voice & Writing Style
-
-### Characteristics
-- [Observation 1 — e.g., "Conversational but substantive. Writes like explaining to a smart colleague."]
-- [Observation 2 — e.g., "Short paragraphs. Rarely more than 4 sentences. Single-sentence paragraphs for emphasis."]
-- [Observation 3 — e.g., "Opens with specific anecdotes, not abstractions."]
-- [Observation 4+]
-
-### Sentence Structure
-- [Pattern — e.g., "Varies length deliberately. Short sentences for emphasis, longer for complexity."]
-- [Pattern — e.g., "Uses fragments sparingly but deliberately."]
-- [Pattern — e.g., "Favors active voice. Passive only for emphasis on the object."]
-
-### Vocabulary Preferences
-- [Preference — e.g., "Plain language over jargon, even for technical topics."]
-- [Preference — e.g., "Concrete over abstract. 'Revenue dropped 40%' over 'significant decline.'"]
-
-### Avoid
-- [Constraint — e.g., "Never use: delve, tapestry, nuanced, robust, foster, beacon"]
-- [Constraint — e.g., "No em-dashes (use commas, periods, or colons instead)"]
-- [Constraint — e.g., "No section-ending summaries. If a section needs a summary, restructure it."]
-- [Constraint — e.g., "No AI-typical phrases: 'it's important to note,' 'in conclusion,' 'delve into'"]
-- [Constraint — e.g., "No sycophantic or concierge language. No 'great question!' or 'I'd be happy to help.'"]
-
-### Tone
-- [Tone note — e.g., "Confident without arrogance. Direct without being rude."]
-- [Tone note — e.g., "Humor is dry and infrequent — used for relief, not performance."]
-- [Tone note — e.g., "Takes positions. Disagrees when warranted. Does not hedge every conclusion."]
-```
+The format is the template in [references/profile-template.md](references/profile-template.md).
 
 **Adapt the template to the actual analysis.** Not every writer needs every section. Add sections for formatting preferences, content structure, or audience awareness if the analysis reveals strong patterns. Remove sections where the writer has no strong preference.
 
@@ -146,23 +85,6 @@ Present the profile to the user and ask:
 3. "Is anything here wrong — a pattern I identified that you don't actually want?"
 
 Revise based on feedback. The profile should feel like a mirror the writer recognizes, not a prescription they'd resist.
-
----
-
-## Integration
-
-After the user adds the voice profile to their agent instruction file:
-
-- **synthesis-article-writing** will apply it during Phase 2 (Writing)
-- **synthesis-blog-refresh** will use it for voice consistency checks
-- **synthesis-concise-messaging** will apply voice preferences to condensed messages
-- **synthesis-content-distribution** will adapt posts to match voice across platforms
-- **synthesis-content-quality** will flag deviations from the negative constraints during quality review
-- Any custom skills that say to apply voice preferences from agent instructions will consume it automatically
-
-No additional wiring is needed. Agent instruction files are the integration layer.
-
----
 
 ## When to Re-Run
 

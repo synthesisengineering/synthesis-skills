@@ -1,15 +1,12 @@
 ---
 name: synthesis-concise-messaging
-description: >
-  Condense messages to 5 sentences or less using the High-Five Habit framework.
-  Produces concise, effective business communications across email, Slack, text, and social media.
-  Use when asked to: condense message, shorten email, brief message, concise writing, email template,
-  make shorter, tighten email, reduce message length, write concise message.
+description: "Condense a message to five sentences or fewer with the High-Five Habit, for email, Slack, text and social posts. Use when asked to condense, shorten, tighten or make a message shorter, reduce message length, write a brief or concise message, or draft an email template."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -17,6 +14,24 @@ metadata:
 # Concise Messaging
 
 Condense messages to 5 sentences or less using the High-Five Habit framework. Most messages can and should be this concise.
+
+## Binding rules
+
+1. **Five sentences or fewer** for most messages. The limit forces clarity and respects the reader's time.
+2. **When condensing loses critical nuance, suggest a call or meeting** instead of forcing it; in Slack, a third message means a huddle.
+3. **Lead with the purpose and end with a clear next step.** Skip openers like "I hope this finds you well."
+4. **Cut what does not earn its place:** filler, hedging, redundant context, buzzwords and needless apologies.
+5. **Keep the writer's voice.** Apply voice preferences from `CLAUDE.md` or `AGENTS.md` when present, match the recipient's tone, and be direct without being rude.
+6. **Break the limit when it should break:** legal or compliance messages, emotional support, first impressions, complex technical material, and personal notes where brevity reads as cold.
+7. **Deliver ready-to-use text** with no placeholders.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives (ruling D8).
+- Core Principles: below. The five-sentence constraint and the reasons for it.
+- Message Structure Templates, Platform-Specific Guidelines: below. Read when drafting a business email, meeting request, project update or outreach, or for a specific channel.
+- Condensation Process, Exception Framework, Quality Checks: below. Read on every condensation, and before finalizing.
+- Customization, Related: below. Read when setting up a voice profile.
 
 ## Core Principles
 

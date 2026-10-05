@@ -1,6 +1,6 @@
 ---
 name: synthesis-quick-answers
-description: "Stand up and operate a low-cost, read-mostly companion session for ad hoc workspace lookups without pulling a focused project session off task. Every answer carries its source and a Verified, Cached, or Uncertain confidence tier. The workspace's tracked instruction source routes future sessions to the companion automatically. Bootstraps a missing personal knowledge workspace through the public synthesis CLI. Use for an FAQ assistant, quick-answers session, lookup companion, ask-me-anything session, fast Q&A project, or one-off lookup that is not the focused project's task. Not for deep project work, decisions, drafting, sending messages, or work that belongs in its own project."
+description: "Run a cheap, read-mostly companion session for ad hoc workspace lookups so focused sessions stay on task. Every answer names its source and a Verified, Cached or Uncertain tier. Use for a quick-answers, FAQ or lookup companion; not for decisions, drafting or sending messages."
 license: "CC0-1.0"
 depends_on:
   - synthesis-project-management
@@ -11,76 +11,36 @@ depends_on:
   - synthesis-onboarding
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.1"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Synthesis Quick Answers — Lookup Companion Pattern
 
-## The Problem
+A cheap, read-mostly companion session that answers ad hoc workspace lookups, so focused project sessions keep their context for their own work. It owns no workflow: it reads across the workspace and writes almost nothing back.
 
-Focused project sessions accumulate context on purpose — that's what makes them good at the work they're for. But not every question belongs there. "When is a colleague back from vacation" and "has a release shipped yet" are real, frequent, and usually urgent-feeling questions that have nothing to do with whatever a focused session is mid-task on. Answering them inline does two kinds of damage:
+## Binding rules
 
-- **Context pollution.** The focused session's window fills with unrelated lookups, and its summarized history gets noisier every time it compacts.
-- **Cost mismatch.** A one-line factual lookup doesn't need the reasoning depth or the model tier a hard architecture or strategy session runs at. Paying Max-effort-tier prices for "when is X back" is waste, repeated daily.
+1. **Classify the question before searching**, then query only the source that answers that shape of question. Loading a whole project's context for one fact defeats a cheap companion.
+2. **Verify anything volatile before asserting it**: schedules, status, ship state, dates. Context files and session summaries are caches, per `synthesis-grounding-discipline`'s cache-vs-truth rule; a fast stale answer is trusted precisely because it is fast.
+3. **Every answer ends with a one-line grounding trailer** naming the source and a tier: **Verified** (confirmed live this turn), **Cached** (read from a file without re-verifying; give its as-of date) or **Uncertain** (no source found). A volatile fact answered as Cached is a defect.
+4. **Answer tersely:** the fact first, one sentence of context only if it is load-bearing.
+5. **Log each answer** as one line in `resources/FAQ.md` (date, question, answer, sources, tier); skip asks that will be false by tomorrow.
+6. **Route durable facts through `synthesis-knowledge-capture`.** This project writes only its own `CONTEXT.md` and `FAQ.md`.
+7. **No decisions, drafting, sending, calendar changes or delegation.** Hand real investigations to their own project.
+8. **Live in the personal knowledge workspace**, `~/workspaces/{workspace}/ai-knowledge-{workspace}/`, created with `synthesis workspace ensure --name {name}` from `synthesis-onboarding` (install the CLI through `onboard.sh` if it is missing); never a substitute folder.
+9. **Routing is a file, not a habit.** Add the routing line to the tracked `.agents/workspace-AGENTS.md`, never to the root `AGENTS.md` or `CLAUDE.md` entry points the onboarding engine owns.
+10. **Recommend the `routine` model tier and let the user set it**; an agent cannot switch its own model.
 
-The fix is not "be disciplined about not asking." The questions are legitimate and often time-sensitive. The fix is a separate, cheap, low-ceremony surface built for exactly this shape of question — one that exists specifically so the *other* sessions can stay clean.
+## Contents
 
-## The Pattern
-
-A **quick-answers companion**: one `ongoing`-status project inside the user's own personal knowledge workspace (per `synthesis-project-management`, at `~/workspaces/{workspace}/ai-knowledge-{workspace}/` — the same location `synthesis-onboarding` scaffolds), used from a session on a routine-tier model, whose entire mandate is answering lookups by reading everything else in the workspace and writing almost nothing back.
-
-It is deliberately **not** a "seat" in the operations sense (compare an `<org>-operations`-style project, which *owns* rituals, syncs, and triage). It owns no workflow. It is a read path across every other project, plus the workspace's knowledge base — and its value depends on staying that narrow. The moment it starts drafting, deciding, or sending, it has become a second copy of the work it exists to protect other sessions from absorbing.
-
-**"Automatic" is a file, not a habit.** The routing line lives in the workspace's Git-tracked `.agents/workspace-AGENTS.md`. The onboarding engine exposes that one source to both clients through the workspace-root `AGENTS.md` and `CLAUDE.md` entry points. A companion without the routing line still has to be invoked by hand, which is the friction this pattern exists to remove.
-
-### Configuration
-
-| Setting | Value | Description |
-|---|---|---|
-| `ai_knowledge_workspace` | `~/workspaces/{workspace}/ai-knowledge-{workspace}/` | Same location `synthesis-project-management` and `synthesis-onboarding` already use — never a substitute folder |
-| `project_id` | `{workspace}-quick-answers` | e.g. `acme-quick-answers` — noun name, `ongoing` status, mirrors the workspace's own ops-seat naming |
-| `faq_log` | `projects/{project_id}/resources/FAQ.md` | Append-only log of answered questions — see "The FAQ log" below |
-| `model_tier` | `routine` (per `synthesis-model-tiers`) | Set by the user per client (`/model` in Claude Code, the equivalent in Codex) — an agent cannot switch its own model, so state the recommendation and wait rather than attempting it |
-
-### Setup
-
-This pattern needs a personal knowledge workspace — the same `ai-knowledge-{workspace}` repo `synthesis-project-management` and `synthesis-onboarding` already use, at `~/workspaces/{workspace}/ai-knowledge-{workspace}/`. Don't invent a substitute location (a loose folder somewhere else, a name that doesn't match): a companion that lives outside the convention every other project already follows is a second, incompatible system, not a lighter version of the same one.
-
-1. **Ensure the personal knowledge workspace exists.** Run `synthesis workspace ensure --name {name}`. It safely scaffolds `~/workspaces/{name}/ai-knowledge-{name}/`, including a seeded `projects/index.yaml`, a Git-tracked `.agents/workspace-AGENTS.md`, a tracked `.agents/knowledge-base.yaml` declaring the `source/` bundle, and collision-safe workspace entry points for both clients. It is idempotent when the workspace already exists, and it leaves every seeded file alone once you have edited it. If the `synthesis` command is not installed yet (a plugin-only installation has no launcher), install it first with the stable bootstrap: `curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only`. A shared organization workspace is a sibling, not a substitute; this pattern's project files belong in the personal repository.
-2. Create the project the normal way (`synthesis-project-management`): `status: ongoing`, `bounded: false`, noun-first id (e.g. `{workspace}-quick-answers`). Give it a thin `CONTEXT.md` and, if the workspace has enough standing routing knowledge to be worth writing down (which sources answer which question shapes), a short `REFERENCE.md`.
-3. Register it in `projects/index.yaml` under its own initiative if the workspace doesn't already have a natural home for "standing non-ops infrastructure" — don't force it under an operations initiative that implies it owns rituals.
-4. **Add one routing line to the tracked source** at `~/workspaces/{name}/ai-knowledge-{name}/.agents/workspace-AGENTS.md`. Never edit the workspace-root entry points: the onboarding engine owns those and both clients resolve the tracked source through them. Commit the source change in the personal knowledge repository so a new machine receives it.
-5. Tell the user which model tier to select for the session (see Configuration), and that this is a one-time-per-session setting they make, not something this skill can do for them.
-6. Seed `resources/FAQ.md` with a header; leave it empty otherwise. It fills from use.
-
-## Operating Protocol
-
-Run this per question, every time — it's the whole point of the pattern:
-
-1. **Classify before searching.** What kind of fact is this?
-   - A person's status/availability/role → team directory, calendar, recent Slack/chat, the KB's people/org docs.
-   - A team's charter/roster/current work → the KB's org docs, that team's tracked projects.
-   - A project's status/history/decision → *that project's own* `index.yaml` entry and `CONTEXT.md`/`REFERENCE.md` — not a full re-read of its session history.
-   - A release/ship fact → git tags, changelog, release notes, deploy records — not the KB's prose summary of it.
-   Then query only the source(s) that answer that shape of question. Loading another project's entire context to answer one fact defeats the purpose of a *cheap* companion.
-
-2. **Verify anything volatile before asserting it.** This is not optional politeness — it is the pattern's entire value proposition. A quick-answers session that confidently repeats a stale cached fact is worse than no session at all, because it's trusted precisely because it's fast. Follow `synthesis-grounding-discipline`'s cache-vs-truth rule: CONTEXT/REFERENCE files and prior session summaries are caches, not truth; run the verifying command for anything that could have changed (a person's schedule, a project's status, whether something shipped, a date). This workspace-management pattern exists because a stale "is being refreshed and moved to" sentence sat in a cache for two months before an agent repeated it as current — the exact failure mode this skill's speed advantage would otherwise make more likely, not less. This step's outcome — verified live, or only found in a cache — is what step 3's trailer reports; there is no separate step where confidence gets guessed after the fact.
-
-3. **Answer tersely, and carry a grounding trailer on every answer, without exception.** Per `synthesis-concise-messaging`: the fact first, one sentence of context only if genuinely load-bearing, then one closing line naming the source and a confidence tier from `synthesis-grounding-discipline`'s vocabulary:
-
-   | Tier | Means | Trailer example |
-   |---|---|---|
-   | **Verified** | Confirmed via a live verifying command / tool call this turn — file re-read, live query, `git log`, an API or calendar read | `Source: git tag -l 'v0.11*' (verified live) — Confidence: Verified` |
-   | **Cached** | Read from a context file, KB doc, or prior session log without re-verifying live — name the cache's own as-of/last-updated date when it carries one | `Source: csa-2026-q3/CONTEXT.md, as of 2026-08-31, not re-verified this session — Confidence: Cached` |
-   | **Uncertain** | No direct source found; this is inference or a best guess, not an observed fact | `Confidence: Uncertain — no source found; try <person/team/doc>` |
-
-   A trailer is one line, not a paragraph — it names what was checked, nothing more. Never omit it: a fast answer with no stated confidence is indistinguishable from a guess, which defeats the entire pattern. **Cached is not a downgrade to apologize for** — plenty of quick answers are legitimately answered from a stable reference and that's fine to say plainly. What's not fine is a volatile fact (step 2's list: schedules, status, ship state, dates) answered as Cached when it should have been verified — that is a defect, not a shortcut: go verify, or say "Uncertain" and stop.
-
-4. **Log it.** Append one line to `resources/FAQ.md`: date, question, the answer as given, the source(s) checked, and the confidence tier. This is a side effect, not extra work — it turns repeat-question friction into a growing, skimmable artifact, and it's what actually earns the name "FAQ" over time. Don't log ephemeral asks that will be false by tomorrow (exact meeting times, in-flight numbers) unless the pattern of asking is itself worth recording.
-
-5. **Route durable facts onward, don't hoard them here.** If an answer surfaces something that belongs in the workspace's knowledge base (a role change, a team's charter, a standing fact about a product), that goes through the workspace's normal `synthesis-knowledge-capture` path — not into this project's own files as a second copy. This project's writes stay limited to its own `CONTEXT.md`/`FAQ.md` and, when the user says so, a KB capture.
+- [references/operating-protocol.md](references/operating-protocol.md): the five steps run on every question, with the confidence-tier table and trailer examples. Read it at the first question of each session.
+- [references/setup.md](references/setup.md): the pattern, its configuration table, and the six setup steps. Read it when standing up or repairing the companion.
+- [references/background.md](references/background.md): the problem this solves (context pollution, cost mismatch) and how it relates to other skills. Read it when deciding whether a question belongs here.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.1 text now lives.
+- Scope boundary: below.
 
 ## Scope Boundary — What This Is Not For
 
@@ -89,13 +49,3 @@ Keep the mandate narrow on purpose:
 - No decisions, no drafting, no sending messages, no calendar changes, no autopilot delegation. Every one of those belongs in a session with the corresponding skill loaded and the corresponding scrutiny applied.
 - If a question turns out to need real investigation — multiple sessions, a plan, a deliverable — say so and hand it to its own project rather than absorbing the work here. The companion's job is triage-speed answers, not the work the answer points toward.
 - Don't let this become a second inbox. It answers what's asked; it doesn't proactively surface items (that's `synthesis-chief-of-staff` territory) or own any cadence (that's an operations seat's job).
-
-## Relationship to Other Skills
-
-- **`synthesis-project-management`** supplies the project itself (index entry, tiered `CONTEXT.md`/`REFERENCE.md`, cross-agent handoff so the same project works from Claude Code and Codex identically).
-- **`synthesis-context-lifecycle`** governs the tiered-memory mechanics once the project exists.
-- **`synthesis-grounding-discipline`** is why step 2 of the protocol is not skippable, and its cache-vs-truth vocabulary (verified vs. cached, name the layer) is exactly what step 3's confidence trailer reuses rather than inventing a parallel scheme.
-- **`synthesis-concise-messaging`** shapes the answer format.
-- **`synthesis-model-tiers`** supplies the `routine` tier recommendation and the vocabulary for stating it without attempting to switch it.
-- **`synthesis-knowledge-capture`** is where durable facts actually get saved, not this skill.
-- **`synthesis-onboarding`** provides the stable `synthesis workspace ensure` command used in Setup step 1 — this skill never scaffolds a substitute of its own.

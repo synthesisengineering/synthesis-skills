@@ -5,20 +5,36 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Enterprise-Grade Codebase Review
 
-## Purpose
-
 A comprehensive, practical codebase audit methodology for projects of any size. Not every project needs every check — the tiered system ensures you apply the right level of rigor.
 
 For the full detailed checklist, see `references/detailed-checklist.md` in this skill directory.
 
----
+## Binding rules
+
+1. **Run the pre-flight checklist before reviewing.** Confirm which branch holds the current work (never assume `main`), what to exclude, whether a prior review exists, and the output format and audience; skipping it has wasted real engagements.
+2. **Score the project, then apply its tier's checks.** No Tier 4 scrutiny for a weekend project, and no skipped Tier 1 basics for an enterprise system.
+3. **Every finding cites file paths and line numbers** and gives concrete remediation steps.
+4. **Strengths before findings** in every report, so critical findings land as guidance rather than an attack.
+5. **Use delta mode when a prior review exists.** Classify each earlier finding as Fixed, Partially Fixed, Still Present, Worse or New, because a trajectory is more useful than a list of problems.
+6. **Secrets scanning is critical at every tier.**
+7. **Checklist items are practical and checkable:** each catches real issues and is worded so an AI assistant can evaluate it.
+
+## Contents
+
+- [references/detailed-checklist.md](references/detailed-checklist.md): every check in the 16 categories and the addenda, each marked with its tier. Read while reviewing, keeping to the project's tier.
+- [references/quick-check-and-categories.md](references/quick-check-and-categories.md): the 15-minute minimum viable review, and a one-paragraph overview of each of the 16 categories and the addenda. Read for a rapid health check, or when planning which categories to cover.
+- [references/report-formats.md](references/report-formats.md): strengths before findings, the Tier 1-2 report template, the Tier 3-4 full report, delta review mode, and how to file deliverables. Read when writing the report.
+- [references/background.md](references/background.md): how this skill relates to implementation-integrity, code-audit, preflight and pr-review, and the five key principles. Read when choosing between these skills.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives (ruling D8).
+- How to Use This Skill, Pre-Flight Checklist, Project Complexity Assessment: below. The steps, what to confirm first, and how to pick the tier.
 
 ## How to Use This Skill
 
@@ -41,8 +57,6 @@ Each section and many individual items are marked with tier indicators:
 - Tier 3: include Essential, Standard, and Enterprise items (~400 checks)
 - Tier 4: include everything (~900+ checks)
 
----
-
 ## Pre-Flight Checklist
 
 Complete these checks before starting any review. Skipping pre-flight has caused real wasted effort on real engagements.
@@ -58,8 +72,6 @@ Complete these checks before starting any review. Skipping pre-flight has caused
 - Confirm which directories to exclude (vendor/, node_modules/, generated/, etc.)
 - Ask if a previous review has been conducted. If yes, obtain prior findings to enable delta review mode
 - Confirm expected output format (markdown, PDF, etc.) and audience (engineering team, leadership, both)
-
----
 
 ## Project Complexity Assessment
 
@@ -81,182 +93,3 @@ Score each characteristic (0 = No, 1 = Yes):
 | 5-10 | Tier 2 - Standard | Small team projects, production apps, startups |
 | 11-18 | Tier 3 - Enterprise | Large teams, regulated industries, enterprise customers |
 | 19+ | Tier 4 - Mission-Critical | Financial systems, healthcare, critical infrastructure |
-
----
-
-## Minimum Viable Review (15-Minute Quick Check)
-
-Use this for a rapid health assessment. These are the absolute essentials that apply to ANY project.
-
-### Security Essentials (5 minutes)
-- No secrets in code: run `git log -p | grep -i "password\|secret\|api_key\|token"` — should return nothing
-- Dependencies not ancient: check for critical vulnerabilities (`npm audit`, `pip-audit`, etc.)
-- HTTPS only for all external communication
-- Input validated before use
-- Auth exists if there are users
-
-### Code Health (5 minutes)
-- It builds: clean build with no errors
-- Tests exist and pass
-- No obvious duplication (no copy-pasted files or massive repeated blocks)
-- Readable: a new developer could understand the main flow
-
-### Operations Essentials (5 minutes)
-- README exists with instructions on how to run it
-- Documented or automated deployment process
-- Application produces logs
-- Errors logged or sent somewhere visible
-- Config externalized (no hardcoded environment-specific values)
-
-**Quick Score: ___ / 15.** If you score <12, address the gaps before proceeding.
-
----
-
-## Review Categories
-
-The full detailed checklist is in `references/detailed-checklist.md`. Here is an overview of all 16 review categories:
-
-### 1. Architecture & System Design
-Architectural foundation, API design and contracts, service communication, data architecture. Evaluate whether the chosen patterns are appropriate for scale and team size.
-
-### 2. Secrets, Credentials & Sensitive Data
-Active secret scanning, secret type inventory, AI tool configuration files, comment-aware credential scanning, secret management, preventive controls. This section is CRITICAL for all tiers.
-
-### 3. Code Duplication & Reusability
-Duplication analysis, shared code and libraries, abstraction quality.
-
-### 4. Code Quality, Efficiency & Optimization
-Basic code quality, algorithmic efficiency, database efficiency, memory and resource efficiency, concurrency and thread safety.
-
-### 5. Clean Code & Software Engineering Principles
-Naming and readability, function design, SOLID principles, error handling, defensive programming.
-
-### 6. Code Readability & AI/Human Maintainability
-Human readability, documentation, AI and automation friendliness.
-
-### 7. Testing
-Test existence, coverage, test types (unit, integration, API, E2E, performance, security), test quality (verify tests actually test behavior, not just imports).
-
-### 8. Security
-Authentication, authorization, input validation, data protection, dependency security.
-
-### 9. Multi-Tenancy (Tier 3+)
-Tenant isolation, configuration, lifecycle.
-
-### 10. Identity & SSO (Tier 3+)
-SSO support, session management.
-
-### 11. Scalability & Performance (Tier 2+)
-Horizontal scaling, auto-scaling, response times, caching, CDN.
-
-### 12. Reliability (Tier 2+)
-Fault tolerance, data durability, backups, disaster recovery.
-
-### 13. Observability (Tier 2+)
-Logging, monitoring, alerting, distributed tracing.
-
-### 14. Deployment & Operations
-Build and deploy documentation and automation, deployment strategy, configuration management.
-
-### 15. Licensing & Legal
-Dependency licenses, intellectual property, attribution.
-
-### 16. Developer Experience
-Getting started documentation, development workflow, CI speed.
-
-### Addenda
-- **Open Source Software Addendum** — License, community docs, security policy, versioning, distribution, contribution workflow, project health, testing, documentation
-- **Proprietary Software Addendum** — Trade secret protection, vendor management, customer data protection
-- **Industry-Specific Addenda** — Financial services, healthcare, e-commerce, government/public sector
-
----
-
-## Output Format
-
-### Key Principle: Strengths Before Findings
-
-All reports lead with strengths before findings. Demonstrating that you understand what the team built well makes critical findings land as constructive guidance rather than an attack.
-
-### Tier 1-2: Simplified Report
-
-```markdown
-## Codebase Review Summary
-
-**Project**: [Name]
-**Tier**: [1-Essential / 2-Standard]
-**Date**: YYYY-MM-DD
-
-### Quick Health Check: Pass / Issues / Fail
-
-### Strengths
-1. [What the codebase does well]
-2. [Notable good practices]
-
-### Key Findings
-
-| # | Finding | Severity | Location | Fix |
-|---|---------|----------|----------|-----|
-| 1 | [Description] | Critical/High/Medium/Low | `path:line` | [Action] |
-
-### Recommended Actions
-1. [Top priority action]
-2. [Second priority]
-3. [Third priority]
-```
-
-### Tier 3-4: Full Report
-
-Include executive summary with overall score, per-category scores, top strengths, top critical findings, detailed findings with severity/location/evidence/recommendation/effort, and a phased action plan (immediate, short-term, medium-term).
-
-### Delta Review Mode
-
-When a prior review exists, use delta mode. A standalone review says "here are your problems." A delta review says "here is your trajectory." The second is far more useful for engineering leadership.
-
-For each finding from the prior review, classify its current status:
-
-| Status | Meaning |
-|--------|---------|
-| **Fixed** | Finding fully resolved |
-| **Partially Fixed** | Improvement made but not complete |
-| **Still Present** | No change — deferred or not yet addressed |
-| **Worse** | Finding has regressed or expanded in scope |
-| **New** | Finding not present in prior review |
-
-### Deliverable Organization
-
-Date-stamp review deliverables in folders:
-
-```
-reviews/
-├── 2025-01-15/
-│   ├── review-summary.md
-│   ├── detailed-findings.md
-│   └── executive-report.pdf
-├── 2025-04-15/
-│   ├── delta-review.md         ← compares against 2025-01-15
-│   ├── detailed-findings.md
-│   └── executive-report.pdf
-```
-
----
-
-## Relationship to Other Verification Skills
-
-This skill evaluates the **entire system**. Four companion skills cover narrower scopes:
-
-- **synthesis-implementation-integrity** — verifies a single change is genuinely complete (self-review, run after every implementation)
-- **synthesis-code-audit** — systematic 10-dimension quality scan of a diff (run after implementation, as input to preflight or pr-review)
-- **synthesis-preflight** — branch readiness gate that orchestrates tests, types, audit, and commit hygiene into a go/no-go verdict (run before creating a PR)
-- **synthesis-pr-review** — evaluates a change proposed for merge (peer review, run on every PR)
-
-Together these five skills form a verification chain: implementation-integrity catches change-level gaps, code-audit measures quality across 10 dimensions, preflight gates the branch before it becomes a PR, pr-review catches what earlier checks missed through judgment-based evaluation, and this skill catches systemic patterns that no single change reveals.
-
----
-
-## Key Principles
-
-1. **Tier-appropriate rigor.** Do not apply Tier 4 scrutiny to a weekend project. Do not skip Tier 1 basics for an enterprise system.
-2. **Evidence-based findings.** Every finding must cite specific file paths and line numbers with concrete remediation steps.
-3. **Practical over theoretical.** Every checklist item should catch real issues found in real codebases.
-4. **AI-friendly wording.** Checklist items should be clear enough for AI assistants to evaluate programmatically.
-5. **Strengths first.** Understanding what the team did well is as important as finding problems.

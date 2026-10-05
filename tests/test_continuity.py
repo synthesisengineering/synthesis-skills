@@ -39,6 +39,7 @@ def test_compaction_reinjects_the_directive_and_current_state(tmp_path, write_co
 
 def test_session_start_registers_the_session_and_reports_unread_messages(tmp_path, write_config):
     _knowledge(tmp_path, write_config)
+    board.touch("S2")  # messages reach only sessions on the board (R2.3)
     board.message("S2", "S1", "please review")
     out = _hook("session-start", {"session_id": "S2", "source": "startup", "cwd": str(tmp_path)})
     assert "1 unread" in json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]

@@ -1,20 +1,35 @@
 ---
 name: synthesis-skill-router
-description: Route a request to the correct synthesis engineering, coding, writing, project-management, knowledge, operations, or agent-governance skill while keeping specialist metadata out of Codex's bounded prompt. Use when a task appears to match a synthesis workflow but the user did not name the exact skill.
+description: "Route a request to the right synthesis engineering, coding, writing, project-management, knowledge, operations or agent-governance skill while keeping specialist metadata out of Codex's bounded prompt. Use when a task appears to match a synthesis workflow but the user did not name the exact skill."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.5.0"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Skill Router
 
-Choose the narrowest matching workflow, then read its sibling `SKILL.md` completely before acting. Resolve every path relative to this skill's directory. Load multiple skills when the request crosses categories; their `depends_on` declarations remain authoritative.
+Pick the synthesis skill that owns a request and load it. Most synthesis skills keep their metadata out of Codex's bounded prompt, so this routing table is how an agent finds them.
 
-Route by the requested outcome and the current stage. Load operative references when their task shape applies, without copying entire catalogs into each run. Preserve mandatory evidence, authority, coordination and domain checks. Loading a skill does not reopen a settled decision or turn delegated implementation choices into user approval gates; use the [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) when instructions appear to disagree.
+## Binding rules
+
+1. Choose the narrowest matching workflow, then read its sibling `SKILL.md` completely before acting.
+2. Resolve every path relative to this skill's directory.
+3. Load multiple skills when the request crosses categories; their `depends_on` declarations remain authoritative.
+4. Route by the requested outcome and the current stage.
+5. Load operative references when their task shape applies, without copying entire catalogs into each run.
+6. Preserve mandatory evidence, authority, coordination and domain checks.
+7. Loading a skill does not reopen a settled decision or turn delegated implementation choices into user approval gates; use the [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) when instructions appear to disagree.
+8. Do not substitute this routing summary for the selected skill's instructions.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.5.0 text now lives.
+- Route by outcome: below, in six groups: projects, context and agent ecosystems; software engineering and review; writing, research and publishing; knowledge and information operations; workload, coordination and communication; reasoning and execution quality.
 
 ## Route by outcome
 
@@ -81,5 +96,3 @@ Route by the requested outcome and the current stage. Load operative references 
 - Explore independent expert branches: `../synthesis-tree-of-thought/SKILL.md`
 - Detect shortcut reasoning: `../synthesis-anti-shortcuts/SKILL.md`; the effort side, where output does less than the work requires
 - Verify a claim, check quote provenance, or prove an absence: `../synthesis-grounding-discipline/SKILL.md`; the truth side, where output claims more than the evidence supports
-
-Do not substitute this routing summary for the selected skill's instructions.

@@ -1,20 +1,12 @@
 ---
 name: synthesis-article-writing
-description: >
-  Five-phase workflow for creating high-quality thought leadership articles: reader briefing,
-  research and validation, strategic writing, pre-publication critical review, and
-  publication-package review (title, metadata, and batch gates). Includes anonymization
-  protocol, credibility assessment, substance density checks, engagement optimization,
-  the title-only stranger test, the title/description/body truth contract, batch headline
-  monotony budgets, and the slug/metadata closure invariant.
-  Use when asked to: write article, thought leadership, blog post, article workflow, write blog,
-  draft article, create thought piece, write opinion piece, leadership article, headline review,
-  title review, publication readiness, article package review.
+description: "Write and review thought leadership articles and blog posts: reader briefing, research, drafting, critical review, and publication-package review (title-only stranger test, title/description/body truth contract, batch headline budgets, slug closure). Use for headline or publication-readiness review."
 license: "CC0-1.0"
 depends_on: ["synthesis-reader-briefing", "synthesis-content-quality"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "3.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -23,9 +15,35 @@ metadata:
 
 A five-phase workflow for creating high-quality thought leadership articles: reader briefing, research/validation, strategic writing, pre-publication critical review, and publication-package review. Use when exploring a book, concept, or trend and connecting it to your expertise.
 
-**Load-with contract for publication review.** Article drafting, headline work, article-package review, and publication-readiness review load the full prose-quality stack ([`synthesis-content-quality`](../synthesis-content-quality/SKILL.md), [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md), [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md), plus the author's private voice skill where one exists) **and** the framing plane: [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md), [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md), and this skill. A prose-stack-only route reviews bodies while the title/lede/reader-entry plane goes unexamined — the documented Set A failure mode: a full-body review cleared 29 of 30 packages whose titles then failed a title-only skim (6 keep / 8 tune / 16 replace). Do not load the framing plane for every email or sentence edit; the trigger is article-level framing or publication readiness.
+## Binding rules
 
----
+1. **No briefing, no draft.** Write the four-paragraph reader briefing as `.briefing.md` beside the draft before any research or drafting (Phase 0).
+2. **Article-level work loads the whole stack** in the load-with contract below; a prose-only review clears bodies while their titles fail.
+3. **Cite everything and draft only from verified research.** Rate each item's confidence, use only Verified and Likely accurate items, and ask rather than invent.
+4. **Name removal is not anonymization.** Every real example must pass the outsider, insider, adversary and irony tests; one failure rules it out.
+5. **Never** attribute unverified quotes to real people, invent technical achievements, or create scenarios inconsistent with the author's public record. These are fabrication bans, not identifiability tests.
+6. **Write alt text when you place an image**, after viewing it; never infer its content from the filename, since a file named for a person may be a letter they wrote.
+7. **No inline author bio** on a site whose layout renders one; it would duplicate the layout's single source of truth.
+8. **Run all eleven Phase 3 lenses before publishing.** After any de-jargoning pass, re-verify every replaced term against its source.
+9. **One confirmed defect is a search obligation:** look for the same defect across the article and the batch before closing it.
+10. **Title-only stranger test for every article:** record subject, stake, specificity and jargon debt before reading the description or body. A description cannot repair a failed title; without a per-article title table, no readiness sign-off.
+11. **Title, description, lede, headings and body must make the same claim.** A broadened title or heading fails even when every sentence is accurate.
+12. **State each article's reader value in one sentence.** "No slop markers" is negative evidence and does not establish value.
+13. **A new final title on an unpublished article reopens its slug and metadata** until every surface closes together; a clean build does not prove the routes are right.
+14. **Measure replacement titles on the same axes as the diagnosis**, so a cure cannot push a different formula over budget.
+
+## Contents
+
+- [references/research-and-drafting.md](references/research-and-drafting.md): Phase 1 (research principles, confidence levels, deliverables, output format) and Phase 2 (writing principles, content architecture, voice, hyperlinks, alt text, ethical storytelling and anonymization, output deliverables, author bios, success criteria). Read it before researching or drafting.
+- [references/draft-review.md](references/draft-review.md): Phase 3, the eleven critical-review lenses. Read it when reviewing a finished draft.
+- [references/package-review.md](references/package-review.md): Phase 4, sections 4.1 to 4.6 (title-only test, newcomer lens, truth contract, batch budget, reader-value row, slug closure). Read it for headline, metadata, batch or publication-readiness review.
+- [references/publication-review-fixtures.md](references/publication-review-fixtures.md): seventeen worked fixtures and the disposition a correct review must reach. Read it when testing a review process or changing these gates.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 2.3.0 text now lives.
+- Load-with contract, Phase 0: below.
+
+## Load-with contract
+
+**Load-with contract for publication review.** Article drafting, headline work, article-package review, and publication-readiness review load the full prose-quality stack ([`synthesis-content-quality`](../synthesis-content-quality/SKILL.md), [`synthesis-writing-pitfalls`](../synthesis-writing-pitfalls/SKILL.md), [`synthesis-writing-craft`](../synthesis-writing-craft/SKILL.md), plus the author's private voice skill where one exists) **and** the framing plane: [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md), [`synthesis-content-framing`](../synthesis-content-framing/SKILL.md), and this skill. A prose-stack-only route reviews bodies while the title/lede/reader-entry plane goes unexamined — the documented Set A failure mode: a full-body review cleared 29 of 30 packages whose titles then failed a title-only skim (6 keep / 8 tune / 16 replace). Do not load the framing plane for every email or sentence edit; the trigger is article-level framing or publication readiness.
 
 ## Phase 0: Reader Briefing (REQUIRED PRECONDITION)
 
@@ -36,439 +54,6 @@ The briefing lives as `.briefing.md` adjacent to the draft (in the same director
 The briefing is the audit anchor that Phase 2 (writing) and Phase 3 (review) compare against. The article's structural decisions (universal-frame-first vs scene-first vs claim-first vs problem-first) follow from the briefing's answers, not from a template.
 
 See [`synthesis-reader-briefing`](../synthesis-reader-briefing/SKILL.md) for the four questions, worked examples across genres (technical, personal-narrative, opinion, advisory), and the audit discipline.
-
----
-
-## Phase 1: Research & Validation
-
-### Mission
-
-Conduct thorough research and provide verified, cited information before writing begins. **Accuracy is paramount** — every claim, quote, and reference must be verifiable.
-
-### Critical Research Principles
-
-1. **Cite Everything**: Provide URLs, page numbers, or specific sources for all information
-2. **Flag Uncertainty**: If you cannot verify something, explicitly state "Cannot verify" or "Paraphrased concept - not direct quote"
-3. **Distinguish Direct Quotes from Summaries**: Make clear what is verbatim vs. interpretation
-4. **Confidence Levels**: Rate each piece of information:
-   - Verified: Found direct source
-   - Likely accurate: Found multiple corroborating sources
-   - Uncertain: Found reference but could not verify
-   - Cannot verify: No source found
-
-### Research Deliverables
-
-#### A. Source Material Research
-
-If exploring a book, article, or specific source:
-
-- Direct quotes with page numbers or citations
-- Core concepts and how they are explained
-- Key examples or case studies used
-- Related frameworks or principles
-- Public discourse and reception
-- Notable critiques or limitations
-
-#### B. Author's Writing Archive Analysis
-
-Search existing content for:
-
-- Relevant past posts (title, URL, date, key themes)
-- Established voice patterns and frameworks
-- Recurring terminology and characteristic examples
-- Career experiences already written about publicly
-- Topics where established expertise exists
-
-#### C. Integration Opportunities
-
-- Natural connections between source material and the author's expertise
-- Where the author's perspective adds unique value
-- Contrast opportunities (where nuance or respectful disagreement applies)
-- 8-10 specific past posts to hyperlink with rationale for each
-
-#### D. Anecdote Development Guidelines
-
-**Safe territory for illustrative stories:**
-- Generic patterns true to experience without naming specific employers
-- Engineering/product/leadership challenges
-- Implementation lessons
-- Cross-functional dynamics
-
-**Handle carefully:**
-- Specific company cultures or politics
-- Individual colleagues or executives
-- Proprietary systems or strategies
-
-#### E. Competitive Landscape
-
-- Recent thought leadership on this topic
-- What angle seems underexplored
-- Where genuinely new thinking can be added
-
-### Research Output Format
-
-1. Executive Summary (2-3 paragraphs on findings)
-2. Each deliverable section above
-3. Red Flags section (anything that could not be verified)
-4. Recommended Next Steps before proceeding to writing
-
----
-
-## Phase 2: Writing the Article
-
-### Mission
-
-Craft an authentic, insightful article that:
-
-1. Explores the topic with depth and nuance
-2. Connects it to the author's expertise and experience
-3. Establishes peer-level thinking, not just application of others' ideas
-4. Feels genuinely written by the author
-5. Is accurate and verifiable in every factual claim
-
-### Critical Writing Principles
-
-**Accuracy First**
-- Use ONLY information from the research phase
-- Only use Verified and Likely accurate items
-- If additional information is needed, ask rather than inventing it
-
-**Authentic Voice**
-- Study voice patterns from past posts
-- Write like explaining to a smart colleague over coffee
-- Use characteristic terminology and examples
-- Reference actual experiences and body of work
-
-**Strategic Positioning**
-- Position the author as someone who independently thinks deeply about these topics
-- Show how expertise creates unique insights
-- Make content valuable beyond any specific context (evergreen)
-
-### Content Architecture
-
-#### 1. Opening Hook (Personal Experience)
-- Start with a specific, visceral moment from career experience
-- Make it real and human, with stakes
-- Link to one relevant past post naturally
-
-#### 2. Core Concept Exploration
-- Unique interpretation of the topic
-- How domain expertise informs the perspective
-- Why this matters now
-
-#### 3. Industry Application
-- Why specific industries struggle or succeed with this
-- Concrete but anonymized examples
-- Pattern recognition across career experience
-
-#### 4. Unique Value-Add
-- Where the article goes beyond the source material
-- Where technical/domain expertise creates insights
-- The bridge between theory and practice
-
-#### 5. The Nuance
-- Show critical thinking, not blind acceptance
-- Add crucial nuance
-- Demonstrate wisdom, not just intelligence
-
-#### 6. Forward-Looking Implications
-- Where this leads
-- Practical call to action
-- Ongoing commitment (subtle)
-
-### Voice and Tone
-
-**Characteristics:**
-- Conversational but substantive
-- Confident without arrogance
-- Specific over abstract
-- Intellectually generous (credit others, build on ideas)
-
-**Sentence structure:**
-- Vary length for rhythm
-- Use occasional fragments for emphasis
-- Ask rhetorical questions
-- Include "you" to make it conversational
-
-**Avoid:**
-- Corporate jargon or buzzwords
-- Excessive qualifiers (very, really, quite)
-- Passive voice
-- AI-typical phrases ("delve into," "it's important to note," "in conclusion")
-- Words like "honored," "humbled," "excited," "thrilled," "privileged"
-
-### Hyperlink Strategy
-
-**Target**: 6-8 hyperlinks to past posts.
-
-**Integration principles:**
-- Weave links naturally into sentences
-- Each link should add depth, not distract
-- No "see also" sections — embed in narrative
-- Distribute throughout the post
-
-**Example:**
-- Good: "As I wrote when introducing [project], the key to useful AI assistants is..."
-- Bad: "To learn more about AI assistants, see this post."
-
-### Images and Alt Text
-
-**Write alt text the moment you place an image — never leave it for later.** Captionless images (`![](image.png)`) are the single largest source of accessibility debt in a migrated or fast-drafted archive; the cheapest time to describe an image is when you add it and know what it shows.
-
-For every image:
-
-- **Content image** (carries information — a diagram, screenshot, chart, photo of a person or place, a book cover, a tweet screenshot): write specific, descriptive alt text. Describe what the image *shows* and what a reader who can't see it needs to know. For a screenshot of text (tweet, chat, slide), include the key text in the alt.
-- **Decorative image** (a pure visual flourish with no informational content): use explicit empty alt, `![]( )` → `![](image.png)` is acceptable ONLY when the image is genuinely decorative. Prefer to state intent so a later reader doesn't mistake it for missing alt.
-- **A caption is not a substitute for alt text, and alt text is not a substitute for a caption.** If a visible caption already conveys the description, the alt can be shorter, but it should still exist.
-
-Markdown patterns:
-- Plain image: `![Diagram of the three-tier context architecture](./architecture.png)`
-- Linked image: `[![Book cover of "Leadership BS" by Jeffrey Pfeffer](./cover.jpg)](https://publisher.example/book)`
-
-**Do not infer an image's content from its filename or the article's topic alone.** A file named `tony_ridder.jpg` in an article about Tony Ridder may be a portrait — or a scan of a letter he wrote. View the image (or rely on a caption you can verify) before describing it.
-
-### Ethical Storytelling and Anonymization
-
-**CRITICAL: Name removal is NOT anonymization.** Removing company names while keeping the scenario, specific numbers, stakeholder dynamics, vocabulary, and industry context creates a fingerprint that names are the least important part of. The scenario IS the identifier.
-
-**Before using any real example, apply all four tests:**
-
-1. **Outsider test:** A stranger reads this. Could they narrow it to a small set of companies or situations?
-2. **Insider test:** Someone who knows your work reads this. Does the example confirm something they suspected but couldn't prove? Does it reveal an internal decision that was meant to stay internal?
-3. **Adversary test:** A reporter or competitor reads this. Could this become evidence or ammunition?
-4. **Irony test:** Does publishing this example undermine the very thing the example describes protecting?
-
-If ANY test fails, the example cannot be used regardless of whether names are removed.
-
-**Especially dangerous: Operational decisions as teaching material.** If a decision was made to manage risk (changing terminology, restructuring a team, pivoting a strategy), describing it publicly re-creates the risk. An article about careful language choices that reveals you made those choices is self-defeating.
-
-**Safe example sources:**
-- The author's personal methodology and tools (already public)
-- Publicly known examples from other companies (with attribution)
-- Genuinely universal patterns that don't map to specific companies
-- Fictional scenarios clearly marked as illustrative
-- Examples where the specifics have been transformed, not just redacted (change the industry, the stakeholder type, the numbers, and the vocabulary simultaneously)
-
-**Not safe, even without names:**
-- Internal product strategy decisions with specific numbers
-- Risk mitigation choices where the risk itself is sensitive
-- Stakeholder dynamics that fingerprint a specific situation
-- Vocabulary changes that map to known products
-
-**Never permitted regardless of anonymization** (restored pre-migration prohibitions — these are fabrication and attribution bans, not identifiability tests):
-- Attributing quotes to real individuals without verification
-- Inventing technical achievements
-- Creating scenarios inconsistent with the author's public record
-
-### Output Deliverables
-
-1. **5-7 Title Options** with brief rationale
-2. **Full Article Draft** with all hyperlinks embedded
-3. **Meta Description** (150-160 characters)
-4. **LinkedIn Sharing Post**
-5. **Pull Quotes** (3-4 tweetable excerpts)
-6. **Verification Notes** (choices to double-check)
-
-### Author Bios: Rendered by Layout, Not Markdown
-
-On sites that render posts through a component-based layout (such as Astro with an `AuthorBio` component), **do NOT include an inline author bio at the end of the markdown**. The layout adds a visually-separated bio box automatically, pulling from a single source of truth in site config. Writing an inline bio will produce duplicates and defeat the single-source-of-truth design.
-
-For sites without a layout-level bio component — external publications, guest posts, platforms that render raw markdown — include a bio at the end of the draft. If the author maintains a writer-specific bio skill that provides variants for different audiences (Standard, Short, Technical, Executive), pull the appropriate variant from there.
-
-**Co-authored posts with layout-rendered bios** should put co-author bios in front matter (e.g., a `coauthors` array) rather than inline in the body. The layout component renders the primary author's current bio plus each co-author's bio in the same visual treatment. Check the site's front matter schema for supported fields.
-
-**Testimonials and recommendations** (posts written about the site owner by others) should not have the site owner's bio rendered. The layout typically detects these via category (e.g., `Recommendations`) and suppresses the bio component. The testimonial writer's own bio goes at the end of the markdown as usual.
-
-### Success Criteria
-
-The article succeeds if:
-
-- It sounds unmistakably like the author
-- Every factual claim is verified and sourced
-- It advances thinking beyond summarizing sources
-- It positions the author as a thought leader
-- Multiple hyperlinks prove authenticity
-- It is useful to any leader thinking about this topic
-- The author would be proud to have their name on it
-
----
-
-## Phase 3: Pre-Publication Critical Review
-
-After the draft is complete, review it critically through these lenses before publishing. This phase exists because a draft can be well-written, factually accurate, and still damage the author's reputation or expose confidential information.
-
-### 1. Credibility and Positioning
-
-**Does this make the author look like a deeply experienced expert?**
-
-- Read every anecdote from the perspective of a skeptical peer. Does any story position the author as someone who made an avoidable mistake rather than someone who discovered a non-obvious insight?
-- Vulnerability is strategic when it demonstrates wisdom earned. It backfires when it reveals carelessness.
-- Test: "Would a senior leader in my field read this and think 'that happened because they didn't have basic guardrails'?" If yes, reframe the story to show what was being deliberately tested or explored, or replace it.
-
-### 2. Substance Density
-
-**Is there real, valuable substance in every paragraph?**
-
-- Read each paragraph and ask: what does the reader learn here that they didn't know before? If the answer is "nothing" or "a restatement of the previous point," cut or compress.
-- Watch for warm-up paragraphs that delay the insight, setup sentences that state the obvious, and summary paragraphs that repeat what was just said.
-- Common offenders: "AI agents are capable of extraordinary work" (everyone knows this), "No component exists in isolation" (textbook truism), "The user is not an abstraction" (platitude preceding a good example that doesn't need it).
-
-### 3. Stranger Read
-
-**Could a reader with no prior context — exactly the reader described in the briefing from Phase 0 — follow this article?**
-
-The check is procedural, not vibes-based. The writer is the insider; the jargon reads as natural prose to the person who wrote it. Re-reading the draft and trusting your judgment will not catch this. The audit has to scan paragraph by paragraph against the briefing.
-
-Specific patterns to flag (calibrated by genre per the briefing — strict for technical/teaching, looser for personal-narrative):
-
-- Tool or project names introduced without inline definition on first use
-- Internal abstractions deployed as if known ("the cockpit," "the dashboard's X," "the parser")
-- Version numbers in prose (v0.8.3, v2.4.0, "Phase 2 (2026-04-22)")
-- Code identifiers in prose without descriptive context (function names, class names, file paths)
-- References to internal events that don't parse outside the project ("another session reviewing the code," "the X arc," "my fix arc")
-- Internal directory or file paths used as if the reader knows the project layout
-
-For technical/teaching articles: every internal term must be either introduced inline on first use OR replaced with descriptive language. For personal-narrative articles: the emotional arc must be followable, but unexplained texture (a name, a place, a small ritual) is allowed and often desired.
-
-#### Translation-pass re-verification (sub-step)
-
-After any de-jargoning, anonymization, or accessibility pass that replaces precision-bearing terms with vaguer prose, every concrete claim must be re-verified against the source material the de-jargoning replaced. The translation pass introduces its own accuracy hazard:
-
-- "v0.8.0" becomes "the first version" and the sentence may no longer be true (the tool may have had earlier versions; only one feature was new in v0.8.0).
-- "the function walks the rendered HTML" softens to "an application-level layer above the parser" and a verifiable claim becomes a possibly-wrong one.
-- A specific metric ("94.4% classified correctly") rephrased generally ("most classified correctly") loses information that may have been load-bearing for the argument.
-
-List every term replaced during the translation pass; re-verify each against the source. The Stranger Read lens replaces; this sub-step verifies the replacement is still true. Both are required. See [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) Section 7.5 for the full protocol.
-
-### 4. Insight Quality
-
-**Does this article contain at least one idea the reader hasn't encountered before?**
-
-- An insight reframes how the reader thinks. It's not a fact, it's a shift in perspective.
-- Test: after reading each section, can you articulate a specific new mental model, distinction, or principle the reader now has? If a section only restates established ideas, it needs either a novel angle or a novel example.
-
-### 5. Engagement and Shareability
-
-**Would someone share this because of what's in it, not just because they know the author?**
-
-- Is there a "gem" moment — a sentence or passage so striking that people would screenshot it?
-- Are there pull quotes (3-4 blockquoted passages) that work as standalone tweetable insights?
-- Does the opening hook signal the article's actual scope? A small-sounding hook for a big-scope article will lose readers who assume the piece is about the small thing.
-- Does the article have structural variety? If every section follows the same template (definition → example → another example → non-technical example), readers will start skimming by section 3.
-
-### 6. Title Magnetism
-
-**Would someone click this title in a feed?**
-
-- Descriptive titles are searchable. Provocative titles get clicked. The best titles are both.
-- Test: does the title make you curious, or does it just describe the contents? "Five Modes of Reasoning for Human-AI Collaboration" describes. "Five Modes for Thinking Across Boundaries" intrigues slightly more. The ideal title makes the reader think "I want to know what that means."
-
-### 7. Confidentiality and Exposure (CRITICAL)
-
-**Run the full anonymization protocol from the Ethical Storytelling section above.**
-
-- For every real example: apply all four tests (outsider, insider, adversary, irony)
-- For every "anonymized" example: verify that the scenario itself isn't a fingerprint
-- For every operational decision described: ask whether describing it publicly re-creates the risk it was designed to mitigate
-
-### 8. Limitations and Honesty
-
-**Does the article acknowledge where its claims fail?**
-
-- A framework presented without limitations reads as oversold. One paragraph on "when this doesn't apply" builds more credibility than ten paragraphs of advocacy.
-- Test: if a smart, skeptical reader asks "but what about...?" — does the article already have an answer?
-
-### 9. AI Slop Final Pass
-
-**Run the [`synthesis-content-quality`](../synthesis-content-quality/SKILL.md) framework on the final draft.**
-
-- Pay special attention to: hyperbolic subheadings, borrowed canonical examples (jet engine/market, bus route nobody rides), dramatic fragment construction, section-ending summaries.
-- Criterion #37 (Insider Context Collapse) catches frame-level slop that the Stranger Read lens may have missed; treat as a backstop, not a substitute.
-- Check that pull quotes exist and are placed for visual rhythm across the article's length.
-
-### 10. Lede Protection From Provenance Scaffolding
-
-**Does the article's first meaningful sentence belong to the article, not to its paperwork?**
-
-Provenance notes are legitimate and sometimes required — a whole-article revision note must precede the content it covers, a disclosure note must be visible before the material it governs. The failure mode is letting that scaffolding become the article's opening: the reader's first contact is administrative text instead of the piece's own promise.
-
-- A short standfirst (one or two sentences of the article's actual claim or stake) may earn attention *before* a whole-article note; the note then follows immediately, before the body it covers.
-- The note must not be the article's first meaningful sentence when a standfirst can lawfully precede it.
-- The valid sequence is: standfirst → provenance note → body. The invalid sequence is: provenance note as de-facto lede.
-- Within-article, section-scoped notes attach to their sections, not to the top.
-
-### 11. Semantic Sibling Search After Any Finding
-
-**One confirmed defect is a search obligation, not a closed item.** When review holds an article for a claim-level defect (an unsupported universal, a broadened scope, a misattributed position), search on two axes before the finding is closed:
-
-- **Within the article:** scan the whole artifact for other instances of the same defect class. A repair that resolves the flagged instance while a stronger, load-bearing instance survives in the same article is worse than no repair — it retires the finding without curing the defect.
-- **Across the batch or corpus:** scan sibling articles for the same *semantic* claim, not merely the same exact phrase. Two articles independently asserting the same unsupported universal are one claim family; the first finding reopens the family everywhere it appears.
-
----
-
-## Phase 4: Publication-Package Review (Title, Metadata, and Batch Gates)
-
-Phase 3 reviews the draft. Phase 4 reviews the *package* — title, description, slug, routes, and the batch the article ships with. A body-perfect article can still fail here, and the failure is invisible to any body-focused review. Detailed worked fixtures: [references/publication-review-fixtures.md](references/publication-review-fixtures.md).
-
-### 4.1 Title-only stranger test (executable obligation)
-
-For every article, the reviewer records six fields. The first four are recorded **before seeing the description or body**; promise match is completed after the body read; the action ruling comes last:
-
-- **subject:** what is this about?
-- **stake:** why should the intended reader care now?
-- **specificity:** what concrete object, decision, incident, or result anchors the promise?
-- **jargon debt:** which word requires project or ecosystem context to parse?
-- **promise match:** does the body deliver exactly what the title claims? (filled after the body read)
-- **action:** keep, tune, or replace.
-
-A blank or project-internal answer fails the row. **A description cannot repair a failed title-only row** — many surfaces show the title alone. After the title-only pass, run a second title-plus-description pass, because many cards show both. A reviewer that checks bodies but emits no per-article title disposition table cannot sign publication readiness; for a batch, the deliverable is the full N-row table.
-
-### 4.2 Newcomer entry lens
-
-For public work about a named methodology, add one audience fixture: a technically literate reader who has never heard the methodology's name. The title must state a problem or payoff that reader already owns before asking them to care about the category. The methodology name may stay in the title; it must not be the only reason offered to open the piece. **The forbidden repair is hype.** The acceptable repair is clearer subject, stakes, and evidence.
-
-### 4.3 Title/description/body truth contract
-
-Schema validation checks type and length, not truth. Publication review compares four claims for alignment:
-
-- the title's claim;
-- the description's claim;
-- the lede's claim;
-- the body's actual conclusion.
-
-A carefully scoped body with a broadened title or description fails, even when every individual sentence is accurate. **Section headings are metadata too:** a heading that asserts a conclusion its own section never argues fails truth alignment at the same severity as a broadened frontmatter description. The defect is one class at three levels — title against body, heading against section, sentence-level universals — and a check scoped to frontmatter sees only the first.
-
-### 4.4 Batch headline monotony review and batch-shape budget
-
-For a staged batch, classify each title's mechanism (confession/reversal, negation, question, coined principle, numbered result, why/what/how, internal label) and report concentration and adjacent repetition. A high count is not automatically a defect; the reviewer decides whether each instance earns its shape.
-
-**Measure the replacement set on the same axes as the diagnosis.** A proposed cure that reduces the diagnosed formula while raising a different one above threshold fails — a cure measured only against the disease it names is not measured.
-
-Default batch-shape budget (per ~30 titles, tune per corpus):
-
-- no two-word opening repeated more than twice;
-- a domain token (such as "AI") only where the title is otherwise ambiguous about its subject;
-- no more than one-third of the batch in the imperative or second person.
-
-Mechanical support: the corpus-level checker in `synthesis-content-quality` (`scripts/corpus_repetition.py`) computes opening repetition, token concentration, and register share; the judgment about what earns its shape stays with the reviewer.
-
-### 4.5 Positive reader-value row
-
-For each artifact, state in one sentence what the reader can do, decide, notice, or explain after reading that they could not before. "No slop markers" and "no paragraph fails the deletion test" are negative evidence; they do not establish that the article is worth a stranger's time. A package without a reader-value row is not publication-ready.
-
-### 4.6 Slug and metadata closure invariant (unpublished articles)
-
-For an unpublished article, changing or selecting the final headline **invalidates the URL and metadata plane** until all of the following close together:
-
-1. derive the default slug deterministically from the final selected title;
-2. keep a nonmatching slug only through a specific recorded exception — "unchanged" is not an adjudication;
-3. migrate every metadata surface together: source path, staged path, frontmatter slug, canonical URL, specialty and dated routes, category/config keys, preview links, and any transaction manifests;
-4. search every current body and metadata input for retired internal-link targets; the built preview must contain zero retired routes (historical evidence files that preserve old URLs as records are not current inputs and must not be counted as failures);
-5. synchronize source frontmatter and every regenerator so a rebuild cannot restore stale metadata;
-6. before publication approval, produce a closed-world per-article table of title / slug / canonical / route;
-7. already-published articles are a different regime: their route-preservation-or-redirect decision is publishing policy, never permission to keep stale slugs on unpublished work.
-
-A clean build does not prove editorial correctness of routes: internally consistent stale routes build green.
 
 ## Related
 

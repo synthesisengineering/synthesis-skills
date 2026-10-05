@@ -2,9 +2,12 @@
 name: synthesis-grounding-discipline
 description: "Keep agent output tied to evidence: record only what a source surfaced, re-verify cached facts, prove absence with a positive control, never complete truncated output, and validate paths before writes or deletes. Use before recording, quoting, claiming absence or deleting."
 license: "Apache-2.0"
+depends_on: []
 metadata:
   author: "Rajiv Pant"
   version: "2.0.0"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
   format: v5
 ---
 

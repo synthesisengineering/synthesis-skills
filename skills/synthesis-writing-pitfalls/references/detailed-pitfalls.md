@@ -2,6 +2,17 @@
 
 Expanded examples and fix guidance for each pattern in `synthesis-writing-pitfalls`. The main `SKILL.md` carries the catalog; this file carries the detail.
 
+Since 2.0.0 the catalog's own text is in [catalog.md](catalog.md); SKILL.md keeps a numbered index.
+
+Contents:
+- Cringe Family: 1 to 6
+- Throat-clearing: 7 to 10
+- Caveat overload: 11 to 13
+- Reader-relationship missteps: 14 to 16
+- Sentence-level weakness: 17 to 20
+- Cliché reliance and dead metaphors: 21
+- Stilted formality: 22 and 23
+
 ## Cringe Family
 
 ### 1. Humble-bragging

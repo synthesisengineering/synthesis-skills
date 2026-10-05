@@ -6,9 +6,10 @@ user-invocable: false
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "3.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Clean Text
@@ -16,6 +17,19 @@ metadata:
 Set and audit the requirement that generated text contain no hidden markers, invisible-character identifiers, or intentional statistical provenance signals. Report separately what the active generation path and available checks can actually establish.
 
 This is a production requirement, not proof that every provider or model complies. Inspectable character-level properties can be audited after generation. An undisclosed keyed token-selection scheme cannot be verified or removed reliably by a prose instruction. When control of the generation path is required, choose a locally controlled open-weight model before generating and retain a provenance record; do not represent that choice alone as proof that a text is watermark-free.
+
+## Binding rules
+
+1. **Generated text carries no hidden markers:** no invisible or special Unicode characters used as identifiers, no systematic word or token patterns that fingerprint the text, no embedded signatures. This is a standing instruction for all text output.
+2. **A requirement is not proof.** Report separately what the active generation path and the available checks can actually establish.
+3. **Claim only what the capability boundary supports.** Characters can be audited directly; a provider's disclosed mark only with its authorized detector; the absence of an undisclosed scheme can never be claimed from prose inspection or rewriting.
+4. **When the generation path must be controlled,** choose a locally controlled open-weight model before generating and keep a provenance record, with `synthesis-text-provenance`. That choice alone does not prove a text is watermark-free.
+5. **If compliance cannot be established, disclose the limitation.** Never run detector-guided rewriting, token substitution or other optimization meant to defeat a provider's provenance signal.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 2.0.0 text now lives.
+- Requirements, Capability Boundary, Rationale, Application, Related: below.
 
 ## Requirements
 

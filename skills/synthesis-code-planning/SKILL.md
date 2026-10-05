@@ -1,21 +1,36 @@
 ---
 name: synthesis-code-planning
-description: "Structured approach to code generation, implementing features, and writing code. Use when asked to generate code, implement a feature, write code, or tackle a coding task. Applies constraints, compares remaining viable approaches, resolves delegated technical choices, and implements the selected solution with evidence."
+description: "Plan and implement code: apply constraints, compare only the viable approaches that remain, resolve delegated technical choices, and implement with evidence. Use when asked to generate code, implement a feature, write code, or tackle a coding task."
 license: "CC0-1.0"
 user-invocable: false
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.1.1"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Code Planning
 
 A structured methodology for choosing and implementing code approaches against the user's outcome and constraints.
 
-Before choosing or asking, apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md). Honor explicit supervised checkpoints; decide technical choices within delegated work and continue. Existing user grants persist within their scope. A skill, preference or receipt cannot create new authority.
+## Binding rules
+
+1. Before choosing or asking, apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md).
+2. Honor explicit supervised checkpoints; decide technical choices within delegated work and continue.
+3. Existing user grants persist within their scope. A skill, preference or receipt cannot create new authority.
+4. **Compare approaches only when a real choice remains.** If the constraints determine one approach, state that reason and proceed; do not manufacture a second option.
+5. **Before editing code to fix a defect,** record the hypothesis, a falsifiable prediction and the observation that would change the approach.
+6. **A close technical tradeoff is not a new approval gate.** The delegated decision owner selects; clarify only material outcome ambiguity or an actual unsatisfied gate.
+7. **Delegation changes approval cadence, not verification obligations.** Run the consumer checks and required audits, and invalidate affected evidence after a change.
+8. **Fix the root cause, not its surface,** with built-in features, the codebase's conventions and the least code that does the job.
+
+## Contents
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.1.1 text now lives.
+- Inputs, Process (Steps 1 to 4: analyze, generate approaches, evaluate and select, implement), When to skip multi-approach evaluation, Principles: below.
 
 ## Inputs
 
