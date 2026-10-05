@@ -1211,6 +1211,8 @@ def test_events_never_materialize_directory_via_listdir(engine, world, monkeypat
 
 
 def test_events_descriptor_identity_change_refuses(engine, world, monkeypatch):
+    # A concurrent append is re-read (test_run_state covers it); a directory
+    # replaced while it is enumerated must refuse, never be followed.
     import os
     from contextlib import contextmanager
     old = predecessor(engine, world, rows=0, artifacts=0)
@@ -1218,14 +1220,18 @@ def test_events_descriptor_identity_change_refuses(engine, world, monkeypatch):
     identity = directory.stat().st_ino
     original = os.scandir
     @contextmanager
-    def changing(fd):
+    def replacing(fd):
         with original(fd) as rows:
             yield rows
         if type(fd) is int and os.fstat(fd).st_ino == identity:
-            (directory / ".run-retained-new-entry").write_text("Retained competing directory mutation")
-    monkeypatch.setattr(os, "scandir", changing)
+            directory.rename(directory.with_name("events-retained-original"))
+            directory.mkdir()
+            for entry in directory.with_name("events-retained-original").iterdir():
+                (directory / entry.name).write_bytes(entry.read_bytes())
+    monkeypatch.setattr(os, "scandir", replacing)
     with pytest.raises(ValueError, match="changed during enumeration"):
         engine.load_run(world["project"], old["run_id"])
+    assert directory.with_name("events-retained-original").is_dir()
 
 
 @pytest.mark.parametrize("shape", ["empty", "committed", "corrupt"])

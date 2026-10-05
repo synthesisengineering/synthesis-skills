@@ -6,6 +6,13 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v2.45.2 — Native-memory probe reads the board under its real bound
+
+v2.45.2 (2026-10-05): the native-memory probe read the coordination board
+under the generic ritual artifact bound and failed once the live board passed
+2 MB. It now uses the board owner's message bound for every read, and the
+fence still refuses a board that changes during the probe.
+
 ## v2.45.1 — Preserve acquisition clock precision
 
 Acquisition evidence is checked against the full current timestamp so an

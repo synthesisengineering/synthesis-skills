@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - Record transactions publish their journals instead of leaving untracked `.record-transactions` files that fail the context doctor.
 - The impersonation scan supports a principal display-name rule, with an example template.
 - Snapshot `--index-only` reports progress and finishes within its ceiling, so the record-currency Stop check resolves instead of reporting UNRESOLVED.
-- Autopilot event enumeration re-reads a directory that changed during listing and still refuses one that never settles.
+- Autopilot event enumeration re-reads a directory that gained an entry during listing. It still refuses a directory that never settles or that was replaced.
 - Worktree retirement treats a completed retirement record as history when the same path is retired again, keeping it under `retired-worktrees/history/`. A prepared retirement owned by another session still refuses.
 - `create_worktree` no longer refuses a new worktree while a live peer holds a `release-train:` or other scheme-prefixed claim. Those claims name no filesystem path, so a creation reservation never resolves them; an unexplained unobserved path still refuses.
 - Tests no longer inherit the caller's native session identity.

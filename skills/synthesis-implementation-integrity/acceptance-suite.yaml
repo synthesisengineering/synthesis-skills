@@ -179,6 +179,8 @@ changed_surfaces:
   - critical-7ea605f32d526c64
   - phase1-run-state-reread
   - phase1-run-state-unsettled
+  - phase1-event-identity
+  - phase1-rituals-version-record
   - phase1-peer-released-rows
   - phase1-hermetic-identity
   - phase1-retirement-history
@@ -322,10 +324,14 @@ changed_surfaces:
   cases:
   - phase1-run-state-reread
   - phase1-run-state-unsettled
+  - phase1-event-identity
 - path: skills/synthesis-autopilot/scripts/test_run_state.py
   cases:
   - phase1-run-state-reread
   - phase1-run-state-unsettled
+- path: skills/synthesis-autopilot/scripts/test_successor_transaction.py
+  cases:
+  - phase1-event-identity
 - path: skills/synthesis-context-lifecycle/SKILL.md
   cases: *id001
 - path: skills/synthesis-context-lifecycle/references/record-transactions.md
@@ -417,6 +423,9 @@ changed_surfaces:
   - client-stability-d1fe8ff673c79d21
 - path: skills/synthesis-daily-rituals/SKILL.md
   cases: *id001
+- path: skills/synthesis-daily-rituals/references/version-history.md
+  cases:
+  - phase1-rituals-version-record
 - path: skills/synthesis-daily-rituals/scripts/ritual_workers.py
   cases:
   - client-stability-d936d38041fea69c
@@ -4021,6 +4030,8 @@ changed_surfaces:
   - critical-7ea605f32d526c64
   - phase1-run-state-reread
   - phase1-run-state-unsettled
+  - phase1-event-identity
+  - phase1-rituals-version-record
   - phase1-peer-released-rows
   - phase1-hermetic-identity
   - phase1-retirement-history
@@ -24658,6 +24669,16 @@ cases:
   expected_status: pass
   fixture: ../synthesis-autopilot/scripts/test_run_state.py::test_event_enumeration_still_refuses_a_directory_that_never_settles
   motivating_defect: Event enumeration must still refuse a directory that never settles
+- id: phase1-event-identity
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-autopilot/scripts/test_successor_transaction.py::test_events_descriptor_identity_change_refuses
+  motivating_defect: The event-enumeration retry must refuse a replaced events directory instead of following it
+- id: phase1-rituals-version-record
+  control_class: acceptance-test
+  expected_status: pass
+  fixture: ../synthesis-daily-rituals/scripts/test_version_record.py::test_record_newest_entry_is_the_declared_version
+  motivating_defect: Daily-rituals 2.45.2 shipped without its version-history entry
 - id: phase1-peer-released-rows
   control_class: acceptance-test
   expected_status: pass

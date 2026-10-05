@@ -760,10 +760,15 @@ def _event_paths(project, run_id):
     # Events are append-only, so a concurrent writer can change the directory
     # while a reader (for example a cancellation check) enumerates it. Re-read
     # until one pass sees a stable directory, within a small bounded number of
-    # attempts, instead of refusing on the first concurrent append.
+    # attempts, instead of refusing on the first concurrent append. A retry
+    # never follows a replaced directory: its device and inode stay pinned.
+    first = directory.lstat()
+    identity = (first.st_dev, first.st_ino)
     for attempt in range(EVENT_ENUMERATION_ATTEMPTS):
         files = []
         before = directory.lstat()
+        if (before.st_dev, before.st_ino) != identity:
+            raise RunStateError("event directory identity changed during enumeration")
         fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             stable = signature(before) == signature(os.fstat(fd))
