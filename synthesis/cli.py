@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from synthesis import __version__, approvals, board, paths, project
+from synthesis import __version__, board, paths, project
 
 
 def _session(args) -> str:
@@ -89,13 +89,11 @@ def cmd_handoff(args) -> int:
     return 0
 
 
-def cmd_approve(args) -> int:
-    if args.kind == "send":
-        tool_input = json.loads(Path(args.input_file).read_text(encoding="utf-8"))
-        key = approvals.record("send", {"tool": args.tool, "input": tool_input}, note=args.note)
-    else:
-        key = approvals.record("deploy", args.command, note=args.note)
-    print(f"approved once (expires in {approvals.TTL_SECONDS // 60} min): {key[:12]}")
+def cmd_approvals(args) -> int:
+    directory = paths.state() / "approval-requests"
+    for f in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        print(f"{f.stem}  {time.strftime('%H:%M', time.localtime(data['at']))}  {data['summary']}")
     return 0
 
 
@@ -134,13 +132,7 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("handoff", help="commit and push changes inside this session's claims")
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
-    s = sub.add_parser("approve", help="record the principal's approval of one exact send or deploy")
-    s.add_argument("kind", choices=["send", "deploy"])
-    s.add_argument("--tool", default="")
-    s.add_argument("--input-file", default="")
-    s.add_argument("--command", default="")
-    s.add_argument("--note", default="")
-    s.set_defaults(fn=cmd_approve)
+    sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
     sub.add_parser("version").set_defaults(fn=cmd_version)
     return p
 

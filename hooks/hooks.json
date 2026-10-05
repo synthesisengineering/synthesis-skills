@@ -11,6 +11,17 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/synthesis/hook.py\" user-prompt-submit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|exec_command|exec|shell|local_shell|run_shell_command|mcp__.*(send|draft|reply|forward|schedule).*",

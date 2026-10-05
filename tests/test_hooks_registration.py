@@ -11,8 +11,8 @@ from synthesis import guards
 HOOKS = json.loads((Path(__file__).resolve().parents[1] / "hooks" / "hooks.json").read_text())["hooks"]
 
 
-def test_only_session_start_and_pre_tool_use_are_registered():
-    assert set(HOOKS) == {"SessionStart", "PreToolUse"}
+def test_only_the_three_needed_events_are_registered():
+    assert set(HOOKS) == {"SessionStart", "UserPromptSubmit", "PreToolUse"}
 
 
 @pytest.mark.parametrize("tool", sorted(guards.SHELL_TOOLS) + ["mcp__slack__slack_send_message",

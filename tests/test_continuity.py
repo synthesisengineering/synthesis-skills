@@ -68,3 +68,16 @@ def test_handoff_commits_and_pushes_only_this_sessions_claims(tmp_path):
     committed = subprocess.run(["git", "-C", str(remote), "log", "--name-only", "--format="],
                                capture_output=True, text=True).stdout.split()
     assert committed == ["mine/a.md"]
+
+
+def test_prompt_delivers_board_messages_and_grants_typed_approvals(tmp_path, write_config):
+    from synthesis import guards
+    _knowledge(tmp_path, write_config)
+    board.touch("S3", project="alpha")
+    board.message("project:alpha", "S9", "please rebase on main")
+    reason = guards.check("mcp__slack__slack_send_message", {"message": "hi"}, {})
+    code = reason.split("approve ")[1][:6]
+    out = _hook("user-prompt-submit", {"session_id": "S3", "prompt": f"approve {code}"})
+    context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "please rebase on main" in context and "Approved by the principal" in context
+    assert guards.check("mcp__slack__slack_send_message", {"message": "hi"}, {}) is None

@@ -1,6 +1,7 @@
 """R3: protection. Sends and deploys need a single-use approval of the exact thing."""
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -13,16 +14,32 @@ SLACK = "mcp__slack__slack_send_message"
 MESSAGE = {"channel_id": "C1", "message": "The release is out."}
 
 
-def test_send_is_blocked_until_the_exact_text_is_approved_and_then_allowed_once():
-    assert "approval" in guards.check(SLACK, MESSAGE, {})
-    approvals.record("send", {"tool": SLACK, "input": MESSAGE})
+def _code(reason):
+    return re.search(r'approve ([a-z0-9]{6})', reason).group(1)
+
+
+def test_send_is_blocked_until_the_principal_types_its_code_and_then_allowed_once():
+    reason = guards.check(SLACK, MESSAGE, {})
+    assert "approval" in reason
+    assert approvals.grant_from_prompt(f"yes, approve {_code(reason)}") == [f"{SLACK}: C1 The release is out."]
     assert guards.check(SLACK, {**MESSAGE, "message": "The release is out!"}, {}) is not None
     assert guards.check(SLACK, MESSAGE, {}) is None
     assert guards.check(SLACK, MESSAGE, {}) is not None  # spent
 
 
+def test_an_unknown_or_agent_invented_code_grants_nothing():
+    guards.check(SLACK, MESSAGE, {})
+    assert approvals.grant_from_prompt("approve abcdef") == []
+    assert guards.check(SLACK, MESSAGE, {}) is not None
+
+
+def test_the_cli_offers_no_way_to_approve():
+    from synthesis import cli
+    assert "approve" not in cli.parser().format_help().replace("approvals", "")
+
+
 def test_expired_approval_does_not_open_the_gate(monkeypatch):
-    approvals.record("send", {"tool": SLACK, "input": MESSAGE})
+    approvals.grant_from_prompt("approve " + _code(guards.check(SLACK, MESSAGE, {})))
     monkeypatch.setattr(approvals, "TTL_SECONDS", -1)
     assert guards.check(SLACK, MESSAGE, {}) is not None
 
@@ -30,7 +47,6 @@ def test_expired_approval_does_not_open_the_gate(monkeypatch):
 def test_forbidden_phrase_blocks_even_an_approved_message():
     config = {"forbidden_phrases": [{"name": "no-apology", "pattern": r"\bsorry\b", "why": "never apologize"}]}
     text = {"channel_id": "C1", "message": "Sorry for the delay."}
-    approvals.record("send", {"tool": SLACK, "input": text})
     assert "no-apology" in guards.check(SLACK, text, config)
 
 
@@ -47,8 +63,9 @@ def test_reads_are_never_guarded(tool):
 
 def test_deploy_needs_approval_of_that_exact_command():
     command = "cd ~/site && bash build.sh && wrangler pages deploy dist --project-name=site"
-    assert "production" in guards.check("Bash", {"command": command}, {})
-    approvals.record("deploy", command)
+    reason = guards.check("Bash", {"command": command}, {})
+    assert "production" in reason
+    approvals.grant_from_prompt("approve " + _code(reason))
     assert guards.check("Bash", {"command": command}, {}) is None
     assert guards.check("Bash", {"command": command}, {}) is not None
 

@@ -40,6 +40,23 @@ def session_start(payload):
     return _emit("SessionStart", context="\n\n".join(notes))
 
 
+def user_prompt_submit(payload):
+    """Grant approvals the principal typed, and deliver unread board messages."""
+    from synthesis import approvals, board, paths
+
+    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(
+        str(payload.get("prompt") or payload.get("user_prompt") or ""))]
+    session_id = paths.session_id(payload)
+    if session_id:
+        me = board.load(session_id)
+        unread = board.inbox(session_id, me.project if me else "", mark_read=True)
+        for m in unread[:5]:
+            notes.append(f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}")
+        if len(unread) > 5:
+            notes.append(f"{len(unread) - 5} more unread: run `synthesis inbox`.")
+    return _emit("UserPromptSubmit", context="\n\n".join(notes))
+
+
 def pre_tool_use(payload):
     from synthesis import guards, paths
 
@@ -64,7 +81,8 @@ def main(argv):
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
-    handler = {"session-start": session_start, "pre-tool-use": pre_tool_use}.get(event)
+    handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
+               "pre-tool-use": pre_tool_use}.get(event)
     return handler(payload) if handler else 0
 
 

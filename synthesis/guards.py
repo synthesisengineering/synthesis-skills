@@ -37,11 +37,12 @@ def check_send(tool: str, tool_input: dict, config: dict) -> str | None:
     for rule in config.get("forbidden_phrases", []):
         if re.search(rule["pattern"], text, re.IGNORECASE):
             return f"message breaks the rule '{rule.get('name', rule['pattern'])}': {rule.get('why', 'see your voice rules')}"
-    if approvals.consume("send", {"tool": tool, "input": tool_input}):
+    subject = {"tool": tool, "input": tool_input}
+    if approvals.consume("send", subject):
         return None
-    return ("Sending needs the principal's approval of this exact message. Show the exact text and "
-            "recipient, and after an explicit yes run: synthesis approve send --tool "
-            f"{shlex.quote(tool)} --input-file <file holding this exact tool input as JSON>")
+    code = approvals.request("send", subject, f"{tool}: {text[:120]}")
+    return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
+            f"recipient and ask them to reply \"approve {code}\". Then make this identical call again.")
 
 
 def _commands(command: str) -> list[list[str]]:
@@ -73,8 +74,9 @@ def check_deploy(command: str, config: dict) -> str | None:
                     deploy = True
     if not deploy or approvals.consume("deploy", command):
         return None
-    return ("This publishes to production. Ask the principal for explicit permission for this exact "
-            f"command, and after a yes run: synthesis approve deploy --command {shlex.quote(command)}")
+    code = approvals.request("deploy", command, f"deploy: {command[:160]}")
+    return ("This publishes to production. Show the principal this exact command and ask them to reply "
+            f"\"approve {code}\". Then run the identical command again.")
 
 
 def _protected(config: dict) -> list[Path]:
