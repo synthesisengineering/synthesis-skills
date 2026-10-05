@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.10] - 2026-10-05
+
+- Add candidate admission to the existing publication command owner, binding test coverage metadata to the exact outgoing commit and selected release base.
+- Refuse missing or unmapped acceptance cases, hidden fixture changes, moving source references and changed push destinations before supported candidate publication.
+- Retain ordinary repository behavior and the existing site publication authority boundary.
+
 ## [4.154.9] - 2026-10-04
 
 - Encode repeated attribution paths once while retaining every path, recorded hash, remote obligation and metadata field within existing byte and path limits.
