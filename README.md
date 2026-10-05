@@ -18,7 +18,7 @@ care](docs/fleet-operations.md).
 
 ## What's new
 
-Release **4.154.11** keeps project recovery valid when an unrelated repository commit leaves the selected project unchanged. Dirty-file scans reduce repeated path parsing and directory opens while freshly checking file bytes and directory identities.
+Release **4.154.12** Correspondence protection checks each client's declared tools and installed hooks. The configuration owner can review and apply exact spelling repairs while preserving transport mappings, pending records and unrelated settings. Preview and send-gate scans use the same treatment of message text and links.
 
 Release **4.154.10** adds exact candidate membership validation to the existing publication command owner. Control-plane callers can reject incomplete test coverage metadata and changed source references before a supported Git push.
 

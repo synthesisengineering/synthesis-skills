@@ -155,7 +155,13 @@ class Check:
         return "UNKNOWN"
 
     def serialized(self) -> dict[str, object]:
-        return {**asdict(self), "status": self.status}
+        item = {**asdict(self), "status": self.status}
+        # Pending is an operator diagnostic, not a sixth report outcome.
+        # Keep its reason visible while the shared report remains UNKNOWN.
+        if self.outcome == "PENDING":
+            item.update(outcome="UNKNOWN", status="UNKNOWN",
+                        detail=f"PENDING: {self.detail}")
+        return item
 
 
 PLANE_BY_PREFIX = {
@@ -2058,9 +2064,9 @@ def project_state_recovery_checks(
     add(
         checks,
         "continuity.project-state-recovery",
-        acceptable,
+        None if report.status == "UNKNOWN" else acceptable,
         detail,
-        outcome=report.status,
+        outcome="UNKNOWN" if report.status == "UNKNOWN" else None,
     )
     return checks
 

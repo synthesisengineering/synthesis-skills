@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [4.154.12] - 2026-10-05
+
+- Correspondence checks preserve link labels and destinations during rendered-text inspection, with the same scan used by previews and send gates. Adds owner-reviewed repairs for exact client tool spellings and client hook wiring. Recovery reports preserve unresolved states, and native-memory probes use the coordination board's existing size limit.
+
 ## [4.154.11] - 2026-10-05
 
 - Recheck the selected project and its working-tree identities when the repository advances, allowing unrelated commits while refusing project replacement or newly appearing worktrees.

@@ -631,15 +631,18 @@ def memory_probe(store: Path, *, harness: str, machine: str, board: Path,
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
     import coordination
+    from board_grammar import MAX_MESSAGE_BOARD_BYTES
 
+    # The board uses its existing message-owner bound, not the smaller
+    # generic ritual artifact bound. Full bytes still fence every read.
     # Refuse a missing/unsafe selected board before calling its owner (which
     # can otherwise initialize an absent parent). A leased mirror alone is not
     # evidence that this machine has no active harness seats.
-    read_regular(Path(board), MAX_ARTIFACT_BYTES)
+    read_regular(Path(board), MAX_MESSAGE_BOARD_BYTES)
     text = coordination._check_staged_board_snapshot(Path(board), lock_timeout=1)
     if text is None:
         raise RitualWorkersError("selected coordination board is absent")
-    board_raw = read_regular(Path(board), MAX_ARTIFACT_BYTES)
+    board_raw = read_regular(Path(board), MAX_MESSAGE_BOARD_BYTES)
     if board_raw.decode("utf-8") != text:
         raise RitualWorkersError("coordination changed after its owner fence")
     sessions = coordination.rows(text, strict=True)
@@ -654,7 +657,7 @@ def memory_probe(store: Path, *, harness: str, machine: str, board: Path,
                 return {"status": "PENDING_ACTIVE_HARNESS", "harness": harness,
                         "pending": True, "model_calls": 0}
     current = memory_store_snapshot(store)
-    if read_regular(Path(board), MAX_ARTIFACT_BYTES) != board_raw:
+    if read_regular(Path(board), MAX_MESSAGE_BOARD_BYTES) != board_raw:
         raise RitualWorkersError("coordination changed during memory preflight")
     if previous is not None:
         if not isinstance(previous, dict) or set(previous) != {"store", "complete"} or type(previous["complete"]) is not bool:
@@ -667,7 +670,7 @@ def memory_probe(store: Path, *, harness: str, machine: str, board: Path,
         if old == current:
             return {"status": "UNCHANGED" if previous["complete"] else "PENDING_UNCHANGED",
                     "harness": harness, "store": current, "pending": not previous["complete"], "model_calls": 0}
-    if read_regular(Path(board), MAX_ARTIFACT_BYTES) != board_raw:
+    if read_regular(Path(board), MAX_MESSAGE_BOARD_BYTES) != board_raw:
         raise RitualWorkersError("coordination changed during memory preflight")
     return {"status": "EXPORT_REQUIRED", "harness": harness, "store": current,
             "board_sha256": hashlib.sha256(board_raw).hexdigest(), "pending": True, "model_calls": 0}
