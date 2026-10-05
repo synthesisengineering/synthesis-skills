@@ -51,8 +51,13 @@ def _commands(command: str) -> list[list[str]]:
             words = shlex.split(part)
         except ValueError:
             words = part.split()
-        if words:
-            found.append(words)
+        if not words:
+            continue
+        found.append(words)
+        if os.path.basename(words[0]) in ("sh", "bash", "zsh") and len(words) > 2:
+            flag = next((i for i, w in enumerate(words[1:], 1) if w.startswith("-") and "c" in w), None)
+            if flag is not None and flag + 1 < len(words):
+                found += _commands(words[flag + 1])  # the script a wrapper shell runs
     return found
 
 
@@ -95,9 +100,18 @@ def check_destructive(command: str, config: dict) -> str | None:
     return None
 
 
+SHELL_TOOLS = {"Bash", "exec_command", "exec", "shell", "local_shell", "run_shell_command"}
+
+
+def shell_command(tool_input: dict) -> str:
+    """The command text, whichever harness spelled it: a string or an argv list."""
+    value = tool_input.get("command", tool_input.get("cmd", ""))
+    return shlex.join(value) if isinstance(value, list) else str(value)
+
+
 def check(tool: str, tool_input: dict, config: dict) -> str | None:
-    if tool == "Bash":
-        command = str(tool_input.get("command", ""))
+    if tool in SHELL_TOOLS:
+        command = shell_command(tool_input)
         return check_destructive(command, config) or check_deploy(command, config)
     if is_send_tool(tool, config):
         return check_send(tool, tool_input, config)

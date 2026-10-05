@@ -84,6 +84,13 @@ def test_force_push_only_to_default_branches_is_refused(command, blocked):
     assert (guards.check("Bash", {"command": command}, {}) is not None) is blocked
 
 
+@pytest.mark.parametrize("tool,tool_input", [("exec_command", {"cmd": ["rm", "-rf", str(Path.home())]}),
+                                             ("shell", {"command": ["bash", "-lc", "rm -rf ~"]}),
+                                             ("local_shell", {"command": "rm -rf ~"})])
+def test_every_harness_shell_tool_is_guarded(tool, tool_input):
+    assert guards.check(tool, tool_input, {}) is not None
+
+
 def _hook(event, payload, env):
     return subprocess.run([sys.executable, "-m", "synthesis.hook", event], input=json.dumps(payload),
                           capture_output=True, text=True, env=env,

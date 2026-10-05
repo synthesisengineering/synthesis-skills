@@ -48,7 +48,7 @@ def pre_tool_use(payload):
     try:
         config = paths.config()
     except (OSError, ValueError) as exc:
-        if tool == "Bash" or guards.is_send_tool(tool, {}):
+        if tool in guards.SHELL_TOOLS or guards.is_send_tool(tool, {}):
             return _emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
         return 0
     try:
