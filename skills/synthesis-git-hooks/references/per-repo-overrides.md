@@ -1,6 +1,6 @@
 # Per-repo overrides
 
-The default policy (Tier 0 always + Tier 1 in strict) is read from `~/.synthesis/git-hook-config.yaml` and is sufficient for almost all cases. This reference covers the rare cases where you want a repo to do MORE than the default.
+The default policy (Tier 0 always + Tier 1 in strict and public-surface repos) is read from the policy file `commit_policy` names in `~/.synthesis/v5/config.json`, and is sufficient for almost all cases. This reference covers the rare cases where you want a repo to do MORE than the default.
 
 ## When you need an override
 
@@ -10,18 +10,9 @@ The default policy (Tier 0 always + Tier 1 in strict) is read from `~/.synthesis
 
 ## The delegation mechanism
 
-The universal engine at `~/.synthesis/git-hooks/pre-commit` chains to a repo-local hook if one exists:
+The universal check (`~/.synthesis/v5/git-hooks/pre-commit`, running `synthesis/commit_check.py`) chains to the repository's own hooks after its own checks pass: `.githooks/pre-commit`, then `.git/hooks/pre-commit`, each once, never itself. A repository that must not run without its own hook declares `.githooks/required`; a missing or non-executable `.githooks/pre-commit` then blocks the commit and names the fix (see [scanning.md](scanning.md#repository-hooks)). `commit-msg` chains the same way to `.githooks/commit-msg` and `.git/hooks/commit-msg`; a clean automatic merge runs `.githooks/pre-commit` too.
 
-```bash
-# Inside the engine, after the universal check passes:
-REPO_ROOT=$(git rev-parse --show-toplevel)
-REPO_HOOK="$REPO_ROOT/.githooks/pre-commit"
-if [ -f "$REPO_HOOK" ] && [ -x "$REPO_HOOK" ]; then
-    exec "$REPO_HOOK"
-fi
-```
-
-The repo-local hook receives `$SYNTHESIS_REPO_CLASS` (`personal` or `strict`) in its environment, so the repo-local logic can adapt to the same classification the universal engine used.
+The repo-local hook receives `$SYNTHESIS_REPO_CLASS` (`personal`, `public-surface` or `strict`) in its environment, so the repo-local logic can adapt to the same classification the universal engine used.
 
 ## Override pattern: extra allowlist
 
@@ -60,6 +51,12 @@ The universal hook would have caught and BLOCKED on `acme`; the repo-local hook 
 
 The repo-local hook IS NOT a way to override the universal hook — git only runs one pre-commit hook (whichever `core.hooksPath` points at), and the engine chains to the repo-local one ONLY after the universal check passes. You can't suppress a universal-hook trip from a repo-local file.
 
+## Repo-local hooks are additive, not superseded
+
+If a repo has its own `.githooks/pre-commit` (version-controlled, executable), this engine **chains to it** — runs its own Tier-0/Tier-1 pass first, then runs the repo-local hook. It does not replace or subsume it.
+
+This matters because it's easy to assume the opposite: "the global hook already covers confidentiality, so the repo-local one is redundant — delete it." That assumption is wrong and removes protection rather than deduplicating it. A repo-local hook typically exists because the repo needs a check the global config can't express safely — for example, a repo whose whole purpose is documenting a specific client relationship needs `personal`-class handling (so the client's own name isn't flagged as a leak) while still blocking a different category the global patterns don't cover, like engagement financials or a partner's personnel names. Verify what a repo-local hook actually checks before assuming it's covered elsewhere, and don't delete it as part of unrelated cleanup.
+
 ## Override pattern: extra checks
 
 Suppose a public repo wants to ALSO check for the substring "TODO" in `src/security/`. The repo-local hook adds the extra check on top of the universal one:
@@ -85,7 +82,7 @@ The repo-local hook is purely additive. The universal check has already run by t
 
 Before this skill existed, several of the author's public repos had repo-local `.githooks/pre-commit` files that re-implemented the confidential-client-name check. Those files became redundant once the universal engine read the patterns from `~/.synthesis/git-hook-config.yaml`. The universal engine applies them automatically to any repo that classifies as `strict`.
 
-Those repo-local files were deleted in the migration. One source of truth.
+Those repo-local files were deleted in the migration. One source of truth. (That deletion was right because those hooks only repeated the global patterns; a repo-local hook that checks something else stays, per the section above.)
 
 ## Environment variable: SYNTHESIS_REPO_CLASS
 
@@ -102,10 +99,10 @@ This is useful if the repo-local logic should mirror the universal classificatio
 
 ## Override pattern: using a different config file
 
-For one-off testing, set `SYNTHESIS_GIT_HOOK_CONFIG`:
+For one-off testing of the engine itself, point `SYNTHESIS_HOME` at a scratch folder whose `config.json` names a test policy:
 
 ```bash
-SYNTHESIS_GIT_HOOK_CONFIG=/tmp/test-policy.yaml git commit -m "test"
+SYNTHESIS_HOME=/tmp/test-home git commit -m "test"   # reads /tmp/test-home/config.json
 ```
 
 This is meant for development of the engine itself, not for production policy variation.

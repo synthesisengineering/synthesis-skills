@@ -94,6 +94,7 @@ def test_a_symlinked_or_tilde_workspace_root_still_matches(ws, tmp_path, monkeyp
 
 def test_an_aliased_account_name_and_a_display_address_are_accepted(ws):
     dirs, config = ws
+    config["message_format"] = {"plain_email_tools": ["mcp__apple-mail__*"]}  # this transport sends plain text only
     mail = {"to": "a@clientco.example", "subject": "s", "body": "b"}
     assert "approval" in _check("mcp__apple-mail__send_email", {**mail, "from_account": "ClientCo Exchange"}, config, dirs["clientco"])
     assert "approval" in _check("mcp__apple-mail__send_email", {**mail, "from_account": f"Me <{CLIENT}>"}, config, dirs["clientco"])
@@ -128,7 +129,7 @@ def test_messages_with_no_account_boundary_are_not_routed(ws, tool, tool_input):
 
 def test_an_addressed_send_message_needs_send_approval_whatever_its_server_is_called(ws):
     dirs, config = ws
-    reason = _check("mcp__0a1b2c3d__send_message", {"to": ["friend@example.com"], "body": "hi"}, config, dirs["personal"])
+    reason = _check("mcp__0a1b2c3d__send_message", {"to": ["friend@example.com"], "htmlBody": "<p>hi</p>"}, config, dirs["personal"])
     assert "approval" in reason
 
 

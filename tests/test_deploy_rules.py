@@ -227,3 +227,9 @@ def test_linked_worktrees_share_the_brake_with_their_main_checkout(site, tmp_pat
     _push(site)
     _git(site, "worktree", "add", "-q", str(tmp_path / "site-wt"), "-b", "fix")
     assert "within 45 minutes" in _push(tmp_path / "site-wt", config={"push_deploys": [str(site)]})
+
+
+def test_one_command_deploying_a_site_twice_is_refused_before_any_approval(site):
+    reason = guards.check("Bash", {"command": f"git -C {site} push origin main && git -C {site} push origin main"},
+                          {"push_deploys": [str(site)]}, cwd=str(site.parent / "elsewhere"))
+    assert "more than once" in reason and "approve" not in reason

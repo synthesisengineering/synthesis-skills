@@ -56,10 +56,67 @@ def test_own_claim_does_not_block_own_commit(repo):
     assert _commit(repo, "projects/alpha/a.md", "x\n", {"SYNTHESIS_SESSION": "ME"}).returncode == 0
 
 
-def test_disclosure_patterns_apply_only_to_strict_remotes(repo, write_config):
-    write_config({"disclosure": {"strict_remotes": ["github.com/public-org/"],
-                                 "patterns": [{"name": "client codename", "pattern": r"\bBluebird\b"}]}})
+def test_disclosure_patterns_apply_only_where_outsiders_read(repo, tmp_path, write_config):
+    policy = tmp_path / "policy.yaml"
+    policy.write_text("config_version: 2\npersonal_remote_patterns:\n  - '[:/]example-person/'\n"
+                      "tier_0_always:\n  keys:\n    - 'sk-ant-api[a-z0-9-]+'\n"
+                      "tier_1_strict_only:\n  confidential_names:\n    - '\\bBluebird\\b'\n", encoding="utf-8")
+    write_config({"commit_policy": str(policy)})
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:example-person/notes.git"], check=True)
     assert _commit(repo, "a.md", "Bluebird launch\n").returncode == 0
-    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", "https://github.com/public-org/site.git"], check=True)
+    subprocess.run(["git", "-C", str(repo), "remote", "set-url", "origin", "https://github.com/public-org/site.git"], check=True)
     result = _commit(repo, "b.md", "Bluebird again\n")
-    assert result.returncode != 0 and "client codename" in result.stderr
+    assert result.returncode != 0 and "unapproved disclosure" in result.stderr
+
+
+def test_no_board_on_the_machine_advises_and_an_unreadable_board_blocks(repo, isolated_home):
+    result = _commit(repo, "a.md", "x\n")
+    assert result.returncode == 0 and "claims were not checked" in result.stderr
+    sessions = isolated_home / "state" / "sessions"
+    sessions.mkdir(parents=True)
+    (sessions / "broken.json").write_text("{not json", encoding="utf-8")
+    result = _commit(repo, "b.md", "x\n")
+    assert result.returncode != 0 and "coordination board can't be read" in result.stderr
+
+
+def test_a_rename_out_of_another_sessions_claim_is_refused(repo):
+    assert _commit(repo, "projects/alpha/notes.md", "x\n").returncode == 0
+    board.claim("OTHER", [f"{repo}/projects/alpha/**"], project="alpha", goal="drafting")
+    subprocess.run(["git", "-C", str(repo), "mv", "projects/alpha/notes.md", "elsewhere.md"], check=True)
+    env = {**os.environ, "SYNTHESIS_SESSION": "ME"}
+    result = subprocess.run(["git", "-C", str(repo), "commit", "-qm", "move"], capture_output=True, text=True, env=env)
+    assert result.returncode != 0 and "projects/alpha/notes.md: inside a claim held by OTHER" in result.stderr
+
+
+def test_a_committer_with_no_session_identity_is_told_how_to_identify(repo):
+    board.claim("OTHER", [f"{repo}/projects/alpha/**"], project="alpha", goal="drafting")
+    result = _commit(repo, "projects/alpha/a.md", "x\n")
+    assert result.returncode != 0 and "SYNTHESIS_SESSION=<your session id>" in result.stderr
+    subprocess.run(["git", "-C", str(repo), "reset", "-q"], check=True)
+    assert _commit(repo, "projects/beta/a.md", "x\n").returncode == 0  # unclaimed paths need no identity
+
+
+def test_an_unreadable_config_blocks_the_commit(repo, isolated_home):
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    (isolated_home / "config.json").write_text("{broken", encoding="utf-8")
+    result = _commit(repo, "a.md", "x\n")
+    assert result.returncode != 0 and "commit blocked" in result.stderr
+
+
+def test_a_rename_into_another_sessions_claim_is_refused(repo):
+    assert _commit(repo, "notes.md", "x\n").returncode == 0
+    board.claim("OTHER", [f"{repo}/projects/alpha/**"], project="alpha", goal="drafting")
+    (repo / "projects" / "alpha").mkdir(parents=True)
+    subprocess.run(["git", "-C", str(repo), "mv", "notes.md", "projects/alpha/notes.md"], check=True)
+    env = {**os.environ, "SYNTHESIS_SESSION": "ME"}
+    result = subprocess.run(["git", "-C", str(repo), "commit", "-qm", "move"], capture_output=True, text=True, env=env)
+    assert result.returncode != 0 and "projects/alpha/notes.md: inside a claim held by OTHER" in result.stderr
+
+
+def test_a_deletion_inside_another_sessions_claim_is_refused(repo):
+    assert _commit(repo, "projects/alpha/old.md", "x\n").returncode == 0
+    board.claim("OTHER", [f"{repo}/projects/alpha/**"], project="alpha", goal="drafting")
+    subprocess.run(["git", "-C", str(repo), "rm", "-q", "projects/alpha/old.md"], check=True)
+    env = {**os.environ, "SYNTHESIS_SESSION": "ME"}
+    result = subprocess.run(["git", "-C", str(repo), "commit", "-qm", "delete"], capture_output=True, text=True, env=env)
+    assert result.returncode != 0 and "projects/alpha/old.md: inside a claim held by OTHER" in result.stderr

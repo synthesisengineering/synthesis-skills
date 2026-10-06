@@ -141,3 +141,40 @@ def test_a_linked_worktree_runs_the_shared_git_hook_and_its_own_delegate(global_
     log.unlink()
     assert _commit(tmp_path / "wt", "c.md").returncode == 0
     assert _ran(log) == ["delegate", "git-hook"]
+
+
+def test_the_commit_msg_hook_scans_the_message_then_runs_the_repositorys_own(global_hook, repo, tmp_path):
+    log = tmp_path / "log"
+    _script(global_hook.parent / "commit-msg", f'SYNTHESIS_GIT_HOOK=commit-msg exec "{sys.executable}" -S "{CHECK}" "$@"')
+    _script(repo / ".githooks" / "commit-msg", f'echo "msg $(head -1 "$1")" >> "{log}"')
+    (repo / ".githooks" / "required").write_text("", encoding="utf-8")
+    _script(repo / ".githooks" / "pre-commit", "exit 0")
+    assert _commit(repo).returncode == 0 and log.read_text(encoding="utf-8").strip() == "msg test"
+    (repo / "b.md").write_text("b\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "b.md"], check=True)
+    result = subprocess.run(["git", "-C", str(repo), "commit", "-qm", f"key {FAKE_AWS}"], capture_output=True, text=True, timeout=60)
+    assert result.returncode != 0 and "refused this message" in result.stderr
+    assert log.read_text(encoding="utf-8").strip() == "msg test"  # the repository's hook never saw the refused message
+
+
+def test_a_clean_merge_runs_the_checks_and_the_same_pre_commit_delegate(global_hook, repo, tmp_path):
+    log = tmp_path / "log"
+    _script(global_hook.parent / "pre-merge-commit", f'SYNTHESIS_GIT_HOOK=pre-merge-commit exec "{sys.executable}" -S "{CHECK}" "$@"')
+    _script(repo / ".githooks" / "pre-commit", f'echo delegate >> "{log}"')
+    (repo / ".githooks" / "required").write_text("", encoding="utf-8")
+    assert _commit(repo).returncode == 0
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", "side"], check=True)
+    assert _commit(repo, "side.md").returncode == 0
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-"], check=True)
+    assert _commit(repo, "main.md").returncode == 0
+    log.unlink()
+    merged = subprocess.run(["git", "-C", str(repo), "merge", "-q", "--no-edit", "side"], capture_output=True, text=True, timeout=60)
+    assert merged.returncode == 0, merged.stderr
+    assert _ran(log) == ["delegate"]
+    (repo / "leak.md").write_text(f"{FAKE_AWS}\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", "leaky", "HEAD~1"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "leak.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "--no-verify", "-m", "leak"], check=True)
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-"], check=True)
+    blocked = subprocess.run(["git", "-C", str(repo), "merge", "-q", "--no-edit", "leaky"], capture_output=True, text=True, timeout=60)
+    assert blocked.returncode != 0 and "AWS access key" in blocked.stderr

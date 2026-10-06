@@ -1,0 +1,31 @@
+{
+  "send_tools": [],
+  "forbidden_phrases": [
+    {
+      "name": "delay-apology",
+      "pattern": "\\b(?:sorry|apolog(?:y|ize|ise|etic))\\b.{0,40}\\b(?:delay|late|silence)\\b",
+      "why": "the principal never apologizes for response time"
+    },
+    {
+      "name": "self-abandonment",
+      "pattern": "\\b(?:went|been|was)\\s+(?:quiet|missing|absent)\\b",
+      "why": "no self-flagellation about availability"
+    },
+    {
+      "name": "persona casing",
+      "pattern": "\\bHelperBot\\b",
+      "case_sensitive": true,
+      "why": "the persona is spelled Helperbot"
+    }
+  ],
+  "message_format": {
+    "allow_line_breaks_in_paragraphs": false,
+    "default_email_format": "html",
+    "plain_email_tools": []
+  },
+  "signature": {
+    "markers": ["🤖"],
+    "domains": ["helperbot.example"],
+    "plain_url_tools": []
+  }
+}

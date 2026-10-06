@@ -70,3 +70,27 @@ def test_a_reply_is_sent_back_once_but_a_reply_after_an_autopilot_continuation_i
     marker = isolated_home / "state" / "stop" / "s1.json"
     marker.write_text(json.dumps({"by": "autopilot"}))
     assert json.loads(run({**lazy, "stop_hook_active": True}).stdout)["decision"] == "block"
+
+
+LINKED = {"reply_file_links": True}
+
+
+def test_a_file_named_without_an_absolute_link_is_sent_back_when_the_rule_is_on():
+    reply = "I changed synthesis/guards.py and the notes in CONTEXT.md, see [plan](docs/plan.md) and ~/notes/todo.txt."
+    reason = reply_check.check({"last_assistant_message": reply}, LINKED)
+    for name in ("synthesis/guards.py", "CONTEXT.md", "docs/plan.md", "~/notes/todo.txt"):
+        assert name in reason
+    assert reply_check.check({"last_assistant_message": reply}, {}) is None  # off unless configured
+
+
+def test_absolute_links_code_urls_and_framework_names_are_not_flagged():
+    reply = ("Updated [guards.py](/Users/example/repo/synthesis/guards.py) and [the doc](/Users/example/repo/docs/a.md:12). "
+             "Run `pytest tests/test_guards.py` or:\n```\npython3 tools/check.py\n```\n"
+             "Spec at https://example.com/spec/index.html and [site](https://example.com/a.md). Built with Node.js and Next.js. "
+             "Mail me at someone@example.md, read [section](#binding-rules), version 3.9.1 is fine.")
+    assert reply_check.unlinked_files(reply) == []
+    assert reply_check.check({"last_assistant_message": reply}, LINKED) is None
+
+
+def test_a_filename_ending_a_sentence_is_still_caught():
+    assert reply_check.unlinked_files("The fix lives in dupes.json.") == ["dupes.json"]

@@ -1,6 +1,9 @@
 # Threat model
 
-Why two tiers, and what each tier protects against.
+Why two tiers, and what each tier protects against. A third surface sits between them:
+`public-surface` repositories are the principal's own published sites, where tier 1
+applies except for names the disclosure ledger records as published precedent (see
+[tier-classification.md](tier-classification.md)).
 
 ## Tier 0 — credentials
 
@@ -12,7 +15,7 @@ A credential in a git history is a credential that has leaked. Even if the repo 
 
 Defense in depth: credentials never go in git, regardless of repo visibility. The hook enforces this at the commit boundary because the alternative — discovering the leak after the fact and rotating — is more expensive and incomplete (you can't un-leak a key that's been cloned).
 
-Patterns in Tier 0 are LITERAL credential signatures: AWS access key prefix `AKIA…`, OpenAI's `sk-…T3BlbkFJ`, Anthropic's `sk-ant-api…`, Google's `AIza…`, GitHub's `ghp_…`, GitLab's `glpat-…`, Slack's `xoxb-…` / `xoxp-…`, and the standard private-key BEGIN markers (RSA, OpenSSH, EC, PGP). These are designed by the issuers to be regex-detectable — finding them is unambiguous.
+Patterns in Tier 0 are LITERAL credential signatures: AWS access key prefix `AKIA…`, OpenAI's `sk-…`, Anthropic's `sk-ant-…`, Google's `AIza…`, GitHub's `ghp_…` and `github_pat_…`, GitLab's `glpat-…`, Slack's `xoxb-…` / `xoxp-…`. These are designed by the issuers to be regex-detectable — finding them is unambiguous. A private key is the standard BEGIN header (RSA, OpenSSH, EC, DSA, PGP, generic and encrypted PKCS#8) followed by key body lines; the header alone is how detection rules and documentation name a key, so it passes. File names that hold secrets by convention (`.env`, `id_rsa`, `*.pem` and the rest in [scanning.md](scanning.md#credential-file-names)) are refused whatever they contain.
 
 ## Tier 1 — exposure-sensitive
 
@@ -44,7 +47,7 @@ GitHub orgs, bitbucket workspaces, internal domains, paths to private knowledge 
 
 ## When Tier 1 is OK to skip
 
-When the repo classifies as `personal` — i.e., every push remote points to your personal namespace (e.g., `github.com:rajivpant/...`), AND no other human can push to or pull from the repo. In this state:
+When the repo classifies as `personal` — i.e., every push remote points to your personal namespace (e.g., `github.com:YOUR-PERSONAL-ORG/...`), AND no other human can push to or pull from the repo. In this state:
 
 - "bonus" is a journal entry, not a leak target
 - A client name is your own working notes

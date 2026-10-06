@@ -1,8 +1,10 @@
 """Turn-end check of the agent's final reply (ruling S15, R4).
 
 Blocks a reply once when it uses lazy-shortcut phrasing or quotes someone with
-words that appear nowhere in this session's record. Phrases inside quotation
-marks or code are exempt, so naming a rule doesn't trip it. Never blocks twice
+words that appear nowhere in this session's record, and, when the config sets
+`reply_file_links`, when it names a file without a clickable absolute-path
+markdown link (a bare name or a relative path does not resolve for the reader).
+Phrases inside quotation marks or code are exempt, so naming a rule doesn't trip it. Never blocks twice
 in a row and lets the reply through on any internal error: a turn-end check
 that fails closed loops forever.
 """
@@ -23,6 +25,23 @@ QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”")
 ATTRIBUTED = re.compile(
     r"\b(?:said|says|wrote|writes|replied|asked|told \w+|warned|noted|added)\s*[:,]?\s*(?:\"([^\"\n]{12,400})\"|“([^”\n]{12,400})”)",
     re.I)
+
+
+FILE = re.compile(r"(?<![\w/.@~-])(?:~?/|\.{1,2}/)?(?:[\w.-]+/)*[\w-][\w.-]*\.(?:md|py|js|ts|tsx|jsx|mjs|json|ya?ml"
+                  r"|toml|sh|bash|zsh|html|css|astro|txt|csv|sql|rb|go|rs|java)(?::\d+)?(?![\w/-])(?!\.\w)")
+LINK = re.compile(r"\[[^\]\n]*\]\(\s*<?([^()<>\s]*)>?(?:\s+\"[^\"]*\")?\s*\)")
+URL = re.compile(r"\b[a-z][a-z0-9+.-]*://\S+|\bmailto:\S+", re.I)
+FRAMEWORK = re.compile(r"[A-Z]\w*\.js")  # Node.js, Next.js: names, not files
+
+
+def unlinked_files(reply: str) -> list[str]:
+    """File names in a reply that are not a markdown link to an absolute path. Code spans,
+    fenced blocks and URLs are not references; a link whose target is relative fails."""
+    text = CODE.sub(" ", reply)
+    bad = [t for t in LINK.findall(text) if t and not re.match(r"[a-z][a-z0-9+.-]*:|[/#]", t, re.I)]
+    text = URL.sub(" ", LINK.sub(" ", text))
+    bad += [m.group(0) for m in FILE.finditer(text) if not FRAMEWORK.fullmatch(m.group(0))]
+    return list(dict.fromkeys(bad))
 
 
 def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
@@ -62,6 +81,10 @@ def check(payload: dict, config: dict) -> str | None:
     if hits:
         problems.append("lazy-shortcut phrasing: " + ", ".join(f'"{h}"' for h in hits)
                         + ". Do the work or name the real blocker instead of deferring it.")
+    files = unlinked_files(reply) if config.get("reply_file_links") else []
+    if files:
+        problems.append("files named without a clickable link: " + ", ".join(files[:6])
+                        + ". Write each as [name](/absolute/path/to/file); a bare name or relative path does not open.")
     missing = unsourced_quotes(reply, payload.get("transcript_path"))
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)

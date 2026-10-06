@@ -4,15 +4,24 @@ How `git remote -v` becomes the repo's class, and what that means for the active
 
 ## The classifier
 
-The sidecar `_load_config.py` runs `git remote -v` and extracts every URL marked as a push remote:
+The commit check reads every URL marked as a push remote:
 
 ```bash
 git remote -v | awk '/\(push\)/ {print $2}'
 ```
 
-It compares each URL against the regexes in `personal_remote_patterns`. If **every** URL matches at least one pattern, the repo classifies as `personal`. Otherwise `strict`.
+It decides strict-first, matching patterns case-insensitively:
+
+1. Any push remote matches `strict_repo_patterns`, or there is no push remote: `strict`.
+2. Every push remote matches `public_surface_patterns`: `public-surface`. Some but not all
+   match: `strict` (escalation, never demotion through a broad personal pattern).
+3. Every push remote matches `personal_remote_patterns`: `personal`.
+4. Anything else: `strict`.
 
 Empty remote list (e.g., `git init` with no upstream yet) classifies as `strict` — the safe default.
+
+To see the result for a repository, run from inside it:
+`python3 -S ~/.synthesis/v5/current/synthesis/commit_check.py --classify`.
 
 ## Examples
 
@@ -20,13 +29,16 @@ Given this config:
 
 ```yaml
 personal_remote_patterns:
-  - '[:/]rajivpant/'
+  - '[:/]YOUR-PERSONAL-ORG/'
+public_surface_patterns:
+  - '[:/]YOUR-PERSONAL-ORG/your-site(\.git)?$'
 ```
 
 | Push remotes | Class | Reason |
 |---|---|---|
 | `git@github.com:YOUR-PERSONAL-ORG/some-notes.git` | personal | All push remotes match |
 | `git@github.com:YOUR-PERSONAL-ORG/repo-1.git` + `git@github.com:YOUR-PERSONAL-ORG/repo-1-mirror.git` | personal | Both match |
+| `git@github.com:YOUR-PERSONAL-ORG/your-site.git` | public-surface | Every push remote is a published surface |
 | `git@github.com:public-foundation/upstream.git` | strict | No push remote matches |
 | `git@github.com:YOUR-PERSONAL-ORG/repo.git` + `git@github.com:client-org/shared-project.git` | strict | One non-personal push remote suffices |
 | `(no remotes)` | strict | Safe default |
@@ -39,19 +51,11 @@ The alternative (any-may-match) would relax security as soon as a single persona
 
 ## Effects on the active pattern set
 
-```python
-# Pseudocode from _load_config.py
-active_patterns = flatten(tier_0_always)
-if repo_class == "strict":
-    active_patterns += flatten(tier_1_strict_only)
-active_regex = "|".join(deduplicate(active_patterns))
-```
-
-In `personal` mode: ~12 patterns (8 API-key signatures + 4 private-key markers).
-
-In `strict` mode: ~12 + the Tier 1 set (financial 4, HR 5, confidentiality 3, plus your client names, private skill names, internal URLs — typically 30-50 patterns total).
-
-The single regex is then `grep -E`'d against the staged diff.
+| Class | Diff | Message |
+|---|---|---|
+| `personal` | Tier 0 only | Tier 0 only |
+| `public-surface` | Tier 0, plus the `public_surface_groups` of tier 1 minus the ledger's allowances | Tier 0 plus all of tier 1, no allowances |
+| `strict` | Tier 0 plus all of tier 1 | Tier 0 plus all of tier 1 |
 
 ## Why auto-derive, not declare
 
@@ -66,6 +70,13 @@ Auto-derivation has no "did I add the flag file?" ritual. New sole-owner repos c
 
 The remote configuration IS the security profile. Anything else is a shadow that can drift.
 
+- **Single source of truth.** A flag file is a SHADOW of the real security profile (the remotes). Two sources of truth drift; one doesn't.
+- **No silent erosion.** If a repo's profile changes (a new collaborator's remote is added), auto-detect tightens immediately. A flag file would stay relaxed even after reality changed.
+- **Zero per-repo ritual.** A new sole-owner repo classifies correctly on its first commit. No "did I add the flag file?" checklist.
+- **Self-documenting.** `git remote -v` is one command; the classification logic is one regex match against URLs.
+
+Counter-analogy from CSP allowlists (which ARE static for adversarial reasons): doesn't apply here. The user isn't adversarial against themselves, and no third party can manipulate the remote set.
+
 ## Edge cases
 
 ### A repo with no remote
@@ -76,12 +87,12 @@ Classifies as `strict`. The safe default for a fresh `git init` or a repo where 
 
 If the mirror is in your personal namespace, both URLs match → personal. If the mirror is on a different host (e.g., bitbucket alongside github), the mirror URL must also be in `personal_remote_patterns` for the repo to classify as personal.
 
-For example, a self-hosted git server at `git.your-domain.com:rajiv/...` requires a regex like `[:/]rajiv/` AND a host match in `personal_remote_patterns`:
+For example, a self-hosted git server needs its own pattern beside the GitHub one:
 
 ```yaml
 personal_remote_patterns:
-  - '[:/]rajivpant/'        # GitHub user
-  - 'git\.your-domain\.com:rajiv/'  # self-hosted
+  - '[:/]YOUR-PERSONAL-ORG/'              # GitHub user
+  - 'git\.your-domain\.com:YOUR-NAME/'    # self-hosted
 ```
 
 ### A monorepo with submodules

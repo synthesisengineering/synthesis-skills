@@ -26,10 +26,30 @@ DEFAULT_DEPLOY_PATTERNS = [
     r"\bfirebase\s+deploy\b", r"\bnpm\s+publish\b", r"\btwine\s+upload\b", r"\bgh\s+release\s+create\b",
 ]
 SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
-WRAPPERS = {"env", "command", "exec", "time", "nohup", "sudo", "nice", "{", "!"}
 GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"}
 
 # --- sends (R3.1) -------------------------------------------------------------------------------
+# The approval binds the whole call (recipients, subject, thread headers, every body part and
+# attachment) and is keyed by its digest, so sessions composing at once never share a slot
+# (2026-09-02). Before an approval is asked for, the text must pass the register scan and the
+# format rules: email is HTML with no break inside a paragraph and no markdown (2026-09-23), no
+# text a person reads breaks a paragraph, a persona signature is a link (2026-08-30), and
+# threading headers carry literal Message-IDs (2026-08-20, 2026-08-28).
+
+EMAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message", "create_draft", "update_draft",
+                         "send_email", "reply", "forward"})
+HTML_FIELDS = frozenset({"htmlBody", "html_body", "bodyHtml", "body_html", "html"})
+BODY_FIELDS = frozenset({"body", "message", "text", "content", "forwardText", "textBody", "text_body",
+                         "bodyText", "plain_text", "plainText", "message_text"})
+THREAD_HEADERS = ("in_reply_to", "references", "inReplyTo", "in_reply_to_id")
+HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
+                       "html", "body", "br"})
+LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
+                        r"(?:\s[^<>]*)?/?>", re.I)
+MARKDOWN = re.compile(r"\]\(\s*(?:https?|mailto):|\*\*[^*\n]+\*\*|^#{1,6} \S", re.M)
+LINKED = re.compile(r"href\s*=\s*(?:\"[^\"]*\"|'[^']*')|<(?:https?|mailto):[^>|\s]*(?:\|[^>]*)?>"
+                    r"|\]\((?:https?|mailto):[^)]*\)")
+BLOCK_START = re.compile(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
 
 
 def is_send_tool(tool: str, config: dict) -> bool:
@@ -37,16 +57,144 @@ def is_send_tool(tool: str, config: dict) -> bool:
     return any(fnmatch.fnmatchcase(tool, p) for p in patterns)
 
 
-def check_send(tool: str, tool_input: dict, config: dict) -> str | None:
-    text = " ".join(str(v) for v in tool_input.values() if isinstance(v, str))
+def _strings(value, key: str = ""):
+    """(field, text) for every populated string in a call, nested parts included. Attachment
+    payloads are bound by the approval digest but are not prose to scan."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if k not in ("attachments", "attachment"):
+                yield from _strings(v, k)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v, key)
+    elif isinstance(value, str) and value.strip():
+        yield key, value
+
+
+def _rendered(markup: str, breaks_ok: bool) -> tuple[str, list[str]]:
+    """The text an HTML part shows (entities decoded, tags gone), and what in it email must not carry."""
+    from html.parser import HTMLParser
+    from urllib.parse import urlsplit
+    text, problems, stack, blocks = [], [], [], ("p", "div", "li", "blockquote")
+
+    def start(tag, attrs, closed=False):
+        problems.extend([f"unsupported HTML element <{tag}>"] if tag not in HTML_TAGS else [])
+        problems.extend(["a <br> breaks a paragraph; start a new <p> instead"] if tag == "br" and not breaks_ok else [])
+        for name, value in attrs:
+            if name not in ("href", "title", "lang", "dir"):
+                problems.append(f"unsupported HTML attribute {name}")
+            elif name == "href" and urlsplit((value or "").strip()).scheme.lower() not in ("https", "http", "mailto"):
+                problems.append("an HTML link must be https, http or mailto")
+        text.append("\n\n" if tag in blocks else "\n" if tag == "br" else "")
+        stack.extend([tag] if tag != "br" and not closed else [])
+
+    def end(tag):
+        if tag != "br":
+            if stack and stack[-1] == tag:
+                stack.pop()
+            else:
+                problems.append("unbalanced HTML")
+            text.append("\n\n" if tag in blocks else "")
+
+    reader = HTMLParser(convert_charrefs=True)
+    reader.handle_starttag, reader.handle_endtag = start, end
+    reader.handle_startendtag = lambda tag, attrs: start(tag, attrs, closed=True)
+    reader.handle_data = lambda data: text.append(re.sub(r"\s+", " ", data))
+    reader.handle_comment = lambda data: problems.append("HTML comments are not allowed in outgoing prose")
+    reader.feed(markup)
+    reader.close()
+    return "".join(text).strip(), problems + (["unclosed HTML element"] if stack else [])
+
+
+def broken_paragraph(text: str) -> bool:
+    """True when a line break falls inside a paragraph. Blank lines separate paragraphs; a list
+    item, quote or table row starts its own line, and fenced code keeps its lines."""
+    fenced, previous = False, False
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if line.strip().startswith("```"):
+            fenced, previous = not fenced, False
+        elif fenced or not line.strip():
+            previous = False
+        elif previous and not BLOCK_START.match(line):
+            return True
+        else:
+            previous = True
+    return False
+
+
+def _is_email(tool: str, tool_input: dict) -> bool:
+    name = tool.rsplit("__", 1)[-1]
+    return name in EMAIL_TOOLS or (name == "send_message" and any(
+        k in tool_input for k in ("to", "cc", "bcc", "subject", "htmlBody", "body_format")))
+
+
+def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
+    """Why this outgoing message can't go as written, before anyone is asked to approve it."""
+    fmt = config.get("message_format") or {}
+    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs"))
+    strings = list(_strings(tool_input))
+    html_format = tool_input.get("body_format") == "html"
+    texts, html_parts, problems = [], [], []
+    for key, text in strings:
+        texts.append(text)
+        if key in HTML_FIELDS or (html_format and key in BODY_FIELDS) or LOOKS_HTML.search(text):
+            shown, markup = _rendered(text, breaks_ok)
+            texts.append(shown)  # markup and entities must not hide a banned phrase (2026-07-29)
+            html_parts.append((key, shown, markup))
     for rule in config.get("forbidden_phrases", []):
         # Case-insensitive unless the rule says otherwise: a rule against a miscased brand
         # must not block the correctly cased one (2026-08-03).
-        if re.search(rule["pattern"], text, 0 if rule.get("case_sensitive") else re.IGNORECASE):
-            return f"message breaks the rule '{rule.get('name', rule['pattern'])}': {rule.get('why', 'see your voice rules')}"
+        flags = 0 if rule.get("case_sensitive") else re.IGNORECASE
+        if any(re.search(rule["pattern"], t, flags) for t in texts):
+            return [f"message breaks the rule '{rule.get('name', rule['pattern'])}': {rule.get('why', 'see your voice rules')}"]
+    for key in THREAD_HEADERS:
+        value = str(tool_input.get(key) or "").strip()
+        if re.search(r"&(?:lt|gt|amp|#\d+);", value):
+            problems.append(f"{key} is HTML-escaped ({value[:60]}); a Message-ID takes literal angle brackets, <id@host>")
+        elif value.count("<") != value.count(">"):
+            problems.append(f"{key} has an unbalanced angle bracket ({value[:60]})")
+    html_keys = {k for k, _, _ in html_parts}
+    if _is_email(tool, tool_input):
+        bodies = [(k, t) for k, t in strings if k in BODY_FIELDS | HTML_FIELDS]
+        plain_ok = fmt.get("default_email_format") == "plain" or any(
+            fnmatch.fnmatchcase(tool, p) for p in fmt.get("plain_email_tools", []))
+        if bodies and not (html_format or html_keys & HTML_FIELDS) and not plain_ok:
+            problems.append("email goes out as HTML, never plain text (plain text is hard-wrapped on send): pass the "
+                            "body as htmlBody, or body_format html, with each paragraph in <p>")
+        if html_format and "body" in tool_input and "body" not in html_keys:
+            problems.append("body_format is html but the body has no paragraph markup; wrap each paragraph in <p>")
+        for key, shown, markup in html_parts:
+            problems += [f"{key}: {m}" for m in markup]
+        for key, text in bodies:
+            shown = next((s for k, s, _ in html_parts if k == key), text)
+            if MARKDOWN.search(shown):
+                problems.append(f"{key}: markdown never renders in email; write links as <a href> and emphasis as <strong>")
+            if key not in html_keys and not breaks_ok and broken_paragraph(text):
+                problems.append(f"{key}: a line break falls inside a paragraph; join each paragraph onto one line")
+    elif not breaks_ok:
+        problems += [f"{k}: a line break falls inside a paragraph; join each paragraph onto one line, or separate "
+                     "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
+                     and broken_paragraph(t)]
+    signature = config.get("signature") or {}
+    raw = "\n".join(t for _, t in strings)
+    if any(m and m in raw for m in signature.get("markers", [])) and not any(
+            fnmatch.fnmatchcase(tool, p) for p in signature.get("plain_url_tools", [])):
+        shown = LINKED.sub(" ", raw)
+        exposed = [d for d in signature.get("domains", []) if d and d in shown]
+        if exposed:
+            problems.append(f"the signature shows {', '.join(exposed)} as text; on a channel that renders links the "
+                            "persona name itself must be the link")
+    return problems
+
+
+def check_send(tool: str, tool_input: dict, config: dict) -> str | None:
+    problems = message_problems(tool, tool_input, config)
+    if problems:
+        return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     subject = {"tool": tool, "input": tool_input}
     if approvals.consume("send", subject):
         return None
+    text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request("send", subject, f"{tool}: {text[:120]}")
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
             f"recipient and ask them to reply \"approve {code}\". Then make this identical call again.")
@@ -118,80 +266,333 @@ def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | 
             "Check the organizer or sender afterwards: an invitation cannot be unsent.")
 
 
-# --- shell parsing ------------------------------------------------------------------------------
+# --- shell reading ------------------------------------------------------------------------------
+# A small reader for the shell a guard must see through: quotes, operators, comments, heredocs,
+# here-strings and command substitutions. It runs and expands nothing. Arguments and quoted text
+# are data; a substitution, `bash -c`, `eval`, `env -S`, and a shell reading its stdin (heredoc,
+# here-string or pipe) run code, so their text is read as commands too. Text it cannot read
+# (unbalanced quotes, nesting past MAX_DEPTH) is judged on its raw words by the caller, and an
+# unreadable command with no guarded word in it is never blocked for being unreadable.
 
 
-def _bare(words: list[str]) -> list[str]:
-    """The command itself, without subshell parentheses, variable assignments or wrappers like env."""
-    if words and words[0].startswith("("):
-        words = [words[0].lstrip("(")] + words[1:]
-    while words and (words[0] in WRAPPERS or not words[0] or re.match(r"[A-Za-z_]\w*=", words[0])):
-        words = words[1:]
-    if words and words[-1].endswith(")"):
-        words = words[:-1] + [words[-1].rstrip(")")]
-    return [w for w in words if w]
+class Unreadable(ValueError):
+    pass
 
 
-HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([A-Za-z_][\w.-]*)\1([^\n]*)\n.*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)", re.S)
-SHELLS = ("sh", "bash", "zsh")
+MAX_DEPTH = 6
+OPERATORS = ("<<<", "<<-", "<<", "<&", "<", "&&", "&>", "&", "||", "|&", "|", ";;", ";", ">>", ">&", ">|", ">",
+             "(", ")", "\n")
+REDIRECTS = frozenset({"<<<", "<&", "<", "&>", ">>", ">&", ">|", ">"})
+PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
+SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
+STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
+INTERPRETERS = frozenset({"node", "bun", "deno", "python", "python3"})
+KEYWORDS = frozenset({"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "time", "fi", "done"})
+# Commands that run the command after their own options; the set holds options that take a value.
+WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "command": set(), "exec": {"-a"},
+            "nohup": set(), "time": set(), "nice": {"-n", "--adjustment"},
+            "timeout": {"-s", "--signal", "-k", "--kill-after"}, "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-U"},
+            "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"}, "npx": {"-p", "--package"},
+            "bunx": set(), "pnpx": set(), "caffeinate": set()}
 
 
-def _without_heredocs(command: str) -> str:
-    """The command with heredoc bodies removed: a file being written is not a command being run.
-    A heredoc fed to a shell is kept, because the shell runs it."""
-    def drop(m):
-        line = command[command.rfind("\n", 0, m.start()) + 1:m.start()] + " " + m.group(3)
-        runs = any(os.path.basename(w) in SHELLS for w in re.split(r"[\s|;&()]+", line))
-        return m.group(0) if runs else f"<<{m.group(2)}{m.group(3)}"
-    return HEREDOC.sub(drop, command) if "<<" in command else command
-
-
-def _segments(command: str) -> list:
-    """Simple commands as word lists, with "(" and ")" marking subshells. Quotes are respected,
-    so `bash -c 'cd x && y'` keeps its script whole; redirections and their targets are dropped."""
-    command = _without_heredocs(command)
-    try:
-        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|()<>\n")
-        lex.whitespace, lex.whitespace_split, lex.commenters = " \t\r", True, ""
-        tokens = list(lex)
-    except ValueError:  # unbalanced quotes: fall back to a plain split, which still sees every command
-        return [part.split() for part in SEPARATORS.split(command)]
-    segments, words, skip = [], [], False
-    for token in tokens:
-        if skip:
-            skip = False
-        elif token and set(token) <= set("<>&|") and set(token) & set("<>"):
-            skip = True  # a redirection: the next token is its file
-        elif token and set(token) <= set(";&|()\n"):
-            segments.append(words)
-            segments += [c for c in token if c in "()"]
-            words = []
+def _close(s: str, i: int, opener: str) -> int:
+    """Index just past the `)` or backtick that closes a substitution whose text starts at i."""
+    depth, pending = 1, []
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            i += 2
+        elif opener == "`":
+            if c == "`":
+                return i + 1
+            i += 1
+        elif c == "'":
+            end = s.find("'", i + 1)
+            if end < 0:
+                raise Unreadable("unbalanced quote")
+            i = end + 1
+        elif c == '"':
+            i = _dquote(s, i + 1, [])[0]
+        elif s.startswith("<<", i) and not s.startswith("<<<", i):
+            i, delim, _ = _delimiter(s, i + (3 if s.startswith("<<-", i) else 2))
+            pending.append(delim)
+        elif c == "\n" and pending:  # a heredoc inside the substitution: skip its body
+            for delim in pending:
+                i = _body(s, i + 1, delim, True)[0] - 1
+            pending, i = [], i + 1
         else:
-            words.append(token)
-    return segments + [words]
+            depth += c == "("
+            depth -= c == ")"
+            i += 1
+            if not depth:
+                return i
+    raise Unreadable("unclosed substitution")
 
 
-def _commands(command: str, cwd: str) -> list[tuple[list[str], str]]:
-    """Each simple command with the directory it runs in, following `cd`, subshells and wrapper shells."""
-    found, outer = [], []
-    for item in _segments(command):
+def _dquote(s: str, i: int, subs: list, closing: str = '"') -> tuple[int, str]:
+    """Read double-quoted text (or an unquoted heredoc body, closing=""): (end, text), collecting
+    the command substitutions inside it."""
+    out = []
+    while i < len(s):
+        c = s[i]
+        if closing and c == closing:
+            return i + 1, "".join(out)
+        if c == "\\" and i + 1 < len(s) and s[i + 1] in '$`"\\\n':
+            out.append("" if s[i + 1] == "\n" else s[i + 1])
+            i += 2
+        elif c == "`" or s.startswith("$(", i):
+            start = i + (1 if c == "`" else 2)
+            end = _close(s, start, c if c == "`" else "(")
+            subs.append(s[start:end - 1])
+            out.append(s[i:end])
+            i = end
+        else:
+            out.append(c)
+            i += 1
+    if closing:
+        raise Unreadable("unbalanced quote")
+    return i, "".join(out)
+
+
+def _delimiter(s: str, i: int) -> tuple[int, str, bool]:
+    """(end, word, quoted) for the delimiter after `<<`; a quoted delimiter means a literal body."""
+    while i < len(s) and s[i] in " \t":
+        i += 1
+    j = i
+    while j < len(s) and s[j] not in " \t\r\n;&|()<>":
+        if s[j] in "'\"":
+            end = s.find(s[j], j + 1)
+            if end < 0:
+                raise Unreadable("unbalanced quote")
+            j = end + 1
+        else:
+            j += 2 if s[j] == "\\" else 1
+    raw = s[i:j]
+    if not raw:
+        raise Unreadable("heredoc without a delimiter")
+    return j, re.sub(r"['\"\\]", "", raw), bool(re.search(r"['\"\\]", raw))
+
+
+def _lex(s: str) -> list:
+    """Tokens: ("w", word), ("op", op), ("redir", op), ("in", stdin text, literal) and ("sub", script)."""
+    tokens, word, started, heredocs, i = [], [], False, [], 0
+
+    def end_word():
+        nonlocal word, started
+        if started:
+            tokens.append(("w", "".join(word)))
+        word, started = [], False
+
+    while i < len(s):
+        c = s[i]
+        plain = PLAIN.match(s, i)
+        if plain:
+            word.append(plain.group())
+            started, i = True, plain.end()
+        elif c in " \t\r":
+            end_word()
+            i += 1
+        elif c == "\\":
+            if s[i + 1:i + 2] != "\n":
+                word.append(s[i + 1:i + 2])
+                started = True
+            i += 2
+        elif c == "'" or s.startswith("$'", i):  # single quotes, or ANSI-C quotes with their escapes decoded
+            end, i = i + 1 + (c == "$"), i + 1 + (c == "$")
+            while end < len(s) and s[end] != "'":
+                end += 2 if s[end] == "\\" and c == "$" else 1
+            if end >= len(s):
+                raise Unreadable("unbalanced quote")
+            text = s[i:end]
+            if c == "$":  # $'g\x69t' is git: decode \xHH, octal and the letter escapes
+                import codecs
+                text = codecs.escape_decode(text.encode("utf-8", "surrogateescape"))[0].decode("utf-8", "replace")
+            word.append(text)
+            started, i = True, end + 1
+        elif c == '"':
+            subs = []
+            i, text = _dquote(s, i + 1, subs)
+            tokens += [("sub", x) for x in subs]
+            word.append(text)
+            started = True
+        elif c == "`" or s.startswith("$(", i):
+            start = i + (1 if c == "`" else 2)
+            end = _close(s, start, c if c == "`" else "(")
+            tokens.append(("sub", s[start:end - 1]))
+            word.append(s[i:end])
+            started, i = True, end
+        elif c in "$#" and (started or c == "$"):
+            word.append(c)
+            started, i = True, i + 1
+        elif c == "#":  # a comment runs to the end of its line
+            end = s.find("\n", i)
+            i = len(s) if end < 0 else end
+        else:
+            op = next(o for o in OPERATORS if s.startswith(o, i))
+            if op in REDIRECTS and started and "".join(word).isdigit():
+                word, started = [], False  # 2>file: the 2 names a file descriptor
+            end_word()
+            i += len(op)
+            if op in ("<<", "<<-"):
+                i, delim, literal = _delimiter(s, i)
+                heredocs.append((delim, op == "<<-", len(tokens)))
+                tokens.append(("in", "", literal))
+            elif op in REDIRECTS:
+                tokens.append(("redir", op))
+            else:
+                tokens.append(("op", op))
+                if op == "\n" and heredocs:
+                    i = _bodies(s, i, heredocs, tokens)
+    end_word()
+    _bodies(s, len(s), heredocs, tokens)
+    return tokens
+
+
+def _body(s: str, i: int, delim: str, dash: bool) -> tuple[int, str]:
+    """(end, text) of a heredoc body starting at i; it runs to its delimiter line or the end."""
+    lines = []
+    while i < len(s):
+        end = s.find("\n", i)
+        end = len(s) if end < 0 else end
+        line, i = s[i:end], end + 1
+        if (line.lstrip("\t") if dash else line) == delim:
+            break
+        lines.append(line)
+    return min(i, len(s)), "\n".join(lines)
+
+
+def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
+    """Read the heredoc bodies that start at i into their placeholder tokens."""
+    for delim, dash, at in pending:
+        i, text = _body(s, i, delim, dash)
+        tokens[at] = ("in", text, tokens[at][2])
+    pending.clear()
+    return i
+
+
+def _simple(tokens: list) -> list:
+    """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in)."""
+    items, words, stdin, scripts, skip, piped = [], [], [], [], "", False
+    for kind, *rest in tokens:
+        if kind == "w":
+            if skip == "<<<":
+                stdin.append((rest[0], True))
+            elif not skip:
+                words.append(rest[0])
+            skip = ""
+        elif kind == "in":
+            stdin.append((rest[0], rest[1]))
+        elif kind == "sub":
+            scripts.append(rest[0])
+        elif kind == "redir":
+            skip = rest[0]
+        else:
+            if words or stdin or scripts:
+                items.append((words, stdin, scripts, piped))
+            words, stdin, scripts, skip = [], [], [], ""
+            piped = rest[0] in ("|", "|&")
+            if rest[0] in "()":
+                items.append(rest[0])
+    if words or stdin or scripts:
+        items.append((words, stdin, scripts, piped))
+    return items
+
+
+def _bare(words: list[str]) -> tuple[list[str], list[str]]:
+    """The command a line runs, past assignments, keywords and wrappers like env or timeout, plus
+    any script a wrapper takes as text (eval, env -S)."""
+    scripts: list[str] = []
+    while words:
+        head = os.path.basename(words[0])
+        if words[0] in KEYWORDS or re.match(r"[A-Za-z_]\w*=", words[0]):
+            words = words[1:]
+            continue
+        if head == "eval":
+            return [], scripts + [" ".join(words[1:])]
+        if head == "command" and words[1:2] in (["-v"], ["-V"]):
+            return [], scripts  # a lookup, not a run
+        if head not in WRAPPERS:
+            break
+        takes, i = WRAPPERS[head], 1
+        while i < len(words) and ((words[i].startswith("-") and words[i] != "-")
+                                  or (head == "env" and re.match(r"[A-Za-z_]\w*=", words[i]))):
+            if words[i] in ("-S", "--split-string") and i + 1 < len(words):
+                scripts.append(words[i + 1])
+            elif words[i].startswith("--split-string="):
+                scripts.append(words[i].split("=", 1)[1])
+            i += 2 if words[i] in takes else 1
+        words = words[i + (head == "timeout"):]  # timeout's first operand is its duration
+    return words, scripts
+
+
+def _shell_input(words: list[str]) -> tuple[str | None, bool]:
+    """(script given with -c, reads its script from stdin) for a shell or `source` command."""
+    head = os.path.basename(words[0])
+    if head in ("source", "."):
+        args = [w for w in words[1:] if w != "--"]
+        return None, bool(args) and args[0] in STDIN
+    if head not in SHELLS:
+        return None, False
+    command, reads, i = False, True, 1
+    while i < len(words):
+        word = words[i]
+        if word in ("-o", "+o", "-O", "+O"):
+            i += 2
+            continue
+        if word == "--" or not word.startswith(("-", "+")):
+            rest = words[i + (word == "--"):]
+            if command:
+                return (rest[0] if rest else None), False
+            return None, (not rest or rest[0] in STDIN) and reads
+        if re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", word):
+            command = True
+        i += 1
+    return None, not command
+
+
+def _commands(command: str, cwd: str, depth: int = 0) -> list[tuple[list[str], str]]:
+    """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
+    subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin."""
+    if depth > MAX_DEPTH:
+        raise Unreadable("nested too deeply")
+    found, outer, upstream = [], [], ""
+    for item in _simple(_lex(command)):
         if item in ("(", ")"):
             if item == "(":
                 outer.append(cwd)
             elif outer:
                 cwd = outer.pop()  # a subshell's cd ends with it
             continue
-        words = _bare(item)
-        if not words:
-            continue
-        found.append((words, cwd))
-        if words[0] in ("cd", "pushd") and (len(words) == 1 or words[1] != "-"):
-            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(words[1] if len(words) > 1 else "~"))))
-        if os.path.basename(words[0]) in SHELLS and len(words) > 2:
-            flag = next((i for i, w in enumerate(words[1:], 1) if w.startswith("-") and "c" in w), None)
-            if flag is not None and flag + 1 < len(words):
-                found += _commands(words[flag + 1], cwd)  # the script a wrapper shell runs
+        words, stdin, scripts, piped = item
+        for text, literal in stdin:
+            if not literal:  # an unquoted heredoc expands its substitutions
+                _dquote(text, 0, scripts, "")
+        words, inner = _bare(words)
+        scripts = scripts + inner
+        if words:
+            found.append((words, cwd))
+            if words[0] in ("cd", "pushd") and (len(words) == 1 or words[1] != "-"):
+                target = os.path.expanduser(os.path.expandvars(words[1] if len(words) > 1 else "~"))
+                cwd = os.path.normpath(os.path.join(cwd, target))
+            script, reads = _shell_input(words)
+            if script is not None:
+                scripts.append(script)
+            elif reads:  # the shell runs whatever reaches its stdin
+                scripts += [text for text, _ in stdin] + ([upstream] if piped else [])
+        upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
+        for script in scripts:
+            found += _commands(script, cwd, depth + 1)
     return found
+
+
+def _parse(command: str, cwd: str) -> tuple[list[tuple[list[str], str]], bool]:
+    """(commands, readable). Unreadable text falls back to a plain split on its separators."""
+    try:
+        return _commands(command, cwd), True
+    except (Unreadable, StopIteration, IndexError):
+        found = [(_bare(part.split())[0], cwd) for part in SEPARATORS.split(command)]
+        return [(words, where) for words, where in found if words], False
 
 
 def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
@@ -324,15 +725,25 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
     return None
 
 
+def _deploys(words: list[str], patterns: list[str]) -> bool:
+    """A deploy pattern matches from the start of the command, or of the script an interpreter runs
+    (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match."""
+    forms = [[os.path.basename(words[0])] + words[1:]]
+    if forms[0][0] in INTERPRETERS:
+        rest = words[1:]
+        while rest and rest[0].startswith("-") and rest[0] != "-m":
+            rest = rest[1:]
+        forms.append(rest[1:] if rest[:1] == ["-m"] else rest)
+    return any(form and re.match(p, " ".join(form)) for form in forms for p in patterns)
+
+
 def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None]]:
     """(directory, rev) for each deploy in the command. A push deploys HEAD; a build deploys the tree."""
     patterns = DEFAULT_DEPLOY_PATTERNS + list(config.get("deploy_patterns", []))
-    commands = _commands(command, cwd)
-    targets: list[tuple[str, str | None]] = []
-    if any(re.search(p, _without_heredocs(command)) for p in patterns):
-        targets = [(d, None) for words, d in commands if os.path.basename(words[0]) not in SHELLS
-                   and any(re.search(p, " ".join(words)) for p in patterns)]
-        targets = targets or [(cwd, None)]
+    commands, readable = _parse(command, cwd)
+    targets: list[tuple[str, str | None]] = [(d, None) for words, d in commands if _deploys(words, patterns)]
+    if not readable and not targets and any(re.search(p, command) for p in patterns):
+        targets = [(cwd, None)]  # unreadable text with a deploy word in it: judged on the raw words
     repos = None
     for words, directory in commands:
         sub, where = _git(words, directory)
@@ -340,10 +751,13 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
             continue
         if repos is None:
             repos = [os.path.realpath(os.path.expanduser(r)) for r in config.get("push_deploys", [])]
+        if repos and re.search(r"[$`]", where):
+            targets.append((where, "HEAD"))  # a variable names the repository: it may be a site
+            continue
         real, main = os.path.realpath(where), _checkout(where)[1]
         if any(_inside(p, r) for r in repos for p in (real, main) if p):
             targets.append((real, "HEAD"))
-    return list(dict.fromkeys(targets))
+    return targets
 
 
 def _last_deploy(identity: str):
@@ -353,12 +767,18 @@ def _last_deploy(identity: str):
 
 def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | None:
     cwd = cwd or os.getcwd()
-    targets = _targets(command, config, cwd)
+    found = _targets(command, config, cwd)
+    pushes = [_checkout(d)[1] or d for d, rev in found if rev and not re.search(r"[$`]", d)]
+    twice = sorted({os.path.basename(p) for p in pushes if pushes.count(p) > 1})
+    if twice:  # one approval covers one publish; a second is a rapid redeploy of its own
+        return (f"This command deploys {', '.join(twice)} more than once. Deploy once; a second deploy "
+                "right after it is a rapid redeploy that needs its own decision.")
+    targets = list(dict.fromkeys(found))
     if not targets:
         return None
     heads, identities, recent = {}, [], []
     for directory, rev in targets:
-        root, main = _checkout(directory)
+        root, main = (None, None) if re.search(r"[$`]", directory) else _checkout(directory)
         identities.append(main or directory)
         if root:
             reason = check_dates(root, rev, config)
@@ -388,8 +808,11 @@ def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | No
                 "put the options to the principal first. Only if they want it now, show them this exact command "
                 f"and ask them to reply \"approve {code}\" for this rapid redeploy. Then run the identical command again.")
     code = approvals.request(kind, subject, f"deploy: {command[:160]}")
-    return ("This publishes to production. Show the principal this exact command and ask them to reply "
-            f"\"approve {code}\". Then run the identical command again.")
+    unknown = [d for d, _ in targets if re.search(r"[$`]", d)]
+    why = (f"This push names its repository through a variable ({unknown[0]}), so it may publish a site that "
+           "deploys on push." if unknown else "This publishes to production.")
+    return (f"{why} Show the principal this exact command and ask them to reply \"approve {code}\". "
+            "Then run the identical command again.")
 
 
 # --- destruction (R3.4) -------------------------------------------------------------------------
@@ -406,17 +829,20 @@ def _protected(config: dict) -> list[str]:
 
 def check_destructive(command: str, config: dict, cwd: str | None = None) -> str | None:
     protected = None
-    for words, directory in _commands(command, cwd or os.getcwd()):
-        if words[0] == "rm" and any(w.startswith("-") and "r" in w.lstrip("-").lower() for w in words[1:]):
+    for words, directory in _parse(command, cwd or os.getcwd())[0]:
+        if os.path.basename(words[0]) == "rm" and any(w.startswith("-") and "r" in w.lstrip("-").lower() for w in words[1:]):
             protected = protected if protected is not None else _protected(config)
             for target in (w for w in words[1:] if not w.startswith("-")):
                 real = os.path.realpath(os.path.join(directory, os.path.expanduser(os.path.expandvars(target))))
                 if real in protected or os.path.exists(os.path.join(real, ".git")):
                     return f"refusing a recursive delete of {real}: it is a protected root or a repository"
         sub, _ = _git(words, directory)
-        if sub == "push" and any(w in ("-f", "--force") for w in words):
-            if any(w.split(":")[-1] in ("main", "master") for w in words[words.index("push") + 1:]):
-                return "refusing a force push to a default branch"
+        if sub == "push":
+            rest = words[words.index("push") + 1:]
+            forced = any(w in ("-f", "--force") for w in rest)
+            for ref in (w for w in rest if not w.startswith("-")):
+                if (forced or ref.startswith("+")) and ref.split(":")[-1].lstrip("+") in ("main", "master"):
+                    return "refusing a force push to a default branch"
     return None
 
 

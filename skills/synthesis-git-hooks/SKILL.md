@@ -1,314 +1,64 @@
 ---
 name: synthesis-git-hooks
-description: "Deterministic pre-commit policy for the synthesis-engineering workflow. Enforces staged paths against an active session's lease-backed coordination claim when a board is configured. Classifies each repo by publication surface (personal / public-surface / strict) from its push remotes, applies a tiered pattern set: Tier 0 credentials always; Tier 1 financial / HR / confidentiality / client names in strict and public-surface repos — public-surface minus only the disclosure ledger's published-precedent names. YAML-driven policy lives in ~/.synthesis/git-hook-config.yaml. Use when asked to: install git hooks, configure pre-commit policy, enforce coordination claims, prevent credential leaks, prevent confidential-name leaks, allow published bio names on my own sites, disclosure ledger enforcement, set up the synthesis-engineering enforcement layer."
+description: "Commit-time protection: blocks credentials, private keys and credential files in every repo, and unapproved disclosures where outsiders read it (class read from push remotes, with a disclosure ledger). Use to install, configure or debug the commit check, or when a commit is refused."
 license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.8.4"
+  version: "3.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Git Hooks
 
-A YAML-driven pre-commit policy engine. Part of the synthesis-engineering operational layer — deterministic enforcement that catches credential leaks and exposure-sensitive content at the commit boundary, before the diff persists.
+One global `core.hooksPath` sends git's pre-commit, pre-merge-commit and commit-msg hooks in every repository on the machine through `synthesis/commit_check.py`. It refuses credentials everywhere, refuses unapproved disclosures where outsiders read the repository, refuses commits into another session's claim, and then runs the repository's own hooks. The rules live in code that runs outside the model, so they hold under load.
 
-The engine is a Bash boundary plus standard-library Python sidecars. The policy
-is data — a YAML file at `~/.synthesis/git-hook-config.yaml` that anyone
-adopting synthesis engineering fills in with personal-remote patterns, client
-names, internal URLs, and optionally a coordination-board path.
+## Binding rules
 
-## Automatic merge commits
+1. **Fail closed.** A policy, ledger, board or diff the check can't read with certainty blocks the commit and says why. Protection that fails open manufactures false confidence (2026-07-28: commits passed unscanned when one interpreter lacked a YAML package).
+2. **Never `git commit --no-verify`** without the principal's explicit approval for that commit. Fix a false positive at its source, the policy or the checker, at equal strength.
+3. **Credentials block in every repository,** before any path exclusion or allowlist line, and wherever they move. A private key is a key header followed by key body lines; a header alone (a detection rule, a doc example) passes.
+4. **The class follows the publication surface,** read from the push remotes at every commit: strict, public-surface or personal. Any strict remote, no remote, or no match means strict; mixed remotes take the stricter class.
+5. **Public-surface repositories allow only ledgered names.** A ledger entry needs evidence and may subtract only an identity pattern; a missing or unparsable ledger blocks commits there.
+6. **Commit messages stay generic** in strict and public-surface repositories, with no ledger allowance: every real public-repo leak a history audit found came through a message (2025-12-21).
+7. **Moved text is not new.** A disclosure line that already exists, whole, in HEAD passes; a new one blocks.
+8. **Repository hooks are additive.** The check runs a repository's `.githooks/<hook>` and `.git/hooks/<hook>` after its own; never delete one as redundant. `.githooks/required` makes a missing or non-executable delegate block.
+9. **Claims hold at the commit.** A staged path, either side of a rename, inside another live session's claim is refused. No board on the machine advises; a board that can't be read blocks.
+10. **Protection is verified, not assumed.** On a new Mac, install the hooks and run `synthesis doctor` before the first commit.
 
-Git's `pre-merge-commit` entry point invokes the same `pre-commit` owner for
-clean automatic merge commits. Claims, bound receipts, staged-content scanning
-and required repository delegates therefore apply to these merge commits too.
-Missing or non-executable commit-owner code refuses the merge. The installer,
-runtime payload inventory and doctor include the merge entry point; a missing
-or non-executable entry point is an explicit doctor alarm because Git would
-otherwise skip it. Conflict resolution completed with `git commit` continues
-through `pre-commit`. Fast-forward merges create no commit and do not invoke
-this commit boundary.
+## Contents
 
-## Staged bytes and commit-message scanning
+- **Procedure**, then **When to apply, and when not** (below): install, configure, check a class, act on a refusal.
+- [references/policy-file.md](references/policy-file.md): every policy key, the YAML subset, the `config.json` keys, the ledger contract. Read when writing or changing a policy or ledger.
+- [references/scanning.md](references/scanning.md): what the check reads and how: the byte-safe diff, bounds, keys, credential file names, moved lines, messages, claims, the hook chain, each with its test. Read when a refusal surprises you.
+- [references/tier-classification.md](references/tier-classification.md): how push remotes become the class, with examples. Read when a repository classifies unexpectedly.
+- [references/threat-model.md](references/threat-model.md): why two tiers, what each protects, what the check does not protect against. Read when deciding which tier a pattern belongs in.
+- [references/per-repo-overrides.md](references/per-repo-overrides.md): repository hooks, `.githooks/required`, `SYNTHESIS_REPO_CLASS`, allowlist lines. Read when a repository needs a rule the global policy can't express.
+- [references/coverage-map.md](references/coverage-map.md): where every part of 2.8.4 lives now (ruling D8).
+- [references/preserved.md](references/preserved.md): what was not kept and why, with the 2.8.4 text verbatim. Read only to review the cut.
 
-The Bash hooks delegate content scanning to the required `_scan_staged.py`
-sidecar. It reads Git's declared hunk lengths and decodes Git-quoted destination
-paths. Added lines that resemble diff headers remain content. Paths and policy
-patterns are passed as arguments and input bytes; neither becomes shell code.
-Tier 0 examines all added lines before any path exclusions or line allowlist.
-Exact copies retain the existing Git copy-detection semantics.
+## Procedure
 
-The policy engine still uses the invoking locale and `grep -E`, including its
-Unicode case matching. For invalid UTF-8, the scanner creates a deterministic
-replacement-character view for pattern evaluation and binds every matching line
-back to its original bytes. Invalid-byte lines cannot gain allowlist exemptions;
-invalid-UTF-8 or newline-containing paths cannot gain path exclusions. NUL bytes
-do not turn matches into an uninspectable binary-file summary. The same owner
-scans commit messages when the selected surface requires that control.
+1. **Install** with the runtime: `python3 -S <plugin>/synthesis/install.py --git-hooks`. It writes `~/.synthesis/v5/git-hooks/{pre-commit,pre-merge-commit,commit-msg}` and points the global `core.hooksPath` there, recording the value it replaced so `install.py uninstall` can restore it. `synthesis doctor` then shows `git hooks: core.hooksPath -> ~/.synthesis/v5/git-hooks`.
+2. **Configure.** Copy [git-hook-config.example.yaml](git-hook-config.example.yaml) somewhere private, fill it in, and set `"commit_policy": "<path>"` in `~/.synthesis/v5/config.json` (and `"disclosure_ledger"` to override the ledger path the policy names). Without a policy the check still refuses credentials, keys, credential file names and claimed paths.
+3. **Check a repository's class:** from inside it, `python3 -S ~/.synthesis/v5/current/synthesis/commit_check.py --classify` prints `strict`, `public-surface` or `personal`. `git remote -v | awk '/\(push\)/ {print $2}'` shows the remotes it read.
+4. **When a commit is refused,** git exits non-zero and nothing was committed. The message names each finding:
 
-A scan has a 60-second deadline. Staged diff acquisition is limited to 256 MiB,
-commit messages to 1 MiB, and displayed evidence to 16 KiB with an explicit
-truncation digest. Missing dependencies, malformed diffs, invalid policies,
-changing or non-regular message files, and exceeded bounds fail closed. These
-limits do not change staged files. Installation, lifecycle reconciliation and
-`--doctor` include the new sidecar in their exact runtime dependency inventory.
+   ```text
+   synthesis commit check refused this commit (strict repository):
+     notes/kickoff.md:3: Kickoff with <name>  <- unapproved disclosure for this repository's audience
+   ```
 
-## v2.6.0 — Cached pattern validation
+   A credential: remove it, and rotate it if it was real. A disclosure: remove or generalize it; only the principal adds a ledger entry, with evidence, for a name they have published. A message: reword it generically (no names, codenames, rationale or timing). A claim: `synthesis who`, then `synthesis msg <holder> "..."`. The policy can't be read: fix the file it names; never point the config away from it.
+5. **A false positive** in tier 1: a reviewed `allowlist_lines` entry for the legitimate context, or a `diff_exclude_paths` entry for a file whose purpose is the pattern catalog. In tier 0: fix the checker in synthesis-skills with a test. Never weaken a pattern to get one commit through.
+6. **New machine or drift:** `synthesis doctor`; if `core.hooksPath` points elsewhere, rerun step 1.
 
-The sidecar validates the configured pattern set once per config digest and
-grep identity and reuses that result on later commits instead of re-running
-every pattern through `grep -E` at each commit boundary; a changed config or
-grep invalidates the cache. Install writes the cache directory with the
-engine. Refusals and surface classes are unchanged.
-
-## v2.5.0 — Required repo-local delegate, fail closed
-
-Global `core.hooksPath` makes this chain the only path to a repository's own
-`.githooks/pre-commit`; an absent or mode-644 delegate used to be skipped
-silently, so a repository's own commit guards reported success while running
-nothing. Declaring `.githooks/required` opts in — declared means the marker
-is present in the working tree or listed in the index; content is ignored.
-With the declaration, a missing, non-regular, or non-executable delegate (a
-symlink is judged by its target) blocks the commit and names the remedy
-(`create .githooks/pre-commit` or `chmod +x .githooks/pre-commit`); without
-it nothing changes. Withdrawal is a staged `git rm .githooks/required` in a
-reviewed commit; an unstaged `rm` leaves the index entry, and the
-declaration, standing, unless the commit itself stages the removal
-(`git commit -a`, or a partial commit naming `.githooks/required`). The
-doctor's `delegate-required` control applies the same rule and reports the
-same verdict.
-
-## v2.4.0 — Coordination claims at the commit boundary
-
-When `coordination_board` is configured, pre-commit invokes
-`synthesis-project-management`'s `check-staged` before content scanning or a
-repo-local hook. It refuses unless the selected active session owns the exact
-worktree and branch and every staged source/destination path is covered by the
-session's claims. `SYNTHESIS_COORDINATION_SESSION` supplies the committing
-session when the active-project pointer does not. A deliberate outside-claim
-exception requires `SYNTHESIS_COORDINATION_OVERRIDE_REASON`; the checker
-atomically records it on the board before the commit proceeds. Missing runtime,
-board, lease refresh, selector, or index evidence fails closed.
-The hook accepts only `passed-inside-claim` and `recorded-override`, requires the
-outcome and outside-path list to match their hash-bound receipt fields, and
-revalidates the board and index before continuing. A coordination refusal is
-reported separately from content-policy-engine unavailability.
-
-Repositories remain usable when coordination is not adopted: omitting
-`coordination_board` does not block, and each hook invocation explicitly says
-that this control is absent. The credential and exposure scanners still run.
-
-## v2.3.0 — Portable drift-source resolution
-
-v2.3.0 (2026-08-03) removes the doctor's hardcoded personal checkout path.
-The drift check's source now resolves portably: `$SYNTHESIS_GIT_HOOKS_SOURCE`
-when set (authoritative — an empty value skips the check deliberately; an
-invalid value is a doctor problem, fail closed), else the running script's
-own directory when it is not itself an installed engine copy (repo
-checkouts, worktrees, client plugin caches), else the documented locations
-the ecosystem's own installers create (direct-copy skill installs, the
-shared installer's cached clone). A source must carry the complete current engine
-file inventory to qualify, and the doctor names the resolved source in its output.
-The v2.4.0 installer also persists its absolute source directory beside the
-installed engine. Later direct doctor runs use that pointer before documented
-fallback locations; an invalid or missing pointed source is a doctor failure.
-
-## Private-key material and detection-rule syntax
-
-Tier 0 remains mandatory before path exclusions or allowlists, including commit
-messages when optional exposure checks are disabled. Exact supported bare marker
-entries under `tier_0_always.private_key_markers` carry their vocabulary through
-the existing loader/scanner interface. Other configured credential expressions,
-including custom expressions in that group, retain unconditional matching.
-
-The scanner distinguishes bounded, complete detection-rule syntax from key
-material using captured staged blobs and the existing strict policy grammar.
-An unchanged header with a newly added body still refuses. A filename, quote,
-policy-looking key, or valid/invalid cryptographic body grants no exemption.
-The template includes generic and encrypted PKCS#8 as well as RSA, OpenSSH, EC
-and PGP. Existing user configuration is preserved during installation; vocabulary
-updates belong to its source-managed owner and require an explicit reviewed delta.
-See [the precise marker contract](references/marker-rules.md) for accepted syntax,
-limits, closure requirements and discriminating controls.
-
-## v2.1.2 — Exact-copy migration calibration
-
-v2.1.2 (2026-07-30) recognizes exact copies from already-committed files before
-scanning added lines. Canonical instruction migrations such as
-`CLAUDE.md` to `AGENTS.md` therefore scan the new adapter and any actual edits
-without treating the unchanged historical instruction body as a fresh leak.
-Genuinely new sensitive lines still block, covered by a paired regression.
-
-## v2.1.1 — Native dual-runtime setup
-
-v2.1.1 (2026-07-29) makes the native synthesis plugin the primary skill setup
-for Codex and Claude Code. The enforcement runtime remains agent-neutral under
-`~/.synthesis/git-hooks/`; both clients invoke and diagnose the same installed
-engine.
-
-## v2.0.0 — fail closed, zero dependencies, self-diagnosing
-
-Three design guarantees, added after a field incident in which the v1 engine silently passed commits unscanned when its Python dependency was missing in the invoking environment:
-
-1. **Fail closed.** If the policy engine cannot run — missing config, unparsable config, sidecar crash, invalid pattern, missing interpreter — the commit is **blocked** with a loud diagnostic, never passed unscanned. The engine verifies a `SYNTHESIS_SIDECAR_OK=1` sentinel emitted as the sidecar's final line, so even a partial failure blocks. A protective control that fails open is worse than no control, because it manufactures false confidence.
-2. **Zero third-party dependencies.** v1 required PyYAML; which `python3` won PATH resolution therefore silently determined whether protection ran at all (a machine can carry several interpreters — an OS-bundled one, a package-manager one, a python.org one — with different site-packages). v2 vendors a strict YAML-subset parser using only the standard library: any python3 ≥ 3.6, in any environment, yields byte-identical policy. The supported subset is: comments, nested mappings by indentation, quoted/bare string lists, empty sequences as mapping values (`key: []`, including spaces inside the brackets), and scalar values — anything outside it (tabs, nonempty flow sequences, flow mappings, anchors, block scalars) is a **hard parse error that blocks commits** rather than a guess.
-3. **Commit-message scanning (v2.1.0).** A sibling `commit-msg` hook scans the commit message itself against the strict-class pattern set — closing the channel pre-commit cannot cover (git gives pre-commit no reliable access to the new message). A history audit showed the only real public-repo confidentiality violations had arrived through commit messages, the one channel the engine never scanned; hygiene-by-discipline demonstrably fails. Personal-class repos skip message scanning by design (`check_commit_message` config flag); fail-closed semantics are identical to pre-commit.
-4. **`--doctor` self-check.** `python3 ~/.synthesis/git-hooks/_load_config.py --doctor` verifies the whole chain: config parses, every pattern compiles under both Python `re` and `grep -E`, `core.hooksPath` is wired, the **installed engine matches the skill source** (drift detection — installed copies that were hot-fixed but never synced back are themselves a protection failure), and the cwd repo's classification plus chained repo-local hook. Wire it into a daily ritual and into new-machine bootstrap; a protection layer nobody monitors is a protection layer that is quietly broken.
-
-
-## What this enforces
-
-| Tier | Patterns | When applied |
-|---|---|---|
-| **Tier 0 — credentials** | API keys (AWS, OpenAI, Anthropic, Google, GitHub, GitLab, Slack), private key markers (RSA, OpenSSH, EC, PGP, generic and encrypted PKCS#8) | Every repo. Credentials don't belong in git regardless of who reads. |
-| **Tier 1 — exposure-sensitive** | Financial, HR/employment, confidentiality markers, confidential client/company names, private skill names, internal URLs | Skip when the repo classifies as `personal`. Run in `strict` and `public-surface` repos — in `public-surface`, minus only the exact name patterns the disclosure ledger records as published precedent. |
-
-Classification is derived from `git remote -v` on every commit and follows
-the PUBLICATION SURFACE, strict-first:
-
-1. **`strict`** — ANY push remote matches `strict_repo_patterns` (public OSS
-   repos pinned strict even under a personal org), the remote list is empty,
-   or nothing else matches. Full Tier 1, commit-message scan on.
-2. **`public-surface`** — EVERY push remote matches
-   `public_surface_patterns`: sites and other surfaces whose content the
-   user personally authors and publishes, regardless of repository
-   visibility. Full Tier 1 minus ledger allowances; commit-message scan on.
-3. **`personal`** — EVERY push remote matches `personal_remote_patterns`:
-   content only the user reads. Tier 0 only.
-
-Ledger allowances come from `disclosure_ledger` (see the
-[`synthesis-disclosure-policy`](../synthesis-disclosure-policy/SKILL.md)
-skill): each ledger entity carries evidence citations and `hook_patterns`
-strings that must textually equal `tier_1_strict_only` entries. A
-configured ledger that is missing or unparsable fails closed — commits on
-public-surface repos block until it is fixed. No per-repo flag file, no
-static declaration, no drift potential: the remote configuration plus the
-ledger IS the security profile.
-
-## When to apply
+## When to apply, and when not
 
 - Setting up a new workstation as part of the synthesis-engineering install
 - Auditing a system where false positives are driving repeated `--no-verify` bypasses
 - Adopting synthesis engineering as a team (the policy schema is per-user; the engine is shared)
 
-## When NOT to apply
-
-- One-off scripts or throwaway repos where policy infrastructure is overkill
-- Environments where you genuinely need to commit credentials (very rare; almost always indicates a missing secrets store)
-- CI/CD pipelines that run their own credential-leak scanners (the pre-commit is a developer-side layer; CI/CD-side scanning is a complementary, not redundant, control)
-
-## Install
-
-```bash
-# 1. Install the native plugin in the client you use
-codex plugin marketplace add synthesisengineering/synthesis-skills
-codex plugin add synthesis-skills@synthesis-engineering
-
-# Claude Code equivalent
-claude plugin marketplace add synthesisengineering/synthesis-skills
-claude plugin install synthesis-skills@synthesis-engineering
-
-# 2. Run the install script — copies the engine to ~/.synthesis/git-hooks/,
-#    sets git's core.hooksPath, and seeds an initial config from the template.
-<synthesis-git-hooks-root>/scripts/install.sh
-
-# 3. Edit ~/.synthesis/git-hook-config.yaml with YOUR personal-remote patterns
-#    (your GitHub user/org), confidential names, internal URLs.
-
-# 4. To enforce lease-backed source-area claims, enable the optional boundary:
-# coordination_board: '~/.synthesis/coordination/active-sessions.md'
-# Then export SYNTHESIS_COORDINATION_SESSION=<your board selector> in commit
-# processes that do not own the active-project pointer.
-```
-
-After install, every `git commit` on the workstation runs the policy. No per-repo configuration needed; classification is automatic from each repo's push remotes.
-
-## Verifying classification for any repo
-
-```bash
-cd <repo>
-~/.synthesis/git-hooks/_load_config.py --classify
-# → personal | strict
-```
-
-Inspect the underlying remotes:
-
-```bash
-git remote -v | awk '/\(push\)/ {print $2}'
-```
-
-## Override path / bypass
-
-| Need | Mechanism |
-|---|---|
-| Use a different config file for one invocation | `SYNTHESIS_GIT_HOOK_CONFIG=/path/to/custom.yaml git commit ...` |
-| Repeated detector-rule false positive | Preserve the refusal and correct the scanner through its source owner |
-| Add a legitimate Tier-1 match to the allowlist | Review a narrow `allowlist_lines` entry; it cannot subtract credentials or team-mandatory rules |
-| Add a new personal org (sole-owner repos there) | Add a regex to `personal_remote_patterns` in the config |
-
-A recurring false positive requires a source-owner correction with retained controls. Repository classification, path exclusions and line allowlists do not exempt Tier 0. Preserve immutable evidence bytes and use the ordinary guarded path after the correction is verified.
-
-## Repo-local hooks are additive, not superseded
-
-If a repo has its own `.githooks/pre-commit` (version-controlled, executable), this engine **chains to it** — runs its own Tier-0/Tier-1 pass first, then `exec`s the repo-local hook. It does not replace or subsume it.
-
-This matters because it's easy to assume the opposite: "the global hook already covers confidentiality, so the repo-local one is redundant — delete it." That assumption is wrong and removes protection rather than deduplicating it. A repo-local hook typically exists because the repo needs a check the global config can't express safely — for example, a repo whose whole purpose is documenting a specific client relationship needs `personal`-class handling (so the client's own name isn't flagged as a leak) while still blocking a different category the global patterns don't cover, like engagement financials or a partner's personnel names. Verify what a repo-local hook actually checks before assuming it's covered elsewhere, and don't delete it as part of unrelated cleanup.
-
-## Why auto-derive instead of per-repo flag files
-
-The classification could have been a per-repo flag file (`.githooks/sole-owner` or similar). It isn't. Reasons:
-
-- **Single source of truth.** A flag file is a SHADOW of the real security profile (the remotes). Two sources of truth drift; one doesn't.
-- **No silent erosion.** If a repo's profile changes (a new collaborator's remote is added), auto-detect tightens immediately. A flag file would stay relaxed even after reality changed.
-- **Zero per-repo ritual.** A new sole-owner repo classifies correctly on its first commit. No "did I add the flag file?" checklist.
-- **Self-documenting.** `git remote -v` is one command; the classification logic is one regex match against URLs.
-
-Counter-analogy from CSP allowlists (which ARE static for adversarial reasons): doesn't apply here. The user isn't adversarial against themselves, and no third party can manipulate the remote set.
-
-## Reciprocal layers in the synthesis-engineering enforcement stack
-
-This skill is one of four deterministic-enforcement layers. Each runs at a different point in the agentic workflow:
-
-| Layer | What it enforces | Trigger |
-|---|---|---|
-| `synthesis-anti-shortcuts` | Costume-vocabulary detection in agent outputs | Stop hook + PreToolUse hook |
-| (agent-rules sync) | Single source of truth for CLAUDE.md / AGENTS.md / ~/.codex/AGENTS.md | PostToolUse hook on edits |
-| **`synthesis-git-hooks` (this skill)** | **Coordination-claim enforcement plus credential and exposure-sensitive checks at the commit boundary** | **pre-commit** |
-| `synthesis-repo-guard` | Uncommitted changes + unpushed commits | Session-end skill |
-
-The discipline isn't a prompt the agent has to remember — it's a runtime check the agent can't route around. This is the differentiator from vibe coding / agentic coding / spec-driven development: methodology becomes runtime infrastructure, not a Markdown file the agent may or may not consult.
-
-## Files in this skill
-
-```
-synthesis-git-hooks/
-├── SKILL.md                          # this file
-├── scripts/
-│   ├── pre-commit                    # bash engine — wired via core.hooksPath
-│   ├── _load_config.py               # YAML→regex sidecar
-│   ├── install.sh                    # idempotent installer
-│   └── git-hook-config.example.yaml  # template config (adopters customize)
-└── references/
-    ├── threat-model.md               # why two tiers; what each tier protects
-    ├── tier-classification.md        # how `git remote -v` becomes the class
-    └── per-repo-overrides.md         # delegation to repo-local .githooks
-```
-
-The installer also copies `coordination.py`, `claim_scope.py`, `coordination_schema.py`,
-`pointer_lock.py`, `peer_addressing.py`, and the versioned session-word asset from the declared
-`synthesis-project-management` dependency into the shared runtime. Their
-canonical source remains in that owning skill; the git-hooks doctor compares
-the installed copies with those source paths and reports drift. `source-path`
-records the install-time source directory so direct installed-doctor runs can
-repeat that comparison without an environment override.
-
-## Companion artifacts
-
-- Design rationale (full five-mode analysis) will be published in the synthesis-engineering blog series.
-- Operational lesson on the recurring infrastructure-design shortcut pattern that prompted this redesign — included as a reference in the `synthesis-anti-shortcuts` skill.
-
-## License
-
-Apache-2.0. Engine and scripts may be used, modified, and redistributed under the terms of the LICENSE-APACHE file at the root of the synthesis-skills repository.
+Not for: one-off scripts or throwaway repos where policy infrastructure is overkill; environments where you genuinely need to commit credentials (very rare; almost always indicates a missing secrets store); CI/CD pipelines that run their own credential-leak scanners (the pre-commit is a developer-side layer; CI/CD-side scanning is a complementary, not redundant, control).
