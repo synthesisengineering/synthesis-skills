@@ -14,40 +14,18 @@
 # content ever appears on this surface (others see banners on screen-shares).
 # It names no workspace, no count, and no state. This script never mutates
 # anything: it runs one read-only query and shows one notification.
-# Scheduled by the companion LaunchAgent plist (weekdays 16:55).
+# Scheduled by the companion LaunchAgent plist (weekdays 16:55). Installed by
+# the v5 install (synthesis/install.py) into <synthesis home>/bin/, beside the runtime it reads:
+# <synthesis home>/current/synthesis/rituals.py --owed-today exits 0 only when
+# no workspace still owes today's close.
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STATE_TOOL="$SELF_DIR/ritual_state.py"
-TODAY="$(date +%Y-%m-%d)"
+STATE_TOOL="$SELF_DIR/../current/synthesis/rituals.py"
 
 # Fail OPEN (nudge) rather than silent if the tool is missing or errors: a
 # reminder that never fires is indistinguishable from a day with nothing owed.
-if [ ! -f "$STATE_TOOL" ]; then
-  /usr/bin/osascript -e 'display notification "Evening ritual window — details in your synthesis console" with title "Synthesis"'
-  exit 0
-fi
-
-if python3 - "$STATE_TOOL" "$TODAY" <<'PY'
-import json, subprocess, sys
-tool, today = sys.argv[1], sys.argv[2]
-try:
-    out = subprocess.run([sys.executable, tool, "query", "summary", "--json", "--today", today],
-                         capture_output=True, text=True, timeout=20)
-    data = json.loads(out.stdout)
-    # Silent only when no workspace that runs rituals is still open for today.
-    open_today = [o for o in data.get("open_workdays", [])
-                  if o.get("date") == today and o.get("workspace") not in (None, "unknown")]
-    # A seat with a streak configured is one that owes a close.
-    owing = [w for w, v in (data.get("workspaces") or {}).items()
-             if v.get("streak") is not None
-             and (v.get("last_day_end") or {}).get("date") != today]
-    done = not open_today and not owing
-except Exception:
-    done = False          # any failure -> nudge
-sys.exit(0 if done else 1)
-PY
-then
+if [ -f "$STATE_TOOL" ] && python3 -S "$STATE_TOOL" --owed-today >/dev/null 2>&1; then
   exit 0  # every expected seat has closed today — stay silent
 fi
 

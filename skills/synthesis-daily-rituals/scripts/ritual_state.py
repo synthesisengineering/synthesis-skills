@@ -1,1212 +1,196 @@
 #!/usr/bin/env python3
-"""ritual_state.py — the single writer and the single reader of daily-ritual state.
+"""Record and query daily-ritual state: one append-only log, every view per workspace.
 
-THE INVARIANT
--------------
-There is no mutable state file. Every view is DERIVED from one append-only log.
-Nothing does read-modify-write, so concurrent seats cannot clobber one another —
-not by discipline, but by construction.
+There is no mutable state file. On 2026-09-02 one seat's close overwrote
+another's single `last_day_end` slot; a lock would not have helped, because the
+second writer still replaces the slot. So records are appended and every view
+is derived. Each record carries two clocks: `date`, the logical workday opened
+or closed (required, never inferred: a close written at 01:30 belongs to the
+day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
+review query let one workspace's Friday review silence every other workspace,
+so every view answers for one workspace, and an empty `--workspace ""` (an
+unset shell variable) is refused rather than read as "all workspaces".
 
-WHY THIS EXISTS
----------------
-The predecessor kept `~/.synthesis/day-{start,end}/state.json`, each holding a
-single `last_day_*` slot, written by every workspace seat. On 2026-09-02 one
-seat's close overwrote another's. A lock would NOT have prevented the loss: with
-perfect serialization the second writer still replaces the one slot. The fault
-was schematic — a single-writer shape with many writers — so the fix is to delete
-the shape, not to guard it.
+    ritual_state.py record --direction day-end --workspace W --date YYYY-MM-DD \\
+        [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]
+    ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
-The system already had the pattern: `~/.synthesis/active-project-history/` writes
-one file per writer and aggregates by scanning. This applies the same idea with
-an append-only log.
-
-TWO CLOCKS
-----------
-Every record carries BOTH:
-  `date` — the logical workday being opened or closed (what streaks count)
-  `ts`   — the wall-clock moment the record was written
-A principal closes one workspace at 18:00 and may start another at 18:30; closes
-are often written the next morning for the prior day. `date` is REQUIRED and never
-inferred from `ts` — inferring it is how a 01:30 close lands on the wrong day.
-
-PER-WORKSPACE VIEWS
--------------------
-The log is shared by every workspace seat, so every view answers for ONE
-workspace: a `query` view that accepts --workspace honors it, or refuses
-without it and names the accepted form. A view that accepts the argument and
-answers for the whole log is the single-slot shape again — on 2026-09-14
-`query weekly-review` did exactly that, and one workspace's Friday review
-silenced every other workspace's owed-weekly gate. `weekly-review` alone may
-run unscoped when the log names exactly one workspace, and then says so.
-An empty `--workspace ""` — the shape an unset shell variable produces — is
-neither a seat nor an omission: every view and `record` refuse it, naming
-the accepted form, rather than read it as "every workspace".
-
-EXERCISING THIS FROM OUTSIDE
----------------------------
-`--state-dir DIR` (or the RITUAL_STATE_DIR env var) points every command at an
-alternate log + config. Copy the real ones into a scratch directory and any seat
-can exercise every arm of the tripwire — including the alarming arms, which
-cannot be reached in production because the log is append-only. Raised by the
-seat adopting this engine: the two arms that matter were self-attested, and an
-escape hatch nobody can find is not an escape hatch.
-
-APPEND ATOMICITY
-----------------
-Cooperating writers serialize creation/open through the held parent descriptor,
-then hold the exclusive history-file lock across complete writes, file fsync,
-exact readback and parent fsync. Both locks share one bounded deadline. PIPE_BUF concerns pipes, not regular
-files. Interrupted tails are preserved and refused; no filesystem all-or-none
-guarantee is asserted. MAX_RECORD_BYTES bounds each structured record.
+The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
+`--state-dir` points elsewhere, to exercise a copy). Derivations live in the
+plugin's `synthesis/rituals.py`, which the SessionStart line and the nudge share.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import sys
-import tempfile
-import fcntl
-import stat
-import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from pathlib import Path
 
-MAX_RECORD_BYTES = 2048  # bounded structured metadata; prose lives elsewhere
-STREAK_LOOKBACK_DAYS = 400  # bound the walk; a longer streak is not credible
-OPEN_LOOKBACK_DAYS = 30  # how far back "open workdays" reports
+_PLUGIN = Path(__file__).resolve().parents[3]
+for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".synthesis" / "v5") / "current"):
+    if (_root / "synthesis" / "rituals.py").is_file():
+        sys.path.insert(0, str(_root))
+        break
+from synthesis import rituals  # noqa: E402
+
+MAX_RECORD_BYTES = 2048  # structured data only; the narrative belongs in the session log
 DIRECTIONS = ("day-start", "day-end", "weekly-review")
-UNKNOWN_WS = "unknown"
-
-# ---------------------------------------------------------------- paths
-
-
-def root() -> Path:
-    return Path(
-        os.environ.get("RITUAL_STATE_DIR", str(Path.home() / ".synthesis" / "rituals"))
-    )
+OUTCOMES = ("clean", "complete", "completed", "success", "partial", "failed", "skipped", "blocked", "degraded")
+VIEWS = ("summary", "last", "open", "streak", "weekly-review")
 
 
-def log_path() -> Path:
-    return root() / "history.jsonl"
+def refuse(message: str) -> None:
+    raise SystemExit(f"ritual_state: {message}")
 
 
-def config_path() -> Path:
-    return root() / "config.json"
+def check_workspace(value: str | None, form: str) -> None:
+    if value is not None and not value.strip():
+        refuse(f"--workspace {value!r} is empty, the shape an unset shell variable produces; it is "
+               f"neither a workspace nor an omission, so it is refused. Accepted form: {form}")
 
 
-LEGACY_STATE = [
-    Path.home() / ".synthesis" / "day-end" / "state.json",
-    Path.home() / ".synthesis" / "day-start" / "state.json",
-]
-
-# ---------------------------------------------------------------- config
-
-
-DEFAULT_CONFIG = {
-    "_comment": (
-        "Per-workspace ritual obligation. `streak` selects the metric: "
-        "'expected-days' counts an unbroken run over days the workspace is EXPECTED "
-        "to close, where working on a non-expected day CREDITS the streak and never "
-        "debits it; 'none' disables streaks (right for advisory seats worked "
-        "occasionally, where the useful signal is quiet-time, not an unbroken chain). "
-        "`weekdays` uses Python weekday numbers, Monday=0. `non_working_dates` holds "
-        "company holidays and PTO — a date listed here is never expected, so its "
-        "absence cannot break a streak, while a close on it still credits."
-    ),
-    "defaults": {
-        "streak": "none",
-        "weekdays": [0, 1, 2, 3, 4],
-        "non_working_dates": [],
-    },
-    "workspaces": {},
-}
-
-
-def load_config() -> dict:
-    p = config_path()
-    if not p.exists():
-        return json.loads(json.dumps(DEFAULT_CONFIG))
+def append(record: dict) -> None:
+    """Append one bounded line under an exclusive lock; refuse an unsafe or interrupted log."""
+    line = (json.dumps(record, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+    if len(line) > MAX_RECORD_BYTES:
+        refuse(f"record is {len(line)} bytes, over {MAX_RECORD_BYTES}; put prose in the session log "
+               "and point to it with --pointer")
+    path = rituals.state_dir() / "history.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o644)
     try:
-        cfg = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"ritual_state: config unreadable ({exc}) — refusing to guess")
-    if not isinstance(cfg, dict) or "workspaces" not in cfg:
-        raise SystemExit(
-            "ritual_state: config missing 'workspaces' — refusing to guess"
-        )
-    return cfg
-
-
-def ws_conf(cfg: dict, workspace: str) -> dict:
-    base = dict(cfg.get("defaults") or {})
-    base.update(cfg.get("workspaces", {}).get(workspace) or {})
-    return base
-
-
-# ---------------------------------------------------------------- log io
-
-
-def read_records() -> tuple[list[dict], list[str]]:
-    """Return (records, malformed_lines). Never raises on a bad line."""
-    p = log_path()
-    if not p.exists():
-        return [], []
-    records, bad = [], []
-    for line in p.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            rec = json.loads(line)
-            if isinstance(rec, dict) and rec.get("date") and rec.get("direction"):
-                records.append(rec)
-            else:
-                bad.append(line[:120])
-        except json.JSONDecodeError:
-            bad.append(line[:120])
-    return records, bad
-
-
-def _open_history_parent(parent: Path) -> int:
-    """Create/open parents through held descriptors, never through a path alias."""
-    if parent.resolve() != parent:
-        raise OSError("ritual history parent must not contain aliases")
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    descriptor = os.open(parent.anchor, flags)
-    try:
-        for part in parent.parts[1:]:
-            try:
-                child = os.open(part, flags, dir_fd=descriptor)
-            except FileNotFoundError:
-                try:
-                    os.mkdir(part, 0o755, dir_fd=descriptor)
-                    os.fsync(descriptor)
-                except FileExistsError:
-                    pass
-                child = os.open(part, flags, dir_fd=descriptor)
-            os.close(descriptor)
-            descriptor = child
-        present = parent.lstat()
-        opened = os.fstat(descriptor)
-        if parent.resolve() != parent or (present.st_dev, present.st_ino) != (
-            opened.st_dev,
-            opened.st_ino,
-        ):
-            raise OSError("ritual history parent changed during creation")
-        return descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
-
-
-def _lock_history_descriptor(descriptor: int, deadline: float) -> None:
-    """One shared append budget; parent first, then the history inode."""
-    while True:
-        if time.monotonic() >= deadline:
-            raise OSError("ritual history busy; bounded append lock expired")
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            if time.monotonic() >= deadline:
-                raise OSError("ritual history busy; bounded append lock expired")
-            return
-        except BlockingIOError:
-            if time.monotonic() >= deadline:
-                raise OSError("ritual history busy; bounded append lock expired")
-            time.sleep(0.01)
-
-
-def append_record(rec: dict) -> None:
-    """Append a bounded record; report success only after complete durable readback."""
-    payload = json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n"
-    blob = payload.encode("utf-8")
-    if len(blob) > MAX_RECORD_BYTES:
-        raise SystemExit(
-            f"ritual_state: record is {len(blob)}B, over the {MAX_RECORD_BYTES}B cap. "
-            "Records are structured data; put the narrative in the session log and "
-            "reference it with --pointer."
-        )
-    p = log_path().absolute()
-    parent = _open_history_parent(p.parent)
-    fd = None
-    locked = False
-    parent_locked = False
-    deadline = time.monotonic() + 5
-    try:
-        # The history inode does not exist for the first writer. Its file lock
-        # cannot serialize concurrent creation/open, so use the already verified
-        # parent descriptor before opening it. No retry against a new pathname.
-        _lock_history_descriptor(parent, deadline)
-        parent_locked = True
-        fd = os.open(
-            p.name,
-            os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK,
-            0o644,
-            dir_fd=parent,
-        )
-        _lock_history_descriptor(fd, deadline)
-        locked = True
-        before = os.fstat(fd)
-        if (
-            not stat.S_ISREG(before.st_mode)
-            or before.st_nlink != 1
-            or before.st_uid != os.getuid()
-            or before.st_mode & 0o022
-        ):
-            raise OSError("ritual history must be an owned singly linked regular file")
-        if before.st_size and os.pread(fd, 1, before.st_size - 1) != b"\n":
-            raise OSError(
-                "ritual history has an interrupted tail; preserve and reconcile it"
-            )
-        written = 0
-        while written < len(blob):
-            if time.monotonic() >= deadline:
-                raise OSError(
-                    "ritual append deadline elapsed; preserve ambiguous bytes"
-                )
-            count = os.write(fd, blob[written:])
-            if type(count) is not int or not 0 < count <= len(blob) - written:
-                raise OSError("ritual history short write made no progress")
-            written += count
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        size = os.fstat(fd).st_size
+        if size and os.pread(fd, 1, size - 1) != b"\n":
+            refuse(f"{path} ends in an interrupted line; it is left as found for you to reconcile")
+        written = os.write(fd, line)
         os.fsync(fd)
-        after = os.fstat(fd)
-        present = os.stat(p.name, dir_fd=parent, follow_symlinks=False)
-        parent_now = p.parent.lstat()
-        opened_parent = os.fstat(parent)
-        if (
-            (parent_now.st_dev, parent_now.st_ino)
-            != (opened_parent.st_dev, opened_parent.st_ino)
-            or p.parent.resolve() != p.parent
-            or (present.st_dev, present.st_ino) != (before.st_dev, before.st_ino)
-            or after.st_size != before.st_size + len(blob)
-            or after.st_nlink != 1
-            or (after.st_mode, after.st_uid) != (before.st_mode, before.st_uid)
-            or (present.st_mode, present.st_nlink, present.st_size)
-            != (after.st_mode, after.st_nlink, after.st_size)
-            or os.pread(fd, len(blob), before.st_size) != blob
-        ):
-            raise OSError(
-                "ritual history changed during append; preserve ambiguous bytes"
-            )
-        os.fsync(parent)
+        if written != len(line) or os.pread(fd, len(line), size) != line:
+            refuse(f"the append to {path} did not read back whole; inspect the tail before retrying")
     finally:
-        try:
-            if fd is not None:
-                try:
-                    if locked:
-                        fcntl.flock(fd, fcntl.LOCK_UN)
-                finally:
-                    os.close(fd)
-        finally:
-            try:
-                if parent_locked:
-                    fcntl.flock(parent, fcntl.LOCK_UN)
-            finally:
-                os.close(parent)
+        os.close(fd)
 
 
-# ---------------------------------------------------------------- helpers
-
-
-def d(s: str) -> date:
-    return date.fromisoformat(s)
-
-
-def is_expected(day: date, conf: dict) -> bool:
-    if day.isoformat() in set(conf.get("non_working_dates") or []):
-        return False
-    return day.weekday() in set(conf.get("weekdays") or [])
-
-
-def closed_dates(records, workspace, direction="day-end") -> set:
-    return {
-        r["date"]
-        for r in records
-        if r.get("workspace") == workspace and r.get("direction") == direction
-    }
-
-
-def refuse_empty_workspace(
-    value, command: str, consequence: str, accepted: str
-) -> None:
-    """`--workspace ""` is the shape an unset shell variable produces. It is
-    neither a seat nor an omission: read as omitted, a scoped query answers
-    for the whole log (the single-slot shape again) and a record lands
-    unattributed. Refused before either happens, naming the accepted form."""
-    if value is None or value.strip():
-        return
-    raise SystemExit(
-        f"ritual_state: {command} --workspace {value!r} is an empty workspace — the shape "
-        f"an unset shell variable produces. {consequence} Accepted form: {accepted}"
-    )
-
-
-# ---------------------------------------------------------------- queries
-
-
-def q_last(records, workspace, direction="day-end"):
-    hits = [
-        r
-        for r in records
-        if r.get("workspace") == workspace and r.get("direction") == direction
-    ]
-    return max(hits, key=lambda r: (r["date"], r.get("ts", ""))) if hits else None
-
-
-def q_streak(records, cfg, workspace, today: date):
-    """Unbroken run of expected days closed. A close on a non-expected day credits;
-    an absence on a non-expected day is skipped, never a break."""
-    conf = ws_conf(cfg, workspace)
-    if conf.get("streak") != "expected-days":
-        return None
-    closed = closed_dates(records, workspace)
-    n, day, walked = 0, today, 0
-    # Today is not yet over: a close credits, an absence does not break.
-    if today.isoformat() in closed:
-        n += 1
-    day = today - timedelta(days=1)
-    while walked < STREAK_LOOKBACK_DAYS:
-        iso = day.isoformat()
-        if iso in closed:
-            n += 1
-        elif is_expected(day, conf):
-            break
-        day -= timedelta(days=1)
-        walked += 1
-    return n
-
-
-def q_open(records, today: date, lookback=OPEN_LOOKBACK_DAYS, workspace=None):
-    """(workspace, date) pairs with a day-start and no matching day-end —
-    log-wide, or for one workspace when `workspace` is given."""
-    floor = (today - timedelta(days=lookback)).isoformat()
-    scoped = [
-        r
-        for r in records
-        if r["date"] >= floor and (workspace is None or r.get("workspace") == workspace)
-    ]
-    scoped = [r for r in scoped if r.get("mode") != "migration"]
-    starts = {
-        (r.get("workspace"), r["date"])
-        for r in scoped
-        if r.get("direction") == "day-start"
-    }
-    ends = {
-        (r.get("workspace"), r["date"])
-        for r in scoped
-        if r.get("direction") == "day-end"
-    }
-    return sorted(starts - ends, key=lambda t: (t[1], str(t[0])))
-
-
-def q_weekly_review(records, workspace):
-    """Latest weekly-review record for ONE workspace. Every seat owes its own
-    review; a log-wide answer is the single slot v2.28.0 removed for closes."""
-    hits = [
-        r
-        for r in records
-        if r.get("workspace") == workspace and r.get("direction") == "weekly-review"
-    ]
-    return max(hits, key=lambda r: (r["date"], r.get("ts", ""))) if hits else None
-
-
-def stamped_workspaces(records) -> list[str]:
-    """Workspaces named in the log, sorted. An unstamped legacy record is not one."""
-    return sorted(
-        {r.get("workspace") for r in records if r.get("workspace")} - {UNKNOWN_WS}
-    )
-
-
-def unknown_count(records) -> int:
-    return sum(
-        1 for r in records if not r.get("workspace") or r.get("workspace") == UNKNOWN_WS
-    )
-
-
-def unattributed_status(records, cfg) -> tuple[int, int | None, str]:
-    """Compare unattributed records against an ACKNOWLEDGED baseline.
-
-    Legacy records that predate per-seat stamping can never be attributed —
-    guessing them would be worse than leaving them out. But a note that appears
-    on every call and can never clear is noise, and noise trains a reader to
-    skip the line: the same failure as a gap field nothing consumes.
-
-    So the baseline is acknowledged once and then silent. What surfaces is
-    DEVIATION: a count above baseline means something is writing unstamped
-    records TODAY, which is a live defect; a count below means the log lost
-    records. Either is worth interrupting for. Equality is not.
-    """
-    n = unknown_count(records)
-    base = cfg.get("legacy_unattributed_baseline")
-    if not isinstance(base, int):
-        return n, None, "unacknowledged"
-    if n == base:
-        return n, base, "baseline"
-    return n, base, "above" if n > base else "below"
-
-
-# ---------------------------------------------------------------- commands
-
-
-def cmd_record(a) -> int:
-    if a.mode == "migration":
-        raise SystemExit(
-            "ritual_state: migration mode is reserved for the migration owner"
-        )
-    refuse_empty_workspace(
-        a.workspace,
-        "record",
-        "A record names the seat that wrote it, so it is refused rather than appended "
-        "unattributed.",
-        "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD",
-    )
+def cmd_record(args) -> int:
+    check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
-        d(a.date)
+        date.fromisoformat(args.date)
     except ValueError:
-        raise SystemExit(
-            f"ritual_state: --date {a.date!r} is not YYYY-MM-DD. "
-            "The logical workday is required and never inferred."
-        )
-    if a.direction not in DIRECTIONS:
-        raise SystemExit(f"ritual_state: --direction must be one of {DIRECTIONS}")
-    rec = {
-        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        "date": a.date,
-        "direction": a.direction,
-        "workspace": a.workspace,
-        "mode": a.mode,
-        "outcome": a.outcome,
-    }
-    if a.session:
-        rec["session"] = a.session
-    if a.pointer:
-        rec["pointer"] = a.pointer
-    if a.note:
-        rec["note"] = a.note
+        refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
+    if args.mode == "migration":
+        refuse("mode 'migration' marks old bookkeeping and cannot be written")
+    record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
+              "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
+              "outcome": args.outcome}
+    record.update({k: v for k, v in (("session", args.session), ("pointer", args.pointer),
+                                     ("note", args.note)) if v})
     counts = {}
-    for kv in a.count or []:
-        k, _, v = kv.partition("=")
-        if not _:
-            raise SystemExit(f"ritual_state: --count expects k=v, got {kv!r}")
-        counts[k] = int(v) if v.lstrip("-").isdigit() else v
+    for pair in args.count or []:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            refuse(f"--count expects key=value, got {pair!r}")
+        counts[key] = int(value) if value.lstrip("-").isdigit() else value
     if counts:
-        rec["counts"] = counts
-    from ritual_workers import load_workers, verify_artifact, RitualWorkersError
-
-    try:
-        workers = load_workers()
-        worker = workers.get(a.workspace)
-        if worker is not None:
-            rec["artifact"] = verify_artifact(
-                worker,
-                day=a.date,
-                run_type=a.direction,
-                session=a.session,
-                outcome=a.outcome,
-            )
-        elif a.mode == "worker":
-            raise RitualWorkersError("worker mode requires a registered workspace")
-    except (RitualWorkersError, OSError, ValueError) as exc:
-        raise SystemExit(f"ritual_state: refusing completion: {exc}") from exc
-    append_record(rec)
-    print(f"recorded {a.direction} {a.workspace} {a.date} ({a.outcome})")
+        record["counts"] = counts
+    append(record)
+    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})")
     return 0
 
 
-def cmd_query(a) -> int:
-    refuse_empty_workspace(
-        a.workspace,
-        f"query {a.view}",
-        "An empty value is neither a seat nor an omission, so it is refused rather than "
-        "answered for the whole log.",
-        f"query {a.view} --workspace <workspace>",
-    )
-    records, bad = read_records()
-    cfg = load_config()
-    today = d(a.today) if a.today else date.today()
-    out: dict = {}
+def row(records: list[dict], cfg: dict, workspace: str, today: date) -> dict:
+    end, start = rituals.last(records, workspace), rituals.last(records, workspace, "day-start")
+    review = rituals.last(records, workspace, "weekly-review")
+    return {"last_day_end": {k: end[k] for k in ("date", "mode", "outcome") if k in end} if end else None,
+            "last_day_start": {k: start[k] for k in ("date", "mode") if k in start} if start else None,
+            "streak": rituals.streak(records, cfg, workspace, today),
+            "last_weekly_review": review["date"] if review else None,
+            "weekly_review_owed": rituals.weekly_owed(records, workspace, today)}
 
-    if a.view in ("last", "summary"):
-        names = [a.workspace] if a.workspace else stamped_workspaces(records)
-        last = {}
-        for w in names:
-            e, s = q_last(records, w, "day-end"), q_last(records, w, "day-start")
-            wr = q_weekly_review(records, w)
-            last[w] = {
-                "last_day_end": {k: e[k] for k in ("date", "mode", "outcome") if k in e}
-                if e
-                else None,
-                "last_day_start": {k: s[k] for k in ("date", "mode") if k in s}
-                if s
-                else None,
-                "streak": q_streak(records, cfg, w, today),
-                "last_weekly_review": wr["date"] if wr else None,
-            }
-        out["workspaces"] = last
 
-    if a.view in ("open", "summary"):
-        out["open_workdays"] = [
-            {"workspace": w, "date": dt}
-            for w, dt in q_open(records, today, workspace=a.workspace)
-        ]
-
-    if a.view == "weekly-review":
-        workspace, inferred = a.workspace, False
-        if not workspace:
-            stamped = stamped_workspaces(records)
-            if len(stamped) != 1:
-                raise SystemExit(
-                    f"ritual_state: query weekly-review needs --workspace: the log holds records "
-                    f"for {len(stamped)} workspaces ({', '.join(stamped) or 'none'}), so no single "
-                    "workspace can be assumed and one seat's review must not answer for another. "
-                    "Accepted form: query weekly-review --workspace <workspace>"
-                )
-            workspace, inferred = stamped[0], True
-        wr = q_weekly_review(records, workspace)
-        out = {"workspace": workspace, "last_weekly_review": wr["date"] if wr else None}
-        if inferred:
-            out["workspace_inferred"] = True
-
-    if a.view == "streak":
-        if not a.workspace:
-            raise SystemExit(
-                "ritual_state: query streak needs --workspace. "
-                "Accepted form: query streak --workspace <workspace>"
-            )
-        out = {
-            "workspace": a.workspace,
-            "streak": q_streak(records, cfg, a.workspace, today),
-        }
-
-    n, base, status = unattributed_status(records, cfg)
-    if status == "above":
-        out["unattributed_records"] = n
-        out["unattributed_alarm"] = (
-            f"{n - base} record(s) ABOVE the acknowledged baseline of {base} — something is "
-            "writing records with no workspace NOW. Per-workspace views silently omit them."
-        )
-    elif status == "below":
-        out["unattributed_records"] = n
-        out["unattributed_alarm"] = (
-            f"{base - n} record(s) BELOW the acknowledged baseline of {base} — the log has "
-            "lost records; it is append-only, so this should be impossible."
-        )
-    elif status == "unacknowledged" and n:
-        out["unattributed_records"] = n
-        out["unattributed_alarm"] = (
-            f"{n} unattributed record(s) and no acknowledged baseline. Run "
-            "`ritual_state.py baseline --accept` once the count is understood; until then "
-            "this cannot distinguish legacy residue from a live defect."
-        )
-    # status == "baseline": silent. Acknowledged, permanent, and reported by doctor.
-    if bad:
-        out["malformed_lines"] = len(bad)
-
-    if a.json:
-        print(json.dumps(out, indent=2, sort_keys=True))
+def cmd_query(args) -> int:
+    check_workspace(args.workspace, f"query {args.view} --workspace <workspace>")
+    records, bad = rituals.read()
+    try:
+        cfg = rituals.config()
+    except ValueError as exc:
+        refuse(f"{exc}; refusing to guess")
+    today = date.fromisoformat(args.today) if args.today else date.today()
+    named = sorted({r["workspace"] for r in records if r.get("workspace") not in (None, "", "unknown")})
+    workspace, inferred = args.workspace, False
+    if args.view in ("streak", "weekly-review") and not workspace:
+        if args.view == "streak" or len(named) != 1:
+            refuse(f"query {args.view} needs --workspace: the log holds records for {len(named)} workspaces "
+                   f"({', '.join(named) or 'none'}), so none can be assumed, and one workspace must not answer "
+                   f"for another. Accepted form: query {args.view} --workspace <workspace>")
+        workspace, inferred = named[0], True
+    if args.view == "streak":
+        out: dict = {"workspace": workspace, "streak": rituals.streak(records, cfg, workspace, today)}
+    elif args.view == "weekly-review":
+        review = rituals.last(records, workspace, "weekly-review")
+        out = {"workspace": workspace, "last_weekly_review": review["date"] if review else None,
+               "owed": rituals.weekly_owed(records, workspace, today)}
+        out.update({"workspace_inferred": True} if inferred else {})
     else:
-        _print_human(out)
-    return 0
-
-
-def _print_human(out: dict) -> None:
-    for w, v in (out.get("workspaces") or {}).items():
-        e = v["last_day_end"]
-        s = v["last_day_start"]
-        streak = v["streak"]
-        st = f"  streak {streak}" if streak is not None else "  streak n/a"
-        print(
-            f"  {w:14} close {e['date'] if e else '—':12} "
-            f"start {s['date'] if s else '—':12}{st:12}"
-            f"  weekly {v['last_weekly_review'] or '—'}"
-        )
-    if "open_workdays" in out:
-        ow = out["open_workdays"]
-        print(f"  open workdays: {len(ow)}")
-        for o in ow:
-            print(f"     OPEN  {o['workspace']:14} {o['date']}")
-    if "last_weekly_review" in out:
-        origin = (
-            "  (the only workspace in the log)" if out.get("workspace_inferred") else ""
-        )
-        print(
-            f"  last weekly review ({out['workspace']}): "
-            f"{out['last_weekly_review'] or '—'}{origin}"
-        )
-    if "streak" in out:
-        streak = out["streak"]
-        print(
-            f"  streak ({out['workspace']}): {streak if streak is not None else 'n/a'}"
-        )
-    if out.get("unattributed_alarm"):
-        print(f"  ALARM: {out['unattributed_alarm']}")
-    if out.get("malformed_lines"):
-        print(f"  WARNING: {out['malformed_lines']} malformed line(s) in the log")
-
-
-def cmd_migrate(a) -> int:
-    """Fold the legacy logs and state files into one normalized log. Idempotent."""
-    if log_path().exists() and not a.force:
-        print(f"ritual_state: {log_path()} already exists; use --force to re-run")
-        return 1
-    merged = []
-    for name, direction in (("day-end", "day-end"), ("day-start", "day-start")):
-        p = Path.home() / ".synthesis" / name / "history.jsonl"
-        if not p.exists():
-            continue
-        for line in p.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                r = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(r, dict):
-                continue
-            # Two legacy schemas exist. v1: {type: day_end, for_date: ...}
-            # v2: {direction: day-end, date: ..., workspace: ...}. Handle both —
-            # reading only v2 silently dropped 15 of 61 records on the first pass.
-            rec_date = r.get("date") or r.get("for_date")
-            if not rec_date:
-                continue
-            rec_dir = r.get("direction") or {
-                "day_end": "day-end",
-                "day_start": "day-start",
-            }.get(r.get("type", ""), direction)
-            rec = {
-                "ts": r.get("ts") or f"{rec_date}T00:00:00+00:00",
-                "date": rec_date,
-                "direction": rec_dir,
-                "workspace": r.get("workspace") or UNKNOWN_WS,
-                "mode": r.get("mode", "?"),
-                "outcome": r.get("outcome", "?"),
-            }
-            if r.get("weekly_review"):
-                # v1 recorded the weekly review as a flag on a day-start; it is a
-                # first-class person-level event and gets its own record.
-                merged.append(
-                    {
-                        "ts": rec["ts"],
-                        "date": rec_date,
-                        "direction": "weekly-review",
-                        "workspace": rec["workspace"],
-                        "mode": "derived-from-v1-flag",
-                        "outcome": "clean",
-                    }
-                )
-            if rec["workspace"] == UNKNOWN_WS:
-                rec["workspace_confidence"] = "unstamped-legacy"
-            counts = {
-                k: r[k]
-                for k in ("sent", "released", "decided", "carried", "moved")
-                if isinstance(r.get(k), int)
-            }
-            if counts:
-                rec["counts"] = counts
-            if r.get("note"):
-                rec["pointer"] = (
-                    "sessions/ — narrative retained in the legacy note field"
-                )
-                rec["legacy_note_bytes"] = len(r["note"])
-            merged.append(rec)
-    # The legacy day-end state carried last_weekly_review as a bare field with no
-    # event behind it. Promote it to a record so the log is the only truth.
-    for legacy in LEGACY_STATE:
-        if not legacy.exists():
-            continue
-        try:
-            st = json.loads(legacy.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        wr = st.get("last_weekly_review") if isinstance(st, dict) else None
-        if (
-            isinstance(wr, str)
-            and wr
-            and not any(
-                r["direction"] == "weekly-review" and r["date"] == wr for r in merged
-            )
-        ):
-            merged.append(
-                {
-                    "ts": f"{wr}T00:00:00+00:00",
-                    "date": wr,
-                    "direction": "weekly-review",
-                    "workspace": UNKNOWN_WS,
-                    "mode": "derived-from-legacy-state",
-                    "outcome": "clean",
-                }
-            )
-
-    merged.sort(key=lambda r: (r["date"], r["ts"], r["direction"]))
-
-    header = {
-        "ts": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
-        "date": date.today().isoformat(),
-        "direction": "day-start",
-        "workspace": UNKNOWN_WS,
-        "mode": "migration",
-        "outcome": "header",
-        "note": (
-            "Migrated from day-{start,end}/history.jsonl. Records marked "
-            "workspace_confidence=unstamped-legacy predate per-seat stamping and are "
-            "EXCLUDED from per-workspace views rather than attributed by guess."
-        ),
-    }
-    log_path().parent.mkdir(parents=True, exist_ok=True)
-    with open(log_path(), "w", encoding="utf-8") as fh:
-        fh.write(json.dumps(header, separators=(",", ":"), sort_keys=True) + "\n")
-        for r in merged:
-            fh.write(json.dumps(r, separators=(",", ":"), sort_keys=True) + "\n")
-    unk = sum(1 for r in merged if r["workspace"] == UNKNOWN_WS)
-    _set_baseline(unk + (1 if header["workspace"] == UNKNOWN_WS else 0))
-    print(f"migrated {len(merged)} record(s) into {log_path()}")
-    print(f"  {unk} unattributed (excluded from per-workspace views, not guessed)")
-    print(f"  {len(merged) - unk} attributed")
-    return 0
-
-
-def cmd_doctor(a) -> int:
-    ok = True
-
-    def chk(good, msg):
-        nonlocal ok
-        print(f"  {'ok ' if good else 'FAIL'}  {msg}")
-        ok = ok and good
-
-    print("synthesis ritual-state doctor")
-    chk(log_path().exists(), f"log present: {log_path()}")
-    records, bad = read_records()
-    chk(not bad, f"log parses cleanly ({len(records)} records, {len(bad)} malformed)")
-
-    for p in LEGACY_STATE:
-        chk(
-            not p.exists(),
-            f"legacy mutable state absent: {p}"
-            if not p.exists()
-            else f"legacy mutable state STILL PRESENT: {p} — it has no single owner and "
-            f"any writer clobbers the rest; delete it",
-        )
-
-    try:
-        cfg = load_config()
-        chk(
-            True,
-            f"config readable: {len(cfg.get('workspaces', {}))} workspace(s) declared",
-        )
-    except SystemExit as exc:
-        chk(False, str(exc))
-        cfg = DEFAULT_CONFIG
-
-    # positive controls: the size cap must trip, and a clean record must pass
-    try:
-        append_record(
-            {
-                "ts": "x",
-                "date": "1970-01-01",
-                "direction": "day-end",
-                "workspace": "selftest",
-                "mode": "m",
-                "outcome": "o",
-                "note": "x" * (MAX_RECORD_BYTES + 10),
-            }
-        )
-        chk(False, "size cap did NOT trip on an oversized record")
-    except SystemExit:
-        chk(True, "size cap trips on an oversized record (positive control)")
-
-    over = [
-        r
-        for r in records
-        if len(json.dumps(r, separators=(",", ":")).encode()) > MAX_RECORD_BYTES
-    ]
-    chk(
-        not over,
-        f"every record is within the {MAX_RECORD_BYTES}B atomic-append bound "
-        f"({len(over)} over)",
-    )
-
-    n, base, status = unattributed_status(records, cfg)
-    if status == "baseline":
-        print(
-            f"  note  {n} unattributed legacy record(s) at the acknowledged baseline — "
-            f"excluded from per-workspace views by design, and silent in `query` because a "
-            f"note that can never clear stops being read"
-        )
-    elif status == "unacknowledged" and n:
-        chk(
-            False,
-            f"{n} unattributed record(s) with no acknowledged baseline — run "
-            f"`baseline --accept` so deviation becomes detectable",
-        )
-    elif status in ("above", "below"):
-        chk(False, f"unattributed count {n} deviates from baseline {base} ({status})")
-
-    print(
-        "HEALTHY: ritual state is derived, not stored."
-        if ok
-        else "UNHEALTHY: see FAIL lines above."
-    )
-    return 0 if ok else 2
-
-
-def cmd_test(a) -> int:
-    """Behavioural suite over a temp log. Exit 0 all pass / 2 failures."""
-    import tempfile
-
-    fails = []
-
-    def eq(got, want, label):
-        if got != want:
-            fails.append(f"{label}: got {got!r}, want {want!r}")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        os.environ["RITUAL_STATE_DIR"] = str(Path(tmp).resolve())
-        cfg = {
-            "defaults": {
-                "streak": "none",
-                "weekdays": [0, 1, 2, 3, 4],
-                "non_working_dates": [],
-            },
-            "workspaces": {
-                "w": {
-                    "streak": "expected-days",
-                    "weekdays": [0, 1, 2, 3, 4],
-                    "non_working_dates": ["2026-09-07"],
-                },
-                "adv": {"streak": "none"},
-            },
-        }
-        Path(tmp, "config.json").write_text(json.dumps(cfg))
-
-        def rec(dt, direction="day-end", ws="w"):
-            append_record(
-                {
-                    "ts": f"{dt}T12:00:00+00:00",
-                    "date": dt,
-                    "direction": direction,
-                    "workspace": ws,
-                    "mode": "full",
-                    "outcome": "clean",
-                }
-            )
-
-        # Mon 9/7 is a declared non-working day; Tue 9/8 .. Fri 9/11 are expected.
-        for dt in ("2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11"):
-            rec(dt)
-        records, _ = read_records()
-        # From Fri 9/11: 4 closes, then Mon 9/7 not expected & unclosed -> skipped,
-        # then Fri 9/4 expected & unclosed -> break.
-        eq(
-            q_streak(records, cfg, "w", d("2026-09-11")),
-            4,
-            "streak counts expected days",
-        )
-
-        # A weekend close credits without being required.
-        rec("2026-09-12")  # Saturday
-        records, _ = read_records()
-        eq(q_streak(records, cfg, "w", d("2026-09-12")), 5, "weekend close credits")
-
-        # An absent weekend does not break: from Sunday 9/13, Sat 9/12 closed.
-        eq(
-            q_streak(records, cfg, "w", d("2026-09-13")),
-            5,
-            "absent weekend does not break",
-        )
-
-        # Advisory seat has no streak at all.
-        eq(
-            q_streak(records, cfg, "adv", d("2026-09-11")),
-            None,
-            "advisory streak disabled",
-        )
-
-        # Open workday: a start with no end.
-        rec("2026-09-14", "day-start")
-        records, _ = read_records()
-        eq(
-            q_open(records, d("2026-09-14")),
-            [("w", "2026-09-14")],
-            "open workday detected",
-        )
-        rec("2026-09-14", "day-end")
-        records, _ = read_records()
-        eq(q_open(records, d("2026-09-14")), [], "closed workday clears")
-
-        # Two seats on the same date do not collide.
-        rec("2026-09-15", "day-end", "w")
-        rec("2026-09-15", "day-end", "other")
-        records, _ = read_records()
-        eq(q_last(records, "w")["date"], "2026-09-15", "seat w preserved")
-        eq(q_last(records, "other")["date"], "2026-09-15", "seat other preserved")
-
-        # Every view answers for one seat: a weekly review recorded by one
-        # workspace never answers for another, and open workdays scope the same
-        # way (the 2026-09-14 recurrence of the single-slot shape).
-        rec("2026-09-11", "weekly-review", "w")
-        records, _ = read_records()
-        eq(
-            q_weekly_review(records, "w")["date"],
-            "2026-09-11",
-            "weekly review for its own seat",
-        )
-        eq(
-            q_weekly_review(records, "other"),
-            None,
-            "weekly review does not cross seats",
-        )
-        rec("2026-09-16", "day-start", "w")
-        rec("2026-09-16", "day-start", "other")
-        records, _ = read_records()
-        eq(
-            q_open(records, d("2026-09-16"), workspace="other"),
-            [("other", "2026-09-16")],
-            "open workdays scoped to one seat",
-        )
-        eq(
-            len(q_open(records, d("2026-09-16"))),
-            2,
-            "open workdays log-wide when unscoped",
-        )
-        eq(
-            stamped_workspaces(records),
-            ["other", "w"],
-            "stamped workspaces are the named seats",
-        )
-
-        # The unattributable baseline is a TRIPWIRE, not a permanent note.
-        cfg_b = dict(cfg)
-        cfg_b["legacy_unattributed_baseline"] = 0
-        eq(
-            unattributed_status(records, cfg_b)[2],
-            "baseline",
-            "zero unstamped at baseline 0 is silent",
-        )
-        append_record(
-            {
-                "ts": "x",
-                "date": "2026-09-20",
-                "direction": "day-end",
-                "workspace": UNKNOWN_WS,
-                "mode": "m",
-                "outcome": "o",
-            }
-        )
-        records, _ = read_records()
-        eq(
-            unattributed_status(records, cfg_b)[2],
-            "above",
-            "a new unstamped record trips the wire",
-        )
-        eq(
-            stamped_workspaces(records),
-            ["other", "w"],
-            "an unstamped record is not a workspace",
-        )
-        cfg_b["legacy_unattributed_baseline"] = 5
-        eq(
-            unattributed_status(records, cfg_b)[2],
-            "below",
-            "losing records below baseline also trips",
-        )
-        eq(
-            unattributed_status(records, {})[2],
-            "unacknowledged",
-            "no baseline means the count cannot be interpreted",
-        )
-
-        # An empty --workspace is the shape an unset shell variable produces:
-        # refused on every query view and on record, never read as omitted.
-        for view in ("last", "open", "streak", "weekly-review", "summary"):
-            try:
-                main(["query", view, "--workspace", "", "--json"])
-                fails.append(f"query {view} --workspace '' was not refused")
-            except SystemExit as exc:
-                if f"query {view} --workspace <workspace>" not in str(exc):
-                    fails.append(
-                        f"query {view} --workspace '' refusal does not name the form: {exc}"
-                    )
-        before = len(read_records()[0])
-        try:
-            main(
-                [
-                    "record",
-                    "--direction",
-                    "day-end",
-                    "--workspace",
-                    "",
-                    "--date",
-                    "2026-09-17",
-                ]
-            )
-            fails.append("record --workspace '' was not refused")
-        except SystemExit as exc:
-            if "record --direction <direction> --workspace <workspace>" not in str(exc):
-                fails.append(
-                    f"record --workspace '' refusal does not name the form: {exc}"
-                )
-        eq(len(read_records()[0]), before, "an empty-workspace record is not appended")
-
-        # Oversized records are refused.
-        try:
-            append_record(
-                {
-                    "ts": "x",
-                    "date": "2026-09-16",
-                    "direction": "day-end",
-                    "workspace": "w",
-                    "mode": "m",
-                    "outcome": "o",
-                    "note": "x" * (MAX_RECORD_BYTES + 10),
-                }
-            )
-            fails.append("size cap did not trip")
-        except SystemExit:
-            pass
-
-    for f in fails:
-        print(f"  FAIL  {f}")
-    print(f"{'all tests pass' if not fails else str(len(fails)) + ' failure(s)'}")
-    return 0 if not fails else 2
-
-
-def _set_baseline(n: int) -> None:
-    """Acknowledge the unattributable residue so deviation from it can alarm."""
-    p = config_path()
-    cfg = (
-        json.loads(p.read_text(encoding="utf-8"))
-        if p.exists()
-        else json.loads(json.dumps(DEFAULT_CONFIG))
-    )
-    cfg["legacy_unattributed_baseline"] = n
-    cfg["_legacy_unattributed_baseline_note"] = (
-        "Count of records that predate per-seat stamping and can never be attributed. "
-        "Acknowledged once so `query` stays silent about it; ANY deviation alarms, because "
-        "a rise means something is writing unstamped records now and a fall means the "
-        "append-only log lost data."
-    )
-    fd, tmp = tempfile.mkstemp(dir=str(p.parent))
-    with os.fdopen(fd, "w") as fh:
-        json.dump(cfg, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, p)
-
-
-def cmd_baseline(a) -> int:
-    records, _ = read_records()
-    n = unknown_count(records)
-    if not a.accept:
-        cfg = load_config()
-        cur = cfg.get("legacy_unattributed_baseline")
-        print(
-            f"  unattributed now: {n}   acknowledged baseline: {cur if cur is not None else '(none)'}"
-        )
+        out = {}
+        if args.view in ("summary", "last"):
+            out["workspaces"] = {w: row(records, cfg, w, today) for w in ([workspace] if workspace else named)}
+        if args.view in ("summary", "open"):
+            out["open_workdays"] = [{"workspace": w, "date": d}
+                                    for w, d in rituals.open_days(records, today, workspace)]
+    unnamed = sum(1 for r in records if r.get("workspace") in (None, "", "unknown"))
+    out.update({k: v for k, v in (("records_without_workspace", unnamed), ("malformed_lines", bad)) if v})
+    if args.json:
+        print(json.dumps(out, indent=2, sort_keys=True))
         return 0
-    _set_baseline(n)
-    print(f"  baseline accepted at {n}; `query` is now silent unless the count moves")
+    for name, view in (out.get("workspaces") or {}).items():
+        end = view["last_day_end"]
+        print(f"  {name:14} close {end['date'] if end else '—':10}  streak "
+              f"{'n/a' if view['streak'] is None else view['streak']:<4}  weekly "
+              f"{view['last_weekly_review'] or '—'}{'  OWED' if view['weekly_review_owed'] else ''}")
+    for item in out.get("open_workdays", []):
+        print(f"  OPEN  {item['workspace']:14} {item['date']} (started, never closed)")
+    if "last_weekly_review" in out:
+        print(f"  last weekly review ({workspace}): {out['last_weekly_review'] or '—'}"
+              f"{'  OWED' if out['owed'] else ''}{'  (the only workspace in the log)' if inferred else ''}")
+    if "streak" in out:
+        print(f"  streak ({workspace}): {'n/a' if out['streak'] is None else out['streak']}")
+    if unnamed:
+        print(f"  {unnamed} record(s) name no workspace (written before records were stamped); "
+              "every view leaves them out")
+    if bad:
+        print(f"  {bad} malformed line(s) in the log")
     return 0
 
 
-def cmd_credential_paths(a) -> int:
-    from credential_paths import command
-
-    return command(a.workspace_root)
-
-
-def cmd_worker_readiness(a) -> int:
-    from ritual_workers import load_workers, worker_readiness, RitualWorkersError
-
-    try:
-        worker = load_workers().get(a.workspace)
-        gaps = (
-            worker_readiness(worker)
-            if worker
-            else ["workspace has no registered worker"]
-        )
-    except (RitualWorkersError, OSError, ValueError) as exc:
-        gaps = [str(exc)]
-    print(json.dumps({"workspace": a.workspace, "ready": not gaps, "gaps": gaps}))
-    return 0 if not gaps else 2
-
-
-# ---------------------------------------------------------------- cli
-
-
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(
-        description="Derive daily-ritual state from an append-only log. No mutable state file."
-    )
-    ap.add_argument(
-        "--state-dir",
-        default=None,
-        metavar="DIR",
-        help="use this directory's history.jsonl and config.json instead of "
-        "~/.synthesis/rituals. Copy the real files into a scratch dir to exercise "
-        "behaviour — including the tripwire's alarming arms — without writing to the "
-        "production log. Equivalent to the RITUAL_STATE_DIR environment variable.",
-    )
-    sub = ap.add_subparsers(dest="cmd", required=True)
-
-    r = sub.add_parser("record", help="append one ritual record")
-    r.add_argument("--direction", required=True, choices=DIRECTIONS)
-    r.add_argument("--workspace", required=True)
-    r.add_argument(
-        "--date", required=True, help="logical workday, YYYY-MM-DD (never inferred)"
-    )
-    r.add_argument("--mode", default="full")
-    r.add_argument("--outcome", default="clean")
-    r.add_argument("--session", default=None)
-    r.add_argument(
-        "--pointer", default=None, help="path to the narrative (session log)"
-    )
-    r.add_argument(
-        "--note",
-        default=None,
-        help="SHORT structured note; prose belongs in the pointer",
-    )
-    r.add_argument("--count", action="append", metavar="k=v")
-    r.set_defaults(func=cmd_record)
-
-    q = sub.add_parser("query", help="derive a view")
-    q.add_argument(
-        "view", choices=["last", "open", "streak", "weekly-review", "summary"]
-    )
-    q.add_argument("--workspace", default=None)
-    q.add_argument("--today", default=None, help="override today, YYYY-MM-DD (testing)")
-    q.add_argument("--json", action="store_true")
-    q.set_defaults(func=cmd_query)
-
-    m = sub.add_parser("migrate", help="fold legacy logs/state into the new log")
-    m.add_argument("--force", action="store_true")
-    m.set_defaults(func=cmd_migrate)
-
-    b = sub.add_parser(
-        "baseline", help="show or accept the unattributable-residue baseline"
-    )
-    b.add_argument("--accept", action="store_true")
-    b.set_defaults(func=cmd_baseline)
-
-    c = sub.add_parser(
-        "credential-paths",
-        help="names-only tracked path review; never reads tracked contents",
-    )
-    c.add_argument("--workspace-root", required=True, type=Path)
-    c.set_defaults(func=cmd_credential_paths)
-    w = sub.add_parser(
-        "worker-readiness", help="read-only workspace worker contract readiness"
-    )
-    w.add_argument("--workspace", required=True)
-    w.set_defaults(func=cmd_worker_readiness)
-
-    sub.add_parser(
-        "doctor", help="self-check; exit 0 HEALTHY / 2 UNHEALTHY"
-    ).set_defaults(func=cmd_doctor)
-    sub.add_parser("test", help="behavioural suite").set_defaults(func=cmd_test)
-
-    a = ap.parse_args(argv)
-    if a.state_dir:
-        os.environ["RITUAL_STATE_DIR"] = a.state_dir
-    return a.func(a)
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--state-dir", help="read and write another log directory")
+    sub = parser.add_subparsers(dest="command", required=True)
+    rec = sub.add_parser("record", help="append one ritual record")
+    rec.add_argument("--direction", required=True, choices=DIRECTIONS)
+    rec.add_argument("--workspace", required=True)
+    rec.add_argument("--date", required=True, help="the logical workday, YYYY-MM-DD")
+    rec.add_argument("--mode", default="full")
+    rec.add_argument("--outcome", default="clean", choices=OUTCOMES)
+    rec.add_argument("--session")
+    rec.add_argument("--pointer", help="the session log that holds the narrative")
+    rec.add_argument("--note")
+    rec.add_argument("--count", action="append", metavar="KEY=VALUE")
+    rec.set_defaults(fn=cmd_record)
+    query = sub.add_parser("query", help="derive a view")
+    query.add_argument("view", choices=VIEWS)
+    query.add_argument("--workspace")
+    query.add_argument("--today", help="YYYY-MM-DD, to ask about another day")
+    query.add_argument("--json", action="store_true")
+    query.set_defaults(fn=cmd_query)
+    args = parser.parse_args(argv)
+    if args.state_dir:
+        os.environ["RITUAL_STATE_DIR"] = args.state_dir
+    return args.fn(args)
 
 
 if __name__ == "__main__":

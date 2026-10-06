@@ -39,12 +39,10 @@ UNREACHABLE_PREFIX = "unreachable:"
 
 def load_manifest(path: Path) -> dict:
     """Parse and validate a mailboxes manifest, fail-closed on any gap."""
+    from simple_yaml import load
+
     try:
-        import yaml
-    except ImportError as exc:
-        raise ValueError("pyyaml is required to read the mailbox manifest") from exc
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = load(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"mailbox manifest unreadable: {path}: {exc}")
     if not isinstance(data, dict):

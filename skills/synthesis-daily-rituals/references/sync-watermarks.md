@@ -1,9 +1,12 @@
 # Sync watermarks — contract and rationale
 
-`scripts/sync_watermark.py` keeps, per workspace, the last MOMENT each sync
+Read when opening, gating or closing any sync. `scripts/sync_watermark.py` keeps, per workspace, the last MOMENT each sync
 surface — and each declared read target within a surface — was actually
 written to the local mirror. Every sync computes its window from that
 record, and a run proves its own coverage before the ritual proceeds.
+
+Contents: Why a moment and not a day · The verbs · Store · Where the ritual calls it · Google
+Chat targets.
 
 ## Why a moment and not a day (v2.30.0, 2026-09-01)
 
@@ -34,12 +37,18 @@ Four defects were filed from that day and one mechanism closes them:
 ## The verbs
 
 ```bash
-synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py begin   --workspace <W> --label day-start
-synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
-synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
-synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
-synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
+python3 <rituals>/scripts/sync_watermark.py begin   --workspace <W> --label day-start
+python3 <rituals>/scripts/sync_watermark.py window  --workspace <W> --surface slack --target <resolved id>
+python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <latest>
+python3 <rituals>/scripts/sync_watermark.py defer   --workspace <W> --surface slack --target <resolved id> --reason "<why>"
+python3 <rituals>/scripts/sync_watermark.py status  --workspace <W> --surface <s> ... --targets-from <declared.json> --since run
 ```
+
+`<rituals>` is this skill's folder. What each prints: `begin` prints `run started <moment>`;
+`window` prints `<surface>: <from> → <to> (<span>)` and `oldest=<epoch> latest=<epoch>`;
+`advance` and `defer` print JSON (`advance` exits 2 when a watermark refused to move backwards);
+`status` prints one row per surface and per stale target and exits 1 while anything blocks,
+2 on a usage error such as an empty declared set or an empty `--workspace`.
 
 - **`begin`** stamps the run. Everything the run must re-read is judged
   against this moment.
@@ -73,9 +82,16 @@ synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status  
   than the bound and not deferred, and names the keys. The store only knows
   what has been written, so a status without the declared set is refused.
 
+A read made through the harness's own connectors (Slack, Gmail, Drive, Chat tools the session
+already has) advances like any other once its result is saved. No extra API token or receipt
+is required: on 2026-10-01 a gate that demanded acquisition receipts from direct API readers
+stopped every connector-based bookmark from advancing while the syncs themselves ran in full,
+and the fix on offer was handing over new read tokens.
+
 ## Store
 
-`~/.synthesis/sync-watermarks/<workspace>.json`, schema 2:
+`<synthesis home>/sync-watermarks/<workspace>.json` (the synthesis home is `~/.synthesis/v5`
+unless `SYNTHESIS_HOME` says otherwise), schema 2:
 
 ```json
 {
@@ -92,9 +108,9 @@ synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status  
 }
 ```
 
-A schema-1 store (bare dates) is read as what it meant — complete through
-the end of that day, capped by the moment the entry was written and never a
-moment in the future — and rewritten as schema 2 on the next write.
+An empty `--workspace` (an unset variable) is refused: every workspace's reads in one shared
+store is the single-slot shape again. Stores written before v5 sit at
+`~/.synthesis/sync-watermarks/`; the cutover copies them across.
 
 ## Where the ritual calls it
 
@@ -104,10 +120,11 @@ moment in the future — and rewritten as schema 2 on the next write.
 - The Mid-Day Sync Protocol does the same on every sync request: every
   declared target is re-read every sync. "Already read today" is a statement
   about the past, not about now.
-- `synthesis-slack-sync` Steps 1, 3, 3b take `oldest` from `window`; Step 4
-  records each saved read with `advance`; Step 5 cross-references the user's
-  own outbound against owed items and forbids "unanswered" on a read older
-  than the run.
+- `synthesis-slack-sync` takes `oldest` from `window` and records each saved
+  read with `advance`; it cross-references the user's own outbound against
+  owed items and forbids "unanswered" on a read older than the run.
+- `scripts/mailboxes.py report` judges each due mailbox from the same store:
+  advanced this run, deferred with a reason, or BLIND.
 
 ## Google Chat targets
 

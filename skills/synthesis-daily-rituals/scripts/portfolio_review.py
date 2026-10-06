@@ -44,11 +44,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:  # pragma: no cover - environment-dependent
-    print("portfolio_review: PyYAML unavailable; skipping", file=sys.stderr)
-    sys.exit(0)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from simple_yaml import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
 
 # A project claiming any of these is asserting that it wants attention.
 # `paused` deliberately asserts the opposite, which is the whole point of
@@ -60,8 +57,8 @@ DEFAULT_LIMIT = 3
 
 
 def console_config_path() -> Path:
-    home = Path(os.environ.get("SYNTHESIS_HOME", str(Path.home() / ".synthesis")))
-    return home / "console.yaml"
+    # The console's own file, beside (not inside) the v5 state home.
+    return Path(os.environ.get("SYNTHESIS_CONSOLE_CONFIG") or Path.home() / ".synthesis" / "console.yaml")
 
 
 def discover_indexes(
@@ -83,7 +80,7 @@ def discover_indexes(
         if not config.is_file():
             return []
         try:
-            data = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+            data = load_yaml(config.read_text(encoding="utf-8")) or {}
         except Exception:
             return []
         for entry in data.get("sources") or []:
@@ -119,15 +116,7 @@ def stale_projects(
     index_path: Path, threshold: int, today: datetime.date
 ) -> list[dict]:
     try:
-        pm = (
-            Path(__file__).resolve().parents[2] / "synthesis-project-management/scripts"
-        )
-        if str(pm) not in sys.path:
-            sys.path.insert(0, str(pm))
-        import team_contract
-
-        team_contract.require_registry(index_path)
-        data = yaml.safe_load(index_path.read_text(encoding="utf-8")) or {}
+        data = load_yaml(index_path.read_text(encoding="utf-8")) or {}
     except Exception as exc:
         print(f"portfolio_review: {index_path} did not parse: {exc}", file=sys.stderr)
         return []

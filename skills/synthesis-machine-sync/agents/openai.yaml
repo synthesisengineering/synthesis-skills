@@ -1,7 +1,7 @@
 interface:
   display_name: "Synthesis Machine Sync"
-  short_description: "Enroll, sync, hand off, and retire fleet Macs"
-  default_prompt: "Use $synthesis-machine-sync to enroll this Mac, sync shared state, hand work to another Mac, or retire a Mac from the fleet."
+  short_description: "Move work between Macs; set up or retire a Mac"
+  default_prompt: "Use $synthesis-machine-sync to hand work off from this Mac, resume it on another, set up a new Mac, or retire one."
 
 policy:
   allow_implicit_invocation: false

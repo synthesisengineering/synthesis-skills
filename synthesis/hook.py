@@ -37,6 +37,13 @@ def session_start(payload):
     run = autopilot.brief(payload)
     if run:
         notes.append(run)
+    try:  # one ritual line: last close, streak, workdays never closed, weekly review owed (R5.1)
+        from synthesis import rituals
+        line = rituals.session_line(str(payload.get("cwd") or os.getcwd()))
+    except Exception:
+        line = ""  # a ritual line must never cost a session its start
+    if line:
+        notes.append(line)
     unread = board.inbox(session_id, session.project)
     if unread:
         notes.append(f"{len(unread)} unread board message(s): run `synthesis inbox`.")

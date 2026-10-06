@@ -6,6 +6,10 @@ the verification checklist, the pre-send review gate, Slack formatting
 with examples, draft numbering, temporal integrity, and appreciation
 quality. The rules bind as written here; SKILL.md carries the digest.
 
+Contents: Grounding Protocol for Draft Messages (research by question type, investigate first,
+the process, why, scope) · Draft Message Formatting Rules (Slack formatting, draft numbering,
+temporal integrity, grounding verification checklist, pre-send review gate, appreciation quality).
+
 ## Grounding Protocol for Draft Messages
 
 Every draft message must be grounded in primary sources before it is written. The depth of research scales with the type of claim being made, but the requirement applies to ALL drafts — not just ones that feel technical.
@@ -97,9 +101,9 @@ Drafts in a daily plan are labeled with sequential integers, not alphabet letter
 **Do:**
 
 - `### Draft 1: Multi-provider routing announcement`
-- `### Draft 2: Reply to Oliver — Terraform readiness`
-- `### Draft 11: Patrick public praise — release window`
-- `### Draft 12: User-channel supplement (L&E)` (when same theme is routed to multiple audiences, each variant still gets its own integer)
+- `### Draft 2: Reply to Sam — Terraform readiness`
+- `### Draft 11: Public praise for Lee — release window`
+- `### Draft 12: User-channel supplement (second audience)` (when same theme is routed to multiple audiences, each variant still gets its own integer)
 
 **Do NOT:**
 
@@ -166,6 +170,6 @@ Appreciation messages must be specific and grounded, not generic. Each should re
 - What made it good (thorough test plan, clean architecture, consistent output, specific design decision)
 - Observable impact (unblocks X, addresses user feedback Y, improves process Z)
 
-**Generic (weak):** "Great work on the PR, Emil!"
-**Grounded (strong):** "Emil — PR #96 was clean with solid UUID validation and 6 permission tests covering all access paths. The immediate user sync on org assignment was the right architectural call — avoids the confusion of next-login delays."
+**Generic (weak):** "Great work on the PR, Kim!"
+**Grounded (strong):** "Kim — PR #96 was clean with solid UUID validation and 6 permission tests covering all access paths. The immediate user sync on org assignment was the right architectural call — avoids the confusion of next-login delays."
 

@@ -1,5 +1,7 @@
 # Deadline collection and reconciliation
 
+Read at Day-End Step 4b, before the send-or-release pass.
+
 Day-End Step 4 selects by a tag's target date, not the date of its plan. A
 deadline noticed in an older plan must remain visible when due, even after a
 long interruption. The collector is read-only and grants no send authority.
@@ -16,8 +18,10 @@ It does not infer that local files represent all history or all workspaces.
 
 ## Source boundary
 
-Run `synthesis exec-public synthesis-daily-rituals/scripts/decay_sweep.py --as-of YYYY-MM-DD
---plans-dir <declared-daily-plans-directory> --json`. Repeat `--plans-dir` for
+Run `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD
+--plans-dir <declared-daily-plans-directory> --json` (`<rituals>` is this skill's folder). It
+prints a JSON report: `status` (`CLEAR`, `REVIEW` or `BLOCKED`), the `due` items with source
+locators, and the coverage of every root and file. Repeat `--plans-dir` for
 each plan directory declared for this seat. Include archived subdirectories
 under each declared root: there is no lookback cutoff. Supply `--artifacts-dir
 <declared-ritual-workers-directory>` for this workspace's worker artifacts when

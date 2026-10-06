@@ -4,25 +4,25 @@ Every workspace that sweeps email declares its accounts here — same idea
 as `repos.yaml`: the declared list is the complete decision, and the
 ritual sweeps exactly it. Until this manifest existed, "email" meant
 Gmail in practice while the personal-life iCloud mailbox rotted unread
-(§5a: seven Smurl emails over four weeks in a mailbox no ritual read).
+(§5a: seven emails from a friend over four weeks in a mailbox no ritual read).
 
 ## Schema
 
 ```yaml
-workspace: rajiv
+workspace: personal
 accounts:
-  - address: rajiv.pant@gmail.com
+  - address: person@gmail.example
     transport: gmail            # gmail | apple-mail | m365 | forwards-to
     role: primary-personal
     sweep: every-ritual         # every-ritual | weekly | on-request
-  - address: rajiv.pant@mac.com
+  - address: person@icloud.example
     transport: apple-mail
     mailboxes: [INBOX]          # default when omitted: [INBOX]
     role: personal-life
     sweep: every-ritual
-  - address: rajiv@rajiv.com
+  - address: person@personal-domain.example
     transport: forwards-to      # not a mailbox; a domain alias
-    delivers_to: rajiv.pant@mac.com
+    delivers_to: person@icloud.example
 ```
 
 Rules, all enforced by `scripts/mailboxes.py`:

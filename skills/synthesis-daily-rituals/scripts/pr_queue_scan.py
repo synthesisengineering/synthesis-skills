@@ -57,11 +57,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:  # pragma: no cover - environment-dependent
-    print("pr_queue_scan: PyYAML unavailable; skipping", file=sys.stderr)
-    sys.exit(0)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from simple_yaml import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
 
 DEFAULT_THRESHOLD_DAYS = 0
 PER_REPO_TIMEOUT_S = 20
@@ -95,7 +92,7 @@ def declared_repos(path: Path) -> list[dict]:
     `status: dormant` is honored, because dormancy is a statement about the repo
     itself rather than about one workflow's interest in it.
     """
-    data = yaml.safe_load(path.read_text()) or {}
+    data = load_yaml(path.read_text(encoding="utf-8")) or {}
     repos = data.get("repos", data)
     if isinstance(repos, dict):
         repos = [dict(name=k, **(v or {})) for k, v in repos.items()]

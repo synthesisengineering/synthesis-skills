@@ -1,499 +1,70 @@
 ---
 name: synthesis-daily-rituals
-description: "Day-start and day-end checklists for synthesis engineering projects. Execute dependency-ordered rituals for context optimization, channel sync across Slack, Google Chat, email, meeting transcripts, and document comments, catch-up reads, PR reviews, day planning, and communications. Use when asked about: daily ritual, morning routine, day start, day end, daily checklist, morning checklist, end of day checklist, daily workflow."
+description: "Day-start, day-end, mid-day sync and the weekly review: sync every declared channel, mailbox and repo, sweep deadlines and lapses, plan and close the day. Use for: day start, day end, morning routine, end of day, quick close, daily ritual, weekly review, sync channels."
 license: "Apache-2.0"
 depends_on:
   - synthesis-context-lifecycle
   - synthesis-project-management
   - synthesis-slack-sync
-  - synthesis-repo-guard
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "2.45.1"
+  version: "3.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
-# Daily Rituals — Global Checklists
-
-Standard day-start and day-end rituals for synthesis engineering projects. These are the global (per-person) checklists. Each project may have a project-specific supplement that extends these with channel-specific sync, repo-specific checks, and stakeholder-specific communications.
-
-Version history, the rationale behind each rule, and the incidents that produced them: [references/version-history.md](references/version-history.md). The distributed desk/worker contract: [references/ritual-worker-contract.md](references/ritual-worker-contract.md). Sync watermarks: [references/sync-watermarks.md](references/sync-watermarks.md). Daily plan format and vocabulary: [references/plan-format.md](references/plan-format.md). Draft grounding and formatting in full: [references/draft-grounding.md](references/draft-grounding.md). On a machine provisioned by the gated release, every `<…-root>` placeholder below resolves under `~/.synthesis/plugins/synthesis-skills/current/skills/`; never pin a versioned cache path — the Step 1 parity check fails when that pointer is missing or stale.
-
-**Mandatory ritual evidence route:** Before recording a worker completion or beginning day-start, read [Ritual evidence](references/ritual-evidence.md). It specifies verified entrypoints, workspace artifact readiness, lesson-candidate custody, names-only credential-path coverage, and truthful refusal. The worker write is the completion; no historical artifact backfill.
-
-Use the mandatory [mechanical owner map](references/mechanical-extraction.md) for transcript, channel, watermark, repository-state and grounding work; scripts do not replace interpretation or action authority.
-
-Use [declared acquisition entries](references/acquisition-entry.md) for the supported meeting and Slack read adapters, account/source checks, raw custody, safe archives and evidence-bound watermark advancement. Connector reads count only through the declared connector-replay adapter; any other connector evidence remains UNKNOWN.
-## Configuration
-
-These values are user-specific. Update them for your environment.
-
-| Setting | Value | Description |
-|---------|-------|-------------|
-| `daily_plans_path` | `daily-plans/` | Where daily action plans are saved (person-scoped, in the personal ai-knowledge repo) |
-| `transcripts_path_in_private` | `transcripts/` | Relative subpath within each workspace-private repo. Workspace subdirs are NOT part of the path — they're implicit in the repo name (ADR-018) |
-| `personal_repo` | `~/workspaces/<person>/ai-knowledge-<person>` | Absolute path to personal root. Daily plans, lessons, cross-workspace projects live here |
-| `workspace_private_repo_pattern` | `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private` | Path pattern for workspace-private repos (Type 3 content) |
-| `index_yaml_path` | `projects/index.yaml` | Relative to personal_repo; project index file to update `last_session` |
-| `lessons_path` | `lessons/` | Relative to personal_repo; where reusable lessons are stored (ADR-017) |
-| `downloads_path` | `~/Downloads/` | Where meeting transcripts are initially downloaded |
-| `alert_sound` | `/System/Library/Sounds/Glass.aiff` | macOS sound file for autonomous work alerts |
-| `slack_auth_command` | tool-specific Slack auth flow | Command or UI flow to re-authenticate Slack for the current agent |
-
-A project supplement (for example `daily-plans/daily-checklists.md`) lists the repos to sync, the channels and DMs with their ids, PR review targets, stakeholder communications, and any project-specific end-of-day steps; the global checklist invokes it at "Run any project-specific sync steps."
-
-The [day-end installer](scripts/install_day_end.py) copies the launcher, nudge, its sibling [ritual-state query helper](scripts/ritual_state.py), and the query helper's owned runtime dependencies from the same release as executable files. Reinstallation refreshes that complete payload without changing the selected agent unless requested; the LaunchAgent retains its template schedule. The nudge queries ritual state without writing it and stays quiet when all expected workspaces have closed.
-
-## Script invocation
-
-Use `synthesis exec-public synthesis-daily-rituals/scripts/<name>.py` for the
-five workflow helpers listed in [ritual evidence](references/ritual-evidence.md)
-and for `ritual_state.py`. The installed owner verifies release, interpreter,
-entrypoint and its owned dependencies. An unavailable or refused verified path
-is a readiness failure; repair through the lifecycle owner, never direct Python.
-Other scripts retain their specifically documented owners and are not implicitly
-made callable through this entrypoint registry.
-
----
-
-## Distributed ritual execution — desk and workers (v2.23.0)
-
-Applies whenever a workers registry exists (default `~/.synthesis/ritual/workers.yaml`; absent registry = classic single-session ritual, no behavior change). Contract: [`references/ritual-worker-contract.md`](references/ritual-worker-contract.md).
-
-- **The desk is the registry's `desk_seat`** — the ritual home. Only the desk produces the daily plan. One brief, one to-do list, one console; if a run produces more than one brief, the design has failed.
-- **Each `active` worker executes its workspace's own checklist steps** (the syncs, the repo pass, the workspace-side triage below). **The default mode is an attended session rooted in that workspace**, run when the principal is working there, on that workspace's own schedule; a desk-dispatched subagent is the opt-in alternative for closing everything from one place. Either way the worker ends by writing the contract artifact to its registered `artifact_dir` — that write IS the worker's completion.
-- **The principal is the dispatcher; the desk never triggers a worker.** No session can start work in another. The desk reports which workspaces are owed and the human opens the session that owes one. Attempts to dispatch by messaging sessions failed twice for the same structural reason — the target must already be open and attended — while the file-based path delivered both times. Contract: "The principal is the dispatcher."
-- **Workspaces close on independent schedules.** Artifacts carry timestamps and `run_type` so the desk folds newest-per-workspace at any pass and refolds as later fragments land. Closing one workspace in the evening and another the next morning is normal operation.
-- **The desk folds, never re-derives.** At every desk pass (day-start, mid-day, day-end) read the newest artifact per (workspace, run_type) for today, reconcile across workspaces — cross-workspace calendar and commitment conflicts are visible only here and are the desk's explicit responsibility, discharged through the overlap service (v2.40.0) — and produce the one brief.
-- **The coverage line is mandatory and comes first** in every brief: each registered workspace as folded (run_type + finish time), **pending**, or **not scheduled** (`on-demand`/`dormant` per the registry). A registered-active workspace with no fresh artifact is reported *not covered* — never reconstructed from stale artifacts or desk guesswork.
-- **Context isolation is the point.** The desk does not load a workspace's channels, repos, or transcripts inline; workers do not see each other or the combined picture. Reconciliation belongs to the desk alone (the parallel-dispatch rule from synthesis-project-management, applied to the day itself).
-- **Storage separates; presentation converges (v2.24.0).** The plan the desk writes is a SHELL: person-scoped content plus pointers to each workspace's fragment (= its artifact). Workspace content is never copied into the person-side repository, so deleting a workspace's folders erases its data. Contract section: "Plan storage separation."
-
-## Day-Start Checklist
-
-Execute in this order (each step depends on the one before it). **Distributed mode:** each worker runs its workspace's steps and files its artifact; the desk runs Steps 1 and 8–10 and folds worker artifacts per the section above.
-
-### 1. Temporal & State Verification — RUN FIRST, every day
-
-The LLM has no clock and its sense of "today" can drift across conversation gaps. Project-state cached in CONTEXT.md may be stale. Before any other day-start step, anchor today's date and verified project state from external sources.
-
-- [ ] Run `date "+%Y-%m-%d %H:%M:%S %Z (%A)"` and record the output. This is today's authoritative date. If your in-context impression of the date differed, that is drift — treat other in-context impressions of time, intervals, and "last session" as also potentially drifted.
-- [ ] For each active project in the workspace's `index.yaml`, read its latest dated session entries and compare the recorded workday and outcomes with CONTEXT.md and index metadata. Inspect `git log -5 --pretty=format:"%h %ai %ci %s" -- projects/<id>/` and Git status separately for publication and pending changes. A commit timestamp is not a verified session date.
-- [ ] Report disagreements between session records with both evidence sources and reconcile them under an accepted claim. Do not overwrite a workday because a commit landed overnight, in another timezone or after a delay. If dated evidence is missing or unreadable, report session-date verification as unavailable; Git cannot supply the missing workday.
-- [ ] Invoke the `synthesis-checkpoint` skill on any project whose cached state may be stale — it is the codified protocol for this verification.
-- [ ] **Protection-health check (v2.15.0):** run `python3 ~/.synthesis/git-hooks/_load_config.py --doctor`. It verifies the commit-boundary policy engine end to end: config parses, every pattern is valid for both `re` and `grep -E`, `core.hooksPath` is wired, the installed engine matches the skill source (drift detection), and the cwd repo's classification. **A protective control that nobody monitors is one that is quietly broken** — this check exists because a dependency failure once disabled scanning silently while commits kept passing. If the doctor reports UNHEALTHY, surface it in the brief as urgent and fix before any commit-bearing work. Read the severity the summary names: *blocking* problems refuse commits fail-closed until fixed; *advisory* conditions (drift, unwired hooksPath) mean the gate runs stale or not at all while commits proceed — fix those first, because an unhealthy engine is only "blocked, not unprotected" for the blocking kind.
-- [ ] **Message-guard health check (v2.15.1):** run `python3 <synthesis-message-guard-root>/scripts/message_guard.py --doctor`. It checks static configuration and local controls: patterns parse, positive/negative scan controls pass, hook command markers and matchers cover the send/draft tool family, and the state directory is writable. This does not prove native invocation, semantic transport coverage, pending-message migration, or readback. Same rationale as the git-hooks check above: a protective control that nobody monitors is quietly broken. The guard fails closed, so UNHEALTHY means sends will be blocked, not unprotected — fix before any correspondence work.
-- [ ] **Email capability and format monitoring:** when the message-guard email program is enrolled, have its configuration owner compare each selected client's fresh native tool catalog with its enrolled registry using `--capability-readiness`. Preserve and review added, removed or changed descriptors; no name-based automatic permission. For the email accounts/windows already selected by this ritual, collect raw sent/draft readbacks and run `--monitor-email` in bounded batches. Record complete pagination, supplied and unreadable message IDs, expected-message availability, and every violation in private evidence. A supplied empty batch is not a clean-mailbox result. This read-only monitoring adds no sends, corrections, subscriptions or scheduling; apply existing authorization before any response to a finding.
-- [ ] **Context-integrity check (v2.16.0):** run `python3 <synthesis-context-lifecycle-root>/scripts/context_doctor.py --quiet --readiness local`. It audits every project in every configured source for the defects that break a cold resumption: missing tiers, budget overruns, an index.yaml status that disagrees with the project's own CONTEXT.md, `last_session` fields that disagree with dated session records, while surfacing uncommitted or unpushed context as local-only warnings. Same rationale as the two guards above, applied to the layer they all rest on — the durable record is what lets another agent or another machine pick the work up, and until today it was the only protective layer whose health nobody could check. Exit 2 means the doctor could not establish ground truth; treat that exactly like an UNHEALTHY guard. Defects are not urgent in the way an unhealthy commit gate is, so surface the count in the brief and fix the active project's defects before working it.
-- [ ] **Dual-client parity check (v2.18.0):** run `python3 <synthesis-agent-conformance-root>/scripts/conformance.py parity` (from the SOURCE checkout, or pass `--source-root <synthesis-skills repo>`). Filesystem-only and fast: it verifies the two source manifests agree, both clients have the plugin installed, both clients carry the SAME newest version, and that version matches source main. This is the daily layer of the dual-runtime guarantee — CI enforces source parity and the release protocol documents the dual refresh, but only this check notices the day a release reaches one client and not the other. Any FAIL is a drift that gets fixed in this step (refresh the stale marketplace/plugin), not noted for later. A PENDING (v2.41.0) names a live seat mid-release: report it in the briefing and move on — never refresh a client under a live seat (see Concurrent-Seats Mode). Since v2.33.0 the same check verifies that the stable plugin path resolves to that installed version, so a missing or stale pointer is caught before any command runs from it.
-- [ ] **Portfolio review (v2.27.0):** run `synthesis exec-public synthesis-daily-rituals/scripts/portfolio_review.py`. It names at most three projects that claim `active` but have not moved in over 30 days, and asks one question about each: close it, pause it, or pick it up today. Surface those three in the day plan as decisions. **This is the outflow the project index otherwise lacks** — projects enter it and never leave, so on the corpus that motivated this check 37 of 63 supposedly-live projects had gone quiet for over 90 days, one of them for 619, and nothing surfaced it. The context doctor already computes freshness but reports it among 200+ warnings, and a signal inside 200 warnings is not a signal. Three decisions a day clears a large backlog in a couple of weeks and never feels like a task. The check treats `active` as meaning *I intend to touch this within 30 days*; anything else is `paused`, which is honest and reverses with one word. It exits 0 always and can never be the reason a ritual fails.
-- [ ] **Coordination archive:** run `python3 <synthesis-project-management-root>/scripts/coordination.py archive --json`. This moves only released rows older than 30 days and old messages whose exact sender and recipient are both archived. Active/recent/unknown rows, broadcasts, and ambiguous messages remain. A leased board publishes removal and reachable monthly archive history in one CAS; local archives are verified mirrors. A failed archive remains a visible maintenance failure, never authorization to release a claim or erase evidence.
-- [ ] **Orphan snapshot maintenance (opt-in):** run `python3 <synthesis-project-management-root>/scripts/prune_tool_snapshots.py` (add `--dry-run` to preview). It archives verified snapshot bytes before removing them from the hot directory; only a uniquely identified released native seat, no pending manifest, and a snapshot older than one day qualify. Unknown, active, recent, malformed or redirected evidence remains. A missing snapshots directory reports zeros, not an error. Treat refusal as a maintenance finding, never permission to erase retained work.
-- [ ] **Coordination-claim review (v2.27.0):** run `python3 <synthesis-project-management-root>/scripts/coordination.py stale`. It names active claims whose heartbeat has gone quiet, with physical evidence for each — a claimed worktree that no longer exists is close to proof the session is gone, while elapsed time alone is not. **A dead session's `active` row is worse than a stale project: it does not merely clutter, it denies work to every future claim that overlaps it**, which is exactly what happened when three abandoned rows blocked real work for up to ten days. Releasing a claim stays **your** decision — the surface reports and prints the exact `release --id` command, and never mutates the board. An agent that could clear another session's claim on a timer would turn the advisory lock into a suggestion. Exits 0 always.
-- [ ] **Ritual state read (v2.28.0):** run `synthesis exec-public synthesis-daily-rituals/scripts/ritual_state.py query summary`. It derives per-workspace last-close, streak, and OPEN workdays (a day-start with no matching day-end) from an append-only log. Report **this workspace's** row plus any open workday in the plan's header or brief; visible skips are recoverable skips. **There is no mutable state file and no read-modify-write** — the predecessor kept one `last_day_end` slot written by every seat, and on 2026-09-02 one seat's close overwrote another's. A lock would not have saved it: with perfect serialization the second writer still replaces the single slot. The fault was schematic, so the shape was deleted rather than guarded.
-- [ ] **Weekly-review-owed check (v2.14.0):** if today is on/after the most recent Friday AND `synthesis exec-public synthesis-daily-rituals/scripts/ritual_state.py query weekly-review --workspace <ws>` returns a date predating that Friday, or no date at all, the Weekly Loose-Ends Review is owed for THIS workspace — run the Day-End Step 10 scan in THIS session (either ritual direction, any mode) and record it with `record --direction weekly-review --workspace <ws> --date <today>`. Each seat owes its own review: since v2.37.0 the query answers for the named workspace only and refuses an unscoped call unless the log names exactly one workspace, because one seat's Friday review had been silencing every other seat's gate. If a `synthesis-catchup-ledger` sweep already ran on/after that Friday, record its date instead of re-scanning — the ledger supersedes the review for its window.
-
-This step is the L2 (skill-rule) anchor of the temporal and continuity discipline. Client lifecycle hooks are L1; global `AGENTS.md` rules are L3. See `synthesis-context-lifecycle` Session Start Protocol for the rationale.
-
-### 2. Context Optimization
-
-**Archive FIRST, delete second. Never remove content from CONTEXT.md until it exists in its destination (sessions/ or REFERENCE.md). Two-phase commit.**
-
-- [ ] Check CONTEXT.md line count for each active project. If >120 lines, archive before starting work.
-- [ ] Archive completed items and old session summaries to `sessions/YYYY-MM.md` FIRST. **Retain the verified workday of the archived session. Label today's recording time separately when archiving earlier work; do not substitute a commit date or infer a workday from conversation continuity.**
-- [ ] Archive any newly-stable facts to REFERENCE.md FIRST.
-- [ ] Verify archived content exists in destination files.
-- [ ] Only then rewrite CONTEXT.md with archived content removed.
-- [ ] Reconcile `last_session` with the latest recorded session. Work actually done today, including this archive/repair activity, can have a new entry dated from step 1; that entry does not redate the work it archives.
-
-### 3. Sync
-
-This step has three sub-steps. They run in order — source code first (so any draft can ground itself in current code), then channels (so the catch-up read uses today's messages), then transcripts of any auto-recorded meetings.
-
-#### 3a. Source-Code Sync
-
-Before drafting the daily plan, sync every source-code repo the current workspace declares for daily sync. This makes sure any code-grounded drafts (PR reviews, technical replies, status messages citing specific files or commits) reference current state, not yesterday's.
-
-- [ ] Enumerate the repos to sync. Primary source (v2.13.0): `<workspace>/.agents/repos.yaml` — **every repo with `ritual_sync: yes`, on every run** (skip the whole workspace only if its manifest says `status: dormant`). Fallback when no `repos.yaml` exists: the workspace's canonical `AGENTS.md` "Workspace Repos" table, every repo marked Yes. Either way the declared list is the complete decision — do NOT re-apply your own judgment about which repos seem "active" (v2.12.1). Context/ai-knowledge repos are marked No and are handled separately (checkpoint-sync / repo-guard).
-- [ ] For each repo: `git fetch --all` to pull from all configured remotes, then fast-forward the default branches the team works on (typically `main` + `develop`; some teams also have `staging`, a long-running release branch, etc.). Use `git pull --ff-only` per branch — never a merge or rebase that could introduce silent conflicts. When other seats are live (see Concurrent-Seats Mode), fast-forward only branches no live seat holds; a held branch that moved reports as `decision` with the holder named, never auto-forwards under them.
-- [ ] If any branch is **diverged** (local has commits the remote doesn't, AND remote has commits local doesn't), do NOT auto-resolve. Surface it in the day-plan briefing: "develop diverged in `<repo>` — N local commits vs M remote." Decide explicitly: rebase, merge, or leave it for the owner.
-- [ ] If a default branch is **behind**, fast-forward it. If it's **ahead** of remote only (local commits not pushed), surface that too — it's a "do I push?" decision, not an auto-action.
-- [ ] Report the touched repos with their before/after commit SHAs in the daily plan (e.g., "develop: aaaaaaa → bbbbbbb, 11 commits, includes ticket-id-here"). This gives the user a glanceable view of what arrived overnight.
-- [ ] Report every declared repo in exactly one of four states — never "not scanned", which once hid seven repos on branches with no upstream and 39 invisible commits for weeks. `synced` (fetched, fast-forwarded, current); `decision` (diverged or local-ahead, surfaced above); **`BLIND`** (reachable, but the checked-out branch has no upstream — a defect, not a status: name the branch and offer the `switch`); `UNREACHABLE` (no clone, or fetch failed — environmental). Close with the denominator: "N of M repos current, D decisions, B blind, U unreachable."
-- [ ] Note any new branches that appeared on remotes (`git branch -r` shows them) — those may be feature branches worth knowing about even if not yet ready for review.
-
-The set of remotes for each repo comes from `git remote -v` inside that repo. The skill does NOT need a separate per-remote config — the repo itself is the source of truth for its own remote layout. When a workspace's primary remote changes (e.g., a migration from one Git host to another), the change happens in the local repo's `git remote -v`, and this step picks it up automatically.
-
-#### 3b. Channel Sync (Slack + Google Chat + email + documents)
-
-- [ ] Check for new PRs, CI results, overnight pushes (now that local repos are current).
-- [ ] **Run `/synthesis-slack-sync`** — the `synthesis-slack-sync` skill handles the full Slack sync protocol: verify connector auth, read all channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed protocol and the rationale behind each step. Configuration is in `.agents/slack-sync.yaml` per project, with `.claude/slack-sync.yaml` supported for existing projects.
-- [ ] **Google Chat sync (v2.34.0)** — if the workspace declares `.agents/gchat-sync.yaml`: enumerate spaces fresh via the Chat space-list call and save the call's text output to a file (never a hand-maintained ID list — per-meeting spaces churn daily), then run `synthesis exec-public synthesis-daily-rituals/scripts/gchat_preflight.py --config .agents/gchat-sync.yaml --spaces <that file> --json --out <declared.json>`. It takes the config's explicit `targets` (space ids with labels — the auditable core, since the enumeration shows every DM as "Unnamed Space") plus the enumeration filtered client-side by the config's `scope` (the wrapper's type filter is not trusted), prints the resolved-target table with a census by type and a BOUND line whenever the enumeration was capped or short (the wrapper pages at 100 and exposes no cursor), and writes the declared set the watermark gate consumes. Read each target with `oldest` from `sync_watermark.py window --surface gchat --target <space id>`, windowed by `createTime`; treat a full page as possibly-truncated (narrow the window and re-read); keep the raw `users/<id>` on every line beside any resolved name; save to the workspace convention (e.g., `transcripts/gchat/gchat-YYYY-MM-DD.md`); record each saved read with `sync_watermark.py advance --surface gchat --target <space id> --through <latest>` — a surface-level advance is refused once targets exist. A bounded enumeration is partial coverage: defer the surface with the bound as the reason, never advance past it. Same confidentiality handling as Slack DMs. Skip silently when no config exists.
-- [ ] **Email sync (v2.38.0)** — from the workspace's `.agents/mailboxes.yaml` ([mailbox manifest](references/mailbox-manifest.md)): run `mailboxes.py plan` for the due accounts and sweep each one's inbound mail AND the user's own sent mail per its transport (sent items are correspondence records too — the user's outbound exec mail is often the day's most consequential artifact). Record each swept account with `sync_watermark.py advance --surface email --target <address>` and each skipped one with `defer` and an explicit reason (`unreachable: …` when the transport failed). Close with `mailboxes.py report`: every due account must read SWEPT, UNREACHABLE, or DEFERRED — a BLIND account fails the ritual until swept or deferred. Save to the workspace convention (e.g., `transcripts/email/YYYY-MM-DD-<slug>.md`).
-- [ ] **Document-comment sync (v2.19.0)** — when the workspace has an established docs-sweep practice (`transcripts/docs/` or explicit config): Drive documents modified in the window, open comment threads where the newest reply is not the user's (ball in their court), and engagement on documents the user shared out.
-- [ ] **Name any surface not swept.** The declared surface set is the complete decision (v2.12.1 applied to channels); a sync that skips one must say so in its report rather than reporting as complete.
-- [ ] **Watermark gate (v2.30.0):** a watermark is the last moment actually WRITTEN, never the last attempted, and the gate proves this run's coverage. The sweep opened with `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py begin --workspace <W> --label day-start`, every read target's `oldest` came from `sync_watermark.py window`, and every saved read was recorded with `sync_watermark.py advance` (per target for Slack and Chat), its `--through` the `latest=` epoch `window` printed for that read — the script accepts epoch seconds and Slack's fractional `ts` beside ISO-8601, `YYYY-MM-DD`, and `now`, and stores every form as ISO-8601 with an offset. Now run `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run` with **every declared surface passed explicitly** and the declared read targets via `--targets-from` (the file `preflight.py --json --out` wrote this run, never a stored copy) — the store only knows what has already been written, so a status that consults only the store walks straight past a declared surface never swept (the command refuses an empty surface set for exactly that reason). Non-zero exit names each surface or target this run did not re-read: read it now or defer it with an explicit reason before the ritual proceeds.
-- [ ] Run any project-specific sync steps (see project supplement).
-
-#### 3c. Meeting Transcripts
-
-- [ ] **Acquisition evidence:** read [references/acquisition-evidence.md](references/acquisition-evidence.md). At day-start probe every declared recorder account through its read-only identity adapter, then enumerate source documents for the exact window and compare provider/source IDs with saved archive headers. A healthy service is not sign-in. Meetings and Slack advances require `--acquisition-evidence`; missing/unreadable sources, incomplete pages, unexplained or explained-but-unclosed gaps, and missing in-window Slack controls leave watermarks unchanged. Gap decisions retain unknown coverage and remain in the ritual artifact.
-
-After any standup, planning session, or design review with auto-generated notes (e.g., Gemini in Google Meet):
-
-**Automated path (preferred)** — if the project uses `synthesis-meeting-transcripts`:
-- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to the configured meeting transcript archive. Configuration is in `.agents/meeting-transcripts.yaml` per project, with `.claude/meeting-transcripts.yaml` supported for existing projects. Works with hosted Gmail/Drive connectors or a self-hosted multi-account MCP.
-- [ ] Read the saved transcript and extract action items, decisions, status changes.
-- [ ] Update CONTEXT.md with any new information from the meeting.
-
-**Manual path (fallback)** — if no Gmail/Drive tooling is available:
-- [ ] Download transcript from `~/Downloads/`.
-- [ ] **Verify transcript completeness.** Check that the file contains BOTH a summary/notes section AND a full conversation transcript (speaker-attributed dialogue with timestamps). Many AI note-takers (Gemini, Otter, Fireflies) produce a summary by default but may omit the raw transcript. **If the file contains only a summary without the full transcript log, warn the user immediately** — the raw transcript is the primary source; summaries are lossy and may misattribute or omit statements.
-- [ ] Move to the configured workspace meetings directory with naming convention: `standup-YYYY-MM-DD.md` or `meeting-TOPIC-YYYY-MM-DD.md`. The `{workspace}` value comes from the project's Slack sync config.
-- [ ] Read transcript and extract action items, decisions, status changes.
-- [ ] Update CONTEXT.md with any new information from the meeting.
-
-#### 3d. Inbox Hygiene (v2.21.0 — when `~/.synthesis/inbox-cleanup/scopes.yaml` exists)
-
-Inbox cleanup is a chief-of-staff duty, and its reach follows the seat that invokes it (the inbox-cleanup skill's workspace-scope contract):
-
-- [ ] Resolve scope: `resolve_scope.py --workspace <this workspace> --json`. A personal/all-scope seat sweeps every account; any other seat sweeps only its own workspace's accounts. **Exit 2 (unknown workspace, missing config) stops this step with the error surfaced — never improvise an account list.**
-- [ ] Run the inbox-cleanup skill's sweep over exactly the resolved accounts, dry-run-first per that skill's workflow.
-- [ ] Report per account against the resolved scope ("7 of 9 in scope, 7 swept"), naming any account skipped and why. Held items and new-sender questions go to the day plan's decisions region, not into silent limbo.
-
-### 4. Catch-Up Read
-
-**Cross-check before proposing action. An item that looks open in CONTEXT.md may already be resolved in Slack (or vice versa). The source of truth is the actual thread, not the action item list.**
-
-- [ ] Review synced transcripts (`{workspace}/channels/`, `{workspace}/dms/`, `{workspace}/group-dms/` for today) and new messages for anything requiring action or awareness.
-- [ ] For each potential action item: check the thread for replies, check CONTEXT.md for prior completion, check session logs. Only flag as open if ALL sources confirm it's unresolved.
-- [ ] Note new action items, status changes on waiting items, and signals worth responding to.
-- [ ] Remove or mark completed any CONTEXT.md items that Slack evidence shows are resolved.
-- [ ] **Ownership vs visibility triage (v2.40.0).** Route every intake item by the [routing rules](references/ownership-routing.md) in order — manifest owner, deletion-unit test, movable-item seat — and stamp it `owner:`/`owner_rule:`. An item no rule claims becomes a CANDIDATE for the principal in this same turn: never double-recorded, never dropped.
-- [ ] **Publish owned blocks; call the overlap service (v2.40.0).** Publish this seat's owned commitments to the shared time-block layer (real titles, hand-entered blocks for unreachable accounts), validate the layer, and run `overlap.py overlaps` for the look-ahead window. Report overlaps with the movable side named, and the layer's denominator — which seats published fresh, which are stale or missing — because "no overlaps" without it is not a result.
-
-### 5. PR Review Queue
-
-- [ ] Check for PRs awaiting your review (lead integration review or peer review).
-- [ ] Note age of oldest pending PR — anything >2 days old is a bottleneck.
-
-### 6. Day Plan
-
-- [ ] **Review yesterday's daily plan** (`daily-plans/YYYY-MM-DD.md`). Identify: uncompleted tasks to carry forward, draft messages that were never sent, items that are now stale due to overnight Slack activity, and "waiting on others" items that may have been resolved.
-- [ ] **Cross-reference yesterday's plan with today's Slack sync.** A task marked incomplete yesterday may have been resolved overnight. A draft message from yesterday may no longer be accurate due to code changes, PR merges, or Slack replies. Do not blindly carry forward — verify each item is still valid and current.
-- [ ] Create today's action plan in `daily-plans/YYYY-MM-DD.md` (shared infrastructure, not inside individual project directories or ~/Downloads). This creates a permanent archive.
-- [ ] The action plan should contain: tasks (prioritized with checkboxes), draft messages (with thread locators), things to know, waiting-on-others table, and everything else.
-- [ ] **Apply decay tags:** any draft in the appreciation/kudos, acknowledgment, public-correction, or event-bound class gets a `**Decays:** YYYY-MM-DD (reason)` line at creation (kudos default: +2 workdays; event-bound: the event date). Keep the tag and stable `**Decay ID:**` when carrying an item, including on its due date; never reuse an ID for another obligation. Existing unkeyed items remain source-linked candidates without migration. See [deadline collection](references/decay-sweep.md).
-- [ ] **No commitment without a date or a park (v2.14.0):** every new commitment line gets a do-by, a Decays tag, or an explicit `parked (reason)` marker before the plan is saved.
-- [ ] **Seed `## 🌱 Lesson candidates` (v2.14.0)** — an empty H2 that any session appends one-liners to during the day; the day-end curates it (keep/drop).
-- [ ] Update CONTEXT.md action items with new items from catch-up.
-- [ ] Prioritize today's work: integration, reviews, communications, features, meetings.
-- [ ] **Calendar Guardian — morning shield (v2.20.0).** Re-verify today against last night's review (invites land overnight): resolve new arrivals, then place/refresh holds over today's remaining open windows per the chief-of-staff skill's same-day shield — id-tracked, auto-expiring, releasable only from the holds ledger. Same-day requests route through triage (VIP tiers pass per config; everything else becomes a proposed later slot). Check prep exists for every meeting today; surface unanswered RSVPs and prep gaps as decisions. **Lead-time meetings (v2.26.0):** a flagged meeting today whose pack is missing or predates a reschedule is regenerated NOW from its declared sources — and the gap is named in the brief, because it means the owed day-end generation was missed.
-- [ ] Update the action plan throughout the day as tasks complete or change — it is a living document, not a static morning capture.
-- [ ] **Always include a clickable link to the action plan file** in your response when creating, updating, or referencing it. Use the absolute path in markdown link format: `[2026-03-23.md](/absolute/path/to/daily-plans/2026-03-23.md)`. Never use relative paths — they don't resolve in the IDE.
-
-### 7. Morning Messages
-
-- [ ] Post standup updates or morning status in relevant channels.
-- [ ] Send motivational replies acknowledging overnight work (engineers who feel seen ship faster).
-- [ ] Reply to any unanswered threads that need morning response.
-- [ ] **Before drafting ANY reply for the user, re-read the actual Slack thread via MCP — not the local transcript.** The user may have already replied. Another team member may have resolved the question. Drafting from stale transcripts makes the user look absent-minded. Transcripts are caches for historical context; Slack is the source of truth for current thread state.
-- [ ] **Ground ALL draft messages in actual systems — not just transcripts and meeting notes.** Before drafting ANY reply or message for the user, research the topic in primary sources first. This is not optional and applies to every draft, not just explicitly technical ones. See the draft rules below and [references/draft-grounding.md](references/draft-grounding.md).
-- [ ] When drafting messages for the user to send manually, ALWAYS include a thread locator: channel name, date/time of parent message, thread timestamp (TS), and the last unanswered reply with date/time and first ~10 words. The user needs this to find the thread instantly.
-
----
-
-## Draft Message Rules
-
-Every draft is grounded, temporally correct, Slack-formatted, and numbered. The full protocol — research by question type, the investigate-first rule with its incident, the verification checklist, formatting examples, and appreciation quality — is in [references/draft-grounding.md](references/draft-grounding.md). The rules:
-
-- **Ground every draft in primary sources before writing** — code, config, PRs, `git log`, deploy state, instruction files — never in transcripts or conversation memory alone; cite file paths, PR numbers, config values, or SHAs; flag any claim that cannot be verified instead of guessing. Applies to morning messages, mid-day replies, day-end communications, and ad-hoc requests alike.
-- **Investigate first, ask questions later.** Before drafting a reply to a bug report or user issue, spend ten minutes in the code, config, and logs; if the fix fits in those minutes, ship it and lead the reply with the fix. Ask only for what you genuinely cannot obtain yourself.
-- **Temporal integrity at send time, not write time.** Check whether the recipient already has the information, whether forward-looking statements still hold, whether a scheduled message uses the right tense, what happened since drafting, and whether the topic moved to another channel or medium — sweep every synced surface and email for the recipient and topic, re-pull full email threads before replying, and give drafts older than 24 hours full re-verification.
-- **Verification checklist before finalizing:** every technical claim cites a source; every status claim is verified against the live system; every attribution is cross-checked (`gh pr view`, `git log`); no stale information — the target thread re-read via MCP AND the topic swept across other channels, DMs, and email; numbers come from tool output; temporal integrity passes.
-- **Pre-send review gate:** every drafts section carries the verbatim reviewer notice before its first draft — drafts are research-backed starting points the human reads fully, edits into their own voice, and judges for the moment.
-- **Slack formatting:** a blank line after every bullet (otherwise they collapse); Slack markdown (`*bold*`, `_italic_`, `>` quotes, backtick code); a thread locator on every reply draft (channel, human-readable parent time, author, first ~10 words; the TS as secondary reference); concise — over ~15 lines folds behind "Show more".
-- **Draft numbering:** sequential integers (Draft 1, Draft 2, …), never letters or `K-2` sub-versions; before adding a draft, scan for the highest existing `Draft N` and use N+1; a retracted draft keeps its number with a `— retracted` marker and a pointer to the session log rather than renumbering.
-- **Appreciation is specific:** name the work product, what made it good, and the observable impact; generic praise is weak and reads as automated.
-
----
-
-## Daily Plan Structure
-
-The daily plan is both a live dashboard and the day's record. **Preserve all information, reorganize for clarity:** never delete completed tasks, sent messages, timestamps, or decisions; consolidate freely so the file has ONE section per concern and reads cleanly top to bottom after every update — a full rewrite that preserves everything is maintenance, not data loss. The canonical structure, the H2 vocabulary the synthesis-console cockpit types (Decisions needed / Priority Tasks / Drafts — Ready to Send / Standup Highlights / Sent Messages / Waiting On Others / Open PR Queue / Sync state / Completed Today / Things to Know / Carried Items), the internal conventions the parser reads (decision options and `**Decided:**` markers, task done markers, draft `**Send to:**` and `**Sent:**` paragraphs, the 3-versus-4-backtick fence rule), and the file-revert protection protocol are in [references/plan-format.md](references/plan-format.md). Stay within that vocabulary; propose new section types as additions to the contract, never ad hoc. If a file revert is detected, re-read the entire file from disk, compare it with what you know was written, reconstruct anything missing from sync data and transcripts, and never silently accept the reverted file.
-
----
-
-## Mid-Day Sync Protocol
-
-The day-start checklist does a full sync. The user will ask for syncs repeatedly throughout the day ("sync from Slack", "what's new", "check channels"). **A sync request covers EVERY surface the workspace routinely syncs — not Slack alone, and not only chat surfaces (v2.19.0):**
-
-1. **Slack** — always.
-2. **Google Chat** — when `.agents/gchat-sync.yaml` exists; per target, from the declared set `gchat_preflight.py` writes this run (v2.34.0).
-3. **Email** — when the workspace routinely syncs it (evidenced by an established `transcripts/email/` directory or an explicit config). Use the workspace's designated email tooling and account; sweep inbound AND the user's own sent mail for the window.
-4. **Meeting transcripts** — when `.agents/meeting-transcripts.yaml` exists: any meeting that ended during the window gets its transcript fetched (or re-checked, for ones whose notes had not yet generated).
-5. **Document comments** — when the workspace has an established docs-sweep practice (evidenced by `transcripts/docs/` or an explicit config): Drive documents modified in the window, and open comment threads addressed to the user.
-
-**The complete-surface rule:** the surfaces a workspace syncs are a declared set, exactly like the repo list in the source-code sync (v2.12.1's no-agent-judgment rule applies here too). A sync that runs fewer surfaces than the workspace's declared/established set MUST name the omission explicitly in its report — "email and docs not swept this run" — never report as if the sync were complete. Origin incident (2026-08-09): a mid-day sync ran Slack and Chat only, while the day's most consequential correspondence — a CEO-facing email delivering two Google Docs — had happened entirely on the omitted surfaces; the gap was invisible because the sync reported quiet channels without naming what it had not checked.
-
-**Run `/synthesis-slack-sync`.** The `synthesis-slack-sync` skill handles the Slack portion's complete protocol: read channels, re-read all threads with replies, check DMs, save to local transcripts, and update the action plan. See that skill for the detailed five-step protocol.
-
-The key discipline encoded in that skill: **every sync must re-read ALL threads with replies from today**, not just fetch new channel-level messages. Thread replies don't appear as channel messages — skipping thread re-reads causes stale action plans and duplicate message sends.
-
-**Every sync re-reads every declared target (v2.30.0).** A DM or channel read at day-start is not current at mid-day: "already read today" is a statement about the past, not about now, and a twelve-minute-old reply is the normal case for a DM. Open each sync with `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py begin --workspace <W> --label mid-day`, take each target's `oldest` from `sync_watermark.py window --target <resolved id>`, record each saved read with `sync_watermark.py advance --target <resolved id>`, and close with `sync_watermark.py status --workspace <W> --surface <s> --since run --targets-from <declared.json>` (the declared set written this run by the Slack skill's `preflight.py --json --out`, never a stored copy) — its BLOCKING list is exactly the set this sync skipped, and the sync is not complete while it is non-empty. The user's own outbound is first-class sweep state: list every owed item their messages discharged since the window opened, and never call anything "unanswered" or "unsent" on a read older than this run. Origin (2026-09-01): two mid-day syncs covered group DMs and channels only; a DM answered at 09:27 was reported unanswered at 17:51 on the strength of a 09:15 read.
-
-**Record after every sync.** Any sync that creates or updates transcripts, daily plans, or context files must leave session-attributed local state. Day-start and mid-day sync do not push merely to make same-machine client switching work; day-end and explicit remote handoff publish the batch.
-
----
-
-## Vacation / Observer Mode Ritual
-
-Use this variant when the user signals they are not actively working ("I'm on vacation", "observer mode", "just keeping up", "don't want to send messages"). Common phrasings: "do the modified ritual", "do what you did the last few days", "stay in observer mode".
-
-Observer mode is a specific sync and context pattern. Its changes become LOCAL_READY immediately and REMOTE_READY at day-end or explicit remote handoff.
-
-### Steps
-
-1. **Verify the date** — run `date` to confirm today and translate any day-of-week references correctly.
-2. **Check Downloads** for standup transcripts, meeting notes, shared Google Docs, or forwarded emails. Move each to `~/workspaces/{workspace}/ai-knowledge-{workspace}-rajiv-private/transcripts/meetings/` with appropriate naming. Delete originals from Downloads.
-3. **Full Slack sync** — run `/synthesis-slack-sync`. Read every channel, DM, group DM. Follow threads with replies. Save to transcripts.
-4. **Create today's daily plan** in observer mode:
-   - Header says "Mode: VACATION CATCH-UP (awareness only — team is operating independently)" or equivalent
-   - NO draft messages to send
-   - NO "things to do today" for the user
-   - DO include: "Things to Know for Return" section with 5-10 items
-   - DO include: any decisions, incidents, product signals, or concerns that would be hard to catch up on later
-5. **Update CONTEXT.md** and session archive with the day's events. Follow the context lifecycle skill's archival protocol if needed.
-6. **Record local handoff state** for files touched in this invocation. Publish them only in day-end or explicit remote-handoff mode.
-
-### What Observer Mode Skips (Deliberately)
-
-From the normal Day-Start:
-- Step 6 "Morning Messages" — no messages posted on the user's behalf
-
-From the normal Day-End:
-- Step 3 "Communications" — no replies, no end-of-day status
-- Step 5 "Career Amplification" — no thought leadership capture unless explicitly requested
-
-### What Observer Mode Keeps (Non-Negotiable)
-
-- Date verification
-- Full Slack sync (no channels or DMs skipped, no threads skipped)
-- Transcript capture
-- Daily plan creation (in observer format)
-- CONTEXT.md + session archive updates
-- **Attributed local persistence** — observer mode records every changed file; its batch reaches the remote at day-end or explicit remote handoff.
-
----
-
-## Concurrent-Seats Mode Ritual (v2.41.0)
-
-Use this variant whenever the board shows other live seats — autonomous or interactive — working while the ritual runs. The failure it prevents is real and repeated: parity checks fail while a release is in flight, and the ritual "repairs" the drift by refreshing clients into the live release; code sync fast-forwards branches a peer is landing; shared-state maintenance collides with seats that read the same state. The mode's rule of thumb: **the ritual observes and reports around live seats; it never mutates state a live seat owns.** Origin: operations-seat findings 10–11, adopted as ITEM23.
-
-### The six mechanical rules
-
-1. **Claim file-by-file.** The ritual seat claims exactly the files it will write — daily plan, CONTEXT.md, session log, state file — never whole directories. Directory claims block peer landings; named files do not.
-2. **Fetch-all, fast-forward-only-unheld.** `git fetch --all` everywhere (fetching is read-only and safe), but `git pull --ff-only` only on branches no live seat holds. A held branch that moved is a `decision` with the holder named.
-3. **Report parity, never repair it.** A PENDING parity check names its holder; the briefing carries the line verbatim and the ritual moves on. No marketplace refresh, no plugin reinstall, no stable-pointer touch while the holder is live.
-4. **Skip shared-state maintenance while seats are live.** Index rebuilds, inventory regeneration, watermark advances, decay sweeps — anything every seat reads — waits for a clear board. The ritual reports `deferred: seats live` rather than half-running them.
-5. **Fold, don't run, others' artifacts.** A day-end artifact or handoff filed by another seat is folded into the briefing as-is. The ritual never executes, regenerates, or "verifies by re-running" a peer's artifact — re-running someone else's step under their claim is a collision wearing diligence as a costume.
-6. **Release claims at end.** Every claim the ritual took is released (or narrowed to nothing retained) before the run closes, so the next seat starts from a clean board.
-
-### What Concurrent-Seats Mode Keeps (Non-Negotiable)
-
-- Board + inbox read at start, and the ritual's own seat registered with its file claims
-- Full sync reads (fetch, channel reads, transcript capture) — reads never need a window
-- Daily plan creation with the `decision`/`deferred` lines the rules above produce
-- CONTEXT.md + session archive updates for the ritual's own files
-- `ritual_state.py record` with `--mode concurrent-seats`
-
----
-
-## Day-End Checklist
-
-**Distributed mode (v2.23.0):** each worker runs its workspace's close steps and files a `day-end` artifact; the desk folds artifacts, runs the guardian review and the publication boundary, and writes the one close-out with its coverage line.
-
-### Day-End Modes (v2.14.0) — ask first, every time
-
-Before Step 1, ask the user the one-letter mode question — **f** (full) / **q** (Quick Close) / **o** (observer) — every time, even when a mode seems obvious. If a launcher or opening prompt already named the mode, confirm it in one line instead of re-asking. Record the chosen mode in the state file (Step 7).
-
-| Mode | Human moments | Steps run | Steps skipped |
-|------|---------------|-----------|---------------|
-| **Full** | as written | 1-11 | — |
-| **Quick Close** (~10 min; the recommended default for ordinary evenings) | exactly three | 1, 4, 5, 7, 10 (only if owed), 11 | 2, 3, 6, 8, 9 |
-| **Observer** | none | per the Vacation / Observer Mode section | comms + career steps |
-
-**Quick Close's three human moments:** (1) the **send-or-release pass** over all due or overdue decay-tagged items (Step 4) — the step that protects overnight communication timing; (2) **keep/drop** on the day's `## 🌱 Lesson candidates` (Step 5); (3) the **closure read-back** — the agent ends with one on-screen paragraph: "Day closed. N sent, M released, lessons kept: X. Tomorrow opens with Y." Any audio accompanying it stays generic per the alert-confidentiality rules below. Everything else in Quick Close runs agentlessly around those three moments.
-
-The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first on/after Friday, in any mode — a Friday Quick Close carries it. Every mode, observer included, records the ritual in Step 7 (`ritual_state.py record`).
-
-### 1. Transcript Sync
-
-- [ ] **Run `/synthesis-slack-sync`** for final capture of the day. The `synthesis-slack-sync` skill ensures all channels, threads, and DMs are captured.
-- [ ] **Google Chat final capture (v2.17.0)** — if the workspace declares `.agents/gchat-sync.yaml`, run the same Chat sweep as Day-Start Step 3b for the day's window (fresh space enumeration through `gchat_preflight.py`, per-target reads and advances, raw sender IDs preserved).
-- [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
-- [ ] **Watermark gate (v2.30.0):** the final capture opened with `sync_watermark.py begin --workspace <W> --label day-end` and recorded each saved read with `advance`; now run `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run` with every declared surface and read target passed explicitly (same rule and same reason as Day-Start Step 3b's gate). The day does not close over a surface or target this run did not re-read: read it or defer it with a reason now.
-- [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
-
-### 2. Source-Code Sync
-
-End-of-day code sync ensures local main/develop reflects everything that landed during the day and that tomorrow's day-start begins from a clean, current state. Run the same source-code sync as Day-Start Step 3a — same workspace repo list, same fetch + fast-forward semantics, same surfacing of divergence.
-
-- [ ] Read the pending repo-guard manifests first. For every recorded source path owned by this ritual session, run its required tests, inspect the staged index, commit only attributed paths, and push under the repository's branch, review, and deployment policy. Do not mutate another active claim. Any path that cannot be published keeps the affected project below `REMOTE_READY`.
-
-- [ ] For every repo the workspace manifest marks for sync (`<workspace>/.agents/repos.yaml` `ritual_sync: yes`; fallback: the `AGENTS.md` table's Yes rows — the complete set, no activity judgment; v2.12.1/v2.13.0): `git fetch --all`, then `git pull --ff-only` on each long-running branch (typically `main` and `develop`).
-- [ ] Surface any branches that are diverged or have local-only commits not yet pushed. These are decisions to make NOW, not at next day-start, so the agent can act on them while context is fresh.
-- [ ] Note the day's net change per repo (e.g., "develop +11 commits, includes ticket-id-here"). This summary becomes part of the day-end log and feeds tomorrow's day-start briefing.
-
-This step is intentionally not "merge ready PRs" — that's Integration Sweep below. This step is pure sync: pull latest state, surface divergence, do not modify history.
-
-### 3. Integration Sweep
-
-- [ ] Check PR queue — merge any ready PRs, push to staging.
-- [ ] Close GitHub PRs with integration comments (if using adopt-and-adapt pattern).
-- [ ] If a new version was deployed to staging or production, follow your team's release notification process. Best practice: list all PRs included, credit all contributors by name and PR number, post to both product and engineering channels.
-
-### 4. Communications — the send-or-release pass (v2.14.0)
-
-#### 4a. Calendar Guardian — tomorrow's review (v2.20.0)
-
-Runs first inside Step 4, in **every mode including Quick Close** — the next-day review is the highest-value evening act the ritual performs, and it generates drafts the send-or-release pass below then handles. The review protocol itself lives in the chief-of-staff skill's **Calendar guardian** section; this step is its evening cadence.
-
-- [ ] Review the **next working day** across every configured calendar — and on the last working day of the week, the **weekend too**. Run the full per-entry checklist (real? answered? prepared? outcome? shape? physically possible?) and the whole-day overcommitment check against config thresholds.
-- [ ] **Place holds over tomorrow's remaining open windows** per the same-day shield: generically titled, busy, id-tracked in the holds ledger, auto-expiring. Release/move only holds the ledger says the agent created.
-- [ ] Conflicts and overcommitment produce **named candidates to move with drafted reschedule notes** — into the plan's drafts region, where this step's parent pass picks them up. A warning without candidates is not done.
-- [ ] Anything only the principal can decide → one line each in the plan's decisions region. Tomorrow's calendar picture → the plan's calendar section.
-- [ ] **Lead-time prep packs (v2.26.0):** when `.agents/meeting-preps.yaml` exists, generate or refresh the prep pack for every flagged meeting whose lead window includes tomorrow — built from the declared `sources` (prior transcript, mandate sources, project contexts), per the v2.26.0 rules and the `.agents/meeting-preps.yaml` schema in [references/version-history.md](references/version-history.md); the pack states its own basis (which declared sources were read, and the newest source's date). This runs in every mode including Quick Close, because it rides the tomorrow-review that already does.
-
-- [ ] Run `synthesis exec-public synthesis-daily-rituals/scripts/decay_sweep.py --as-of <verified-current-date> --plans-dir <declared-daily-plans-directory> --json`, repeating declared roots and adding this workspace's `--artifacts-dir` when applicable. Collect every unresolved `**Decays:**` date on or before today across the complete declared plan/archive scope, with **no lookback cutoff**, plus unanswered threads from today. Source boundaries, carry-forward identity and outcome rules: [references/decay-sweep.md](references/decay-sweep.md).
-- [ ] Read the returned source items and reconcile their current outcomes. `BLOCKED` or any unscanned source is an explicit coverage gap, never an empty pass; due items remain visible alongside gaps. Continue reviewing recovered candidates and running the remaining ritual steps, while recording the incomplete sweep; the gap blocks a clean sweep/closure conclusion, not all ritual work. `REVIEW` requires the decisions below. Only a complete, reconciled scan can support a clean closure; the helper's exit 0 grants no send authority. Workers report their own coverage in existing artifacts; the desk reports missing worker coverage without reading across workspace boundaries.
-- [ ] For each item, one of three outcomes — nothing decay-tagged carries silently past its date: **send now** (with the user's one-tap approval; nothing sends without them), **re-date** with a stated reason on the Decays line, or **release** (strike through with a one-line why).
-- [ ] Post end-of-day status updates; send appreciation for the day's contributions (grounded per the appreciation rule in the Draft Message Rules above).
-- [ ] In Quick Close this pass is human moment #1: it caps at the tagged set plus a one-line "anything else you want to send tonight?" check.
-
-### 5. Lessons Learned
-
-- [ ] **Curate the day's `## 🌱 Lesson candidates` (v2.14.0):** present the accumulated one-liners from today's plan; the user answers keep/drop per line. Keepers get promoted to `lessons/` or folded into the owning project's docs; drops get struck through in place. In Quick Close this is human moment #2.
-- [ ] Document any additional reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
-- [ ] Update project REFERENCE.md with any new stable facts discovered today.
-
-### 5a. Native memory capture-buffer sweep
-
-- [ ] Follow the complete [native memory capture-buffer sweep](references/ritual-worker-contract.md#native-memory-capture-buffer-sweep): keep memory ON, skip active harnesses as pending, archive before ingestion and require separate native clear qualification.
-
-### 6. Career Amplification
-
-- [ ] Review today's work for content opportunities: blog posts, articles, videos, talks.
-- [ ] Note ideas in a running list (see thought-leadership writing skill for the full workflow when ready to write).
-- [ ] Themes to watch for: novel patterns, hard-won solutions, process innovations, team dynamics insights, industry observations.
-
-### 7. Context Capture
-
-**Date discipline (matches Day-Start Step 1 and the global agent rules).** All session-log entries and CONTEXT.md updates written tonight MUST use today's verified date—not a date inferred from session continuity or memory. If the conversation has been running for multiple days, the agent's sense of "today" may be wrong by hours or days. Re-anchor before writing.
-
-- [ ] Run `date "+%Y-%m-%d %H:%M:%S %Z (%A)"` once at the start of this step. Use the output as today's authoritative date for every file write that follows. (If `synthesis-checkpoint` is loaded, invoke it instead — it does this anchoring plus a git-log cross-check.)
-- [ ] For each project worked on today: append a session-log entry to `sessions/YYYY-MM.md` with today's verified date in the header. Format the date as ISO `YYYY-MM-DD` (e.g., `## 2026-05-27 (Wed) — Day-end summary`).
-- [ ] Update CONTEXT.md. Refresh the "Last session" field with today's verified date and update "Recent Sessions" with a one-line summary. **Every live entry in an open-items section carries its own age:** stamp it `(as of YYYY-MM-DD, review Nd)` when you write it, and re-stamp it only when you have actually re-checked it — a stamp advanced without a check is a false receipt, which is worse than an obviously old one. Entries that are genuinely done are closed out into `sessions/YYYY-MM.md` — write them there, verify they landed, then remove them from CONTEXT.md. `context_doctor.py` reports a stamped entry as `item-currency` once it passes its review horizon (14 days when `review Nd` is omitted); match the horizon to the item — owed work at the default, backlogs and wishlists at `(as of YYYY-MM-DD, review 180d)` — and park a settled decision under a decisions heading, since the section heading is what the checker reads as owed.
-
-- [ ] Update MEMORY.md if current state info is stale (version numbers, environment status, team assignments).
-- [ ] Update `last_session` date in `index.yaml` for each active project worked on today — use today's verified date.
-- [ ] **Local context gate:** run context_doctor.py --project <active-project-path> --readiness local for every project worked today. Structural defects block; expected local-only Git state remains visible.
-- [ ] **Record the ritual (v2.28.0):** `synthesis exec-public synthesis-daily-rituals/scripts/ritual_state.py record --direction day-end --workspace <ws> --date <logical workday> --mode <mode> --outcome <outcome> [--count k=v] --session <actual session identity> [--pointer <session log>]`. **`--date` is the workday being closed, never inferred from the clock** — closes are routinely written the next morning, and one person's workspace workdays open and close at different times. Records are structured data capped at 2048B so the append stays atomic under concurrent seats; the narrative belongs in the session log the `--pointer` names. Every mode records, observer included; day-start uses `--direction day-start`.
-
-### 8. Skills Maintenance
-
-- [ ] If any installed skill copies changed, check whether those edits need to be synced back to the source repo. Use `synthesis-skills-manager` or check `.source.json` provenance files.
-- [ ] If skills were updated in source repos, verify they were installed to the Claude Code, Codex, and cross-agent locations that use them.
-
-### 9. Machine Sync
-
-- [ ] Run mac-sync (credentials, config, git remotes across machines).
-
-### 10. Weekly Loose-Ends Review (owed weekly — v2.14.0)
-
-**Owed-weekly gating (replaces the v2.8.0 Friday-only rule).** The review is owed once per week per workspace, anchored to Friday, and tracked as `weekly-review` records in the append-only ritual log. Run `synthesis exec-public synthesis-daily-rituals/scripts/ritual_state.py query weekly-review --workspace <ws>`: if the date it returns is on/after the most recent Friday, skip this step silently. If it predates the most recent Friday, or there is none, and today is on/after that Friday, run the scan below — in whichever ritual notices first (Day-Start Step 1 checks the same condition), in any day-end mode including Quick Close — then `ritual_state.py record --direction weekly-review --workspace <ws> --date <today>`. A `synthesis-catchup-ledger` sweep on/after that Friday counts as the week's review (record its date); and if this scan finds 2+ consecutive missed rituals, suggest running that skill — it is the recovery tool for broken cadence. This decoupling exists because a Friday-evening-only review is disabled by exactly the skip it is meant to catch.
-
-**Scope: past 14 calendar days.** Look back from today through 14 days ago. This captures the current week + the previous week — enough to surface items deferred across one weekend boundary, which is the typical failure mode.
-
-**Sources to scan (read each one; do not infer):**
-
-- [ ] **Calendar Guardian — week and month horizons (v2.20.0).** Part of the owed-weekly review, so a skipped Friday still gets caught by the same gating:
-  - **Week ahead:** sweep all configured calendars for collisions, overcommitted days (config thresholds), unanswered RSVPs, and prep-less meetings — while there is still time to move things. Flag every lead-time meeting (`.agents/meeting-preps.yaml`) in the coming week so research that needs more than a day starts early (v2.26.0). Candidates-to-move come with drafted notes, same contract as the nightly review.
-  - **Month ahead:** scan for anything needing lead time — travel, conferences, deadlines, visits. Any commitment that should start an absence-coordination notification clock (its `notify_on_commit` cohort, or a lead-time deadline inside the coming month) gets flagged NOW; this scan is what makes "people hear as soon as it is known" true in practice rather than in intention.
-- [ ] **The pull-request queue for this workspace's own repos (v2.35.0).** Run `synthesis exec-public synthesis-daily-rituals/scripts/pr_queue_scan.py --workspace <W>`. It reads the workspace's `.agents/repos.yaml` — the same declaration the source-code sync uses — and reports, oldest first: review requests naming the principal, their own open PRs, and PRs in the declared repos that nobody else was asked to review (where dependency bots land). **Scope follows the manifest, so each workspace's review sees only its own repos** and no second list has to be maintained. The scan is deliberately NOT filtered by `ritual_sync`: that flag governs whether a working copy is fast-forwarded, which is a different question from whether a repo has a request waiting on a human — skill sources and context repos carry `ritual_sync: no` and still have PRs. It exits 0 always and names every repo it could not read, because **an unscanned queue must never read as an empty one**. Since v2.36.0 the scan dispatches by origin host: `bitbucket.org` repositories are scanned through the `pr_queue` helper the synthesis-bitbucket skill ships, and any other non-GitHub host stays NOT SCANNED with the host named as the reason. Origin: on 2026-08-28 the review reported one waiting-on item past seven days while a review request naming the principal sat 139 days old, unseen — the review had not missed it, it had not looked. The gap was written down that day and stayed open until 2026-09-05 because the day that found it never closed.
-- [ ] `daily-plans/YYYY-MM-DD.md` for the past 14 calendar days. In each plan, look for:
-  - Drafts (`### Draft N: ...`) without a following `**Sent:**` marker — these are unsent and the deadline already passed
-  - Items under `## Priority Tasks → Do today — not negotiable` that lack a completion marker (✅ or "DONE" or strikethrough)
-  - Existing `## Carryover open items` / `## Stale targets` sections — these are last week's loose ends that may or may not still be relevant
-  - Anything under `## Decisions needed from Rajiv` that did not get a decision recorded
-- [ ] Each active project's `CONTEXT.md` "Open Items" / "Decisions Needed" / "Open Questions" sections — flag items whose surrounding text has not changed in 14+ days
-- [ ] Each active project's `## Waiting On Others` table — flag rows whose "Last asked" / "Asked at" timestamp is >7 days ago (one full work-week without a follow-up signals the ask got buried or forgotten)
-- [ ] `sessions/YYYY-MM.md` for the current AND previous calendar month — scan for explicit personal commitments (Rajiv saying "I'll do X tomorrow" or "I'll send Y by EOD") and verify each has a matching completion record. Pattern-match on first-person future-tense verbs in Rajiv's own text, not in quoted teammate messages.
-
-**Classify each surfaced item:**
-
-- **STILL RELEVANT** → carry into Monday by appending to Friday's daily plan `## Carried Items` section in the canonical format the cockpit reads. Include: the item description, the original date it surfaced, the original source (which plan / which CONTEXT.md / which Slack thread). This is what Monday's day-start picks up.
-- **OBSOLETE** → annotate IN PLACE on the original source file with a one-line reason (e.g., "obviated by Y on YYYY-MM-DD", "stakeholder OOO through Z", "decision moot post-X"). These items stop appearing in future weekly reviews because they're now marked. Do NOT delete — the annotation is the record that the item was triaged.
-- **AMBIGUOUS** → surface to the user with a brief context block. They decide carry-forward vs close. Do not guess; for items that touch other people's commitments or strategic direction, the user must be the one to call it.
-
-**Output requirements:**
-
-- [ ] Add a `## Weekly Loose-Ends Review` section to today's (Friday's) daily plan. Structure: scan summary at top (count of items by classification + per-source breakdown), then the explicit STILL RELEVANT list (these are what Monday picks up), then OBSOLETE-with-reason list (audit trail), then AMBIGUOUS list (decision queue for the user).
-- [ ] If items in STILL RELEVANT need to be tracked across the weekend, populate today's daily plan `## Carried Items` section. (Monday's plan, when created, will pull from there as part of normal day-start.)
-- [ ] Annotate OBSOLETE items in their ORIGINAL source files (not in this review section) so they get marked once and stay marked.
-- [ ] Leave every changed plan and annotation session-attributed; Step 11 publishes the final day-end batch.
-
-**Failure mode to avoid:** writing a `## Weekly Loose-Ends Review` section header without actually scanning the sources. The value is in the scan. If sources have not been read in this invocation, do not write the section — note "Weekly Loose-Ends Review skipped — scan not performed this invocation" in the plan and surface the gap to the user.
-
-### 11. Remote Readiness and Final Verification
-
-**This step is mandatory and is the final mutating day-end step.**
-
-- [ ] Re-read the lease-backed coordination board. Do not mutate paths held by another active session; report them as active local work rather than defects in this ritual.
-- [ ] Publish every pending source path owned by this ritual under its repository policy. Inspect status and the staged index before each exact-path commit; run required tests and normal hooks.
-- [ ] Run `checkpoint_sync.py --flush-pending`. Any retained relevant manifest blocks day-end remote readiness.
-- [ ] For every project worked today, run `context_doctor.py --project <path> --readiness remote` and `conformance.py continuity --project <path> --readiness remote`. Require PASS.
-- [ ] Run `repo_sync_check.py` across the full workspace. Every path owned by this ritual must be clean and upstream-current. Dirty state protected by another active coordination claim is reported and left untouched.
-- [ ] Verify intended remote heads independently. Record `REMOTE_READY` in day-end state only when the project gates pass; otherwise record `blocked` with the local recovery state intact.
-
-This gate distinguishes incomplete publication from legitimate parallel work. It never sweeps another session, discards local changes, bypasses hooks, or turns a local-only pass into a cross-machine claim.
-
----
-
-## Ritual Persistence Protocol
-
-Day-start, mid-day sync, and observer mode leave their writes session-attributed and locally recoverable. They do not commit or push merely to preserve same-machine continuity. Day-end and explicit remote-handoff mode publish the batch.
-
-### Local mode
-
-Track every file this invocation changes. Update project tiers before a natural pause and release or narrow coordination claims. PostToolUse manifests and Stop receipts provide automatic local continuity; an interrupted run remains recoverable from its manifest plus Git status and diff.
-
-### Remote mode
-
-Publish source paths first under each repository branch, review, test, and deployment policy. Then flush exact private-context paths through synthesis-repo-guard. Before each source commit, inspect the full staged index and include only attributed paths. Never use broad staging, never touch another active claim, and never bypass hooks.
-
-Commit messages follow the global hygiene rule: generic in public and private repositories, with no sensitive names, titles, rationale, or prior values. Git history is not a session transcript.
-
-Remote publication is complete only when remote-mode context doctor and continuity conformance pass, intended remote heads are verified, and no relevant pending manifest remains.
-
----
-
-## Autonomous Work and Audio Alerts
-
-When the user signals stepping away ("going to take a shower", "heading out", "don't wait on me", "continue without me"):
-
-1. **Activate autonomous mode** — complete all planned work without prompting for confirmations.
-2. **On completion of any significant task**, play the audio alert. **Alert-confidentiality rule (v2.14.0, matching the synthesis-repo-guard v2 alert model):** spoken text and notification banners carry ZERO identifying content — no client, repo, workspace, project, or person names. Others hear speakers on calls and see banners on screen-shares. Generic wording only, and honor the mute flag:
-   ```bash
-   [ -f ~/.synthesis/quiet-audio ] || { afplay /System/Library/Sounds/Glass.aiff && \
-   afplay /System/Library/Sounds/Glass.aiff && \
-   afplay /System/Library/Sounds/Glass.aiff && \
-   say "The current task is complete. Details are on your screen."; }
-   ```
-   `~/.synthesis/quiet-audio` (console-managed) silences all audio; on-screen detail is unaffected.
-3. **If a blocker requires input**, play the alert FIRST (same generic wording — never speak the blocker's subject), then display the question on screen.
-4. **This is not limited to deployments** — any significant milestone (PR review posted, integration complete, deployment done, tests passing after a fix) should alert if the user is away, always with the generic wording.
-
-**Prerequisite:** the current tool must be authorized to run the local alert commands (`afplay` and `say` on macOS). If not, warn at the start of autonomous mode.
+# Daily Rituals
+
+The principal's day-start, day-end, the syncs between them and the weekly review: close the gap
+between what happened and what the principal knows, plan the day, and close it so nothing owed
+slips silently. Each workspace runs its own; a project supplement may add repos and channels.
+
+## Binding rules
+
+1. **Anchor the date first** with `date`; every record uses that date, never memory or a commit time. The model has no clock, and a commit can land overnight.
+2. **The declared lists decide:** every repo with `ritual_sync: yes`, every surface and every mailbox the workspace declares, every run. Never judge what "feels active"; a judgment layer let a repo drift unseen for six weeks.
+3. **A run proves its own coverage:** open with `sync_watermark.py begin`, take every window from `window`, gate with `status --since run`. A read from this morning is not current now (2026-09-01: a 09:15 read hid a 09:27 answer).
+4. **Every repo, mailbox and target lands in one named state with a denominator;** unscanned never reads as empty, and any surface not swept is named.
+5. **Nothing decay-tagged passes its date silently:** send (on the principal's approval), re-date with a reason, or release. An item that passed its date with no decision is marked Lapsed and gets an append-only lapse-register row.
+6. **Record every ritual,** in every mode, with `ritual_state.py record` and the logical workday as `--date`. A weekly review done early is recorded with the Friday it satisfies.
+7. **Nothing sends without the principal's approval of the exact text.** Every draft is grounded in primary sources and re-checked against the live thread at send time.
+8. **Workspace content stays in that workspace's records,** so deleting the workspace erases it; the person-side plan is a shell with pointers.
+9. **Banners and spoken alerts carry counts and a pointer only,** never a client, repo, workspace or person name, and honor `~/.synthesis/quiet-audio`. Speakers are overheard and banners are screen-shared.
+10. **Observe around live sessions:** claim only the files you write, fast-forward only unheld branches, never repair or re-run another session's work, release claims at the end.
+11. **Native memory stays on.** Durable entries move into synthesis records archive-first; raw memory files are never deleted or edited.
+
+## Contents
+
+- **Procedure** (below): each ritual's order and commands. Read every time.
+- [references/day-start.md](references/day-start.md): the full Day-Start checklist, Steps 1 to 8. Read at day-start.
+- [references/day-end.md](references/day-end.md): modes and Steps 1 to 11, with the memory sweep, provenance scan and publishing. Read at day-end.
+- [references/mid-day-and-modes.md](references/mid-day-and-modes.md): mid-day sync, observer and concurrent-sessions modes, audio alerts. Read on a sync request or when a mode applies.
+- [references/weekly-and-longer.md](references/weekly-and-longer.md): the weekly loose-ends review, the lapse register, quarterly and longer reviews. Read when a review is owed.
+- [references/scripts.md](references/scripts.md): each script's command line, output and exit codes. Read before running one.
+- [references/plan-format.md](references/plan-format.md): the daily plan's structure and the section names the console reads. Read before writing a plan.
+- [references/draft-grounding.md](references/draft-grounding.md): grounding, formatting, numbering and temporal checks for drafts. Read before any draft.
+- [references/sync-watermarks.md](references/sync-watermarks.md): the watermark contract and the Google Chat target set. Read before any sync.
+- [references/decay-sweep.md](references/decay-sweep.md): deadline tags, identity and the sweep's coverage. Read at Day-End Step 4b.
+- [references/mailbox-manifest.md](references/mailbox-manifest.md): `.agents/mailboxes.yaml` and the mailbox states. Read before an email sweep.
+- [references/ownership-routing.md](references/ownership-routing.md): which workspace owns an item, and which side of a conflict moves. Read at the catch-up read.
+- [references/ritual-worker-contract.md](references/ritual-worker-contract.md): desk and workers, artifacts, plan storage separation. Read when a workers registry exists.
+- [references/version-history.md](references/version-history.md), [references/version-history-2.27-to-2.45.md](references/version-history-2.27-to-2.45.md), [references/version-history-2.3-to-2.26.md](references/version-history-2.3-to-2.26.md): why each rule exists. Read when a reason matters.
+- [references/coverage-map.md](references/coverage-map.md): where every 2.45.1 rule lives now. [references/preserved.md](references/preserved.md) (what was retired and why), [references/preserved-skill-v2-part1.md](references/preserved-skill-v2-part1.md), [references/preserved-skill-v2-part2.md](references/preserved-skill-v2-part2.md) and [references/preserved-retired-references.md](references/preserved-retired-references.md) keep the old text verbatim. Read only to review the rewrite.
+
+## Procedure
+
+`<rituals>` is this skill's folder; `<W>` the workspace (its folder under `~/workspaces/`). Scripts run with plain `python3`, standard library only.
+
+**Day-start** ([day-start.md](references/day-start.md)): `date`; `synthesis who`, `synthesis inbox`; `synthesis doctor`; `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --root <knowledge root>` (exit 0 healthy, 1 defects, 2 cannot tell); `python3 <rituals>/scripts/portfolio_review.py` (at most three stale projects as decisions); `ritual_state.py query summary --workspace <W>` and `query weekly-review`; context optimization; `repo_state.py --workspace-root ~/workspaces/<W> --fetch --ff`; channel sync under the watermark gate (Slack, Chat via `gchat_preflight.py`, email via `mailboxes.py`, documents, meeting transcripts); inbox hygiene; catch-up read with ownership routing; `pr_queue_scan.py --workspace <W>`; the day plan with decay tags; morning messages; `ritual_state.py record --direction day-start`.
+
+**Mid-day sync** ([mid-day-and-modes.md](references/mid-day-and-modes.md)): every declared surface, every target re-read, the same gate.
+
+**Day-end** ([day-end.md](references/day-end.md)): ask f, q or o; final capture under the gate; source sync; integration sweep; tomorrow's calendar review; `decay_sweep.py` and the send-or-release pass with lapses recorded; lessons keep or drop; the native-memory sweep; `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <files written today>`; context capture with stamped open items `(as of YYYY-MM-DD, review Nd)`; `ritual_state.py record --direction day-end`; the weekly review if owed; then `synthesis handoff` per project worked, the records doctor with `--project`, and `repo_state.py --discover ~/workspaces/<W>` for anything stranded.
+
+**Desk** (only with a workers registry): `python3 <rituals>/scripts/ritual_workers.py coverage` prints the coverage line that opens every brief.
+
+Every script's exact command line, what it prints and its exit codes: [scripts.md](references/scripts.md).
+
+The v5 install puts the `day-end` launcher (`day-end -q` opens a harness on the ritual) beside the runtime; `install.py --day-end` loads the weekday 16:55 nudge: one fixed banner unless every workspace expected to close today has closed.

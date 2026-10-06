@@ -1,5 +1,13 @@
 # Ritual worker artifact contract — v1
 
+Read when a workers registry exists (`~/.synthesis/ritual/workers.yaml`): before a worker
+writes its artifact, and before the desk folds artifacts into the brief. The desk's coverage
+line comes from `python3 <rituals>/scripts/ritual_workers.py coverage`, which prints
+`coverage: <workspace> <run type> <finished> (<outcome>) · <workspace> pending · <workspace> not scheduled`.
+
+Contents: Terms · Artifact path · Schema (YAML frontmatter) · Body (fixed sections) · Desk
+obligations · Registry · Plan storage separation · Failure semantics · Recording a worker run.
+
 The portable core of distributed ritual execution: **workers write files, the desk reads
 files**. No worker ever messages the desk. A worker that ran leaves a fresh artifact; a
 worker that did not run leaves nothing, and that absence is itself the signal — legible,
@@ -166,8 +174,9 @@ workers:
 they run. `dormant` workers are skipped entirely and never counted against coverage.
 
 Persist `artifact_dir` `~`-rooted (never a literal `/Users/<name>/…` path): the
-registry syncs across the fleet, and the loader expands `~`/`$HOME` per Mac.
-The fleet doctor fails on unexpanded absolute home paths in this file.
+registry syncs across the principal's Macs, and the loader expands `~`/`$HOME` per Mac.
+`ritual_workers.py` refuses a relative path, and refuses a registry that does not validate
+rather than reading it as "no workers"; a missing registry is the single-session ritual.
 
 ## Plan storage separation — fragments and the shell (added 2026-08-17; schema unchanged)
 
@@ -242,37 +251,13 @@ person-side repository defeats that with every day it accretes.
 - Desk runs with zero fresh artifacts → the brief still publishes, with a coverage line
   saying exactly that. A thin honest brief beats a rich stale one.
 
-## Executable evidence contract
+## Recording a worker run
 
-The mandatory [ritual evidence reference](ritual-evidence.md) defines the enforced
-workspace root, full surface declaration, session/outcome binding, local lesson
-candidate pointers, final Lesson candidates section, and bounded artifact checks.
-Read it before any worker completion. The recorder verifies the actual artifact;
-its digest receipt is file evidence, not a native identity attestation. Missing
-artifacts and readiness gaps never justify backfill or a false clean record.
-
-## Native memory capture-buffer sweep
-
-- [ ] Keep native memory ON in every installed harness. Select each harness's
-  actual machine/store and read the current coordination board with
-  `context_edit.py memory-probe`; follow the complete native-memory protocol in
-  `synthesis-context-lifecycle`. This bounded directory hash needs no model call.
-- [ ] Skip active harnesses with explicit pending coverage, including the current
-  harness. Unchanged incomplete work stays pending; missing/moved/unsupported
-  stores are refusals, never an empty success. Do not infer NOT_APPLICABLE from
-  a missing directory or CLI command.
-- [ ] A changed store requires a qualified own-harness native export. Shared
-  `memory-ingest` applies reviewed deterministic routing through the existing
-  PM transaction owner, archives first, deduplicates exact canonical content and
-  leaves contradictions/public candidates as decisions. Save returned pending
-  identities and private evidence pointers in the existing worker artifact.
-- [ ] Complete ordinary exact-session guarded publication at Step 11 before
-  preparing `memory-clear-plan`. Only exact receipted archive/canonical bytes
-  qualify; the source owner currently returns a non-executing native capability
-  pending plan. No raw-file/database deletion or disabling native memory is
-  permitted. Complete native clear only through a separately qualified native
-  operation with a fresh active-seat check and exact unchanged hashes; retain its
-  actual receipt before marking the memory ledger complete.
-- [ ] Report counts and coverage gaps only in alerts. Continue the rest of the
-  ritual while a harness is active or lacks qualified export/clear support. Such
-  a gap prevents claiming a clean memory sweep, not all project work.
+The worker records its run like any ritual, after its artifact is complete:
+`python3 <rituals>/scripts/ritual_state.py record --direction <run type> --workspace <W> --date <logical workday> --outcome <outcome> --session <id> --pointer <artifact path>`.
+The `outcome` in the record and the artifact agree: clean only when every declared surface was
+synced and `gaps` is empty; an unread or failed surface makes it partial or failed. Lesson
+candidates stay as pointers to files in the worker's own workspace; the desk routes the
+keep/drop decision without copying their prose across workspaces. Never write an artifact after
+the fact for a run that did not happen, and never rewrite an old record to make coverage look
+complete.

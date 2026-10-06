@@ -70,15 +70,14 @@ class Target:
 
 
 def _load_yaml(path: Path) -> dict:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from simple_yaml import load
+
     try:
-        import yaml
-    except ImportError as exc:  # pragma: no cover - environment-specific
-        raise ConfigError("PyYAML is required to read the sync config") from exc
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        payload = load(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
-    except yaml.YAMLError as exc:
+    except ValueError as exc:
         raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
     if not isinstance(payload, dict):
         raise ConfigError(f"{path} must be a mapping at the top level")
