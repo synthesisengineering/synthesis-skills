@@ -1,6 +1,6 @@
 # Meeting prep: profile configuration and shared contributions
 
-Where the principal and reader profiles live, how `prep_init.py` binds them to one workspace, and how another seat contributes to a prep pack. Moved verbatim from the 1.3.0 SKILL.md; only link paths changed. Read it before any profile operation or shared write.
+Where the principal and reader profiles live, how `prep_init.py` binds them to one workspace, and how another session contributes to a prep pack. Section 1 moved verbatim from the 1.3.0 SKILL.md apart from its last paragraph; the shared-contribution procedure was rewritten for the v5 board. The retired text is verbatim in [preserved.md](preserved.md). Read it before any profile operation or shared write.
 
 ## 1. Configuration contract
 
@@ -39,35 +39,30 @@ workspace's evidence. Missing profiles permit the three essential questions
 current context. Missing or ambiguous ownership prevents profile reads and
 writes; it never triggers a search of global or other-workspace profiles.
 
-Legacy global profiles need an explicit per-file ownership and hash map. The
-existing prep owner provides read-only preflight and bounded apply/resume;
-see [workspace-profiles.md](workspace-profiles.md). Migrating one
-workspace leaves unresolved and other-owner entries untouched.
+Profiles that lived in the old global folder (`~/.synthesis/meeting-prep/`)
+were migrated into their owning repositories in 1.3.0, and that folder is
+empty. If one ever reappears, classify each file's owner first, then move it
+with ordinary file and git operations into that workspace's repository; never
+migrate a mixed profile until its ownership is resolved, and never copy one
+into another workspace. See [workspace-profiles.md](workspace-profiles.md).
 
 ## Shared prep contributions
 
-A broad `meeting-preps/` claim remains exclusive for ordinary edits. To accept a
-contribution, its authenticated active recipient uses `prep_init.py share-pack`
-with the exact contributor seat, private context repository, workspace, literal
-Markdown artifact, create/append operation and (for append) reviewed SHA256.
-`--private` asserts the already approved private destination; names and Git
-remotes are not privacy evidence. Both seats register the same physical checkout
-and branch; the profile owner marker and any team registry must agree. A team
-shared/public repository cannot receive these private prep contributions.
+A prep pack lives inside some session's claim (often a broad `meeting-preps/`
+claim held by the operations seat). Another session never writes inside a
+claim it does not hold: the v5 commit check refuses a commit there, and an
+uncommitted edit collides with the holder's work. To contribute:
 
-The grant is recorded in the recipient's own coordination row, expires within
-one hour (15 minutes by default), and binds its current ordinary claim scope.
-Do not paste grant markers into `coordination claim`, narrow or release another
-seat's claim, or claim the overlapping artifact as exclusive. Missing or ambiguous
-authority refuses before an artifact effect. The recipient can invalidate grants
-by changing its held scope or releasing its own seat through existing owners.
+1. Find the holder: `synthesis who`.
+2. Send the contribution as a message, with the exact artifact path and the
+   text: `synthesis msg <holder> "<artifact path>: <text to add>"`. The holder
+   sees it on its next prompt.
+3. The holder either writes the text in itself, or releases that one file
+   (`synthesis release <path>`) so the contributor can `synthesis claim <path>`
+   it, write, and release it again.
 
-The contributor uses `prep_init.py write-pack` with that grant ID, native event
-payload and bounded text file. Creation requires absence; append preserves the
-complete reviewed prefix. The existing record transaction serializes competing
-writers, rejects changed preimages and retains interruption custody. Restore
-valid current authority and use the existing transaction recovery owner with the
-same `meeting_prep_share` selection to recover; never remove its journal by hand.
-A grant covers one artifact and transaction custody only. It grants no generic
-edit, profile migration, publication, deployment or recipient impersonation right.
-The recipient retains publication custody under its existing claim.
+A contribution covers one artifact and nothing else: it is no permission to
+edit other files, migrate profiles, publish, deploy, or speak for the holder.
+Private prep content goes only to the workspace's private repository; a shared
+or public team repository never receives it. The holder keeps publication
+custody.

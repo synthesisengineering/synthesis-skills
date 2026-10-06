@@ -10,6 +10,7 @@ Contents:
 - Rules: subject-keyword spares, positive-only `subject_contains`, the calendar-response rule shape
 - Repository hygiene: the concurrent-window git index race, user-specific values leaking into a public skill
 - `imapsync` flag names verified against `--help` before destructive runs
+- Sweeps (2026-08-29 and 2026-09-28): the connector first, the recipient axis, `never_touch` under a bulk request, iCloud and Message-ID
 
 ## IMAP `TO` operator does substring matching, not equality
 
@@ -198,6 +199,24 @@ This is fast (under a second) and prevents an entire class of "I lost an hour be
 For a fresh account-pair migration of ~1,000 unique messages, plan on 2–3 hours wall-clock as the baseline. Faster is a pleasant surprise; slower is normal under aggressive throttling.
 
 **Implication for orchestration:** A multi-hour run cannot live inside a single conversation session's lifetime. Use a shell-level detachment pattern (`nohup` + stdio redirection + `disown`) so the imapsync process re-parents to `init` and survives any session reset, terminal disconnect, or harness lifecycle event. The harness's `background-task` mechanism is not equivalent — it tracks the task and can terminate it.
+
+## A sweep has two axes, and the wrong client silently no-ops
+
+**Incident (2026-08-29):** two misses in one multi-account run. First, Gmail accounts that had a working API connector were swept through Mail.app AppleScript because bulk sender extraction was cheaper there. The loop iterated a live `every message ... whose` list while moving its members, so one message per domain moved and the loop reported success: 6 of 494 moved, the inbox count unchanged. The same work through the Gmail API (`search_gmail_messages` plus `batch_modify_gmail_message_labels`) was server-side, batched and verifiable with a confirming query. Second, a burst of genuine verification codes from a large platform, sent to made-up addresses on a catch-all domain, classified `keep`: the sender passed SPF, DKIM, DMARC and BIMI, and nothing on the sender axis could see the abuse. The signal was the recipient (`Original-recipient:`), and the existing alias-purge tooling cleared it in one dry run and one apply.
+
+**Rule:** the connector is authoritative for the accounts it covers; Mail.app is the fallback only for what no connector can do (drafts, and Microsoft 365 or outlook.com accounts with no API path). A catch-all mailbox has two independent sweep axes, who sent it and who it was addressed to, and every sweep runs both. Count the inbox before and after every move; a pass reports only what it examined, and reads as complete either way. A broad heuristic such as `list:*` finds candidates and never authorizes a move: sampling ten such messages before acting found live business threads routed through list headers.
+
+## A bulk archive request honours `never_touch`
+
+**Incident (2026-09-28):** asked to archive everything already tracked or dealt with across personal inboxes, the pass held the 77 messages that matched the never-touch list (school, health, credit, payroll and fraud-alert subjects) and reported them by sender.
+
+**Rule:** a bulk request does not override `never_touch`. Hold those messages, count them by sender, and let the principal relax the rule for specific senders.
+
+## iCloud IMAP cannot search by Message-ID
+
+**Incident (2026-09-28):** archiving 336 iCloud messages by Message-ID, a dry run found none: `UID SEARCH HEADER Message-ID` returned empty for every message, including one a subject search confirmed was present. The server does not support that search and fails silently.
+
+**Rule:** on iCloud, fetch the INBOX's Message-ID headers once, build a Message-ID-to-UID map, and match exactly (that run then matched 334 of 336). Always dry-run a Message-ID-driven move, and treat "0 found" as a tool failure until a positive control proves otherwise.
 
 ---
 

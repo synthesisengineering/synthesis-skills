@@ -6,7 +6,7 @@ Contents:
 - Calendar guardian: the three parts and who owns the cadence
 - The horizons: next working day, week ahead, month ahead
 - The next-day review: checks 1 to 7, including the overcommitment check
-- The same-day shield: hold events, the `holds_state.py` commands, the append-only ledger, expiry, routing
+- The same-day shield: hold events, the `holds_state.py` commands (recurring instances included), the append-only ledger, expiry, routing
 - Config keys: the `calendar_guardian` block
 
 ## Calendar guardian (v1.1.0)
@@ -87,7 +87,24 @@ makes the policy mechanical:
   holds_state.py record release --id <event-id> --by <seat> --reason "..."
   holds_state.py query current              # what is held today
   holds_state.py query expired              # calendar debt to clear
+  holds_state.py doctor                     # log integrity, orphan releases, privacy
   ```
+
+  A recurring hold (placed with `--recurring`, or an older record whose kind
+  says recurring) is one calendar id for every instance, so a bare release is
+  refused (exit 2). Name what is being released:
+
+  ```bash
+  holds_state.py record release --id <event-id> --by <seat> --instance 2026-09-10 --reason "..."  # that day only
+  holds_state.py record release --id <event-id> --by <seat> --series --reason "..."              # every instance
+  holds_state.py query for-date --date 2026-09-10   # an instance released for that day drops out
+  ```
+
+  After any write that changes availability, check the derived state
+  (`is-releasable`, `query for-date`) rather than trusting the write; a mistake
+  is repaired by appending a corrective event, never by editing the log
+  (lesson 2026-09-03: releasing one day of a recurring hold once marked the
+  whole series released).
 
 - **Ask `is-releasable`; do not judge.** Exit 1 means no `place` event exists
   for that id, so the agent did not create it: leave the event alone and ask

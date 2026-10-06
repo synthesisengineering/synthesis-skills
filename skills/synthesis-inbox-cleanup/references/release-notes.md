@@ -3,11 +3,35 @@
 The version notes from 1.4.0 to 1.6.2, the license and the author line, moved verbatim from the 1.6.2 SKILL.md. The 1.6.0 note documents the impersonation scanner and the catch-all routing rule.
 
 Contents:
+- v2.0.0: v5 (the engine's stable path, the slim installer, the principal impersonation rule)
 - v1.6.2: cross-platform runtime pointer replacement
 - v1.6.0: impersonation scanning, and why a passing domain check is not a safety verdict
 - v1.5.0: workspace scoping
 - v1.4.0: the stable cross-client engine runtime
 - License, Author
+
+## v2.0.0 — v5: one stable engine path, and the principal rule
+
+The engine is no longer copied into `~/.synthesis/inbox-cleanup/engine/`. The v5
+runtime installs it at `~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts`,
+which survives client plugin updates, so `scripts/install.sh` now only seeds the
+private config and rules and reports what is missing (including a leftover 1.x
+engine copy, which it never deletes). The pointer-replacement machinery of 1.4.0
+to 1.6.2 left with the copy.
+
+`scan_impersonation.py` gains the principal rule (IR-19, carried from the
+unshipped 4.154.13 candidate): a display name equal to the account owner's name
+or an alias, sent from any address not listed exactly, is flagged high. The
+private `impersonation.yaml` must declare `principal.names` and
+`principal.addresses` (shape in `templates/impersonation.example.yaml`);
+without them the scan refuses (exit 2) before reading mail, because a scan that
+silently lacks the rule looks clean. Address matching normalizes ASCII case and
+IDNA domains without stripping plus tags or dots; name matching uses NFKC, case
+folding, format-control removal and collapsed whitespace. A sender group that
+claims the principal's name is flagged even when empty or listed, and encoded
+names are parsed before display decoding so punctuation cannot change the
+sender structure. `--check-config` validates the file without touching mail.
+An allowed From address is not proof of authentication or safety.
 
 ## v1.6.2 — Cross-platform runtime pointer replacement
 

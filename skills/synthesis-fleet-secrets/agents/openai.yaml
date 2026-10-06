@@ -1,7 +1,7 @@
 interface:
   display_name: "Synthesis Fleet Secrets"
   short_description: "Vault-backed machine secrets for a personal fleet"
-  default_prompt: "Use $synthesis-fleet-secrets to materialize this Mac's secrets from the personal secrets manifest and verify them with the doctor."
+  default_prompt: "Use $synthesis-fleet-secrets to materialize this Mac's secrets from the personal secrets manifest and check them by hand (modes and a values-absent scan)."
 
 policy:
   allow_implicit_invocation: false

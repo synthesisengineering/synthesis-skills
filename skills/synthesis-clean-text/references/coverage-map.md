@@ -12,6 +12,10 @@ Every part of the 2.0.0 SKILL.md and where it lives now. Nothing was removed or 
 | Application | SKILL.md (verbatim); summarized in Binding rules 1 and 5 |
 | Related | SKILL.md (verbatim) |
 
+## v5 script change (2026-10-05)
+
+The v5 code evaluation (`tool-scripts.md`, row `synthesis-text-provenance/scripts/text_integrity_audit.py`) ruled KEEP and "move it into clean-text", which had no script of its own for its no-hidden-marker rule. `scripts/text_integrity_audit.py` (191 lines) moved here unchanged, with its five tests from synthesis-text-provenance's `scripts/test_provenance_tools.py` (IntegrityTests) as `tests/test_text_integrity_audit.py`, plus two command-line tests (scenario E88: each hidden character reported with its position, the text and its folder unchanged). SKILL.md gained binding rule 6 and "The character audit" with the exact command lines and output; nothing was removed, so the no-removals gate still finds every 2.0.0 line. The "Related" section's pointer to synthesis-text-provenance for "non-mutating text-integrity inspection" is a frozen line and stays; that skill now points back here for the audit.
+
 ## The 2.0.0 frontmatter, verbatim
 
 Kept on record so the old description and metadata are not lost.

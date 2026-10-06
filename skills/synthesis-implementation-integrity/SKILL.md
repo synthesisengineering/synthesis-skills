@@ -28,7 +28,7 @@ not cover. Find and repair concrete gaps, then make an acceptance decision.
 6. **A bare `TODO` or "for now" does not ship.** If it is not acceptable as permanent code, it is not acceptable to ship; an intentional scope boundary is documented.
 7. **Verification has an endpoint.** When the required evidence is complete, return the verdict and advance; reopen accepted work only for a specific unresolved criterion or counterexample.
 8. **For autopilot task contracts, use the [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods.** A disconnected or fixed-answer check is a substantive defect.
-9. **Releases need executable acceptance, extracted values and boundary authority,** as the three sections below set out. A verifier is evidence; it never grants approval.
+9. **Releases need executable acceptance (PR CI on the exact head), extracted values and boundary authority,** as the three sections below set out. A verifier is evidence; it never grants approval.
 
 ## Contents
 
@@ -38,33 +38,32 @@ not cover. Find and repair concrete gaps, then make an acceptance decision.
 - [references/verification-custody.md](references/verification-custody.md): verifying in a shared workspace. Read it before any verification.
 - [references/autopilot-software-quality.md](references/autopilot-software-quality.md) and [references/autopilot-data-quality.md](references/autopilot-data-quality.md): outcome review methods for autopilot task contracts.
 - [references/background.md](references/background.md): the verification chain, anti-patterns, and related skills. Read it when choosing between this skill and preflight, code-audit, pr-review or codebase-review.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.4.1 text now lives.
-- Executable Acceptance Manifests, Extract, Do Not Restate, Authority Lives at the Boundary: below.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.4.1 text and each script change now lives.
+- [references/preserved.md](references/preserved.md): the acceptance-manifest and receipt text v5 replaced, verbatim. Read only to review the change.
+- Executable Acceptance, Extract, Do Not Restate, Authority Lives at the Boundary: below.
 
-## Executable Acceptance Manifests
+## Executable Acceptance
 
-For a non-trivial release, prose that says which tests passed is an
-author-written claim ledger, not executable acceptance evidence. Declare the
-acceptance universe in a machine-consumed manifest and execute it with
-`acceptance_suite.py run` at the release boundary.
+For a non-trivial change, prose that says which tests passed is an
+author-written claim ledger, not executable acceptance evidence. Acceptance is
+the tests that pull-request CI runs on the exact head commit: in v5, PR CI is
+the only release gate, and nothing merges or releases until it passes.
 
-The manifest must declare `membership: closed`, a `production_entry_point`, an
-`enforcing_boundary`, any state-changing `receipt_consumer`, the
-`expected_status` for each case, and an explicit `unverified_remainder`. Every
-case names the defect that motivated it and a runnable fixture. Every changed
-production surface names at least one case, and every declared case maps back
-to a changed surface. The enforcing boundary supplies the change base and
-derives the actual base-to-head file universe from Git; schema-2 acceptance
-requires exact equality between that authoritative universe and
-`changed_surfaces`. The manifest does not get to declare its own completeness.
-For a defect-pinning change, preserve evidence that the fixture commit predates
-the green implementation; a test added after the code cannot prove that it
-would have caught the original gap.
+Every changed production surface names at least one test that exercises it
+through its real entry point, and every test the change adds maps back to a
+changed surface. The pull request's diff against its base, not the author's
+list, is the universe of changed surfaces; the author does not get to declare
+their own completeness. The PR description names the production entry point,
+the enforcing boundary, any state-changing consumer, and the unverified
+remainder: what the tests do not exercise. For a defect-pinning change,
+preserve evidence that the fixture commit predates the green implementation
+(commit the failing test first, or keep its failing run); a test added after
+the code cannot prove that it would have caught the original gap.
 
-Run every declared case to a terminal state and distinguish pass, expected
-failure, unexpected failure, execution error, and not-run coverage. A closed
-manifest makes the measured universe explicit; it does not prove behavior
-outside that universe or turn the author into an independent reviewer.
+Read every test to a terminal state and distinguish pass, expected failure,
+unexpected failure, error, skipped and not run; a skip is not a pass. Green CI
+makes the measured universe explicit; it does not prove behavior outside that
+universe or turn the author into an independent reviewer.
 
 ## Extract, Do Not Restate
 
@@ -81,17 +80,13 @@ parallel parser whose input was copied from the same claim.
 ## Authority Lives at the Boundary
 
 A standalone verifier is evidence, not enforcement. Enforcement exists only
-when the state-changing consumer refuses the operation without a fresh,
-matching, transaction-bound receipt from the declared verifier. Record the
-receipt consumer, the enforcing operation, and the metadata class so an
-acceptance-test result cannot masquerade as an authority grant.
-
-The consumer generates a one-use transaction identifier, supplies the
-authoritative Git base, and recomputes the head commit, tree, manifest digest,
-changed-path set, and changed-path digest after execution. It proceeds only
-when the parsed result binds every one of those fields, all declared cases are
-terminal and matched, and the worktree remains clean. Process exit status by
-itself is not receipt consumption.
+when the state-changing operation itself refuses without the required evidence:
+in v5, a merge refuses without passing PR CI, the send and deploy guards refuse
+without the principal's single-use approval code for that exact action, and the
+commit check refuses credentials and unapproved disclosures. Record which
+boundary enforces each claim, so an acceptance-test result cannot masquerade as
+an authority grant. A process exit status, a green badge someone else reports,
+or a pasted log is not the boundary's own check.
 
 A verifier can establish membership, execution, polarity, and coverage for its
 declared universe. It does not manufacture approval, disclosure authority, or

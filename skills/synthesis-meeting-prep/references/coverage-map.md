@@ -24,6 +24,28 @@ All four keep their content. Short contents lists were added after the opening p
 
 Before this map was written, `v5-skill-coverage-check.py` reported 1 line as not found verbatim (it now finds it only because this map quotes it). In section 1, `see [workspace-profiles.md](references/workspace-profiles.md). Migrating one` moved into references/ and its link now points to `workspace-profiles.md`, one folder down; the wording is unchanged.
 
+## v5 script changes (2026-10-05)
+
+Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-meeting-prep rows): `prep_lint.py` KEEP; `prep_init.py` SLIM to about 180 lines that scaffold into `<workspace private repo>/profiles/meeting-prep`, because the migration is done (`~/.synthesis/meeting-prep/readers` is empty) and the grants solved an old-board problem.
+
+| Part | Now |
+|---|---|
+| `prep_lint.py` (298 lines) | Unchanged; its tests moved from `scripts/test_prep_lint.py` to `tests/test_prep_lint.py` (only the import path changed) |
+| `prep_init.py` `resolve`, `init`, `add-reader` | Kept, 569 lines before and 214 after. Same owner rules: an explicit absolute `--context-repo` that is exactly its Git checkout root (never home, `/`, a symlink, a subfolder or a path with `..`), a stable `--workspace` id, the `.owner.json` binding (a conflicting, boolean-schema, symlinked or hard-linked marker refuses; existing profiles with no marker refuse), no symlinked folder on the path, never overwrite (O_EXCL), 0600 files and 0700 folders, the 8 MiB bound checked before anything is created. The dependency on synthesis-context-lifecycle's `record_transaction.py` is gone; plain `os.open(O_EXCL)` gives the same no-overwrite and concurrency result |
+| `prep_init.py migrate` | Removed (job finished). Its procedure is verbatim in [preserved.md](preserved.md); references/workspace-profiles.md now says how to handle a stray legacy profile by hand |
+| `prep_init.py share-pack`, `write-pack` | Removed (REPLACE by the v5 board). Shared contributions go through `synthesis who`, `synthesis msg`, and the holder's `synthesis release`/`claim` of one file; binding rule 12 and references/profiles-and-sharing.md say so. The old text is verbatim in [preserved.md](preserved.md) |
+| `scripts/test_prep_init.py`, `scripts/test_profile_workspace.py` | Merged into `tests/test_prep_init.py`: every scaffold and ownership test kept (including the concurrent same-reader creation and the boolean owner-marker schema); the migration and grant tests left with their code |
+
+Scenarios from section 3 of the evaluation: E73 (profiles in the workspace's private repository, never `~/.synthesis`) is `tests/test_prep_init.py::test_workspace_profiles_are_separate_by_explicit_owner` and `test_cli_without_owner_refuses_before_writing`; E74 (a "don't raise" line outside the footer, ticket IDs for a non-technical reader, invented precision, no basis) is `tests/test_prep_lint.py`.
+
+Prose changed with the scripts: SKILL.md binding rule 12, the Contents lines for the two profile references, and prep-loop step 5, which now shows the exact `prep_lint.py` command line. The 1.3.0 step 5 opened with this line, reworded only to carry the flags:
+
+```text
+5. **Lint.** Run `scripts/prep_lint.py` on the draft. It checks the
+```
+
+references/profiles-and-sharing.md (the last paragraph of section 1 and the whole shared-contributions section) and references/workspace-profiles.md (the migration sections) changed too; the old text is verbatim in [preserved.md](preserved.md).
+
 ## The 1.3.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

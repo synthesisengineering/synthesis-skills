@@ -8,7 +8,7 @@ A discipline for catching the lazy-shortcut antipattern in AI-assistant output b
 
 The pattern is not unique to one model or one user. It is a structural failure mode of agents trained on conservative defaults — minimize change, hedge claims, defer hard choices. Those defaults are correct when no one has said otherwise. They are wrong, and quietly harmful, when the user has explicitly removed them from the constraint set and the agent overrides that instruction with its trained safety preference.
 
-This skill is the methodology. The operational catalog in `scripts/scan_output.py` is the extract — a phrase scanner that any agent or pipeline can run against draft output. The detailed catalog with rationale, the constraint-first protocol with a worked example, the sub-agent dispatch and acceptance rules, and the anonymized case studies all live in `references/` and load on demand.
+This skill is the methodology. The operational catalog is `costume-catalog.json`, and `scripts/scan_output.py` is a phrase scanner that any agent or pipeline can run against draft output with it. The detailed catalog with rationale, the constraint-first protocol with a worked example, the sub-agent dispatch and acceptance rules, and the anonymized case studies all live in `references/` and load on demand.
 
 ## How the Pieces Fit
 
@@ -20,7 +20,8 @@ SKILL.md (this file)
    |-- references/sub-agent-hygiene.md       Dispatch + acceptance rules
    |-- references/case-studies.md            Anonymized incident teardowns
    |
-   |-- scripts/scan_output.py                Standalone scanner (Python 3, stdlib + pyyaml)
+   |-- costume-catalog.json                  The one public phrase catalog (data)
+   |-- scripts/scan_output.py                Standalone scanner (Python 3.9+, standard library)
 ```
 
 A reader who installs only this skill can apply the methodology end-to-end. The references load on demand; the scanner runs standalone or as a hook in any agent platform.

@@ -39,31 +39,40 @@ Usage:
     python3 scan_impersonation.py --json           # machine-readable
     python3 scan_impersonation.py --strict-only    # only high-confidence hits
     python3 scan_impersonation.py --folder Archive # scan another folder
+    python3 scan_impersonation.py --check-config   # validate the private config only
 
 Never trashes. Removal is a separate, human-reviewed step, per the engine's rule
 that the LLM proposes and the deterministic layer disposes. A false positive here
 is a legitimate vendor notice; deleting one automatically is its own harm.
 
-Brands and their legitimate domains live in
-``~/.synthesis/inbox-cleanup/impersonation.yaml`` when present; otherwise the
-built-in seed below is used. Keep high-value targets in it: crypto custody,
-banking, payments, large platforms, shipping, and the user's own name (display-name
-impersonation of the account owner is a common pretext for invoice fraud).
+The private ``~/.synthesis/inbox-cleanup/impersonation.yaml`` must declare the
+principal: ``principal.names`` (the account owner's display name and aliases) and
+``principal.addresses`` (the exact mailboxes allowed to send under those names).
+Display-name impersonation of the account owner is a common pretext for invoice
+fraud, so a scan without that rule refuses (exit 2) before reading any mail: a
+scan that silently lacks it would look clean. ``--check-config`` validates the
+file without touching mail. ``brands`` is optional; omitting it selects the
+built-in seed below. A shared or public domain never authorizes the principal's
+name; only an exact listed address does, and even that is not proof of safety.
+A report is a review candidate, never proof of identity or permission to remove.
 """
 
 from __future__ import annotations
 
 import argparse
 import email
+import email.errors
+from email import policy
+from email.header import decode_header, make_header
+from email.parser import HeaderParser
 import json
-import os
 import re
+import stat
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _lib import connect, dec  # noqa: E402
 
 CONFIG = Path.home() / ".synthesis" / "inbox-cleanup" / "impersonation.yaml"
 
@@ -110,21 +119,116 @@ CARRIER_HINTS = (
 )
 
 
-def load_brands() -> dict[str, list[str]]:
-    if not CONFIG.is_file():
-        return dict(SEED_BRANDS)
+class ConfigError(ValueError):
+    """No scan may silently lose configured identity protection."""
+
+
+MAX_CONFIG_BYTES = 65536
+MAX_HEADER_CHARS = 16384
+
+
+def dec(value: str) -> str:
     try:
-        import yaml  # optional; seed is used when unavailable
-    except ImportError:
-        return dict(SEED_BRANDS)
+        return str(make_header(decode_header(value)))
+    except (ValueError, LookupError, UnicodeError):
+        return value
+
+
+def normalize_name(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value)
+    value = "".join(c for c in value if unicodedata.category(c) != "Cf")
+    return " ".join(value.casefold().split())
+
+
+def normalize_domain(value: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 253:
+        raise ConfigError("invalid domain")
     try:
-        data = yaml.safe_load(CONFIG.read_text(encoding="utf-8")) or {}
-    except (OSError, ValueError):
-        return dict(SEED_BRANDS)
-    brands = data.get("brands")
-    if not isinstance(brands, dict) or not brands:
-        return dict(SEED_BRANDS)
-    return {str(k).lower(): [str(v).lower() for v in (vals or [])] for k, vals in brands.items()}
+        result = value.encode("idna").decode("ascii").lower()
+    except UnicodeError as exc:
+        raise ConfigError("invalid domain") from exc
+    if not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part)
+               for part in result.split(".")):
+        raise ConfigError("invalid domain")
+    return result
+
+
+def normalize_address(value: str) -> str:
+    # Exact mailbox identity: no wildcard, suffix, plus-tag or dot stripping.
+    if not isinstance(value, str) or len(value) > 254 or value.count("@") != 1:
+        raise ConfigError("principal addresses must be exact mailboxes")
+    local, domain = value.split("@")
+    if (not local or len(local) > 64 or local.startswith(".") or local.endswith(".")
+            or ".." in local or not re.fullmatch(r"[A-Za-z0-9.!#$%&'+/=?^_`{|}~-]+", local)):
+        raise ConfigError("principal addresses must be exact mailboxes")
+    return local.lower() + "@" + normalize_domain(domain)
+
+
+def validate_config(data: object) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    if not isinstance(data, dict) or set(data) - {"brands", "principal"}:
+        raise ConfigError("configuration requires only brands and principal fields")
+    principal = data.get("principal")
+    if not isinstance(principal, dict) or set(principal) != {"names", "addresses"}:
+        raise ConfigError("principal requires explicit names and exact addresses")
+    names, addresses = principal["names"], principal["addresses"]
+    if (not isinstance(names, list) or not 1 <= len(names) <= 32
+            or not all(isinstance(n, str) and 0 < len(n) <= 256
+                       and not any(unicodedata.category(c) == "Cc" for c in n) for n in names)):
+        raise ConfigError("principal names must be a bounded nonempty text list")
+    normalized_names = [normalize_name(n) for n in names]
+    if not all(normalized_names) or len(set(normalized_names)) != len(names):
+        raise ConfigError("principal names are empty or repeated after normalization")
+    if not isinstance(addresses, list) or not 1 <= len(addresses) <= 256:
+        raise ConfigError("principal addresses must be a bounded nonempty list")
+    normalized_addresses = [normalize_address(a) for a in addresses]
+    if len(set(normalized_addresses)) != len(addresses):
+        raise ConfigError("principal addresses repeat after normalization")
+    brands = data.get("brands", SEED_BRANDS)
+    if not isinstance(brands, dict) or not 1 <= len(brands) <= 512:
+        raise ConfigError("brands must be a bounded nonempty mapping")
+    checked = {}
+    for name, domains in brands.items():
+        if (not isinstance(name, str) or not name.strip() or len(name) > 256
+                or not isinstance(domains, list) or not 1 <= len(domains) <= 64):
+            raise ConfigError("brand names require bounded domain lists")
+        key = name.lower()
+        if key in checked:
+            raise ConfigError("brand names repeat after normalization")
+        checked[key] = [normalize_domain(d) for d in domains]
+    return checked, {"names": normalized_names, "addresses": normalized_addresses}
+
+
+def load_config(path: Path = CONFIG) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Read the private policy: a bounded regular file (not a symlink), unique keys."""
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ConfigError("PyYAML is required to read the impersonation configuration") from exc
+
+    class UniqueLoader(yaml.SafeLoader):
+        pass
+
+    def mapping(loader, node):
+        result = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node)
+            if not isinstance(key, str) or key in result:
+                raise ConfigError("configuration fields must be unique text keys")
+            result[key] = loader.construct_object(value_node)
+        return result
+
+    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CONFIG_BYTES:
+            raise ConfigError("configuration must be a regular file of at most 64 KiB")
+        raw = path.read_bytes()[:MAX_CONFIG_BYTES + 1]
+        if len(raw) > MAX_CONFIG_BYTES:
+            raise ConfigError("configuration must be a regular file of at most 64 KiB")
+        return validate_config(yaml.load(raw.decode("utf-8"), Loader=UniqueLoader))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise ConfigError("cannot read valid impersonation configuration; "
+                          "configure principal names and exact addresses") from exc
 
 
 def domain_ok(domain: str, legit: list[str]) -> bool:
@@ -159,14 +263,67 @@ def assess(display: str, domain: str, brands: dict[str, list[str]]) -> tuple[str
     return None
 
 
+def assess_header(raw_from: str, brands: dict[str, list[str]],
+                  principal: dict[str, list[str]]) -> tuple[str, str] | None:
+    """Pure report-only assessment; explicit identity never comes from a domain."""
+    if not isinstance(raw_from, str) or len(raw_from) > MAX_HEADER_CHARS:
+        raise ValueError("From header exceeds bounded input")
+    unfolded = re.sub(r"\r?\n[ \t]+", " ", raw_from)
+    if "\n" in unfolded or "\r" in unfolded:
+        return ("high", "malformed multi-line From header")
+    try:
+        header = HeaderParser(policy=policy.default).parsestr("From: " + unfolded + "\n\n")["From"]
+        senders = list(header.addresses)
+    except (ValueError, IndexError, AttributeError, email.errors.HeaderParseError):
+        return ("medium", "malformed From header requires review")
+    # A group label is a display-name claim, not an exact mailbox identity.
+    # This also catches empty groups, which have no flattened addresses.
+    if any(group.display_name is not None
+           and normalize_name(group.display_name) in principal["names"]
+           for group in header.groups):
+        return ("high", "principal name claimed by an ambiguous sender group")
+    claimed = any(normalize_name(s.display_name) in principal["names"] for s in senders)
+    if claimed:
+        if len(senders) != 1 or header.defects:
+            return ("high", "principal name claimed by an ambiguous sender")
+        try:
+            address = normalize_address(senders[0].addr_spec)
+        except ConfigError:
+            return ("high", "principal name claimed without a valid exact sender address")
+        if address not in principal["addresses"]:
+            return ("high", "principal name claimed from an address outside the explicit allowlist")
+        return None
+    for sender in senders:
+        try:
+            domain = normalize_domain(sender.domain)
+        except ConfigError:
+            domain = ""
+        verdict = assess(sender.display_name, domain, brands)
+        if verdict:
+            return verdict
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--folder", default="INBOX")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict-only", action="store_true", help="high-confidence hits only")
+    parser.add_argument("--config", type=Path, default=CONFIG)
+    parser.add_argument("--check-config", action="store_true", help="validate identity coverage without reading mail")
     args = parser.parse_args(argv)
-
-    brands = load_brands()
+    try:
+        brands, principal = load_config(args.config)
+    except (ConfigError, ImportError) as exc:
+        print(f"impersonation configuration refused: {exc}", file=sys.stderr)
+        return 2
+    if args.check_config:
+        print(json.dumps({"status": "CONFIGURED", "principal_names": len(principal["names"]),
+                          "principal_addresses": len(principal["addresses"]), "brands": len(brands)}))
+        return 0
+    # Loading this connector reads account configuration; do so only after the
+    # complete scanner policy has passed, never when importing pure assessment.
+    from _lib import connect
     conn, user = connect(readonly=True)
     if args.folder.upper() != "INBOX":
         conn.select(args.folder, readonly=True)
@@ -191,9 +348,12 @@ def main(argv: list[str] | None = None) -> int:
             header = part[0].decode(errors="replace")
             uid_match = re.search(r"UID\s+(\d+)", header)
             msg = email.message_from_bytes(part[1])
-            raw_from = dec(msg.get("From") or "")
+            encoded_from = ", ".join(msg.get_all("From", []))
+            # Decode only for presentation after structural assessment. Encoded
+            # punctuation belongs to a name, not to address-list syntax.
+            verdict = assess_header(encoded_from, brands, principal)
+            raw_from = dec(encoded_from)
             display, domain = split_from(raw_from)
-            verdict = assess(display, domain, brands)
             if not verdict:
                 continue
             confidence, reason = verdict

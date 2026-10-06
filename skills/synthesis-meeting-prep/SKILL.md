@@ -35,15 +35,16 @@ Rules 1 to 5 are section 5, "What the skill refuses"; the rest come from the pre
 9. **Deliver assembled packages, never assembly kits:** no brackets for the principal to fill in.
 10. **Debrief transcript-primary.** Never derive who said or decided what from a summary; no commitment without an owner and a date.
 11. **Profiles belong to one workspace.** Pass the explicit `--context-repo` and `--workspace`; missing or ambiguous ownership blocks profile reads and writes and never triggers a search of other workspaces.
-12. **Contribute to another seat's pack only through a `share-pack` grant and `write-pack`.** A grant covers one artifact and nothing else.
+12. **Contribute to a pack another session holds through that session:** `synthesis msg <holder>` with the path and text; it writes the text or releases that one file for you. Never write inside another session's claim; a contribution covers one artifact and nothing else.
 
 ## Contents
 
 - [references/requirements.md](references/requirements.md): R1 to R13, the normative content contract. Read it before drafting.
 - [references/factor-inventory.md](references/factor-inventory.md): the 64 factors in six groups, marked for sizing, tone, content and risk. Read it in the Model step.
 - [references/structures.md](references/structures.md): the structure variants by meeting type, and the capture half. Read it in the Draft step.
-- [references/profiles-and-sharing.md](references/profiles-and-sharing.md): section 1, the configuration contract (`prep_init.py resolve`, `init`, `add-reader`), and shared prep contributions (`share-pack`, `write-pack`). Read it before any profile operation or shared write.
-- [references/workspace-profiles.md](references/workspace-profiles.md): exact selection, preflight, apply and resume for migrating legacy global profiles. Read it when migrating.
+- [references/profiles-and-sharing.md](references/profiles-and-sharing.md): section 1, the configuration contract (`python3 scripts/prep_init.py resolve|init|add-reader --context-repo <abs repo root> --workspace <id> ...`, which prints JSON and exits 2 on any refusal), and shared prep contributions through the board. Read it before any profile operation or shared write.
+- [references/workspace-profiles.md](references/workspace-profiles.md): who owns a profile, and what to do with a stray legacy one. Read it when a profile's owner is unclear.
+- [references/preserved.md](references/preserved.md): the retired migration and grant procedures, verbatim. Read only to review the change.
 - [references/background.md](references/background.md): the 1.0.0 release note and section 4, integration seams with daily rituals, meeting transcripts, OKF and the console. Read it when deciding which skill owns a step.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.0 text now lives.
 - 2. The prep loop, 3. The debrief loop, 5. What the skill refuses: below.
@@ -74,7 +75,9 @@ For every meeting, in order:
    accomplishments, strategic altitude, specific credit, grounded
    register, scannable, positive framing. Mark confidence inline —
    fact, inference, guess.
-5. **Lint.** Run `scripts/prep_lint.py` on the draft. It checks the
+5. **Lint.** Run `python3 scripts/prep_lint.py [--reader technical|nontechnical]
+   [--room SIZE] PACK.md` on the draft (one `LINE: CODE: message` per
+   finding, exit 1; exit 0 clean). It checks the
    mechanical half of the contract: footer placement, register leaks
    (ticket numbers and infrastructure terms for non-technical
    readers), empty-sentence patterns, name-drop openers, unverified

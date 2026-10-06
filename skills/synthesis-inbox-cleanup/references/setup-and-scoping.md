@@ -1,11 +1,11 @@
 # Inbox cleanup: architecture, workspace scoping and setup
 
-Moved verbatim from the 1.6.2 SKILL.md; only link paths changed.
+Moved verbatim from the 1.6.2 SKILL.md; only link paths changed, apart from the v5 engine path (the architecture tree and setup steps 6 and 7; the 1.6.2 lines are in [preserved.md](preserved.md)).
 
 Contents:
 - Architecture: public engine, private rules, and what lives under ~/.synthesis/inbox-cleanup/
 - Workspace scoping: the scopes.yaml contract, resolve_scope.py and its exit codes
-- Setup: install the plugin, run the installer, configure accounts and rules, store the IMAP password, sanity-check
+- Setup: install the plugin, run the installer, configure accounts and rules, store the IMAP password, declare the principal, sanity-check
 
 ## Architecture: public engine, private rules
 
@@ -18,13 +18,17 @@ Contents:
   └── tests/poisoned/                      ← adversarial fixtures
 
 ~/.synthesis/inbox-cleanup/                 ← private (per-user, not in git)
-  ├── engine/
-  │   ├── current → releases/<digest>/     ← stable client-neutral runtime
-  │   └── releases/<digest>/               ← immutable verified engine
   ├── config.yaml                          ← account list, host, user candidates
   ├── rules.yaml                           ← sender rules, never_touch, subject_rules
+  ├── scopes.yaml                          ← which accounts each workspace sweeps
+  ├── impersonation.yaml                   ← the principal's names and exact addresses
   └── imap.secret                          ← optional credential fallback
+
+~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/
+                                           ← the engine at its stable path (v5 runtime)
 ```
+
+The engine runs from the skill folder the agent loaded (`scripts/...`), or from its stable path above when something outside a session needs it: a private extension that imports `_lib.py`, or a scheduled job. The v5 runtime installs that path at session start and keeps it current across plugin updates, so nothing pins a client's versioned plugin cache (lesson 2026-08-27).
 
 The engine reads its rules from `~/.synthesis/inbox-cleanup/rules.yaml`. The contents of that file — which senders to trash, which domains to never touch, which family-domain subject keywords to spare — is private user data. It never reaches the public repo. The engine is generic; the rules are yours.
 
@@ -85,9 +89,14 @@ claude plugin install synthesis-skills@synthesis-engineering
 security add-generic-password -s inbox-cleanup-imap -a "$USER" -w
 # (paste the password when prompted; never in shell history)
 
-# 6. Sanity-check from the stable runtime
-cd ~/.synthesis/inbox-cleanup/engine/current
-python3 icloud_census.py
+# 6. Declare the principal for the impersonation scan, then validate it (no mail is read)
+cp <synthesis-inbox-cleanup-root>/templates/impersonation.example.yaml ~/.synthesis/inbox-cleanup/impersonation.yaml
+python3 <synthesis-inbox-cleanup-root>/scripts/scan_impersonation.py --check-config
+
+# 7. Sanity-check from the stable runtime
+python3 ~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_census.py
 ```
+
+The installer prints one line for each thing still missing: PyYAML, certifi, the Keychain password, the engine's stable path, or an engine copy left by version 1.x under `~/.synthesis/inbox-cleanup/engine/` (anything still reading that copy runs old code; point it at the stable path and remove the folder). It never overwrites `config.yaml` or `rules.yaml`, and refuses a runtime root that is `/`, your home folder, a symlink or a file.
 
 For Gmail and M365 setup details, see [`references/three-tool-stacks.md`](three-tool-stacks.md).

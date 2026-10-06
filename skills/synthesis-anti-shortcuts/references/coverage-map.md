@@ -24,7 +24,24 @@ costume-vocabulary.md, case-studies.md and sub-agent-hygiene.md are over 150 lin
 
 ## Scripts and tests
 
-`scripts/scan_output.py` and `scripts/test_scan_output.py` are unchanged. No test reads text from this SKILL.md.
+At the 2.0.0 prose move, `scripts/scan_output.py` and `scripts/test_scan_output.py` were unchanged. No test reads text from this SKILL.md.
+
+## v5 script changes (2026-10-05)
+
+The v5 code evaluation (`tool-scripts.md`, row `synthesis-anti-shortcuts/scripts/scan_output.py`) ruled SLIM: move the embedded catalog to a data file, keep about 350 lines of Python, and make the data file the one public catalog.
+
+| Change | Where now | Test |
+|---|---|---|
+| 54 embedded catalog entries and the 8 category descriptions | `costume-catalog.json` at the skill root, generated from the old embedded list so every id, pattern, exemption, rationale, rewrite and `case_ref` is unchanged | `tests/test_scan_output.py::test_catalog_is_well_formed` |
+| `df_for_now` pattern `\bfor now[,.\s]` | `\bfor now\b`, so a reply ending in "for now" is caught too | `test_for_now_is_flagged_at_the_end_of_a_reply` |
+| Five deferral phrases the v5 Stop hook carried and the catalog lacked: `document-and-defer`, `execute or defer`, `defer this`, `deferred to`, `future fix needed` | New entries `df_document_and_defer`, `df_execute_or_defer`, `df_defer_this`, `df_deferred_to`, `df_future_fix_needed`; a new heading in references/costume-vocabulary.md, Category 4 | `tests/test_shortcut_catalog.py` (repository `tests/`) |
+| One catalog, no drift | `synthesis/reply_check.py` keeps its built-in list for speed; `tests/test_shortcut_catalog.py` fails when any of its phrases is missing here | same |
+| Scenario E89: a quoted or code use is discussion, a bare use is a costume | `scan_output.discussion_spans` skips matches inside double, curly or backtick quotes and fenced code, as `reply_check` does; per-entry `exempt_when` still applies | `test_quoted_or_code_use_is_exempt`, `test_bare_use_is_flagged` |
+| `--catalog` needed PyYAML | Takes JSON; YAML still loads when PyYAML is installed (Rajiv's private catalog at `~/.synthesis/anti-shortcut-catalog.yaml` keeps working until M4 folds it into v5 config) | `test_cli_exit_codes_and_report` |
+| Duplicate ids and patterns that do not compile were accepted | Refused with exit 2 | `test_duplicate_ids_and_bad_patterns_are_refused` |
+| `scripts/test_scan_output.py` | `tests/test_scan_output.py`, the seven Case 7 tests unchanged in substance plus the tests above | — |
+
+Prose that named the embedded catalog changed in four places (references/background.md twice, references/methodology.md twice, references/costume-vocabulary.md once, and the scanner paragraph of SKILL.md). Each old sentence is verbatim in [preserved.md](preserved.md). Line counts: `scan_output.py` 991 before, 311 after; the catalog is 589 lines of JSON.
 
 ## Lines the coverage check reports, and why
 

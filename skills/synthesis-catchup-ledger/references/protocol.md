@@ -35,6 +35,8 @@ python3 catchup_scan.py <daily_plans_dir> --start YYYY-MM-DD --end YYYY-MM-DD
 
 The script emits, grouped by file: unchecked task items under priority headings, draft blocks lacking a `**Sent:**` marker, decision headings lacking a `**Decided:**` marker, and the contents of carryover/backlog/waiting sections. It is a CANDIDATE GENERATOR, not the truth — items it surfaces may already be resolved in sources it cannot see (a Slack thread, a merged PR, a meeting decision).
 
+Items and carryover lines are previews: a line longer than the preview width ends `…[truncated: N chars, open L<n>]`. Treat that preview as a pointer and open the line before any claim depends on it. (Field case, 2026-08-18: a preview cut to "`gchat-sync.yaml` n" was completed as "not created"; the word was "needs", the file existed, and five days of messages went unread behind the invented gap.)
+
 ### Step 3 — Judgment pass over wider sources
 
 For each scan candidate AND for commitments visible in sources the script does not parse, cross-check current truth before classifying:

@@ -1,24 +1,49 @@
 # Domain review package
 
-Use `scripts/review_contract.py` for every closed review package. Keep the existing
-finding ledger, approval owner and execution journal as the state owners; this
-package is a bounded source-binding diagnostic, never a second authority store.
-Run the release-verified entrypoint with the exact package root and bundle path.
-Its success means structure and current source bytes match. It does not mean
-observations are true, a person is authenticated, review is sufficient, or any
-publication is authorized. The existing effect owner must check its own receipt.
+Contents:
+- What a package is, and what it is not
+- Four profiles and seven records
+- Checks the reviewer applies (the ten incident shapes)
+- Twelve lessons and the acceptance scorecard
+
+A closed review package is one markdown file in the owning project's
+`resources/`, beside the findings file, that freezes what is under review before
+the first round. It is a record, never a second authority store: the findings
+file, the approval owner and the project's session log keep their roles. A
+complete package means its structure and current source bytes were checked. It
+does not mean observations are true, a person is authenticated, review is
+sufficient, or any publication is authorized. The effect owner checks its own
+approval at the moment it acts (in v5, the send and deploy guards' approval
+codes).
 
 ## Four profiles and seven records
 
 Choose editorial, code/control, research, or operations/compliance before work.
-`profiles.json` lists the required planes. The seven schema files describe
-provider-neutral target, claim, finding, evidence, decision, handoff and terminal
-result records. `review_contract.validate` checks raw unique identities before
-aggregation, cross-record references, current source bytes, target fingerprints
-and distinct destination outcomes. Unknown fields and malformed paths refuse.
-A finding refers to the existing ledger ID; a decision refers to its actual
-owner receipt. JSON schemas aid interchange; the production validator and the
-native effect owner remain mandatory, and schema validation alone grants nothing.
+Each profile names the planes the matrix must cover:
+
+| Profile | Required planes |
+|---|---|
+| editorial | principal-objective, claims, attribution, required-content, rendered-content, url-identity, publication |
+| code/control | principal-objective, source, tests, security, runtime, recovery, release |
+| research | principal-objective, source-universe, provenance, methods, counterevidence, uncertainty |
+| operations/compliance | principal-objective, authority, scope, effects, recovery, disclosure, handoff |
+
+The package holds seven kinds of provider-neutral record, each with these fields:
+
+| Record | Fields |
+|---|---|
+| target | id; domain (the profile); principal objective; files, each with its sha256 or the commit that pins it; planes |
+| claim | id; target; plane; text; evidence |
+| finding | id; target; its findings-table ID; plane; evidence |
+| evidence | id; target; kind (synthetic, source, native or live-observation); producer; method; files; scope |
+| decision | id; target; the owner's approval record; target digest; action; approver; evidence |
+| handoff | id; target; target digest; reviewer; evidence; links |
+| terminal result | id; target; artifact; plane; destination; phase (content, control, platform or publication); status (verified, failed, unverified or not-authorized); evidence; approval |
+
+Identities are unique before anything is aggregated, every cross-reference
+resolves inside the package, and each destination keeps its own outcome. A
+finding refers to its findings-table ID; a decision refers to its actual owner's
+approval record. A record format aids interchange; it grants nothing.
 
 Freeze the full artifact × plane matrix in the review target. Each assigned cell
 needs an explicit terminal disposition, including absent evidence. A source
@@ -27,44 +52,57 @@ evidence are different. The reviewer derives load-bearing facts independently;
 copied receipts do not establish independence. A handoff identifies the receiver,
 not a claim that a listed producer's work is the receiver's observation.
 
-## Mechanical controls and their limits
+## Checks the reviewer applies
 
-- `instrument_inventory` examines Python, JavaScript, C and shell files plus
-  executable files regardless of filename. Declare producer/validator/test/build/
-  fixture roles and a terminal result for every discovered instrument. Missing
-  declarations or changed source refuse. Discovery itself executes no script.
-- `content_checks` keeps source scaffolds, required rendered content, attribution
-  directives and actual named-entity presence independent. It reports candidates;
-  a source sentence or keyword match cannot settle an editorial judgment.
-- `calibration` requires positive and negative controls and preserves errors or
-  missing runs. Uniform failures do not prove the target is defective.
-- `corpus_key` changes on source bytes, population and publication disposition.
-  A title/headline change must also invalidate the unpublished URL-identity plane.
-- `publication_diagnostics` separates each destination's observed bytes from
-  the approved bytes. Matching bytes grant no authority. Use actual origin and
-  rendered checks, including retired-route identity, before a publication result.
-- `saved_outputs` opens the named saved files and retains every prior-output
-  disposition. Input parsing cannot prove generated-output attribution.
-- `lifecycle_scopes` never collapses exact-session state, aggregate hygiene,
-  communication delivery and continuity into one readiness label.
-- `custody_scope` keeps durable deletions and disposable fixtures separate.
-  Actual move/delete authority and old custody proof belong to their owners.
+Each check below is a review rule, applied by reading and running things, and
+each answers one incident shape (the ten replay shapes of 1.2.1, noted in
+brackets). Historical incidents remain private evidence; synthetic replays do
+not reclassify original failures.
 
-Every source read is bounded, no-follow and identity checked. A validation has a
-64 MiB aggregate read budget and a ten-second deadline; target and evidence bytes
-are checked again before success. An exceeded budget refuses, never truncates. Instrument discovery
-has finite entry/time bounds. Large histories use the existing archive owner;
-do not raise this diagnostic's limit or reinterpret truncated data as complete.
+- **Instruments.** List every Python, JavaScript, C and shell file in the target,
+  plus executable files whatever their name. Give each a role (producer,
+  validator, test, build or fixture) and a terminal result. An undeclared
+  instrument or changed source reopens the package. Listing executes nothing.
+- **Content.** Keep source scaffolds, required rendered content, attribution
+  directives and actual named-entity presence separate. A source sentence or a
+  keyword match is a candidate; it cannot settle an editorial judgment.
+- **Calibration.** Require positive and negative controls and keep errors and
+  missing runs visible. Uniform failure does not prove the target is defective:
+  sixty cases that all fail, controls included, mean the instrument is invalid.
+  Only when every control behaves as expected is the check calibrated, and then
+  only for its fixtures. [uniform failure of 60 cases]
+- **Custody.** Keep durable deletions, each with its proof, separate from
+  disposable fixtures and temporary paths. Actual move and delete authority and
+  old custody proof belong to their owners. [durable versus disposable paths]
+- **Lifecycle.** Never collapse exact-session state, aggregate hygiene,
+  communication delivery and continuity into one readiness label. One session
+  ready leaves other owners' open work open, and a delivered board message is
+  not a finished checkpoint. [exact-session readiness with aggregate open work;
+  delivered board message with incomplete continuity]
+- **Corpus.** A change in source bytes, population or publication disposition
+  invalidates earlier counts and the results built on them; a title or headline
+  change also invalidates the unpublished URL-identity plane. [a 455-item corpus
+  changed by 30 publications]
+- **Publication.** Record each destination's observed bytes separately from the
+  approved bytes. Matching bytes grant no authority; bytes that differ from the
+  approved ones mean the approval target changed and nothing is authorized,
+  however the commit or push went; a destination nobody observed stays
+  unverified. Use actual origin and rendered checks, including retired-route
+  identity, before a publication result. [mixed automatic and manual destination
+  outcomes; approval versus actual bytes]
+- **Independence.** The reviewer derives the entire declared universe itself.
+  A reviewer that derived part of it has not reviewed the rest, and a copied
+  receipt is not an observation. [independently derived reviewer inputs]
+- **Links.** Relative links resolve from their actual destination copy, not
+  from the author's working directory. [destination-relative handoff links]
+- **Saved outputs.** Open the named saved files and record every prior output's
+  disposition (retained or deleted, with proof). A named file that is absent
+  fails; input parsing cannot prove generated-output attribution. [exact saved
+  output with prior custody]
 
-## Ten retained replay shapes
-
-The shipped test corpus retains independent controls for: uniform failure of 60
-cases; durable versus disposable paths; exact-session readiness with aggregate
-open work; delivered board message with incomplete continuity; a 455-item corpus
-changed by 30 publications; mixed automatic/manual destination outcomes; approval
-versus actual bytes; independently derived reviewer inputs; destination-relative
-handoff links; and exact saved output with prior custody. Historical incidents
-remain private evidence. Synthetic replays do not reclassify original failures.
+Read sources with bounds. A budget that runs out refuses, never truncates;
+large histories go through their archive owner rather than a raised limit; and
+truncated data is never treated as complete.
 
 ## Twelve lessons and the acceptance scorecard
 
@@ -89,7 +127,7 @@ recorded sufficiency ruling without inflating permissions. Serious incidents get
 replayed against the original principal outcome. Native Claude/Codex comparisons
 and same-agent replay must report actual runs rather than synthetic labels.
 
-`scorecard` records principal sittings, rereads, duplicate work, elapsed target
+The scorecard records principal sittings, rereads, duplicate work, elapsed target
 seconds, severity found, repair defects and omitted planes. Missing observations
 remain null. No universal superiority, model compliance or token savings follows
 from fixture success. Keep executor, reviewer and adjudicator in the current

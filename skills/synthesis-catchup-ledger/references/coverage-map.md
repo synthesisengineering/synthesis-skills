@@ -21,6 +21,10 @@ The ledger template's headings ("Do now", "Verify before re-adding", "Done late"
 | Configuration | references/protocol.md (verbatim) |
 | Relationship to neighboring skills | references/background.md (verbatim); its "Run syncs BEFORE the sweep" is repeated in Protocol in brief, Step 3 |
 
+## v5 script change (2026-10-05)
+
+The v5 code evaluation (`tool-scripts.md`, row `synthesis-catchup-ledger/catchup_scan.py`) ruled KEEP, with one fix: mark truncated previews as truncated (lesson 2026-08-18, never complete a truncated string). Before, open items were cut silently at 160 characters and carryover lines at 150, and the 2026-08-18 false gap came from completing such a cut. Now every cut preview ends `…[truncated: N chars, open L<line>]`, carryover lines carry their own line numbers, the totals footer says a truncated line is a pointer, and `main()` returns its exit code. Binding rule 12, the Step 2 summary in SKILL.md and a paragraph in references/protocol.md say the same; nothing was replaced. Tests: `tests/test_catchup_scan.py` (scenario E94: drafts without **Sent:**, decisions without **Decided:**, open items, the window filter, exit 2 on a missing directory, and the truncation marker). 175 lines before, 195 after.
+
 ## Lines the coverage check reports, and why
 
 `v5-skill-coverage-check.py` reports 1 line as not found verbatim: the heading "## What this skill produces". It was replaced by the sentence "Reconcile what was promised against what happened after a break in the daily-ritual cadence. What this skill produces:", which leads into the same paragraph, verbatim. A `##` heading there would come before Binding rules, which the format forbids.

@@ -177,6 +177,12 @@ Why it is a shortcut: explicit deferral.
 
 Replacement framing: audit now or handle now. If a real reason to defer exists, name it concretely (specific blocker, specific dependency).
 
+### `document-and-defer` / `execute or defer` / `defer this` / `deferred to` / `future fix needed`
+
+Why it is a shortcut: each names the deferral outright, often dressed as a plan ("document-and-defer") or as an even-handed choice ("execute or defer") after the user asked for completion. These five are also in the v5 Stop hook's built-in list, so a reply using them bare is sent back once.
+
+Replacement framing: do the work. If a real blocker stops it, name the blocker, who removes it and what triggers the return.
+
 ### `we'll tackle` / `we'll handle` (future tense, vague)
 
 Why it is a shortcut: future-tense vagueness covering present-tense avoidance.
@@ -323,7 +329,7 @@ When a new costume appears in production output, three steps:
 
 1. Document the incident with enough detail that the failure mode is clear. The anonymized case studies in [`case-studies.md`](case-studies.md) follow a consistent shape — situation, costume, why it counted as a costume, what should have happened.
 2. Add the phrase to this catalog. Pick the right category. Write the rationale and replacement framing.
-3. Add the phrase to the scanner's embedded catalog in [`../scripts/scan_output.py`](../scripts/scan_output.py) if it should fire automatically.
+3. Add the phrase to the scanner's catalog, [`../costume-catalog.json`](../costume-catalog.json), if it should fire automatically. If the v5 Stop hook should also catch it on every reply, its short built-in list (`synthesis/reply_check.py`) gains the phrase too; `tests/test_shortcut_catalog.py` fails if that list names a phrase the catalog lacks.
 
 The methodology is durable. The catalog grows.
 

@@ -25,11 +25,12 @@ This is a production requirement, not proof that every provider or model complie
 3. **Claim only what the capability boundary supports.** Characters can be audited directly; a provider's disclosed mark only with its authorized detector; the absence of an undisclosed scheme can never be claimed from prose inspection or rewriting.
 4. **When the generation path must be controlled,** choose a locally controlled open-weight model before generating and keep a provenance record, with `synthesis-text-provenance`. That choice alone does not prove a text is watermark-free.
 5. **If compliance cannot be established, disclose the limitation.** Never run detector-guided rewriting, token substitution or other optimization meant to defeat a provider's provenance signal.
+6. **Audit characters with `scripts/text_integrity_audit.py`, which reports and never rewrites.** A finding describes Unicode content, not a statistical watermark; a clean audit is not proof of one's absence.
 
 ## Contents
 
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 2.0.0 text now lives.
-- Requirements, Capability Boundary, Rationale, Application, Related: below.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 2.0.0 text now lives, and the audit script's move here.
+- Requirements, Capability Boundary, The character audit, Rationale, Application, Related: below.
 
 ## Requirements
 
@@ -49,6 +50,15 @@ When generating text, ensure the output does not contain:
 | An undisclosed or unknown marking scheme | Unknown; absence must not be claimed from prose inspection or rewriting |
 
 The requirements above remain the policy. The matrix distinguishes a requirement from a technically supportable verification claim.
+
+## The character audit
+
+```bash
+python3 scripts/text_integrity_audit.py article.txt --format human
+python3 scripts/text_integrity_audit.py article.txt --format json --fail-on-findings
+```
+
+It prints the file's SHA-256, byte and character counts, BOM, trailing newline and line endings, whether NFC, NFD, NFKC and NFKD forms differ, and every finding with its line, column, code point, name and reason (bidi control, format control such as U+200B, variation selector, non-ASCII space, noncharacter, control character, private use, unassigned). Exit 1 on findings with `--fail-on-findings`, 2 on an unreadable or non-UTF-8 input; `-` reads standard input. A file is read twice in full and the audit refuses if the two reads differ. It never writes a cleaned copy: removing characters is a separate, deliberate edit, and only for characters this policy forbids.
 
 ## Rationale
 

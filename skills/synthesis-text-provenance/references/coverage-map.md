@@ -1,6 +1,6 @@
 # Coverage map: text provenance 1.0.1 to 2.0.0
 
-Every part of the 1.0.1 SKILL.md and where it lives now. Nothing was removed.
+Every part of the 1.0.1 SKILL.md and where it lives now. Nothing was removed at the 2.0.0 prose move; the v5 script change that followed is in its own section below, and [preserved.md](preserved.md) holds every replaced passage verbatim.
 
 | 1.0.1 section | Now |
 |---|---|
@@ -20,7 +20,21 @@ capability-claims.md, open-weight-runner-contract.md and provenance-manifest.md 
 
 ## Scripts and tests
 
-Every script under `scripts/`, the test `scripts/test_provenance_tools.py` and `tests/fixtures/` are unchanged.
+At the 2.0.0 prose move every script under `scripts/`, the test `scripts/test_provenance_tools.py` and `tests/fixtures/` were unchanged.
+
+## v5 script changes (2026-10-05)
+
+Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-text-provenance rows).
+
+| Part | Verdict | Now |
+|---|---|---|
+| `scripts/provenance_manifest.py` (600 lines) | CUT, never used (no manifest exists in any workspace) | The record is a markdown file in the project; references/provenance-manifest.md keeps every field (renamed for prose), the audit-entry rule that detector feedback is never an optimization objective, the privacy rules, and the verification limits; `shasum -a 256` replaces the self-hash and `verify`. The 1.0.1 file is verbatim in [preserved.md](preserved.md) |
+| `scripts/local_generate.py` (240 lines) | CUT, never used | references/open-weight-runner-contract.md, rewritten as a procedure by hand: one `curl` request to a loopback endpoint, the raw response kept, empty final content is a failed generation, the returned model never inferred, secrets from the environment only, no URL with user information or query, one request one record, no detector input. Model-selection evidence and the reproducibility limit are verbatim |
+| `scripts/ollama_metadata.py` (151 lines) | CUT, never used | The same file's "Before the request": `ollama --version`, `ollama list`, `ollama show` captured first, license and template hashed, unknowns declared, the tensor inventory left out |
+| `scripts/text_integrity_audit.py` (191 lines) | KEEP, move into clean-text | `synthesis-clean-text/scripts/text_integrity_audit.py`, unchanged, with its tests; workflow step 5 and binding rule 7 point there |
+| `scripts/test_provenance_tools.py`, `tests/fixtures/canonical-manifest-v2.json` | Removed with the code | The five integrity tests moved to synthesis-clean-text `tests/test_text_integrity_audit.py`; the manifest, runner and metadata tests left with their scripts |
+
+Prose changed: SKILL.md binding rules 6 and 7, Contents, "Scripts" (now "Tools", every command shown is one that exists), and two checklist items; references/workflow.md (its intro, contents lines for steps 4 to 6, one sentence in step 3, and steps 4 to 6). The Non-negotiable boundary section stays whole in SKILL.md, because synthesis-content-quality's `test_additive_upgrade_contract.py` reads it. Python lines: 1,182 before (plus 511 of tests), none after in this skill.
 
 ## Lines the coverage check reports, and why
 

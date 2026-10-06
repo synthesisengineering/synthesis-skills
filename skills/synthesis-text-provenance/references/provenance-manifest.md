@@ -1,89 +1,64 @@
-# Provenance Manifest, Schema 2
+# Provenance record
 
-The JSON manifest records one text generation or editing event. It preserves
-hashes and direct-parent lineage; it is not a proof that the recorded operator
-told the truth. A self-hash detects accidental or undisclosed content changes,
-but it is not a digital signature or third-party timestamp.
+A provenance record is a short markdown file that records one text generation
+or editing event. It preserves hashes and direct-parent lineage; it is not a
+proof that the recorded operator told the truth. Hashes detect accidental or
+undisclosed content changes, but a record is not a digital signature or
+third-party timestamp. Keep it in the project, beside the text it describes.
 
-## Canonical self-hash
+## Fields
 
-`manifest_sha256` is SHA-256 over UTF-8 JSON with object keys sorted,
-no insignificant whitespace, non-ASCII characters preserved, and
-`manifest_sha256` itself omitted. NaN, infinity, duplicate object keys, and
-non-JSON values are rejected. The hash is independent of pretty-printing and
-object insertion order.
-
-The deterministic fixture at
-`tests/fixtures/canonical-manifest-v2.json` pins the canonicalization contract.
-
-## Top-level fields
-
-- `schema_version`: currently `2`.
-- `record_id`: UUID for this event.
-- `created_at`: UTC RFC 3339 timestamp.
-- `manifest_sha256`: canonical manifest-content hash defined above.
-- `generation_mode`: `human`, `hosted`, `local_open_weight`, `mixed`, or
+- `record id`: a fresh identifier for this event (for example the output of
+  `uuidgen`).
+- `created`: UTC timestamp.
+- `generation mode`: `human`, `hosted`, `local_open_weight`, `mixed`, or
   `unknown`.
-- `provider`, `model_requested`, `model_returned`, `runtime`: strings or null.
-- `runtime_receipt`: a file record for a native runtime receipt, or null. A
-  file record carries its path pointer, SHA-256, and byte count. Schema 2
-  requires this record when `generation_mode` is `local_open_weight`.
-- `endpoint_class`: `none`, `hosted`, `local_loopback`, `local_lan`, or
+- `provider`, `model requested`, `model returned`, `runtime`: as observed, or
+  `unknown`. Record the returned model only from the response; never infer it
+  from the request.
+- `runtime metadata`: for local generation, the path and SHA-256 of the
+  runtime-metadata file captured before generating (see the runner contract).
+  Local open-weight generation without it is unrecorded.
+- `endpoint class`: `none`, `hosted`, `local_loopback`, `local_lan`, or
   `unknown`.
-- `prompt`: SHA-256, byte count, and path pointer for the exact prompt file.
+- `prompt`: SHA-256, byte count, and a path pointer for the exact prompt file.
 - `sources`: zero or more hashed source inputs.
-- `output`: SHA-256, byte count, and path pointer for the output.
-- `parameters`: values set by the caller plus the runner's bounded
-  `reported_response` metadata (`finish_reason`, `usage`, and
-  `system_fingerprint` when available).
-- `parents`: direct-parent records containing exactly `record_id`,
-  `manifest_sha256`, and `output_sha256`. Parent records never contain paths.
-- `human_edit_description`: free text or null.
-- `audits`: authorized detector or integrity results.
+- `output`: SHA-256, byte count, and a path pointer for the output.
+- `parameters`: values set by the caller, plus `finish_reason`, `usage` and
+  `system_fingerprint` when the response reported them.
+- `parents`: for each direct parent, its record id and its output's SHA-256.
+  Parent links never contain paths.
+- `human edit`: what a person changed, or none.
+- `audits`: authorized detector or integrity results (below).
 - `notes`: bounded unknowns and access gaps.
 
-## Audit record
+## Audit entries
 
-Every audit record contains:
+Every audit entry records:
 
-- `tool` and `version`;
-- `kind`: `text_integrity`, `provider_detector`, `standards_detector`, or
-  `other`;
-- `result`: the tool's result without reinterpretation;
-- `limitations`: what the result cannot prove;
-- `optimization_used`: must be `false`.
-
-The validator rejects a record that says detector feedback was used as an
-optimization objective. This is a workflow boundary, not a claim that the JSON
-cannot be falsified.
+- the tool and its version;
+- the kind: text integrity, provider detector, standards detector, or other;
+- the result, without reinterpretation;
+- its limitations: what the result cannot prove;
+- that detector feedback was not used as an optimization objective. A record
+  that says otherwise describes a workflow this skill refuses.
 
 ## Path and privacy rules
 
-Use project-relative paths when a manifest will be shared. Do not place raw
+Use project-relative paths when a record will be shared. Do not place raw
 prompts, authentication values, identity references, internal endpoint
-addresses, or restricted source content in a public manifest. Store private
+addresses, or restricted source content in a public record. Store private
 material in its authorized repository and record only hashes plus a private
 pointer.
 
-## Verification semantics
+## Verification
 
-`verify` checks the canonical self-hash, resolves relative pointers from the
-manifest directory, and recomputes prompt, source, output, and runtime-receipt
-hashes. A pass establishes byte equality with the recorded files at
-verification time.
+Re-run `shasum -a 256` on the prompt, source, output and runtime-metadata files
+and compare with the record. A match establishes byte equality with the
+recorded files at verification time. For lineage, open each direct parent's
+record explicitly and compare its output hash with the child's parent link; do
+not follow a path from a record, and verify each earlier edge on its own when a
+complete chain is required.
 
-For every recorded parent, pass the direct parent's manifest explicitly:
-
-```bash
-python3 scripts/provenance_manifest.py verify child.json \
-  --parent-manifest parent.json
-```
-
-Lineage verification reads only explicitly supplied parent manifest files. It
-compares their self-hash and recorded output hash with the child's path-free
-parent record. It does not follow a path from manifest content, open the
-parent's recorded output, or recurse into earlier ancestors. Verify each prior
-edge explicitly when a complete chain is required.
-
-A pass does not establish authorship, copyright ownership, truthfulness of
+A match does not establish authorship, copyright ownership, truthfulness of
 metadata, authenticity of the operator, or absence of a watermark.

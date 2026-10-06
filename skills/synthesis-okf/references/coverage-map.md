@@ -26,6 +26,18 @@ Before this map was written, `v5-skill-coverage-check.py` reported 4 lines as no
 - `` - [`synthesis-kb-edit`](../synthesis-kb-edit/SKILL.md) — config-driven editing ``
 - `` - [`synthesis-knowledge-capture`](../synthesis-knowledge-capture/SKILL.md) — ``
 
+## v5 script changes (2026-10-05)
+
+Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-okf rows): `okf_validate.py` and `okf_convert.py` KEEP; `okf_consistency.py` SLIM to about 300 lines.
+
+| Part | Now |
+|---|---|
+| `okf_validate.py` (189 lines), `okf_convert.py` (326 lines) | Unchanged. The published article on the validator documents its command line, which is the same. New tests: `tests/test_okf_validate.py` (scenario E92: frontmatter with a non-empty `type` on every non-reserved file, broken links reported only under `--check-links` and only as info, exit 2 for a missing bundle) and `tests/test_okf_convert.py` (`--dry-run` writes nothing; backfill never overwrites existing fields; the converted bundle validates) |
+| `okf_consistency.py` (630 lines) | 357 lines (target about 300), same command line, same seven checks, same messages, severities, ordering and exit codes: on a synthetic repository exercising every check, the old and new scripts printed byte-identical reports. The size came from one-finding-per-twelve-lines construction, now one helper call each. One defect fixed while slimming: an unsafe `topic_routing` path used to raise an uncaught error mid-report; it now exits 2 like every other contract error |
+| `scripts/test_okf_consistency.py` | `tests/test_okf_consistency.py` (path change only; PyYAML is skipped where missing, since CI's Python has only pytest) |
+
+No prose changed: every command in SKILL.md and references/tools.md is unchanged.
+
 ## The 1.1.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

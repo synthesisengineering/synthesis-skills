@@ -1,14 +1,14 @@
 # Text provenance: the full workflow
 
-The seven workflow steps in full, with every command and option. SKILL.md carries the binding rules, the boundary, the script summary and the completion checklist.
+The seven workflow steps in full, with every command and option. SKILL.md carries the binding rules, the boundary, the tool summary and the completion checklist. Steps 4 to 6 were rewritten in v5 when the manifest and generation scripts were retired; the 1.0.1 text is verbatim in [preserved.md](preserved.md).
 
 Contents:
 - 1. Define the provenance requirement
 - 2. Re-verify current capability claims
 - 3. Select the generation path
-- 4. Create the evidence bundle (`provenance_manifest.py create`, `validate`, `verify`)
-- 5. Run non-mutating integrity inspection when relevant (`text_integrity_audit.py`)
-- 6. Run local generation when it satisfies the policy (`ollama_metadata.py`, `local_generate.py`)
+- 4. Create the evidence bundle (the provenance record, hashed with `shasum -a 256`)
+- 5. Run non-mutating integrity inspection when relevant (clean-text's `text_integrity_audit.py`)
+- 6. Run local generation when it satisfies the policy (by hand, per the runner contract)
 - 7. Report bounded conclusions
 
 ## Workflow
@@ -54,7 +54,7 @@ Use this order:
 3. If no path satisfies both quality and provenance constraints, report the
    conflict. Do not claim an unverified workaround removes a mark.
 
-The local runner is provider-neutral and speaks to a loopback
+Local generation is provider-neutral and speaks to a loopback
 OpenAI-compatible endpoint. See
 [`references/open-weight-runner-contract.md`](open-weight-runner-contract.md).
 
@@ -71,85 +71,47 @@ Preserve:
 - parent record IDs and human-edit description;
 - detector and integrity-audit results with tool versions and limitations.
 
-Create and validate the manifest:
+Write them as a provenance record, a markdown file kept in the project beside
+the text (for example `resources/provenance/<record id>.md`), before anyone
+edits the output. Hash the files with the operating system's own tool and paste
+the values in:
 
 ```bash
-python3 scripts/provenance_manifest.py create \
-  --generation-mode local_open_weight \
-  --provider local \
-  --model example-model \
-  --runtime ollama \
-  --runtime-receipt ollama-metadata.json \
-  --endpoint-class local_loopback \
-  --prompt-file prompt.txt \
-  --output-file output.txt \
-  --manifest provenance.json
-
-python3 scripts/provenance_manifest.py validate provenance.json
-python3 scripts/provenance_manifest.py verify provenance.json
+shasum -a 256 prompt.txt output.txt runtime-metadata.txt
 ```
 
-For an edited or derived output, add each direct parent with
-`--parent-manifest parent.json` during creation and pass the same explicit
-parent manifest to `verify`. Parent links contain hashes and record IDs, not
-paths; verification never follows a path stored by a parent.
-
-The full schema and field semantics are in
-[`references/provenance-manifest.md`](provenance-manifest.md).
+For an edited or derived output, name each direct parent by its record ID and
+its output's SHA-256; a parent link holds hashes and IDs, never a path to
+follow. To verify, re-run `shasum -a 256` on the recorded files and compare;
+for lineage, compare each parent record's output hash with the child's parent
+link, one edge at a time. The fields, privacy rules and what verification can
+and cannot show are in [`references/provenance-manifest.md`](provenance-manifest.md).
 
 ### 5. Run non-mutating integrity inspection when relevant
 
 Invisible Unicode and normalization differences can affect text handling, but
-they are not proof of a statistical watermark. Audit without rewriting:
+they are not proof of a statistical watermark. Audit without rewriting, with
+the audit script that lives in synthesis-clean-text:
 
 ```bash
-python3 scripts/text_integrity_audit.py article.txt --format human
-python3 scripts/text_integrity_audit.py article.txt --format json --fail-on-findings
+python3 ../synthesis-clean-text/scripts/text_integrity_audit.py article.txt --format human
+python3 ../synthesis-clean-text/scripts/text_integrity_audit.py article.txt --format json --fail-on-findings
 ```
 
 The script reports code points, positions, normalization differences, hashes,
 and line-ending counts. For a file, it performs two complete byte reads and
 refuses the audit if their SHA-256 hashes differ. Standard input is necessarily
-single-read. The script never writes a cleaned copy.
+single-read. The script never writes a cleaned copy. Record its result in the
+provenance record's audits, with its limitation.
 
 ### 6. Run local generation when it satisfies the policy
 
-For an already running loopback OpenAI-compatible endpoint, capture the native
-runtime receipt first. The bundled metadata helper supports Ollama:
-
-```bash
-python3 scripts/ollama_metadata.py \
-  --model example-model \
-  --output ollama-metadata.json
-```
-
-Then bind that receipt into the one-shot generation manifest:
-
-```bash
-python3 scripts/local_generate.py \
-  --endpoint http://127.0.0.1:11434/v1/chat/completions \
-  --provider local \
-  --runtime ollama \
-  --runtime-receipt ollama-metadata.json \
-  --model example-model \
-  --reasoning-effort none \
-  --prompt-file prompt.txt \
-  --output-file output.txt \
-  --manifest provenance.json
-```
-
-The runner records one generation. It does not call a detector, regenerate
-selectively, or optimize against provenance results. Non-loopback endpoints are
-rejected unless the operator passes `--allow-non-loopback` deliberately.
-An empty or whitespace-only final response is a failed generation and produces
-no output or manifest. `--reasoning-effort` is optional because not every
-OpenAI-compatible endpoint implements it; when supplied, it is included in the
-request and manifest parameters.
-
-The receipt preserves the runtime version, model digest, size, quantization,
-license and template hashes, selected model metadata, and declared unknowns.
-It deliberately excludes the full tensor inventory and never treats an Ollama
-tag as proof of authorship, license compliance, or watermark absence.
+Follow [`references/open-weight-runner-contract.md`](open-weight-runner-contract.md):
+record the runtime's own metadata first, send one request to the loopback
+endpoint, keep the raw response, and write the provenance record. One request
+produces one output; there is no detector call, selective regeneration or
+optimization against provenance results. A response whose final content is
+empty or whitespace is a failed generation and gets no record as a success.
 
 ### 7. Report bounded conclusions
 

@@ -33,6 +33,38 @@ All five keep their content. Short contents lists were added at the top of the t
 - Pitfalls: "The IMAP substring pitfall and the circumstantial-inference pitfall are documented in detail in [`references/pitfalls.md`]..."
 - Setup: "For Gmail and M365 setup details, see [`references/three-tool-stacks.md`]..."
 
+## v5 script changes (2026-10-05)
+
+Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-inbox-cleanup rows): every script KEEP except `install.sh` (SLIM, "the v5 plugin install gives a stable path"); carry IR-19 into `scan_impersonation.py` from the unshipped branch `fix/phase1-reported-breakage-20261005`.
+
+| Script | Verdict | Now |
+|---|---|---|
+| `_lib.py`, `icloud_plan.py`, `icloud_tail.py`, `icloud_census.py`, `icloud_apply.py`, `icloud_archive_senders.py`, `icloud_inspect_senders.py`, `icloud_catchall_google_purge.py`, `resolve_scope.py`, `sanitize.py`, `m365_mailapp_cleanup.template.applescript` | KEEP | Unchanged |
+| `scan_impersonation.py` | KEEP, plus IR-19 | The principal rule from the branch: `principal.names` and exact `principal.addresses` in the private `impersonation.yaml`, refusal (exit 2) before any mail access when they are missing or invalid, `--check-config`. The branch's triple file-identity check on the config read became one bounded regular-file read with unique keys. 234 lines before, 394 after |
+| `templates/impersonation.example.yaml` | New, from the branch | Synthetic shape for the private file |
+| `install.sh` | SLIM | Seeds the private folder (700) and `config.yaml`, `rules.yaml` (600) without overwriting; refuses `/`, home, symlinked or file roots; reports PyYAML, certifi, the Keychain password, a missing stable engine path and a leftover 1.x engine copy (never deleted). The engine release copy, digest checks and pointer swap are gone: v5 installs the engine at `~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts`. 210 lines of bash before, 86 of POSIX sh after |
+| `tests/test_runtime_installer.sh`, `tests/fixtures/mv-no-h` | Removed | They tested the engine copy and its pointer (the 2026-08-24 `mv` regression); with no copy there is no pointer. The incident is in [preserved.md](preserved.md). `tests/test_inbox_installer.py` covers the new contract |
+
+Scenarios from section 3 of the evaluation and where each is held:
+
+| Scenario | Held by |
+|---|---|
+| E55 Trash, never a permanent delete | `tests/test_inbox_engine.py::test_apply_moves_by_uid_to_recoverable_mailboxes`, `test_without_move_capability_only_the_copied_uids_are_expunged`; binding rule 10 |
+| E56 nothing moves without `--apply` | `test_dry_run_moves_nothing`; binding rule 9 |
+| E57 moves are addressed by UID | the two `--apply` tests (stub sequence numbers differ from UIDs) |
+| E58 planner and executor agree | `test_planner_and_executor_share_one_resolver`; `tests/run_resolver.py` (run by `test_standalone_suites_pass`) |
+| E59 a bulk archive honours `never_touch` | binding rule 16; references/pitfalls.md (2026-09-28). No script takes a bulk request, so the rule is prose |
+| E60 a forged `</UNTRUSTED_EMAIL>` stays inside the nonce fence | `tests/run_poisoned.py` (`delimiter_breakout.eml`), run by `test_standalone_suites_pass`; binding rule 3 |
+| E61 a brand claimed from a domain that is not the brand's | `tests/test_impersonation.py::test_exact_name_boundary_and_brand_rules_remain_distinct` |
+| E62 a display name equal to the principal's own (IR-19) | `test_principal_names_and_aliases_from_unlisted_addresses_are_high` and the rest of `tests/test_impersonation.py`; binding rule 15 |
+| E63 an unknown workspace exits 2 | `tests/test_resolve_scope.py::test_unknown_workspace_is_unverifiable_not_empty`; binding rule 12 |
+| E64 catch-all Google notices trashed, the owner's addresses and Workspace or billing senders spared | `tests/test_inbox_engine.py::test_catchall_purge_trashes_strangers_and_spares_the_owner`, `test_lifecycle_rule_never_matches_workspace_or_billing_senders` |
+| E65 the Gmail API, not a Mail.app loop | binding rule 17; references/pitfalls.md (2026-08-29) |
+| E66 the recipient axis as well as the sender | binding rule 17; references/pitfalls.md (2026-08-29) |
+| E67 iCloud Message-ID needs a fetched map; "0 found" is a tool failure | references/pitfalls.md (2026-09-28). No public script moves by Message-ID |
+
+Prose changed with the scripts: references/setup-and-scoping.md (the architecture tree, setup steps 6 and 7, and a paragraph on what the installer reports; the old lines are verbatim in [preserved.md](preserved.md)); references/release-notes.md (a v2.0.0 note); references/pitfalls.md (three anonymized sweep pitfalls from the 2026-08-29 and 2026-09-28 lessons); SKILL.md (binding rules 15 to 17, the scan command in Contents).
+
 ## The 1.6.2 frontmatter
 
 Kept whole, so the old description and keys stay on record.

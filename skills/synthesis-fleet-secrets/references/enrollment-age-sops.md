@@ -1,10 +1,9 @@
 # age/SOPS Backend — Enrollment Design (Variant 2, ruled future)
 
-The age/SOPS backend is not implemented. `AgeSopsBackend` in
-`scripts/secrets_provider.py` is a stub raising `NotImplementedError`. This
-document records the enrollment design so the dual-mode seam (the
-`SecretsBackend` interface plus the manifest `backend` field) can grow the
-second backend without changing callers.
+The age/SOPS backend is not implemented, and v5 ships no secrets scripts (the
+1.0 stub went with them). This document records the enrollment design so the
+manifest's `backend` field can name a second backend without changing the
+manifest format or the materialize and check procedure.
 
 ## Layout
 
@@ -20,9 +19,9 @@ second backend without changing callers.
    leaves the Mac.
 2. The owner adds the new Mac's public key as a SOPS recipient from an
    already-enrolled Mac and runs `sops updatekeys` on every encrypted file.
-3. The new Mac clones the secrets repo, decrypts through the provider's
-   `get(ref)`, and materializes exactly like the 1Password path (same
-   permissions, backup, and doctor gates).
+3. The new Mac clones the secrets repo, decrypts each ref with
+   `sops --decrypt`, and materializes exactly like the 1Password path (same
+   permissions, backup, and check gates).
 
 ## Offboard / loss
 
@@ -32,11 +31,11 @@ second backend without changing callers.
    ciphertext in git history stays decryptable by old keys.
 3. The removed Mac fails closed with "secret unavailable."
 
-## Implementation checklist (when ruled)
+## Checklist (when ruled)
 
-- `AgeSopsBackend.get`: `sops --decrypt` the referenced file (or `sops exec`)
-  and extract `<key>`; never log the value.
-- `is_available`: `sops` + `age` present and the local keypair unlocks at
-  least one recipient slot (probe without exposing values).
-- Doctor and materialize paths are backend-agnostic already; add backend
-  fixtures mirroring the `op` fakes, with fake refs only.
+- Read a value: `sops --decrypt` the referenced file (or `sops exec`) and
+  extract `<key>`; never log the value.
+- Available means: `sops` and `age` are present and the local keypair unlocks
+  at least one recipient slot (probe without exposing values).
+- The materialize and check procedures in SKILL.md are backend-agnostic; any
+  example uses fake refs only.

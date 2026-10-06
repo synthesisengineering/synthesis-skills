@@ -64,7 +64,7 @@ Memorize the seven category labels above. When drafting analysis or reading a su
 
 The test: did the user, explicitly or via standing constraints, ask the agent to optimize for the thing this phrase implies? If yes, the phrase is legitimate. If the user asked for the opposite — "best, most flexible, robust, maintainable solution; no shortcuts" — the phrase is a costume. Strip it from the draft.
 
-The full per-phrase catalog with category, rationale, and replacement framings lives in [`references/costume-vocabulary.md`](costume-vocabulary.md). The operational extract is in `scripts/scan_output.py`.
+The full per-phrase catalog with category, rationale, and replacement framings lives in [`references/costume-vocabulary.md`](costume-vocabulary.md). The operational extract is `costume-catalog.json`, which `scripts/scan_output.py` scans with.
 
 ### 4. Sub-Agent Dispatch Hygiene
 
@@ -133,7 +133,7 @@ The catalog grows. When a new costume appears in production output, the loop is:
 1. Document the incident as a case study. The incident is the data; the documented teardown is the artifact that survives context loss.
 2. Extract the new phrase, category, and rationale.
 3. Update [`references/costume-vocabulary.md`](costume-vocabulary.md) with the new entry.
-4. Update `scripts/scan_output.py` if the embedded catalog should detect the phrase.
+4. Add an entry to `costume-catalog.json` if the scanner should detect the phrase; `tests/test_scan_output.py` checks every entry compiles and has a rationale and a rewrite.
 5. (Optional) Regenerate any operational catalog files that consume this skill.
 
 The methodology stays stable. The catalog refreshes as the failure modes evolve. The anonymized case studies in [`references/case-studies.md`](case-studies.md) are the durable record of where each entry came from.

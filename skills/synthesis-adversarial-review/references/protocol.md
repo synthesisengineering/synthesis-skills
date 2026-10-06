@@ -1,6 +1,6 @@
 # The adversarial review protocol, in full
 
-Every section of the review protocol as written in 1.2.1. SKILL.md's binding rules summarize each section under the same heading; read the full section here before running that part of a review.
+Every section of the review protocol as written in 1.2.1, except the Finding Ledger section, which v5 rewrote around a markdown findings table (the 1.2.1 text is verbatim in [preserved.md](preserved.md)). SKILL.md's binding rules summarize each section; read the full section here before running that part of a review.
 
 Contents:
 - Purpose: the principal's outcome, typed domain review, authority, decision ownership
@@ -9,7 +9,7 @@ Contents:
 - Adjudication and Separation of Duties (the third role, the reproducer rule, the revisit trigger)
 - Goal-Focused Round (five terminal stages, ship-blocking versus ship-improving, closing a round)
 - Sidecars, Evidence, and Handoff Topology
-- Finding Ledger (the `finding_ledger.py init` command, finding fields, compare-before-write, acceptance manifests)
+- Finding Ledger (the markdown findings table, finding fields, compare-before-write, what counts as an enforced gate)
 - Bounded Control Depth
 - Bounded Post-Publication Acceptance (five steps)
 - Agent-Principal Norms
@@ -156,16 +156,26 @@ a fail-closed caller at the state-changing boundary can issue an authority recei
 
 ## Finding Ledger
 
-Create one YAML ledger per engagement in the owning project's `resources/` directory:
+Keep one findings file per engagement in the owning project's `resources/`
+directory, `resources/<engagement>-findings.md`, claimed with
+`synthesis claim <path>` by the session that adjudicates. It is a markdown table
+plus an append-only transitions list, so any agent can read it and git keeps
+its history:
 
-```bash
-python3 scripts/finding_ledger.py init \
-  --resources-root resources \
-  --file resources/<engagement>-findings.yaml \
-  --engagement <id> \
-  --principal-outcome '<outcome>' \
-  --round-trip-budget <count> \
-  --proportionality 'AGENT HEURISTIC: <bounded rationale>'
+```markdown
+# Findings: <engagement id>
+
+- Principal outcome: <outcome>
+- Round-trip budget: <count>; principal courier crossings so far: <count>
+- Proportionality: AGENT HEURISTIC: <bounded rationale>
+
+| ID | Finding | State | Class | Authority (provenance) | Enforcement outcome | Evidence | Follow-up project |
+|---|---|---|---|---|---|---|---|
+| F1 | <one line> | open | ship-blocking | agent-heuristic (<provenance id>) | <what enforcement does today> | <reproducer, path> | — |
+
+## Transitions
+
+- <YYYY-MM-DD HH:MM> F1 open → challenged, by <adjudicator>: <evidence and rationale>
 ```
 
 Each finding must carry:
@@ -182,17 +192,18 @@ The authority label and enforcement outcome answer different questions. `AGENT H
 may be the honest provenance label while enforcement is still wrong. Exercise every report
 branch and verify finding, authority, and enforcement outcome independently.
 
-Ledger edits are compare-before-write operations. `transition` requires the recorded prior
-state; missing or duplicate ids, stale expected state, unknown keys, invalid classification,
-and symlink targets refuse without writing. Every command requires the owning project's
-literal `resources/` root, rejects a target outside it or any symlinked path component, and
-holds the resources-directory lock across read, expected-state comparison, replacement,
-and read-back. Use `validate` before handoff.
+Edits are compare-before-write. Before a transition, re-read the file and confirm the
+finding's current state is the one you are moving from; if it is not, someone else moved
+it, so stop and reconcile rather than overwrite. Only the adjudicator changes a State
+cell, and every change appends one line to Transitions (never edit or delete a past
+line). A new finding gets a fresh ID; a duplicate ID, a state outside the set, a missing
+classification, or a ship-improving row without a follow-up project is a defect to fix
+before handoff. Read the whole table back before each handoff.
 
-Acceptance manifests label each case `diagnostic | acceptance-test | enforced-gate`.
-Section-shape and vocabulary checks are diagnostics, not behavioral acceptance. A manifest
-does not issue an authority receipt. Native agent scenarios establish protocol behavior;
-only a fail-closed caller at the state-changing boundary can claim an enforced gate.
+Section-shape and vocabulary checks are diagnostics, not behavioral acceptance. Native
+agent scenarios establish protocol behavior; only a fail-closed caller at the
+state-changing boundary can claim an enforced gate. In v5 those callers are the guards
+(sends, deploys, commits) and PR CI, which is the only release gate.
 
 ## Bounded Control Depth
 

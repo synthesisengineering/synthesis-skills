@@ -36,19 +36,23 @@ Rules 1 to 8 are the prompt-injection rules, numbered as before so a citation of
 12. **The caller states its workspace; an unknown workspace is exit 2, never an empty sweep.** Report results per account against the resolved scope.
 13. **Impersonation scanning reports only.** An authenticated domain says nothing about the display name, so "the domain checks out" is not a safety verdict; removal stays human-reviewed.
 14. **On Gmail, never auto-archive `noreply@` transactional mail** (payroll, Stripe, banks, healthcare), and operate on messages, not threads.
+15. **The account owner's own name is an impersonation target.** `scan_impersonation.py` flags a display name equal to the principal's from any address not listed exactly, and refuses to scan (exit 2) until `impersonation.yaml` declares those names and addresses; a scan without the rule would look clean.
+16. **A bulk request never overrides `never_touch`:** hold those messages and count them by sender.
+17. **Sweep by recipient as well as sender, through the account's own connector,** and count before and after. Catch-all abuse is invisible on the sender axis, and a Mail.app loop reported success after moving 6 of 494.
 
 ## Contents
 
 - [references/workflow.md](references/workflow.md): the three tool stacks, the four dispositions, workflow steps 1 to 6 with exact commands, the Microsoft 365 and Gmail paths, and the pitfalls table. Read it when running a sweep.
 - [references/injection-rules.md](references/injection-rules.md): rules 1 to 8 in full. Read it before any path that reads email content into your context.
 - [references/setup-and-scoping.md](references/setup-and-scoping.md): public engine and private rules, the `scopes.yaml` contract and `resolve_scope.py`, setup steps. Read it when installing, onboarding an account or resolving which accounts a seat may sweep.
-- [references/release-notes.md](references/release-notes.md): version notes 1.4.0 to 1.6.2 (1.6.0 documents `scan_impersonation.py`), license, author. Read it when scanning for impersonation or tracing a change.
+- [references/release-notes.md](references/release-notes.md): version notes 1.4.0 to 2.0.0 (1.6.0 and 2.0.0 document `scan_impersonation.py`: `python3 scripts/scan_impersonation.py [--json] [--strict-only] [--folder F] [--check-config]`), license, author. Read it when scanning for impersonation or tracing a change.
 - [references/three-tool-stacks.md](references/three-tool-stacks.md): the decision tree and trade-offs per account class. Read it when choosing a stack or setting up Gmail or M365.
 - [references/manifest-schema.md](references/manifest-schema.md): the `rules.yaml` schema and resolution precedence. Read it when editing rules.
 - [references/gmail-filters-patterns.md](references/gmail-filters-patterns.md): the five proven Gmail filter categories. Read it before creating filters.
 - [references/pitfalls.md](references/pitfalls.md): the incidents behind each design decision. Read it before extending the engine.
 - [references/prompt-injection-defenses.md](references/prompt-injection-defenses.md): the threat model and the ten defense layers. Read it before changing the sanitizer or adding an LLM path.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.6.2 text now lives.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.6.2 text and each script change now lives.
+- [references/preserved.md](references/preserved.md): setup and architecture lines the v5 engine path replaced, verbatim. Read only to review the change.
 - When to invoke, When NOT to invoke: below.
 
 ## When to invoke this skill

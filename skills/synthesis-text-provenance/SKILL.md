@@ -22,8 +22,8 @@ Records how text was produced and changed, and keeps every claim about it inside
 3. **Record the requirement before choosing a model:** privacy, reproducibility, mark policy, disclosure, quality, allowed runtimes, detector authorization.
 4. **Re-verify capability claims** in current primary documentation, recording provider, exact model, surface, region and date.
 5. **Prefer prevention.** If provider-added marking conflicts with the requirement, choose an authorized local/open-weight model before generating; if nothing satisfies both quality and provenance, report the conflict.
-6. **Preserve raw input, output and hashes before editing**; hash-bind the native runtime receipt; validate and verify the manifest and its direct parents.
-7. **Audit without rewriting.** The integrity audit reports Unicode facts, never writes a cleaned copy, and is not proof of a statistical watermark.
+6. **Preserve raw input, output and hashes before editing** in a provenance record in the project; record the runtime's own metadata before local generation; verify hashes and each direct parent by recomputing them.
+7. **Audit without rewriting.** The integrity audit (synthesis-clean-text's `text_integrity_audit.py`) reports Unicode facts, never writes a cleaned copy, and is not proof of a statistical watermark.
 8. **No detector result becomes an optimization loop.**
 9. **Bound every conclusion.** Never write "watermark-free," "undetectable," "human-written," or "clean" when the evidence shows a narrower fact.
 
@@ -31,10 +31,11 @@ Records how text was produced and changed, and keeps every claim about it inside
 
 - [references/workflow.md](references/workflow.md): the seven steps in full with every command and option. Read it when running a step for the first time in a session.
 - [references/capability-claims.md](references/capability-claims.md): evidence classes and bounded language. Read it before stating what a provider or detector does.
-- [references/open-weight-runner-contract.md](references/open-weight-runner-contract.md): the loopback runner contract. Read it before local generation.
-- [references/provenance-manifest.md](references/provenance-manifest.md): manifest schema and field semantics. Read it when creating or checking a manifest.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.1 text now lives (ruling D8).
-- Four judgments, Non-negotiable boundary, Trigger boundary, Scripts, Completion checklist: below.
+- [references/open-weight-runner-contract.md](references/open-weight-runner-contract.md): local generation by hand against a loopback endpoint, with the runtime metadata to capture first. Read it before local generation.
+- [references/provenance-manifest.md](references/provenance-manifest.md): the provenance record's fields, privacy rules and verification. Read it when writing or checking a record.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.1 text and each script change now lives (ruling D8).
+- [references/preserved.md](references/preserved.md): the retired manifest, runner and metadata-tool text, verbatim. Read only to review the change.
+- Four judgments, Non-negotiable boundary, Trigger boundary, Tools, Completion checklist: below.
 
 ## Four judgments
 
@@ -84,23 +85,23 @@ editorial quality and model-shaped prose. Use
 [`synthesis-clean-text`](../synthesis-clean-text/SKILL.md) for ordinary text
 normalization. This skill owns provenance mechanics and claim boundaries.
 
-## Scripts
+## Tools
 
-Run from the skill folder. Full flags are in references/workflow.md, steps 4 to 6.
+No scripts ship with this skill; its records are markdown in the project (references/workflow.md, steps 4 to 6).
 
-- `python3 scripts/provenance_manifest.py create ... --manifest provenance.json` prints `created canonical self-hashed schema-2 manifest`; `validate provenance.json` prints `valid ...`; `verify provenance.json` checks the self-hash, referenced files and `--parent-manifest` links.
-- `python3 scripts/text_integrity_audit.py article.txt --format human` (or `--format json --fail-on-findings`) prints code points, positions, normalization differences, hashes and line endings; exit 1 on findings with that flag, 2 on error.
-- `python3 scripts/ollama_metadata.py --model example-model --output ollama-metadata.json` writes the bounded Ollama runtime receipt.
-- `python3 scripts/local_generate.py --endpoint http://127.0.0.1:11434/v1/chat/completions ...` generates once and writes the output and a valid manifest.
+- Hashes: `shasum -a 256 prompt.txt output.txt runtime-metadata.txt` prints one SHA-256 per file for the provenance record; re-run it to verify.
+- Character audit: `python3 ../synthesis-clean-text/scripts/text_integrity_audit.py article.txt --format human` (or `--format json --fail-on-findings`) prints code points, positions, normalization differences, hashes and line endings; exit 1 on findings with that flag, 2 on error.
+- Local generation: the runtime's own commands and one `curl` request, as the runner contract shows.
 
 ## Completion checklist
 
 - [ ] Exact model, surface, runtime, and collection date are recorded.
 - [ ] Hosted versus local selection follows the stated requirement.
 - [ ] Raw input/output and hashes are preserved before editing.
-- [ ] Native runtime receipt is hash-bound for local generation.
-- [ ] Manifest validation, self-hash, file hashes, and direct-parent lineage
-      verification pass.
+- [ ] Runtime metadata was captured before local generation and is hash-bound
+      in the record.
+- [ ] The record's file hashes match the files, and each direct parent's
+      output hash matches the child's parent link.
 - [ ] Detector access and authorization are recorded, if used.
 - [ ] No detector result was used as an optimization loop.
 - [ ] Positive and negative conclusions are bounded to the evidence.

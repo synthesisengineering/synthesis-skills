@@ -2,22 +2,36 @@
 
 ## Purpose
 
-Provide one reproducible generation through an OpenAI-compatible chat
+Produce one reproducible generation through a local OpenAI-compatible chat
 completions endpoint while capturing enough metadata to audit the event. The
-contract intentionally has no detector-feedback or rewrite loop.
+contract intentionally has no detector-feedback or rewrite loop. It is a
+procedure run by hand; v5 ships no runner script.
 
-## Request
+## Before the request
 
-- one UTF-8 user prompt file;
-- optional UTF-8 system prompt file;
-- exact model ID requested;
-- provider and runtime labels supplied by the operator;
-- endpoint URL;
-- native runtime-receipt file for local generation;
+Gather:
+
+- one UTF-8 user prompt file, and an optional UTF-8 system prompt file;
+- the exact model ID requested;
+- the provider and runtime labels;
+- the endpoint URL (loopback by default; see Endpoint safety);
 - temperature, maximum output tokens, and optional seed;
-- optional OpenAI-compatible reasoning effort (`none`, `low`, `medium`, or
-  `high`);
-- output path and manifest path.
+- optional reasoning effort (`none`, `low`, `medium`, or `high`) where the
+  endpoint implements it.
+
+Capture the runtime's own metadata before generating, so the record cannot
+omit or overwrite it. For Ollama:
+
+```bash
+{ ollama --version; ollama list | grep '<model>'; ollama show <model>; } > runtime-metadata.txt
+ollama show <model> --license | shasum -a 256
+ollama show <model> --template | shasum -a 256
+```
+
+That keeps the runtime version, the tag's digest, details, parameters and
+capabilities, and hashes of the license and template. Declare anything missing
+as unknown; leave out the full tensor inventory. An Ollama tag is never proof
+of authorship, license compliance, or watermark absence.
 
 ## Model-selection evidence
 
@@ -33,44 +47,43 @@ If the selected model is unavailable, keep the acquisition or execution gap
 explicit. Do not silently substitute a different family, quantization, runtime,
 or provider and retain the original label.
 
-## Response requirements
+## The request
 
-The endpoint must return JSON with:
+Send one request and keep the raw response:
 
-```json
-{
-  "choices": [{"message": {"content": "text"}}],
-  "model": "returned-model-id"
-}
+```bash
+curl -s http://127.0.0.1:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' -d @request.json > response.json
+python3 -c 'import json,sys; print(json.load(sys.stdin)["choices"][0]["message"]["content"], end="")' \
+  < response.json > output.txt
 ```
 
-The returned model field may be absent. Record `null`; do not infer it from the
-request. Record `finish_reason`, `usage`, and `system_fingerprint` when the
-endpoint returns them; an absent field remains `null`.
-`choices[0].message.content` must contain non-whitespace final text. A response
-that exhausts its allowance in reasoning and returns no final content is a
-failed generation, not valid zero-byte evidence.
+The response's `choices[0].message.content` must contain non-whitespace final
+text. A response that exhausts its allowance in reasoning and returns no final
+content is a failed generation, not valid zero-byte evidence. The returned
+`model` field may be absent: record unknown, never the requested ID. Record
+`finish_reason`, `usage` and `system_fingerprint` when present.
 
 ## Endpoint safety
 
-Loopback HTTP and HTTPS endpoints are accepted by default. LAN or hosted
-OpenAI-compatible endpoints require `--allow-non-loopback`. API credentials
-must come from an environment variable named with `--api-key-env`; the key is
-never written to the manifest or error output. Endpoint URLs containing user
-information, query parameters, or fragments are rejected so secrets do not
-enter shell history or an accidental record.
+Use a loopback endpoint (`127.0.0.1`, `::1` or `localhost`) by default. A LAN
+or hosted endpoint is a deliberate choice recorded as such. Read an API key
+from an environment variable in the command (`-H "Authorization: Bearer
+$KEY"`), never type it inline, and never write it into the record or
+`request.json`. Do not use an endpoint URL that carries user information, query
+parameters or fragments, so secrets stay out of shell history and records.
 
 ## Generation semantics
 
-- one request produces one output and one manifest;
+- one request produces one output and one provenance record;
 - do not silently retry a completed response because its style is undesirable;
-- network or response-shape failures leave no completed manifest;
-- the raw response content is written without editorial normalization;
-- local generation fails closed when no native runtime receipt is supplied;
-- the manifest binds the receipt's exact bytes with SHA-256 and byte count;
-- detector results are not inputs to the runner;
-- callers who need multiple samples invoke the runner independently and assign
-  independent record IDs.
+- a network or response-shape failure leaves no record of a success;
+- keep the raw response content without editorial normalization;
+- local generation without captured runtime metadata is not recorded as local
+  open-weight generation;
+- the record binds the metadata file's exact bytes with SHA-256 and byte count;
+- detector results are never inputs to generation;
+- several samples are several independent requests, each with its own record.
 
 ## Reproducibility limit
 
@@ -78,10 +91,3 @@ Parameters and hashes make the call auditable, not necessarily bit-for-bit
 reproducible. Runtime versions, kernels, quantization, model files, sampling
 implementations, and nondeterministic hardware may change output. Record those
 details in project-level run metadata when exact reproduction matters.
-
-Capture the receipt before generation so the generation manifest cannot
-overwrite or omit the runtime observation. For Ollama, `ollama_metadata.py`
-queries `/api/version`, `/api/tags`, and `/api/show` on loopback. It stores a
-bounded receipt with the tag digest, runtime version, details, capabilities,
-parameters, selected model-info fields, and hashes of the license and template.
-Missing values are declared as unknown; the full tensor inventory is excluded.

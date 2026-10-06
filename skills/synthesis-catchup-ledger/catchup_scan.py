@@ -16,6 +16,12 @@ This is a CANDIDATE GENERATOR. Items it emits may already be resolved in
 sources it cannot see (Slack threads, merged PRs, meeting decisions). The
 classifying agent must cross-check before writing any item into a ledger.
 
+Long lines are shown as previews, and every cut preview ends with
+"…[truncated: N chars, open L<line>]". A truncated preview is a pointer, not
+content: open the line before quoting or reasoning from it (lesson 2026-08-18,
+where a preview cut to "`gchat-sync.yaml` n" was completed as "not created"
+when the word was "needs").
+
 Usage:
   python3 catchup_scan.py <daily_plans_dir> --start YYYY-MM-DD --end YYYY-MM-DD
   python3 catchup_scan.py <daily_plans_dir> --start 2026-04-29 --end 2026-06-10 --max-section-lines 12
@@ -46,6 +52,18 @@ CARRYOVER_HEADING_RE = re.compile(
 DECISIONS_HEADING_RE = re.compile(r"decisions? (needed|to make)|open ask", re.IGNORECASE)
 
 
+ITEM_WIDTH = 160
+SECTION_WIDTH = 150
+
+
+def preview(text: str, width: int, line_no: int) -> str:
+    """Return text whole when it fits; otherwise a cut that says it is cut."""
+    text = text.strip()
+    if len(text) <= width:
+        return text
+    return f"{text[:width]}…[truncated: {len(text)} chars, open L{line_no}]"
+
+
 def heading_level(line: str) -> int:
     m = re.match(r"^(#{1,6})\s", line)
     return len(m.group(1)) if m else 0
@@ -74,7 +92,7 @@ def scan_file(path: Path, max_section_lines: int):
                 block, j = [], i + 1
                 while j < n and heading_level(lines[j]) not in (1, 2):
                     if lines[j].strip():
-                        block.append(lines[j])
+                        block.append((j + 1, lines[j]))
                     j += 1
                 findings["carryover"].append(
                     (i + 1, current_h2, block[:max_section_lines], max(0, len(block) - max_section_lines))
@@ -109,24 +127,24 @@ def scan_file(path: Path, max_section_lines: int):
 
         um = UNCHECKED_RE.match(line)
         if um and not DONE_HINT_RE.search(um.group(1)):
-            findings["unchecked"].append((i + 1, um.group(1).strip()[:160]))
+            findings["unchecked"].append((i + 1, preview(um.group(1), ITEM_WIDTH, i + 1)))
         elif in_task_section:
             nm = NUMBERED_RE.match(line)
             if nm and not DONE_HINT_RE.search(nm.group(1)):
-                findings["unchecked"].append((i + 1, nm.group(1).strip()[:160]))
+                findings["unchecked"].append((i + 1, preview(nm.group(1), ITEM_WIDTH, i + 1)))
 
         i += 1
 
     return findings
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("plans_dir")
     ap.add_argument("--start", required=True)
     ap.add_argument("--end", required=True)
     ap.add_argument("--max-section-lines", type=int, default=12)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     root = Path(args.plans_dir).expanduser()
     if not root.is_dir():
@@ -156,8 +174,8 @@ def main():
             print(f"  [OPEN-ITEM]    L{line_no}: {t}")
         for line_no, h, block, dropped in f["carryover"]:
             print(f"  [CARRYOVER]    L{line_no}: ## {h}")
-            for b in block:
-                print(f"                 | {b.strip()[:150]}")
+            for b_line, b in block:
+                print(f"                 | {preview(b, SECTION_WIDTH, b_line)}")
             if dropped:
                 print(f"                 | … (+{dropped} more lines)")
         for k in total:
@@ -169,7 +187,9 @@ def main():
         f"undecided={total['undecided']}  carryover-sections={total['carryover']}"
     )
     print("Candidates only — cross-check against transcripts/tickets before classifying.")
+    print("A line ending in …[truncated: …] is a pointer: open the file at that line before quoting it.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

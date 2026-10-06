@@ -37,7 +37,9 @@ Rules 1 to 8 carry the methodology section numbers other documents cite (for exa
 - [references/sub-agent-hygiene.md](references/sub-agent-hygiene.md): dispatch and acceptance rules, brief template, size cap. Read it before dispatching or accepting a sub-agent.
 - [references/case-studies.md](references/case-studies.md): the incidents each entry came from; scanner `see:` lines point here. Read it when a hit's origin matters.
 - [references/background.md](references/background.md): why the pattern happens, how the pieces fit, sibling skills, the underlying principle. Read once per session.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.1 text now lives (ruling D8).
+- [costume-catalog.json](costume-catalog.json): the phrase catalog the scanner reads (id, pattern, category, exemptions, rationale, rewrite). Edit it when a new costume should fire automatically.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.1 text and each script change now lives (ruling D8).
+- [references/preserved.md](references/preserved.md): sentences replaced when the catalog moved out of the scanner, verbatim. Read only to review the change.
 - When to Apply, The Pattern, Pre-Response Self-Check, The scanner: below.
 
 ## When to Apply
@@ -78,4 +80,4 @@ Before sending any draft analysis, recommendation, or implementation plan:
 
 ## The scanner
 
-`python3 scripts/scan_output.py draft.md` (or text on stdin) prints each hit by category: line and column, the matched phrase, why it is a shortcut, a rewrite framing and a `see:` case. Exit 0 clean, 1 detections, 2 error. Flags: `--json`, `--quiet` (exit code only, for hooks), `--context 120`, `--catalog <file.yaml>` (needs PyYAML).
+`python3 scripts/scan_output.py draft.md` (or text on stdin) prints each hit by category: line and column, the matched phrase, why it is a shortcut, a rewrite framing and a `see:` case. Exit 0 clean, 1 detections, 2 error. Flags: `--json`, `--quiet` (exit code only, for hooks), `--context 120`, `--category <name>`, `--catalog <file>` (JSON; YAML needs PyYAML). It reads `costume-catalog.json`, the one public catalog, and skips phrases quoted or in code, since those are being discussed. The v5 Stop hook checks every reply against a short built-in subset of the same catalog.

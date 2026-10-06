@@ -19,6 +19,10 @@ Every part of the 1.0.0 SKILL.md and where it lives now. Nothing was removed.
 
 `v5-skill-coverage-check.py` reports no lines: every non-blank line of the 1.0.0 body appears verbatim in SKILL.md or references/edit-and-ship.md. The moved text has no relative links, so no link paths changed.
 
+## v5 script changes (2026-10-05)
+
+The v5 code evaluation (`tool-scripts.md`, row `synthesis-kb-edit/scripts/kb_config.py`) ruled KEEP. `scripts/kb_config.py` (283 lines) is unchanged; its tests moved from `scripts/test_kb_config.py` to `tests/test_kb_config.py` (path change only, PyYAML skipped where missing) and gained `test_symlinked_contract_path_that_leaves_the_repo_is_refused`, which with the existing `test_rejects_path_escape` holds scenario E93 (a contract path that escapes the repository is refused). No prose changed.
+
 ## The 1.0.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

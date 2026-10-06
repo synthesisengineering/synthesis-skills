@@ -30,6 +30,7 @@ A **catch-up ledger**: one dated markdown document that reconciles an arbitrary 
 9. **Keep the template's section headings and table shapes.** synthesis-console parses them; a change there updates the console in the same session.
 10. **Write for a person recovering from a busy stretch, not an auditor:** lead with what is actionable; record done-late items as completions.
 11. **Publish exact paths only;** never use broad staging.
+12. **A truncated preview is a pointer, never content.** The scanner marks every cut line `…[truncated: N chars, open L<n>]`; open that line before quoting or classifying it. A preview cut to one letter was once completed as the opposite of what the file said.
 
 ## Contents
 
@@ -65,7 +66,7 @@ The EXPIRED category is the one most systems omit and the one that matters most 
 The steps in full, with the ledger template, are in references/protocol.md.
 
 1. **Step 1 — Anchor and bound the window.**
-2. **Step 2 — Mechanical scan (bundled script).** It prints, grouped by file, unchecked tasks, drafts without `**Sent:**`, decisions without `**Decided:**` and carryover sections; exit 0 when the scan completes, 2 on bad arguments.
+2. **Step 2 — Mechanical scan (bundled script).** It prints, grouped by file, unchecked tasks, drafts without `**Sent:**`, decisions without `**Decided:**` and carryover sections, then totals; a line too long for its preview ends `…[truncated: N chars, open L<n>]`. Exit 0 when the scan completes, 2 on bad arguments.
 
    ```bash
    python3 catchup_scan.py <daily_plans_dir> --start YYYY-MM-DD --end YYYY-MM-DD
