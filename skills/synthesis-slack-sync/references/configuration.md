@@ -82,7 +82,9 @@ synthesis config (`~/.synthesis/v5/config.json`, or `$SYNTHESIS_HOME/config.json
 }
 ```
 
-The keys are the session-workspace names (the `~/workspaces/<name>` folders).
+The keys are the session-workspace names (the `~/workspaces/<name>` folders). A
+workspace with no Slack of its own is listed as `{"domain": null}`, so sessions there
+still read the others in unified mode.
 Before any sync, run `python3 <synthesis-slack-sync-root>/scripts/slack_workspaces.py`
 from inside the session workspace (or with `--session-workspace <name>`): it prints
 the mode, each workspace's domain and the readable set; exit 2 means the map is

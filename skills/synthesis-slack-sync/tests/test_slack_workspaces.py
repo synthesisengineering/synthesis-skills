@@ -39,6 +39,17 @@ def test_e12_isolated_mode_never_reaches_another_workspace(tmp_path):
     assert "readable from here: acme\n" in text
 
 
+def test_a_workspace_with_no_slack_of_its_own_reads_the_others(tmp_path):
+    section = {"mode": "unified", "workspaces": {**MAP["workspaces"], "personal": {"domain": None}}}
+    done = run(tmp_path, section, "--session-workspace", "personal", "--json")
+    assert done.returncode == 0, done.stderr
+    assert [w["name"] for w in json.loads(done.stdout)["readable"]] == ["acme", "beta"]
+    assert "personal     (no Slack)  <-- focus" in run(tmp_path, section, "--session-workspace", "personal").stdout
+    alone = run(tmp_path, {**section, "mode": "isolated"}, "--session-workspace", "personal", "--json")
+    assert json.loads(alone.stdout)["readable"] == []
+    assert run(tmp_path, {"workspaces": {"acme": {}}}, "--session-workspace", "acme").returncode == 2  # no domain key
+
+
 def test_the_session_workspace_comes_from_the_workspaces_folder(tmp_path):
     folder = tmp_path / "workspaces" / "personal" / "some-repo"
     folder.mkdir(parents=True)

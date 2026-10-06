@@ -10,7 +10,8 @@ reading across them is a disclosure question. The map lives in the synthesis con
 
 Modes (references/cross-workspace-visibility.md): `unified` (the default) focuses on the
 session workspace and may read the others when relevant; `isolated` reads the session
-workspace only. A workspace absent from this machine's map is unreachable here.
+workspace only. A workspace absent from this machine's map is unreachable here. A workspace with
+no Slack of its own is listed with `"domain": null`: sessions there still read the others.
 
     slack_workspaces.py [--session-workspace NAME] [--json]
 
@@ -43,6 +44,8 @@ def load(config_file: Path | None = None) -> tuple[str, dict]:
         raise ValueError(f"unknown mode {mode!r}; want one of {MODES}")
     for name, entry in section["workspaces"].items():
         domain = entry.get("domain") if isinstance(entry, dict) else None
+        if domain is None and isinstance(entry, dict) and "domain" in entry:
+            continue  # no Slack of its own
         if not isinstance(domain, str) or not domain.endswith(".slack.com"):
             raise ValueError(f"workspace {name!r} needs a domain ending in .slack.com")
     return mode, section["workspaces"]
@@ -56,8 +59,9 @@ def session_workspace(explicit: str | None = None) -> str | None:
 
 
 def readable(mode: str, workspaces: dict, focus: str) -> list[str]:
-    """The session workspace first; the others only in unified mode."""
-    return [focus] + ([] if mode == "isolated" else sorted(n for n in workspaces if n != focus))
+    """The session workspace first; the others only in unified mode; never one with no Slack."""
+    names = [focus] + ([] if mode == "isolated" else sorted(n for n in workspaces if n != focus))
+    return [n for n in names if workspaces[n].get("domain")]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -82,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(f"mode: {mode}  session workspace: {focus}")
     for name in sorted(workspaces):
-        print(f"  {name:12} {workspaces[name]['domain']}{'  <-- focus' if name == focus else ''}")
+        print(f"  {name:12} {workspaces[name]['domain'] or '(no Slack)'}{'  <-- focus' if name == focus else ''}")
     print(f"readable from here: {', '.join(names)}")
     return 0
 
