@@ -4,6 +4,53 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.0] - 2026-10-06
+
+A rebuild of the synthesis work system from its requirements. The skills keep every
+rule, lesson and edge case; the machinery that existed to manage itself is gone.
+About 189,000 lines of Python became about 25,000, and an ordinary shell call now
+costs about 30 ms of hook time instead of about 1.7 s.
+
+**One small core.** A `synthesis` command and four hooks, standard library only,
+running on Apple's Python 3.9:
+
+- Session start restates the local time, the active project's PRIME-DIRECTIVE and
+  current state, the session's own autopilot run and one ritual line, including
+  after compaction.
+- Sends, calendar, mail and drive-share calls wait for the principal to type
+  `approve <code>`; the approval binds the whole call and is used once.
+- Deploys need approval of the exact command; future or changed publish dates and a
+  rapid redeploy are refused; recursive deletes of protected roots and force pushes
+  to default branches are refused.
+- The reply check sends a reply back once for deferring language, quotes with no
+  source in the session, and (when configured) file names that are not links.
+- A global commit check scans for credentials and unapproved disclosures, checks
+  other sessions' claims and chains to each repository's own hooks.
+- The board is one small file per session: claims with one spelling per path,
+  messages addressed to one session or a project, stale claims taken over only on
+  request and kept on record.
+- `synthesis resume`, `handoff`, `worktree`, `doctor`, `install` and `uninstall`
+  replace the old resolver, checkpoint receipts, retirement runtime, conformance
+  reports and bootstrap.
+
+**Every skill in the v5 format.** Binding rules first, then a contents list, then
+the procedure, with SKILL.md under 8,000 bytes so Codex reads all of it. Longer
+material moved verbatim into reference files that each fit one read. Every skill
+has a coverage map showing where each old section now lives; retired passages are
+kept verbatim in `preserved.md`. Each skill's version moved to its next major
+version.
+
+**Removed.** Per-edit attribution manifests, tool snapshots, Stop-time receipts,
+acquisition receipts, record transactions, leases, the multi-Mac fleet registry,
+team contracts, release acceptance machinery, the plugin cache guardian, the old
+autopilot engine, vendored PyYAML and the package launcher. Their incidents and
+rules survive as tests and as prose in the skills.
+
+**Install.** Native plugins in Claude Code, Codex and Muse, with one stable hook
+path that survives plugin upgrades. `onboard.sh` sets up a new Mac through the
+onboarding skill's `setup.py`. Muse now lists four skills it was missing:
+agent-guardrails, local-messaging, meeting-prep and project-resume.
+
 ## [4.154.12] - 2026-10-05
 
 - Read only the claim owner's row during worktree retirement, so claim cleanup no longer fails when a large coordination board's full status reply exceeds the retained runtime's output limit.

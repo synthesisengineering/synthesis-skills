@@ -9,6 +9,7 @@ only for the event that needs them.
 import json
 import os
 import sys
+import time
 
 if __package__ in (None, ""):  # run as a file with -S: make the package importable
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +31,7 @@ def session_start(payload):
     if not session_id:
         return 0
     session = board.touch(session_id, harness=paths.harness(), cwd=payload.get("cwd") or None)
-    notes = []
+    notes = [time.strftime("Local time: %A %Y-%m-%d %H:%M %Z (%z), from the session-start hook.")]
     project_dir = project.find(session.project) if session.project else None
     if project_dir:
         notes.append(project.brief(project_dir))

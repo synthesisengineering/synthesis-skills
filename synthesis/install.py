@@ -38,8 +38,9 @@ GIT_HOOK_SCRIPT = """#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 SYNTHESIS_GIT_HOOK=$(basename "$0") exec python3 -S "$d/current/synthesis/commit_check.py" "$@"
 """
-GIT_HOOKS = ("pre-commit", "pre-merge-commit")
+GIT_HOOKS = ("pre-commit", "pre-merge-commit", "commit-msg")
 DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge ride every release into bin/
+STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup",)  # scripts run outside a session need a stable path too
 CLI_SCRIPT = """#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 PYTHONPATH="$d/current" exec python3 -m synthesis "$@"
@@ -55,7 +56,17 @@ def package_hash(plugin_root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted((plugin_root / "synthesis").glob("*.py")):
         digest.update(path.name.encode() + b"\0" + path.read_bytes())
+    for rel, path in _stable_skill_files(plugin_root):
+        digest.update(rel.encode() + b"\0" + path.read_bytes())
     return digest.hexdigest()[:16]
+
+
+def _stable_skill_files(plugin_root: Path):
+    for name in STABLE_SKILL_SCRIPTS:
+        folder = Path(plugin_root) / "skills" / name / "scripts"
+        for path in sorted(folder.iterdir()) if folder.is_dir() else []:
+            if path.is_file() and not path.name.startswith("test_"):
+                yield f"skills/{name}/scripts/{path.name}", path
 
 
 def current_hash() -> str:
@@ -88,6 +99,9 @@ def install(plugin_root: Path) -> str:
             staging = home / "releases" / f".{wanted}.{os.getpid()}"
             shutil.copytree(plugin_root / "synthesis", staging / "synthesis",
                             ignore=shutil.ignore_patterns("__pycache__"))
+            for rel, path in _stable_skill_files(plugin_root):
+                (staging / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, staging / rel)
             (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
             (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
             os.replace(staging, release)

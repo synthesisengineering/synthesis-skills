@@ -28,5 +28,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install pytest
+      - name: OS sandbox for the local-messaging tests (macOS ships sandbox-exec)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 blocks the unprivileged user namespace bwrap needs; 22.04 has no such switch.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --die-with-parent --unshare-all --ro-bind / / true
       - name: Core tests, source lint and every skill's tests, wherever they live
         run: python -m pytest -q tests/ skills/
+        env:
+          SYNTHESIS_REQUIRE_SANDBOX: "1"  # sandbox tests fail instead of skipping

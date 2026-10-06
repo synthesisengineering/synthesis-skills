@@ -201,3 +201,26 @@ def test_uninstall_removes_unedited_day_end_copies_and_keeps_an_edited_one(tmp_p
     report = install.uninstall()
     assert launcher.is_file() and not (isolated_home / "bin" / "day-end-nudge.sh").exists()
     assert any(line.startswith("kept") and "day-end:" in line for line in report)
+
+
+def test_inbox_scripts_get_a_stable_path_and_a_change_makes_a_new_release(tmp_path, isolated_home):
+    plugin = _plugin_copy(tmp_path)
+    scripts = plugin / "skills" / "synthesis-inbox-cleanup" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "icloud_plan.py").write_text("print('plan')\n")
+    (scripts / "test_icloud_plan.py").write_text("")
+    install.install(plugin)
+    stable = isolated_home / "current" / "skills" / "synthesis-inbox-cleanup" / "scripts"
+    assert (stable / "icloud_plan.py").read_text() == "print('plan')\n"
+    assert not (stable / "test_icloud_plan.py").exists()
+    first = install.current_hash()
+    (scripts / "icloud_plan.py").write_text("print('plan v2')\n")
+    install.install(plugin)
+    assert install.current_hash() != first and (stable / "icloud_plan.py").read_text() == "print('plan v2')\n"
+
+
+def test_the_cli_installs_from_a_plugin_folder(tmp_path, isolated_home, capsys):
+    from synthesis import cli
+    assert cli.main(["install", str(_plugin_copy(tmp_path))]) == 0
+    assert "synthesis runtime" in capsys.readouterr().out
+    assert (isolated_home / "bin" / "synthesis-hook").is_file()

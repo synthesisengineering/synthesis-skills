@@ -119,6 +119,25 @@ def cmd_approvals(args) -> int:
     return 0
 
 
+def cmd_install(args) -> int:
+    from synthesis import install
+    plugin = Path(args.plugin) if args.plugin else Path(__file__).resolve().parents[1]
+    try:
+        print(install.install(plugin))
+        if args.git_hooks:
+            print(install.register_git_hooks())
+    except (OSError, RuntimeError) as exc:
+        print(f"install failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    from synthesis import install
+    print("\n".join(install.uninstall(dry_run=args.dry_run)))
+    return 0
+
+
 def cmd_doctor(args) -> int:
     from synthesis import doctor
     return doctor.main(args.rest)
@@ -168,6 +187,13 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
+    s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
+    s.add_argument("plugin", nargs="?", default="")
+    s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
+    s.set_defaults(fn=cmd_install)
+    s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(fn=cmd_uninstall)
     s = sub.add_parser("doctor", help="check the runtime, hooks and each harness's install", add_help=False)
     s.add_argument("rest", nargs=argparse.REMAINDER)
     s.set_defaults(fn=cmd_doctor)

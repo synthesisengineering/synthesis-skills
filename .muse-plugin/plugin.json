@@ -27,6 +27,10 @@
         "path": "skills/synthesis-agent-correspondence/SKILL.md"
       },
       {
+        "id": "synthesis-agent-guardrails",
+        "path": "skills/synthesis-agent-guardrails/SKILL.md"
+      },
+      {
         "id": "synthesis-anti-shortcuts",
         "path": "skills/synthesis-anti-shortcuts/SKILL.md"
       },
@@ -159,6 +163,10 @@
         "path": "skills/synthesis-llm-setup/SKILL.md"
       },
       {
+        "id": "synthesis-local-messaging",
+        "path": "skills/synthesis-local-messaging/SKILL.md"
+      },
+      {
         "id": "synthesis-local-model-runtime",
         "path": "skills/synthesis-local-model-runtime/SKILL.md"
       },
@@ -169,6 +177,10 @@
       {
         "id": "synthesis-machine-sync",
         "path": "skills/synthesis-machine-sync/SKILL.md"
+      },
+      {
+        "id": "synthesis-meeting-prep",
+        "path": "skills/synthesis-meeting-prep/SKILL.md"
       },
       {
         "id": "synthesis-meeting-transcripts",
@@ -205,6 +217,10 @@
       {
         "id": "synthesis-project-management",
         "path": "skills/synthesis-project-management/SKILL.md"
+      },
+      {
+        "id": "synthesis-project-resume",
+        "path": "skills/synthesis-project-resume/SKILL.md"
       },
       {
         "id": "synthesis-promotion-gate",

@@ -95,3 +95,9 @@ def test_prompt_delivers_board_messages_and_grants_typed_approvals(tmp_path, wri
     context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "please rebase on main" in context and "Approved by the principal" in context
     assert guards.check("mcp__slack__slack_send_message", {"message": "hi"}, {}) is None
+
+
+def test_session_start_states_the_local_time_first(tmp_path, write_config):
+    out = _hook("session-start", {"session_id": "s-time", "cwd": str(tmp_path)})
+    context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert context.startswith("Local time: ")
