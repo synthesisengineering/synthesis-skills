@@ -24,7 +24,7 @@ def _emit(event, context="", deny=""):
 
 
 def session_start(payload):
-    from synthesis import board, paths, project
+    from synthesis import autopilot, board, paths, project
 
     session_id = paths.session_id(payload)
     if not session_id:
@@ -34,6 +34,9 @@ def session_start(payload):
     project_dir = project.find(session.project) if session.project else None
     if project_dir:
         notes.append(project.brief(project_dir))
+    run = autopilot.brief(payload)
+    if run:
+        notes.append(run)
     unread = board.inbox(session_id, session.project)
     if unread:
         notes.append(f"{len(unread)} unread board message(s): run `synthesis inbox`.")
@@ -75,15 +78,42 @@ def pre_tool_use(payload):
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
+def _last_block_file(payload):
+    from synthesis import paths
+    session_id = paths.session_id(payload)
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
+    return paths.state() / "stop" / f"{safe}.json" if safe else None
+
+
 def stop(payload):
-    """Revise the reply once if it defers work or quotes words with no source (S15)."""
+    """Revise the reply once if it defers work or quotes words with no source (S15), then
+    let an autopilot run that owns a plan continue to its next item (R6)."""
     try:
-        from synthesis import paths, reply_check
-        reason = reply_check.check(payload, paths.config())
+        from synthesis import autopilot, paths, reply_check
+        config = paths.config()
+        marker = _last_block_file(payload)
+        last = ""
+        if marker is not None and payload.get("stop_hook_active"):
+            try:
+                last = json.loads(marker.read_text(encoding="utf-8")).get("by", "")
+            except (OSError, ValueError):
+                last = ""
+        reason, note, by = None, None, ""
+        if last != "reply":  # the reply this check already sent back is never sent back twice
+            reason = reply_check.check({**payload, "stop_hook_active": False}, config)
+            by = "reply" if reason else ""
+        if not reason:
+            reason, note = autopilot.evaluate(payload, config)
+            by = "autopilot" if reason else ""
+        if marker is not None and (by or marker.exists()):
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(json.dumps({"by": by}), encoding="utf-8")
     except Exception:
         return 0  # fail open: a turn-end check that fails closed loops forever
     if reason:
         print(json.dumps({"decision": "block", "reason": reason}))
+    elif note:
+        print(json.dumps({"systemMessage": note}))
     return 0
 
 

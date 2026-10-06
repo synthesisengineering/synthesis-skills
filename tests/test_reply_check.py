@@ -58,3 +58,15 @@ def test_stop_hook_emits_a_block_decision_and_fails_open_on_bad_input(isolated_h
     assert json.loads(out.stdout)["decision"] == "block"
     out = run(json.dumps({"last_assistant_message": 'X said: "a quote long enough here"', "transcript_path": "/missing"}))
     assert out.returncode == 0 and out.stdout.strip() == ""
+
+
+def test_a_reply_is_sent_back_once_but_a_reply_after_an_autopilot_continuation_is_still_checked(isolated_home):
+    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
+    run = lambda payload: subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "hook.py"), "stop"],
+                                         input=json.dumps(payload), capture_output=True, text=True, env=env)
+    lazy = {"session_id": "s1", "last_assistant_message": "Leaving that for now."}
+    assert json.loads(run(lazy).stdout)["decision"] == "block"
+    assert run({**lazy, "stop_hook_active": True}).stdout.strip() == ""  # revised once; never a loop
+    marker = isolated_home / "state" / "stop" / "s1.json"
+    marker.write_text(json.dumps({"by": "autopilot"}))
+    assert json.loads(run({**lazy, "stop_hook_active": True}).stdout)["decision"] == "block"

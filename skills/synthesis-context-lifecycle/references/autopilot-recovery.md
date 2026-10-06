@@ -103,6 +103,6 @@ separate actual evidence. Local absolute native/owner locators are never
 silently rewritten into another machine's identity.
 
 Optional Console supervision is described in
-[the autopilot supervision contract](../../synthesis-autopilot/references/supervision.md).
+[the autopilot supervision contract](../../synthesis-autopilot/references/preserved-engine.md#optional-supervision-through-existing-owners) (preserved; v5 cut it).
 Its source queue does not itself supply native launch authority or satisfy an
 independent survival/backstop requirement.
