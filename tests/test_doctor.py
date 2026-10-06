@@ -649,7 +649,7 @@ def test_instruction_chain_is_measured_against_the_limit_with_a_reserve(tmp_path
 
 def _workspace(tmp_path) -> Path:
     ws = tmp_path / "workspaces" / "demo"
-    for name in ("ok", "claude-only", "no-adapter", "divergent", "linked", "bare"):
+    for name in ("ok", "claude-only", "no-adapter", "divergent", "linked", "reverse-linked", "bare"):
         (ws / name / ".git").mkdir(parents=True)
     (ws / "ok" / "AGENTS.md").write_text("rules\n")
     (ws / "ok" / "CLAUDE.md").write_text("@AGENTS.md\n")
@@ -659,6 +659,8 @@ def _workspace(tmp_path) -> Path:
     (ws / "divergent" / "CLAUDE.md").write_text("other rules\n")
     (ws / "linked" / "AGENTS.md").write_text("rules\n")
     (ws / "linked" / "CLAUDE.md").symlink_to("AGENTS.md")
+    (ws / "reverse-linked" / "CLAUDE.md").write_text("rules\n")  # AGENTS.md links to CLAUDE.md: one file
+    (ws / "reverse-linked" / "AGENTS.md").symlink_to("CLAUDE.md")
     (ws / "not-a-repo").mkdir()
     return ws
 
@@ -666,14 +668,14 @@ def _workspace(tmp_path) -> Path:
 def test_workspace_repos_lists_workspaces_and_their_repositories(tmp_path):
     ws = _workspace(tmp_path)
     repos = doctor.workspace_repos({"workspace_roots": [str(tmp_path / "workspaces" / "*")]})
-    assert repos[0] == ws and ws / "not-a-repo" not in repos and len(repos) == 7
+    assert repos[0] == ws and ws / "not-a-repo" not in repos and len(repos) == 8
 
 
 def test_instruction_adapters_report_each_divergence_and_change_nothing(tmp_path):
     ws = _workspace(tmp_path)
     states = {r.name: doctor.adapter_state(r) for r in (ws / n for n in
-              ("ok", "claude-only", "no-adapter", "divergent", "linked", "bare"))}
-    assert states["ok"] == states["linked"] == states["bare"] == ""
+              ("ok", "claude-only", "no-adapter", "divergent", "linked", "reverse-linked", "bare"))}
+    assert states["ok"] == states["linked"] == states["reverse-linked"] == states["bare"] == ""
     assert "Codex reads nothing" in states["claude-only"]
     assert "no CLAUDE.md" in states["no-adapter"] and "not `@AGENTS.md`" in states["divergent"]
     before = (ws / "divergent" / "CLAUDE.md").read_text()

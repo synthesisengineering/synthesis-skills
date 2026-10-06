@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.2] - 2026-10-06
+
+- `synthesis doctor` accepts an `AGENTS.md` that links to `CLAUDE.md` as the same
+  instructions, as it already accepted the reverse. Repositories that keep their
+  instructions in `CLAUDE.md` with `AGENTS.md` as a link were reported as reading
+  different instructions when both harnesses read one file.
+
 ## [5.0.1] - 2026-10-06
 
 - The `synthesis` command works through the `~/.local/bin/synthesis` link that setup

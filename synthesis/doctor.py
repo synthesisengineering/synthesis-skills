@@ -462,7 +462,7 @@ def adapter_state(root: Path) -> str:
         return "CLAUDE.md without AGENTS.md (Codex reads nothing)" if os.path.lexists(claude) else ""
     if not agents.is_file():
         return "AGENTS.md is a dangling link"
-    if claude.is_symlink():
+    if claude.is_symlink() or agents.resolve() == claude.resolve():  # one file under both names, either one the link
         return "" if claude.resolve() == agents.resolve() else "CLAUDE.md links somewhere other than AGENTS.md"
     if not claude.is_file():
         return "no CLAUDE.md importing AGENTS.md"
