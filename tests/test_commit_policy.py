@@ -14,9 +14,11 @@ import pytest
 from synthesis import commit_check as cc
 
 CHECK = Path(__file__).resolve().parents[1] / "synthesis" / "commit_check.py"
-FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"  # split so this file never trips the scanner itself
+# Two pieces: the commit check refuses any credential-shaped string and has no approval for one
+# (Tier 0), yet the scanner's own tests must feed it one. The value is a fixture, never a real key.
+FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"
 KEY = "-----BEGIN " + "RSA PRIVATE KEY-----"
-PAY_WORD, MARK_WORD = "sal" + "ary", "Propri" + "etary"  # split for the same reason as FAKE_AWS
+PAY_WORD, MARK_WORD = "salary", "Proprietary"  # test values; this line is approved in the commit check
 OPENSSH_MARKER = KEY[5:-5].replace('RSA', 'OPENSSH')  # an f-string may not nest its own quotes before 3.12
 BODY = ["MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun", "VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK"]
 POLICY = """\

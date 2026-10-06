@@ -10,7 +10,9 @@ import pytest
 from synthesis import board
 
 CHECK = Path(__file__).resolve().parents[1] / "synthesis" / "commit_check.py"
-FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"  # split so this file never trips the scanner itself
+# Two pieces: the commit check refuses any credential-shaped string and has no approval for one
+# (Tier 0), yet the scanner's own tests must feed it one. The value is a fixture, never a real key.
+FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"
 
 
 @pytest.fixture
