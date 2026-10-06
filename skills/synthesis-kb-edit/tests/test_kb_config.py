@@ -5,7 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "kb_config.py"

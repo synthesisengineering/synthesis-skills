@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from synthesis import approvals, guards
+from synthesis import guards
 
 CONFIG = json.loads((Path(__file__).resolve().parents[1] / "skills" / "synthesis-message-guard" / "config.example.json")
                     .read_text(encoding="utf-8"))

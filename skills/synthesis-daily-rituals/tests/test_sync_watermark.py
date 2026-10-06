@@ -413,6 +413,22 @@ def test_explicit_deferral_unblocks_for_one_day_only(tmp_path: Path) -> None:
     assert later["surfaces"][0]["stale_deferral"] is True
 
 
+def test_a_deferral_from_before_the_run_excuses_nothing_in_it(tmp_path: Path) -> None:
+    """2026-10-06: a deferral recorded the previous afternoon, still under a day old, hid 390 unread
+    targets from the next morning's run, which printed them BLOCKING and exited 0."""
+    MODULE.defer(WS, "chat-fixture", "read in full elsewhere", now=at(9, 0) - timedelta(hours=20), home=tmp_path)
+    MODULE.begin(WS, now=RUN_START, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D2"]}, now=NOW, home=tmp_path)
+    assert result["blocking"] == ["chat-fixture:C1", "chat-fixture:D2"]
+
+
+def test_a_surface_deferred_in_this_run_shows_its_targets_deferred(tmp_path: Path) -> None:
+    MODULE.begin(WS, now=RUN_START, home=tmp_path)
+    MODULE.defer(WS, "chat-fixture", "Chat API outage", now=NOW, home=tmp_path)
+    result = MODULE.status(WS, targets={"chat-fixture": ["C1", "D2"]}, now=NOW, home=tmp_path)
+    assert result["blocking"] == [] and {t["state"] for t in result["surfaces"][0]["targets"]} == {"deferred"}
+
+
 def test_a_target_deferral_silences_only_that_target(tmp_path: Path) -> None:
     MODULE.begin(WS, now=RUN_START, home=tmp_path)
     MODULE.advance(WS, "chat-fixture", IN_RUN, targets=["C1"], now=at(11, 46), home=tmp_path)

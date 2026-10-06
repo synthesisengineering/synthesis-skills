@@ -22,7 +22,7 @@ than half-reading it.
 | `python3 <rituals>/scripts/pr_queue_scan.py --workspace <W> [--json]` | review requests, own PRs and unreviewed PRs oldest first, and every repo not scanned with its reason | 0 always |
 | `python3 <rituals>/scripts/mailboxes.py --manifest .agents/mailboxes.yaml --workspace <W> plan [--include-on-request <address>] [--json]` | each due account with transport, role and mailboxes | 0; 2 on a manifest it refuses |
 | `python3 <rituals>/scripts/mailboxes.py --manifest .agents/mailboxes.yaml --workspace <W> report [--json]` | `mailboxes: N of M swept` and SWEPT, BLIND, UNREACHABLE or DEFERRED per account | 2 on any BLIND account or no open run |
-| `python3 <rituals>/scripts/gchat_preflight.py --config .agents/gchat-sync.yaml --spaces <enumeration.txt> --json --out <declared.json>` | the resolved targets, `census: ...`, `enumeration: complete` or a BOUND line | 1 bounded or unresolved; 2 empty set or bad config |
+| `python3 <rituals>/scripts/gchat_preflight.py --config .agents/gchat-sync.yaml --spaces <enumeration.txt> --page-size <N> --json --out <declared.json>` | the resolved targets, `census: ...`, `enumeration: complete` or a BOUND line | 1 bounded or unresolved; 2 empty set or bad config |
 | `python3 <rituals>/scripts/ritual_workers.py list\|coverage [--date D] [--json]` | the registry, or `coverage: <workspace> <run type> <finished> (<outcome>) · <workspace> pending · ...` | 2 on a registry it refuses |
 
 ## Files the scripts keep

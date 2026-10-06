@@ -4,6 +4,42 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.2] - 2026-10-06
+
+- `synthesis doctor` accepts an `AGENTS.md` that links to `CLAUDE.md` as the same
+  instructions, as it already accepted the reverse. Repositories that keep their
+  instructions in `CLAUDE.md` with `AGENTS.md` as a link were reported as reading
+  different instructions when both harnesses read one file.
+- When the shell guard refuses a script fed on stdin because another part of the command
+  names a synthesis state or transcript path, the refusal now says to run the script on
+  its own. The rule itself is unchanged: a heredoc cannot be told apart from the rest of
+  the line, and a variable set elsewhere could carry the path into the script.
+- Setup replaces the 4.x `synthesis` command it finds at `~/.local/bin/synthesis` (a managed
+  file that drove the retired board), archiving it under `~/.synthesis/v5/archive/`, and links
+  the v5 command there. Before, a 4.x install kept the old command on PATH, so `synthesis
+  claim` and `synthesis who` reached the retired board.
+- The meeting-transcripts commitment scan reads Gemini's `### HH:MM:SS` block headings as
+  times. It treated them as section breaks, so every candidate from a Gemini transcript printed
+  `[no timestamp]`.
+- Setup refreshes organization skills that 4.x installed when nobody edited them since: their
+  files equal the source repository at the commit the 4.x copy recorded. Before, v5 kept every
+  such copy as "not written by setup", so upgraders kept old skills while setup said installed.
+- Sync watermarks: a deferral counts only when it was recorded in the current run, so one from
+  the day before no longer excuses unread targets; a deferred surface shows its targets deferred,
+  so the printout matches the exit code. The Google Chat preflight takes `--page-size` and calls
+  a page complete when it is shorter than the size requested.
+- Day-start's Google Chat step says the cross-space search never stands in for a read, and where
+  the sender's `users/<id>` comes from when a read returns names only.
+- Lint: unused imports and variables and placeholder-free f-strings removed across the plugin
+  and its tests.
+- `synthesis handoff` commits files under a claim with a wildcard in a name (`notes/2026-10-06-*`); git read
+  such a claim as a literal path, so handoff skipped it and printed READY over uncommitted records. It now
+  keeps exactly the files the board's own claim matcher accepts.
+- `synthesis release <dir>` releases a `<dir>/**` claim, reports how many claims it released, and exits 1
+  with "no claim matched" when none did; it printed "released" either way.
+- The day-end nudge's LaunchAgent template names the v5 launcher path; setup always wrote the
+  right path, but the shipped template still named the retired 4.x folder.
+
 ## [5.0.1] - 2026-10-06
 
 - The `synthesis` command works through the `~/.local/bin/synthesis` link that setup

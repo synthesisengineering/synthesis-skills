@@ -64,6 +64,17 @@ def test_release_drops_claims():
     assert board.load("A").claims == []
 
 
+def test_release_takes_a_subtree_claim_without_its_slash_stars_and_says_when_nothing_matched(capsys):
+    """2026-10-06: `synthesis release <dir>` printed "released" and left the `<dir>/**` claim in place."""
+    from synthesis import cli
+    board.claim("A", ["/tmp/area/**", "/tmp/other"])
+    args = type("Args", (), {"session": "A", "paths": ["/tmp/area"]})()
+    assert cli.cmd_release(args) == 0 and "released 1 claim(s)" in capsys.readouterr().out
+    assert board.load("A").claims == [board.normalize("/tmp/other")]
+    args.paths = ["/tmp/nowhere"]
+    assert cli.cmd_release(args) == 1 and "no claim matched" in capsys.readouterr().out
+
+
 def _age(session_id, seconds):
     s = board.load(session_id)
     s.seen = time.time() - seconds

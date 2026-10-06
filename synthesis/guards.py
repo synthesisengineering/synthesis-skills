@@ -876,7 +876,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
                         for w in (words[-1:] if head in COPIERS else words[1:])]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
-            why = why or "runs a script that writes where the synthesis state or a harness's transcripts live"
+            why = why or "runs a script that writes where the synthesis state or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):

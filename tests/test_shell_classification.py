@@ -63,7 +63,7 @@ def test_a_deploy_that_runs_is_caught_however_it_is_wrapped(where, command):
 
 
 DATA = [
-    f"echo '{DEPLOY}'", f"echo {DEPLOY}", f"grep -n '{DEPLOY}' notes.md", f"grep {DEPLOY}", f"rg 'wrangler.pages.deploy' -n",
+    f"echo '{DEPLOY}'", f"echo {DEPLOY}", f"grep -n '{DEPLOY}' notes.md", f"grep {DEPLOY}", "rg 'wrangler.pages.deploy' -n",
     f"git commit -m '{DEPLOY}'", f"git commit -m \"run {DEPLOY} later\"", f"printf '%s' '|' {DEPLOY}",
     f"echo \"{DEPLOY}\" >> notes.md", f"cat <<'EOF'\n$({DEPLOY})\nEOF", f"cat <<\\EOF\n{DEPLOY}\nEOF",
     f"cat <<\"EOF\"\n`{DEPLOY}`\nEOF", f"cat <<EOF > notes.md\n{DEPLOY}\nEOF", f"cat <<EOF\n\\$({DEPLOY})\nEOF",
@@ -129,7 +129,6 @@ def test_destructive_commands_follow_the_same_reading(where, command, blocked):
 def test_reading_a_long_command_stays_fast(where):
     elsewhere, _ = where
     commands = [c.replace("{site}", "x") for c in RUNS + DATA + PUSHES] + ["cat <<'EOF' > f.md\n" + "line of text\n" * 2000 + "EOF"]
-    config = {"push_deploys": []}
     times = []
     for command in commands:
         start = time.perf_counter()

@@ -287,6 +287,18 @@ def test_reading_them_and_working_on_the_hook_source_is_allowed(roots, command, 
     assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
 
 
+def test_a_stdin_script_is_judged_by_the_whole_command_and_the_refusal_says_how_to_split_it(roots, tmp_path):
+    """A heredoc's text cannot be told apart from the rest of the line, so a path named anywhere in it counts
+    (a variable set elsewhere could carry it into the script). The refusal names the remedy (2026-10-06)."""
+    note = f"sed -i '' 's#board#board in {roots['state']}/sessions#' REFERENCE.md"
+    combined = f"python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF\n{note}"
+    reason = guards.check("Bash", {"command": combined}, {}, cwd=str(tmp_path))
+    assert "run the script alone" in reason
+    assert guards.check("Bash", {"command": note}, {}, cwd=str(tmp_path)) is None
+    assert guards.check("Bash", {"command": "python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF"},
+                        {}, cwd=str(tmp_path)) is None
+
+
 # --- defect 2: the harness is read from the payload, and a known one is never forgotten ----------
 
 @pytest.mark.parametrize("where,expected", [

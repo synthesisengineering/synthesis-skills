@@ -34,9 +34,10 @@ def cmd_claim(args) -> int:
 
 
 def cmd_release(args) -> int:
-    board.release(_session(args), args.paths or None)
-    print("released")
-    return 0
+    before = len(getattr(board.load(_session(args)), "claims", []))
+    left = len(getattr(board.release(_session(args), args.paths or None), "claims", []))
+    print(f"released {before - left} claim(s)" if before > left or not args.paths else "no claim matched: nothing released")
+    return 0 if before > left or not args.paths else 1
 
 
 def cmd_who(args) -> int:

@@ -195,7 +195,6 @@ def query_repo(slug: str, login: str, now: datetime.datetime) -> tuple[list[dict
     except json.JSONDecodeError:
         return [], "gh returned unparseable JSON"
 
-    owner = slug.split("/", 1)[0]
     items = []
     for pr in rows:
         reviewers = {

@@ -336,7 +336,7 @@ def test_manifest_check_command_exits_2_on_unknown_keys(tmp_path):
 # ---- a brand-new knowledge repository ----------------------------------------
 
 def test_a_new_workspace_gets_a_committed_knowledge_repository_and_links(tmp_path):
-    lines = workspace.new_workspace("demo", "https://example.test/me/ai-knowledge-demo.git")
+    workspace.new_workspace("demo", "https://example.test/me/ai-knowledge-demo.git")
     repo = Path.home() / "workspaces" / "demo" / "ai-knowledge-demo"
     assert (repo / ".agents" / "knowledge-base.yaml").is_file() and (repo / "projects" / "index.yaml").is_file()
     assert "{workspace}" not in (repo / "AGENTS.md").read_text() and (repo / "CLAUDE.md").read_text() == "@AGENTS.md\n"
@@ -366,3 +366,23 @@ def test_a_malformed_repos_manifest_stops_with_its_line_not_a_traceback(tmp_path
     assert setup.main(["workspace", "--kb", kb, "--workspace", "demo", "--no-input"]) == 1
     out = capsys.readouterr().out
     assert "stopped: " in out and ".agents/repos.yaml:" in out
+
+
+def test_setup_refreshes_an_unedited_4x_skill_copy_and_keeps_an_edited_one(tmp_path):
+    """4.x installed organization skills into the same folders and left a .source.json naming its commit;
+    v5 had no record of writing them, so every upgrader kept the old copies (2026-10-06)."""
+    _, work = remote(tmp_path, "org-skills", {"skills/alpha/SKILL.md": "old alpha\n", "skills/beta/SKILL.md": "old beta\n"})
+    commit = git("-C", str(work), "rev-parse", "HEAD")
+    for name in ("alpha", "beta"):
+        for root in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"):
+            (root / name).mkdir(parents=True, exist_ok=True)
+            (root / name / "SKILL.md").write_text(f"old {name}\n")
+            (root / name / ".source.json").write_text(json.dumps({"source_commit": commit, "source_path": f"skills/{name}/SKILL.md"}))
+    (Path.home() / ".claude" / "skills" / "beta" / "SKILL.md").write_text("old beta, edited by hand\n")
+    for name in ("alpha", "beta"):
+        (work / "skills" / name / "SKILL.md").write_text(f"new {name}\n")
+    lines = workspace.install_org_skills(work)
+    assert (Path.home() / ".claude" / "skills" / "alpha" / "SKILL.md").read_text() == "new alpha\n"
+    assert (Path.home() / ".agents" / "skills" / "beta" / "SKILL.md").read_text() == "new beta\n"
+    assert (Path.home() / ".claude" / "skills" / "beta" / "SKILL.md").read_text() == "old beta, edited by hand\n"
+    assert any("beta: kept" in line for line in lines) and not any("alpha: kept" in line for line in lines)
