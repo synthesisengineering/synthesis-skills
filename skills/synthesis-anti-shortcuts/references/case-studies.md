@@ -1,5 +1,15 @@
 # Case Studies
 
+Contents:
+- Case 1: The Compatibility Shim That Was Not Asked For
+- Case 2: The UI Re-Theming Pass That Left Half the Surfaces Untouched
+- Case 3: The "Recommendation: X. Your Call?" That Was Not a Real Question
+- Case 4: The Half-Migration That Left Legacy Folders Orphaned
+- Case 5: The Stale "Archive" Block That Undermined the Live Document
+- Case 6: The Commit That Included a Parallel Sub-Agent's Staged Work
+- Case 7: The Recommendation Decided by Build Cost
+- Patterns Across the Cases; On the Use of These Cases
+
 Anonymized incident teardowns. Each case documents a real production incident where the lazy-shortcut antipattern slipped past a draft into shipped work, what costume the shortcut wore, and what the corrected behavior would have been. Names, projects, clients, and specifics have been generalized; the failure shapes are preserved.
 
 The point of these cases is not to assign blame. The agents involved were operating under reasonable defaults. The point is to make the failure shapes visible enough that an agent reading this catalog can recognize them in its own drafts.

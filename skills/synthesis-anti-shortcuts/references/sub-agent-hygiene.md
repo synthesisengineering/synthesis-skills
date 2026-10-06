@@ -1,5 +1,11 @@
 # Sub-Agent Hygiene
 
+Contents:
+- Part 1: Dispatch (principle, phrases that should not appear, replacement framing, brief template, size cap)
+- Part 2: Acceptance (principle, acceptance checklist, examples, when the sub-agent is right)
+- Common Failure Modes 1 to 3
+- When to Apply; The Underlying Principle
+
 When an orchestrating agent dispatches a sub-agent to do a portion of the work, two failure points appear that do not exist in single-agent work. Both are entry points for the lazy-shortcut antipattern. This reference covers the discipline at both points.
 
 The two failure points:

@@ -1,8 +1,13 @@
 # Transcript files and permalinks — formats
 
+Contents:
+- Deterministic acquisition output
+- Transcript File Format: channel file, DMs aggregator file, group DMs aggregator file
+- Slack Permalink Construction: visible text, the draft "Send to:" line, fallback without `slack_workspace_domain`, retrofitting older daily plans
+
 The file shapes every sync writes and the permalink form every recorded
-message takes. The binding rules are summarized in [SKILL.md](../SKILL.md)
-("Transcript Files and Permalinks"); this file is the literal format.
+message takes. The binding rules are summarized in [sync-protocol.md](sync-protocol.md)
+("Transcript Files and Permalinks") and SKILL.md binding rule 9; this file is the literal format.
 
 ## Deterministic acquisition output
 

@@ -1,5 +1,12 @@
 # Message templates, per tier
 
+Contents:
+- Two rules that apply to every template
+- `principals`, `direct_reports`, `team_group`
+- `family`, `co_parenting`, `personal_continuity`, `external_counterparts`
+- `quiet` type
+- Out-of-office auto-responder
+
 Draft skeletons for each recipient tier. These set the *shape and tone*; the agent fills
 them from config and the absence record, and the sender's own voice skill (if one exists)
 governs the final wording. Placeholders in `<angle brackets>`.

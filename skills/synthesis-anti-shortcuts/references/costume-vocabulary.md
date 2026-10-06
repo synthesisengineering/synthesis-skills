@@ -1,5 +1,12 @@
 # Costume Vocabulary
 
+Contents:
+- How to Read This Catalog
+- Categories 1 to 7: `backward_compat`, `minimal_diff`, `asking_as_shortcut`, `deferral`, `archive_value`, `dismissal`, `scope_excuse`
+- How the Catalog Maintains Itself
+- Category 8: `capability_surrender`
+- Category 9: `effort_rationale`
+
 The full human-readable catalog of phrases that signal the lazy-shortcut antipattern. Each entry includes the phrase, its category, the kind of incident that produced it, and the replacement framing that executes on the actual goal.
 
 This file is the reference companion to the scanner at [`../scripts/scan_output.py`](../scripts/scan_output.py). The scanner detects the phrases; this file explains why each one matters and what to write instead.

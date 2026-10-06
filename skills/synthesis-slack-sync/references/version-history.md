@@ -1,9 +1,24 @@
 # Slack sync — version history and rationale
 
+Contents:
+- Releases, newest first: v4.0.0, v3.14.0, v3.13.0, v3.11.0, v3.10.0, v3.9.0, v3.8.0, v3.7.0, v3.6.0, v3.5.0, v3.4.0, v3.3.1, v3.3.0, v3.2.0, v3.1.0, v3.0.0
+- Why Each Step Matters
+
 The sync protocol lives in [SKILL.md](../SKILL.md). This file keeps the
 release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
+
+## v4.0.0 — v5 skill format
+
+v4.0.0 (2026-10-05): SKILL.md is restructured into the v5 skill format so it
+arrives whole under Codex's 8,000-byte SKILL.md limit and Claude's 5,000-token
+re-attachment after compaction. Binding rules and a contents list come first,
+then the search-API rule, the step outline with every command, and the run
+triggers. The full sync protocol moved verbatim to `sync-protocol.md`; lookups,
+absence claims and backfills to `lookups-and-absence.md`; provenance, dates and
+errors to `provenance-and-errors.md`; configuration to `configuration.md`. No
+rule changed; `coverage-map.md` maps every section.
 
 ## v3.14.0 — Recorded connector acquisition
 
@@ -165,8 +180,8 @@ The brief-title rule is the same axis: keep H3 a scannable label, not a summary.
 
 The canonical formats now live as standalone artifacts:
 
-- [`templates/draft-block.md`](templates/draft-block.md) — active draft template (schema v1)
-- [`templates/sent-marker.md`](templates/sent-marker.md) — sent-state marker template (schema v1)
+- [`templates/draft-block.md`](../templates/draft-block.md) — active draft template (schema v1)
+- [`templates/sent-marker.md`](../templates/sent-marker.md) — sent-state marker template (schema v1)
 
 The agent reads the template files literally when writing a draft into a daily plan. SKILL.md describes WHEN and WHY to use the template; the template files ARE the canonical structural form. This separation establishes a pattern the rest of the synthesis-skills ecosystem can adopt — `templates/<name>.md` as a sibling to `SKILL.md` for any skill whose protocol generates a structural artifact.
 

@@ -1,22 +1,44 @@
 ---
 name: synthesis-anti-shortcuts
-description: "Discipline for catching the lazy-shortcut antipattern in AI-assistant output. Makes the costume vocabulary explicit so agents recognize when their drafts have slid into deferral, dismissal, or false consultation. Includes the constraint-first protocol, sub-agent dispatch and acceptance hygiene, and a pre-response self-check. Use when asked to: avoid shortcuts, audit for laziness, check for deferral, enforce best solution, no shortcuts, anti-shortcut, constraint-first, sub-agent hygiene, costume vocabulary."
+description: "Catch the lazy-shortcut antipattern: costume vocabulary that hides deferral, dismissal or false consultation. Constraint-first protocol, sub-agent dispatch and acceptance hygiene, pre-response self-check. Use to avoid shortcuts, audit for laziness, check for deferral or enforce the best solution."
 license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.1"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Anti-Shortcuts
 
-A discipline for catching the lazy-shortcut antipattern in AI-assistant output before it ships. The pattern is simple: when a user states "best solution, no shortcuts," the agent often produces a draft that looks like good engineering but quietly substitutes a lower-effort path. The substitution hides under reasonable-sounding vocabulary — "for now," "minimal diff," "backward compatible," "out of scope," "archive value." This skill names those costumes and provides the protocol to strip them out.
+Catches the draft that looks like good engineering but quietly substitutes a lower-effort path after the user asked for the best solution, hidden under reasonable-sounding vocabulary ("for now," "minimal diff," "backward compatible," "out of scope"). This skill names those costumes and gives the protocol to strip them out.
 
-The pattern is not unique to one model or one user. It is a structural failure mode of agents trained on conservative defaults — minimize change, hedge claims, defer hard choices. Those defaults are correct when no one has said otherwise. They are wrong, and quietly harmful, when the user has explicitly removed them from the constraint set and the agent overrides that instruction with its trained safety preference.
+## Binding rules
 
-This skill is the methodology. The operational catalog in `scripts/scan_output.py` is the extract — a phrase scanner that any agent or pipeline can run against draft output. The detailed catalog with rationale, the constraint-first protocol with a worked example, the sub-agent dispatch and acceptance rules, and the anonymized case studies all live in `references/` and load on demand.
+Rules 1 to 8 carry the methodology section numbers other documents cite (for example "§4–5"). New rules are appended.
+
+1. **Constraint-first.** Write the user's goals and non-goals (conversation, project context, workspace and global instructions) before generating approaches; a pro that violates one cannot appear.
+2. **Decide what constraints decide.** Ask only when an unresolved choice belongs to the user. "Recommendation: X. Your call?" on a determined or delegated choice is the costume; execute and report.
+3. **Scan for costume vocabulary** in drafts and sub-agent reports. A phrase is legitimate only when the user asked to optimize for what it implies.
+4. **Dispatch briefs name the job at full size** (no "keep changes minimal," "light touch," "surgical change") and carry at most five deliverables.
+5. **Audit every sub-agent return** for the same costumes. If work was left undone, redirect the sub-agent or finish it; never propagate the deferral.
+6. **Run the pre-response self-check** (below) before any analysis, recommendation or plan ships.
+7. **A capability gap is not a guardrail.** Never route around a guardrail; on a gap, name the failed mechanism, list alternatives and choose an authorized remedy before reporting.
+8. **Grow the catalog.** A new costume in production output becomes a case study, a catalog entry and, where useful, a scanner pattern.
+9. **Delivery is part of completeness.** Finish the finite assignment, including authorized shipping; more audits or frameworks do not substitute for deliverables.
+
+## Contents
+
+- [references/methodology.md](references/methodology.md): the full pattern, "Delivery is part of completeness" and methodology sections 1 to 8. Read it when applying a rule for the first time in a session or when a case is unclear.
+- [references/costume-vocabulary.md](references/costume-vocabulary.md): every phrase with category, rationale and replacement framing. Read it to classify a hit or rewrite a costume.
+- [references/constraint-first-protocol.md](references/constraint-first-protocol.md): the five-step protocol and a worked example. Read it before a multi-option analysis.
+- [references/sub-agent-hygiene.md](references/sub-agent-hygiene.md): dispatch and acceptance rules, brief template, size cap. Read it before dispatching or accepting a sub-agent.
+- [references/case-studies.md](references/case-studies.md): the incidents each entry came from; scanner `see:` lines point here. Read it when a hit's origin matters.
+- [references/background.md](references/background.md): why the pattern happens, how the pieces fit, sibling skills, the underlying principle. Read once per session.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.1 text now lives (ruling D8).
+- When to Apply, The Pattern, Pre-Response Self-Check, The scanner: below.
 
 ## When to Apply
 
@@ -34,8 +56,6 @@ This skill is the methodology. The operational catalog in `scripts/scan_output.p
 
 ## The Pattern
 
-Six surface presentations recur across incidents. The underlying behavior is the same in each: a choice was made to avoid harder work because the harder work felt risky, even though the user had explicitly removed that risk from the decision set. Pattern recognition matters more than memorizing any single phrase.
-
 | Costume | Surface presentation | What it actually is |
 |---|---|---|
 | Backward compatible | "Shim layer; preserves old paths; existing tests pass unchanged." | Avoiding the work of updating consumers. |
@@ -46,82 +66,7 @@ Six surface presentations recur across incidents. The underlying behavior is the
 | Dismissal | "Not a pain point today. Theoretical concern. Doesn't bite hard." | Predicting away a user-raised concern instead of solving it. |
 | Scope excuse | "Pre-existing; out of scope; not introduced by this change." | Avoiding fix-while-touching in code being actively modified. |
 
-Each costume sounds reasonable in isolation. Each is the same shortcut wearing different clothes. The full catalog with rationale per phrase lives in [`references/costume-vocabulary.md`](references/costume-vocabulary.md).
-
-## Delivery is part of completeness
-
-Process can also hide avoidance. Repeated audits, new helper frameworks and
-revision instructions do not substitute for completed deliverables. Complete
-the user's finite assignment, including authorized shipping. Once adequate
-required checks pass, advance to delivery; expand verification only for a
-concrete gap, changed input or explicit gate. Fix defects in the work being
-touched without silently converting the assignment into an unbounded ecosystem
-redesign. Keep new requests visible and route them through the existing plan.
-Limiting duplicate process is not permission to omit requested work, accept a
-known failure, weaken a guard or delete unresolved evidence.
-
-## The Methodology
-
-Apply the procedures relevant to the work and its actual decisions. They are
-judgment checks, not eight required new artifacts or sequential review rounds.
-
-### 1. The Constraint-First Protocol
-
-Before generating approaches, write the constraints. List the user's stated goals AND non-goals from the current conversation, the project's persistent context files, the workspace's agent-instruction files, and the global agent-instruction files. Then — and only then — generate approaches.
-
-Any pro that violates a stated constraint cannot appear in the analysis. If "backward compatibility is not a goal" is in the constraints, the pro "backward compatible — existing tests pass unchanged" is forbidden. The constraint list functions as a filter on the option space, not a checkbox after the fact.
-
-A worked example, including the constraint-extraction order and the forbidden-criteria mapping, lives in [`references/constraint-first-protocol.md`](references/constraint-first-protocol.md).
-
-### 2. The Decision-vs-Asking Distinction
-
-Two question shapes look alike but behave differently. Check both whether the user's stated constraints determine the answer and who owns the remaining choice. The shared [decision-ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) distinguishes already-decided choices, delegated technical choices, material principal ambiguity and human-only actions.
-
-**Asking is appropriate when an unresolved choice belongs to the user.** Examples include material product direction outside the delegated outcome, a preference that changes the promised result, and stakeholder facts that available evidence cannot establish. Preserve the user's requested review cadence. An open technical tradeoff within delegated scope belongs to the agent: evaluate it, decide and record the reason. Whole-task delegation ordinarily includes sequencing the authorized work.
-
-**Asking is the lazy-shortcut pattern when constraints already determine the answer.** "Should I remove the backward-compat re-export?" after the user has said "backward compatibility is not a goal" is the shortcut. The polite framing — "Recommendation: X. Your call?" — is the costume.
-
-The protocol: before drafting any question to the user, scan recent conversation, project context, and global rules for constraints, existing decisions and delegation. Verify the source and scope of authority rather than relying on a summary. If the answer is determined or delegated, execute and report what was done. Otherwise, explain the concrete consequence that makes the user's answer necessary. A real gate remains open until satisfied; continue independent authorized work while it waits.
-
-### 3. The Costume Vocabulary
-
-Memorize the seven category labels above. When drafting analysis or reading a sub-agent's report, scan for phrases that match any category. When a match appears, ask: is this phrase a real engineering constraint here, or is it a costume covering avoidance?
-
-The test: did the user, explicitly or via standing constraints, ask the agent to optimize for the thing this phrase implies? If yes, the phrase is legitimate. If the user asked for the opposite — "best, most flexible, robust, maintainable solution; no shortcuts" — the phrase is a costume. Strip it from the draft.
-
-The full per-phrase catalog with category, rationale, and replacement framings lives in [`references/costume-vocabulary.md`](references/costume-vocabulary.md). The operational extract is in `scripts/scan_output.py`.
-
-### 4. Sub-Agent Dispatch Hygiene
-
-Dispatching a sub-agent with a brief that contains costume vocabulary licenses the sub-agent to produce half-applied work. The brief's framing becomes the sub-agent's permission slip.
-
-Phrases that should NOT appear in a sub-agent dispatch brief:
-
-- "Keep changes minimal"
-- "Tinting, not redesigning"
-- "Don't break the existing layout"
-- "Conservative pass"
-- "Light touch"
-- "Surgical change"
-
-Replacement framing names the job at full size. Instead of "tint the chrome from accent-A to accent-B, keep diffs minimal," say "apply the new accent everywhere it semantically belongs; the existing layout is the canvas, the accent is the new layer." The sub-agent now has license to do the full job, not a partial one.
-
-Brief size is the second dispatch control. A brief carries at most five deliverables. Larger briefs reliably fail — the sub-agent exhausts its execution budget in late-stage verification and stalls against the platform's dispatch timeout, or returns partial work with the remainder self-reported as follow-up. A seven-deliverable brief (substrate code + API + UI + config + tests + docs + verification) is not one dispatch; it is two or three. Split substantial phases into focused dispatches, run in parallel or in sequence, and plan the split up front — at dispatch time, not after the first stall. The failure is symmetric with the vocabulary rule: an oversized brief produces the same half-applied work that costume vocabulary licenses, with the timeout supplying the excuse.
-
-Full dispatch protocol lives in [`references/sub-agent-hygiene.md`](references/sub-agent-hygiene.md).
-
-### 5. Sub-Agent Acceptance Audit
-
-When a sub-agent returns, scan its report for the same costume vocabulary you would scan in your own draft. Sub-agents inherit the same conservative defaults. A sub-agent's "I left X for minimal diff" is the same pattern as the orchestrator's own deferral.
-
-The check on every sub-agent return:
-
-1. Read the report including any self-flagged tradeoffs.
-2. Scan for costume vocabulary (run the scanner, or scan by eye against the catalog).
-3. For each match, ask: would the user, given stated constraints, consider this acceptable? Not "would a reasonable engineer consider this acceptable" — the user's standard is the relevant one.
-4. If the answer is "no, the sub-agent left work undone," the orchestrator finishes the job. Either redirect the sub-agent or do it directly. Do not propagate the deferral.
-
-### 6. Pre-Response Self-Check
+## Pre-Response Self-Check
 
 Before sending any draft analysis, recommendation, or implementation plan:
 
@@ -131,69 +76,6 @@ Before sending any draft analysis, recommendation, or implementation plan:
 4. If the draft ends with a question, verify the question is constraint-neutral (item 2 above).
 5. Only then send.
 
-The scanner at `scripts/scan_output.py` automates step 1. The classification at step 2 is judgment; the catalog at [`references/costume-vocabulary.md`](references/costume-vocabulary.md) supports it.
+## The scanner
 
-### 7. The Capability-Limit Probe
-
-When a tool call fails, classify the failure before reporting it. There are two kinds, and they call for opposite responses.
-
-- A **guardrail** is deliberate: a permission the user withheld, a safety gate, an approval step, an action reserved for a human. Never route around it. Stop the dependent action, record what is needed and continue independent authorized work when available.
-- A **capability gap** is incidental: an unconfigured app, an ungranted scope, an unset credential, a feature the current transport does not expose. It is a problem to solve, not a boundary to respect.
-
-Treating the second like the first is the shortcut. It wears the costume of discipline - "I won't work around that" sounds principled - while delivering less than the task required. Agents holding strong, correct rules about not bypassing governance gates are the most prone to it, because the rule generalizes itself onto plumbing where it does not belong.
-
-On a capability gap, before reporting:
-
-1. **Name the exact mechanism that failed** - the error, the missing scope, the absent configuration. "It didn't work" is not a diagnosis.
-2. **Enumerate the alternative paths.** Another tool that reaches the same surface; another transport; an interface the user is already authenticated to; a configuration change that would unblock the primary path permanently rather than once.
-3. **Separate what you can do from what only the user can do.** Password entry, a physical security key, withheld administrator consent and principal-owned decisions require the user. Routine configuration already covered by the user's authorization does not become a new approval gate because it occurs in a console. Determine the exact missing capability and prepare the authorized repair before presenting any human action.
-4. **Choose an authorized remedy and verify it.** Use the user's constraints and delegated authority to choose among technical alternatives. When a remedy changes a material boundary or needs a new grant, present the concrete repair, risk and required decision. Do not bypass a protective control or silently lower the required result to avoid that gate.
-
-The test: would a capable colleague, told "the connector can't send," have stopped there? If the honest answer is that they would have asked "then what else can?", the report was premature.
-
-### 8. The Maintenance Loop
-
-The catalog grows. When a new costume appears in production output, the loop is:
-
-1. Document the incident as a case study. The incident is the data; the documented teardown is the artifact that survives context loss.
-2. Extract the new phrase, category, and rationale.
-3. Update [`references/costume-vocabulary.md`](references/costume-vocabulary.md) with the new entry.
-4. Update `scripts/scan_output.py` if the embedded catalog should detect the phrase.
-5. (Optional) Regenerate any operational catalog files that consume this skill.
-
-The methodology stays stable. The catalog refreshes as the failure modes evolve. The anonymized case studies in [`references/case-studies.md`](references/case-studies.md) are the durable record of where each entry came from.
-
-## How the Pieces Fit
-
-```
-SKILL.md (this file)
-   |
-   |-- references/costume-vocabulary.md      Full phrase catalog with rationale
-   |-- references/constraint-first-protocol.md  Worked-example procedure
-   |-- references/sub-agent-hygiene.md       Dispatch + acceptance rules
-   |-- references/case-studies.md            Anonymized incident teardowns
-   |
-   |-- scripts/scan_output.py                Standalone scanner (Python 3, stdlib + pyyaml)
-```
-
-A reader who installs only this skill can apply the methodology end-to-end. The references load on demand; the scanner runs standalone or as a hook in any agent platform.
-
-## Relationship to Other Skills
-
-This skill is methodology. It pairs naturally with the synthesis skills that produce the artifacts it audits.
-
-- **[synthesis-grounding-discipline](../synthesis-grounding-discipline/SKILL.md)** — The truth-side companion. This skill catches output that does less than the work requires; grounding discipline catches output that claims more than the evidence supports — confabulated events, quotes with no tool-surfaced source, stale cached facts, absences established by a broken probe. One output can fail both at once: a fabricated "already handled" is a shortcut and a grounding failure in the same sentence.
-- **[synthesis-thinking-framework](../synthesis-thinking-framework/SKILL.md)** — Foundational reasoning methodology. The constraint-first protocol is a specialization of first-principles thinking applied to the option-evaluation step.
-- **[synthesis-code-planning](../synthesis-code-planning/SKILL.md)** — Multi-approach evaluation for code tasks. This skill's constraint-first protocol slots in as the first step before the approach-generation step in code-planning.
-- **[synthesis-implementation-integrity](../synthesis-implementation-integrity/SKILL.md)** — Post-implementation verification. This skill catches shortcuts before they're built; implementation-integrity catches incomplete work after it's built. Use both.
-- **[synthesis-content-quality](../synthesis-content-quality/SKILL.md)** — AI-pattern detection in prose. Different domain (prose patterns vs decision patterns) but a similar shape — both maintain a catalog that grows as failure modes evolve.
-
-These skills work independently. They are stronger together. When loaded as a stack, the constraint-first protocol shapes how options are generated, the costume vocabulary scan shapes how drafts are reviewed, and implementation-integrity verifies that nothing slipped through to the build.
-
-## The Underlying Principle
-
-The pattern this skill catches is one specific manifestation of a more general issue: an agent's trained defaults can quietly override the user's explicit instructions, in ways the agent itself does not notice. The fix is not "try harder to follow instructions." The fix is structural — make the conflict visible at the moment of drafting, so the override cannot happen silently.
-
-The constraint-first protocol makes the user's constraints the first thing in the draft. The costume vocabulary scan makes the override detectable in the draft. The sub-agent acceptance audit makes the same checks portable across delegated work. The maintenance loop makes new failure modes part of the system as they emerge.
-
-The reader who applies this discipline ships work that respects the constraints the user actually stated, not the ones the agent's training would have preferred.
+`python3 scripts/scan_output.py draft.md` (or text on stdin) prints each hit by category: line and column, the matched phrase, why it is a shortcut, a rewrite framing and a `see:` case. Exit 0 clean, 1 detections, 2 error. Flags: `--json`, `--quiet` (exit code only, for hooks), `--context 120`, `--catalog <file.yaml>` (needs PyYAML).
