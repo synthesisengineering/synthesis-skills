@@ -9,6 +9,11 @@ still failed. The through-line of every failure: **each draft was
 written from what the agent had recently read rather than for the
 person who would read it.**
 
+Contents:
+- R1 to R13: the normative requirements (R7b and R7c under R7)
+- Factor inventory and Structures to test: summaries, with the default 1:1 shape
+- Open questions (for the principal), and the 2026-09-20 rulings
+
 ## R1 — The document is about what to discuss
 
 Things to avoid go in a short footer at the bottom, not distributed

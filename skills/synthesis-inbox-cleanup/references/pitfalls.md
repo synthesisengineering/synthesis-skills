@@ -2,6 +2,15 @@
 
 Real incidents that motivated specific design decisions in this skill. Read this before extending the engine.
 
+Contents:
+- IMAP: `TO` substring matching, MOVE capability, the search response as one byte string, silent body-fetch failures
+- Evidence: circumstantial inference vs. primary evidence; DKIM/SPF/DMARC confirm identity, not intent
+- Gmail: threads vs. messages; the IMAP throttle on `imapsync`
+- AppleScript and shell: stale per-item index references, CWD lost after `osascript`
+- Rules: subject-keyword spares, positive-only `subject_contains`, the calendar-response rule shape
+- Repository hygiene: the concurrent-window git index race, user-specific values leaking into a public skill
+- `imapsync` flag names verified against `--help` before destructive runs
+
 ## IMAP `TO` operator does substring matching, not equality
 
 **Incident:** A search for `TO "rg@example.com"` returned 19 Hyatt loyalty messages whose recipient was actually `rajiv.garg@example.com`. The IMAP `TO` predicate matches any substring of the recipient's address. The Hyatt account had nothing to do with the user — a stranger named Rajiv Garg had used the catch-all domain as a fake email when signing up.

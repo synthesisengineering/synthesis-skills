@@ -1,19 +1,12 @@
 ---
 name: synthesis-okf
-description: >
-  Validate, convert, and author content for Google's Open Knowledge Format (OKF v0.1) —
-  the markdown-plus-YAML-frontmatter knowledge-bundle spec announced 2026-06-12. Includes
-  a conformance validator (the checker Google's own OKF repo ships none of), a converter
-  that backfills OKF frontmatter onto an existing markdown corpus idempotently, a
-  config-driven seven-point metadata-consistency checker, and the proven repo-by-repo
-  conversion procedure. Use when adopting OKF for an "LLM wiki" style knowledge base,
-  auditing conformance, checking frontmatter/body drift or taxonomy consistency, or
-  converting a corpus of markdown notes/docs into a conformant, agent-readable bundle.
+description: "Validate, convert and author content for Google's Open Knowledge Format (OKF v0.1) with a conformance validator, an idempotent frontmatter converter and a consistency checker. Use to adopt OKF for an LLM wiki, audit conformance, check frontmatter or taxonomy drift, or convert markdown notes."
 license: CC0-1.0
 depends_on: []
 metadata:
   author: Rajiv Pant
-  version: "1.1.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -30,6 +23,26 @@ Google's reference repo (`github.com/GoogleCloudPlatform/knowledge-catalog/tree/
 ships an enrichment agent and an HTML visualizer, but no conformance validator or converter.
 This skill fills that gap: a conformance validator, a converter, a house-consistency
 checker, and a procedure proven across several real-world repo conversions.
+
+## Binding rules
+
+1. **Conformance (§9) has exactly three hard rules:** every non-reserved `.md` file has parseable YAML frontmatter, every frontmatter block has a non-empty `type`, and the reserved `index.md` and `log.md` follow their defined structure.
+2. **Everything else is soft guidance.** Never reject a bundle for missing optional fields, unknown `type` values, broken cross-links or a missing `index.md`.
+3. **Dry-run the converter first, always,** and review what it would change before writing.
+4. **Existing frontmatter is never overwritten,** only backfilled where missing.
+5. **Curate descriptions by hand** in `<bundle>-descriptions.yaml`; extracting them from file bodies is unreliable.
+6. **When `.agents/knowledge-base.yaml` exists, run `okf_consistency.py` and resolve every CONFLICT and DUPLICATE.** Its configured date field is the sole last-update key.
+7. **`type` values are free-form (spec §4.1).** Name types after what the files are; do not force one vocabulary across different repos.
+8. **Before committing, review the diff** so no README's unique guidance is lost in its regenerated `index.md`.
+
+## Contents
+
+- [references/tools.md](references/tools.md): each tool's flags, behavior, checks and exit codes in full. Read it when running a tool for the first time or reading its output.
+- [references/conversion-procedure.md](references/conversion-procedure.md): the full step-by-step conversion playbook. Read it before converting a corpus.
+- [references/lessons.md](references/lessons.md): known lessons from real conversions, and related skills. Read it before a conversion or when generated links break.
+- [references/okf-spec-v0.1.md](references/okf-spec-v0.1.md): the OKF v0.1 specification, verbatim. Read the section you need when a case is unclear.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.1.0 text now lives.
+- The spec in brief, Commands, The conversion procedure: below.
 
 ## The spec, in brief
 
@@ -52,20 +65,13 @@ listing for progressive disclosure and carries no frontmatter, except the bundle
 history (`## YYYY-MM-DD` headings, newest first). Both are excluded from a bundle's own
 "knowledge" content — they're navigation scaffolding, not concepts.
 
-## Tools
-
-### `scripts/okf_validate.py` — conformance checker
+## Commands
 
 ```bash
 python3 scripts/okf_validate.py <bundle_dir> [--summary] [--check-links] [--quiet]
 ```
 
-Checks the three hard rules against every `.md` file in the bundle. `--summary` prints a
-concept/type breakdown; `--check-links` additionally reports broken relative links (as
-info, never as a conformance failure — broken links are explicitly valid per §5.3).
 Exit codes: `0` conformant, `1` errors found, `2` usage error.
-
-### `scripts/okf_convert.py` — idempotent frontmatter backfill
 
 ```bash
 python3 scripts/okf_convert.py <bundle_dir> \
@@ -74,55 +80,13 @@ python3 scripts/okf_convert.py <bundle_dir> \
   [--dry-run]
 ```
 
-Backfills OKF frontmatter onto an existing markdown corpus without disturbing what's
-already there:
-
-- Assigns `type` by top-level subdirectory per `--type-map` (free-form per spec §4.1 —
-  name types after what they actually are; richer repos can add finer types like
-  `Biography Timeline Entry` or a repo-specific `Client` type for a `clients/` directory).
-- Existing frontmatter fields are **never overwritten**, only backfilled where missing —
-  safe to run against a corpus where some files already carry hand-authored metadata.
-- Derives `title` from each file's H1 if absent, `timestamp` from the file's last git-commit
-  time if absent.
-- Renames in-bundle `README.md` files to the reserved `index.md` (no frontmatter needed)
-  and regenerates them in OKF §6 style: lead paragraph (preserved verbatim from the
-  original README) + a concept list grouped by type + a subdirectories list. Walks every
-  ancestor directory up to the bundle root, not just each concept file's direct parent,
-  so a directory holding only subdirectories (no concept file directly inside it) still
-  gets its own `index.md` and its parent's link to it isn't left broken.
-- Sets `okf_version: "0.1"` on the bundle-root `index.md` only, per spec.
-- `--dry-run` prints what would change without writing anything. Always run this first.
-
-`--descriptions <file>.yaml` supplies curated `{description, tags}` per concept relpath —
-the one genuinely editorial step. Auto-extracting a good one-sentence description from a
-file's body is unreliable (skill-stub runbooks in particular tend to be a title plus an
-`npx` code fence with no real prose to extract from); curate this file by hand per bundle.
-
-### `scripts/okf_consistency.py` — configured house-consistency checker
+`--dry-run` prints what would change without writing anything. Always run this first.
 
 ```bash
 python3 scripts/okf_consistency.py <repo_root> [<repo-relative-doc> ...] [--strict]
 ```
 
-Reads `.agents/knowledge-base.yaml` and its configured `taxonomy_path`. With no
-document arguments it checks the full configured bundle. It reports
-`file:line — SEVERITY — finding` in this order:
-
-1. Inline metadata that duplicates frontmatter.
-2. Date aliases and inline dates that conflict with the configured
-   `frontmatter.date_field`.
-3. Status/confidence and lifecycle/current-phase conflicts.
-4. Missing required fields, fields outside the house schema, malformed tags,
-   and values absent from the taxonomy.
-5. Long resource-linked concepts without a canonical-source or synchronization
-   note.
-6. Frontmatter title and H1 disagreement.
-7. Filename, date-in-name, and configured topic-routing placement problems.
-
-Exit `1` when a `CONFLICT` or `DUPLICATE` exists; warnings are review findings
-unless `--strict` is supplied. Exit `2` for a missing/invalid config or unsafe
-path. The config's date field is the sole last-update key: if it declares
-`timestamp`, an added `last_updated` is a conflict, not a tolerated alias.
+It reports `file:line — SEVERITY — finding`. Exit `1` when a `CONFLICT` or `DUPLICATE` exists; warnings are review findings unless `--strict` is supplied; exit `2` for a missing or invalid config or an unsafe path.
 
 ## The conversion procedure
 
@@ -141,38 +105,3 @@ Full step-by-step, proven across multiple real conversions (a public 26-doc repo
 7. **Review the diff** — confirm no README's unique guidance was lost in its `index.md`
    regeneration; spot-check descriptions.
 8. **Commit.**
-
-## Known lessons from real conversions
-
-- **The converter needs to walk every ancestor directory, not just each file's direct
-  parent, when deciding what needs an `index.md`.** A purely-organizational directory
-  (holding only subdirectories, no concept file of its own) is easy to miss and leaves a
-  dangling link from its parent's generated index. Fixed in this skill's copy of
-  `okf_convert.py` — if you're comparing against an older copy, this is the diff to look for.
-- **Space-containing filenames break generated links.** CommonMark markdown link
-  destinations can't contain unescaped spaces; a runbook named `Podcast Transcript
-  Enhancement.md` needs a kebab-case rename (`git mv`, preserves history) before the
-  converter's generated index links to it correctly.
-- **Workspace-private / minimal-stub repos may have no `sources:`/`compilation:` block at
-  all in their compile config** — if there's nothing for a compiler to walk, step 5 (the
-  `index.md`/`log.md` exclude) has nothing to add to; that's a legitimate no-op, not a gap.
-- **A bundle with zero markdown files is vacuously conformant.** Don't treat an empty
-  `source/` tree as something needing conversion — there's nothing non-conformant about it.
-- **`type` values are genuinely free-form (spec §4.1, no central registry).** Don't force
-  a one-size-fits-all vocabulary across very different repos; a richer repo earns its own
-  finer-grained types where the coarse `Instruction`/`Runbook`/`Dataset` split loses
-  real distinctions worth keeping (e.g. a repo with substantial per-client content
-  benefits from its own `Client` type rather than folding everything into `Dataset`).
-
-## Related skills
-
-- [`synthesis-context-lifecycle`](../synthesis-context-lifecycle/SKILL.md) — the tiered
-  CONTEXT.md/REFERENCE.md/sessions/ project-memory pattern this skill's own conversion
-  procedure was tracked with; OKF is about the *content* corpus, not the project-management
-  layer (which stays explicitly out of OKF's own bundle scope).
-- [`synthesis-anti-shortcuts`](../synthesis-anti-shortcuts/SKILL.md) — dispatch/acceptance
-  hygiene for running this conversion at scale (one sub-agent per repo).
-- [`synthesis-kb-edit`](../synthesis-kb-edit/SKILL.md) — config-driven editing
-  and shipping; this skill owns its format and consistency gates.
-- [`synthesis-knowledge-capture`](../synthesis-knowledge-capture/SKILL.md) —
-  durable fact extraction and in-place reconciliation before validation.

@@ -2,6 +2,12 @@
 
 The YAML schema for `~/.synthesis/inbox-cleanup/rules.yaml`. This file is per-user and never enters version control.
 
+Contents:
+- Top-level shape: the whole file at a glance
+- Sections: class_defaults, never_touch, friends_protect, subject_rules, senders
+- Resolution precedence: which rule wins when several match
+- Validation, and migration from monolithic rule lists
+
 ## Top-level shape
 
 ```yaml

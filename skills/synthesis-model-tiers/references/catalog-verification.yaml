@@ -1,3 +1,8 @@
+# Contents (added for navigation in synthesis-model-tiers 3.0.0; the data below is unchanged):
+# - sources: each documentation page, with URL, retrieval date, excerpt and the identifiers it documents
+# - providers: anthropic, openai, google, ollama; each model's native ID, status and sources
+# - selector_notes: what each client's selector does and does not prove
+# - excerpt_normalization
 schema_version: 1
 scope: public_identifier_documentation
 reviewed_on: '2026-09-25'

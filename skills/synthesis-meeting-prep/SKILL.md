@@ -1,21 +1,17 @@
 ---
 name: synthesis-meeting-prep
-description: "Prepare a principal for any meeting the way a wise chief of staff would: weigh 60+ factors across the meeting, participants, principal's position, knowledge, and risk; model the readers before drafting; deliver a dense, scannable pack with a capture half; then debrief the transcript into decisions, commitments, and reader-profile updates. Use for 1:1s, reviews, forums, external meetings, interviews, and post-meeting follow-through."
+description: "Prepare a principal for a meeting as a chief of staff would: model the readers, weigh 60+ factors, deliver a scannable pack with a capture half, then debrief transcripts into decisions, commitments and profile updates. Use for 1:1s, reviews, forums, external meetings, interviews and follow-through."
 license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.3.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
 
 # Meeting Prep
-
-**Version 1.0.0** (2026-09-20): first release — the content contract
-for meeting preparation (requirements R1–R12), the 64-factor
-inventory, six structure variants, reader profiles, the debrief half,
-and a mechanical prep linter (`scripts/prep_lint.py`).
 
 An agent preparing a principal for a meeting is not a summarizer. It
 is the principal's chief of staff for one room: it figures out what
@@ -24,47 +20,33 @@ puts exactly that on one scannable page. The content contract lives
 in [references/requirements.md](references/requirements.md) — R1–R12
 are normative. This file is the operating protocol.
 
-## 1. Configuration contract
+## Binding rules
 
-Select the meeting's owning workspace before loading a profile. Resolve its
-approved private context repository through the workspace's existing registry
-and routing policy. Relationship-bound profiles belong in that workspace's
-deletion unit. Personal records that must survive the relationship follow the
-principal's retention policy separately; never migrate a mixed profile until
-its ownership is resolved.
+Rules 1 to 5 are section 5, "What the skill refuses"; the rest come from the prep and debrief loops and the configuration contract. New rules are appended.
 
-Every profile operation requires the explicit absolute repository root and a
-stable workspace id. The tool verifies the exact Git checkout root and binds
-the profile directory to that id. These arguments assert an already approved
-private destination; a Git remote or repository name cannot establish privacy.
-The tool does not discover a repository from the current directory, search
-other workspaces, or fall back to the user's home directory.
+1. **No model, no draft.** Model each key reader (relationship, technical depth, cares), the power map and the disclosure boundary before writing (R2).
+2. **Re-verify every number.** Stale figures kill credibility.
+3. **Mark confidence: fact, inference, guess.** Never fill a material gap with a guess presented as fact (factor 62); cut the line instead.
+4. **Never contradict the principal's recorded positions.**
+5. **Never cross the disclosure boundary for the room's least-trusted attendee.**
+6. **Ground the register in 2–3 samples** of the principal's own writing to a comparable reader (R13); if none exists, say so in the pack.
+7. **State the basis (R10) and the drivers** (the 3–5 factors that set the pack's shape) on the pack.
+8. **Run `scripts/prep_lint.py` on every draft;** fix each finding or record why it is wrong. The linter is a backstop, not the author.
+9. **Deliver assembled packages, never assembly kits:** no brackets for the principal to fill in.
+10. **Debrief transcript-primary.** Never derive who said or decided what from a summary; no commitment without an owner and a date.
+11. **Profiles belong to one workspace.** Pass the explicit `--context-repo` and `--workspace`; missing or ambiguous ownership blocks profile reads and writes and never triggers a search of other workspaces.
+12. **Contribute to another seat's pack only through a `share-pack` grant and `write-pack`.** A grant covers one artifact and nothing else.
 
-```text
-<context-repo>/profiles/meeting-prep/.owner.json
-<context-repo>/profiles/meeting-prep/principal.json
-<context-repo>/profiles/meeting-prep/readers/<id>.md
-```
+## Contents
 
-Use `scripts/prep_init.py resolve --context-repo /absolute/private-context
---workspace example` to resolve this directory without creating it. Pass the
-same two owner arguments to `init` or `add-reader`. Creation refuses an
-existing file; edit existing content through the context repository's normal
-record workflow. New files are mode 0600 and new directories are mode 0700.
-
-`principal.json` holds the principal's role, goals, authority, positions, and
-pressure responses within this workspace. Reader profiles hold relationship,
-technical depth, current concerns, prior context, and what landed last time.
-Scaffold with `init` and `add-reader`, then complete the interview using this
-workspace's evidence. Missing profiles permit the three essential questions
-(reader relationship, technical depth, meeting purpose) and a draft using only
-current context. Missing or ambiguous ownership prevents profile reads and
-writes; it never triggers a search of global or other-workspace profiles.
-
-Legacy global profiles need an explicit per-file ownership and hash map. The
-existing prep owner provides read-only preflight and bounded apply/resume;
-see [workspace-profiles.md](references/workspace-profiles.md). Migrating one
-workspace leaves unresolved and other-owner entries untouched.
+- [references/requirements.md](references/requirements.md): R1 to R13, the normative content contract. Read it before drafting.
+- [references/factor-inventory.md](references/factor-inventory.md): the 64 factors in six groups, marked for sizing, tone, content and risk. Read it in the Model step.
+- [references/structures.md](references/structures.md): the structure variants by meeting type, and the capture half. Read it in the Draft step.
+- [references/profiles-and-sharing.md](references/profiles-and-sharing.md): section 1, the configuration contract (`prep_init.py resolve`, `init`, `add-reader`), and shared prep contributions (`share-pack`, `write-pack`). Read it before any profile operation or shared write.
+- [references/workspace-profiles.md](references/workspace-profiles.md): exact selection, preflight, apply and resume for migrating legacy global profiles. Read it when migrating.
+- [references/background.md](references/background.md): the 1.0.0 release note and section 4, integration seams with daily rituals, meeting transcripts, OKF and the console. Read it when deciding which skill owns a step.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.0 text now lives.
+- 2. The prep loop, 3. The debrief loop, 5. What the skill refuses: below.
 
 ## 2. The prep loop
 
@@ -104,34 +86,6 @@ For every meeting, in order:
    in chat. Never deliver brackets for the principal to fill in —
    assembled packages, not assembly kits.
 
-## Shared prep contributions
-
-A broad `meeting-preps/` claim remains exclusive for ordinary edits. To accept a
-contribution, its authenticated active recipient uses `prep_init.py share-pack`
-with the exact contributor seat, private context repository, workspace, literal
-Markdown artifact, create/append operation and (for append) reviewed SHA256.
-`--private` asserts the already approved private destination; names and Git
-remotes are not privacy evidence. Both seats register the same physical checkout
-and branch; the profile owner marker and any team registry must agree. A team
-shared/public repository cannot receive these private prep contributions.
-
-The grant is recorded in the recipient's own coordination row, expires within
-one hour (15 minutes by default), and binds its current ordinary claim scope.
-Do not paste grant markers into `coordination claim`, narrow or release another
-seat's claim, or claim the overlapping artifact as exclusive. Missing or ambiguous
-authority refuses before an artifact effect. The recipient can invalidate grants
-by changing its held scope or releasing its own seat through existing owners.
-
-The contributor uses `prep_init.py write-pack` with that grant ID, native event
-payload and bounded text file. Creation requires absence; append preserves the
-complete reviewed prefix. The existing record transaction serializes competing
-writers, rejects changed preimages and retains interruption custody. Restore
-valid current authority and use the existing transaction recovery owner with the
-same `meeting_prep_share` selection to recover; never remove its journal by hand.
-A grant covers one artifact and transaction custody only. It grants no generic
-edit, profile migration, publication, deployment or recipient impersonation right.
-The recipient retains publication custody under its existing claim.
-
 ## 3. The debrief loop
 
 After the meeting, when a transcript or notes exist:
@@ -150,19 +104,6 @@ After the meeting, when a transcript or notes exist:
    compounds.
 5. **Capture durable facts.** Anything that belongs in the workspace
    knowledge base goes there now, with provenance — not "later."
-
-## 4. Integration seams
-
-- **Daily rituals** (`synthesis-daily-rituals` lead-time prep packs)
-  own the scheduling machinery — which meetings need packs by when.
-  This skill is the content contract that machinery drafts against.
-- **Meeting transcripts** (`synthesis-meeting-transcripts`) own
-  transcript fetch, naming, and the transcript-primary rule the
-  debrief depends on.
-- **OKF** (`synthesis-okf`) is the workspace knowledge interface
-  for factor 37.
-- **Console** renders packs filed under `meeting-preps/`; the basis
-  statement is what makes them trustworthy there.
 
 ## 5. What the skill refuses
 

@@ -6,6 +6,13 @@ existing fence. `messages_native.NativeMessagesOwner` implements the fixed
 Messages script and confined outbound query. The enclosing authenticated owner
 supplies approval and endpoint qualification; this skill issues neither.
 
+Contents:
+- Verified embedding boundary: the installed launcher route
+- Explicit route and authority: account, chat, participant, approval
+- Fixed transport: the fixed Messages script
+- Immutable intent and readback: attempts, recovery, result states
+- Source and qualification limits
+
 ## Verified embedding boundary
 
 The installed read route is

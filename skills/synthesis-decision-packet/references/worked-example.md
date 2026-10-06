@@ -2,6 +2,14 @@
 
 A complete synthetic example of the current format. The package versions and consequences illustrate the interface; they are not current dependency advice or a real authorization record.
 
+Contents:
+- The situation: eleven available upgrades
+- The spec: the complete JSON
+- Generate it and file it: the commands
+- What comes back: the paste
+- Record the rulings: the rulings file it becomes
+- Notes on writing good rows
+
 ## The situation
 
 A quarterly dependency sweep on a service turns up eleven packages with available upgrades. Some

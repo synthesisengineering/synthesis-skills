@@ -1,3 +1,11 @@
+Contents (added for navigation in synthesis-okf 2.0.0; the specification below is verbatim):
+- 1. Motivation (goals, non-goals); 2. Terminology
+- 3. Bundle Structure, with 3.1 Reserved filenames
+- 4. Concept Documents: 4.1 Frontmatter, 4.2 Body, 4.3 and 4.4 Examples
+- 5. Cross-linking; 6. Index Files; 7. Log Files (optional); 8. Citations
+- 9. Conformance; 10. Relationship to other formats; 11. Versioning
+- Appendix A: Minimal example bundle
+
 # Open Knowledge Format (OKF)
 
 **Version 0.1 — Draft**

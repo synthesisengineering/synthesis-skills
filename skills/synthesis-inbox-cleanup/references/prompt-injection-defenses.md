@@ -2,6 +2,14 @@
 
 The threat model and architecture for any path in this skill that reads email content into an LLM's context.
 
+Contents:
+- Why this matters: the indirect-prompt-injection trifecta
+- Threat model: where attacker content meets the LLM, attacker goals, attack vectors
+- The defense stack: layers 1 to 10
+- What the layers protect against, individually
+- Additional hardening (v1.3.0), with the accepted, bounded risks
+- What this does NOT defend against, and future considerations
+
 ## Why this matters
 
 Email is untrusted user input. The sender is anyone on the internet. The body is unbounded text the attacker controls completely. The moment that text reaches a language model that also has tool access to the email account, you have all three legs of the indirect-prompt-injection trifecta: private data access, untrusted content, and external action authority.

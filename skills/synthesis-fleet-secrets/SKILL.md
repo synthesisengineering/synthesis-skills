@@ -5,7 +5,8 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "2.0.0"
+  format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
@@ -21,19 +22,31 @@ This skill ships the 1Password (`op` CLI) backend tonight and the dual-mode
 seam for a future age/SOPS backend (Variant 2), which exists as a documented
 stub. See `references/enrollment-age-sops.md` for the ruled future design.
 
-## Non-negotiables
+## Binding rules
 
-- The secrets manifest carries refs only — never values. The parser rejects
-  any `value:` key outright.
-- The real secrets manifest lives in the personal sphere and is never
-  committed to a shared repo. Only the schema and generic examples ship here.
-- No secret value or vault item content appears in code, tests, fixtures, or
-  commit messages. Fixtures use fake refs (`op://ExampleVault/...`) only.
-- Service-account tokens (headless hosts) live in the OS credential store,
-  scoped to a minimal per-role vault — never in flags, files, or manifests.
-- Every protective check fails closed: missing `op`, signed-out `op`,
-  invalid manifest, loose permissions, or an unverifiable values-absent scan
-  is an error, never a silent pass.
+Rules 1 to 5 are the 1.0.0 Non-negotiables, word for word; rules 6 to 9 come from the enrollment, rotation and backend sections.
+
+1. The secrets manifest carries refs only — never values. The parser rejects
+   any `value:` key outright.
+2. The real secrets manifest lives in the personal sphere and is never
+   committed to a shared repo. Only the schema and generic examples ship here.
+3. No secret value or vault item content appears in code, tests, fixtures, or
+   commit messages. Fixtures use fake refs (`op://ExampleVault/...`) only.
+4. Service-account tokens (headless hosts) live in the OS credential store,
+   scoped to a minimal per-role vault — never in flags, files, or manifests.
+5. Every protective check fails closed: missing `op`, signed-out `op`,
+   invalid manifest, loose permissions, or an unverifiable values-absent scan
+   is an error, never a silent pass.
+6. **Enroll in order: dry-run, then materialize, then run the doctor** with `--scan-root` over every synced store.
+7. **Revoking a Mac means removing its vault access.** It must then fail closed with "secret unavailable", never serve stale cached values.
+8. **Rotate, don't just delete:** revoke the old credential only after the new one verifies.
+9. **The age/SOPS backend is a documented stub.** `AgeSopsBackend` raises `NotImplementedError`; use the 1Password backend.
+
+## Contents
+
+- [references/enrollment-age-sops.md](references/enrollment-age-sops.md): the ruled future design for the age/SOPS backend (Variant 2). Read it before building or enrolling with that backend.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives.
+- Manifest schema, Commands, Enrollment (new Mac), Rotation: below.
 
 ## Manifest schema
 

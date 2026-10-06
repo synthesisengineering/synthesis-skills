@@ -4,6 +4,14 @@ The skill weighs every factor below and names the ones that drove the
 pack's shape. Factors marked (S) affect sizing; (T) affect tone and
 register; (C) affect content selection; (R) affect risk handling.
 
+Contents:
+- 1. The meeting itself
+- 2. The participants
+- 3. The principal's position
+- 4. Knowledge to pull
+- 5. Risk
+- 6. Output shaping: length, structure, capture half, basis, confidence marks, drivers, expiry
+
 ## 1. The meeting itself
 
 1. Purpose type (S/C): decision, status, brainstorm, negotiation,
