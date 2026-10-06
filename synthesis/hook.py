@@ -39,16 +39,18 @@ def _emit(event, context="", deny=""):
 def _upgrade_note(session_id, me) -> str:
     """Once per release, tell a session that last saw an older runtime what changed (Rajiv, 2026-10-06)."""
     from synthesis import __version__, board, paths
+    from synthesis.install import version_tuple as number
     if me is None or me.version == __version__:
         return ""
     seen = me.version
     board.touch(session_id, version=__version__)
     log = paths.home() / "current" / "CHANGELOG.md"
     text = log.read_text(encoding="utf-8") if seen and log.is_file() else ""
-    number = lambda v: tuple(int(x) for x in re.findall(r"\d+", v)[:3])  # noqa: E731
     sections = [s.strip() for s in re.split(r"(?m)^(?=## \[)", text) if (m := re.match(r"## \[([\d.]+)\]", s))
                 and number(seen) < number(m.group(1)) <= number(__version__)]
-    return "" if not seen else (
+    if not seen or number(seen) > number(__version__):  # a deliberate rollback: say so plainly, no changelog
+        return seen and f"synthesis was rolled back from {seen} to {__version__}; hooks and guards now run {__version__}."
+    return (
         f"synthesis was upgraded from {seen} to {__version__} since this session last saw it. Hooks and guards already "
         f"run {__version__}; skill text loaded earlier in this conversation is {seen}'s. Before relying on a skill the "
         "changes below name, re-read its SKILL.md, or run the synthesis-checkpoint skill in refresh-and-report mode for a "
@@ -158,7 +160,7 @@ def main(argv):
     if event == "session-start" and len(argv) > 2 and argv[2]:
         try:  # keep the stable runtime in step with the plugin the harness loaded
             from synthesis import install
-            install.install(argv[2])
+            install.install(argv[2], forward_only=True)
         except Exception:
             pass  # a failed self-update must never block a session; doctor reports it
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,

@@ -51,6 +51,26 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     assert install.install(v2).endswith(str(isolated_home / "current"))  # idempotent
 
 
+def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, isolated_home):
+    """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Only an explicit install may."""
+    old, new = _plugin_copy(tmp_path, "old"), _plugin_copy(tmp_path, "new")
+    (old / "synthesis" / "__init__.py").write_text('__version__ = "1.0.0"\n')
+    (new / "synthesis" / "__init__.py").write_text('__version__ = "1.0.1"\n')
+    install.install(new)
+    installed = os.path.realpath(isolated_home / "current")
+    out = subprocess.run([str(isolated_home / "bin" / "synthesis-hook"), "session-start", str(old)], input="{}",
+                         capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
+    assert out.returncode == 0 and os.path.realpath(isolated_home / "current") == installed
+    assert "not newer" in install.install(old, forward_only=True)
+    newer = _plugin_copy(tmp_path, "newer")
+    (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
+    install.install(newer, forward_only=True)  # a session on a newer plugin still upgrades everyone
+    assert install.version(isolated_home / "current") == (1, 0, 2)
+    install.install(old)  # a deliberate rollback is an explicit install
+    assert install.version(isolated_home / "current") == (1, 0, 0)
+
+
 def test_cli_shim_runs_the_installed_copy_through_a_link_from_any_folder(tmp_path, isolated_home):
     """setup.py links ~/.local/bin/synthesis to the shim; a checkout in the working directory
     (its own synthesis/ package) must not stand in for the installed runtime."""

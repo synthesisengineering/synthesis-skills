@@ -18,9 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # recognition of unedited 4.x-installed organization skills, and release reporting what it matched,
 # after pyflakes found nothing left to remove. 5.0.3 adds 41 to both for three things Rajiv asked for on
 # 2026-10-06: the once-per-release upgrade note (25), calendar writes that email no one (9) and a repository
-# naming itself (7). Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5231
-PLUGIN_BUDGET = 20388
+# naming itself (7). 5.0.4 adds 18 to both so a session still on an older plugin can no longer switch the
+# stable runtime back (a defect found live that day), after the three version parsers became one.
+# Code may not grow past these without removing as many lines elsewhere.
+CORE_BUDGET = 5249
+PLUGIN_BUDGET = 20406
 
 
 def _lines(files):

@@ -74,8 +74,8 @@ rerun changes nothing.
 ## The runtime, the commit check and the CLI
 
 Setup installs the runtime from the checkout to `~/.synthesis/v5/current`, with the
-stable hook at `~/.synthesis/v5/bin/synthesis-hook` (each harness's SessionStart keeps it
-in step with the plugin it loaded). It links `~/.local/bin/synthesis` to
+stable hook at `~/.synthesis/v5/bin/synthesis-hook` (each harness's SessionStart moves it
+forward when the plugin it loaded is a newer release, never back). It links `~/.local/bin/synthesis` to
 `~/.synthesis/v5/bin/synthesis` only when that name is free; another install's launcher
 is left alone and setup says to put `~/.synthesis/v5/bin` first on PATH.
 

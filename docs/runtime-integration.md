@@ -38,8 +38,9 @@ The SessionStart registration also passes the plugin folder the harness loaded
 (Claude Code's `${CLAUDE_PLUGIN_ROOT}`; Muse's `MUSE_PLUGIN_ROOT`, or the
 script's own location). If the stable hook is missing it installs the runtime
 from that folder first, and on every start it installs the folder's runtime if
-it differs from the current one. A failed self-update never blocks the session;
-`synthesis doctor` reports it.
+it is a newer release than the current one. A session still on an older plugin
+never switches the runtime back; a rollback is an explicit `synthesis install`.
+A failed self-update never blocks the session; `synthesis doctor` reports it.
 
 ## The four events
 

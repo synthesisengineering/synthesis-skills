@@ -134,9 +134,10 @@ v5 has two stable paths, both outside the harnesses' caches:
   between releases, so a harness's hook approval survives upgrades and a deleted
   plugin folder never breaks a running task.
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
-  plugin folder the harness loaded; if its code differs, it is installed beside the old
-  one and `current` switches atomically. `release.py` does the same from a verified
-  install, and `synthesis doctor` fails when `current` is missing or its files changed.
+  plugin folder the harness loaded; if it is a newer release, it is installed beside the
+  old one and `current` switches atomically, and a session on an older plugin never
+  switches it back. `release.py` installs from a verified install whatever its version,
+  and `synthesis doctor` fails when `current` is missing or its files changed.
 
 Instruction files and scripts call `synthesis` (or `~/.synthesis/v5/bin/synthesis`),
 never a versioned folder.
