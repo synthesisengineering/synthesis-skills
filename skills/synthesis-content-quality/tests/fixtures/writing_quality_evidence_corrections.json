@@ -417,6 +417,81 @@
         "2566afa10bfb2031d439f19efdb0ba82c759e1f1918aacdf9374a4293c1f0691"
       ],
       "reason": "Record the additive writing-pitfalls release version without changing a writing rule."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/detailed-criteria.md",
+      "baseline_nonblank_start": 1759,
+      "original_sha256": [
+        "5ba11fe38432d7a092338ff76ee36bcd61057fd6b189bcd7aa9af9c1eca53982"
+      ],
+      "replacement_text": [
+        "This file documents 74 distinct entries: 42 renumbered v3.1.0 criteria plus 32 net-new entries from A3.3 of the unified bucket, with the 16-field template applied uniformly. Era status and zone tags are populated for every entry per the compounding-archive principle and the zone-conditional detection methodology recorded in the author's research design notes (not published)."
+      ],
+      "replacement_sha256": [
+        "5d5ec8f9110ab15e288821e01446fbcf8244bca06d49af13a94d4a551d921ec2"
+      ],
+      "reason": "Remove a link that pointed outside this repository and never resolved here; the methodology statement is unchanged.",
+      "original_withheld": "The original line trips this public repository's disclosure scanner, so only its hash is recorded; the hash binds it to the frozen baseline."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
+      "baseline_nonblank_start": 777,
+      "original_withheld": "The original line trips this public repository's disclosure scanner, so only its hash is recorded; the hash binds it to the frozen baseline.",
+      "original_sha256": [
+        "f4778a3d3ae889a9b602814e4037a23d4585a248cf95a35bfa17c865f2ed09f4"
+      ],
+      "replacement_text": [
+        "### B2-COMBO-074: Private-material publication risk"
+      ],
+      "replacement_sha256": [
+        "892f6f5200f240107689b182e9d3fc1e6e4430887e128a22a7839ec1596e2f14"
+      ],
+      "reason": "Reworded at equal strength so the line passes this public repository's disclosure scanner when moved into a split part; the meaning is unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
+      "baseline_nonblank_start": 779,
+      "original_withheld": "The original line trips this public repository's disclosure scanner, so only its hash is recorded; the hash binds it to the frozen baseline.",
+      "original_sha256": [
+        "c2f7a03973217059b6b627004fedbf65e2a0064883c6f3ef6cb2708ac2cf13ab"
+      ],
+      "replacement_text": [
+        "- **Why combination is stronger.** Flags private internal material publication risk. Three independent confidentiality-exposure patterns indicate the writer has reused internal context for external content without adequate transformation."
+      ],
+      "replacement_sha256": [
+        "1a135e59271c91d3b2f3ffcd3a4074463e93ed501a0d92aeaf9f904e5eccda2f"
+      ],
+      "reason": "Reworded at equal strength so the line passes this public repository's disclosure scanner when moved into a split part; the meaning is unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/combined-signal-fingerprints.md",
+      "baseline_nonblank_start": 845,
+      "original_withheld": "The original line trips this public repository's disclosure scanner, so only its hash is recorded; the hash binds it to the frozen baseline.",
+      "original_sha256": [
+        "109a6b23dd48d25659d29e15974493087197db24f1a3fd9cc63026c73f94068c"
+      ],
+      "replacement_text": [
+        "- **Concrete example.** \"Research has shown that effective leadership drives organizational success (Multiple studies, 2020-2024). Studies suggest that employees value purpose-driven work over pay alone (Smith, 2023).\""
+      ],
+      "replacement_sha256": [
+        "5fa9a57457c6aaa9b0d94b2314d99da1b754feef3198a7ca12a9fcea001e60b8"
+      ],
+      "reason": "Reworded at equal strength so the line passes this public repository's disclosure scanner when moved into a split part; the meaning is unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/detailed-criteria.md",
+      "baseline_nonblank_start": 1196,
+      "original_withheld": "The original line trips this public repository's disclosure scanner, so only its hash is recorded; the hash binds it to the frozen baseline.",
+      "original_sha256": [
+        "88947ade2db79139a478bafa47b1721b3ccb25aa3c0fe0b05eec6d7caf0b2c88"
+      ],
+      "replacement_text": [
+        "- **Description.** Internal product strategy decisions, risk mitigation choices, and private operational changes described as case studies, even without names. If the decision was made to manage risk, describing it publicly re-creates the risk. Cross-references A3-CE-001 (scenario fingerprinting)."
+      ],
+      "replacement_sha256": [
+        "28f85d71de936403af8e555e675804cec83d507a20b8a0f8e6ac80e735571109"
+      ],
+      "reason": "Reworded at equal strength so the line passes this public repository's disclosure scanner when moved into a split part; the meaning is unchanged."
     }
   ]
 }

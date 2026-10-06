@@ -56,10 +56,19 @@ def contains_all(baseline: list[str], pool: list[str]) -> bool:
     return all(have[h] >= n for h, n in need.items())
 
 
+def with_split_parts(path: Path) -> list[Path]:
+    """A file split by section keeps its opening sections under the old name, and its
+    numbered parts (<name>-<n>-<slug>.md beside it) carry the rest in order; read them
+    together as the one document they were."""
+    pattern = re.compile(rf"^{re.escape(path.stem)}-(\d+)-[^/]+\.md$")
+    parts = [p for p in path.parent.glob(f"{path.stem}-*.md") if pattern.match(p.name)]
+    return [path] + sorted(parts, key=lambda p: int(pattern.match(p.name).group(1)))
+
+
 def count(pattern: str, relative_path: str) -> int:
-    """Count in one file, or across a skill folder's markdown when given its directory."""
+    """Count in one file (with its split parts), or across a skill folder's markdown when given its directory."""
     target = REPO_ROOT / relative_path
-    files = sorted(target.rglob("*.md")) if target.is_dir() else [target]
+    files = sorted(target.rglob("*.md")) if target.is_dir() else with_split_parts(target)
     return sum(len(re.findall(pattern, f.read_text(encoding="utf-8"), flags=re.MULTILINE)) for f in files)
 
 
@@ -85,11 +94,15 @@ class NoRemovalsTests(unittest.TestCase):
             original = entry["original_sha256"]
             replacement = entry["replacement_sha256"]
             self.assertGreaterEqual(start, cursor, f"overlapping correction: {relative}")
-            self.assertEqual(
-                original,
-                [line_hash(line) for line in entry["original_text"]],
-                f"original text/hash mismatch: {relative}@{start}",
-            )
+            if "original_text" in entry:
+                self.assertEqual(
+                    original,
+                    [line_hash(line) for line in entry["original_text"]],
+                    f"original text/hash mismatch: {relative}@{start}",
+                )
+            else:  # a line this repository's disclosure scanner refuses is bound by its hash alone
+                self.assertTrue(str(entry.get("original_withheld", "")).strip(),
+                                f"original text missing without a withheld reason: {relative}@{start}")
             self.assertEqual(
                 replacement,
                 [line_hash(line) for line in entry["replacement_text"]],
@@ -124,7 +137,11 @@ class NoRemovalsTests(unittest.TestCase):
                 if not contains_all(expected, skill_folder_lines(path)):
                     failures.append(f"baseline line missing from the v5 skill folder: {relative}")
                 continue
-            current = line_hashes(path.read_text(encoding="utf-8"))
+            current = [
+                digest
+                for part in with_split_parts(path)
+                for digest in line_hashes(part.read_text(encoding="utf-8"))
+            ]
             if not is_subsequence(expected, current):
                 failures.append(
                     "baseline line changed, removed, reordered, or changed outside "

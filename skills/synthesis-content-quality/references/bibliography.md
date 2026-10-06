@@ -1,5 +1,11 @@
 # Bibliography for synthesis-content-quality v4.0
 
+Contents:
+- Purpose and verification labels (V, W, C, U).
+- 1. Academic papers (verified at expansion, then cited but not independently verified); 2. Books and monographs.
+- 3. Industry and detection-tool methodology pages; 4. Journalism and trade press; 5. GitHub issues and repositories; 6. AI company publications.
+- 7. Verification status totals; 8. Corrections and disambiguation log; 9. Extending this bibliography.
+
 **Purpose.** Consolidated source list for every empirical, theoretical, and journalistic claim referenced in the v4.0 catalog and its supporting references/ files. Each entry carries an explicit verification status.
 
 **Verification labels.**

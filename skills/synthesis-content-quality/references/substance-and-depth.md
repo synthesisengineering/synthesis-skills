@@ -1,5 +1,12 @@
 # Substance and Depth Detection (Section A2)
 
+Contents:
+- Philosophical framing; Reading the catalog (the shared metadata for all A2 entries).
+- A2-SUB-001 to A2-SUB-017: the seventeen substance tests, from the deletion test to the specificity score.
+- Cluster map: the August 2026 records A2-SUB-018 (source-detail attenuation) and A2-SUB-019 (plausible-mechanism substitution), then the five-cluster map.
+- Application workflow for editors: the five-minute substance evaluation, its output, when to run all 17 tests, and how it fits the other A sections.
+- Common false positives and how to handle them; Era and recency note; Bibliography for A2.
+
 > **Pattern catalog as of 2026-05.**
 >
 > Substance and depth failures are model-agnostic. They reflect the structural pressures of helpfulness-optimized LLM training (RLHF for length, alignment for safety, reward for "comprehensive" coverage) rather than any one family's style. This catalog stays stable across model generations because the underlying training pressures are stable. The patterns below are durable; refresh examples as new model defaults emerge.

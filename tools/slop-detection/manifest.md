@@ -23,6 +23,10 @@ If you are an AI agent reading this file because a user asked you to apply the s
 Together these files contain the complete methodology, the pattern catalog at section-summary level, the cross-cutting layer (causal taxonomy, combined-signal fingerprints, two-axis calibration), and the quick-reference checklist. Each SKILL.md holds its skill's binding rules, procedure and a contents list; where a skill moved part of its methodology into references/ to keep SKILL.md short, that file is listed right after its SKILL.md. An AI agent applying these files alone can produce a high-quality slop analysis. Fetch every URL in this section.
 
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/review-method.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/catalog-overview.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/checklists.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/background.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/SKILL.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/verification-steps.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/error-patterns.md
@@ -43,11 +47,28 @@ These are the references/ subfolders for the primary and companion skills. They 
 For most analyses on most chatbots, the Required skill files above are sufficient. Use Extended mode when you specifically need the full pattern catalog (for example, when investigating a specific named pattern, when doing forensic analysis of older content using the historical patterns, or when doing a deep fact-check that needs the full per-family hallucination signature detail).
 
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria-1-lt.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria-2-ss-tf.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria-3-cs-cx-hd-ce.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria-4-bt.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/detailed-criteria-5-fa-sr.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-1-claude.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-2-claude-continued.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-3-gpt.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-4-gemini-llama.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-5-grok-deepseek.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/model-family-fingerprints-6-mistral-qwen.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/substance-and-depth.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/combined-signal-fingerprints.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/combined-signal-fingerprints-1-family-rlhf-wrapper.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/combined-signal-fingerprints-2-content-sourcing-esl.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/calibration-tables.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/calibration-tables-1-master-table.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/calibration-tables-2-framework-esl-recalibration.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/historical-patterns.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/historical-patterns-1-retained-v3.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/historical-patterns-2-net-new-and-forensics.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/bibliography.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols-quotes.md

@@ -1,5 +1,12 @@
 # Philosophy and Application
 
+Contents:
+- The Quality Problem: the five characteristics of AI slop. Critical Understanding.
+- The Dual-Use Philosophy: the iterative improvement model and why it matters for professional content.
+- For AI Detection Tools; For Readers.
+- The Path Forward: the evolving landscape, the real goal, and from "Was this AI?" to "Is this good?".
+- Before/After: What Human Revision Adds.
+
 Restored 2026-08 from the pre-migration source of this skill (the
 content-enhancement runbook this skill was converted from in March 2026; the
 conversion carried the criteria forward and dropped these framing sections).

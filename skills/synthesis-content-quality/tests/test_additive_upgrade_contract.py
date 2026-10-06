@@ -15,9 +15,21 @@ def read(relative: str) -> str:
     return (REPO_ROOT / relative).read_text(encoding="utf-8")
 
 
+def read_with_split_parts(relative: str) -> str:
+    """A file split by section keeps its opening sections under the old name, and its
+    numbered parts (<name>-<n>-<slug>.md beside it) carry the rest in order."""
+    path = REPO_ROOT / relative
+    pattern = re.compile(rf"^{re.escape(path.stem)}-(\d+)-[^/]+\.md$")
+    parts = sorted(
+        (p for p in path.parent.glob(f"{path.stem}-*.md") if pattern.match(p.name)),
+        key=lambda p: int(pattern.match(p.name).group(1)),
+    )
+    return "\n".join(p.read_text(encoding="utf-8") for p in [path, *parts])
+
+
 class AdditiveUpgradeContractTests(unittest.TestCase):
     def test_new_content_quality_locators_are_unique(self) -> None:
-        criteria = read("skills/synthesis-content-quality/references/detailed-criteria.md")
+        criteria = read_with_split_parts("skills/synthesis-content-quality/references/detailed-criteria.md")
         substance = read("skills/synthesis-content-quality/references/substance-and-depth.md")
         for locator in ("A2-SUB-018", "A2-SUB-019"):
             with self.subTest(locator=locator):
