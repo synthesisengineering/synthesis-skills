@@ -47,7 +47,7 @@ The universal hook would have caught and BLOCKED on `acme`; the repo-local hook 
 
    This is the right move for context that's clearly legitimate.
 
-2. A Tier-0 detection-rule false positive requires a scanner-owner correction. Preserve the exact finding and its positive material controls; neither an allowlist nor a path exception can admit it. See [marker rules](marker-rules.md).
+2. A Tier-0 detection-rule false positive requires a scanner-owner correction. Preserve the exact finding and its positive material controls; neither an allowlist nor a path exception can admit it. The correction is a change to `synthesis/commit_check.py` with a test; the key-marker rule is in [scanning.md](scanning.md#private-keys).
 
 The repo-local hook IS NOT a way to override the universal hook — git only runs one pre-commit hook (whichever `core.hooksPath` points at), and the engine chains to the repo-local one ONLY after the universal check passes. You can't suppress a universal-hook trip from a repo-local file.
 

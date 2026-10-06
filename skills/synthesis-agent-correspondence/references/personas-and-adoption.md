@@ -72,7 +72,7 @@ Generic signature examples (a principal named Alex):
 2. **Treat the archetype as law.** The assistant persona never signs words you don't own; the bot persona never claims words are yours.
 3. **Verify your channels' real disclosure behavior** rather than assuming from this skill's Slack example.
 4. **Write your `standing_direction` content limits.** The hard limits above are a floor — add whatever else is specific to your context.
-5. **Wire the three gates to your own voice/style skill(s)**, and to `synthesis-message-guard` if you want fail-closed enforcement rather than a convention that depends on being remembered. If your guard has brand-integrity patterns, make them lane-aware: block each persona's emoji when its own branding is absent, rather than banning an emoji outright.
+5. **Wire the three gates to your own voice/style skill(s)**, and configure `synthesis-message-guard` (its register patterns live in the principal's config) if you want fail-closed enforcement — a register scan and the principal's approval of each exact call — rather than a convention that depends on being remembered. If your register patterns include brand-integrity rules, make them lane-aware: block each persona's emoji when its own branding is absent, rather than banning an emoji outright.
 6. **Keep the private layer thin.** It should hold only what's actually yours — names, exact signature wording, org-specific routing rules — and reference this skill for the mechanism. Duplicating the mechanism into the private layer is how the two drift apart.
 
 ## Migrating from earlier versions of this skill

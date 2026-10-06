@@ -14,6 +14,8 @@ Contents:
 - Retiring historical interfaces through `context_edit.py` (replaced by `carry_forward.py`)
 - Test file names (tests moved to `tests/`)
 - The worked example's rulings file before M3
+- The handoff queue (`handoff.py`, replaced by `synthesis msg` in v5)
+- The context doctor in binding rule 9 (the check is `synthesis doctor`'s)
 
 ## Claimed provenance and input digests in the record
 
@@ -192,3 +194,36 @@ claimed provenance; it names the spec file and says whether storage was blocked.
   }
 }
 ```
+
+## The handoff queue
+
+Replaced in 2.0.1 (2026-10-05, final v5 sweep): v5 removed
+`synthesis-project-management/scripts/handoff.py` (verdict: REPLACE by `synthesis msg` with a
+brief file). The relationship the lines described is unchanged: messages move work between
+agents, the decision packet moves decisions between agent and principal.
+
+SKILL.md, Contents, the background.md line (2.0.0):
+
+```text
+- [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and the handoff queue (`synthesis-project-management/scripts/handoff.py`), changelog, related skills. Read it when choosing between this skill and a neighbor.
+```
+
+references/background.md, Relationship to adjacent skills (2.0.0, verbatim from 1.8.0):
+
+```text
+- **The handoff queue** (`synthesis-project-management/scripts/handoff.py`) moves work *between
+  agents*. The decision packet moves decisions *between agent and principal*. Together they are
+  the two directions that stop routing everything through a person as the transport layer.
+```
+
+## The context doctor in binding rule 9
+
+Replaced in 2.0.1 (2026-10-05, final v5 sweep): the packet check is `synthesis doctor`'s
+*decision packets* check (`check_packets` in `synthesis/doctor.py`), as
+[enforcement.md](enforcement.md) already said; v5's `context_doctor.py` has no packet check.
+The 2.0.0 line, verbatim:
+
+```text
+9. **Generate from a data array; never hand-author rows or hand-edit generator output.** The context doctor fails unverifiable packet pages.
+```
+

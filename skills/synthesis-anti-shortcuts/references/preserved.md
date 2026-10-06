@@ -43,3 +43,17 @@ anti-shortcut catalog. Public references point at case-studies.md within this
 skill rather than at incident-specific lesson files. The catalog can be
 overridden by passing --catalog <yaml>." The phrase set is unchanged in
 `costume-catalog.json`, with the additions listed in the coverage map.
+
+## Replaced in 2.0.1 (2026-10-05)
+
+The final v5 sweep added the pre-dispatch brief scan that `synthesis-agent-guardrails`'
+retired `sub_agent_brief_scanner.py` enforced as a hook (which fields of a brief to scan,
+and what to do on a hit) to [sub-agent-hygiene.md](sub-agent-hygiene.md) as prose. Two
+lines that listed what the skill holds changed to name it. The 2.0.0 lines, verbatim:
+
+```text
+4. **Dispatch briefs name the job at full size** (no "keep changes minimal," "light touch," "surgical change") and carry at most five deliverables.
+- [references/sub-agent-hygiene.md](references/sub-agent-hygiene.md): dispatch and acceptance rules, brief template, size cap. Read it before dispatching or accepting a sub-agent.
+- Part 1: Dispatch (principle, phrases that should not appear, replacement framing, brief template, size cap)
+```
+

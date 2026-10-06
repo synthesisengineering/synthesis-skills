@@ -104,3 +104,6 @@ Replaced prose, each kept verbatim in [preserved.md](preserved.md):
 - enforcement.md and worked-example.md, `scripts/test_build_packet.py`; review-assets.md, the browser fixture list: preserved.md, "Test file names".
 - review-assets.md, stable regular spec files: preserved.md, "Input-file custody for spec files".
 - worked-example.md, the rulings file and its provenance paragraph: preserved.md, "The worked example's rulings file before M3" and "Claimed provenance and input digests in the record".
+- SKILL.md Contents and background.md, "the handoff queue (`synthesis-project-management/scripts/handoff.py`)": preserved.md, "The handoff queue" (2.0.1, final v5 sweep). Now "board messages between agents (`synthesis msg`)"; `handoff.py` was replaced by `synthesis msg` with a brief file. background.md's Changelog gained a 2.0.1 entry; version 2.0.0 became 2.0.1.
+- SKILL.md binding rule 9, "The context doctor fails unverifiable packet pages.": preserved.md, "The context doctor in binding rule 9" (2.0.1). Now "`synthesis doctor` flags unverifiable packet pages in its *decision packets* check", matching enforcement.md.
+

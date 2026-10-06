@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -33,7 +33,7 @@ Rules 1 to 6 are the six load-bearing properties in their original order, so "th
 6. **File in the owning project's `resources/artifacts/`, never only as a chat artifact:** `build_packet.py --file-into` files spec and page; `record_rulings.py` files the rulings.
 7. **Only decisions that belong to the principal.** Execute constraint-determined choices and resolve delegated technical choices yourself.
 8. **The reader contract: a packet is a stranger-read document.** Name the `audience`, use plain labels, state `impact` both ways, label options by what pressing them does, gloss terms of art, and build every packet for a principal with `--strict-reader`.
-9. **Generate from a data array; never hand-author rows or hand-edit generator output.** The context doctor fails unverifiable packet pages.
+9. **Generate from a data array; never hand-author rows or hand-edit generator output.** `synthesis doctor` flags unverifiable packet pages in its *decision packets* check.
 10. **Surface disagreement and prior positions with exact sources; never converge first,** and recommend against your own prior work where that is true.
 11. **Open every generated packet before handing it over.** Both permanent defects were found by loading the page, not reading the source.
 12. **A recorded ruling authorizes nothing** (`authorization.granted: false`). The action owner checks principal, scope and exact target before acting.
@@ -47,7 +47,7 @@ Rules 1 to 6 are the six load-bearing properties in their original order, so "th
 - [references/enforcement.md](references/enforcement.md): integrity markers, what the generator refuses, the two permanent fixtures. Read it when a build is refused, the doctor flags a packet, or before changing the generator.
 - [references/review-assets.md](references/review-assets.md): the review-asset contract. Read it before constructing `review_assets`.
 - [references/worked-example.md](references/worked-example.md): a complete spec, the filed copies, the paste and its rulings file. Read it before your first packet.
-- [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and the handoff queue (`synthesis-project-management/scripts/handoff.py`), changelog, related skills. Read it when choosing between this skill and a neighbor.
+- [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and board messages between agents (`synthesis msg`), changelog, related skills. Read it when choosing between this skill and a neighbor.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.8.0 text and each old script now lives. Read it when tracing an old rule or command.
 - [references/preserved.md](references/preserved.md): lines the v5 script pass replaced, verbatim, with the reason. Read it when you need the earlier wording.
 - When to use it, When NOT to use it, Use: below.

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -22,7 +22,7 @@ Rules 1 to 8 carry the methodology section numbers other documents cite (for exa
 1. **Constraint-first.** Write the user's goals and non-goals (conversation, project context, workspace and global instructions) before generating approaches; a pro that violates one cannot appear.
 2. **Decide what constraints decide.** Ask only when an unresolved choice belongs to the user. "Recommendation: X. Your call?" on a determined or delegated choice is the costume; execute and report.
 3. **Scan for costume vocabulary** in drafts and sub-agent reports. A phrase is legitimate only when the user asked to optimize for what it implies.
-4. **Dispatch briefs name the job at full size** (no "keep changes minimal," "light touch," "surgical change") and carry at most five deliverables.
+4. **Dispatch briefs name the job at full size** (no "keep changes minimal," "light touch," "surgical change") and carry at most five deliverables. Scan every field the sub-agent reads before dispatch; on a hit, rewrite to the completeness required.
 5. **Audit every sub-agent return** for the same costumes. If work was left undone, redirect the sub-agent or finish it; never propagate the deferral.
 6. **Run the pre-response self-check** (below) before any analysis, recommendation or plan ships.
 7. **A capability gap is not a guardrail.** Never route around a guardrail; on a gap, name the failed mechanism, list alternatives and choose an authorized remedy before reporting.
@@ -34,7 +34,7 @@ Rules 1 to 8 carry the methodology section numbers other documents cite (for exa
 - [references/methodology.md](references/methodology.md): the full pattern, "Delivery is part of completeness" and methodology sections 1 to 8. Read it when applying a rule for the first time in a session or when a case is unclear.
 - [references/costume-vocabulary.md](references/costume-vocabulary.md): every phrase with category, rationale and replacement framing. Read it to classify a hit or rewrite a costume.
 - [references/constraint-first-protocol.md](references/constraint-first-protocol.md): the five-step protocol and a worked example. Read it before a multi-option analysis.
-- [references/sub-agent-hygiene.md](references/sub-agent-hygiene.md): dispatch and acceptance rules, brief template, size cap. Read it before dispatching or accepting a sub-agent.
+- [references/sub-agent-hygiene.md](references/sub-agent-hygiene.md): dispatch and acceptance rules, brief template, size cap, the pre-dispatch scan. Read it before dispatching or accepting a sub-agent.
 - [references/case-studies.md](references/case-studies.md): the incidents each entry came from; scanner `see:` lines point here. Read it when a hit's origin matters.
 - [references/background.md](references/background.md): why the pattern happens, how the pieces fit, sibling skills, the underlying principle. Read once per session.
 - [costume-catalog.json](costume-catalog.json): the phrase catalog the scanner reads (id, pattern, category, exemptions, rationale, rewrite). Edit it when a new costume should fire automatically.

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -29,6 +29,7 @@ Pick the synthesis skill that owns a request and load it. Most synthesis skills 
 ## Contents
 
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.5.0 text now lives.
+- [references/preserved.md](references/preserved.md): a route replaced in 2.0.1 because it named machinery v5 removed, verbatim. Read only to review the change.
 - Route by outcome: below, in six groups: projects, context and agent ecosystems; software engineering and review; writing, research and publishing; knowledge and information operations; workload, coordination and communication; reasoning and execution quality.
 
 ## Route by outcome
@@ -58,8 +59,8 @@ Pick the synthesis skill that owns a request and load it. Most synthesis skills 
 
 ### Writing, research, and publishing
 
-- AGENT HEURISTIC — Configure or run a rendered-output publication boundary,
-  publishable-range contract, or promotion receipt: `../synthesis-promotion-gate/SKILL.md`
+- AGENT HEURISTIC — Scan a built site for configured internal markers before an approved
+  deploy: `../synthesis-promotion-gate/SKILL.md`
 - Write or refresh an article: `../synthesis-article-writing/SKILL.md`, `../synthesis-article-refresh/SKILL.md`
 - Frame a topic or brief its readers: `../synthesis-content-framing/SKILL.md`, `../synthesis-reader-briefing/SKILL.md`
 - Check quality and revise prose: `../synthesis-content-quality/SKILL.md`, `../synthesis-writing-pitfalls/SKILL.md`, `../synthesis-writing-craft/SKILL.md`

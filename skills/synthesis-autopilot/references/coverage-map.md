@@ -216,3 +216,11 @@ wake prompt name `autopilot_cli.py`. No rule changed. Every test in
 `tests/test_autopilot.py` still holds; it runs the commands from the script, and
 `test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs` checks
 that every documented `$AP` path is the installed copy and that it runs from there.
+
+**2026-10-05, final v5 sweep: dated notes in the preserved files.** Two passages in
+[preserved.md](preserved.md) described the deletion of the 3.6.7 scripts as still to come
+(the muse-launch-protocol row: the JSON "stays beside these files only because the old
+scripts' tests read it"; and "3.6.7 `scripts/` (51 modules): left in place"), and
+[preserved-native.md](preserved-native.md) links the deleted `muse-launch-protocol.json`.
+Each gained a dated note saying the files are gone and how to read them at release
+`v4.154.12`; the preserved text itself is unchanged. SKILL.md is unchanged.

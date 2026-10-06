@@ -16,7 +16,7 @@ Every part of the 1.1.0 SKILL.md and where it lives now. Nothing was removed.
 | Maintenance protocol | references/policy.md (verbatim); summarized in Binding rules 2 and 10 |
 | Adopting this for yourself | references/adopting.md (verbatim except one link path, below) |
 | Relationship to other skills, and the closing paragraph on the private companion | references/adopting.md (verbatim except three link paths, below) |
-| references/ledger.example.yaml | Unchanged |
+| references/ledger.example.yaml | Unchanged in 2.0.0; three header-comment lines changed in 2.0.1 (below) |
 | `depends_on`, `source_repo`, `source_type`, `author` | Kept: `synthesis-agent-conformance` checks them in its source contract and `synthesis-onboarding` modular install reads `depends_on` |
 
 ## Lines changed only in their link target
@@ -48,3 +48,20 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in 2.0.1
+
+The final v5 sweep (2026-10-05) replaced every line that told an agent to run the retired
+git-hooks doctor or to configure a fixed-path policy file. Each old line is verbatim in
+[preserved.md](preserved.md). The rule they served is unchanged.
+
+| Where | Old | Now |
+|---|---|---|
+| SKILL.md binding rule 10 | "Run the hook doctor after every ledger or policy edit" | "Check the policy and ledger after every edit", pointing at adopting.md step 4; the failure-not-warning clause verbatim |
+| policy.md, ledger rules | "the hook doctor flags stale allowances" | "the commit check refuses a stale allowance" (`synthesis/commit_check.py` `allowances`) |
+| policy.md, Maintenance protocol step 3 | "Run the hook doctor after every ledger or policy edit" | "Check the policy and ledger after every ledger or policy edit (adopting.md, step 4)"; the rest verbatim |
+| adopting.md step 3 | classify surfaces "in `~/.synthesis/git-hook-config.yaml`" | in a private copy of git-hooks' example policy, with `commit_policy` in `~/.synthesis/v5/config.json` naming it (without the key no disclosure rule runs); the four classifications verbatim |
+| adopting.md step 4 | `python3 ~/.synthesis/git-hooks/_load_config.py --doctor`, kept in the rituals | what the commit check refuses and when; a one-line check of policy and ledger through `commit_check.load_policy` and `allowances`; `commit_check.py --classify` in a published-site repository; `synthesis doctor` in the rituals for `core.hooksPath` |
+| ledger.example.yaml header | "in ~/.synthesis/git-hook-config.yaml", "engine and doctor", "The doctor flags stale allowances." | the policy that `commit_policy` names; "commit check in public-surface repos"; "The commit check refuses a stale allowance." |
+
+SKILL.md lists preserved.md in Contents; version 2.0.0 became 2.0.1.

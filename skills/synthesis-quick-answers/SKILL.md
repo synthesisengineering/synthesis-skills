@@ -11,7 +11,7 @@ depends_on:
   - synthesis-onboarding
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -30,7 +30,7 @@ A cheap, read-mostly companion session that answers ad hoc workspace lookups, so
 5. **Log each answer** as one line in `resources/FAQ.md` (date, question, answer, sources, tier); skip asks that will be false by tomorrow.
 6. **Route durable facts through `synthesis-knowledge-capture`.** This project writes only its own `CONTEXT.md` and `FAQ.md`.
 7. **No decisions, drafting, sending, calendar changes or delegation.** Hand real investigations to their own project.
-8. **Live in the personal knowledge workspace**, `~/workspaces/{workspace}/ai-knowledge-{workspace}/`, created with `synthesis workspace ensure --name {name}` from `synthesis-onboarding` (install the CLI through `onboard.sh` if it is missing); never a substitute folder.
+8. **Live in the personal knowledge workspace**, `~/workspaces/{workspace}/ai-knowledge-{workspace}/`, created with `setup.py workspace --new {name}` from `synthesis-onboarding` (through `onboard.sh` when no plugin checkout is at hand); never a substitute folder.
 9. **Routing is a file, not a habit.** Add the routing line to the tracked `.agents/workspace-AGENTS.md`, never to the root `AGENTS.md` or `CLAUDE.md` entry points the onboarding engine owns.
 10. **Recommend the `routine` model tier and let the user set it**; an agent cannot switch its own model.
 
@@ -40,6 +40,7 @@ A cheap, read-mostly companion session that answers ad hoc workspace lookups, so
 - [references/setup.md](references/setup.md): the pattern, its configuration table, and the six setup steps. Read it when standing up or repairing the companion.
 - [references/background.md](references/background.md): the problem this solves (context pollution, cost mismatch) and how it relates to other skills. Read it when deciding whether a question belongs here.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.1 text now lives.
+- [references/preserved.md](references/preserved.md): lines replaced in 2.0.1 because they named a command v5 does not have, verbatim. Read only to review the change.
 - Scope boundary: below.
 
 ## Scope Boundary — What This Is Not For

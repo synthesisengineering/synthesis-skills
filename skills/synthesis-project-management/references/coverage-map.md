@@ -161,7 +161,7 @@ tests named here.
 | plan_reference.py | SLIM | `project.plan` (one `Plan:` field) | tests/test_resume.py (`the_plan_comes_from_one_field`, `two_plan_declarations_are_ambiguous`) |
 | execution_checkpoint.py, run_admission.py | REPLACE | synthesis-autopilot plan file (R6.1); claims and the commit check (R2.1) | tests/test_autopilot.py, tests/test_commit_check.py |
 | project_format.py, project_migration.py | CUT | — | — |
-| codex_dispatch.py | KEEP | `scripts/codex_dispatch.py` (its binary discovery inlined from the conformance skill so it stands alone) | tests/test_codex_dispatch.py |
+| codex_dispatch.py | KEEP | `scripts/codex_dispatch.py`; since the final v5 sweep its binary discovery is `synthesis/doctor.py`'s `find_client` instead of an inlined copy (see the note below) | tests/test_codex_dispatch.py; discovery cases in tests/test_doctor.py |
 | handoff.py | REPLACE | `synthesis msg` with a brief file | tests/test_peers.py |
 | team_contract.py, team_records.py, contribution_evidence.py | CUT | — | — |
 | publication_command.py | SLIM, then REPLACE | `synthesis/guards.py` shell classification | tests/test_guards.py, tests/test_deploy_rules.py; uncovered cases listed in the M3 report |
@@ -197,3 +197,18 @@ synthesis-project-resume's; R2 cases belong to the board in `synthesis/`.
 | R2.3 delivery once at the next prompt; durable; ambiguity refused; display names refused; broadcast refused; sender id | tests/test_peers.py |
 | R2.4 stale shows and is taken over only on request, holder told | tests/test_board.py `stale_claim_is_taken_over_only_on_request_and_the_holder_is_told` |
 | R2.1 spellings through `~` and symlinks; `a/*` versus `a/**`; staged renames; copied session ids; re-claim merge; claim usage errors. R2.2 missing board. R2.4 concurrent takeover, takeover overlapping a third live session, undated session. R2.5 newer schema | Not covered by a v5 test yet; listed in the M3 report for the board's owner |
+
+## Changes in the final v5 sweep (2026-10-05)
+
+- `scripts/codex_dispatch.py` carried its own copy of Codex discovery (`WELL_KNOWN`,
+  `_launcher_works`, `find_binary`), duplicating `synthesis/doctor.py`'s `find_client` and
+  `_version_ok`. `find_binary` now calls the doctor's finder, with the plugin root on
+  `sys.path` as other skill scripts do. Behavior is unchanged: the same override rules, the
+  same PATH-then-vendor order and locations, the same bounded `--version` probe; a probe
+  whose process group cannot be signalled still yields "not found" rather than a fallback.
+  208 lines before, 166 after. Tests: tests/test_codex_dispatch.py
+  `test_dispatch_finds_codex_with_the_doctors_finder`,
+  `test_a_probe_that_cannot_be_cleaned_up_is_not_hidden_by_a_fallback`, and the three
+  earlier discovery tests unchanged; the finder's own cases are in tests/test_doctor.py.
+- [codex-dispatch.md](codex-dispatch.md) gained one sentence after "Discovery order": the
+  wrapper uses the same finder as `synthesis doctor`. No earlier sentence changed.

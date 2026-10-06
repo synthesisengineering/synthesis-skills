@@ -40,3 +40,19 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in 2.0.1
+
+The final v5 sweep (2026-10-05) replaced one route in "Writing, research, and publishing".
+The row above still records why the routes stay in SKILL.md, including the 1.5.0 readers
+`synthesis-adversarial-review/scripts/protocol_acceptance.py` and
+`synthesis-promotion-gate/scripts/test_skill_contract.py`; in v5 the readers are
+`synthesis-adversarial-review/tests/test_review_protocol.py` and
+`synthesis-promotion-gate/tests/test_promotion_gate.py`.
+
+| Route | Old | Now | Why |
+|---|---|---|---|
+| synthesis-promotion-gate | "Configure or run a rendered-output publication boundary, publishable-range contract, or promotion receipt" | "Scan a built site for configured internal markers before an approved deploy" | v5 removed the publishable-range contract and promotion receipts; the gate is a marker scan of the built site (`promotion_gate.py <dist> --config markers.json`) ahead of a deploy the principal approves |
+
+The old route is verbatim in [preserved.md](preserved.md). The "AGENT HEURISTIC" prefix
+and the link stay. SKILL.md lists preserved.md in Contents; version 2.0.0 became 2.0.1.

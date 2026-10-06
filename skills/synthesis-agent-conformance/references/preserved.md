@@ -321,3 +321,17 @@ enforcement classes, the not-weakening proof obligation, and the budget gate.
 ## macOS protected-file diagnostics
 
 When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.
+
+## Replaced in the final v5 sweep (2026-10-05)
+
+[architecture.md](architecture.md), "4. Lifecycle controls", required a health command
+that reports every plane, which v5 does not have: `synthesis doctor` checks the installed
+side only. The requirement now says the audit keeps the planes separate and that doctor's
+healthy line covers the installed plane alone. The 2.0.0 lines, verbatim (also in the
+1.14.1 text in [preserved-architecture.md](preserved-architecture.md)):
+
+```text
+- health commands report source, installed state, live delivery, continuity,
+  and capability as separate planes;
+```
+

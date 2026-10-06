@@ -13,6 +13,7 @@ or [preserved-release-protocol.md](preserved-release-protocol.md).
 - [references/release-protocol.md](#referencesrelease-protocolmd)
 - [Scripts by verdict](#scripts-by-verdict)
 - [Edge cases and the tests that hold them](#edge-cases-and-the-tests-that-hold-them)
+- [Changed in the final v5 sweep](#changed-in-the-final-v5-sweep)
 
 ## Coverage check result
 
@@ -109,3 +110,12 @@ From the install-release evaluation, section 3:
 | 36: a deleted version folder never breaks a running task | `tests/test_install.py::test_a_running_task_keeps_working_after_its_plugin_folder_is_deleted` |
 | 37: the stable path moves only after verification; doctor fails if missing or changed | `release.py` installs the runtime from a verified root; `tests/test_doctor.py::test_missing_runtime_fails`, `test_runtime_files_changed_after_install_fail` |
 | CI must pass for HEAD (R7.3) | `test_preflight_refuses_when_ci_has_not_passed`, `test_ci_state_reads_github_runs` |
+
+## Changed in the final v5 sweep
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| skills-and-provenance.md, Implementation Notes | "The `install.sh` scripts in each repo serve as bootstrap/fallback installers ..." | "The `install.sh` scripts in the personal and team-shared repositories serve ..." with a parenthesis: the public repository's `install.sh` only runs `onboard.sh` | In v5 the public repository's `install.sh` is a two-line shim to `onboard.sh`; it copies no skills and keeps no drift backups. The private installers still do what the paragraph describes |
+
+The old sentence is verbatim in [preserved.md](preserved.md) (the 2.9.3 Implementation Notes). The `install.sh update` lines in [source-update-protocol.md](source-update-protocol.md) stay: that section is the 2.9.3 protocol verbatim, its "In v5" preface routes public skills to `release.py`, and private and shared repositories still run their own `install.sh update`. SKILL.md is unchanged.
+

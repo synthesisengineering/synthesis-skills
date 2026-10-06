@@ -128,3 +128,12 @@ The instruction-budget and catalog checks in this skill's `conformance.py` are
 the mechanical layer for steps 3–4: `instruction-budget` enforces the gate,
 `catalog` verifies the skill homes are visible to each client, and `hook-live`
 proves the enforcement declarations true.
+
+## Changed in the final v5 sweep (2026-10-05)
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| [architecture.md](architecture.md), 4. Lifecycle controls, third required property | "health commands report source, installed state, live delivery, continuity, and capability as separate planes" | the audit keeps the five planes separate (audit.md); `synthesis doctor` covers the installed plane only, its healthy line is never parity, no plane is inferred from another | No v5 command reports all five planes; the five-plane report contract was cut (`report_contract.py`, above). The rule kept is "name the plane" (binding rule 2) |
+
+The old lines are verbatim in [preserved.md](preserved.md#replaced-in-the-final-v5-sweep-2026-10-05). SKILL.md is unchanged.
+

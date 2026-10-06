@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -78,9 +78,12 @@ manifest), or `python3 "$S" org --org-repo URL` on an existing one. Add
 
 ### Update
 
-`git -C ~/.synthesis/v5/source pull --ff-only`, then `python3 "$S" plugin`. An install
-following a channel keeps it; `--ref vX.Y.Z` pins one. `synthesis doctor --latest` says
-whether a newer release exists.
+Rerun `onboard.sh` with `plugin`:
+`curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- plugin`
+(`| SYNTHESIS_REF=vX.Y.Z sh -s -- plugin` takes another source ref). It fetches the release
+into `~/.synthesis/v5/source` and leaves that checkout detached, so `git pull` there fails;
+rerunning `onboard.sh` is the update. An install following a channel keeps it; `--ref vX.Y.Z`
+pins one. `synthesis doctor --latest` says whether a newer release exists.
 
 ### Uninstall
 

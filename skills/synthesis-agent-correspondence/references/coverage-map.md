@@ -55,3 +55,21 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in 4.0.1
+
+The final v5 sweep (2026-10-05) replaced six passages that told an agent to use send-guard
+machinery v5 removed (the grounding ledger, capability enrollment, `--message-sha`,
+`--build-text`, `--verify-text-readback`). Each old passage is verbatim in
+[preserved.md](preserved.md). The rule each served is kept:
+
+| Where | Old | Now | Rule kept |
+|---|---|---|---|
+| SKILL.md binding rule 11 | "Bind and verify every send": construction and the ledger, raw readback | "Get the exact call approved, then verify it": construction and the principal's approval of the exact call, readback through the transport | Every send is bound to what was reviewed and read back after it goes |
+| gates-and-sending.md, Three gates, opening | message-guard "makes them mechanical instead of optional" | message-guard enforces the scan and the exact-call approval; the gates stay the composing agent's job, because no approval shows whether the thread was read | The gates are substance and must run every time |
+| gates-and-sending.md, Email construction, paragraph 2 | capability enrollment, tool-input ledger, `--message-sha` binding, raw readback, catalog changes | freeze the complete call before approval (any change needs a new one), read back through the transport, route `send_tools` changes to the config owner | Ground every alternate part; bind the exact recipients, subject, body and thread fields; keep message ID and provenance; never call a synthetic roundtrip a send; preserve unrelated hooks |
+| gates-and-sending.md, other posts | `--build-text`, `--verify-text-readback`, paragraph-policy override for code, poetry and address blocks | the guard's chat paragraph rule; fenced code keeps its lines; read each post back; `message_format.allow_line_breaks_in_paragraphs` for poetry and address blocks | Whole paragraphs by default, an owner-approved override for line structure, never normalize significant whitespace, retain post IDs and readback gaps |
+| gates-and-sending.md, Related | "a fresh grounding ledger attests the gates above actually ran" | "blocks a send until the text passes the register and format scan and the principal approves that exact call" | message-guard is the mechanical layer under these conventions |
+| personas-and-adoption.md, adoption step 5 | wire the gates "to `synthesis-message-guard`"; "your guard has brand-integrity patterns" | configure message-guard's register patterns; "your register patterns include brand-integrity rules" | Fail-closed enforcement over convention; lane-aware brand-integrity rules |
+
+SKILL.md also lists [preserved.md](preserved.md) in Contents; version 4.0.0 became 4.0.1.

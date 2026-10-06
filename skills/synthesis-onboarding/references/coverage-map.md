@@ -149,3 +149,12 @@ unless named):
 | 52: no git identity, no change before a commit | `test_a_new_workspace_without_a_git_identity_changes_nothing` |
 | 54: uninstall removes only what install created | `tests/test_install.py::test_uninstall_removes_only_unedited_files_install_wrote`, `test_uninstall_dry_run_changes_nothing`; `test_uninstall_removes_the_plugin_with_each_harness_command` |
 | 13, 14, 20, 36: pinned interpreter, valid output on a hook timeout, no bytecode in the plugin folder, version-independent hook path | Core: `tests/test_install.py::test_bootstrap_command_writes_no_bytecode_into_the_plugin_folder`, `test_a_running_task_keeps_working_after_its_plugin_folder_is_deleted`; hook deadlines belong to the core hook |
+
+## Changed in 3.0.1 (2026-10-05)
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| SKILL.md, Procedure, Update | `git -C ~/.synthesis/v5/source pull --ff-only`, then `python3 "$S" plugin` | rerun `onboard.sh` with `plugin` (the `curl ... \| sh -s -- plugin` one-liner; `SYNTHESIS_REF` picks another source ref); the channel, `--ref` and `synthesis doctor --latest` sentences verbatim | `onboard.sh` leaves the source checkout detached at the fetched release, so the pull failed after any `onboard.sh` run |
+
+The 3.0.0 text is verbatim in [preserved.md](preserved.md#replaced-in-301-2026-10-05). Version 3.0.0 became 3.0.1.
+

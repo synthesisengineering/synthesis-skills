@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.0"
+  version: "4.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -29,7 +29,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 8. **Channel disclosure is a fact, not a preference.** Verify each channel's current behavior; Slack stamps agent-performed sends whatever the signature says.
 9. **Signature links render natively per channel,** as the section below sets out.
 10. **Pass the three gates.** Read the whole thread and prior correspondence before composing; load the voice and anti-slop rules before drafting; re-read the live thread and re-verify every claim at send time. The verdict is send, revise or withdraw.
-11. **Bind and verify every send.** Load `synthesis-message-guard` for construction and the ledger, and verify the actual raw readback after an authorized draft or send.
+11. **Get the exact call approved, then verify it.** Load `synthesis-message-guard` for construction and the principal's approval of the exact call, and read the draft or sent message back through the transport after an approved draft or send.
 
 ## Contents
 
@@ -38,6 +38,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 - [references/personas-and-adoption.md](references/personas-and-adoption.md): the persona registry schema, archetype binding with example signatures, adoption steps, and migration from v1 and v2. Read it when configuring personas or writing a signature.
 - [references/persona-registry.example.yaml](references/persona-registry.example.yaml): a commented registry template. Read it when creating a registry.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 3.1.2 text now lives.
+- [references/preserved.md](references/preserved.md): sentences replaced in 4.0.1 because they named send-guard machinery v5 removed, verbatim. Read only to review the change.
 - Signature links render natively per channel: below.
 
 ## Signature links render natively per channel (v3.1.0)

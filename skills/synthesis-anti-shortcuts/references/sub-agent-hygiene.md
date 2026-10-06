@@ -1,7 +1,7 @@
 # Sub-Agent Hygiene
 
 Contents:
-- Part 1: Dispatch (principle, phrases that should not appear, replacement framing, brief template, size cap)
+- Part 1: Dispatch (principle, phrases that should not appear, replacement framing, brief template, size cap, scanning the brief before dispatch)
 - Part 2: Acceptance (principle, acceptance checklist, examples, when the sub-agent is right)
 - Common Failure Modes 1 to 3
 - When to Apply; The Underlying Principle
@@ -70,6 +70,21 @@ A sub-agent that reads this brief knows the full size of the job, knows what is 
 A brief carries **at most five deliverables**. This is a hard dispatch control, not a style preference: oversized briefs reliably fail, and they fail in the worst way — late. The sub-agent spends its execution budget working through the list, reaches verification with too little left, and either stalls against the platform's dispatch timeout or returns partial work with the remainder self-reported as follow-up. A seven-deliverable brief (substrate code + API + UI + config + tests + docs + verification) is not one dispatch; it is two or three.
 
 Split substantial phases into focused dispatches — parallel where independent, sequenced where dependent — and plan the split **at dispatch time**, not after the first stall. An oversized brief produces the same half-applied work that costume vocabulary licenses; the timeout just supplies a different excuse.
+
+### Scan the Brief Before Every Dispatch
+
+Check the brief mechanically, every time, after writing it and before the dispatch call goes out. A brief is read in more places than its main text, so scan every field of the dispatch call that the sub-agent reads as instructions: the `prompt`, and any `instructions`, `message`, `task` or `description` field the dispatch tool takes. The short `description` counts: the sub-agent reads it as the name of its job.
+
+Scan by eye against [`costume-vocabulary.md`](costume-vocabulary.md), or put the fields in a file and run the scanner at [`../scripts/scan_output.py`](../scripts/scan_output.py) on it (exit 1 means a costume was found). The scanner skips a phrase inside quotes or backticks, because a brief that discusses a costume is not using it.
+
+When the scan finds one:
+
+1. **Do not dispatch.** A brief that licenses a partial pass produces one, and the cascade is cheapest to stop here, before any work is done.
+2. **List each hit with its category and the catalog's rewrite framing,** so the revision answers each phrase rather than paraphrasing around it.
+3. **Revise the brief to specify the completeness required, not the minimization of effort:** name the change in the world, state the boundaries affirmatively, and give the signal of completion (the brief template above). Rewording a phrase to dodge the pattern while keeping its license is the same costume.
+4. **Scan the revision,** and dispatch only when it is clean or every remaining hit is a quoted discussion.
+
+This is the orchestrator's discipline, not a hook. Holding a dispatch back harms nothing, and only the author of a brief can fix it; the acceptance scan in Part 2 stays independent of it.
 
 ---
 

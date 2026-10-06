@@ -19,4 +19,4 @@ The fix is not "be disciplined about not asking." The questions are legitimate a
 - **`synthesis-concise-messaging`** shapes the answer format.
 - **`synthesis-model-tiers`** supplies the `routine` tier recommendation and the vocabulary for stating it without attempting to switch it.
 - **`synthesis-knowledge-capture`** is where durable facts actually get saved, not this skill.
-- **`synthesis-onboarding`** provides the stable `synthesis workspace ensure` command used in Setup step 1 — this skill never scaffolds a substitute of its own.
+- **`synthesis-onboarding`** provides the workspace setup command (`setup.py workspace --new`) used in Setup step 1 — this skill never scaffolds a substitute of its own.

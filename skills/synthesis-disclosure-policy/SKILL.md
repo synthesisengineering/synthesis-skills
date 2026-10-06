@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.0.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,7 +31,7 @@ The class letters (P, A, X) and the names of the five tests are load-bearing: ag
 7. **Enforcement follows the publication surface, not repository visibility,** and fails closed: a missing or unparsable ledger blocks commits on public-surface repositories.
 8. **Class X is never category-allowlisted,** and a category never weakens the five tests; ambiguity returns to the principal.
 9. **The person owns every Class-A approval and every Class-X override.** The system makes the decision explicit, informed and durable, never makes it for them.
-10. **Run the hook doctor after every ledger or policy edit;** a stale allowance or unparsable ledger is a failure, not a warning.
+10. **Check the policy and ledger after every edit** (the command is in [adopting.md](references/adopting.md), step 4); a stale allowance or unparsable ledger is a failure, not a warning.
 
 ## Contents
 
@@ -39,6 +39,7 @@ The class letters (P, A, X) and the names of the five tests are load-bearing: ag
 - [references/adopting.md](references/adopting.md): how to adopt the policy for yourself, and how it relates to git-hooks, content-quality and message-guard. Read it when setting the policy up or choosing a companion skill.
 - [references/ledger.example.yaml](references/ledger.example.yaml): a starting ledger to copy into a private location.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.1.0 text now lives.
+- [references/preserved.md](references/preserved.md): lines replaced in 2.0.1 because they named the retired hook doctor and config path, verbatim. Read only to review the change.
 - The five tests, Category Allowlists Without Approval Fatigue: below.
 
 ## The five tests

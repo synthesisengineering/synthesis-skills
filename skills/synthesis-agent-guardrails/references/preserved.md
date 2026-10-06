@@ -69,6 +69,13 @@ These are content, not code, and belong in the anti-shortcuts skill (its owner m
 - The detection log, `~/.claude/lazy-shortcut-log.jsonl` (449 rows), salvaged once as
   examples for the skill.
 
+**Note (2026-10-05, final v5 sweep):** the generic sub-agent brief rules above (which
+fields to scan, and revising to the completeness required on a hit) are now in
+synthesis-anti-shortcuts 2.0.1,
+[sub-agent-hygiene.md](../../synthesis-anti-shortcuts/references/sub-agent-hygiene.md),
+"Scan the Brief Before Every Dispatch". The private catalog, the escalation policy and the
+logs are not part of that move.
+
 ## Notes of the retired scripts, verbatim
 
 ### guards/account_routing_guard.py

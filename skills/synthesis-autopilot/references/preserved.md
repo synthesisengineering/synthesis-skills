@@ -53,6 +53,11 @@ for autopilot, section "Module table with verdicts".
 | evaluation.md | preserved-review.md | Moved out | The evaluation corpus and paired statistics measure goal G1; ruling D3 keeps that measurement on its own schedule (milestone M7), outside the plugin and never blocking a run | None in the skill |
 | domain-quality.md | preserved-review.md | Slimmed | The typed rubric and calibration engine (`scripts/domain_quality.py`) | The six-family table and the review rules, in plain words, in v5 [domain-quality.md](domain-quality.md) |
 
+**Note (2026-10-05, final v5 sweep):** the muse-launch-protocol row above is out of date.
+The old scripts and their tests were deleted during the v5 rebuild, and
+`references/muse-launch-protocol.json` went with them. The last release that carries it is
+`v4.154.12`: `git show v4.154.12:skills/synthesis-autopilot/references/muse-launch-protocol.json`.
+
 ## The 2.4.0 and 3.6.7 scripts
 
 - **2.4.0 `autopilot_gate.py`** became `synthesis/autopilot.py`: the same three
@@ -73,6 +78,13 @@ for autopilot, section "Module table with verdicts".
 - **3.6.7 `scripts/`** (51 modules): left in place, unreferenced by the v5
   skill, until the principal reviews the cut list; the evaluation's module table
   gives each one's verdict.
+
+  **Note (2026-10-05, final v5 sweep):** no longer left in place. The 3.6.7
+  modules and their tests were deleted during the v5 rebuild, by the evaluation's
+  verdicts; the helper commands a person runs by hand are `scripts/autopilot_cli.py`
+  and the turn-end check is the core's `synthesis/autopilot.py`. Every deleted file
+  stays readable at the last release that carries it:
+  `git show v4.154.12:skills/synthesis-autopilot/scripts/<name>`.
 
 ## 2.4.0 sections changed in v5, verbatim
 

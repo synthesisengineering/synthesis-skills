@@ -17,8 +17,9 @@ Three guarantees:
    minutes; what is never legitimate is producing nothing while consuming no CPU. Stall is
    defined as "output file unchanged for --stall-seconds", which distinguishes a slow model
    from a blocked process.
-3. **The binary is located, not assumed.** Discovery checks an explicit override, then PATH,
-   then the desktop-app installations, and skips a launcher whose `--version` fails.
+3. **The binary is located, not assumed.** Discovery is `synthesis doctor`'s own finder: an
+   explicit override, then PATH, then the desktop-app installations, skipping a launcher whose
+   `--version` fails. One finder means the doctor and the dispatch never disagree about Codex.
 
     python3 codex_dispatch.py --prompt-file brief.md --out review.txt
     python3 codex_dispatch.py --prompt "one-line question" --stall-seconds 300
@@ -30,70 +31,27 @@ import argparse
 import os
 import pathlib
 import shutil
-import signal
 import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis import doctor as synthesis_doctor  # noqa: E402
+
 STALL_SECONDS = 420          # no new output for this long, with the file non-growing = hung
 POLL_SECONDS = 10
 HANG_MARKER = "Reading additional input from stdin"
-# Vendor install paths, not version-numbered caches: the CLI ships inside the desktop app and is put
-# on PATH only in Codex-managed shells.
-WELL_KNOWN = (
-    "~/.local/bin/codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex",
-    "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
-    "/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex",
-    "/Applications/ChatGPT.app/Contents/Resources/codex",
-    "/Applications/Codex.app/Contents/Resources/codex",
-)
 
 
-def _launcher_works(path: pathlib.Path) -> bool | None:
-    """A bounded local `--version` probe: an executable launcher can outlive its CLI (4.149.8).
-    No prompt, no stdin, its own process group. None means cleanup could not be confirmed."""
+def find_binary(locations=None) -> pathlib.Path | None:
+    """The doctor's Codex finder (`synthesis.doctor.find_client`): SYNTHESIS_CODEX_BIN when set
+    (empty means absent; a bad path is absent, never a fallback), else PATH, else the vendor
+    locations (`locations` replaces them), each passing a bounded --version probe (4.149.8)."""
     try:
-        process = subprocess.Popen([str(path), "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.DEVNULL, start_new_session=True)
-    except OSError:
-        return False
-    try:
-        return process.wait(timeout=2.0) == 0
-    except subprocess.TimeoutExpired:
-        return False
-    finally:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        except OSError:
-            return None
-        try:
-            process.wait(timeout=1.0)
-        except (subprocess.TimeoutExpired, OSError):
-            return None
-
-
-def find_binary(locations=WELL_KNOWN) -> pathlib.Path | None:
-    """SYNTHESIS_CODEX_BIN when set (empty means absent; a bad path is absent, never a fallback),
-    else PATH, else the vendor locations, each passing the --version probe."""
-    if "SYNTHESIS_CODEX_BIN" in os.environ:
-        override = os.environ["SYNTHESIS_CODEX_BIN"]
-        path = pathlib.Path(override).expanduser().absolute() if override else None
-        return path if path and path.is_file() and os.access(path, os.X_OK) else None
-    found = shutil.which("codex")
-    seen = set()
-    for candidate in ([found] if found else []) + list(locations):
-        path = pathlib.Path(candidate).expanduser().absolute()
-        if os.path.realpath(path) in seen or not (path.is_file() and os.access(path, os.X_OK)):
-            continue
-        seen.add(os.path.realpath(path))
-        works = _launcher_works(path)
-        if works is None:
-            return None  # a surviving probe must not be hidden by a fallback
-        if works:
-            return path
-    return None
+        found = synthesis_doctor.find_client("codex", which=shutil.which, locations=locations)
+    except OSError:  # a probe whose process group could not be signalled: never hide it behind a fallback
+        return None
+    return pathlib.Path(found) if found else None
 
 
 def doctor() -> int:

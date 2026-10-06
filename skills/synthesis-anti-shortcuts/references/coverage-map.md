@@ -80,3 +80,24 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in 2.0.1 (2026-10-05)
+
+`synthesis-agent-guardrails` 2.0.0 retired the PreToolUse hook `sub_agent_brief_scanner.py`
+and listed its rules under "What moves to synthesis-anti-shortcuts" in its preserved.md.
+The generic ones now live here as prose; no private catalog, block log or calibration
+example came with them.
+
+| Rule from the retired hook | Now |
+|---|---|
+| Scan a dispatch brief before dispatch: its `prompt`, `instructions`, `message`, `task` or `description` | [sub-agent-hygiene.md](sub-agent-hygiene.md), Part 1, "Scan the Brief Before Every Dispatch"; binding rule 4 |
+| On a hit, block the dispatch and revise the brief to specify the completeness required, not the minimization of effort | Same section, steps 1, 3 and 4 |
+| The block reason lists each phrase with its category, severity and rewrite hint | Same section, step 2: category and rewrite framing, the fields the public catalog carries (`costume-catalog.json` has no severity field; severities were in the private catalog) |
+| Blocking a dispatch is not a harm-class action under R3.5, so this is skill prose, not a hook | Same section, last paragraph |
+
+Binding rule 4 gained one sentence; the Contents line for sub-agent-hygiene.md and that
+file's own contents line name the new section. The three 2.0.0 lines are verbatim in
+[preserved.md](preserved.md#replaced-in-201-2026-10-05). Version 2.0.0 became 2.0.1. The
+escalation policy and the private phrase catalog listed in the same guardrails section are
+not part of this change.
+

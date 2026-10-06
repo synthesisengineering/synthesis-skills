@@ -13,6 +13,7 @@ appear unchanged in the named file. Code verdicts come from the v5 code evaluati
 - Scripts and their verdicts
 - Edge cases and the tests that hold them
 - Frontmatter before v5 (verbatim)
+- Changed in the final v5 sweep
 
 ## Coverage check result
 
@@ -115,3 +116,12 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in the final v5 sweep
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| per-repo-overrides.md, "Override pattern: extra allowlist", solution 2 | "See [marker rules](marker-rules.md)." | names the correction (`synthesis/commit_check.py` with a test) and links [scanning.md](scanning.md#private-keys) | `marker-rules.md` was retired into preserved.md in 3.0.0, so the link pointed at nothing; the rule it pointed to lives in scanning.md, "Private keys" |
+
+The old line is verbatim in [preserved.md](preserved.md#replaced-in-the-final-v5-sweep). SKILL.md is unchanged.
+

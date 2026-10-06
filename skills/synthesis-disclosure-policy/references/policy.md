@@ -78,7 +78,7 @@ Rules:
 - **`hook_patterns` are exact strings.** Each must textually equal a
   pattern in the git-hook policy's name tier; that is what the hook stops
   enforcing on public-surface repositories. Exact equality keeps every
-  allowance auditable; the hook doctor flags stale allowances.
+  allowance auditable; the commit check refuses a stale allowance.
 - **Approvals append.** When the person approves a new disclosure, add
   the entity (or extend its registers) with the approval date and
   evidence. The ledger is the memory that turns approval into precedent.
@@ -123,7 +123,8 @@ public-surface repositories rather than guessing.
 2. Relationship ends or the person retracts a disclosure → the entity
    stays (precedent is historical) but future drafts treat NEW facts about
    it as Class A; note the change in the entry.
-3. Run the hook doctor after every ledger or policy edit; a stale
-   allowance or unparsable ledger is a failure, not a warning.
+3. Check the policy and ledger after every ledger or policy edit
+   ([adopting.md](adopting.md), step 4); a stale allowance or unparsable
+   ledger is a failure, not a warning.
 4. Audit periodically: every ledger citation should still resolve; every
    public surface should still be listed in `public_surface_patterns`.

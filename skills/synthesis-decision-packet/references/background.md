@@ -40,12 +40,16 @@ the burden of structuring the response falls on the person, every time, for ever
 - **The adversarial review family** — this is where an engagement surfaces its unresolved
   disagreements. Pair it with a status for findings that are not open, not conceded, and not the
   agents' to close.
-- **The handoff queue** (`synthesis-project-management/scripts/handoff.py`) moves work *between
-  agents*. The decision packet moves decisions *between agent and principal*. Together they are
-  the two directions that stop routing everything through a person as the transport layer.
+- **Board messages** (a brief file sent with `synthesis msg`, as `synthesis-project-management`
+  describes under "Work handed between agents") move work *between agents*. The decision packet
+  moves decisions *between agent and principal*. Together they are the two directions that stop
+  routing everything through a person as the transport layer.
 
 ## Changelog
 
+- **2.0.1 (2026-10-05)** — the handoff queue (`handoff.py`) that v5 removed is no longer
+  named: work moves between agents as a brief file sent with `synthesis msg`. Binding rule 9
+  names `synthesis doctor`, whose *decision packets* check flags unverifiable pages.
 - **2.0.0 (2026-10-05)** — v5. The page template and the schema text moved to `assets/`,
   and the generator produces byte-identical pages from them. `record_rulings.py` keeps its
   spec-bound parsing and quotes what it received when it refuses; it no longer takes

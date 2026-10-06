@@ -486,3 +486,16 @@ serialized by `release-train:synthesis-skills`.
 ## macOS protected-file diagnostics
 
 When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.
+
+## Replaced in 3.0.1 (2026-10-05)
+
+The 3.0.0 Update step told the person to pull the source checkout. `onboard.sh` fetches
+the release and checks it out detached (`git checkout --detach FETCH_HEAD`), so after any
+`onboard.sh` run that pull fails with "You are not currently on a branch". The update is
+rerunning `onboard.sh` with `plugin`. The 3.0.0 text, verbatim:
+
+```text
+`git -C ~/.synthesis/v5/source pull --ff-only`, then `python3 "$S" plugin`. An install
+following a channel keeps it; `--ref vX.Y.Z` pins one. `synthesis doctor --latest` says
+whether a newer release exists.
+```

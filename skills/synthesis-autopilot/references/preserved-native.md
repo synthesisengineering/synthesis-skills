@@ -870,6 +870,12 @@ a native call ID remain separate `missing_identity` observations even when their
 names, arguments or positions match. Source currentness alone is not a paired
 process result or outcome authority.
 
+> **Note (2026-10-05, final v5 sweep):** the "Selected official definitions" link below
+> points at `muse-launch-protocol.json`, which v5 deleted with the old scripts. Read it at
+> the last release that carries it:
+> `git show v4.154.12:skills/synthesis-autopilot/references/muse-launch-protocol.json`.
+> The text below is unchanged.
+
 <!-- verbatim: skills/synthesis-autopilot/references/muse-launch-protocol.md at 3.6.7 -->
 
 # Current Muse launch protocol

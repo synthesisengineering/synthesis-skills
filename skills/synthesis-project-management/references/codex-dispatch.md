@@ -38,4 +38,6 @@ Discovery order: `SYNTHESIS_CODEX_BIN` when set (an empty value means absent,
 and a path that is not executable is absent rather than a reason to fall
 through), then PATH, then the documented desktop-app install locations. Each
 found launcher must pass a bounded `--version` probe, because in 4.149.8 an old
-PATH launcher that no longer ran shadowed the current one.
+PATH launcher that no longer ran shadowed the current one. This is the finder
+`synthesis doctor` itself uses (`find_client` in `synthesis/doctor.py`), so the
+doctor and the wrapper never disagree about where Codex is.

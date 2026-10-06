@@ -9,6 +9,7 @@ an instruction; it is the record of what was cut. Read only to review the cut.
 - Lines of 2.x reference files that changed
 - The 2.8.4 SKILL.md, verbatim
 - references/marker-rules.md, verbatim
+- Replaced in the final v5 sweep
 
 ## What was not kept, and why
 
@@ -488,3 +489,15 @@ custom-pattern overlap, index/worktree divergence, changed-source, parser custod
 footer, bounds and performance controls. Preserve original failures and fixture
 hashes. Deterministic source tests do not establish installation, policy deployment,
 real-account health or authority for a peer's next commit.
+
+## Replaced in the final v5 sweep
+
+On 2026-10-05 one line of 3.0.0's [per-repo-overrides.md](per-repo-overrides.md) still
+linked `marker-rules.md`, which 3.0.0 retired into this file. The line now names where a
+tier-0 correction is made and links the key-marker rule in
+[scanning.md](scanning.md#private-keys). The 3.0.0 line (unchanged from 2.8.4), verbatim:
+
+```text
+2. A Tier-0 detection-rule false positive requires a scanner-owner correction. Preserve the exact finding and its positive material controls; neither an allowlist nor a path exception can admit it. See [marker rules](marker-rules.md).
+```
+

@@ -1,6 +1,7 @@
 """R6: non-interactive Codex dispatch closes stdin, detects a stall by output that stops growing
 rather than by elapsed time, and finds the current binary past a stale PATH launcher
-(2026-08-30 stdin hang; 4.149.8 stale launcher)."""
+(2026-08-30 stdin hang; 4.149.8 stale launcher). Discovery is `synthesis doctor`'s finder, whose
+own cases are in tests/test_doctor.py; these check the wrapper reaches it unchanged."""
 
 import importlib.util
 import os
@@ -19,6 +20,23 @@ def _fake(tmp_path, name, body):
     path.write_text("#!/bin/sh\n" + body, encoding="utf-8")
     path.chmod(0o755)
     return path
+
+
+def test_dispatch_finds_codex_with_the_doctors_finder(monkeypatch):
+    from synthesis import doctor
+    assert MODULE.synthesis_doctor is doctor and not hasattr(MODULE, "WELL_KNOWN")
+    calls = []
+    monkeypatch.setattr(doctor, "find_client", lambda name, which, locations: calls.append((name, which, locations))
+                        or "/opt/codex")
+    assert MODULE.find_binary() == Path("/opt/codex")
+    assert calls == [("codex", MODULE.shutil.which, None)]  # PATH lookup at call time; the doctor's vendor list
+
+
+def test_a_probe_that_cannot_be_cleaned_up_is_not_hidden_by_a_fallback(monkeypatch):
+    def refuses(*args, **kwargs):
+        raise PermissionError("cannot signal the probe's process group")
+    monkeypatch.setattr(MODULE.synthesis_doctor, "find_client", refuses)
+    assert MODULE.find_binary() is None
 
 
 def test_dispatch_discovery_honors_explicit_absence(monkeypatch):

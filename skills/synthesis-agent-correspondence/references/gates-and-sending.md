@@ -18,7 +18,7 @@ Whether a channel forces visible disclosure when an agent performs the send is a
 
 ## Three gates
 
-The lanes say *what* to disclose. These gates protect the *work* underneath the disclosure — a message can be honestly labeled and still be wrong, stale, or off-voice. All three are substance, not enforcement; `synthesis-message-guard` (below) is what makes them mechanical instead of optional.
+The lanes say *what* to disclose. These gates protect the *work* underneath the disclosure — a message can be honestly labeled and still be wrong, stale, or off-voice. All three are substance, not enforcement. `synthesis-message-guard` (below) enforces what a machine can check — the register and format scan, and the principal's approval of the exact call — but no approval shows whether the thread was read, so running the gates stays the composing agent's job.
 
 ### 1. Reply-history gate — before composing
 
@@ -40,24 +40,27 @@ structure through the message-guard owner's formatting policy. This choice
 never changes authorship lanes, exact-text approval, disclosure or recipient
 checks. Follow the principal's private transport restrictions when present.
 
-Load `synthesis-message-guard` for construction, capability enrollment and the
-complete tool-input ledger. Ground every populated alternate part; bind the
-final recipients, subject, body, thread fields and tool name with `--message-sha`.
-After an authorized draft/send, verify its actual raw readback and preserve the
-message ID and provenance. Do not call a synthetic MIME roundtrip a native send,
-a filed draft or delivery confirmation. Route catalog changes to the existing
-configuration owner, preserving unrelated hooks and non-email workflows.
+Load `synthesis-message-guard` for construction and approval. Ground every populated
+alternate part, then freeze the final recipients, subject, every body part, thread fields
+and attachments before the call: the principal's approval binds that exact call, and any
+change needs a new approval. After an approved draft/send, read it back through the
+transport and preserve the message ID and provenance. Do not call a synthetic MIME
+roundtrip a native send, a filed draft or delivery confirmation. Route changes to the
+guarded tool list (`send_tools`) to the existing configuration owner, preserving
+unrelated hooks and non-email workflows.
 
 
 Other human-readable correspondence follows the same overridable default for
-paragraphs. Use `--build-text` for literal prose and `--verify-text-readback`
-after an authorized post. Intentional code, poetry and address blocks require
-an owner-approved paragraph-policy override; never normalize significant
-whitespace. Retain post IDs, retrieval evidence and any missing-readback gap.
+paragraphs: the guard refuses a line break inside a paragraph on every chat message,
+while list items, quotes, table rows and fenced code keep their lines. Read each
+authorized post back through its transport. Intentional poetry and address blocks
+require an owner-approved override (`message_format.allow_line_breaks_in_paragraphs`);
+never normalize significant whitespace. Retain post IDs, retrieval evidence and any
+missing-readback gap.
 
 ## Related
 
-- [`synthesis-message-guard`](../../synthesis-message-guard/SKILL.md) — the mechanical enforcement layer: a fail-closed pre-send hook that blocks a send unless a fresh grounding ledger attests the gates above actually ran. This skill states the conventions; message-guard is what makes them impossible to skip.
+- [`synthesis-message-guard`](../../synthesis-message-guard/SKILL.md) — the mechanical enforcement layer: a fail-closed pre-send hook that blocks a send until the text passes the register and format scan and the principal approves that exact call. This skill states the conventions; message-guard makes the scan and the approval impossible to skip, and the gates above remain the composing agent's to run.
 - [`synthesis-content-quality`](../../synthesis-content-quality/SKILL.md) and [`synthesis-writing-pitfalls`](../../synthesis-writing-pitfalls/SKILL.md) — the detection catalogs behind the compose-time voice gate.
 - [`synthesis-writing-craft`](../../synthesis-writing-craft/SKILL.md) — the positive craft principles underneath any drafted correspondence.
 - [`synthesis-disclosure-policy`](../../synthesis-disclosure-policy/SKILL.md) — a sibling config-driven pattern (a published-precedent ledger instead of a persona registry) for the adjacent question of what may be said about real parties, rather than who's speaking.

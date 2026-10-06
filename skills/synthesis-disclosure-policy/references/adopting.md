@@ -16,14 +16,32 @@ The mechanism is fully generic; only the data is personal. To adopt:
    [`references/ledger.example.yaml`](ledger.example.yaml) into a
    PRIVATE source-controlled location, and deploy it to a stable local
    path. The ledger never lives in a public repository.
-3. **Classify your surfaces** in `~/.synthesis/git-hook-config.yaml`:
-   your published-site repos into `public_surface_patterns`, your public
-   OSS repos into `strict_repo_patterns`, your private-notes namespaces
-   into `personal_remote_patterns`, and `disclosure_ledger:` pointing at
-   your deployed ledger.
-4. **Run the doctor**
-   (`python3 ~/.synthesis/git-hooks/_load_config.py --doctor`) and keep it
-   in your rituals — a stale allowance or unreadable ledger is a failure.
+3. **Classify your surfaces** in your commit policy, a private copy of
+   synthesis-git-hooks' `git-hook-config.example.yaml` (for example at
+   `~/.synthesis/git-hook-config.yaml`), and set `"commit_policy"` in
+   `~/.synthesis/v5/config.json` to its path; without that key the commit
+   check reads no policy and enforces no disclosure rule. Put your
+   published-site repos into `public_surface_patterns`, your public OSS
+   repos into `strict_repo_patterns`, your private-notes namespaces into
+   `personal_remote_patterns`, and `disclosure_ledger:` pointing at your
+   deployed ledger.
+4. **Check the policy and the ledger,** now and after every edit to
+   either. The commit check reads both at every commit in a public-surface
+   repository and blocks it, naming the cause, on an unreadable policy, an
+   invalid pattern, a missing or unparsable ledger, an entry without
+   evidence, or a stale allowance (a `hook_patterns` string no longer in
+   the policy's identity groups). To see that before a commit, run:
+
+   ```bash
+   python3 -S -c 'import os, sys; sys.path.insert(0, os.path.expanduser("~/.synthesis/v5/current")); from synthesis import commit_check as c, paths; p = c.load_policy(paths.config()) or sys.exit("config.json names no commit_policy"); print(len(c.allowances(p)), "ledger allowances read cleanly")'
+   ```
+
+   It prints the number of allowances and exits 0, or exits 1 with the
+   problem on its last line. Inside one of your published-site
+   repositories, `python3 -S ~/.synthesis/v5/current/synthesis/commit_check.py --classify`
+   must print `public-surface`. Keep `synthesis doctor` in your rituals:
+   it shows whether git still runs the commit check (`core.hooksPath`). A
+   stale allowance or unreadable ledger is a failure.
 5. **Carry the five tests into your agent rules** so the semantic layer
    (negativity, identification, aggregation, provenance) governs drafts
    before the mechanical layer ever sees a commit.

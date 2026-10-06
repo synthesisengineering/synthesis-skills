@@ -77,8 +77,10 @@ Required properties:
 
 - protective hooks fail closed when their dependencies cannot load;
 - every hook source is version-controlled;
-- health commands report source, installed state, live delivery, continuity,
-  and capability as separate planes;
+- the audit keeps source, installed state, live delivery, continuity and
+  capability as separate planes ([audit.md](audit.md#the-five-planes)):
+  `synthesis doctor` covers the installed plane only, so its healthy first
+  line is never reported as parity, and no plane is inferred from another;
 - plugin-relative paths replace absolute references to a project checkout;
 - SessionStart establishes verified time and project state;
 - post-compaction recovery reloads the active plan where supported;

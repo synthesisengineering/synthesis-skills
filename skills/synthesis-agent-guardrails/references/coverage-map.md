@@ -93,3 +93,10 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changed in the final v5 sweep (2026-10-05)
+
+[preserved.md](preserved.md), "What moves to synthesis-anti-shortcuts", gained a dated note:
+the generic sub-agent brief rules now live in synthesis-anti-shortcuts' sub-agent-hygiene.md.
+No preserved text changed. SKILL.md is unchanged.
+
