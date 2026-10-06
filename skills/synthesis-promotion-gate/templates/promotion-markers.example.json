@@ -1,31 +1,60 @@
 {
   "schema": 1,
   "about": "Copy to .agents/promotion-markers.json in the site repository and replace these examples with the internal markers your pipeline actually leaves. 'in' takes text, headings, comments and source. Each pattern must match one positive example and no negative one.",
-  "file_globs": ["**/*.html", "**/*.htm", "**/*.xml", "**/*.txt", "**/*.json"],
+  "file_globs": [
+    "**/*.html",
+    "**/*.htm",
+    "**/*.xml",
+    "**/*.txt",
+    "**/*.json"
+  ],
   "markers": [
     {
       "id": "private-original-opener",
       "rationale": "A rejected private opener must not survive in generated page source.",
       "pattern": "original\\s+opener.*private\\s+holdings",
-      "in": ["comments", "source"],
-      "positive": ["ORIGINAL OPENER private holdings"],
-      "negative": ["An ordinary public introduction."]
+      "in": [
+        "comments",
+        "source"
+      ],
+      "positive": [
+        "ORIGINAL OPENER private holdings"
+      ],
+      "negative": [
+        "An ordinary public introduction."
+      ]
     },
     {
       "id": "unresolved-date",
       "rationale": "A date placeholder must not reach a rendered page.",
-      "pattern": "<\\s*date\\s*>|&lt;\\s*date\\s*&gt;",
-      "in": ["text", "source"],
-      "positive": ["<DATE>", "&lt;DATE&gt;"],
-      "negative": ["2026-08-26"]
+      "pattern": "<\\s*date\\s*>|&lt;\\s*date\\s*&gt;|&#(?:x0*3c|0*60);\\s*date\\s*(?:>|&gt;)",
+      "in": [
+        "text",
+        "source"
+      ],
+      "positive": [
+        "<DATE>",
+        "&lt;DATE&gt;",
+        "&#x3C;DATE>",
+        "&#60;DATE&gt;"
+      ],
+      "negative": [
+        "2026-08-26"
+      ]
     },
     {
       "id": "publication-notes-section",
       "rationale": "Internal publication notes must not render as a reader-facing section.",
       "pattern": "^\\s*publication\\s+notes\\s*$",
-      "in": ["headings"],
-      "positive": ["Publication Notes"],
-      "negative": ["I keep publication notes beside the draft."]
+      "in": [
+        "headings"
+      ],
+      "positive": [
+        "Publication Notes"
+      ],
+      "negative": [
+        "I keep publication notes beside the draft."
+      ]
     }
   ]
 }

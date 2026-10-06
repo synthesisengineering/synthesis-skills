@@ -144,3 +144,16 @@ def test_prompt_hidden_skill_is_reachable_through_router():
     router = (SKILL.parent / "synthesis-skill-router" / "SKILL.md").read_text(encoding="utf-8")
     assert "../synthesis-promotion-gate/SKILL.md" in router
     assert "allow_implicit_invocation: false" in (SKILL / "agents" / "openai.yaml").read_text(encoding="utf-8")
+
+
+def test_an_element_with_the_heading_role_is_a_heading():
+    page = '<div role="heading" aria-level="2">Publication Notes</div><p>Body text.</p>'
+    assert "Publication Notes" in gate.views(page)["headings"].splitlines()
+
+
+def test_the_example_date_marker_catches_every_encoding_a_renderer_writes():
+    import re
+    example = json.loads((Path(gate.__file__).resolve().parents[1] / "templates" / "promotion-markers.example.json").read_text())
+    marker = next(m for m in example["markers"] if m["id"] == "unresolved-date")
+    for sample in ("<DATE>", "&lt;DATE&gt;", "&#x3C;DATE>", "&#x3c;DATE&gt;", "&#60;DATE>"):
+        assert re.search(marker["pattern"], sample, re.I), sample

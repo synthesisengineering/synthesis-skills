@@ -777,11 +777,17 @@ def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | No
     if not targets:
         return None
     heads, identities, recent = {}, [], []
+    # A site whose build renders other repositories' working trees publishes their dates too.
+    renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in (config.get("deploy_also_renders") or {}).items()}
     for directory, rev in targets:
         root, main = (None, None) if re.search(r"[$`]", directory) else _checkout(directory)
         identities.append(main or directory)
         if root:
             reason = check_dates(root, rev, config)
+            for extra in renders.get(os.path.realpath(main or root), []) if not reason else []:
+                reason = check_dates(os.path.realpath(os.path.expanduser(extra)), None, config)
+                if reason:
+                    break
             if reason:
                 return reason
             heads[main] = _run_git(root, "rev-parse", "HEAD")[1].strip()  # approval binds to what HEAD is now

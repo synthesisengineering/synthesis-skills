@@ -32,6 +32,8 @@ COMMENT = re.compile(r"<!--(.*?)-->", re.S)
 HIDDEN = re.compile(r"<(script|style|template|noscript|pre|code)\b.*?</\1\s*>", re.S | re.I)
 # A heading runs to its close, the next heading, or the end: browsers repair a missing close.
 HEADING = re.compile(r"<h[1-6]\b[^>]*>(.*?)(?=</h[1-6]\s*>|<h[1-6]\b|$)", re.S | re.I)
+# Any element given the heading role reads as a heading to assistive technology (a 2026-08 review bypass).
+ARIA_HEADING = re.compile(r"<([a-z][\w-]*)\b[^>]*\brole\s*=\s*[\"']?heading\b[^>]*>(.*?)</\1\s*>", re.S | re.I)
 # Inline tags join their neighbours ("Public<a>ation</a>" reads "Publication"); others separate.
 INLINE = re.compile(r"</?(?:a|abbr|b|bdi|bdo|cite|data|dfn|em|i|kbd|mark|q|s|samp|small|span|strong|sub|sup|"
                     r"time|u|var|wbr)\b[^>]*>", re.I)
@@ -46,7 +48,8 @@ def views(raw: str) -> dict:
     """The four places a marker can hide in one built file. Attributes are never text."""
     body = HIDDEN.sub(" ", COMMENT.sub(" ", raw))
     return {"source": raw, "comments": "\n".join(" ".join(c.split()) for c in COMMENT.findall(raw)),
-            "text": _text(body), "headings": "\n".join(_text(h) for h in HEADING.findall(body))}
+            "text": _text(body), "headings": "\n".join([_text(h) for h in HEADING.findall(body)]
+                                                       + [_text(h) for _, h in ARIA_HEADING.findall(body)])}
 
 
 def load(path: Path) -> tuple:

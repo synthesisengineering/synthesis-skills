@@ -233,3 +233,13 @@ def test_one_command_deploying_a_site_twice_is_refused_before_any_approval(site)
     reason = guards.check("Bash", {"command": f"git -C {site} push origin main && git -C {site} push origin main"},
                           {"push_deploys": [str(site)]}, cwd=str(site.parent / "elsewhere"))
     assert "more than once" in reason and "approve" not in reason
+
+
+def test_a_site_that_renders_another_repository_checks_that_repository_s_dates(site, tmp_path):
+    other = tmp_path / "other-site"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(other)], check=True)
+    _post(other, "tomorrow", time.time() + DAY)  # uncommitted: the build reads the working tree
+    config = {"push_deploys": [str(site)], "deploy_also_renders": {str(site): [str(other)]}}
+    reason = _push(site, config)
+    assert "never go live before its stated date" in reason
+    assert "approve" in _push(site, {"push_deploys": [str(site)]})  # without the mapping, an ordinary deploy
