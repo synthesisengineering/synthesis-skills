@@ -39,7 +39,7 @@ personal_remote_patterns:
 # read for public-surface repos; entries subtract their exact hook_patterns
 # strings from tier_1_strict_only enforcement there. Missing or unparsable
 # ledger fails closed.
-# disclosure_ledger: '~/.synthesis/agent-control/disclosure/ledger.yaml'
+# disclosure_ledger: '~/path/to/your/private/disclosure/ledger.yaml'
 
 # ─── Tier 0 — credentials. ALWAYS run regardless of repo class. ───────────
 # A private repo can flip to public in one click; credentials shouldn't be in

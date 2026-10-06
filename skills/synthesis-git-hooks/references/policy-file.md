@@ -70,7 +70,7 @@ never demotion through a broad personal pattern.
 | `tier_0_always` | Groups of credential patterns; applied in every repo, to every added line and every message. |
 | `tier_1_strict_only` | Groups of exposure patterns: financial, HR, confidentiality markers, names, private skill names, internal URLs. |
 | `allowlist_lines` | Regexes matched against an added line with a leading `+` (as git shows it). A match exempts that line from tier 1 only, and never a line with invalid UTF-8. |
-| `diff_exclude_paths` | Path regexes (case-sensitive) whose files skip tier 1: files whose purpose is the pattern catalog. Never tier 0; never a path with invalid UTF-8 or a newline. Built in: `.githooks/pre-commit`, `.githooks/extra-patterns.yaml`, `git-hook-config.yaml` and its example, `anti-shortcut-catalog.yaml`, `skills/synthesis-disclosure-policy/`, `skills/synthesis-git-hooks/`, and the agent-control policy and ledger files. |
+| `diff_exclude_paths` | Path regexes (case-sensitive) whose files skip tier 1: files whose purpose is the pattern catalog. Never tier 0; never a path with invalid UTF-8 or a newline. Built in: `.githooks/pre-commit`, `.githooks/extra-patterns.yaml`, `git-hook-config.yaml` and its example, `anti-shortcut-catalog.yaml`, `skills/synthesis-disclosure-policy/`, `skills/synthesis-git-hooks/`, and the policy and ledger files that `commit_policy` and `disclosure_ledger` name, when they live in the repository being committed. |
 | `check_commit_message` | Default true. `false` turns off the tier-1 message scan; credentials in messages are still refused. |
 
 ## Pattern dialect

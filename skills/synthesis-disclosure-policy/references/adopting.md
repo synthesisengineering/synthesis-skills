@@ -33,13 +33,12 @@ The mechanism is fully generic; only the data is personal. To adopt:
    the policy's identity groups). To see that before a commit, run:
 
    ```bash
-   python3 -S -c 'import os, sys; sys.path.insert(0, os.path.expanduser("~/.synthesis/v5/current")); from synthesis import commit_check as c, paths; p = c.load_policy(paths.config()) or sys.exit("config.json names no commit_policy"); print(len(c.allowances(p)), "ledger allowances read cleanly")'
+   python3 -S ~/.synthesis/v5/current/synthesis/commit_check.py --classify
    ```
 
-   It prints the number of allowances and exits 0, or exits 1 with the
-   problem on its last line. Inside one of your published-site
-   repositories, `python3 -S ~/.synthesis/v5/current/synthesis/commit_check.py --classify`
-   must print `public-surface`. Keep `synthesis doctor` in your rituals:
+   It prints the repository's class and the number of ledger allowances and
+   exits 0, or exits 1 with the problem. Inside one of your published-site
+   repositories it must print `public-surface`. Keep `synthesis doctor` in your rituals:
    it shows whether git still runs the commit check (`core.hooksPath`). A
    stale allowance or unreadable ledger is a failure.
 5. **Carry the five tests into your agent rules** so the semantic layer

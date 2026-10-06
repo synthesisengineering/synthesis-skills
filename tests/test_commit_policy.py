@@ -310,6 +310,25 @@ def test_posix_classes_in_policy_patterns_mean_what_grep_means():
 
 def test_classify_prints_the_class_and_the_shipped_example_policy_loads(tmp_path, policy, monkeypatch, capsys):
     monkeypatch.chdir(make_repo(tmp_path, SITE))
-    assert cc.main(["--classify"]) == 0 and capsys.readouterr().out.strip() == "public-surface"
+    assert cc.main(["--classify"]) == 0 and capsys.readouterr().out.strip().startswith("public-surface (")
     example = Path(__file__).resolve().parents[1] / "skills" / "synthesis-git-hooks" / "git-hook-config.example.yaml"
     assert cc.load_policy({"commit_policy": str(example)})["config_version"] == 2
+
+
+def test_the_configured_policy_file_inside_the_repository_is_a_catalog(tmp_path, write_config, policy):
+    repo = make_repo(tmp_path, STRICT, "keeper")
+    inside = repo / "private" / "policy.yaml"
+    inside.parent.mkdir(parents=True)
+    inside.write_text(Path(policy).read_text(), encoding="utf-8")
+    write_config({"commit_policy": str(inside)})
+    assert commit(repo, {"private/policy.yaml": inside.read_text() + "# Bluebird stays listed above\n"}).returncode == 0
+    assert commit(repo, {"notes.md": "Bluebird\n"}).returncode != 0  # the same name elsewhere still blocks
+
+
+def test_classify_names_the_class_and_reads_the_ledger(tmp_path, policy):
+    repo = make_repo(tmp_path, SITE, "site")
+    out = subprocess.run([sys.executable, "-S", str(CHECK), "--classify"], cwd=repo, capture_output=True, text=True)
+    assert out.returncode == 0 and out.stdout.startswith("public-surface (") and "ledger allowances" in out.stdout
+    (tmp_path / "ledger.yaml").write_text("ledger_version: [", encoding="utf-8")
+    broken = subprocess.run([sys.executable, "-S", str(CHECK), "--classify"], cwd=repo, capture_output=True, text=True)
+    assert broken.returncode == 1 and broken.stderr

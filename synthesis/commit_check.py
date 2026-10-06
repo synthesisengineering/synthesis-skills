@@ -49,8 +49,8 @@ SECRET_FILE = re.compile(r"(?:^|/)(?:\.env(?:\.(?!(?:example|sample|template|dis
 # Files whose purpose is the pattern catalog itself; exposure patterns skip them, credentials never do.
 CATALOG_PATHS = [r"(^|/)\.githooks/pre-commit$", r"(^|/)\.githooks/extra-patterns\.ya?ml$", r"^\.synthesis/git-hook-config\.ya?ml$",
                  r"(^|/)git-hook-config\.example\.ya?ml$", r"(^|/)anti-shortcut-catalog\.ya?ml$",
-                 r"^skills/synthesis-disclosure-policy/", r"^skills/synthesis-git-hooks/",
-                 r"^agent-control/git-hook-config\.ya?ml$", r"^agent-control/disclosure/ledger\.ya?ml$"]
+                 r"^skills/synthesis-disclosure-policy/", r"^skills/synthesis-git-hooks/"]
+# The policy and ledger files config.json names are catalogs too, wherever the principal keeps them.
 POSIX = {"alnum": "0-9A-Za-z", "alpha": "A-Za-z", "digit": "0-9", "space": r"\s", "blank": r" \t", "upper": "A-Z",
          "lower": "a-z", "xdigit": "0-9A-Fa-f", "punct": r"!-/:-@\[-`{-~"}
 PATTERN_KEYS = ("tier_0_always", "tier_1_strict_only", "personal_remote_patterns", "strict_repo_patterns",
@@ -392,6 +392,14 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
     """(problems, notes, repository class) for the commit being made, or for its message."""
     deadline = time.monotonic() + SECONDS
     policy = load_policy(config)
+    if policy:  # the configured policy and ledger, when they live in this repository, are catalogs
+        own = []
+        for key in ("commit_policy", "disclosure_ledger"):
+            path = config.get(key) or (policy.get(key) if key == "disclosure_ledger" else None)
+            real = os.path.realpath(os.path.expanduser(str(path))) if path else ""
+            if real and real.startswith(os.path.realpath(repo_root) + os.sep):
+                own.append("^" + re.escape(os.path.relpath(real, os.path.realpath(repo_root))) + "$")
+        policy = {**policy, "diff_exclude_paths": leaves(policy.get("diff_exclude_paths")) + own}
     cls = classify(policy, push_remotes())
     if message is not None:  # commit messages stay generic wherever outsiders read the log (2025-12-21)
         wanted = cls != "personal" and (policy or {}).get("check_commit_message", True) is not False
@@ -448,7 +456,10 @@ def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     if args[:1] == ["--classify"]:  # which class this repository is, and why a commit would be checked so
         try:
-            print(classify(load_policy(paths.config()), push_remotes()))
+            policy = load_policy(paths.config())
+            cls = classify(policy, push_remotes())
+            ledger = policy.get("disclosure_ledger") if policy else None  # read and checked whatever the class
+            print(cls + (f" ({len(allowances(policy))} ledger allowances read cleanly)" if ledger else ""))
         except (OSError, ValueError) as exc:
             print(f"synthesis commit check: {exc}", file=sys.stderr)
             return 1
