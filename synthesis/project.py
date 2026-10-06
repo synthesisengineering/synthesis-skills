@@ -296,7 +296,7 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
     return "\n".join(lines)
 
 
-def _handoff_repo(repo: Path, specs: list[str], message: str) -> tuple[bool, list[str]]:
+def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str]) -> tuple[bool, list[str]]:
     lock = _out(repo, "rev-parse", "--git-path", "index.lock")
     if lock and (repo / lock if not os.path.isabs(lock) else Path(lock)).exists():
         return False, [f"{repo}: index.lock exists (another git command is running, or one crashed). "
@@ -304,7 +304,7 @@ def _handoff_repo(repo: Path, specs: list[str], message: str) -> tuple[bool, lis
     branch = _out(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
     if not branch:
         return False, [f"{repo}: detached HEAD, so nothing was committed; check out a branch first."]
-    lines, changed = [], _changed(repo, specs)
+    lines, changed = [], [c for c in _changed(repo, specs) if any(board.overlaps(cl, str(repo / c[1])) for cl in claims)]
     if changed:
         before = _out(repo, "log", "-1", "--format=%H")
         files = [p for _, p in changed]
@@ -364,7 +364,7 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
     by_repo: dict[Path, list[str]] = {}
     report, ok = [], True
     for claim in session.claims:
-        base = os.path.realpath(claim[:-3] if claim.endswith("/**") else claim)
+        base = os.path.realpath(claim[:-3] if claim.endswith("/**") else os.path.dirname(re.split(r"[*?[]", claim, 1)[0]) if board.GLOB & set(claim) else claim)
         probe = base if os.path.isdir(base) else os.path.dirname(base)
         top = _out(Path(probe), "rev-parse", "--show-toplevel") if os.path.isdir(probe) else ""
         if top:
@@ -373,7 +373,7 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
             report.append(f"{claim}: not inside a git checkout (or no longer exists); skipped")
     for repo, specs in sorted(by_repo.items()):
         try:
-            done, lines = _handoff_repo(repo, specs, message)
+            done, lines = _handoff_repo(repo, specs, message, session.claims)
         except (RuntimeError, subprocess.TimeoutExpired) as exc:
             done, lines = False, [f"{repo}: {exc}"]
         ok, report = ok and done, report + lines

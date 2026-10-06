@@ -32,6 +32,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the sender's `users/<id>` comes from when a read returns names only.
 - Lint: unused imports and variables and placeholder-free f-strings removed across the plugin
   and its tests.
+- `synthesis handoff` commits files under a claim with a wildcard in a name (`notes/2026-10-06-*`); git read
+  such a claim as a literal path, so handoff skipped it and printed READY over uncommitted records. It now
+  keeps exactly the files the board's own claim matcher accepts.
+- `synthesis release <dir>` releases a `<dir>/**` claim, reports how many claims it released, and exits 1
+  with "no claim matched" when none did; it printed "released" either way.
 - The day-end nudge's LaunchAgent template names the v5 launcher path; setup always wrote the
   right path, but the shipped template still named the retired 4.x folder.
 

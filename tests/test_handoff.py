@@ -137,3 +137,16 @@ def test_the_cli_handoff_command_reports_through_the_same_function(kb, monkeypat
     assert "READY" in capsys.readouterr().out
     assert _git(kb, "log", "-1", "--format=%s") == "Records via the CLI"
     assert os.path.exists(kb / "mine" / "CONTEXT.md")
+
+
+def test_a_claim_with_a_wildcard_in_a_name_is_committed_too(kb, tmp_path):
+    """2026-10-06: claims like transcripts/email/2026-10-06-* were accepted, listed, and then skipped by handoff,
+    which printed READY over 11 uncommitted files: git read the pattern as a literal path."""
+    board.claim("S1", [f"{kb}/notes/2026-10-06-*"])
+    (kb / "notes").mkdir()
+    (kb / "notes" / "2026-10-06-standup.md").write_text("today\n", encoding="utf-8")
+    (kb / "notes" / "2026-10-05-standup.md").write_text("yesterday, not claimed\n", encoding="utf-8")
+    report = project.handoff("S1", "Update notes")
+    assert report[-1].startswith("READY")
+    assert _remote_files(tmp_path).split() == ["notes/2026-10-06-standup.md"]
+    assert "?? notes/2026-10-05-standup.md" in _git(kb, "status", "--porcelain")

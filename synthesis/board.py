@@ -202,7 +202,7 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
     if session is None:
         return None
     gone = None if claims is None else {normalize(c) for c in claims}
-    session.claims = [] if gone is None else [c for c in session.claims if c not in gone]
+    session.claims = [] if gone is None else [c for c in session.claims if c not in gone and c.removesuffix("/**") not in gone]
     save(session)
     return session
 
