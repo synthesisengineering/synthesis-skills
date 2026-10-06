@@ -29,7 +29,13 @@ running on Apple's Python 3.9:
 - The reply check sends a reply back once for deferring language, quotes with no
   source in the session, and (when configured) file names that are not links.
 - A global commit check scans for credentials and unapproved disclosures, checks
-  other sessions' claims and chains to each repository's own hooks.
+  other sessions' claims and chains to each repository's own hooks. A disclosure hit
+  blocks with a code; once the principal types approve and the code, that exact line
+  passes in that file of that repository from then on, recorded as a hash and a date,
+  and an edited line or a new place asks again. Agents never reword, split, encode or
+  build a flagged term at run time to get past a guard. Credentials are never
+  approvable; AWS's published example keys pass by exact value, and a bare private-key
+  header passes whatever marker the policy lists.
 - The board is one small file per session: claims with one spelling per path,
   messages addressed to one session or a project, stale claims taken over only on
   request and kept on record.

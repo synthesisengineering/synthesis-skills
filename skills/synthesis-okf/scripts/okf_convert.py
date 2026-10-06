@@ -34,19 +34,10 @@ try:
     import yaml
 except ImportError:
     sys.exit("okf-convert requires PyYAML (pip install pyyaml)")
+from okf_validate import split_frontmatter  # noqa: E402  (beside this script; one reader for both)
 
 RESERVED = {"index.md", "log.md"}
 EMPH = re.compile(r"(\*\*|\*|__|_|`)")
-
-
-def split_frontmatter(text: str):
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return None, text
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            return "".join(lines[1:i]), "".join(lines[i + 1:])
-    return None, text
 
 
 def derive_title(body: str) -> str | None:

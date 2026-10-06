@@ -108,9 +108,8 @@ def run_hook(home: Path, payload: dict, run=subprocess.run):
     """Run the stable hook's pre-tool-use once. Returns (denied, reason, ms)."""
     start = time.perf_counter()
     try:
-        out = run([str(home / "bin" / "synthesis-hook"), "pre-tool-use"], input=json.dumps(payload),
-                  capture_output=True, text=True, timeout=10, env={**os.environ, "SYNTHESIS_HOME": str(home)})
-        stdout = out.stdout
+        stdout = run([str(home / "bin" / "synthesis-hook"), "pre-tool-use"], input=json.dumps(payload),
+                     capture_output=True, text=True, timeout=10, env={**os.environ, "SYNTHESIS_HOME": str(home)}).stdout
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"could not run: {exc}", (time.perf_counter() - start) * 1000
     ms = (time.perf_counter() - start) * 1000
@@ -135,8 +134,7 @@ def check_self_test(home: Path, runs: int = 3, run=subprocess.run) -> Check:
 
 def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) -> Check:
     """Does the guard treat this harness's own shell tool name as a shell?"""
-    denied, _, _ = run_hook(home, {**SELF_TEST, "tool_name": tool}, run)
-    if denied:
+    if run_hook(home, {**SELF_TEST, "tool_name": tool}, run)[0]:
         return Check("ok", f"{harness} shell guard", f"guards the shell tool name `{tool}`")
     return Check("warn", f"{harness} shell guard", f"the guard lets `rm -rf ~` through as tool `{tool}`, "
                                                   f"the name {harness} uses for its shell")
@@ -174,21 +172,14 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
 
 def hooks_json_entries(data: dict) -> list:
     """(event, matcher, handler) for every handler in a Claude or Codex hooks.json."""
-    found = []
-    for event, groups in (data.get("hooks") or {}).items():
-        for group in groups or []:
-            for handler in group.get("hooks") or []:
-                found.append((event, group.get("matcher"), handler))
-    return found
+    return [(event, group.get("matcher"), handler) for event, groups in (data.get("hooks") or {}).items()
+            for group in groups or [] for handler in group.get("hooks") or []]
 
 
 def check_hooks_wired(harness: str, commands: list) -> Check:
     """commands: (event, command text) pairs; each needed event must call the stable hook with its own event."""
-    missing = []
-    for event, arg in EVENTS.items():
-        texts = [c.replace("${HOME}", "$HOME") for e, c in commands if e == event]
-        if not any(STABLE_HOOK in t and arg in t for t in texts):
-            missing.append(event)
+    missing = [event for event, arg in EVENTS.items() if not any(
+        STABLE_HOOK in t and arg in t for t in [c.replace("${HOME}", "$HOME") for e, c in commands if e == event])]
     if missing:
         return Check("fail", f"{harness} hooks", f"not wired to the stable hook: {', '.join(missing)}")
     return Check("ok", f"{harness} hooks", "all four events call the stable hook")
@@ -615,10 +606,6 @@ def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Chec
 
 # ---- git ----------------------------------------------------------------------
 
-def git_hooks_dir(home: Path) -> Path:
-    return home / "git-hooks"
-
-
 def check_git_hooks_path(value: str, expected: Path) -> Check:
     """Report only: v5 commit checks run when core.hooksPath points at the v5 hooks folder."""
     if value and os.path.realpath(os.path.expanduser(value)) == os.path.realpath(expected):
@@ -937,7 +924,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
                                text=True, timeout=5, stdin=subprocess.DEVNULL).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         value = ""
-    checks.append(check_git_hooks_path(value, git_hooks_dir(home)))
+    checks.append(check_git_hooks_path(value, home / "git-hooks"))
     return checks
 
 

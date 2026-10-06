@@ -27,6 +27,12 @@ def config() -> dict:
         return {}
 
 
+def line_allowances(config: dict) -> Path | None:
+    """The commit lines the principal approved: `line_allowances`, else line-allowances.json beside the commit policy."""
+    given = config.get("line_allowances") or (config.get("commit_policy") and Path(str(config["commit_policy"])).with_name("line-allowances.json"))
+    return Path(os.path.expanduser(str(given))) if given else None
+
+
 def read_json(path: Path) -> dict:
     """A small state file's object; {} when it is missing, unreadable or not an object."""
     try:

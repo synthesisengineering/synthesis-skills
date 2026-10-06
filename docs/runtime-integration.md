@@ -125,6 +125,25 @@ the harness's own transcript of the session shows the person typing approve and 
 code after the request was filed. Requests and grants expire after 15 minutes.
 `synthesis approvals` lists what is waiting.
 
+The commit check uses the same approvals for a disclosure hit: a line in a file or a
+commit message that matches the principal's exposure patterns. No word list can tell a
+leak from a legitimate mention, and agents that reworded, split or assembled a term at
+run time to get past the check weakened the text and defeated the check, so the
+principal ruled (2026-10-06) that a legitimate line is approved instead, and that a
+flagged term is never reworded, split, encoded or built at run time to get past any
+guard. The request is keyed to a SHA-256 of the repository (its normalized push
+remotes), the path (or `commit message`) and the line's exact bytes. Once spent, the
+approval is kept in the store `line_allowances` names (by default
+`line-allowances.json` beside the commit policy) as that hash and a date, so the line
+passes from then on; an edited line or a new place asks again. `git commit` from an
+agent's shell has no hook payload, so the check finds the transcript by the session id
+the shell carries: `CLAUDE_CODE_SESSION_ID` (seen in a live Claude Code shell),
+`CODEX_THREAD_ID` (Codex sets it in its shell tool) or `MUSE_SESSION_ID`. Muse 1.4.3's
+binary names `MUSE_SESSION_ID`, but the M5 run could not show that its shell tool sets
+it (the offline provider calls no tools); until a live Muse session shows it, a Muse
+agent sets `SYNTHESIS_SESSION` to its session id for the commit. Credentials are never
+approvable; vendors' published example keys pass by exact value.
+
 The person's prompt is the only source of an approval (R3.0). The agent runs as the
 same OS user as the hooks, so a grant file proves nothing on its own: in the M5
 sandbox an agent granted its own send by piping a made-up prompt into
@@ -156,7 +175,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
 2. **The shell guard** refuses a command that carries a pending code (for example
    `codex queue <thread> "approve <code>"`, or `claude -p --resume <id>` with it), that
    runs the stable hook or `synthesis/hook.py` for any event, or that writes into the v5
-   state folder or a harness's transcript folder: redirects, the destination of `cp`,
+   state folder, a harness's transcript folder or the approved commit lines (by path, or
+   by the store's file name from inside its folder): redirects, the destination of `cp`,
    `mv`, `ln`, `install` and `rsync`, `tee`, `touch`, `truncate`, `mkdir`, `rm`,
    `unlink`, `chmod`, `sed -i` and `perl -i`, and interpreter scripts given inline or on
    stdin that write there.
@@ -181,6 +201,10 @@ stay open, and no hook running as that same user can close them:
   that builds the code at run time is not caught.
 - A grant written with a file-edit tool can reuse a code the person typed for the
   identical call within the last 15 minutes: a second, identical send or deploy.
+- The approved commit lines are a file the agent can edit with a file-edit tool, or
+  change through git when the store lives in a synced repository (a pull, a checkout).
+  A fingerprint added that way passes its line without the person. It holds hashes, so
+  the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user

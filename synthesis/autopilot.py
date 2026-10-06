@@ -16,7 +16,6 @@ wake-prompt, takeover) live in the skill: python3 -S
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import time

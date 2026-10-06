@@ -46,21 +46,16 @@ def session_start(payload):
                           briefed=known.project if known else "")
     notes = [time.strftime("Local time: %A %Y-%m-%d %H:%M %Z (%z), from the session-start hook.")]
     project_dir = project.find(session.project) if session.project else None
-    if project_dir:
-        notes.append(project.brief(project_dir))
+    notes += [project.brief(project_dir)] if project_dir else []
     run = autopilot.brief(payload)
-    if run:
-        notes.append(run)
     try:  # one ritual line: last close, streak, workdays never closed, weekly review owed (R5.1)
         from synthesis import rituals
         line = rituals.session_line(str(payload.get("cwd") or os.getcwd()))
     except Exception:
         line = ""  # a ritual line must never cost a session its start
-    if line:
-        notes.append(line)
+    notes += [n for n in (run, line) if n]
     unread = board.inbox(session_id, session.project)
-    if unread:
-        notes.append(f"{len(unread)} unread board message(s): run `synthesis inbox`.")
+    notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
     return _emit("SessionStart", context="\n\n".join(notes))
 
 
@@ -79,8 +74,7 @@ def user_prompt_submit(payload):
             notes += [project.brief(found)] if found else []
             board.touch(session_id, briefed=me.project)
         unread = board.inbox(session_id, me.project if me else "", mark_read=True)
-        for m in unread[:5]:
-            notes.append(f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}")
+        notes += [f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}" for m in unread[:5]]
         if len(unread) > 5:
             notes.append(f"{len(unread) - 5} more unread: run `synthesis inbox`.")
     return _emit("UserPromptSubmit", context="\n\n".join(notes))
@@ -94,9 +88,8 @@ def pre_tool_use(payload):
     try:
         config = paths.config()
     except (OSError, ValueError) as exc:
-        if guards.guarded(tool, tool_input):
-            return _emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
-        return 0
+        return (_emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
+                if guards.guarded(tool, tool_input) else 0)
     try:
         reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
     except approvals.Unverified as exc:
@@ -106,23 +99,15 @@ def pre_tool_use(payload):
     return _emit("PreToolUse", deny=reason) if reason else 0
 
 
-def _last_block_file(payload):
-    from synthesis import paths
-    session_id = paths.session_id(payload)
-    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
-    return paths.state() / "stop" / f"{safe}.json" if safe else None
-
-
 def stop(payload):
     """Revise the reply once if it defers work or quotes words with no source (S15), then
     let an autopilot run that owns a plan continue to its next item (R6)."""
     try:
         from synthesis import autopilot, paths, reply_check
         config = paths.config()
-        marker = _last_block_file(payload)
-        last = ""
-        if marker is not None and payload.get("stop_hook_active"):
-            last = paths.read_json(marker).get("by", "")
+        safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in paths.session_id(payload))
+        marker = paths.state() / "stop" / f"{safe}.json" if safe else None
+        last = paths.read_json(marker).get("by", "") if marker is not None and payload.get("stop_hook_active") else ""
         reason, note, by = None, None, ""
         if last != "reply":  # the reply this check already sent back is never sent back twice
             reason = reply_check.check({**payload, "stop_hook_active": False}, config)

@@ -77,7 +77,9 @@ the [message guard configuration](skills/synthesis-message-guard/references/conf
 An optional global git hook adds a commit check in every repository. It blocks
 credentials, private keys and credential files everywhere; unapproved disclosures in
 repositories outsiders read, under a commit policy you configure; and commits that touch
-another live session's claim. It then runs the repository's own hooks. Setup asks before turning it on
+another live session's claim. A legitimate line that a disclosure pattern flags passes
+once you approve that exact line with the code the check prints; agents never reword it
+to get past the check. It then runs the repository's own hooks. Setup asks before turning it on
 (`--git-hooks`); see [synthesis-git-hooks](skills/synthesis-git-hooks/SKILL.md).
 
 ### The `synthesis` command

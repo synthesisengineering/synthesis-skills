@@ -51,30 +51,21 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
 
 def _probe(quote: str) -> bytes:
     """A distinctive plain-ASCII run of the quote, which survives JSON escaping in a transcript."""
-    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]*", quote)
-    run = " ".join(words[:6])
-    return run.encode("ascii", "ignore")
+    return " ".join(re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]*", quote)[:6]).encode("ascii", "ignore")
 
 
 def unsourced_quotes(reply: str, transcript_path: str | None) -> list[str]:
     quotes = [a or b for a, b in ATTRIBUTED.findall(CODE.sub(" ", reply))]
     if not quotes or not transcript_path:
         return []
-    missing = []
-    with open(transcript_path, "rb") as handle:
-        with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as record:
-            for quote in quotes:
-                probe = _probe(quote)
-                if len(probe) >= 12 and record.find(probe) == -1:
-                    missing.append(quote[:80])
-    return missing
+    with open(transcript_path, "rb") as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as record:
+        probes = [(quote, _probe(quote)) for quote in quotes]
+        return [quote[:80] for quote, probe in probes if len(probe) >= 12 and record.find(probe) == -1]
 
 
 def check(payload: dict, config: dict) -> str | None:
-    if payload.get("stop_hook_active"):
-        return None
     reply = str(payload.get("last_assistant_message") or "")
-    if not reply:
+    if payload.get("stop_hook_active") or not reply:
         return None
     problems = []
     hits = shortcut_hits(reply, list(config.get("shortcut_phrases", [])))
@@ -89,6 +80,4 @@ def check(payload: dict, config: dict) -> str | None:
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
                         + ". Quote only what a tool surfaced this session, or remove the quote.")
-    if not problems:
-        return None
-    return "Before this reply goes out, revise it: " + " ".join(problems)
+    return "Before this reply goes out, revise it: " + " ".join(problems) if problems else None

@@ -38,7 +38,9 @@ exit 0
 
 The universal hook would have caught and BLOCKED on `acme`; the repo-local hook never runs because the universal hook exited with non-zero. Solutions:
 
-1. For a Tier-1-only finding, review an allowlist line that captures the legitimate context:
+1. For one legitimate Tier-1 line, the principal approves that exact line when the commit is refused (it gives a code; they type approve and the code; [scanning.md](scanning.md#approved-lines)). Never reword, split or build the text at run time to get past the check.
+
+   For a whole class of legitimate lines, review an allowlist line that captures the legitimate context:
 
    ```yaml
    allowlist_lines:

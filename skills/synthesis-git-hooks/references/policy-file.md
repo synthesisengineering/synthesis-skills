@@ -22,6 +22,7 @@ personal-remote patterns, client names and internal URLs. The shipped template i
 |---|---|
 | `commit_policy` | Path to the policy YAML (`~` allowed). Absent: only credentials, private keys, credential file names and claims are checked. Present but missing, unreadable or invalid: every commit blocks until it is fixed. |
 | `disclosure_ledger` | Optional. Path to the disclosure ledger; overrides the policy's own `disclosure_ledger`. |
+| `line_allowances` | Optional. Path to the lines the principal approved ([scanning.md](scanning.md#approved-lines)); default `line-allowances.json` beside the policy. Missing: no line is approved yet. Present but unreadable: every commit where exposure patterns apply blocks until it is repaired. Keep it where the policy lives, so it travels to every Mac with the policy. |
 
 A 2.x policy and ledger carry over unchanged: point these keys at the files where they
 already are. The v5 reader parses them exactly as the 2.x loader did.
@@ -34,10 +35,11 @@ already are. The v5 reader parses them exactly as the 2.x loader did.
 | **Tier 1 — exposure-sensitive** | Financial, HR/employment, confidentiality markers, confidential client/company names, private skill names, internal URLs | Skip when the repo classifies as `personal`. Run in `strict` and `public-surface` repos — in `public-surface`, minus only the exact name patterns the disclosure ledger records as published precedent. |
 
 Tier 0 is the check's built-in credential list plus the policy's `tier_0_always`
-patterns. The exact private-key marker literals in `tier_0_always.private_key_markers`
-are handled by the key rule (a header followed by key body lines, see
-[scanning.md](scanning.md#private-keys)); any other expression in that group matches
-unconditionally.
+patterns. A private-key header on a line is left to the key rule (a header followed by
+key body lines, see [scanning.md](scanning.md#private-keys)) whatever pattern names it, so
+the marker literals in `tier_0_always.private_key_markers` never block a bare header; any
+other expression matches unconditionally. Vendors' published example keys pass by exact
+value; nothing else in tier 0 is approvable.
 
 Classification is derived from `git remote -v` on every commit and follows
 the PUBLICATION SURFACE, strict-first:
@@ -114,6 +116,7 @@ potential: the remote configuration plus the ledger IS the security profile.
 |---|---|
 | Add a new personal org (sole-owner repos there) | Add a regex to `personal_remote_patterns` in the config |
 | Pin a public repository under a personal org as strict | Add it to `strict_repo_patterns` |
+| Let one legitimate Tier-1 line through | The principal approves that line at the commit ([scanning.md](scanning.md#approved-lines)); never reword or split it to get past the check |
 | Add a legitimate Tier-1 match to the allowlist | Review a narrow `allowlist_lines` entry; it cannot subtract credentials |
 | Allow a name the principal has published, on their own sites | A ledger entry with evidence, whose `hook_patterns` equals the policy's pattern |
 | Repeated detector-rule false positive | Preserve the refusal and correct the checker through its source owner, with a test |

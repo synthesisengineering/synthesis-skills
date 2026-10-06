@@ -67,13 +67,12 @@ def request(kind: str, subject, summary: str) -> str:
 def _expire() -> None:
     """Drop requests and grants older than the TTL, so state never grows (R8.3)."""
     cutoff = time.time() - TTL_SECONDS
-    for name in ("approval-requests", "approvals"):
-        for path in _dir(name).glob("*.json"):
-            try:
-                if path.stat().st_mtime < cutoff:
-                    path.unlink()
-            except FileNotFoundError:
-                pass
+    for path in (p for name in ("approval-requests", "approvals") for p in _dir(name).glob("*.json")):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def grant_from_prompt(prompt: str) -> list[str]:

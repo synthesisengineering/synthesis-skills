@@ -18,8 +18,8 @@ One global `core.hooksPath` sends git's pre-commit, pre-merge-commit and commit-
 ## Binding rules
 
 1. **Fail closed.** A policy, ledger, board or diff the check can't read with certainty blocks the commit and says why. Protection that fails open manufactures false confidence (2026-07-28: commits passed unscanned when one interpreter lacked a YAML package).
-2. **Never `git commit --no-verify`** without the principal's explicit approval for that commit. Fix a false positive at its source, the policy or the checker, at equal strength.
-3. **Credentials block in every repository,** before any path exclusion or allowlist line, and wherever they move. A private key is a key header followed by key body lines; a header alone (a detection rule, a doc example) passes.
+2. **Never `git commit --no-verify`** without the principal's explicit approval for that commit, and **never reword, split, encode or build a flagged term at run time to get past the check.** No word list can tell a leak from a legitimate mention; disguising the text weakens it and defeats the check (ruling of 2026-10-06). Remove a leak; get a legitimate line approved.
+3. **Credentials block in every repository,** before any path exclusion or allowlist line, and wherever they move, and are never approvable. Vendors' published example keys (AWS's) pass by exact value. A private key is a key header followed by key body lines; a header alone (a detection rule, a doc example) passes, whatever marker the policy lists.
 4. **The class follows the publication surface,** read from the push remotes at every commit: strict, public-surface or personal. Any strict remote, no remote, or no match means strict; mixed remotes take the stricter class.
 5. **Public-surface repositories allow only ledgered names.** A ledger entry needs evidence and may subtract only an identity pattern; a missing or unparsable ledger blocks commits there.
 6. **Commit messages stay generic** in strict and public-surface repositories, with no ledger allowance: every real public-repo leak a history audit found came through a message (2025-12-21).
@@ -27,6 +27,7 @@ One global `core.hooksPath` sends git's pre-commit, pre-merge-commit and commit-
 8. **Repository hooks are additive.** The check runs a repository's `.githooks/<hook>` and `.git/hooks/<hook>` after its own; never delete one as redundant. `.githooks/required` makes a missing or non-executable delegate block.
 9. **Claims hold at the commit.** A staged path, either side of a rename, inside another live session's claim is refused. No board on the machine advises; a board that can't be read blocks.
 10. **Protection is verified, not assumed.** On a new Mac, install the hooks and run `synthesis doctor` before the first commit.
+11. **A disclosure hit passes once the principal approves that exact line.** The approval is kept for that repository, file (or commit message) and line text, as a hash and a date; an edited line or a new place asks again.
 
 ## Contents
 
@@ -48,11 +49,11 @@ One global `core.hooksPath` sends git's pre-commit, pre-merge-commit and commit-
 
    ```text
    synthesis commit check refused this commit (strict repository):
-     notes/kickoff.md:3: Kickoff with <name>  <- unapproved disclosure for this repository's audience
+     notes/kickoff.md:3: Kickoff with <name>  <- unapproved disclosure for this repository's audience; if it belongs, ask the principal to type approve followed by the code <code>
    ```
 
-   A credential: remove it, and rotate it if it was real. A disclosure: remove or generalize it; only the principal adds a ledger entry, with evidence, for a name they have published. A message: reword it generically (no names, codenames, rationale or timing). A claim: `synthesis who`, then `synthesis msg <holder> "..."`. The policy can't be read: fix the file it names; never point the config away from it.
-5. **A false positive** in tier 1: a reviewed `allowlist_lines` entry for the legitimate context, or a `diff_exclude_paths` entry for a file whose purpose is the pattern catalog. In tier 0: fix the checker in synthesis-skills with a test. Never weaken a pattern to get one commit through.
+   A credential: remove it, and rotate it if it was real. A disclosure that leaks (in a file or the message): remove what it discloses, not just the flagged word; a message follows the principal's commit-message rules. A legitimate line: show the principal the line; they type approve and its code in their own prompt; commit again ([scanning.md](references/scanning.md#approved-lines)). Only the principal adds a ledger entry, with evidence, for a name they have published. A claim: `synthesis who`, then `synthesis msg <holder> "..."`. The policy or the approved lines can't be read: repair the file it names; never point the config away from it or delete it.
+5. **A pattern that is wrong** (it matches what it was never meant to): the principal changes the policy, or a `diff_exclude_paths` entry covers a file whose purpose is the pattern catalog. In tier 0: fix the checker in synthesis-skills with a test. Never weaken a pattern to get one commit through.
 6. **New machine or drift:** `synthesis doctor`; if `core.hooksPath` points elsewhere, rerun step 1.
 
 ## When to apply, and when not

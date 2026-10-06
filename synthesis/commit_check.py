@@ -9,7 +9,9 @@ config.json, adds exposure patterns by repository class, read from the push remo
 surface: names in the disclosure ledger pass) or personal (every remote personal: credentials
 only). Commit messages get the strict set in strict and public-surface repositories. A
 disclosure line that already exists verbatim in HEAD is moved or copied text, not a new
-disclosure; a credential blocks wherever it moves.
+disclosure; a credential blocks wherever it moves. Any other disclosure hit passes only once
+the principal approves that exact line (ruling of 2026-10-06): no word list can tell a leak
+from a legitimate mention, and rewording text to get past the check weakens both.
 Anything it can't read or decide blocks the commit (R3.5); a machine with no board advises.
 After its own checks it runs the repository's own hooks (E37): the `.githooks/<hook>`
 delegate, then `.git/hooks/<hook>`, each once and never itself; a repository that declares
@@ -29,7 +31,7 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from synthesis import yamlish  # noqa: E402
+from synthesis import approvals, paths, yamlish  # noqa: E402
 
 CREDENTIALS = {
     "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
@@ -40,10 +42,11 @@ CREDENTIALS = {
     "OpenAI key": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b",
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
 }
-KEY_HEADER = re.compile(rb"BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED |SSH2 )?PRIVATE KEY", re.I)
+KEY_HEADER = re.compile(rb"BEGIN (?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED|SSH2) ){0,2}PRIVATE KEY", re.I)
 KEY_INLINE = re.compile(rb"PRIVATE KEY(?: BLOCK)?-----(?:\\[nr]|\s)+[A-Za-z0-9+/]{40,}", re.I)
 KEY_BODY = re.compile(rb"[\s\"'>#*;-]*[A-Za-z0-9+/]{40,}={0,2}(?:\\[nr])*[\s\"',;]*")
-MARKERS = {f"BEGIN {f}PRIVATE KEY" for f in ("RSA ", "OPENSSH ", "EC ", "PGP ", "", "ENCRYPTED ")}
+# Published example keys pass by exact value; no credential is approvable. AWS's: docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
+EXAMPLE_KEYS = re.compile(rb"(?<![A-Za-z0-9/+])(?:AKIAIOSFODNN7EXAMPLE|wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY)(?![A-Za-z0-9/+])")
 SECRET_FILE = re.compile(r"(?:^|/)(?:\.env(?:\.(?!(?:example|sample|template|dist|defaults)$)[^/]+)?|id_(?:rsa|dsa|ecdsa|ed25519)"
                          r"|[^/]+\.(?:pem|p12|pfx|jks|keystore)|\.netrc|\.pgpass|\.aws/credentials)$", re.I)
 # Files whose purpose is the pattern catalog itself; exposure patterns skip them, credentials never do.
@@ -61,6 +64,8 @@ HOOK = os.environ.get("SYNTHESIS_GIT_HOOK", "pre-commit")  # pre-merge-commit an
 # Holds the git directory whose commit was already checked, so a repository hook that calls the
 # synthesis check again returns at once, while a commit in another repository is still checked.
 CHAINED = "SYNTHESIS_COMMIT_CHECKED"
+NEVER_REWORD = ("Remove a line that leaks. For a legitimate line, show the principal the line, get their approval and commit "
+                "again; never reword, split, encode or build the text at run time to get past this check.")
 
 
 class Refused(ValueError):
@@ -297,22 +302,20 @@ def _show(path: bytes, number: int, line: bytes) -> str:
     return f"{path.decode('utf-8', 'backslashreplace')}:{number}: " + "".join(c if c >= " " else "?" for c in text)
 
 
-def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, staged: bool = True) -> list[str]:
-    """Credentials and keys in every line; exposure patterns outside catalog files and allowlisted
-    lines. Lines with invalid UTF-8 are matched through a replacement view and never exempted."""
-    found = []
-    custom = [p for p in leaves((policy or {}).get("tier_0_always")) if p not in MARKERS]
-    tier0 = [(n, re.compile(p)) for n, p in CREDENTIALS.items()] + [("credential pattern", regex(p)) for p in custom]
+def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, approve, staged: bool = True) -> list[str]:
+    """Credentials and keys in every line; exposure patterns outside catalog files and allowlisted lines, each
+    hit then put to `approve`. Lines with invalid UTF-8 are matched through a replacement view and never exempted.
+    A key header is left to the key rule (header plus body), whichever tier-0 pattern names it."""
+    policy, found, by_path, skip, hits = policy or {}, [], {}, {}, []
+    tier0 = [(n, re.compile(p)) for n, p in CREDENTIALS.items()] + [("credential pattern", regex(p)) for p in leaves(policy.get("tier_0_always"))]
     exposed = [regex(p) for p in patterns]
-    allow = [regex(p) for p in leaves((policy or {}).get("allowlist_lines"))]
-    excluded = [re.compile(p) for p in CATALOG_PATHS + leaves((policy or {}).get("diff_exclude_paths"))]
-    by_path: dict = {}
-    skip: dict = {}
-    hits = []
+    allow = [regex(p) for p in leaves(policy.get("allowlist_lines"))]
+    excluded = [re.compile(p) for p in CATALOG_PATHS + leaves(policy.get("diff_exclude_paths"))]
     for path, number, line in lines:
         text = line.decode("utf-8", "replace")
         valid = text.encode("utf-8") == line
-        name = next((n for n, rx in tier0 if rx.search(text)), None)
+        probe = EXAMPLE_KEYS.sub(b" ", KEY_HEADER.sub(b" ", line)).decode("utf-8", "replace")
+        name = next((n for n, rx in tier0 if rx.search(probe)), None)
         if name:
             found.append(f"{_show(path, number, line)}  <- looks like a {name}; remove it, and rotate it if it was real")
         if KEY_HEADER.search(line) or KEY_INLINE.search(line) or KEY_BODY.fullmatch(line):
@@ -324,17 +327,55 @@ def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float,
             if not (valid and any(rx.search("+" + text) for rx in allow)):
                 hits.append((path, number, line))
     for path, numbers in by_path.items():
-        if staged:
-            content = git_bytes(["cat-file", "blob", b":" + path], deadline, MAX_CONTEXT).split(b"\n")
-        else:
-            content = [line for _, _, line in lines]
+        content = git_bytes(["cat-file", "blob", b":" + path], deadline, MAX_CONTEXT).split(b"\n") if staged else [x[2] for x in lines]
         keys = key_lines(content) & numbers
         found += [f"{_show(path, n, content[n - 1])}  <- private key material; never commit a key" for n in sorted(keys)]
-    if hits and staged:
-        moved = _in_head({h[2] for h in hits}, deadline)
-        hits = [h for h in hits if h[2] not in moved]
-    found += [f"{_show(*h)}  <- unapproved disclosure for this repository's audience" for h in hits]
+    moved = _in_head({h[2] for h in hits}, deadline) if hits and staged else set()
+    return found + approve([h for h in hits if h[2] not in moved])
+
+
+def read_allowances(store) -> dict:
+    """The approved lines: {"lines": {fingerprint: date approved}}. No file yet is none; one that can't be read blocks."""
+    try:
+        with open(store, encoding="utf-8") as handle:
+            return {**json.load(handle)["lines"]}  # anything but an object of lines raises
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, LookupError, TypeError) as exc:
+        raise Refused(f"cannot read the approved lines in {store} ({exc}); repair it, never delete it to get past this")
+
+
+def unapproved(hits: list, repo: str, store, approved: dict) -> list[str]:
+    """Disclosure hits the principal has not approved for this repository, file (or commit message) and exact line.
+    A grant counts once the harness's transcript shows the principal typing its code; it is then kept in the store
+    as a hash and a date, so that line passes from then on, while an edit or a new place asks again."""
+    found, granted = [], {}
+    for path, number, line in hits:
+        key = approvals.digest("disclosure-line", [repo, *(b.decode("utf-8", "surrogateescape") for b in (path, line))])
+        if key in approved or key in granted:
+            continue
+        try:
+            if approvals.consume("disclosure-line", {"fp": key}):
+                granted[key] = time.strftime("%Y-%m-%d")
+                continue
+            code = approvals.request("disclosure-line", {"fp": key}, f"line {number} of {os.fsdecode(path)} in {repo}")
+            why = f"unapproved disclosure for this repository's audience; if it belongs, ask the principal to type {approvals.how(code)}"
+        except approvals.Unverified as exc:
+            why = str(exc)
+        found.append(f"{_show(path, number, line)}  <- {why}")
+    if granted:
+        paths.write_json(store, {"lines": {**approved, **granted}})
     return found
+
+
+def identity(remotes: list[str]) -> str:
+    """The repository an approval binds, alike in every clone on every Mac: its push remotes without scheme, user, `.git`
+    or case; with none, its git folder (shared by its worktrees) under the home directory."""
+    if remotes:
+        return " ".join(sorted({re.sub(r"^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)[:/]+(.*?)(?:\.git)?/*$", r"\1/\2", u.lower())
+                                for u in remotes}))
+    found, home = os.path.realpath(_git("rev-parse", "--git-common-dir").stdout.strip()), os.path.expanduser("~")
+    return "~" + found[len(home):] if paths.inside(found, home) else found
 
 
 def _in_head(lines: set, deadline: float) -> set:
@@ -353,18 +394,18 @@ def _in_head(lines: set, deadline: float) -> set:
 def changed_paths(deadline: float) -> list[str]:
     """Every staged path, both sides of a rename: a claim covers what leaves it as well as what arrives."""
     fields = git_bytes(["diff", "--cached", "--name-status", "-z", "-M", "--no-color"], deadline).split(b"\0")
-    paths, i = [], 0
+    found, i = [], 0
     while i < len(fields) and fields[i]:
         count = 2 if fields[i][:1] in (b"R", b"C") else 1
-        paths += [os.fsdecode(p) for p in fields[i + 1:i + 1 + count]]
+        found += [os.fsdecode(p) for p in fields[i + 1:i + 1 + count]]
         i += 1 + count
-    return paths
+    return found
 
 
 def claims(repo_root: str, session_id: str, staged: list[str]) -> tuple[list[str], str]:
     """(problems, note): staged paths inside another live session's claim. No board advises;
     a board that exists but can't be read blocks (R2.6)."""
-    from synthesis import board, paths
+    from synthesis import board
     directory = paths.state() / "sessions"
     if not directory.is_dir():
         return [], "no coordination board on this machine, so claims were not checked"
@@ -390,23 +431,25 @@ def push_remotes() -> list[str]:
 
 def problems(config: dict, session_id: str, repo_root: str, message: str | None = None) -> tuple[list[str], list[str], str]:
     """(problems, notes, repository class) for the commit being made, or for its message."""
-    deadline = time.monotonic() + SECONDS
-    policy = load_policy(config)
-    if policy:  # the configured policy and ledger, when they live in this repository, are catalogs
+    deadline, policy, store = time.monotonic() + SECONDS, load_policy(config), paths.line_allowances(config)
+    if policy:  # the configured policy, ledger and approved lines, when they live in this repository, are catalogs
         own = []
-        for key in ("commit_policy", "disclosure_ledger"):
-            path = config.get(key) or (policy.get(key) if key == "disclosure_ledger" else None)
+        for path in (config.get("commit_policy"), policy.get("disclosure_ledger"), store):
             real = os.path.realpath(os.path.expanduser(str(path))) if path else ""
             if real and real.startswith(os.path.realpath(repo_root) + os.sep):
                 own.append("^" + re.escape(os.path.relpath(real, os.path.realpath(repo_root))) + "$")
         policy = {**policy, "diff_exclude_paths": leaves(policy.get("diff_exclude_paths")) + own}
-    cls = classify(policy, push_remotes())
+    remotes = push_remotes()
+    cls = classify(policy, remotes)
+    wanted = cls != "personal" and (policy or {}).get("check_commit_message", True) is not False
+    patterns = exposure(policy, cls) if message is None else exposure(policy, "strict") if wanted else []
+    approved = read_allowances(store) if patterns else {}  # read whenever it could decide a line, so damage shows at once
+    approve = lambda hits: unapproved(hits, identity(remotes), store, approved) if hits else []  # noqa: E731
     if message is not None:  # commit messages stay generic wherever outsiders read the log (2025-12-21)
-        wanted = cls != "personal" and (policy or {}).get("check_commit_message", True) is not False
-        return scan(message_lines(message), policy, exposure(policy, "strict") if wanted else [], deadline, False), [], cls
+        return scan(message_lines(message), policy, patterns, deadline, approve, False), [], cls
     diff = git_bytes(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/",
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
-    found = scan(added(diff), policy, exposure(policy, cls), deadline)
+    found = scan(added(diff), policy, patterns, deadline, approve)
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
               for n in names if n and SECRET_FILE.search(os.fsdecode(n))]
@@ -451,8 +494,6 @@ def repository_hooks(repo_root, common_dir, running):
 
 
 def main(argv=None):
-    from synthesis import paths
-
     args = sys.argv[1:] if argv is None else argv
     if args[:1] == ["--classify"]:  # which class this repository is, and why a commit would be checked so
         try:
@@ -485,7 +526,8 @@ def main(argv=None):
     if found:
         print(f"synthesis commit check refused this {'message' if message is not None else 'commit'} "
               f"({cls} repository):\n  " + "\n  ".join(found[:20])
-              + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else ""), file=sys.stderr)
+              + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
+              + (f"\n{NEVER_REWORD}" if any(approvals.how("") in f for f in found) else ""), file=sys.stderr)
         return 1
     for hook in chain:
         env = {**os.environ, CHAINED: git_dir + HOOK, "SYNTHESIS_REPO_CLASS": cls}

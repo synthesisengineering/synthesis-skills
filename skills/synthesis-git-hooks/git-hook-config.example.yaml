@@ -5,6 +5,8 @@
 # and point the commit check at it in ~/.synthesis/v5/config.json:
 #   "commit_policy": "~/.synthesis/git-hook-config.yaml"
 # Optionally "disclosure_ledger" there overrides the ledger path set below.
+# Lines you approve when a commit is refused are kept as hashes and dates in
+# line-allowances.json beside this file, unless "line_allowances" names another.
 #
 # The commit check (synthesis/commit_check.py) reads only the YAML subset this file
 # uses; anything outside it blocks commits until fixed. Schema: the

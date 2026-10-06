@@ -163,8 +163,7 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
                             "body as htmlBody, or body_format html, with each paragraph in <p>")
         if html_format and "body" in tool_input and "body" not in html_keys:
             problems.append("body_format is html but the body has no paragraph markup; wrap each paragraph in <p>")
-        for key, shown, markup in html_parts:
-            problems += [f"{key}: {m}" for m in markup]
+        problems += [f"{key}: {m}" for key, _, markup in html_parts for m in markup]
         for key, text in bodies:
             shown = next((s for k, s, _ in html_parts if k == key), text)
             if MARKDOWN.search(shown):
@@ -319,8 +318,7 @@ def _close(s: str, i: int, opener: str) -> int:
                 i = _body(s, i + 1, delim, True)[0] - 1
             pending, i = [], i + 1
         else:
-            depth += c == "("
-            depth -= c == ")"
+            depth += (c == "(") - (c == ")")
             i += 1
             if not depth:
                 return i
@@ -471,7 +469,7 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in)."""
     items, words, stdin, scripts, skip, piped = [], [], [], [], "", False
-    for kind, *rest in tokens:
+    for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
                 stdin.append((rest[0], True))
@@ -491,8 +489,6 @@ def _simple(tokens: list) -> list:
             piped = rest[0] in ("|", "|&")
             if rest[0] in "()":
                 items.append(rest[0])
-    if words or stdin or scripts:
-        items.append((words, stdin, scripts, piped))
     return items
 
 
@@ -531,7 +527,7 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool]:
         return None, bool(args) and args[0] in STDIN
     if head not in SHELLS:
         return None, False
-    command, reads, i = False, True, 1
+    command, i = False, 1
     while i < len(words):
         word = words[i]
         if word in ("-o", "+o", "-O", "+O"):
@@ -541,7 +537,7 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool]:
             rest = words[i + (word == "--"):]
             if command:
                 return (rest[0] if rest else None), False
-            return None, (not rest or rest[0] in STDIN) and reads
+            return None, not rest or rest[0] in STDIN
         if re.fullmatch(r"-[A-Za-z]*c[A-Za-z]*", word):
             command = True
         i += 1
@@ -782,9 +778,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
         if root:
             reason = check_dates(root, rev, config)
             for extra in renders.get(os.path.realpath(main or root), []) if not reason else []:
-                reason = check_dates(os.path.realpath(os.path.expanduser(extra)), None, config)
-                if reason:
-                    break
+                reason = reason or check_dates(os.path.realpath(os.path.expanduser(extra)), None, config)
             if reason:
                 return reason
             heads[main] = _run_git(root, "rev-parse", "HEAD")[1].strip()  # approval binds to what HEAD is now
@@ -839,8 +833,7 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
                 real = os.path.realpath(os.path.join(directory, os.path.expanduser(os.path.expandvars(target))))
                 if real in protected or os.path.exists(os.path.join(real, ".git")):
                     return f"refusing a recursive delete of {real}: it is a protected root or a repository"
-        sub, _ = _git(words, directory)
-        if sub == "push":
+        if _git(words, directory)[0] == "push":
             rest = words[words.index("push") + 1:]
             forced = any(w in ("-f", "--force") for w in rest)
             for ref in (w for w in rest if not w.startswith("-")):
@@ -853,7 +846,8 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
 # The agent runs as the hooks' own OS user. In the M5 sandbox (2026-10-05) it granted its own send by
 # piping a made-up prompt into the hook; it could as well write a grant or a transcript line. A grant
 # is checked against the harness's transcript when it is spent (approvals.py); this refuses the shell
-# routes to forging one. A route assembled at run time is beyond a text check: docs/runtime-integration.md.
+# routes to forging one, and to writing the approved commit lines. A route assembled at run time is beyond a
+# text check: docs/runtime-integration.md.
 
 COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync"})  # these write only their last argument
 WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rm", "unlink", "chmod"}
@@ -862,11 +856,12 @@ SCRIPTED_WRITE = r"write|dump|rename|replace|unlink|remove|rmtree|copy|move|syml
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 
 
-def check_self_grant(command: str, cwd: str) -> str | None:
-    codes, home = approvals.pending(), os.path.expanduser("~")
+def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
+    codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     text = command.replace("${HOME}", home).replace("$HOME", home)
-    raw = [str(r) for r in [paths.state(), *paths.transcript_roots().values()]]
-    names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text]
+    raw = [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
+    mine = store and store.name in text  # the store's own name: a write from inside its folder
+    names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text] + ([store.name] if mine else [])
     targets = [t.strip("'\"") for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names else []
     why, wheres = "", {cwd}
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
@@ -883,8 +878,9 @@ def check_self_grant(command: str, cwd: str) -> str | None:
         if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
             why = why or "runs a script that writes where the synthesis state or a harness's transcripts live"
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
-        why = "writes into the synthesis state folder or a harness's session transcripts"
+        why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else None
 
@@ -921,12 +917,11 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
             cwd = os.path.expanduser("~")
     if tool in SHELL_TOOLS:
         command = shell_command(tool_input)
-        return (check_self_grant(command, cwd) or check_destructive(command, config, cwd)
+        return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
                 or check_deploy(command, config, cwd, session))
-    if routed(tool, tool_input):
-        reason = check_account(tool, tool_input, config, cwd)
-        if reason:
-            return reason  # before the send approval, so no approval is spent on the wrong account
+    reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
+    if reason:
+        return reason  # before the send approval, so no approval is spent on the wrong account
     if _sends(tool, tool_input, config):
         return check_send(tool, tool_input, config, session)
     return None

@@ -14,6 +14,7 @@ appear unchanged in the named file. Code verdicts come from the v5 code evaluati
 - Edge cases and the tests that hold them
 - Frontmatter before v5 (verbatim)
 - Changed in the final v5 sweep
+- Changed for line approvals (2026-10-06)
 
 ## Coverage check result
 
@@ -125,3 +126,15 @@ metadata:
 
 The old line is verbatim in [preserved.md](preserved.md#replaced-in-the-final-v5-sweep). SKILL.md is unchanged.
 
+## Changed for line approvals (2026-10-06)
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| per-repo-overrides.md, "Override pattern: extra allowlist", solution 1 | "For a Tier-1-only finding, review an allowlist line..." | the principal approves the exact line first; the allowlist is for a whole class of lines | The principal's ruling: a legitimate hit is approved for its line; rewording to get past the check is forbidden |
+| SKILL.md binding rules 2 and 3, procedure steps 4 and 5 (3.0.0 text, not 2.8.4) | "at equal strength", "reword it generically", "remove or generalize it" | never reword, split, encode or build a term at run time; remove a leak; approve a legitimate line; example keys pass by exact value | Same ruling |
+| SKILL.md binding rule 11 (new) | none | a disclosure hit passes once the principal approves that exact line | Same ruling |
+| scanning.md, Approved lines (new); Credentials, Private keys, Commit messages, Failing closed | none | the approval flow, its binding and store; AWS's example keys; bare headers under any policy marker; the unreadable store | Same ruling, and the bare-header rule now holds whatever the policy's markers say |
+| policy-file.md, `line_allowances`, tier-0 paragraph, Common changes | none | the store's key; how markers and example keys are treated; the approval as the route for one line | Same ruling |
+
+The old per-repo-overrides.md line is verbatim in
+[preserved.md](preserved.md#replaced-by-line-approvals-2026-10-06).

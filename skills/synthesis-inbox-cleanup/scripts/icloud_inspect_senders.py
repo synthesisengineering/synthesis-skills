@@ -32,7 +32,6 @@ import collections
 import email
 import os
 import re
-import sys
 from email.utils import parsedate_to_datetime
 
 from _lib import connect, dec

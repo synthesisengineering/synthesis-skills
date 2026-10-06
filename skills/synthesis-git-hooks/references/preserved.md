@@ -10,6 +10,7 @@ an instruction; it is the record of what was cut. Read only to review the cut.
 - The 2.8.4 SKILL.md, verbatim
 - references/marker-rules.md, verbatim
 - Replaced in the final v5 sweep
+- Replaced by line approvals (2026-10-06)
 
 ## What was not kept, and why
 
@@ -501,3 +502,21 @@ tier-0 correction is made and links the key-marker rule in
 2. A Tier-0 detection-rule false positive requires a scanner-owner correction. Preserve the exact finding and its positive material controls; neither an allowlist nor a path exception can admit it. See [marker rules](marker-rules.md).
 ```
 
+## Replaced by line approvals (2026-10-06)
+
+The principal ruled that a legitimate disclosure hit is approved for its exact line, and
+that rewording text to get past the check is never the remedy. The first route in
+[per-repo-overrides.md](per-repo-overrides.md), solution 1, is now that approval; the
+allowlist stays for a whole class of lines. The 3.0.0 line (unchanged from 2.8.4), verbatim:
+
+```text
+1. For a Tier-1-only finding, review an allowlist line that captures the legitimate context:
+```
+
+3.0.0's SKILL.md (new in 3.0.0, so not part of the 2.8.4 coverage) said, in binding rule 2,
+"Fix a false positive at its source, the policy or the checker, at equal strength"; in
+procedure step 4, "A disclosure: remove or generalize it" and "A message: reword it
+generically (no names, codenames, rationale or timing)"; and in step 5, "A false positive
+in tier 1: a reviewed `allowlist_lines` entry for the legitimate context". Binding rules 2,
+3 and 11 and procedure steps 4 and 5 now carry the approval and the rule against
+rewording.
