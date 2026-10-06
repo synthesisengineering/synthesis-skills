@@ -10,6 +10,9 @@
 6. Cross-machine synchronization
 7. Conformance contract
 
+The 1.14.1 text is in [preserved-architecture.md](preserved-architecture.md); this is
+its v5 form.
+
 ## 1. Ownership
 
 | Behavior | Canonical owner | Deployment examples |
@@ -22,6 +25,9 @@
 
 Generated or installed files must name their source. Do not edit them directly.
 
+Muse is the third harness: it installs the same plugin from a local bundle and reads the
+same skills; its hooks run through `.muse-plugin/hooks/`.
+
 ## 2. Instruction discovery
 
 Use `AGENTS.md` as the tracked, agent-neutral repository source. Claude Code
@@ -31,23 +37,27 @@ supports imports in `CLAUDE.md`; the adapter is:
 @AGENTS.md
 ```
 
-At user scope, render the private canonical source into the locations each
-runtime actually discovers. Generated files may differ where platform-specific
-sections are intentional.
+At user scope, keep one authored instruction file and make each runtime read it where it
+actually looks (Codex reads `~/.codex/AGENTS.md`; Claude Code reads `~/.claude/CLAUDE.md`).
+Codex concatenates the user file and one instruction file per folder from the repository
+root to the working folder, and truncates at `project_doc_max_bytes`; `synthesis doctor`
+measures that chain against the limit minus a 4 KiB reserve.
 
 ## 3. Skill and plugin deployment
 
-The public repository is a dual-runtime plugin:
+The public repository is a three-runtime plugin:
 
 ```text
 .codex-plugin/plugin.json
 .claude-plugin/plugin.json
+.muse-plugin/plugin.json
 skills/<skill>/SKILL.md
 hooks/hooks.json
+synthesis/            (the runtime the hooks run, installed to ~/.synthesis/v5/current)
 ```
 
-Install it through each client’s marketplace. Private skills remain user skills
-because they are not a public package:
+Install it through each client’s marketplace (Muse: a local bundle). Private skills
+remain user skills because they are not a public package:
 
 - Claude: `~/.claude/skills`
 - Codex and the Agent Skills convention: `~/.agents/skills`
@@ -57,8 +67,11 @@ Source-managed public/private skills must not also be copied there.
 
 ## 4. Lifecycle controls
 
-Share the behavior-producing script; adapt the hook configuration to each
-runtime’s events and output schema.
+Share the behavior-producing code; adapt the hook configuration to each
+runtime’s events and output schema. In v5 every hook calls one stable path,
+`~/.synthesis/v5/bin/synthesis-hook <event>`, whose text never changes between
+releases, so a harness's approval of a hook definition survives upgrades and a deleted
+plugin version folder never breaks a running task.
 
 Required properties:
 
@@ -71,17 +84,13 @@ Required properties:
 - post-compaction recovery reloads the active plan where supported;
 - Stop/SessionEnd checks durable state without silently mutating unrelated repos.
 
-Codex hook definitions outside managed policy require human hash review. Query
-the client-owned `hooks/list` response for the normalized current hash and trust
-reason; do not duplicate its private hashing algorithm or write its trust file.
-A simulated hook event verifies a script contract, not client delivery. Live
-delivery requires a receipt from a real event payload and a matching
-client-owned transcript. Claude Code may create the transcript after its
-SessionStart hook returns, so receipt creation and transcript binding are a
-two-phase assertion; conformance accepts it only after both are true. Claude
-root-session evidence additionally requires the canonical
-`projects/<encoded-cwd>/<session-id>.jsonl` shape because subagent transcripts
-also carry their parent session UUID.
+Codex hook definitions outside managed policy require human hash review; Codex runs a
+changed hook only after the person approves it in `/hooks`. Doctor reproduces Codex's
+trust hash for each synthesis hook (pinned to hashes Codex itself stored) and reports
+untrusted, modified or disabled hooks; it never writes Codex's trust state. Muse holds
+the same decision behind `muse plugins approve`. A simulated hook event verifies a
+script contract, not client delivery: doctor's self-test runs the real stable hook, and
+a fresh session in each harness shows that SessionStart actually fired.
 
 ## 5. Durable project handoff
 
@@ -95,25 +104,22 @@ resources/artifacts/<active-plan>.md
 projects/index.yaml
 ```
 
-An active-project pointer may accelerate discovery, but it never overrides
-those files. It records the owning coordination session and lease URL,
-worktree, branch, and source commit. A receiving agent must compare those fields
-with disk, verify project path and git history, read the current context and
-plan, and resume the recorded next action.
+Each session's active project is in its own board file (`synthesis use <project>`);
+there is no global active-project pointer. A receiving agent reads the project's
+directive and current-state block (SessionStart injects them, and again after
+compaction), verifies project path and git history, reads the current context and
+plan, and resumes the recorded next action.
 
 Concurrent root sessions add two invariants:
 
-- every writing session owns non-overlapping resources in an isolated
-  worktree/branch; and
+- every writing session owns non-overlapping resources (`synthesis claim`), in an
+  isolated worktree when it changes code; and
 - one session owns canonical project context while same-project contributors
   write separate reconciliation artifacts.
 
-Coordination session identity is provider-neutral. The lease-backed board uses
-a full UUIDv7 for durable ownership and stores compact Crockford Base32 plus
-speakable word-number aliases derived from the same 60 random bits. Claude,
-Codex, and other adapters accept any exact representation, resolve it to the
-UUID, and keep resource claims separate from identity. Pre-v3 letters remain
-explicit migration aliases only.
+Session identity comes from the harness (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`,
+Muse's session id); the board gives each a six-character short name for addressing.
+Resource claims stay separate from identity.
 
 Tool-native threads remain views of the work. The synthesis project files and
 verified git history remain the record.
@@ -123,14 +129,13 @@ verified git history remain the record.
 Synchronize canonical sources and stable declarative adapters. Do not use
 timestamp-winner whole-file synchronization for client configuration that also
 contains volatile marketplace data, trust hashes, caches, or machine-specific
-paths. Apply an owned-key overlay and validate the merged runtime state.
+paths. Apply an owned-key overlay and validate the merged runtime state (onboarding's
+`setup.py` does this for Codex's `config.toml`).
 
-Git provides durable cross-machine handoff. The coordination board is
-lease-backed by a dedicated private repository ref and mutations use
-compare-and-swap semantics. Local file locking protects same-machine writers;
-the remote lease protects cross-machine writers. Mutations fail closed when the
-remote is configured but unreachable. File synchronization alone is never a
-distributed lock.
+Git provides durable cross-machine handoff: `synthesis handoff` commits and pushes the
+records inside this session's claims, and the other Mac resumes from them. The board is
+per Mac; it is not synchronized. Synced config writes home paths as `~`, never literally
+(doctor checks).
 
 ## 7. Conformance contract
 
@@ -139,16 +144,15 @@ The ecosystem passes only when:
 - instructions are discoverable without personal fallback filenames;
 - each public skill appears once per client;
 - private installed copies match source;
-- hook definitions pass, every enabled Codex hook is managed or human-trusted,
-  and required clients have genuine live-event receipts;
-- instruction files retain budget headroom and a verified tail sentinel;
-- source and installed skill catalogs agree within their description budget;
+- every harness's plugin bytes equal the installed runtime, every hook is wired to
+  the stable hook, every Codex hook is trusted and every Muse hook approved;
+- instruction files retain budget headroom;
 - Codex's full resolved catalog fits its model-dependent 2% budget through an
   implicit core, explicit specialists, and a natural-language routing skill;
 - configured and authenticated connector states are named separately;
-- the same project phase, status, plan, and next action are recovered in both
-  clients;
+- the same project phase, status, plan, and next action are recovered in every
+  client;
 - active sessions have non-overlapping claims and isolated git state, with no
   more than one context owner per project;
-- cross-machine bootstrap reproduces canonical source and all required
+- cross-machine setup reproduces canonical source and all required
   adapters without overwriting runtime-owned state.

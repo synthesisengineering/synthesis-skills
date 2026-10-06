@@ -1,3 +1,18 @@
+# Preserved: `skills/synthesis-onboarding/references/kernel.example.md` before v5 (verbatim)
+
+The 2.10.4 public instruction kernel, kept whole. [kernel.example.md](kernel.example.md) is its v5 text; the enforcement declarations changed to name v5's guards.
+
+## Contents of the preserved text
+
+- Working relationship
+- Always-on invariants
+- Routing
+- Enforcement declarations
+
+---
+
+<!-- synthesis-onboarding kernel source; edit this file, then run onboard.py kernel -->
+
 # Agent instruction kernel
 
 ## Working relationship
@@ -23,9 +38,7 @@ what the available evidence does and does not establish.
 
 ## Enforcement declarations
 
-- Commit-boundary checks are enforced by the synthesis commit check (the global git
-  pre-commit hook); never bypass them.
-- Sends and drafts are enforced by the synthesis send guard: each needs my approval of
-  the exact text and recipient.
-- Parallel sessions coordinate through `synthesis claim`, `synthesis who` and
-  `synthesis msg`; never write inside another session's claim.
+- Commit-boundary checks are enforced by synthesis git hooks; never bypass them.
+- Outgoing correspondence is enforced by synthesis message guard when that layer is
+  selected and healthy.
+- Session lifecycle and coordination receipts are verified by the installed plugin.

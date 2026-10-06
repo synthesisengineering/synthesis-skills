@@ -1,0 +1,9 @@
+# Workspace repository manifest: what a new Mac clones (setup.py workspace).
+workspace: {workspace}
+status: active
+repos:
+  - name: ai-knowledge-{workspace}
+    path: ai-knowledge-{workspace}/
+    remotes:
+      origin: {remote}
+    default_branches: [main]

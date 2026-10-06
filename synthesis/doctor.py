@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import statistics
 import subprocess
@@ -294,6 +295,326 @@ def muse_hook_commands(inspect: dict) -> list:
     return found
 
 
+# ---- finding each harness's CLI -------------------------------------------------
+# The Codex CLI ships inside the ChatGPT desktop app and is on PATH only in Codex's own
+# shells, so doctor also looks in each vendor's stable install locations. A set
+# SYNTHESIS_<NAME>_BIN override is authoritative: empty means absent, and one pointing
+# nowhere is absent rather than falling through to a different install.
+
+CLIENT_ENV = {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}
+KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
+    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
+          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) for h in HARNESSES}
+
+
+def _version_ok(path: str, timeout: float = 2.0):
+    """`<cli> --version` with stdin closed, time-bounded, its process group reaped: a stale
+    launcher can outlive the app it launches. None means the probe could not be cleaned up."""
+    try:
+        proc = subprocess.Popen([path, "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+        ok = proc.wait(timeout=timeout) == 0
+    except OSError:
+        return False
+    except subprocess.TimeoutExpired:
+        ok = False
+    try:
+        os.killpg(proc.pid, 9)  # the group too: a launcher's children can outlive it
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=1)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return ok
+
+
+def find_client(name: str, which=shutil.which, locations=None) -> str | None:
+    if CLIENT_ENV[name] in os.environ:
+        value = os.environ[CLIENT_ENV[name]]
+        path = os.path.abspath(os.path.expanduser(value)) if value else ""
+        return path if path and os.path.isfile(path) and os.access(path, os.X_OK) else None
+    seen = set()
+    for candidate in [which(name)] + list(KNOWN_LOCATIONS[name] if locations is None else locations):
+        path = os.path.abspath(os.path.expanduser(candidate)) if candidate else ""
+        if not path or os.path.realpath(path) in seen or not (os.path.isfile(path) and os.access(path, os.X_OK)):
+            continue
+        seen.add(os.path.realpath(path))
+        ok = _version_ok(path) if name == "codex" else True
+        if ok is None:
+            return None  # a probe that would not die must not be hidden by a fallback
+        if ok:
+            return path
+    return None
+
+
+# ---- Codex skill catalog, through its read-only app-server -----------------------
+
+def app_server_query(binary: str, method: str, params: dict, timeout: float = 15) -> dict:
+    """One JSON-RPC request to `codex app-server --stdio`; never mutates Codex state."""
+    import selectors
+    proc = subprocess.Popen([binary, "app-server", "--stdio"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, bufsize=1)
+    selector, stderr, deadline = selectors.DefaultSelector(), [], time.monotonic() + timeout
+    selector.register(proc.stdout, selectors.EVENT_READ)
+    selector.register(proc.stderr, selectors.EVENT_READ)
+    send = [{"method": "initialize", "id": 0, "params": {"clientInfo": {
+        "name": "codex_vscode", "title": "Synthesis Doctor", "version": "1.0.0"}}},
+        {"method": "initialized", "params": {}}, {"method": method, "id": 1, "params": params}]
+    try:
+        proc.stdin.write(json.dumps(send[0]) + "\n")
+        proc.stdin.flush()
+        while time.monotonic() < deadline and selector.get_map():
+            for key, _ in selector.select(timeout=0.25):
+                line = key.fileobj.readline()
+                if not line:
+                    selector.unregister(key.fileobj)
+                    continue
+                if key.fileobj is proc.stderr:
+                    stderr.append(line.rstrip())
+                    continue
+                message = json.loads(line) if line.lstrip().startswith("{") else {}
+                if "error" in message and message.get("id") in (0, 1):
+                    raise RuntimeError(json.dumps(message["error"], sort_keys=True))
+                if message.get("id") == 0:  # initialized: now the request itself
+                    proc.stdin.write("".join(json.dumps(m) + "\n" for m in send[1:]))
+                    proc.stdin.flush()
+                elif message.get("id") == 1 and isinstance(message.get("result"), dict):
+                    return message["result"]
+        raise RuntimeError(f"{method} gave no answer: " + " | ".join(stderr[-3:]))
+    finally:
+        selector.close()
+        proc.kill()
+        proc.wait()
+
+
+def _explicit_only(skill_md: Path) -> bool:
+    try:
+        text = (skill_md.parent / "agents" / "openai.yaml").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return bool(re.search(r"^\s*allow_implicit_invocation\s*:\s*false\s*$", text, re.M | re.I))
+
+
+def catalog_cost(skills: list, context_window: int | None) -> tuple:
+    """(tokens, budget) for Codex's skill catalog: one line per implicitly invocable skill,
+    descriptions cut at 1,024 characters, paths shortened to aliased roots, plus a 256-token
+    alias reserve; the budget is 2% of the model's context window, else 8,000 characters."""
+    visible = [s for s in skills if not _explicit_only(Path(str(s.get("path", ""))))]
+    roots = sorted({str(Path(str(s.get("path", ""))).parent.parent) for s in visible})
+    text = "".join(f"- `r{i}` = `{r}`\n" for i, r in enumerate(roots)) + "".join(
+        f"- {s.get('name', '')}: {str(s.get('description', ''))[:1024]} (file: "
+        f"r{roots.index(str(Path(str(s.get('path', ''))).parent.parent))}/{Path(str(s.get('path', ''))).parent.name}/SKILL.md)\n"
+        for s in visible)
+    budget = max(1, context_window * 2 // 100) if context_window else 8000 // 4
+    return (len(text.encode("utf-8")) + 3) // 4 + 256, budget
+
+
+def _context_window(config: dict, codex_home: Path) -> int | None:
+    try:
+        models = json.loads((codex_home / "models_cache.json").read_text(encoding="utf-8")).get("models") or []
+    except (OSError, ValueError, AttributeError):
+        return None
+    return next((m["context_window"] for m in models if isinstance(m, dict) and m.get("slug") == config.get("model")
+                 and isinstance(m.get("context_window"), int)), None)
+
+
+def check_codex_catalog(result, error: str, plugin_root: Path | None, config: dict, codex_home: Path) -> Check:
+    if result is None:
+        return Check("warn", "codex skill catalog", f"could not ask Codex for its catalog ({error})")
+    rows = [r for r in result.get("data") or [] if isinstance(r, dict)]
+    skills = [s for r in rows for s in r.get("skills") or [] if isinstance(s, dict) and s.get("enabled", True)]
+    names = {str(s.get("name", "")).split(":")[-1] for s in skills}
+    shipped = {p.parent.name for p in plugin_root.glob("skills/*/SKILL.md")} if plugin_root else set()
+    missing = sorted(shipped - names)
+    cost, budget = catalog_cost(skills, _context_window(config, codex_home))
+    errors = [str(e) for r in rows for e in r.get("errors") or []]
+    if missing or errors or cost > budget:
+        return Check("fail", "codex skill catalog", f"{cost:,} of {budget:,} tokens; "
+                     + (f"not discoverable: {', '.join(missing[:5])}; " if missing else "") + "; ".join(errors[:2]))
+    return Check("ok", "codex skill catalog", f"{len(skills)} skills, {cost:,} of {budget:,} catalog tokens")
+
+
+def check_codex_instructions(cwd: Path, config: dict, codex_home: Path) -> Check:
+    """Codex concatenates the user file, then one instruction file per folder from the repository
+    root down to the working folder, and cuts at project_doc_max_bytes; keep a 4 KiB reserve."""
+    limit = config.get("project_doc_max_bytes", CODEX_DEFAULT_DOC_BYTES)
+    limit = limit if isinstance(limit, int) and not isinstance(limit, bool) else CODEX_DEFAULT_DOC_BYTES
+    fallbacks = config.get("project_doc_fallback_filenames")
+    names = ["AGENTS.override.md", "AGENTS.md"] + (fallbacks if isinstance(fallbacks, list) else [])
+    chain = [p for p in (codex_home / "AGENTS.override.md", codex_home / "AGENTS.md") if p.is_file()][:1]
+    top = next((p for p in [cwd, *cwd.parents] if (p / ".git").exists()), cwd)
+    below = [p for p in reversed(cwd.parents) if top in p.parents]  # folders between the root and cwd
+    for folder in [top] + below + ([cwd] if cwd != top else []):
+        chain += [p for p in (folder / n for n in names) if p.is_file()][:1]
+    total = sum(p.stat().st_size for p in chain)
+    status = "ok" if total <= limit - 4096 else "fail"
+    return Check(status, "codex instruction chain", f"{total:,} bytes in {len(chain)} file(s) for {_short(cwd)}; "
+                 f"limit {limit:,} with a 4,096-byte reserve")
+
+
+# ---- workspace repositories: instruction adapters and durable storage --------------
+
+def workspace_repos(config: dict) -> list:
+    """Each workspace folder and each git repository directly inside it."""
+    found = []
+    for pattern in config.get("workspace_roots") or ["~/workspaces/*"]:
+        base = Path(os.path.expanduser(pattern))
+        for folder in sorted(base.parent.glob(base.name)) if any(c in base.name for c in "*?[") else [base]:
+            if folder.is_dir() and not folder.name.startswith("."):
+                found.append(folder)
+                found += [r for r in sorted(folder.iterdir()) if not r.name.startswith(".") and (r / ".git").exists()]
+    return found
+
+
+def adapter_state(root: Path) -> str:
+    """'' when Claude Code and Codex read the same instructions here, else what differs."""
+    agents, claude = root / "AGENTS.md", root / "CLAUDE.md"
+    if not os.path.lexists(agents):
+        return "CLAUDE.md without AGENTS.md (Codex reads nothing)" if os.path.lexists(claude) else ""
+    if not agents.is_file():
+        return "AGENTS.md is a dangling link"
+    if claude.is_symlink():
+        return "" if claude.resolve() == agents.resolve() else "CLAUDE.md links somewhere other than AGENTS.md"
+    if not claude.is_file():
+        return "no CLAUDE.md importing AGENTS.md"
+    return "" if claude.read_text(encoding="utf-8", errors="replace").strip() == "@AGENTS.md" else \
+        "CLAUDE.md is not `@AGENTS.md`"
+
+
+def check_instruction_adapters(repos: list) -> Check:
+    problems = [f"{_short(r)}: {s}" for r in repos for s in [adapter_state(r)] if s]
+    if problems:
+        return Check("warn", "instruction adapters", f"{len(problems)} folder(s) where Claude Code and Codex read "
+                     "different instructions: " + "; ".join(problems[:4]) + (" ..." if len(problems) > 4 else ""))
+    return Check("ok", "instruction adapters", f"{len(repos)} workspace folders checked")
+
+
+def check_home_paths(files: list) -> Check:
+    """Synced config must say ~ or $HOME: a literal home path breaks on the next Mac."""
+    home, hits = str(Path.home()), []
+    for f in files:
+        try:
+            lines = Path(f).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        hits += [f"{_short(f)}:{n}" for n, line in enumerate(lines, 1)
+                 if re.search(r"(^|[\s\"'=:(\[{,])(" + "|".join(map(re.escape, (home + "/", "/Users/", "/home/"))) + ")", line)]
+    if hits:
+        return Check("fail", "home paths", "literal home paths in synced config (write ~ instead): " + ", ".join(hits[:5]))
+    return Check("ok", "home paths", "synced config uses ~ for home paths")
+
+
+def temporary_roots() -> list:
+    found = ["/tmp", "/var/tmp", "/private/var/folders"] + [os.environ.get(k, "") for k in ("TMPDIR", "TMP", "TEMP")]
+    return list(dict.fromkeys(os.path.realpath(p) for p in found if os.path.isabs(p)))
+
+
+def _under(path: str, roots: list) -> bool:
+    return any((os.path.realpath(path) + "/").startswith(r.rstrip("/") + "/") for r in roots)
+
+
+def check_temporary_work(repos: list, cwds: list, roots: list = None, venv_roots=None) -> Check:
+    """Worktrees, sessions and virtual environments under a temporary folder die at the next cleanup."""
+    roots, hits = roots or temporary_roots(), []
+    for repo in repos:
+        for marker in (repo / ".git" / "worktrees").glob("*/gitdir") if (repo / ".git").is_dir() else []:
+            try:
+                tree = os.path.dirname(marker.read_text(encoding="utf-8").strip())
+            except OSError:
+                continue
+            if os.path.isdir(tree) and _under(tree, roots):
+                hits.append(f"worktree {tree}")
+    hits += [f"session in {c}" for c in cwds if c and _under(c, roots)]
+    for root in venv_roots if venv_roots is not None else ("/tmp", "/var/tmp"):  # where agents make venvs by hand;
+        hits += [f"venv {p.parent}" for p in Path(root).glob("*/pyvenv.cfg")]  # $TMPDIR holds ~30k entries: too slow
+    if hits:
+        return Check("warn", "durable storage", "work under a temporary folder will not survive a cleanup "
+                     "or reboot; move it: " + "; ".join(sorted(set(hits))[:5]))
+    return Check("ok", "durable storage", "no worktree, session or venv under a temporary folder")
+
+
+# ---- versions across harnesses, and decision packets made by hand ------------------
+
+def check_versions(versions: dict, sessions: list) -> Check:
+    """Harnesses on different releases mean a release is half-installed, unless one is under way now."""
+    if len(set(versions.values())) <= 1:
+        return Check("ok", "versions", f"every harness on {next(iter(versions.values()), 'nothing')}")
+    shown = ", ".join(f"{h} {v}" for h, v in sorted(versions.items()))
+    train = [s for s in sessions if not s.stale and any(c.endswith("/CHANGELOG.md") for c in s.claims)]
+    if train:
+        return Check("info", "versions", f"{shown}: a release is in progress ({train[0].session}); nothing repaired")
+    return Check("warn", "versions", f"{shown}: run the onboarding setup again, or release.py --install-only")
+
+
+PACKET_MARKER = re.compile(r"<!-- synthesis-decision-packet spec-sha256:([0-9a-f]{64}) -->")
+PACKET_SPEC = re.compile(r'<script type="application/json" id="spec">(.*?)</script>', re.S)
+
+
+def packet_problem(page: Path) -> str:
+    """A decision packet must be the generator's output: hand-made lookalikes skip its note boxes,
+    impact blocks and persistence (a Muse session hand-made two on 2026-09-20)."""
+    text = page.read_text(encoding="utf-8", errors="replace")
+    marker, spec = PACKET_MARKER.search(text), PACKET_SPEC.search(text)
+    if "synthesis-packet-retired" in text:
+        return ""
+    if not marker:
+        return "no generator marker: rebuild it with build_packet.py"
+    if not spec or hashlib.sha256(spec.group(1).encode("utf-8")).hexdigest() != marker.group(1):
+        return "edited after generation (its spec does not match the marker): rebuild it"
+    return ""
+
+
+def check_packets(roots: list) -> Check:
+    pages = [p for r in roots for p in sorted(Path(r).glob("projects/*/resources/artifacts/*packet*.html"))]
+    problems = [f"{_short(p)}: {m}" for p in pages for m in [packet_problem(p)] if m]
+    if problems:
+        return Check("warn", "decision packets", f"{len(problems)} of {len(pages)} not generator output: "
+                     + "; ".join(problems[:3]))
+    return Check("ok", "decision packets", f"{len(pages)} packet pages carry the generator's marker")
+
+
+# ---- am I behind the latest release? (on demand: it is the only network call) ------
+
+RELEASE_MANIFEST = "https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/{ref}/.codex-plugin/plugin.json"
+SYSTEM_CA_FILES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
+
+
+def fetch_text(url: str, timeout: float = 5) -> str:
+    """HTTPS with full verification. python.org's macOS Python can lack a CA path, so only a
+    certificate failure retries with the operating system's own bundle; other errors stand."""
+    import ssl
+    import urllib.request
+    errors = []
+    for cafile in [None] + [f for f in SYSTEM_CA_FILES if os.path.isfile(f)]:
+        context = ssl.create_default_context(cafile=cafile) if cafile else None
+        try:
+            return urllib.request.urlopen(url, timeout=timeout, context=context).read().decode("utf-8")
+        except OSError as exc:
+            errors.append(exc)
+            if "CERTIFICATE_VERIFY_FAILED" not in str(errors[0]):
+                break
+    raise errors[0]
+
+
+def version_tuple(text: str) -> tuple:
+    return tuple(int(p) for p in text.split(".")) if re.fullmatch(r"\d+\.\d+\.\d+", text or "") else ()
+
+
+def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Check:
+    """installed: harness -> version. Behind is a warning; ahead of the channel is never a downgrade."""
+    try:
+        latest = json.loads(fetch(RELEASE_MANIFEST.format(ref=ref))).get("version", "")
+    except (OSError, ValueError) as exc:
+        return Check("warn", "latest release", f"could not read the {ref} release: {exc}")
+    behind = [f"{h} {v}" for h, v in sorted(installed.items()) if version_tuple(v) < version_tuple(latest)]
+    if behind:
+        return Check("warn", "latest release", f"{ref} is {latest}; behind: {', '.join(behind)} "
+                     "(run the onboarding setup again, or release.py --install-only from a checkout)")
+    return Check("ok", "latest release", f"{ref} is {latest}; installed: "
+                 + (", ".join(f"{h} {v}" for h, v in sorted(installed.items())) or "nothing"))
+
+
 # ---- git ----------------------------------------------------------------------
 
 def git_hooks_dir(home: Path) -> Path:
@@ -530,13 +851,15 @@ def _commands(hooks) -> list:
     return [(event, handler.get("command", "")) for event, _, handler in hooks_json_entries(hooks or {})]
 
 
-def harness_checks(found: list, procs: dict, home: Path, runtime: str) -> list:
-    checks = []
+def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=None, cwd: Path = None) -> tuple:
+    """Checks per harness, plus {harness: installed version} for the release comparison."""
+    checks, versions = [], {}
     if "claude" in found:
         listing, error = _finish(procs["claude"])
         entry = claude_entry(listing)
         checks.append(check_plugin("claude", entry, error))
         if entry:
+            versions["claude"] = entry.get("version", "")
             checks += [check_package("claude", entry["path"], runtime),
                        check_hooks_wired("claude", _commands(_hooks_file(entry["path"])))]
     if "codex" in found:
@@ -547,11 +870,16 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str) -> list:
             config = read_toml((codex_home / "config.toml").read_text(encoding="utf-8"))
         except OSError:
             config = {}
-        checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config)]
+        checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
+                   check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
+            versions["codex"] = entry.get("version", "")
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
                        check_codex_trust(hooks, config, entry.get("id") or PLUGIN)]
+            if catalog is not None:
+                result, catalog_error = catalog()
+                checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))
     if "muse" in found:
         inspect, error = _finish(procs["muse"])
         entry = muse_entry(inspect)
@@ -559,24 +887,56 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str) -> list:
             error = str(inspect["error"].get("message", "")) or error
         checks.append(check_plugin("muse", entry, error))
         if entry:
+            versions["muse"] = entry.get("version", "")
             checks += [check_package("muse", entry["path"], runtime), check_muse_approval(inspect),
                        check_hooks_wired("muse", muse_hook_commands(inspect))]
         if runtime:
             checks.append(check_shell_name(home, "muse", "bash"))
-    return checks
+    return checks, versions
 
 
-def run_checks(home: Path | None = None, which=shutil.which) -> list:
-    home = home or paths.home()
+def _background(fn, *args):
+    """Run fn(*args) on a thread; the returned getter waits for (result, error)."""
+    from concurrent.futures import ThreadPoolExecutor
+    future = ThreadPoolExecutor(max_workers=1).submit(fn, *args)
+
+    def get():
+        try:
+            return future.result(timeout=CLI_TIMEOUT), ""
+        except Exception as exc:  # a catalog that cannot be read is reported, never fatal
+            return None, str(exc) or type(exc).__name__
+    return get
+
+
+def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
+    home, cwd = home or paths.home(), cwd or Path.cwd()
     checks = [check_runtime(home), check_config(home)]
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing
-    found = [h for h in HARNESSES if which(h)]
-    started = {h: _start([which(h)] + LISTINGS[h]) for h in found}  # the listings run side by side
-    if not found:
-        checks.append(Check("warn", "harnesses", "no claude, codex or muse on PATH"))
-    checks += harness_checks(found, started, home, runtime)
+    clis, started = {}, {}
+    for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
+        path = find(h)                     # means a version probe, which overlaps the others' listings
+        if path:
+            clis[h], started[h] = path, _start([path] + LISTINGS[h])
+    catalog = _background(app_server_query, clis["codex"], "skills/list",
+                          {"cwds": [str(cwd)], "forceReload": False}) if "codex" in clis else None
+    if not clis:
+        checks.append(Check("warn", "harnesses", "no claude, codex or muse found on PATH or in their install folders"))
+    found, versions = harness_checks(list(clis), started, home, runtime, catalog, cwd)
+    checks += found
+    try:
+        config = paths.config()
+    except (OSError, ValueError):
+        config = {}
+    repos = workspace_repos(config)
+    from synthesis import board, project
+    sessions = board.sessions()
+    checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
+               check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
+               check_home_paths([home / "config.json"]), check_packets(project.roots())]
+    if latest_ref:
+        checks.append(check_latest(versions, latest_ref))
     try:
         value = subprocess.run(["git", "config", "--global", "--get", "core.hooksPath"], capture_output=True,
                                text=True, timeout=5, stdin=subprocess.DEVNULL).stdout.strip()
@@ -597,9 +957,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="synthesis doctor", description="Check that every part of synthesis is "
                                      "installed, current and wired into each harness found on PATH.")
     parser.add_argument("--json", action="store_true", help="print the checks as JSON")
+    parser.add_argument("--latest", nargs="?", const="stable", default="", metavar="REF",
+                        help="also ask GitHub whether a newer release exists on REF (default stable); network")
     args = parser.parse_args(list(argv or []))
     start = time.perf_counter()
-    checks = run_checks()
+    checks = run_checks(latest_ref=args.latest)
     ms = (time.perf_counter() - start) * 1000
     healthy = not any(c.status == "fail" for c in checks)
     if args.json:

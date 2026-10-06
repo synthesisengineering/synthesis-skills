@@ -1,0 +1,48 @@
+# Knowledge-base configuration (contract v1) for this personal workspace.
+# Read by synthesis-kb-edit, synthesis-okf and synthesis-knowledge-capture.
+bundle_path: source
+git_host: "github"
+default_branch: "main"
+branch_prefix: "kb/"
+ship: "direct"
+
+review:
+  who_merges: "The workspace owner"
+  default_reviewers: []
+  setup_guide: null
+
+editable:
+  - "source/**"
+refuse:
+  - ".agents/**"
+generated_artifacts: []
+
+topic_routing:
+  "knowledge": "source/"
+
+taxonomy_path: null
+
+frontmatter:
+  required:
+    - "type"
+  house:
+    - "title"
+    - "description"
+    - "tags"
+    - "owner"
+    - "timestamp"
+    - "status"
+    - "resource"
+  date_field: "timestamp"
+  reserved_files:
+    - "index.md"
+    - "log.md"
+
+confidentiality:
+  forbidden_words_source: null
+  hook_path: null
+  visible_to: "The workspace owner"
+
+notes: >
+  Scaffolded by synthesis-onboarding. Projects and lessons live beside this
+  bundle and follow synthesis-project-management.

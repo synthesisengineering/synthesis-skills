@@ -99,3 +99,105 @@ def test_install_writes_global_git_hooks_that_run_the_commit_check(tmp_path, iso
 def test_bootstrap_command_writes_no_bytecode_into_the_plugin_folder():
     command = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]["SessionStart"][0]["hooks"][0]["command"]
     assert "python3 -B -S" in command
+
+
+# ---- owned registrations and uninstall (owned_registrations, slimmed) ----------
+
+def _hooks_path():
+    return subprocess.run(["git", "config", "--global", "--get-all", "core.hooksPath"],
+                          capture_output=True, text=True).stdout.split()
+
+
+def test_git_hooks_option_records_the_previous_path_and_uninstall_restores_it(tmp_path, isolated_home):
+    subprocess.run(["git", "config", "--global", "core.hooksPath", "/opt/team-hooks"], check=True)
+    install.install(_plugin_copy(tmp_path))
+    assert "was /opt/team-hooks" in install.register_git_hooks()
+    assert _hooks_path() == [str(isolated_home / "git-hooks")]
+    install.register_git_hooks()  # a rerun must not record our own path as "before"
+    report = install.uninstall()
+    assert _hooks_path() == ["/opt/team-hooks"]
+    assert any("restored core.hooksPath to /opt/team-hooks" in line for line in report)
+
+
+def test_git_hooks_are_not_touched_without_the_option(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    assert _hooks_path() == []
+    assert not (isolated_home / "registrations.json").exists()
+
+
+def test_uninstall_keeps_a_hooks_path_the_user_changed_since(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    install.register_git_hooks()
+    subprocess.run(["git", "config", "--global", "core.hooksPath", "/opt/mine"], check=True)
+    report = install.uninstall()
+    assert _hooks_path() == ["/opt/mine"]
+    assert any("kept core.hooksPath" in line for line in report)
+
+
+def test_uninstall_removes_only_unedited_files_install_wrote(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    (isolated_home / "bin" / "synthesis").write_text("#!/bin/sh\n# my wrapper\n")
+    (isolated_home / "config.json").write_text('{"send_tools": ["x"]}\n')
+    report = install.uninstall()
+    assert (isolated_home / "bin" / "synthesis").is_file()
+    assert not (isolated_home / "bin" / "synthesis-hook").exists()
+    assert not (isolated_home / "current").exists() and not any((isolated_home / "releases").iterdir())
+    assert (isolated_home / "config.json").read_text() == '{"send_tools": ["x"]}\n'
+    assert any("edited since install" in line for line in report)
+
+
+def test_uninstall_dry_run_changes_nothing(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    install.register_git_hooks()
+    before = sorted(str(p) for p in isolated_home.rglob("*"))
+    report = install.uninstall(dry_run=True)
+    assert sorted(str(p) for p in isolated_home.rglob("*")) == before
+    assert _hooks_path() == [str(isolated_home / "git-hooks")]
+    assert any(line.startswith("would remove") for line in report)
+
+
+def test_install_rerun_changes_nothing(tmp_path, isolated_home):
+    plugin = _plugin_copy(tmp_path)
+    install.install(plugin)
+    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")}
+    install.install(plugin)
+    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")} == stamp
+
+
+def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home):
+    plugin = _plugin_copy(tmp_path)
+    run = lambda *a: subprocess.run([sys.executable, "-S", str(plugin / "synthesis" / "install.py"), *a],
+                                    capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
+    out = run(str(plugin), "--git-hooks")
+    assert out.returncode == 0 and "core.hooksPath ->" in out.stdout
+    out = run("uninstall")
+    assert out.returncode == 0 and "restored core.hooksPath to unset" in out.stdout and _hooks_path() == []
+
+
+def _with_day_end(plugin: Path) -> Path:
+    scripts = plugin / "skills" / "synthesis-daily-rituals" / "scripts"
+    shutil.copytree(ROOT / "skills" / "synthesis-daily-rituals" / "scripts", scripts,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.py"))
+    return plugin
+
+
+def test_every_install_carries_the_day_end_launcher_and_nudge(tmp_path, isolated_home):
+    plugin = _with_day_end(_plugin_copy(tmp_path))
+    install.install(plugin)
+    for name in install.DAY_END:
+        copy = isolated_home / "bin" / name
+        assert os.access(copy, os.X_OK)
+        assert copy.read_bytes() == (plugin / "skills" / "synthesis-daily-rituals" / "scripts" / name).read_bytes()
+    nudge = plugin / "skills" / "synthesis-daily-rituals" / "scripts" / "day-end-nudge.sh"
+    nudge.write_text(nudge.read_text() + "# next release\n")
+    install.install(plugin)  # a new release replaces the copy
+    assert (isolated_home / "bin" / "day-end-nudge.sh").read_text().endswith("# next release\n")
+
+
+def test_uninstall_removes_unedited_day_end_copies_and_keeps_an_edited_one(tmp_path, isolated_home):
+    install.install(_with_day_end(_plugin_copy(tmp_path)))
+    launcher = isolated_home / "bin" / "day-end"
+    launcher.write_text(launcher.read_text() + "# my tweak\n")
+    report = install.uninstall()
+    assert launcher.is_file() and not (isolated_home / "bin" / "day-end-nudge.sh").exists()
+    assert any(line.startswith("kept") and "day-end:" in line for line in report)

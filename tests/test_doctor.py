@@ -416,11 +416,25 @@ def test_git_hooks_path_is_report_only(tmp_path):
 
 # ---- end to end, with fake harness CLIs ---------------------------------------
 
-def fake_cli(bin_dir: Path, name: str, payload) -> None:
+def fake_cli(bin_dir: Path, name: str, payload, skills=None) -> None:
+    """A harness CLI that prints its listing; with `skills`, it also answers app-server skills/list."""
     data = bin_dir / f"{name}.json"
     data.write_text(json.dumps(payload))
     script = bin_dir / name
-    script.write_text(f'#!/bin/sh\ncat "{data}"\n')
+    answer = json.dumps({"data": [{"skills": skills or [], "errors": []}]})
+    script.write_text(f"""#!{sys.executable}
+import json, sys
+if sys.argv[1:2] == ["app-server"]:
+    for line in sys.stdin:
+        message = json.loads(line)
+        if message.get("id") == 0:
+            print(json.dumps({{"id": 0, "result": {{}}}}), flush=True)
+        elif message.get("id") == 1:
+            print(json.dumps({{"id": 1, "result": json.loads({answer!r})}}), flush=True)
+            break
+else:
+    sys.stdout.write(open({str(data)!r}).read())
+""")
     script.chmod(0o755)
 
 
@@ -442,10 +456,13 @@ def machine(tmp_path, monkeypatch):
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
     fake_cli(fakebin, "claude", [{"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(claude_dir)}])
+    skills = [{"name": f"synthesis-skills:{p.parent.name}", "description": "x", "enabled": True, "path": str(p)}
+              for p in sorted(codex_dir.glob("skills/*/SKILL.md"))]
     fake_cli(fakebin, "codex", {"installed": [{"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0",
-                                               "marketplaceName": "synthesis-engineering", "enabled": True}]})
+                                               "marketplaceName": "synthesis-engineering", "enabled": True}]}, skills)
     fake_cli(fakebin, "muse", muse_inspect(muse_dir))
     monkeypatch.setenv("PATH", os.pathsep.join([str(fakebin), os.path.dirname(sys.executable), "/usr/bin", "/bin"]))
+    monkeypatch.setattr(doctor, "KNOWN_LOCATIONS", {h: () for h in doctor.HARNESSES})  # never this Mac's real CLIs
     gitconfig = Path(os.environ["GIT_CONFIG_GLOBAL"])
     gitconfig.write_text(gitconfig.read_text() + f"[core]\n\thooksPath = {synthesis_home / 'git-hooks'}\n")
     return home, fakebin, muse_dir
@@ -465,6 +482,7 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     names = {line.split()[1] for line in lines[1:]}
     assert {"runtime", "claude", "codex", "muse", "git"} <= names
     assert not any(line.split()[0] == "fail" for line in lines[1:])
+    assert any(line.split()[:4] == ["ok", "codex", "skill", "catalog"] for line in lines[1:])
     assert snapshot(home) == before
 
 
@@ -499,7 +517,7 @@ def test_doctor_skips_absent_harnesses(machine, capsys):
 
 
 def test_doctor_with_no_harness_on_path_warns(machine):
-    checks = doctor.run_checks(which=lambda name: None)
+    checks = doctor.run_checks(find=lambda name: None)
     assert any(c.name == "harnesses" and c.status == "warn" for c in checks)
 
 
@@ -524,3 +542,240 @@ def test_the_cli_runs_doctor(machine, capsys):
     from synthesis import cli
     code = cli.main(["doctor", "--json"])
     assert json.loads(capsys.readouterr().out)["healthy"] is (code == 0)
+
+
+# ---- finding each harness's CLI (client_binaries, kept) -----------------------
+
+def _exe(path: Path, body: str = "exit 0") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\n{body}\n")
+    path.chmod(0o755)
+    return path
+
+
+def test_codex_inside_the_desktop_app_is_found_off_path(tmp_path, monkeypatch):
+    monkeypatch.delenv("SYNTHESIS_CODEX_BIN", raising=False)
+    app = _exe(tmp_path / "ChatGPT.app" / "Contents" / "Resources" / "codex-cli" / "bin" / "codex")
+    assert doctor.find_client("codex", which=lambda n: None, locations=[str(app)]) == str(app)
+
+
+def test_client_override_is_authoritative(tmp_path, monkeypatch):
+    app = _exe(tmp_path / "codex")
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", "")
+    assert doctor.find_client("codex", which=lambda n: str(app), locations=[str(app)]) is None  # empty means absent
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", str(tmp_path / "nowhere"))
+    assert doctor.find_client("codex", which=lambda n: str(app), locations=[str(app)]) is None  # never another install
+    monkeypatch.setenv("SYNTHESIS_CODEX_BIN", str(app))
+    assert doctor.find_client("codex") == str(app)
+
+
+def test_a_stale_codex_launcher_on_path_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.delenv("SYNTHESIS_CODEX_BIN", raising=False)
+    stale = _exe(tmp_path / "path" / "codex", "exit 1")
+    good = _exe(tmp_path / "app" / "codex")
+    assert doctor.find_client("codex", which=lambda n: str(stale), locations=[str(good)]) == str(good)
+
+
+def test_version_probe_is_bounded_closes_stdin_and_reaps(tmp_path):
+    hung = _exe(tmp_path / "codex", "read line; sleep 30")
+    start = time.monotonic()
+    assert doctor._version_ok(str(hung), timeout=0.3) is False
+    assert time.monotonic() - start < 5
+
+
+# ---- Codex skill catalog and instruction bytes ---------------------------------
+
+def _skill(root: Path, name: str, explicit=False, description="Use when x.") -> dict:
+    path = root / "skills" / name / "SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(f"---\nname: {name}\ndescription: {description}\n---\n")
+    if explicit:
+        (path.parent / "agents").mkdir()
+        (path.parent / "agents" / "openai.yaml").write_text("policy:\n  allow_implicit_invocation: false\n")
+    return {"name": f"synthesis-skills:{name}", "description": description, "path": str(path), "enabled": True}
+
+
+def test_catalog_counts_only_implicit_skills_against_two_percent(tmp_path):
+    skills = [_skill(tmp_path, "a"), _skill(tmp_path, "b", explicit=True)]
+    cost, budget = doctor.catalog_cost(skills, 100_000)
+    assert budget == 2000
+    assert cost == doctor.catalog_cost(skills[:1], 100_000)[0]
+    assert doctor.catalog_cost(skills, None)[1] == 2000  # 8,000-character fallback
+
+
+def test_catalog_cuts_descriptions_at_1024_characters(tmp_path):
+    long = [_skill(tmp_path, "a", description="d" * 5000)]
+    assert doctor.catalog_cost(long, None)[0] < 256 + 1100 // 4 + 40
+
+
+def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):
+    plugin = tmp_path / "plugin"
+    listed = [_skill(plugin, "a")]
+    _skill(plugin, "b")
+    result = {"data": [{"skills": listed, "errors": []}]}
+    check = doctor.check_codex_catalog(result, "", plugin, {}, tmp_path)
+    assert check.status == "fail" and "not discoverable: b" in check.detail
+    full = {"data": [{"skills": listed + [{**listed[0], "name": "synthesis-skills:b"}], "errors": []}]}
+    assert doctor.check_codex_catalog(full, "", plugin, {}, tmp_path).status == "ok"
+    big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
+    assert doctor.check_codex_catalog(big, "", None, {}, tmp_path).status == "fail"
+    assert doctor.check_codex_catalog(None, "boom", plugin, {}, tmp_path).status == "warn"
+
+
+def test_catalog_budget_follows_the_configured_model(tmp_path):
+    (tmp_path / "models_cache.json").write_text(json.dumps({"models": [{"slug": "m", "context_window": 272000}]}))
+    assert doctor._context_window({"model": "m"}, tmp_path) == 272000
+    assert doctor._context_window({"model": "other"}, tmp_path) is None
+
+
+def test_instruction_chain_is_measured_against_the_limit_with_a_reserve(tmp_path):
+    codex_home, repo = tmp_path / "codex", tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "sub").mkdir()
+    codex_home.mkdir()
+    (codex_home / "AGENTS.md").write_text("u" * 20_000)
+    (repo / "AGENTS.md").write_text("r" * 5_000)
+    (repo / "sub" / "CLAUDE.md").write_text("c" * 5_000)
+    check = doctor.check_codex_instructions(repo / "sub", {}, codex_home)
+    assert check.status == "ok" and "25,000 bytes in 2 file(s)" in check.detail
+    fallback = {"project_doc_fallback_filenames": ["CLAUDE.md"]}
+    assert "30,000 bytes in 3" in doctor.check_codex_instructions(repo / "sub", fallback, codex_home).detail
+    (codex_home / "AGENTS.md").write_text("u" * 30_000)
+    assert doctor.check_codex_instructions(repo / "sub", {}, codex_home).status == "fail"  # over 32 KiB minus 4 KiB
+    assert doctor.check_codex_instructions(repo / "sub", {"project_doc_max_bytes": 98304}, codex_home).status == "ok"
+
+
+# ---- workspace folders: adapters, home paths, temporary storage -----------------
+
+def _workspace(tmp_path) -> Path:
+    ws = tmp_path / "workspaces" / "demo"
+    for name in ("ok", "claude-only", "no-adapter", "divergent", "linked", "bare"):
+        (ws / name / ".git").mkdir(parents=True)
+    (ws / "ok" / "AGENTS.md").write_text("rules\n")
+    (ws / "ok" / "CLAUDE.md").write_text("@AGENTS.md\n")
+    (ws / "claude-only" / "CLAUDE.md").write_text("rules\n")
+    (ws / "no-adapter" / "AGENTS.md").write_text("rules\n")
+    (ws / "divergent" / "AGENTS.md").write_text("rules\n")
+    (ws / "divergent" / "CLAUDE.md").write_text("other rules\n")
+    (ws / "linked" / "AGENTS.md").write_text("rules\n")
+    (ws / "linked" / "CLAUDE.md").symlink_to("AGENTS.md")
+    (ws / "not-a-repo").mkdir()
+    return ws
+
+
+def test_workspace_repos_lists_workspaces_and_their_repositories(tmp_path):
+    ws = _workspace(tmp_path)
+    repos = doctor.workspace_repos({"workspace_roots": [str(tmp_path / "workspaces" / "*")]})
+    assert repos[0] == ws and ws / "not-a-repo" not in repos and len(repos) == 7
+
+
+def test_instruction_adapters_report_each_divergence_and_change_nothing(tmp_path):
+    ws = _workspace(tmp_path)
+    states = {r.name: doctor.adapter_state(r) for r in (ws / n for n in
+              ("ok", "claude-only", "no-adapter", "divergent", "linked", "bare"))}
+    assert states["ok"] == states["linked"] == states["bare"] == ""
+    assert "Codex reads nothing" in states["claude-only"]
+    assert "no CLAUDE.md" in states["no-adapter"] and "not `@AGENTS.md`" in states["divergent"]
+    before = (ws / "divergent" / "CLAUDE.md").read_text()
+    check = doctor.check_instruction_adapters(doctor.workspace_repos({"workspace_roots": [str(ws)]}))
+    assert check.status == "warn" and "3 folder(s)" in check.detail
+    assert (ws / "divergent" / "CLAUDE.md").read_text() == before
+
+
+def test_literal_home_paths_in_synced_config_fail(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "h"))
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"knowledge_roots": ["~/workspaces/x/ai-knowledge-x"]}))
+    assert doctor.check_home_paths([config]).status == "ok"
+    config.write_text(json.dumps({"knowledge_roots": [str(tmp_path / "h" / "workspaces")]}) + "\n")
+    assert doctor.check_home_paths([config]).status == "fail"
+    config.write_text('{"root": "/Us' + 'ers/someone/workspaces"}\n')
+    check = doctor.check_home_paths([config])
+    assert check.status == "fail" and "config.json:1" in check.detail
+
+
+def test_worktrees_sessions_and_venvs_under_temporary_folders_warn(tmp_path):
+    temp, repo = tmp_path / "tmp", tmp_path / "repo"
+    (temp / "wt").mkdir(parents=True)
+    marker = repo / ".git" / "worktrees" / "wt" / "gitdir"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(str(temp / "wt" / ".git") + "\n")
+    (temp / "env").mkdir()
+    (temp / "env" / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    check = doctor.check_temporary_work([repo], [str(temp / "x")], roots=[str(temp.resolve())], venv_roots=[temp])
+    assert check.status == "warn"
+    assert "worktree" in check.detail and "session" in check.detail and "venv" in check.detail
+    clean = doctor.check_temporary_work([repo], [str(tmp_path)], roots=[str((tmp_path / "elsewhere").resolve())])
+    assert clean.status == "ok"
+
+
+# ---- latest release, on demand -----------------------------------------------
+
+def test_latest_release_compares_semantically_and_never_asks_for_a_downgrade():
+    fetch = lambda url: json.dumps({"version": "4.10.0"})
+    check = doctor.check_latest({"claude": "4.9.0", "codex": "4.10.0"}, fetch=fetch)
+    assert check.status == "warn" and "behind: claude 4.9.0" in check.detail
+    assert doctor.check_latest({"codex": "4.11.0"}, fetch=fetch).status == "ok"  # ahead of the channel
+
+
+def test_latest_release_failure_is_reported_not_hidden():
+    def fail(url):
+        raise OSError("network down")
+    check = doctor.check_latest({"claude": "5.0.0"}, fetch=fail)
+    assert check.status == "warn" and "network down" in check.detail
+
+
+def test_fetch_retries_with_the_system_ca_bundle_only_on_certificate_failures(monkeypatch, tmp_path):
+    import urllib.request
+    calls = []
+
+    def urlopen(url, timeout=0, context=None):
+        calls.append(context)
+        if context is None:
+            raise OSError("<urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed>")
+        class Response:
+            def read(self):
+                return b'{"version": "5.0.0"}'
+        return Response()
+    bundle = tmp_path / "cert.pem"
+    bundle.write_text("")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(doctor, "SYSTEM_CA_FILES", (str(bundle),))
+    import ssl
+    monkeypatch.setattr(ssl, "create_default_context", lambda cafile=None: ("ctx", cafile))
+    assert doctor.fetch_text("https://example.test/x") == '{"version": "5.0.0"}'
+    assert calls == [None, ("ctx", str(bundle))]
+
+    def refused(url, timeout=0, context=None):
+        raise OSError("connection refused")
+    monkeypatch.setattr(urllib.request, "urlopen", refused)
+    with pytest.raises(OSError, match="refused"):
+        doctor.fetch_text("https://example.test/x")
+
+
+# ---- versions across harnesses and decision packets ------------------------------
+
+def test_versions_agree_differ_or_a_release_is_in_progress():
+    from synthesis import board
+    assert doctor.check_versions({"claude": "5.0.0", "codex": "5.0.0"}, []).status == "ok"
+    differ = {"claude": "5.0.1", "codex": "5.0.0"}
+    assert doctor.check_versions(differ, []).status == "warn"
+    releaser = board.Session(session="rel", claims=["/src/synthesis-skills/CHANGELOG.md"], seen=time.time())
+    check = doctor.check_versions(differ, [releaser])
+    assert check.status == "info" and "release is in progress (rel)" in check.detail
+
+
+def test_hand_made_or_edited_packets_are_flagged(tmp_path):
+    import hashlib
+    artifacts = tmp_path / "projects" / "p" / "resources" / "artifacts"
+    artifacts.mkdir(parents=True)
+    spec = '{"items": []}'
+    marker = f"<!-- synthesis-decision-packet spec-sha256:{hashlib.sha256(spec.encode()).hexdigest()} -->"
+    (artifacts / "2026-10-05-good-packet.html").write_text(f'{marker}\n<script type="application/json" id="spec">{spec}</script>')
+    assert doctor.check_packets([tmp_path]).status == "ok"
+    (artifacts / "2026-10-05-edited-packet.html").write_text(
+        f'{marker}\n<script type="application/json" id="spec">{{"items": [1]}}</script>')
+    (artifacts / "2026-10-05-hand-packet.html").write_text("<html>looks like a packet</html>")
+    check = doctor.check_packets([tmp_path])
+    assert check.status == "warn" and "2 of 3" in check.detail
+    assert "edited after generation" in check.detail and "no generator marker" in check.detail

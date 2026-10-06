@@ -10,13 +10,14 @@ Claude Code while remaining compatible with the Agent Skills standard.
 
 - `skills/` owns every public skill, script, reference, asset, license, and
   Codex interface.
-- `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json` own the two
-  client manifests. Their versions must match.
+- `.codex-plugin/plugin.json`, `.claude-plugin/plugin.json` and
+  `.muse-plugin/plugin.json` own the three client manifests. Their versions must
+  match.
 - `.agents/plugins/marketplace.json` and
   `.claude-plugin/marketplace.json` own marketplace discovery.
 - `hooks/hooks.json` owns shared lifecycle-hook registration.
-- `install.sh` supports direct-copy fallbacks and the transition to native
-  plugins. Native plugins are the primary installation path.
+- `skills/synthesis-onboarding/scripts/setup.py` installs the native plugin in
+  each harness; native plugins are the only installation path.
 
 Never edit installed plugin caches or user-level skill copies. Make the change
 here, verify it, merge it to `main`, then update the installed plugins.
@@ -51,59 +52,51 @@ here, verify it, merge it to `main`, then update the installed plugins.
 
 ## Verification
 
-Run the same checks required by CI:
+CI runs exactly what you run locally, and it is the only gate (R7.3):
 
 ```bash
-python3 skills/synthesis-skills-manager/scripts/release.py --repo-root . --source-checks-only
+python3 -m pytest -q tests/ skills/
 ```
 
-CI and local verification execute the same exhaustive `REQUIRED_CHECKS` catalog
-in `release.py`. Two independent checks run concurrently by default (maximum four), each with its
-own retained temporary directory and bounded process group. Source identity is
-checked before and after execution. Failure stops further admission and drains
-running checks; missing checks never count as success. Controls with real wall-clock
-deadlines run exclusively through the shared timing-selector classification.
-Ordinary checks retain bounded parallelism; time and work limits do not increase. `--check-workers 1`
-provides a measured sequential comparison without changing the catalog.
+That covers the v5 core (`synthesis/`), every skill's own tests wherever they live
+(beside its scripts, at its root or in `tests/`), the format check for
+v5 skills (`tests/test_skill_format.py`), the budgets and hook latency
+(`tests/test_budgets.py`), and the source lint (`tests/test_source_lint.py`): the three
+plugin manifests agree, the CHANGELOG's newest entry is that version, skill names are
+unique, every `depends_on` resolves, every skill has an SPDX license and
+`agents/openai.yaml`, Muse's manifest lists every skill, Codex's skill catalog fits its
+budget, no personal path appears anywhere, and every config a skill documents as
+fail-closed ships an example. The lint also fails if any `test_*.py` under `skills/`
+would not be collected by that command (a folder pytest skips, or a file name shared with
+another test module outside a package). Code must also run on Apple's `/usr/bin/python3` (3.9);
+CI runs a 3.9 job.
 
-Hosted acceptance runs concurrently in its separate job. Its exact-candidate
-result is verified again at publication; installation and live health checks
-remain fresh. Do not manually repeat the catalog after a verified hosted pass.
-
-Executable consumers still require native macOS isolation or bubblewrap on
-Linux, and complete-page acceptance requires a verified Chromium executable.
-Missing required capability fails; no test or protection is skipped.
-
-For a cross-client release, also run:
-
-```bash
-python3 skills/synthesis-agent-conformance/scripts/conformance.py runtime
-python3 skills/synthesis-agent-conformance/scripts/conformance.py coordination
-```
+On a machine with the plugin installed, `synthesis doctor` checks the installed side:
+the stable runtime, each harness's plugin bytes against it, hook wiring and trust,
+Codex's settings and catalog, instruction adapters and durable storage.
 
 ## Releases
 
-- Use semantic versioning and keep both plugin manifests in parity.
-- Record user-visible changes in `CHANGELOG.md`.
-- Update the concise release note in `README.md`.
-- Use a feature branch and a review request for non-trivial changes.
-- Merge only after every required check passes.
-- On a machine with a synthesis coordination board, hold the release train
-  (`coordination.py claim ... --area release-train:synthesis-skills`) from
-  version authoring through the gated release; `release.py` preflight
-  refuses otherwise. Release the claim right after shipping.
-- **Ship with the gated release script**, which verifies authenticated complete tests for the exact candidate,
-  publishes to every push remote, installs into both clients using each
-  client's own commands, and verifies each client twice — its CLI report and
-  the manifest at the path it loads:
+- Use semantic versioning; bump all three plugin manifests together and add the
+  CHANGELOG entry for that version in the same pull request.
+- Use a feature branch and a pull request; merge only after CI passes.
+- Ship with the release script from a clean checkout of the merged default branch:
 
   ```bash
-  python3 skills/synthesis-skills-manager/scripts/release.py --repo-root .
+  python3 skills/synthesis-skills-manager/scripts/release.py --dry-run   # check and print the plan
+  python3 skills/synthesis-skills-manager/scripts/release.py
   ```
 
-  A release is not complete until both clients are confirmed current; the
-  script exits non-zero otherwise. Use `--install-only` to recover drift or
-  provision a new machine. Publishing by hand is still possible, but then the
-  install step is yours to remember — which is the gap the script closes.
+  It refuses unless the tree is clean on the default branch, the manifests and
+  CHANGELOG agree, and CI passed for HEAD. It holds the release train (a board claim
+  on the main checkout's `CHANGELOG.md`; another live session holding it means
+  another release is under way, and the script names it), tags, pushes `main`,
+  `stable` and the tag atomically to every push remote and reads them back with
+  `git ls-remote`, installs into Claude Code, Codex and Muse with each harness's
+  own commands, verifies each harness's installed files equal the tag at the folder
+  it reports loading, then updates the stable runtime and runs `synthesis doctor`.
+  A release is not complete until the script exits 0.
+- `release.py --install-only` installs and verifies the tag HEAD carries, for a new
+  Mac or after drift.
 
 See `CONTRIBUTING.md` for contribution structure and licensing.

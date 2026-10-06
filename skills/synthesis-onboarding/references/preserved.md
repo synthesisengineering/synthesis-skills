@@ -1,0 +1,488 @@
+# Preserved: `skills/synthesis-onboarding/SKILL.md` before v5 (verbatim)
+
+The 2.10.4 SKILL.md body, kept whole (ruling D8). It documents the old engine: release descriptors, transactions, receipts, six truth planes, profiles, modular staging, campaigns and invites, all removed in v5. The v5 SKILL.md and its references carry what is still true; [coverage-map.md](coverage-map.md) says where each section went. Read only to review what was cut.
+
+## Contents of the preserved text
+
+- First useful task
+- Declared maintenance and campaigns
+- Start here
+- Profiles and visible layers
+- Release identity and acquisition
+- State and recovery
+- Tracked instructions for both clients
+- Declarative organization enrollment
+- Fleet enrollment
+- Doctor and truth planes
+- Update lifecycle
+- Ownership boundaries
+- Maintainer contract
+- macOS protected-file diagnostics
+
+---
+
+# Synthesis Onboarding
+
+## First useful task
+
+For a new user seeking one useful result, use the five product journeys in
+[First-run journeys and local studies](references/first-run-journeys.md).
+Start with `synthesis journey catalog`, then preview the chosen journey with
+`journey plan`; confirm the client and exact plan consent before `journey apply`.
+Portable project is the default. Existing full/catalog installations are inspected
+without resetting them. Have the selected skill produce a user-supplied task's
+artifact, verify its exact bytes and keep user-attested usefulness separate from
+native loading and doctor evidence. Never invent a participant, consent, outcome,
+profile, integration or quality result. `synthesis study protocol` and its local
+recorder require separate participant consent before capture; synthetic rehearsals
+stay labeled. Follow the linked reference for recovery, privacy and retention.
+
+
+One bootstrap and one stable `synthesis` command manage the public synthesis
+work system. The engine is convergent and transactional: it records desired
+state separately from machine observations, stages each mutation, commits only
+after its probes pass, and preserves an aborted receipt when work fails.
+
+## Declared maintenance and campaigns
+
+For whole-machine review, receipt-owned derived-state repair, versioned native
+campaigns, or explicitly selected project upgrades, follow
+[the declared maintenance protocol](references/declared-maintenance.md).
+Review is nonmutating; exact preview consent and existing owner admission are
+required before repair or migration. A campaign notice/report is not execution,
+approval or verified completion. No scheduler or live project migration is
+activated merely by installing this skill.
+
+For organization or multi-person enrollment, follow the mandatory [team contract](../synthesis-project-management/references/team-contract.md); role selection does not grant repository access or native trust.
+
+Before interpreting platform ownership or guiding setup, use the mandatory
+[accessible setup and platform ownership contract](references/platform-ownership.md).
+`synthesis explain` and `synthesis machine platform --json` are read-only guides;
+they grant no hook trust, installation, service or repair authority.
+
+## Start here
+
+One command is the whole procedure on any Mac — new user or existing,
+new machine or fleet join, install or upgrade. It detects what the
+machine holds, recommends the best path, and interviews for the rest:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh
+```
+
+Explicit commands remain for automation and the manual path:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- setup --profile skills-only
+```
+
+Full correspondence setup also requires explicit, reviewed transport declarations. Follow [the correspondence setup owner](references/message-guard-onboarding.md) before selecting the full profile. Missing declarations leave that layer NOT_CONFIGURED and install no fresh message guard hook; skills-only and modular selections retain their own scope.
+
+After bootstrap, use the installed public command:
+
+```bash
+synthesis setup [--profile full|skills-only|modular] [--clients claude,codex]
+                [--channel stable|edge] [--pin X.Y.Z]
+                [--skill NAME ...] [--no-dormant-core]
+                [--answers PATH] [--org-repo URL | --invite PATH]
+                [--personal-instruction-source PATH]
+                [--adopt-workspace-instructions]
+                [--clear-personal-instruction-source]
+synthesis enroll --org-repo URL | --invite PATH
+                 [--personal-instruction-source PATH]
+                 [--adopt-workspace-instructions]
+                 [--clear-personal-instruction-source]
+synthesis stage-core --for-tool slopcheck|console|ownwords [--no-dormant-core]
+synthesis activate [--profile full|skills-only] [--answers PATH] [--no-services]
+synthesis deactivate
+synthesis update
+synthesis repair
+synthesis status [--json]
+synthesis doctor [--json]
+synthesis workspace ensure --name NAME [--remote URL]
+synthesis outcome verify --task TASK --workspace PATH --source-class CLASS
+synthesis fleet join [--kb URL-or-PATH] [--label NAME]
+                [--role primary|secondary] [--workspace NAME]
+synthesis onboard
+synthesis uninstall [--purge]
+```
+
+`synthesis onboard` is the one smart entry behind the bare installer:
+it detects the install and fleet state, recommends the best next step,
+and chains setup, update, fleet join, workspace, activate, doctor, and
+repair through one interview. It needs a terminal; automation uses the
+explicit commands.
+
+`synthesis status` and `synthesis doctor` print a plain summary by default:
+profile, policy, release, generation, each truth plane, and one next action.
+`--json` returns the structured payload instead.
+
+`synthesis update` and `synthesis repair` migrate an older plugin-only receipt
+automatically when it contains no workspace, organization, or generated-resource
+state. Richer or unreadable legacy state is never guessed; run `synthesis setup`
+to select the intended profile explicitly. An update that finds each client
+already at the selected release on the selected marketplace ref reports
+"no refresh needed" and leaves the client installations untouched; only a
+version change or a policy transition reconfigures a marketplace.
+
+Updates also reconcile selected or independently configured shared runtime code:
+Git hooks and their coordination dependencies, the message guard, kernel
+propagation, and day-end launchers. Exact configured paths or recorded runtime
+ownership select a component; current released bytes, an ownership receipt, or
+verified immutable historical bytes must authorize every replacement. Unknown
+edits and links are preserved and fail closed. Receipt saves detect intervening
+edits, and exact-file journals recover interrupted refreshes before receipt load.
+Refresh ownership alone never authorizes uninstall of an independent component.
+
+Day-end includes its executable state helper. That declared dependency may be
+introduced into an older installation only after both existing launcher anchors
+match released content. Historical Git proof stays bound to the current source,
+ancestor tags and both manifests; diagnostics never fetch or check out code.
+
+Doctor compares runtime bytes and executes installed Git/message-guard doctors
+with bounded timeouts and explicit health output. Pending journals cannot pass
+even when no runtime is selected. Neither configured wiring nor an executable
+doctor establishes genuine client hook execution or a loaded background service.
+Personal instructions, policy, selections, service configuration and credentials
+are not regenerated by ordinary updates. The separately acquired optional inbox
+engine remains governed by its own installer; this payload refresh does not
+take ownership of its code, authentication or configuration.
+
+`synthesis uninstall` removes the client plugins, receipt-owned generated
+files, and hook entries, then lists what it retained: the launcher, the
+release cache, the acquisition mirror, state, and configuration. `synthesis
+uninstall --purge` removes those too after the removal verifies, archiving
+the desired state and observation history under the synthesis home first.
+
+`install.sh` remains a compatibility entry point. With explicit direct-copy
+targets it invokes the audited copy capability; otherwise it routes through
+the same bootstrap and stable CLI.
+
+A failed native plugin acquisition or verification fails the installation; it
+does not select direct copies automatically. The engine preserves the selected
+profile, release policy and reviewed source, and never invokes the compatibility
+bootstrap from inside its installation transaction. Explicit direct-copy mode
+uses the verified source and only the selected clients' skill roots. Copies do
+not establish native lifecycle-hook readiness; missing required hooks remain
+non-green and must be reported separately.
+
+## Profiles and visible layers
+
+`references/release-capabilities.json` is the public capability source.
+`references/layers.json` defines the layer catalog used by setup and doctor.
+
+- `full` selects skills, session context, hooks and gates, agent kernel,
+  runtime engines, coordination, doctors and conformance, personal policy,
+  knowledge bases, and lifecycle. Organization enrollment is conditional.
+- `skills-only` selects skills, session context, and lifecycle. Additive
+  organization enrollment is available without selecting any personal layers.
+- `modular` selects named skill entrypoints and their declared dependencies.
+  Required executable support remains in a verified isolated payload. No native
+  plugin, lifecycle hook, service, instruction kernel or workspace is activated.
+  A fresh client must load the chosen skill before live availability is claimed.
+
+See [modular lifecycle](references/modular-lifecycle.md) for staging costs,
+activation, deactivation, ownership, recovery and truth-plane behavior.
+
+Each selected layer ends as verified or non-green. A declined layer is not
+silently reported as installed merely because plugin source contains its code.
+
+## Release identity and acquisition
+
+`onboard.sh` may fetch a mutable channel name, but never executes mutable
+content. It resolves the ref once, then the Python bootstrap verifies the exact
+version tag, commit, Git tree, client manifests, canonical tree digest, regular
+file types, and collision-safe launcher before activating a read-only,
+content-addressed generation.
+
+- `stable` is the default and follows the release-gated `stable` branch.
+- `edge` follows `main` and is explicit.
+- `--pin X.Y.Z` resolves the immutable `vX.Y.Z` tag and overrides a channel.
+- An unrefreshable source is refused unless the operator explicitly accepts a
+  previously verified immutable generation.
+
+Release-currency checks retain full TLS and hostname verification. On macOS
+Python installations without a configured CA path, the engine retries through
+an existing operating-system CA bundle; it never disables certificate checks.
+
+The trust contract protects against transport errors, moving refs, local path
+replacement, and content drift. It does not claim to defend against compromise
+of the source host and its credentials; that requires an independent signing
+channel.
+
+## State and recovery
+
+Desired configuration lives under the XDG config root. Machine observations,
+transactions, release descriptors, and invite-use receipts live under the XDG
+state root. Writes use a process lock, unique temporary files, atomic replace,
+and monotonic generations. Startup recovers interrupted pending transactions as
+aborted before accepting another mutation.
+
+Setup commits the engine's validated effective selection, not preflight
+placeholders: the profile, present selected clients, personal workspace,
+normalized personal configuration, optional runtime choice, and layer choices
+in desired state are the ones the successful engine run actually installed.
+Repair reads that committed state, can regenerate missing derived policy files,
+holds organization policy at its recorded commit, and reconciles the selected
+layers. Legacy resource receipts remain ownership and conffile evidence; they
+do not choose desired policy.
+
+`synthesis update` refreshes only on an explicit user or agent request. A
+floating installation that is already ahead of the newest stable release is
+informational; it is never told to downgrade. Exact pins remain exact.
+
+The gated skills publisher completes a configured full or skills-only install
+with `synthesis repair --expected-release-digest SHA256
+--expected-desired-digest SHA256`. This release-driven repair holds the saved
+profile, clients, organization commit, personal sources and release policy.
+Native refresh, verification and stable-path selection use only those clients;
+the Codex guardian is installed only when Codex is selected. Both expected
+digests are rechecked under acquired locks before any recovery mutation. It
+checks the enabled native plugin roots against the complete immutable release
+inventory, reconciles owned resources without refreshing those plugins again,
+and runs the engine doctor before committing a new lifecycle generation. The
+bootstrap refuses a changed release before activation. Prior generations remain
+history; genuine fresh SessionStart evidence must establish live loading for the
+new generation separately. Disabled, modular or conflicting pinned selections
+are preserved; a missing desired profile is never inferred by the publisher.
+
+## Tracked instructions for both clients
+
+`synthesis workspace ensure --name NAME` creates or repairs the conventional
+personal knowledge repository and its tracked instruction source:
+
+```text
+~/workspaces/<workspace>/ai-knowledge-<workspace>/.agents/workspace-AGENTS.md
+```
+
+The workspace-root `AGENTS.md` is a relative symlink to that one complete
+source, and `CLAUDE.md` is the minimal `@AGENTS.md` adapter. Existing files with
+another owner are preserved and make the run non-green. The scaffold also
+seeds `.agents/knowledge-base.yaml` (declaring the `source/` bundle for the
+knowledge-base skills and the public outcome verifier), `projects/index.yaml`,
+and `lessons/`; every seeded file is user content from the moment it exists
+and is never regenerated. The tracked sources are included in the
+repository's first commit; adding them to an existing repository creates an
+exact-path commit rather than leaving them untracked. A refused commit is
+reported with Git's own reason, so a hook refusal is never mislabeled as a
+missing identity. Edit and commit the tracked source, never the workspace
+entry points.
+
+Organization instructions use the same provenance rule. The rendered graph is
+public baseline, exactly one organization source, then an optional user-owned
+personal source. Every repository source must be a committed, clean, regular
+Git-tracked file; untracked, dirty, traversing, and symbolic-link sources are
+refused. `AGENTS.md` contains the canonical graph; `CLAUDE.md` is the literal
+`@AGENTS.md` import adapter, with its own receipt hash. Activation rechecks
+both targets for concurrent changes and rolls back only its own writes, never
+over a newer user edit. Doctor verifies each source commit and digest plus both
+exact output paths and digests against the receipt. Historical duplicate outputs
+or an already-converted exact adapter require provenance-checked migration;
+doctor reports migration required until update or repair commits the new receipt.
+
+The optional personal layer is local desired state, never organization data:
+
+```bash
+synthesis setup --profile full --org-repo URL \
+  --personal-instruction-source /absolute/path/to/private-config/.agents/workspace-instructions.md
+```
+
+Setup persists the source repository and relative path, so `synthesis update`
+and `synthesis repair` replay and revalidate it. Omitting the option on a later
+setup preserves the declared source; removing it requires
+`--clear-personal-instruction-source`.
+
+An existing workspace-root `AGENTS.md` or `CLAUDE.md` without an engine receipt
+is preserved by default. After the complete instruction content is represented
+in committed graph sources, `--adopt-workspace-instructions` explicitly archives
+each existing regular file, verifies the archive bytes, and then activates the
+pair. The receipt records archive paths, prior digests, modes, and time. A
+failure after the first activation restores both original outputs while keeping
+the verified archives.
+
+## Declarative organization enrollment
+
+An organization repository contains data only: `.agents/onboarding.yaml`, one
+tracked instruction source, and optional documentation. It cannot select or
+execute an installer. Shared skill repositories are copied through the public
+engine's fixed direct-copy capability. Knowledge repository receipts distinguish
+engine-created clones from adopted user checkouts. Only created clones on their
+recorded path, origin, branch and upstream may fast-forward; uncertain, changed,
+dirty, ahead or diverged state remains non-green and preserves the checkout.
+Pending native Git locks or retained updater recovery artifacts also remain
+non-green until resolved; doctor never deletes them. Adopted checkout locks
+remain the user's responsibility and are not inspected as updater-owned state.
+
+The copy capability accepts either `skills/<name>/SKILL.md` or top-level
+`<name>/SKILL.md` organization repositories, never both layouts at once.
+Existing shared copies require matching repository identity and exact source
+bytes at their recorded commit before enrollment can adopt their ownership.
+
+Enrollment, engine locking, and rollback use the same receipt directory:
+`SYNTHESIS_ONBOARD_STATE_DIR` when set, otherwise
+`${XDG_STATE_HOME:-$HOME/.local/state}/synthesis`. Legacy receipts are not the
+default destination for new enrollment transactions.
+
+Public bootstrap acquisition remains HTTPS-only. After verifying the immutable
+release, the CLI permits HTTPS and SSH repository transports; local-file and
+external-helper transports remain forbidden.
+
+For a new installation, use `synthesis setup --org-repo URL`. For an existing
+enabled full or skills-only installation, use `synthesis enroll --org-repo URL`.
+Enrollment preserves the base profile, personal workspace, configuration, layer
+choices, selected clients, and release policy. It adds only the organization
+overlay and an explicitly selected personal instruction source; it never calls
+the personal initializer or reinstalls the public plugin.
+
+The organization's client and release requirements must match the saved
+selection. Conflicts, a different organization, or a workspace collision are
+refused. The saved additive mode and workspace identity apply to update, repair,
+and doctor too. Skills-only repair does not rewrite independently managed
+personal layers or their receipt metadata. Full repair continues to reconcile
+its already-selected personal layers.
+
+Enrollment journals exact generated targets before mutation. Engine, doctor,
+or state-commit failure restores instructions, selected skill copies, ownership
+receipts, and invite use. Mutating commands recover interrupted enrollment;
+doctor remains non-green until recovery finishes. Verified archives, organization
+source caches, and new knowledge clones are retained. Existing knowledge clones
+are adopted without pulling or changing their configuration during enrollment,
+update or repair; required executable pre-commit protection must already be
+configured. This includes clones reused at the conventional workspace path.
+Missing older ownership records never confer permission to update a checkout.
+Organization configuration updates independently in its managed source cache.
+
+Organization skill ownership is checked before every replay. Changed private
+copies are preserved; unchanged legacy copies can be adopted only after their
+bytes match their recorded Git revision. Removed skills and removed sources are
+archived using exact ownership receipts. Uninstall consumes that inventory and
+reports edited retained copies as non-green.
+
+Each organization copy commits its ownership receipt before a later phase can
+fail. A partial copy restores both the previous bytes and receipt. Interrupted
+copy recovery precedes outer enrollment rollback; doctor only reports pending
+recovery. Repair returns a clean managed organization cache to its recorded
+commit without fetching, then replays the saved selection.
+
+Either setup or enrollment can use a credential-free, time-bounded invite file.
+Invites are validated before mutation, expire within
+seven days, may pin the organization commit, and are protected against replay.
+See `references/org-manifest.md` and `references/invite.schema.json`. A
+schema-1 manifest is refused before any mutation with a message naming the
+migration section of that guide; the public source baseline for the rendered
+instruction pair comes from the digest-verified installed release, so
+enrollment works from the installed CLI, not only from a source checkout.
+
+## Fleet enrollment
+
+`synthesis fleet join` enrolls a new Mac with no required flags: it finds
+the knowledge repo through GitHub discovery (running sign-in when needed)
+or asks for it once, derives home, label, workspace, and manifest, founds
+a new fleet when the repo holds none and otherwise joins as a secondary,
+narrates every repo as it lands, and publishes the enrollment back to the
+shared registry so the fleet converges. A rerun after any failure or
+interrupt resumes; finished steps report `noop`. The flags `--kb`,
+`--label`, `--role`, and `--workspace` override the interactive answers
+for scripted runs. A contradicting explicit role fails closed: secondary
+without a fleet, primary against one. Non-interactive use without `--kb`
+is refused with the flag named, never left hanging on input. From a bare
+machine the whole procedure is the one bare installer command, which
+runs the guided setup first and the join continues after it.
+Questions reach the human through the controlling terminal when stdin is
+a pipe, so the answers work in the piped install. Only a run with no
+terminal at all refuses, naming the setup-first remedy for automation.
+
+## Doctor and truth planes
+
+Doctor does not fetch repositories, change refs, update plugins, or rewrite
+desired state. It reads the selected release channel's manifest over HTTPS and
+caches that answer in `plugin-currency.json` under the state root, and it
+attaches fresh client SessionStart receipts from the conformance registry to
+the current generation: Claude runs its SessionStart hook before it creates
+the session transcript, so a fresh Claude session records a pending receipt
+that doctor or status promotes once the transcript binds the session. Every
+plane is re-derived at doctor time; the active release root is re-hashed
+against its descriptor rather than trusted from the last transaction. It
+reports six planes independently:
+
+1. desired
+2. resolved
+3. installed
+4. source provenance
+5. live loaded
+6. outcome verified
+
+Transcript length is not a reason to discard or replace a conversation. Hook,
+conformance and generation attachment share structured identity validation of
+the first 1,000 JSONL lines with bounded memory, including large message records.
+The full transcript digest is streamed. Only canonical client-owned root-session
+paths qualify; quoted UUIDs, conflicting identity, malformed evidence and
+payload drift cannot establish a live-loaded generation. Doctor and status
+expose rejected eligible receipts without changing the original event or
+hash-bound observations. Resolve the reported validation failure before
+rechecking; another restart is not a repair for invalid evidence.
+
+A plugin version, directory, or generated instruction file proves only its own
+plane. `live-loaded` requires a fresh client lifecycle receipt after restart.
+An outcome verifier is release-owned; organization data may name only a trusted
+verifier ID, never provide a command.
+
+Every execution verifies before running. The release-owned launcher compares
+the installed tree's digest plus the manifest's signature against the release
+descriptor before every execution; on mismatch it refuses. Receipt mode
+satisfies this for read-only probes by digesting only the release-owned
+entrypoints. Doctor reports the same per-execution check as its own plane,
+and SessionStart carries a once-per-session full digest line. The launcher
+never writes — it reports drift so upgrade can replace it.
+
+Exit `0` means the selected checks are green, `1` means a verified defect or
+required action, and `2` means ground truth could not be established.
+
+## Update lifecycle
+
+An update is the initiating task's last action before client restart. On
+machines with the durable historical-cache guardian, the update also verifies
+the exact historical root used by the invoking task before returning. Resume
+the existing conversation when supported, but continue only after a genuine
+transcript-bound SessionStart for the same session UUID reports the installed
+version and enabled immutable plugin root, with matching loaded skill metadata.
+Use a new conversation when same-session recovery is unsupported or those checks
+fail; first-time users without an existing conversation can start one after
+restart. Installed currency alone does not establish active-session currency.
+Doctor and status label recorded selected-client evidence separately from acceptance
+of the initiating task. Verified uninstall requires no live client load.
+Codex hook trust remains a conditional human setting, is never auto-approved,
+and does not itself prove hook execution.
+
+## Ownership boundaries
+
+- Public engine: acquisition, validation, mutations, direct-copy behavior,
+  transactions, capability IDs, doctor logic, and release descriptors.
+- Organization repository: declarative repositories, welcome text, trusted
+  acceptance IDs, and one tracked instruction source.
+- User: credentials, personal policy content, optional personal instruction
+  source and explicit adoption, source edits, client restart, and deployment
+  decisions.
+
+Unknown fields, unsafe paths, embedded credentials, dirty or wrong-remote
+clones, symlinked release files, and executable organization fields fail closed.
+
+## Maintainer contract
+
+```bash
+python3 -m pytest skills/synthesis-onboarding/scripts/ -q
+python3 skills/synthesis-onboarding/scripts/check_scaffolds.py .
+python3 skills/synthesis-onboarding/scripts/check_capabilities.py .
+sh -n install.sh onboard.sh tests/test_installer.sh
+./tests/test_installer.sh
+```
+
+The gated publisher runs the same checks, atomically advances the release refs,
+materializes the published descriptor through the bootstrap verifier, refreshes
+the saved client selection (Claude, Codex and Muse on an unconfigured maintainer
+machine), and verifies the complete installed inventory. Release claims remain
+serialized by `release-train:synthesis-skills`.
+
+## macOS protected-file diagnostics
+
+When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.

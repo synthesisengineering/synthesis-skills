@@ -1,7 +1,7 @@
 interface:
   display_name: "Synthesis Onboarding"
   short_description: "Install the synthesis ecosystem on a new machine"
-  default_prompt: "Use $synthesis-onboarding to choose a first useful task with the journey catalog, or install, update, and verify the synthesis ecosystem on this machine."
+  default_prompt: "Use $synthesis-onboarding to install or update synthesis on this machine, bring a workspace onto a new Mac, or enroll an organization, then verify with synthesis doctor."
 
 policy:
   allow_implicit_invocation: false

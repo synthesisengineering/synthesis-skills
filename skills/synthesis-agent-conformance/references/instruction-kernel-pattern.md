@@ -142,7 +142,9 @@ Order is the safety property:
 5. **Archive the old kernel.** Git history plus an archived copy, so the
    matrix can always be audited against the original text.
 
-The instruction-budget and catalog checks in this skill's `conformance.py` are
-the mechanical layer for steps 3–4: `instruction-budget` enforces the gate,
-`catalog` verifies the skill homes are visible to each client, and `hook-live`
-proves the enforcement declarations true.
+In v5, `synthesis doctor` is the mechanical layer for steps 3–4: `codex instruction
+bytes` and `codex instruction chain` enforce the gate for Codex's concatenated
+instructions, `codex skill catalog` verifies the skill homes are visible to Codex, and
+the hook checks (wiring to the stable hook, Codex trust, Muse approval and the guard
+self-test) prove the enforcement declarations true. Whatever writes the authored
+instruction file applies the hard limit and the 85% warn band.

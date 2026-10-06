@@ -1,5 +1,10 @@
 name: CI
 
+# The only release gate (R7.3): core tests, every skill's tests (collected from all of
+# skills/, beside scripts or in tests/) and the source lint, within the 10-minute budget,
+# on Linux and macOS, including the Python 3.9 Apple ships as /usr/bin/python3.
+# tests/test_source_lint.py fails if any test_*.py under skills/ would not be collected.
+
 on:
   pull_request:
   push:
@@ -14,10 +19,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
+        include:
+          - os: ubuntu-22.04
+            python: "3.9"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install pytest
-      - run: python -m pytest -q tests/
+      - name: Core tests, source lint and every skill's tests, wherever they live
+        run: python -m pytest -q tests/ skills/

@@ -1,7 +1,7 @@
 interface:
   display_name: "Synthesis Skills Manager"
-  short_description: "Apply the skills manager synthesis workflow"
-  default_prompt: "Use $synthesis-skills-manager to apply this workflow to the current task."
+  short_description: "Release the plugin and keep skill installs true to source"
+  default_prompt: "Use $synthesis-skills-manager to release the synthesis-skills plugin, or to install, update or reconcile drifted skills from source."
 
 policy:
   allow_implicit_invocation: false

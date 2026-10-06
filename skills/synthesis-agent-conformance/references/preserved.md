@@ -1,0 +1,323 @@
+# Preserved: `skills/synthesis-agent-conformance/SKILL.md` before v5 (verbatim)
+
+The 1.14.1 SKILL.md body, kept whole (ruling D8). Its commands ran `conformance.py`, receipts, an active-project pointer and leases that v5 removed; the v5 SKILL.md and its references carry what is still true. [coverage-map.md](coverage-map.md) says where each section went. Read only to review what was cut.
+
+## Contents of the preserved text
+
+- Operating model
+- Workflow
+  - 1. Inventory
+  - 2. Repair from source
+  - 3. Activate durable project state
+  - 4. Verify handoff
+  - 5. Close the loop
+- Lifecycle hooks
+- Skill catalog contract
+- Skill-output provenance
+- Detailed architecture
+- Instruction-kernel pattern
+- macOS protected-file diagnostics
+
+---
+
+# Synthesis Agent Conformance
+
+Treat cross-agent portability as a continuously tested system, not a file-count
+comparison.
+
+For provider releases, additional-client qualification and incident packages, use the mandatory [source-led intake and replay workflow](references/provider-change-intake.md).
+For portable signed event evidence, use [signed observations](references/signed-observations.md). Signature validity, local live acceptance and action authority are separate results.
+For the bounded Hermes CLI pilot, follow [its native contract and acceptance boundaries](references/hermes-cli-pilot.md). For vendor review or directory preparation, use the [source-bound package builder](references/vendor-review-packages.md) and its capture protocol; no callback or source test can substitute for native evidence.
+
+## Operating model
+
+Verify five planes:
+
+1. **Source:** version-controlled skills, instructions, client adapters, hooks,
+   project state, and configuration.
+2. **Installed:** deployed plugins and skills, generated files, catalogs,
+   instruction budgets, runtime configuration, and Codex's authoritative hook
+   trust state. Never infer or write trust state.
+3. **Native (live):** client-specific receipts created by genuine lifecycle events. A
+   static script probe is not live evidence.
+4. **Continuity:** coordination leases, active pointers, attributed local
+   working state, explicit remote publication, and bidirectional handoff
+   exercises.
+5. **Capability:** authenticated read-only outcomes and explicitly supported,
+   unsupported, or unverifiable product surfaces.
+
+Before producing or consuming report JSON, follow the mandatory [shared report contract](references/report-contract.md). Its five-plane schema, identity and freshness validation apply to Console as well as CLI output. UNKNOWN never becomes PASS.
+
+Name the plane whenever two facts appear to conflict. Runtime state determines
+current behavior; canonical state determines what the next deployment should
+produce.
+
+Active and stopped payload parity use diagnostic context rendering: compare
+the complete local context, including unread messages, without acknowledging
+delivery, writing lifecycle receipts, checking release currency, fetching Git,
+fast-forwarding a checkout or refreshing a lease. Unreadable diagnostic inbox
+state fails closed. Validation targets the selected seat/project's inbox;
+demonstrably unrelated historical blocks cannot redefine its native messages
+or delivery keys. These probes establish agreement over local evidence, not
+remote freshness or actual client delivery. Other conformance checks may refresh
+state; do not describe the entire command as read-only.
+
+Both client renderers and project state use the shared confined controlling-plan
+resolver. Structured authority precedes historical prose, parent-plan hashes
+invalidate stale checkpoints, and stopped comparisons remap the plan into the
+causally selected worktree. Missing, malformed and ambiguous legacy references
+remain non-green; diagnostic rendering does not rewrite history to resolve them.
+
+## Workflow
+
+The source plane uses release-owned pure-Python PyYAML 6.0.3. It requires no
+global `pip` installation and does not import the caller's `yaml` package.
+Missing or altered bundled dependency files fail `source.yaml-runtime`.
+See [dependency provenance and runtime boundaries](references/yaml-runtime.md).
+
+### 1. Inventory
+
+Run:
+
+```bash
+python3 scripts/conformance.py source
+python3 scripts/conformance.py runtime
+python3 scripts/conformance.py parity
+python3 scripts/conformance.py catalog
+python3 scripts/conformance.py instructions --repo-root <repo>
+python3 scripts/conformance.py instruction-budget --repo-root <repo>
+python3 scripts/conformance.py hook-definition
+python3 scripts/conformance.py hook-trust --repo-root <repo>
+python3 scripts/conformance.py hook-live
+python3 scripts/conformance.py coordination
+python3 scripts/conformance.py capabilities --repo-root <repo>
+python3 scripts/conformance.py surfaces
+```
+
+`hook-live` without selectors answers the current-health question: it checks
+the newest Claude and Codex receipt pointers and keeps the 24-hour freshness
+gate. To reverify a release or handoff against its exact accepted sessions,
+select the preserved event records explicitly:
+
+```bash
+python3 scripts/conformance.py hook-live \
+  --claude-receipt-session-id <claude-session-uuid> \
+  --codex-receipt-session-id <codex-session-uuid>
+```
+
+Do not substitute one scope for the other. A newer unrelated start may make
+current health fail without erasing an earlier accepted event; an accepted
+session check does not establish that the newest global start is healthy.
+Preserved events are local runtime evidence and have no automatic age-based
+deletion. Exact-session checks waive only the 24-hour freshness limit; they
+still require the original client-owned transcript, matching session UUID,
+plugin version, and exact plugin root to validate.
+
+Transcript identity validation scans the first 1,000 physical JSONL lines,
+validates complete records within that window, and retains only bounded
+identity fields. Long histories and large message strings do not require
+whole-file or whole-record allocation. Malformed records, conflicting identity,
+duplicate identity keys and excessive nesting fail closed. This is a bounded
+startup-identity check, not a claim that every later transcript record was
+semantically validated. Onboarding separately streams the full-file digest.
+
+Use `--json` for a machine-readable report. Each check carries a plane and one
+of PASS, FAIL, WARN, UNKNOWN, or UNSUPPORTED. A required UNKNOWN fails the
+aggregate command; "not tested" cannot become parity.
+
+Use `--local` when the diagnosis itself must not change anything: no
+network fetch, no board or lease refresh, no pointer writes. Routes
+that need fresh evidence skip those subchecks with reasons (non-required
+UNKNOWN naming the unverifiable evidence and the mirror's age);
+`activate` refuses and shows the exact write it would have made;
+`--readiness remote` cannot combine with `--local`. Explicit
+`--report-file` output still writes: it is user-directed, not a
+surprise write.
+
+### 2. Repair from source
+
+- Edit source repositories, never installed skill or plugin caches.
+- Keep shared behavior agent-neutral.
+- Use native adapters for platform differences.
+- Make `AGENTS.md` canonical for tracked repository instructions.
+- Make `CLAUDE.md` a small documented import adapter: `@AGENTS.md`.
+- Install public skills as the `synthesis-skills` plugin on Claude and Codex.
+- Install private skills to `~/.claude/skills` and `~/.agents/skills`.
+- Do not create a second source-managed copy under `~/.codex/skills`.
+
+### 3. Activate durable project state
+
+When starting or switching a synthesis project:
+
+```bash
+python3 scripts/conformance.py activate \
+  --project <project-directory> \
+  --session-id <coordination-session-id>
+```
+
+The command writes a local pointer only. `CONTEXT.md`, `REFERENCE.md`,
+`sessions/`, and plan artifacts remain the source of truth. The pointer records
+the owning session and coordination-board lease URL, plus its worktree,
+branch, and source commit; `pointer` verifies those fields against disk.
+Activation and pointer validation share the local-continuity record contract:
+uncommitted project edits are acceptable exactly when session-attributed
+pending manifests record every dirty path, and any unattributed path fails
+closed. A live owner holding an attributed stopped-task record
+(`LOCAL_READY` or `LOCAL_RECOVERABLE`) can therefore activate without
+committing first.
+
+Before activation writes, read and claim the source areas on
+`~/.synthesis/coordination/active-sessions.md`. Conformance validates the board
+shape; `synthesis-project-management` owns its operating protocol.
+
+### 4. Verify handoff
+
+Run:
+
+```bash
+python3 scripts/conformance.py handoff --project <project-directory>
+python3 scripts/conformance.py pointer --project <project-directory>
+python3 scripts/conformance.py continuity \
+  --project <project-directory> --readiness local
+python3 scripts/conformance.py continuity \
+  --project <project-directory> --readiness remote
+```
+
+`pointer` verifies a live owner's leased cache. Local continuity verifies that
+Claude and Codex reconstruct identical project state with no pointer. A clean,
+readable record with no attributed task edits is `LOCAL_READY` without creating
+empty evidence. When a task changes repository files, a current Stop receipt is
+required for `LOCAL_READY`; the attributed manifest without that receipt is
+`LOCAL_RECOVERABLE` after interruption. Remote continuity additionally requires
+no pending manifest and complete branch-head equality with the fetched upstream,
+not merely equality for commits touching the project subdirectory. Then open
+the project in the other client and confirm its SessionStart or first
+named-project turn recovers the same state.
+
+The aggregate `all` command treats a readable active pointer owned by another
+project as non-blocking diagnostic context and verifies stopped-project
+recovery instead. The explicit `pointer` command remains strict for whichever
+project the caller asks it to validate; malformed pointers fail in both modes. The SessionStart hook records its live receipt before it builds context, and a pointer it cannot validate is ignored with a notice rather than failing the session: a pointer is another session's cache, never authority for the one starting.
+
+The continuity plane also runs causal project-state recovery. It enumerates
+every registered worktree and ref plus attributed manifests, receipts, pointer,
+and claims; selects only by equality or ancestry; and reports `CONFLICT` or
+`UNKNOWN` separately from a successful local recovery. Source, installed,
+live, continuity, and capability verdicts remain independent—a matching cache
+cannot compensate for a stale loaded registry, and an unavailable remote
+cannot become a green continuity result.
+
+### 5. Close the loop
+
+Run the complete check:
+
+```bash
+python3 scripts/conformance.py all \
+  --repo-root <current-repo> \
+  --project <project-directory>
+```
+
+Fix every failed required check. Record genuine client-owned differences as
+boundaries with evidence; do not report parity from matching inventories alone.
+Since 1.7.0 parity also reads each client's installed manifest on disk beside
+the CLI report (`parity.<client>-on-disk`): a self-report is a claim, not
+evidence — it once stayed green while the loaded tree sat three releases behind.
+
+## Lifecycle hooks
+
+The plugin’s `hooks/hooks.json` uses `session_context.py` at `SessionStart`.
+Codex reruns `SessionStart` after root-session compaction with a `compact` start
+source, so the same hook restores the active project without a second
+behavior-producing implementation. The script:
+
+- verifies the local clock;
+- reads the active-project pointer;
+- discovers a stopped project directly when the task directory is inside its
+  durable project tree;
+- when the task starts at a workspace or knowledge-repository root without a
+  pointer, boundedly audits the immediately discoverable Git-tracked project
+  registries and warns if a canonical checkout is behind its fetched upstream
+  or if registry freshness is not comparable;
+- when neither route identifies a project, instructs the receiving agent to
+  resolve the user's named project through the git-tracked registry and run
+  the Session Start Protocol automatically;
+- verifies that the project still exists;
+- extracts the current phase, status, plan, and next actions from durable files;
+- emits a compact context anchor;
+- appends an immutable event record for every genuine `SessionStart`, then
+  advances atomic generic and client-specific latest pointers monotonically.
+  Exact-session conformance reads the event registry, so a later unrelated
+  start cannot erase the addressability of accepted evidence. Claude may name its
+  client-owned transcript before creating its first JSONL record; the receipt
+  preserves that lifecycle event and records whether the binding existed at
+  hook time. Release conformance still requires the exact transcript to bind
+  the same session UUID. Claude evidence must use the canonical
+  `projects/<encoded-cwd>/<session-id>.jsonl` root shape; subagent descendants,
+  symlinks, and contradictory UUID declarations fail closed. Current-health
+  checks still require the latest public-plugin receipts from both Claude Code
+  and Codex. Release and handoff reverification must select the exact durable
+  session UUIDs rather than trusting whichever global receipt happens to be
+  newest. The private Codex control-plane receipt remains a separate opt-in
+  check.
+
+Claude calls the same script from its native `SessionStart` hook. Client hook
+configuration remains an adapter; the context-producing behavior is shared.
+
+Refusal is announced, never silent: when no pointer route identifies a
+project, the hook prints a `REFUSED` additionalContext line naming the
+recovery (resume skill or packet compile) and exits 0; only a receipt
+write failure keeps exit 2. Every genuine `SessionStart` delivery files
+a second receipt record with the outcome — `INJECTED` with the byte
+count, or `REFUSED` with the raising function and message. The same
+SessionStart output carries the once-per-session full runtime-digest
+line (verified or DRIFTED), which reports and never writes.
+Codex hook trust is a separate human-controlled check within installed state:
+`hook-trust` queries
+Codex app-server's read-only `hooks/list` API for the current normalized hash,
+source owner, and trust reason, and never edits `hooks.state`.
+
+The active pointer is deliberately not synchronized as one global current
+project. Parallel root sessions may work on different projects. Same-machine
+cross-client continuity consumes project files plus attributed working-tree
+state. Cross-computer continuity requires the explicit `REMOTE_READY`
+transition and a fast-forwarded destination checkout.
+
+## Skill catalog contract
+
+Codex budgets the combined model-visible skill catalog at 2% of the active
+model context. Audit the resolved catalog through app-server `skills/list`;
+do not infer safety from the public plugin's file count. Public specialist
+skills may set `policy.allow_implicit_invocation: false` in
+`agents/openai.yaml`: they remain enabled and explicitly invocable, while
+`synthesis-skill-router` supplies natural-language routing. Claude Code ignores
+that OpenAI-specific prompt policy and retains its native trigger behavior.
+
+## Skill-output provenance
+
+A skill whose contract names a generator script is followed only when the
+artifact is verifiably that generator's output — not a hand-made substitute.
+`scripts/skill_outputs.py` is the shared checker: it verifies decision-packet
+pages under a project's `resources/artifacts/` against the generator's
+provenance marker (the embedded spec's sha256), treats an unmarked page with
+no filed rulings as a defect, a marker/spec disagreement as a defect, and a
+closed ruled record as a warning. The context doctor's `skill-outputs` check
+runs it on every machine via install, upgrade, and doctor; run it directly
+with `--project <dir>` for one project or `--doctor` for the whole corpus.
+
+## Detailed architecture
+
+For external-target work, use [browser outcome review](references/autopilot-browser-quality.md). Actual account identity, stored-state readback and excluded-item preservation need an authenticated target owner; local fixtures and success banners cannot certify them.
+
+Read [references/architecture.md](references/architecture.md) when designing or
+changing an installation, plugin package, hook set, or cross-machine sync.
+
+## Instruction-kernel pattern
+
+Read [references/instruction-kernel-pattern.md](references/instruction-kernel-pattern.md)
+when an always-loaded instruction file approaches its budget or rules migrate
+to skill, hook, or config homes: the thin-kernel structure, the four
+enforcement classes, the not-weakening proof obligation, and the budget gate.
+
+## macOS protected-file diagnostics
+
+When a desktop client cannot access a protected file, identify the actual engine responsible for the request; do not assume the visible app owns the permission. Follow [macOS file-access attribution and update acceptance](../synthesis-agent-conformance/references/macos-file-access.md). A grant surviving a version-directory change requires an observed update check; until then report UNKNOWN.
