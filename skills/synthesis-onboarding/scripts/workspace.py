@@ -208,9 +208,8 @@ def new_workspace(name: str, remote: str = "") -> list:
 def _archive(paths: list) -> Path:
     folder = setup.install._home() / "archive" / time.strftime("%Y%m%dT%H%M%S")
     folder.mkdir(parents=True, exist_ok=True)
-    for path in paths:
-        if os.path.lexists(path):
-            shutil.move(str(path), str(folder / path.name))
+    for path in (p for p in paths if os.path.lexists(p)):
+        shutil.move(str(path), str(folder / path.name))
     return folder
 
 

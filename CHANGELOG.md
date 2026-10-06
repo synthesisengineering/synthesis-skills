@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   names a synthesis state or transcript path, the refusal now says to run the script on
   its own. The rule itself is unchanged: a heredoc cannot be told apart from the rest of
   the line, and a variable set elsewhere could carry the path into the script.
+- Setup replaces the 4.x `synthesis` command it finds at `~/.local/bin/synthesis` (a managed
+  file that drove the retired board), archiving it under `~/.synthesis/v5/archive/`, and links
+  the v5 command there. Before, a 4.x install kept the old command on PATH, so `synthesis
+  claim` and `synthesis who` reached the retired board.
 
 ## [5.0.1] - 2026-10-06
 
