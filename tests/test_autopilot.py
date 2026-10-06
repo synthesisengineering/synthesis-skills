@@ -36,6 +36,11 @@ HEADER = {
 }
 
 
+
+def _check(payload, config):
+    """The turn-end request the Stop hook would send, or None."""
+    return autopilot.evaluate(payload, config)[0]
+
 def ago(minutes: float) -> str:
     return (datetime.now().astimezone() - timedelta(minutes=minutes)).isoformat(timespec="minutes")
 
@@ -68,7 +73,7 @@ def engage(session, path) -> None:
 
 
 def stop(session, **payload):
-    return autopilot.check({"session_id": session, **payload}, {})
+    return _check({"session_id": session, **payload}, {})
 
 
 def edit(path, old, new):
@@ -172,8 +177,8 @@ def test_2_an_unchanged_plan_counts_as_a_repeat_when_the_harness_sends_no_flag(t
 def test_2_the_limit_is_configurable(tmp_path):
     engage("S1", write_plan(tmp_path))
     config = {"autopilot": {"max_continuations": 1}}
-    assert autopilot.check({"session_id": "S1"}, config) is not None
-    assert autopilot.check({"session_id": "S1", "stop_hook_active": True}, config) is None
+    assert _check({"session_id": "S1"}, config) is not None
+    assert _check({"session_id": "S1", "stop_hook_active": True}, config) is None
 
 
 def test_3_any_error_lets_the_turn_end(tmp_path, monkeypatch):
@@ -187,13 +192,13 @@ def test_3_any_error_lets_the_turn_end(tmp_path, monkeypatch):
     engage("S1", path)
     path.unlink()
     assert stop("S1") is None
-    assert autopilot.check(None, None) is None and autopilot.check({"session_id": 7}, {}) is None
+    assert _check(None, None) is None and _check({"session_id": 7}, {}) is None
 
 
 def test_4_no_session_no_plan_or_an_unknown_client_is_silent():
-    assert autopilot.check({}, {}) is None
-    assert autopilot.check({"session_id": "nobody-engaged"}, {}) is None
-    assert autopilot.check({"hook_event_name": "Stop", "cwd": "/"}, {}) is None
+    assert _check({}, {}) is None
+    assert _check({"session_id": "nobody-engaged"}, {}) is None
+    assert _check({"hook_event_name": "Stop", "cwd": "/"}, {}) is None
 
 
 def test_5_another_sessions_plan_never_blocks_this_session(tmp_path):
@@ -513,7 +518,7 @@ def test_the_check_takes_well_under_50_ms(tmp_path):
     times = []
     for _ in range(15):
         start = time.perf_counter()
-        autopilot.check({"session_id": "S1", "stop_hook_active": False}, {})
+        _check({"session_id": "S1", "stop_hook_active": False}, {})
         times.append(time.perf_counter() - start)
     assert statistics.median(times) < 0.05
 
@@ -522,7 +527,7 @@ def test_a_cold_hook_process_stays_inside_the_hook_budget(tmp_path, isolated_hom
     path = write_plan(tmp_path)
     engage("S1", path)
     code = ("import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import autopilot; "
-            "print(autopilot.check(json.load(sys.stdin), {}) or '')")
+            "print(autopilot.evaluate(json.load(sys.stdin), {})[0] or '')")
     env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
     times, out = [], ""
     for _ in range(10):

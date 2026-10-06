@@ -84,13 +84,13 @@ def test_handoff_commits_and_pushes_only_this_sessions_claims(tmp_path):
     assert committed == ["mine/a.md"]
 
 
-def test_prompt_delivers_board_messages_and_grants_typed_approvals(tmp_path, write_config):
+def test_prompt_delivers_board_messages_and_grants_typed_approvals(tmp_path, write_config, principal):
     from synthesis import guards
     _knowledge(tmp_path, write_config)
-    board.touch("S3", project="alpha")
+    board.touch("S3", project="alpha", briefed="alpha")
     board.message("project:alpha", "S9", "please rebase on main")
     reason = guards.check("mcp__slack__slack_send_message", {"message": "hi"}, {})
-    code = reason.split("approve ")[1][:6]
+    code = principal(reason, grant=False)  # the harness records the principal's prompt; the hook grants it
     out = _hook("user-prompt-submit", {"session_id": "S3", "prompt": f"approve {code}"})
     context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "please rebase on main" in context and "Approved by the principal" in context
@@ -101,3 +101,23 @@ def test_session_start_states_the_local_time_first(tmp_path, write_config):
     out = _hook("session-start", {"session_id": "s-time", "cwd": str(tmp_path)})
     context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
     assert context.startswith("Local time: ")
+
+
+def test_after_synthesis_use_the_next_prompt_brings_the_brief_once(tmp_path, write_config):
+    """Muse runs SessionStart only when a session is created, so a session that chose its project with
+    `synthesis use` never got the brief (M5 defect 3). The next prompt brings it, once, in every harness."""
+    from synthesis import cli
+    _knowledge(tmp_path, write_config)
+    _hook("session-start", {"session_id": "S7", "cwd": str(tmp_path)})  # a new session has no project yet
+    assert cli.main(["--session", "S7", "use", "alpha"]) == 0
+    out = _hook("user-prompt-submit", {"session_id": "S7", "prompt": "next"})
+    context = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "do not repair v4" in context and "write the guards" in context
+    assert _hook("user-prompt-submit", {"session_id": "S7", "prompt": "again"}).stdout.strip() == ""
+
+
+def test_a_brief_given_at_session_start_is_not_repeated_at_the_next_prompt(tmp_path, write_config):
+    _knowledge(tmp_path, write_config)
+    board.touch("S8", project="alpha")
+    assert "do not repair v4" in _hook("session-start", {"session_id": "S8", "cwd": str(tmp_path)}).stdout
+    assert _hook("user-prompt-submit", {"session_id": "S8", "prompt": "next"}).stdout.strip() == ""

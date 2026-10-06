@@ -5,6 +5,7 @@ the Messages scripting bridge: synthetic accounts and chats only, nothing reache
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -96,12 +97,22 @@ def messages(tmp_path, monkeypatch):
         pytest.skip("node is needed to run the fixed JXA programs under the Messages double")
     fake = FakeMessages(tmp_path)
     monkeypatch.setattr(ms, "osascript", fake)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # the session's transcript lives here
+    monkeypatch.setenv("SYNTHESIS_SESSION", "S-imessage")
     return fake
 
 
 def approve(result: dict) -> None:
+    """The principal types the code; the harness records it in the session's transcript, and the prompt hook
+    grants it. The guard uses a grant only when that transcript shows the principal's own prompt."""
     assert result["status"] == "needs-approval", result
-    code = re.search(r"approve ([a-z0-9]{6})", result["reason"]).group(1)
+    code = re.search(r"\bcode ([a-z0-9]{6})", result["reason"]).group(1)
+    record = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "-work" / "S-imessage.jsonl"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    when = (datetime.now(timezone.utc) + timedelta(milliseconds=1)).isoformat()
+    with record.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"type": "user", "timestamp": when, "message": {"role": "user",
+                                                                                "content": f"please approve {code}"}}) + "\n")
     from synthesis import approvals
     assert approvals.grant_from_prompt(f"please approve {code}")
 

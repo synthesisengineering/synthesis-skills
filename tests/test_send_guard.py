@@ -25,8 +25,10 @@ EMAIL = {"to": ["a@example.com"], "cc": ["b@example.com"], "bcc": ["c@example.co
          "replyToMessageId": "18c0ffee", "attachments": [{"filename": "plan.pdf", "content": "UEsDBA=="}]}
 
 
-def _approve(reason):
-    return approvals.grant_from_prompt("approve " + re.search(r"approve ([a-z0-9]{6})", reason).group(1))
+@pytest.fixture(autouse=True)
+def _principal(principal):
+    global _approve
+    _approve = principal
 
 
 def test_positive_controls_a_real_signed_message_passes_and_a_known_bad_one_blocks():

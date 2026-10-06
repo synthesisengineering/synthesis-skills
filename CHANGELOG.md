@@ -18,7 +18,9 @@ running on Apple's Python 3.9:
   current state, the session's own autopilot run and one ritual line, including
   after compaction.
 - Message sends wait for the principal to type `approve <code>`; the approval binds
-  the whole call and is used once. Calendar, mail and drive-share calls are checked
+  the whole call and is used once, and only when the harness's own transcript shows
+  the principal typing it. The shell guard refuses commands that carry a pending code,
+  run the hook by hand, or write into v5 state or a harness's transcripts. Calendar, mail and drive-share calls are checked
   against the account the workspace uses, before any approval.
 - Deploys need approval of the exact command; future or changed publish dates are
   refused, and a second deploy of the same site within 45 minutes needs its own

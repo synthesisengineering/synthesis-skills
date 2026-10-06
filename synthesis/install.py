@@ -15,7 +15,6 @@ recording the value it replaces; uninstall restores that value unless the user
 changed it since, and removes only files install wrote that are still unedited.
 """
 
-import argparse
 import hashlib
 import json
 import os
@@ -27,6 +26,8 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from synthesis import paths  # noqa: E402
 
 HOOK_SCRIPT = """#!/bin/sh
 # Stable entry for every synthesis hook. Its text never changes between releases.
@@ -49,7 +50,6 @@ PYTHONPATH="$d/current" exec python3 -m synthesis "$@"
 
 
 def _home() -> Path:
-    from synthesis import paths
     return paths.home()
 
 
@@ -157,10 +157,7 @@ def _sha(text: str) -> str:
 
 
 def _registrations(home: Path) -> dict:
-    try:
-        return json.loads((home / "registrations.json").read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
-        return {}
+    return paths.read_json(home / "registrations.json")
 
 
 def register_git_hooks(home: Path = None) -> str:
@@ -221,25 +218,6 @@ def uninstall(home: Path = None, dry_run: bool = False) -> list:
     return report
 
 
-def main(argv):
-    parser = argparse.ArgumentParser(prog="install.py", description="Install or remove the v5 runtime.")
-    parser.add_argument("plugin_root", nargs="?", default=str(Path(__file__).resolve().parents[1]),
-                        help="plugin folder to install from, or `uninstall`")
-    parser.add_argument("--git-hooks", action="store_true", help="also point the global core.hooksPath at the commit check")
-    parser.add_argument("--dry-run", action="store_true", help="uninstall: report without changing anything")
-    args = parser.parse_args(argv[1:])
-    try:
-        if args.plugin_root == "uninstall":
-            print("\n".join(uninstall(dry_run=args.dry_run)))
-            return 0
-        print(install(Path(args.plugin_root)))
-        if args.git_hooks:
-            print(register_git_hooks())
-    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        print(f"install failed: {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists
+    from synthesis import cli
+    sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", *sys.argv[1:]]))

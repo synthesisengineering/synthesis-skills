@@ -56,8 +56,10 @@ def _push(site, config=None, cwd=None):
     return guards.check("Bash", {"command": f"git -C {site} push origin main"}, config, cwd=str(cwd or site.parent / "elsewhere"))
 
 
-def _approve(reason):
-    return approvals.grant_from_prompt("approve " + re.search(r"approve ([a-z0-9]{6})", reason).group(1))
+@pytest.fixture(autouse=True)
+def _principal(principal):
+    global _approve
+    _approve = principal
 
 
 # --- which command deploys which site ----------------------------------------------------------

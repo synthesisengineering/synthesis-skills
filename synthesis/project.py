@@ -292,7 +292,7 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
     if warnings:
         lines += ["", "Before working:"] + [f"- {w}" if not w.startswith("  ") else w for w in warnings]
     if session_id:
-        board.touch(session_id, project=pid, harness=paths.harness())
+        board.touch(session_id, project=pid, harness=paths.harness(), briefed=pid)  # the brief is in this text
     return "\n".join(lines)
 
 

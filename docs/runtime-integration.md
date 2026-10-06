@@ -1,8 +1,10 @@
 # Runtime contract
 
 What a harness adapter must provide for the synthesis runtime to work in it.
-Claude Code, Codex and Muse meet this contract today; an adapter for another
-harness meets the same one. The code it describes is `hooks/hooks.json`,
+Claude Code and Codex meet this contract, and Muse meets it with the gaps stated
+under [Muse](#muse); an adapter for another harness meets the same one. The M5
+sandbox run of 2026-10-05 (Claude Code 2.1.288, Codex 0.160.0, Muse 1.4.3) is the
+evidence for what this page says about each harness. The code it describes is `hooks/hooks.json`,
 `.muse-plugin/`, `synthesis/hook.py` and `synthesis/install.py`.
 
 ## Skills
@@ -44,7 +46,7 @@ it differs from the current one. A failed self-update never blocks the session;
 | Harness event | Argument | Timeout | Registered for |
 |---|---|---|---|
 | SessionStart | `session-start` | 10 s | every start, with no matcher, so it also fires after compaction where the harness supports that |
-| UserPromptSubmit | `user-prompt-submit` | 5 s | every prompt |
+| UserPromptSubmit | `user-prompt-submit` | 5 s | every prompt; it also briefs a session whose project changed since its last brief |
 | PreToolUse | `pre-tool-use` | 5 s | shell tools, and MCP tools whose names send, draft, reply, forward, schedule, change calendar events, set focus time or out-of-office, trash mail, or share files |
 | Stop | `stop` | 5 s | every turn end |
 
@@ -61,18 +63,25 @@ Each event reads one JSON object on stdin. Missing fields are tolerated.
 
 | Field | Events | Used for |
 |---|---|---|
-| `session_id` | all | The session's identity on the board. If absent, the hook reads `SYNTHESIS_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or `MUSE_SESSION_ID` from the environment. |
+| `session_id` | all | The session's identity on the board. If absent, the hook reads `SYNTHESIS_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or `MUSE_SESSION_ID` from the environment. Without `transcript_path`, it also finds the session's transcript (see [Approvals](#approvals)). |
+| `transcript_path` | SessionStart, PreToolUse, Stop | Which harness is running (from where the file lives); the record an approval is checked against; the record a reply's quotes must appear in. |
 | `cwd` | SessionStart, PreToolUse | The session's working directory: the workspace for account routing, the directory a shell command starts in, and the ritual line's workspace. |
 | `prompt` (or `user_prompt`) | UserPromptSubmit | The text the person typed, scanned for `approve <code>`. |
 | `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. |
-| `last_assistant_message`, `transcript_path` | Stop | The reply to check, and the session record its quotes must appear in. |
+| `last_assistant_message` | Stop | The reply to check. |
 | `stop_hook_active` | Stop | Whether this turn end follows a hook's earlier request to continue. |
 | `background_tasks`, `session_crons` | Stop | Whether something already scheduled will wake an autopilot session. |
 
-The harness is identified from the environment (`CLAUDECODE` or
+The harness is identified first from where its transcript lives: under
+`~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`) it is Claude Code, under
+`$CODEX_HOME/sessions` or in a file named `rollout-*` it is Codex, under
+`$XDG_DATA_HOME/muse/sessions` (default `~/.local/share`) it is Muse. Without a
+transcript path it comes from the environment (`CLAUDECODE` or
 `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, `MUSE_SESSION_ID` or
-`MUSE_PLUGIN_ROOT`). An adapter for a new harness adds its variables to
-`synthesis/paths.py`.
+`MUSE_PLUGIN_ROOT`). Codex sets `CODEX_THREAD_ID` in its shell tool but not in hook
+processes, which is why every Codex session once showed as `unknown` (M5 defect 2).
+A session's recorded harness is never overwritten with `unknown`. An adapter for a
+new harness adds its transcript folder and variables to `synthesis/paths.py`.
 
 ## What the hook returns
 
@@ -90,21 +99,99 @@ translates these four shapes:
   `{"decision": "block", "reason": "<what to do>"}`. A note for the person
   without blocking: `{"systemMessage": "<text>"}`.
 
+Claude Code 2.1.288 adds every Stop-hook block reason to its list of hook errors,
+whether the hook blocks with `{"decision": "block"}` or with exit code 2, and shows
+"Stop hook error occurred". The label comes from Claude Code, not from this output:
+the documented block shape is the one used, the reply is sent back as intended, and
+the label is harmless. Only a Stop `additionalContext` avoids it, and whether that
+continues the turn depends on an internal Claude Code setting, so it is not used.
+
+No hook text holds the approval phrase itself: every message rewrites "approve" followed
+by a code in the shape the guards issue as "approve code <code>", so a harness that
+records hook text as a prompt can never turn it into an approval. Ordinary words after
+"approve" are left alone, because every issued code starts with a digit.
+
 ## Approvals
 
-When a guard holds a send or a deploy, it files a request whose six-character
-code comes from a SHA-256 digest of the exact call (for a send, the tool and its
-whole input; for a deploy, the command and, inside a git checkout, the commit at
-HEAD). The block message tells the agent to show the person the exact text or
-command and ask them to reply `approve <code>`. The UserPromptSubmit hook finds the code in
-the person's prompt and grants the request; the next identical call consumes the
-grant once. Requests and grants expire after 15 minutes. `synthesis approvals`
-lists what is waiting.
+When a guard holds a send or a deploy, it files a request under a random
+six-character code (a digit, then five hexadecimal characters), keyed to a SHA-256 digest of the exact call (for a send, the
+tool and its whole input; for a deploy, the command and, inside a git checkout, the
+commit at HEAD). A retry of the same call keeps its code; nobody can know a code
+before its request exists. The block message tells the agent to show the person the
+exact text or command and to ask them to type approve followed by the code; it never
+prints the two together. The UserPromptSubmit hook finds the code in the person's
+prompt and records a grant. The next identical call spends the grant once, and only if
+the harness's own transcript of the session shows the person typing approve and that
+code after the request was filed. Requests and grants expire after 15 minutes.
+`synthesis approvals` lists what is waiting.
 
-This works only because the agent cannot write the person's prompt. An adapter
-must pass UserPromptSubmit the text the person typed, never text the agent or a
-tool produced; a harness that cannot guarantee that cannot host the send or
-deploy guards, and the adapter must say so.
+The person's prompt is the only source of an approval (R3.0). The agent runs as the
+same OS user as the hooks, so a grant file proves nothing on its own: in the M5
+sandbox an agent granted its own send by piping a made-up prompt into
+`synthesis-hook user-prompt-submit`, and it could as well have written the grant file
+(M5 defect 1). That is why a grant is checked against the harness's record when it is
+spent.
+
+### What counts as the person's prompt
+
+| Harness | Record | Counts | Never counts |
+|---|---|---|---|
+| Claude Code | `transcript_path` (JSONL) | `user` entries, and `queued_command` prompt attachments (typed while the agent worked), whose `origin`, when present, is `human` | tool results; `isMeta` entries (Stop-hook feedback, messages from other sessions); `isSidechain` entries (subagents); compaction summaries; hook attachments; the agent's own text |
+| Codex | `transcript_path` (the rollout JSONL) | `UserMessage` items, and `user_message` events in older rollouts | function-call output; command items; developer messages (hook context); `HookPrompt` items and `<hook_prompt>` messages (Stop send-backs) |
+| Muse | `transcript_path`, else the session log found by its id under `$XDG_DATA_HOME/muse/sessions/` | `runtime.user_intent.accepted` chat intents on the main surface, from this session | runtime-hook context blocks; tool records; intents from another session |
+
+Inside a counted prompt, text the harness wraps in a tag block (`<system-reminder>`,
+`<task-notification>`, `<bash-stdout>`, pasted content) does not count. A script run
+from a harness's shell (the iMessage sender) has no hook payload, so it finds the
+session's transcript by the session id its shell carries. When there is no
+transcript, when it cannot be read, or when it does not show the prompt, the grant is
+spent unused, the call is blocked with that reason, and the request is filed again. A
+harness that gives no transcript cannot carry approved sends or deploys until it does.
+
+### The layers, and what each stops
+
+1. **The transcript check where the grant is spent** stops a grant the agent made by
+   feeding the prompt hook a made-up prompt or by writing the grant file, and stops
+   tool output, hook text or another session's message that carries the code.
+2. **The shell guard** refuses a command that carries a pending code (for example
+   `codex queue <thread> "approve <code>"`, or `claude -p --resume <id>` with it), that
+   runs the stable hook or `synthesis/hook.py` for any event, or that writes into the v5
+   state folder or a harness's transcript folder: redirects, the destination of `cp`,
+   `mv`, `ln`, `install` and `rsync`, `tee`, `touch`, `truncate`, `mkdir`, `rm`,
+   `unlink`, `chmod`, `sed -i` and `perl -i`, and interpreter scripts given inline or on
+   stdin that write there.
+   Reading a transcript, and working on the hook's source, stay allowed.
+3. **No hook text holds the phrase** (see What the hook returns).
+4. **Random codes** mean a code cannot be planted before its request exists, and a
+   later identical call never reuses the code an earlier approval answered.
+
+### What remains open
+
+No local file is secret from an agent running as the person's own OS user, so these
+stay open, and no hook running as that same user can close them:
+
+- An agent that deliberately forges its harness's transcript, writing a line shaped
+  like the person's prompt, defeats the transcript check. The shell guard refuses the
+  natural routes; a command that builds the path or the code at run time (a variable,
+  an encoding, a script file written first), a file-edit tool (edits are not guarded,
+  for latency), or a program the agent writes and runs gets through.
+- A prompt another process injects into the session through the harness's own CLI
+  (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
+  prompt. The shell guard refuses such a command when it carries a pending code; one
+  that builds the code at run time is not caught.
+- A grant written with a file-edit tool can reuse a code the person typed for the
+  identical call within the last 15 minutes: a second, identical send or deploy.
+- The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+
+Closing these needs isolation the hooks do not have: the agent under its own OS user
+or sandbox, or approvals signed by something outside the agent's reach.
+
+### When the harness then refuses the call
+
+The grant is spent at PreToolUse, before the harness's own permission prompt or MCP
+approval policy. If the harness or the person then declines the call, the approval is
+gone, and the next identical call asks again (M5 finding 4: Codex with
+`approval_policy = never`). Single use is kept because it fails safe.
 
 ## Compaction
 
@@ -112,8 +199,36 @@ The SessionStart output is the project brief: local time, the active project's
 `PRIME-DIRECTIVE.md` and current-state block, the session's autopilot run, one
 ritual line, and the unread-message count. Re-injecting it after compaction is
 what lets a long session keep its directive. Claude Code and Codex rerun
-SessionStart after compacting. An adapter for a harness that does not must say
-so; a session there recovers with `synthesis brief`.
+SessionStart after compacting (M5: Claude Code's `/compact`, Codex's automatic
+compaction). An adapter for a harness that does not must say so; a session there
+recovers with `synthesis brief`.
+
+A session that chooses its project after it started (`synthesis use`) gets the brief
+at its next prompt, once, in every harness: UserPromptSubmit briefs a session whose
+project differs from the one it was last briefed on. `synthesis resume` prints the
+brief itself, so it counts as briefed.
+
+## Muse
+
+What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
+
+- **SessionStart runs only when a session is created**, not when `muse exec
+  --session-id <id>` continues it: across seven continued turns in two sessions it
+  ran once per new session. A new session has no project until `synthesis use` runs
+  inside it, so the SessionStart brief carries none; the brief arrives at the next
+  prompt instead (above). A continued session after a long gap gets no fresh local
+  time or ritual line until the next session.
+- **PreToolUse runs for every tool**, because Muse has no matcher; an unguarded call
+  costs about 29 ms.
+- **The approval check** reads Muse's session log. Whether Muse's hook payload names
+  it in `transcript_path` was not observed; without it the hook finds the log by the
+  session id. The guard ran through Muse's own hook runner, not from a model's tool
+  call, because the offline provider cannot call tools.
+- **Not tested:** Muse compaction (the offline provider cannot compact, so whether
+  Muse reruns SessionStart after compacting is unknown), resume from Muse's TUI (it
+  needs a terminal that answers cursor queries), and `muse session-message`.
+
+
 
 ## Failure behavior
 
@@ -144,8 +259,11 @@ An adapter for another harness provides:
    with an uninstall path;
 2. hook registration that calls the stable hook path for all four events, in
    the harness's own format;
-3. the payload fields above, or a translation from the harness's own;
-4. a session-id and harness variable in `synthesis/paths.py`;
+3. the payload fields above, or a translation from the harness's own, including a
+   transcript in which the person's own prompts can be told apart from tool output,
+   hook text and other sessions' messages, read in `synthesis/approvals.py`; without
+   it the harness cannot carry approved sends or deploys;
+4. its transcript folder and a session-id and harness variable in `synthesis/paths.py`;
 5. a `synthesis doctor` check that reads the harness's installed plugin through
    its own read-only listing command and confirms the hooks are wired;
 6. tests for each of these, and a stated list of what the harness cannot do.

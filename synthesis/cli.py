@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -126,7 +127,7 @@ def cmd_install(args) -> int:
         print(install.install(plugin))
         if args.git_hooks:
             print(install.register_git_hooks())
-    except (OSError, RuntimeError) as exc:
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"install failed: {exc}", file=sys.stderr)
         return 1
     return 0

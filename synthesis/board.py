@@ -44,6 +44,7 @@ class Session:
     cwd: str = ""
     claims: list[str] = field(default_factory=list)
     ceded: list[str] = field(default_factory=list)  # claims another session took over while this one was stale
+    briefed: str = ""  # the project whose brief this session was last given
     started: float = 0.0
     seen: float = 0.0
     schema: int = SCHEMA
@@ -72,23 +73,13 @@ def _session_file(session_id: str) -> Path:
     return paths.state() / "sessions" / f"{safe}.json"
 
 
-def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
-
-
 def load(session_id: str) -> Session | None:
-    try:
-        data = json.loads(_session_file(session_id).read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-    return Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__})
+    data = paths.read_json(_session_file(session_id))
+    return Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__}) if data else None
 
 
 def save(session: Session) -> None:
-    _write_json(_session_file(session.session), asdict(session))
+    paths.write_json(_session_file(session.session), asdict(session))
 
 
 def sessions() -> list[Session]:
@@ -106,11 +97,11 @@ def sessions() -> list[Session]:
 
 
 def touch(session_id: str, **updates) -> Session:
-    """Register or refresh a session; updates only the given fields."""
+    """Register or refresh a session; updates only the given fields, and never forgets a known harness."""
     now = time.time()
     session = load(session_id) or Session(session=session_id, started=now)
     for key, value in updates.items():
-        if value is not None:
+        if value is not None and not (key == "harness" and value == "unknown" and session.harness):
             setattr(session, key, value)
     session.seen = now
     save(session)
@@ -253,7 +244,7 @@ def _box(address: str) -> Path:
 
 def _post(box: str, data: dict) -> Path:
     path = _box(box) / f"{time.time_ns()}-{os.getpid()}.json"
-    _write_json(path, {**data, "at": time.time()})
+    paths.write_json(path, {**data, "at": time.time()})
     return path
 
 
@@ -285,14 +276,11 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
     target = resolve(to, exclude=sender)
     digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
     mark = paths.state() / "sent" / _session_file(sender).stem / digest
-    try:
-        earlier = json.loads(mark.read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
-        earlier = {}
+    earlier = paths.read_json(mark)
     if earlier.get("to", target.session) != target.session and time.time() - earlier.get("at", 0) < BROADCAST_SECONDS:
         raise AddressError(f"the same text already went to {earlier['to']}; sending it to {target.session} "
                            "too is a broadcast. Address the project with a durable message instead.")
-    _write_json(mark, {"to": target.session, "at": time.time()})
+    paths.write_json(mark, {"to": target.session, "at": time.time()})
     return _post(target.session, {"to": to, "session": target.session, "from": sender, "text": text})
 
 

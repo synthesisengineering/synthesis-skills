@@ -187,17 +187,18 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
     return problems
 
 
-def check_send(tool: str, tool_input: dict, config: dict) -> str | None:
+def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
+    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none)."""
     problems = message_problems(tool, tool_input, config)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
     subject = {"tool": tool, "input": tool_input}
-    if approvals.consume("send", subject):
+    if approvals.consume("send", subject, session):
         return None
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request("send", subject, f"{tool}: {text[:120]}")
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to reply \"approve {code}\". Then make this identical call again.")
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again.")
 
 
 # --- account routing (R3.6) ---------------------------------------------------------------------
@@ -229,10 +230,6 @@ def _address(value: str) -> str:
     return (found.group(1) if found else value).strip().lower()
 
 
-def _inside(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
-
-
 def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | None:
     """Config: {"account_routing": {"default_account": "<who account-less connectors act as>",
     "workspaces": {"<root>": {"account": "<address>", "label": "<name>", "aliases": [...]}}}}."""
@@ -245,7 +242,7 @@ def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | 
     here, best = os.path.realpath(cwd), None
     for root, meta in workspaces.items():
         real = os.path.realpath(os.path.expanduser(root))
-        if _inside(here, real) and (best is None or len(real) > len(best[0])):
+        if paths.inside(here, real) and (best is None or len(real) > len(best[0])):
             best = (real, meta)
     if best is None:
         return None
@@ -755,7 +752,7 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
             targets.append((where, "HEAD"))  # a variable names the repository: it may be a site
             continue
         real, main = os.path.realpath(where), _checkout(where)[1]
-        if any(_inside(p, r) for r in repos for p in (real, main) if p):
+        if any(paths.inside(p, r) for r in repos for p in (real, main) if p):
             targets.append((real, "HEAD"))
     return targets
 
@@ -765,7 +762,7 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
-def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | None:
+def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
     found = _targets(command, config, cwd)
     pushes = [_checkout(d)[1] or d for d, rev in found if rev and not re.search(r"[$`]", d)]
@@ -800,7 +797,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | No
     kind = "deploy-rapid" if recent else "deploy"
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
-    if approvals.consume(kind, subject) or (kind == "deploy" and approvals.consume("deploy-rapid", subject)):
+    if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
         for identity in identities:
             record = _last_deploy(identity)
             record.parent.mkdir(parents=True, exist_ok=True)
@@ -812,12 +809,12 @@ def check_deploy(command: str, config: dict, cwd: str | None = None) -> str | No
         return (f"This is a second deploy of {name} within {REDEPLOY_WINDOW // 60} minutes of the last one "
                 f"({time.strftime('%H:%M', time.localtime(last))}). A rushed follow-up fix is the riskiest publish: "
                 "put the options to the principal first. Only if they want it now, show them this exact command "
-                f"and ask them to reply \"approve {code}\" for this rapid redeploy. Then run the identical command again.")
+                f"and ask them to type {approvals.how(code)} for this rapid redeploy. Then run the identical command again.")
     code = approvals.request(kind, subject, f"deploy: {command[:160]}")
     unknown = [d for d, _ in targets if re.search(r"[$`]", d)]
     why = (f"This push names its repository through a variable ({unknown[0]}), so it may publish a site that "
            "deploys on push." if unknown else "This publishes to production.")
-    return (f"{why} Show the principal this exact command and ask them to reply \"approve {code}\". "
+    return (f"{why} Show the principal this exact command and ask them to type {approvals.how(code)}. "
             "Then run the identical command again.")
 
 
@@ -852,6 +849,46 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
     return None
 
 
+# --- approvals come only from the principal's own prompt (R3.0) ------------------------------------
+# The agent runs as the hooks' own OS user. In the M5 sandbox (2026-10-05) it granted its own send by
+# piping a made-up prompt into the hook; it could as well write a grant or a transcript line. A grant
+# is checked against the harness's transcript when it is spent (approvals.py); this refuses the shell
+# routes to forging one. A route assembled at run time is beyond a text check: docs/runtime-integration.md.
+
+COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync"})  # these write only their last argument
+WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rm", "unlink", "chmod"}
+SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
+SCRIPTED_WRITE = r"write|dump|rename|replace|unlink|remove|rmtree|copy|move|symlink|mkdir|touch|['\"][wax]b?\+?['\"]"
+HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
+
+
+def check_self_grant(command: str, cwd: str) -> str | None:
+    codes, home = approvals.pending(), os.path.expanduser("~")
+    text = command.replace("${HOME}", home).replace("$HOME", home)
+    raw = [str(r) for r in [paths.state(), *paths.transcript_roots().values()]]
+    names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text]
+    targets = [t.strip("'\"") for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names else []
+    why, wheres = "", {cwd}
+    if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
+        why = "carries a pending approval code"
+    for words, where in _parse(command, cwd)[0]:
+        head, own = os.path.basename(words[0]), " ".join(words[1:])
+        wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
+        if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and any(HOOK_RUN.search(w) for w in words[1:])):
+            why = why or "runs the synthesis hook, which only the harness may run"
+        if names and (head in WRITERS or (head in ("sed", "perl") and "-i" in own)):
+            targets += [os.path.join(where, os.path.expanduser(os.path.expandvars(w)))
+                        for w in (words[-1:] if head in COPIERS else words[1:])]
+        script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
+        if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
+            why = why or "runs a script that writes where the synthesis state or a harness's transcripts live"
+    real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
+        why = "writes into the synthesis state folder or a harness's session transcripts"
+    return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
+            "what needs approving and ask them to answer in their own message.") if why else None
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
 SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "local_shell", "run_shell_command"}  # "bash": Muse
@@ -874,8 +911,9 @@ def guarded(tool: str, tool_input: dict | None = None) -> bool:
     return tool in SHELL_TOOLS or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {})
 
 
-def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None) -> str | None:
-    """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's."""
+def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
+    """cwd is the session's working directory (the hook payload's `cwd`); defaults to this process's.
+    session is the hook payload, which names the transcript an approval is checked against."""
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
@@ -883,11 +921,12 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None) -> 
             cwd = os.path.expanduser("~")
     if tool in SHELL_TOOLS:
         command = shell_command(tool_input)
-        return check_destructive(command, config, cwd) or check_deploy(command, config, cwd)
+        return (check_self_grant(command, cwd) or check_destructive(command, config, cwd)
+                or check_deploy(command, config, cwd, session))
     if routed(tool, tool_input):
         reason = check_account(tool, tool_input, config, cwd)
         if reason:
             return reason  # before the send approval, so no approval is spent on the wrong account
     if _sends(tool, tool_input, config):
-        return check_send(tool, tool_input, config)
+        return check_send(tool, tool_input, config, session)
     return None

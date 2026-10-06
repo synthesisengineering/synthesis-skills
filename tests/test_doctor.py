@@ -688,10 +688,19 @@ def test_literal_home_paths_in_synced_config_fail(tmp_path, monkeypatch):
     config.write_text(json.dumps({"knowledge_roots": ["~/workspaces/x/ai-knowledge-x"]}))
     assert doctor.check_home_paths([config]).status == "ok"
     config.write_text(json.dumps({"knowledge_roots": [str(tmp_path / "h" / "workspaces")]}) + "\n")
-    assert doctor.check_home_paths([config]).status == "fail"
-    config.write_text('{"root": "/Us' + 'ers/someone/workspaces"}\n')
     check = doctor.check_home_paths([config])
     assert check.status == "fail" and "config.json:1" in check.detail
+    config.write_text(json.dumps({"root": str(tmp_path / "h")}) + "\n")
+    assert doctor.check_home_paths([config]).status == "fail"
+
+
+def test_paths_outside_the_current_home_are_not_home_paths(tmp_path, monkeypatch):
+    """M5: a sandbox HOME beside the knowledge root made every /Users/ path fail, where ~ cannot be written."""
+    monkeypatch.setenv("HOME", str(tmp_path / "sandbox" / "home"))
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"knowledge_roots": [str(tmp_path / "sandbox" / "knowledge")],
+                                  "protected_roots": ["/Us" + "ers/someone/workspaces", str(tmp_path / "sandbox" / "homework")]}))
+    assert doctor.check_home_paths([config]).status == "ok"
 
 
 def test_worktrees_sessions_and_venvs_under_temporary_folders_warn(tmp_path):

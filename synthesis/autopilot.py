@@ -1,7 +1,7 @@
 """Autopilot: the turn-end check for a delegated run, and the plan reader it uses (R6).
 
 A run is one markdown plan file in the project (R6.1). `engage` records which
-plan this session owns; at turn end `check()` reads only that plan. When the
+plan this session owns; at turn end `evaluate()` reads only that plan. When the
 plan is running and the turn ended without the next step, it asks for one of
 three things: continue the next open checklist item, record a blocker and
 alert the principal, or close honestly (R6.4). It asks at most three times in a
@@ -284,19 +284,11 @@ def _pointer_file(session_id: str) -> Path:
 
 
 def _read_pointer(session_id: str) -> dict:
-    try:
-        data = json.loads(_pointer_file(session_id).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return paths.read_json(_pointer_file(session_id))
 
 
 def _write_pointer(session_id: str, data: dict) -> None:
-    path = _pointer_file(session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    paths.write_json(_pointer_file(session_id), data)
 
 
 def evaluate(payload: dict, config: dict | None = None) -> tuple[str | None, str | None]:
@@ -329,11 +321,6 @@ def _evaluate(payload: dict, config: dict) -> tuple[str | None, str | None]:
                 f"letting the session stop. Review the plan: {plan.path}")
         return None, note if streak == limit + 1 else None
     return reason, None
-
-
-def check(payload: dict, config: dict) -> str | None:
-    """Stop-hook contract shared with reply_check: a reason requests a continuation; None lets the turn end."""
-    return evaluate(payload, config)[0]
 
 
 def brief(payload: dict) -> str:

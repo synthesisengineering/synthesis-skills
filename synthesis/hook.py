@@ -1,7 +1,10 @@
 """Hook entry point for every harness: `python3 -S <plugin>/synthesis/hook.py <event>`.
 
 session-start: register the session and re-inject the active project's brief
-(also after compaction, R1.2). pre-tool-use: run the guards (R3). Each event
+(also after compaction, R1.2). user-prompt-submit: grant typed approvals, deliver
+board messages, and brief a session whose project changed since its last brief
+(Muse runs session-start only when a session is created). pre-tool-use: run the
+guards (R3). stop: check the reply and the autopilot run. Each event
 reads one JSON payload on stdin and must finish fast (R8.1), so modules load
 only for the event that needs them.
 """
@@ -15,7 +18,15 @@ if __package__ in (None, ""):  # run as a file with -S: make the package importa
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def _defuse(text):
+    """Hook text never holds the approval phrase itself, so no harness can record our words, or words an
+    agent put in a board message or a reply, as a prompt the principal typed (R3.0)."""
+    import re
+    return re.sub(r"(?i)\bapprove\s+(\d[0-9a-f]{5})\b", r"approve code \1", text)
+
+
 def _emit(event, context="", deny=""):
+    context, deny = _defuse(context), _defuse(deny)
     if deny:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": deny}}))
@@ -30,7 +41,9 @@ def session_start(payload):
     session_id = paths.session_id(payload)
     if not session_id:
         return 0
-    session = board.touch(session_id, harness=paths.harness(), cwd=payload.get("cwd") or None)
+    known = board.load(session_id)
+    session = board.touch(session_id, harness=paths.harness(payload), cwd=payload.get("cwd") or None,
+                          briefed=known.project if known else "")
     notes = [time.strftime("Local time: %A %Y-%m-%d %H:%M %Z (%z), from the session-start hook.")]
     project_dir = project.find(session.project) if session.project else None
     if project_dir:
@@ -52,7 +65,7 @@ def session_start(payload):
 
 
 def user_prompt_submit(payload):
-    """Grant approvals the principal typed, and deliver unread board messages."""
+    """Grant approvals the principal typed, brief a session whose project changed, deliver board messages."""
     from synthesis import approvals, board, paths
 
     notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(
@@ -60,6 +73,11 @@ def user_prompt_submit(payload):
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)
+        if me and me.project and me.project != me.briefed:  # after `synthesis use`, once
+            from synthesis import project
+            found = project.find(me.project)
+            notes += [project.brief(found)] if found else []
+            board.touch(session_id, briefed=me.project)
         unread = board.inbox(session_id, me.project if me else "", mark_read=True)
         for m in unread[:5]:
             notes.append(f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}")
@@ -69,7 +87,7 @@ def user_prompt_submit(payload):
 
 
 def pre_tool_use(payload):
-    from synthesis import guards, paths
+    from synthesis import approvals, guards, paths
 
     tool = str(payload.get("tool_name", ""))
     tool_input = payload.get("tool_input") or {}
@@ -80,7 +98,9 @@ def pre_tool_use(payload):
             return _emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
         return 0
     try:
-        reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None)
+        reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
+    except approvals.Unverified as exc:
+        reason = str(exc)
     except Exception as exc:  # a guard that can't decide must not wave the call through
         reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
     return _emit("PreToolUse", deny=reason) if reason else 0
@@ -102,10 +122,7 @@ def stop(payload):
         marker = _last_block_file(payload)
         last = ""
         if marker is not None and payload.get("stop_hook_active"):
-            try:
-                last = json.loads(marker.read_text(encoding="utf-8")).get("by", "")
-            except (OSError, ValueError):
-                last = ""
+            last = paths.read_json(marker).get("by", "")
         reason, note, by = None, None, ""
         if last != "reply":  # the reply this check already sent back is never sent back twice
             reason = reply_check.check({**payload, "stop_hook_active": False}, config)
@@ -119,9 +136,9 @@ def stop(payload):
     except Exception:
         return 0  # fail open: a turn-end check that fails closed loops forever
     if reason:
-        print(json.dumps({"decision": "block", "reason": reason}))
+        print(json.dumps({"decision": "block", "reason": _defuse(reason)}))
     elif note:
-        print(json.dumps({"systemMessage": note}))
+        print(json.dumps({"systemMessage": _defuse(note)}))
     return 0
 
 

@@ -33,12 +33,20 @@ loaded. This guard gates the act.
 
 ## Approval
 
-A blocked deploy files a request whose code the principal types as `approve <code>`. The
-approval binds the exact command text and, for pushes, the commit each target's HEAD is
-at: HEAD moving before the run voids it. It lets one run through within 15 minutes. A
-command that deploys the same site twice (`git push && git push`) is refused outright:
-one approval covers one publish. `synthesis approvals` lists
-what is waiting. There is no command to approve: only the principal's own prompt grants.
+A blocked deploy files a request under a random code, which the principal types as
+`approve <code>`; the block message says "approve followed by the code", never the two
+together. The approval binds the exact command text and, for pushes, the commit each
+target's HEAD is at: HEAD moving before the run voids it. It lets one run through within
+15 minutes. A command that deploys the same site twice (`git push && git push`) is
+refused outright: one approval covers one publish. `synthesis approvals` lists what is
+waiting. There is no command to approve: only the principal's own prompt grants, and the
+grant is used only when the harness's transcript shows that prompt (M5, 2026-10-05: an
+agent once granted its own send by piping a made-up prompt into the hook). The shell
+guard refuses a command that carries a pending code, runs the synthesis hook by hand, or
+writes into the synthesis state folder or a harness's transcripts; what stays open is in
+the plugin's `docs/runtime-integration.md` (Approvals). The approval is spent when the
+guard lets the command through, so if the harness then declines it, the next identical
+run asks again.
 
 ## The date rules
 

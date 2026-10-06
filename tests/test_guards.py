@@ -15,13 +15,13 @@ MESSAGE = {"channel_id": "C1", "message": "The release is out."}
 
 
 def _code(reason):
-    return re.search(r'approve ([a-z0-9]{6})', reason).group(1)
+    return re.search(r'code ([a-z0-9]{6})', reason).group(1)
 
 
-def test_send_is_blocked_until_the_principal_types_its_code_and_then_allowed_once():
+def test_send_is_blocked_until_the_principal_types_its_code_and_then_allowed_once(principal):
     reason = guards.check(SLACK, MESSAGE, {})
     assert "approval" in reason
-    assert approvals.grant_from_prompt(f"yes, approve {_code(reason)}") == [f"{SLACK}: C1 The release is out."]
+    assert principal(reason, "yes, approve {code}") == [f"{SLACK}: C1 The release is out."]
     assert guards.check(SLACK, {**MESSAGE, "message": "The release is out!"}, {}) is not None
     assert guards.check(SLACK, MESSAGE, {}) is None
     assert guards.check(SLACK, MESSAGE, {}) is not None  # spent
@@ -38,8 +38,8 @@ def test_the_cli_offers_no_way_to_approve():
     assert "approve" not in cli.parser().format_help().replace("approvals", "")
 
 
-def test_expired_approval_does_not_open_the_gate(monkeypatch):
-    approvals.grant_from_prompt("approve " + _code(guards.check(SLACK, MESSAGE, {})))
+def test_expired_approval_does_not_open_the_gate(monkeypatch, principal):
+    principal(guards.check(SLACK, MESSAGE, {}))
     monkeypatch.setattr(approvals, "TTL_SECONDS", -1)
     assert guards.check(SLACK, MESSAGE, {}) is not None
 
@@ -61,11 +61,11 @@ def test_reads_are_never_guarded(tool):
     assert guards.check(tool, {"query": "x"}, {}) is None
 
 
-def test_deploy_needs_approval_of_that_exact_command():
+def test_deploy_needs_approval_of_that_exact_command(principal):
     command = "cd ~/site && bash build.sh && wrangler pages deploy dist --project-name=site"
     reason = guards.check("Bash", {"command": command}, {})
     assert "production" in reason
-    approvals.grant_from_prompt("approve " + _code(reason))
+    principal(reason)
     assert guards.check("Bash", {"command": command}, {}) is None
     assert guards.check("Bash", {"command": command}, {}) is not None
 
@@ -136,9 +136,9 @@ def test_unreadable_config_blocks_routed_calendar_and_mail_calls(isolated_home):
     assert json.loads(out.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
-def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkeypatch):
+def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkeypatch, principal):
     reason = guards.check(SLACK, MESSAGE, {})
-    approvals.grant_from_prompt(f"approve {_code(reason)}")
+    principal(reason)
     assert guards.check(SLACK, MESSAGE, {}) is None
     assert list((isolated_home / "state" / "approvals").iterdir()) == []
     guards.check(SLACK, {**MESSAGE, "message": "another"}, {})
@@ -147,5 +147,5 @@ def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkey
     old = time.time() - approvals.TTL_SECONDS - 60
     for f in (isolated_home / "state" / "approval-requests").iterdir():
         os.utime(f, (old, old))
-    approvals.request("send", "fresh", "fresh")
-    assert [f.stem for f in (isolated_home / "state" / "approval-requests").iterdir()] == [approvals.digest("send", "fresh")[:6]]
+    code = approvals.request("send", "fresh", "fresh")
+    assert [f.stem for f in (isolated_home / "state" / "approval-requests").iterdir()] == [code]

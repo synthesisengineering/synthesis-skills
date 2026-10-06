@@ -411,10 +411,7 @@ def catalog_cost(skills: list, context_window: int | None) -> tuple:
 
 
 def _context_window(config: dict, codex_home: Path) -> int | None:
-    try:
-        models = json.loads((codex_home / "models_cache.json").read_text(encoding="utf-8")).get("models") or []
-    except (OSError, ValueError, AttributeError):
-        return None
+    models = paths.read_json(codex_home / "models_cache.json").get("models") or []
     return next((m["context_window"] for m in models if isinstance(m, dict) and m.get("slug") == config.get("model")
                  and isinstance(m.get("context_window"), int)), None)
 
@@ -491,7 +488,8 @@ def check_instruction_adapters(repos: list) -> Check:
 
 
 def check_home_paths(files: list) -> Check:
-    """Synced config must say ~ or $HOME: a literal home path breaks on the next Mac."""
+    """Synced config must say ~ or $HOME for the current home: a literal one breaks on the next Mac. A path
+    outside the current home (another user's, or a sandbox's beside it) cannot be written with ~."""
     home, hits = str(Path.home()), []
     for f in files:
         try:
@@ -499,7 +497,7 @@ def check_home_paths(files: list) -> Check:
         except OSError:
             continue
         hits += [f"{_short(f)}:{n}" for n, line in enumerate(lines, 1)
-                 if re.search(r"(^|[\s\"'=:(\[{,])(" + "|".join(map(re.escape, (home + "/", "/Users/", "/home/"))) + ")", line)]
+                 if re.search(r"(^|[\s\"'=:(\[{,])" + re.escape(home) + r"(?=[/\"'\s,)\]}]|$)", line)]
     if hits:
         return Check("fail", "home paths", "literal home paths in synced config (write ~ instead): " + ", ".join(hits[:5]))
     return Check("ok", "home paths", "synced config uses ~ for home paths")
@@ -839,12 +837,9 @@ def muse_entry(inspect) -> dict | None:
     return entry
 
 
-def _hooks_file(root: Path | None):
-    """The parsed hooks/hooks.json of an installed Claude or Codex plugin, or None."""
-    try:
-        return json.loads((root / "hooks" / "hooks.json").read_text(encoding="utf-8")) if root else None
-    except (OSError, ValueError):
-        return None
+def _hooks_file(root: Path | None) -> dict:
+    """The parsed hooks/hooks.json of an installed Claude or Codex plugin; {} when there is none."""
+    return paths.read_json(root / "hooks" / "hooks.json") if root else {}
 
 
 def _commands(hooks) -> list:

@@ -7,6 +7,7 @@
 - [Before you ask for approval: the checklist](#before-you-ask-for-approval-the-checklist)
 - [What the guard checks, and the words it blocks with](#what-the-guard-checks-and-the-words-it-blocks-with)
 - [Email transports and their fields](#email-transports-and-their-fields)
+- [Approval: only the principal's own prompt](#approval-only-the-principals-own-prompt)
 - [Known limits — stated, not hidden](#known-limits--stated-not-hidden)
 - [Related](#related)
 
@@ -110,6 +111,35 @@ A `send_message` tool counts as email when it carries `to`, `cc`, `bcc`, `subjec
 `htmlBody` or `body_format`; one that carries a `session_id` is a session-to-session
 message and not correspondence at all.
 
+## Approval: only the principal's own prompt
+
+A clean message is blocked with `Sending needs the principal's approval of this exact
+message. Show them the exact text and recipient and ask them to type approve followed by
+the code <code>. Then make this identical call again.` The message never prints
+"approve" and the code together, and no hook text does, so nothing an agent or a tool
+echoes can stand in for the principal's words.
+
+The principal's prompt is the only thing that grants. On 2026-10-05 (the M5 sandbox) an
+agent granted its own send by piping a made-up prompt into the prompt hook, because the
+agent runs as the same OS user as the hooks and a grant was only a file. Now the grant is
+used only when the harness's own transcript of the session shows the principal typing
+approve and that code after the request was filed. Tool output, hook text, compaction
+summaries, subagent prompts and messages from other sessions never count. When the
+transcript does not show it, the call stays blocked with that reason and the request is
+filed again, with the code to show the principal.
+
+The shell guard refuses the natural routes to a forgery: a command carrying a pending
+code, one that runs the synthesis hook by hand, and one that writes into the synthesis
+state folder or a harness's transcripts. Never try any of them; an approval that did not
+come from the principal is not an approval.
+
+**Why a second approval is sometimes asked.** The approval is spent when the guard lets
+the call through, before the harness's own permission prompt or MCP approval policy. If
+the harness or the principal then declines the call (Codex with `approval_policy =
+never`, or a declined permission prompt), the approval is gone and the identical call
+asks again. That is deliberate: a single-use approval fails safe. Tell the principal
+why the code changed.
+
 ## Known limits — stated, not hidden
 
 - **Judgment failures pass the scan.** A condescending-but-pattern-free
@@ -121,6 +151,13 @@ message and not correspondence at all.
 - **Execution tools can invoke other transports.** The guard does not parse arbitrary shell programs or prove absence of network effects. Sending through an unapproved transport is prohibited; retain native sandbox/network controls and explicit communication authorization. Never classify a general execution tool as read-only from its name.
 - **Hook config loads at session start.** A newly wired hook protects new
   sessions; the wiring session itself must self-enforce.
+- **A same-user agent can still forge on purpose.** An agent that deliberately writes a
+  line shaped like the principal's prompt into its harness's transcript, injects a prompt
+  through the harness's own CLI with a code it assembles at run time, or rewrites the
+  runtime under `~/.synthesis/v5`, gets past checks that run as the same OS user. The
+  layers, what each stops, and what stays open are in the plugin's
+  `docs/runtime-integration.md` (Approvals). Closing that needs the agent under its own
+  OS user or sandbox.
 
 ## Related
 

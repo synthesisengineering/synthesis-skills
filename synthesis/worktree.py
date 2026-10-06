@@ -46,10 +46,6 @@ def _absolute(path: str) -> str:
     return os.path.expanduser(path)
 
 
-def _inside(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
-
-
 def _toplevel(path: str) -> str:
     """The real top of the git worktree at `path`; `path` must be that top, not a folder inside it."""
     real = _real(path)
@@ -133,11 +129,6 @@ def _status(path: str) -> list[str]:
     return lost
 
 
-def _session_updates() -> dict:
-    harness = paths.harness()
-    return {"harness": harness} if harness != "unknown" else {}
-
-
 def create(repo: str, path: str, branch: str, ref: str | None = None, *, session_id: str, take: bool = False) -> str:
     """Claim `path` for this session, then add a worktree there on `branch`.
 
@@ -163,7 +154,7 @@ def create(repo: str, path: str, branch: str, ref: str | None = None, *, session
     before = board.load(session_id)
     already_held = before is not None and claim in before.claims
     try:
-        board.claim(session_id, [claim], take_stale=take, **_session_updates())
+        board.claim(session_id, [claim], take_stale=take, harness=paths.harness())
     except board.ClaimConflict as exc:
         raise Refused(f"{exc}; no worktree was created") from None
     add = ["worktree", "add", target, branch] if exists else ["worktree", "add", "-b", branch, target, start]
@@ -200,7 +191,7 @@ def retire(path: str, *, session_id: str = "", delete_remote: bool = False) -> s
         cwd = _real(os.getcwd())
     except FileNotFoundError:
         cwd = ""
-    if cwd and _inside(cwd, target):
+    if cwd and paths.inside(cwd, target):
         raise Refused(f"the current directory {cwd} is inside {target}; leave it first")
     holders = board.holders(target + "/**", exclude=session_id)
     if holders:
@@ -247,7 +238,7 @@ def retire(path: str, *, session_id: str = "", delete_remote: bool = False) -> s
     for holder in board.sessions():
         if holder.session != session_id and not holder.stale:
             continue  # a live holder overlapping the tree was refused above
-        under = [c for c in holder.claims if _inside(_real(c[:-3] if c.endswith("/**") else c), target)]
+        under = [c for c in holder.claims if paths.inside(_real(c[:-3] if c.endswith("/**") else c), target)]
         if not under:
             continue
         board.release(holder.session, under)

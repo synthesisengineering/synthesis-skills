@@ -22,7 +22,7 @@ format rules, and then the principal must approve that exact call.
 
 ## Binding rules
 
-1. **The principal approves the exact call.** A blocked send files a request with a six-character code; only the principal typing `approve <code>` grants it, for one identical call within 15 minutes. Any change after approval (a recipient, cc, bcc, subject, thread, any body part, an attachment) needs a new approval.
+1. **The principal approves the exact call.** A blocked send files a request with a six-character code; only the principal typing `approve <code>` in their own prompt grants it (the harness's transcript must show it), for one identical call within 15 minutes. Never grant one yourself. Any change after approval (a recipient, cc, bcc, subject, thread, any body part, an attachment) needs a new approval.
 2. **Do the research approval can't check.** Read the whole thread, quoted history included; search earlier correspondence with the recipient and topic in every mailbox and local transcript; map every factual claim to a source or turn it into a question; re-read the source of any "still unanswered", "unsent" or "no reply yet" claim within 30 minutes of sending (2026-07-29, 2026-09-01).
 3. **Email is HTML,** each paragraph in its own `<p>`, with no `<br>` or line break inside a paragraph and no markdown. Plain-text email is never acceptable output: it is hard-wrapped on send (2026-09-23 ruling). Only a transport the principal lists as plain-only may send plain text, and its paragraphs stay whole.
 4. **No text a person reads breaks a paragraph,** on any channel. List items, quotes, table rows and code blocks keep their lines.
@@ -44,7 +44,7 @@ format rules, and then the principal must approve that exact call.
 
 1. **Research, then compose** (binding rule 2). Write email as HTML paragraphs: `htmlBody` on the Gmail connector (its `body` is the plain-text alternative, also whole paragraphs), `body` with `body_format: "html"` on the workspace connector.
 2. **Freeze the complete call:** recipients, subject, thread fields, every body part, attachments. Then make the call once. If the text breaks a rule, the guard answers `This message can't go out as written: <reasons>.` and files nothing; fix it and call again.
-3. **Ask for approval.** A clean message is blocked with `Sending needs the principal's approval of this exact message ... reply "approve <code>"`. Show the principal the exact text and recipients, in full, and the code. `synthesis approvals` lists what is waiting.
-4. **When they type `approve <code>`,** make the identical call again. A changed call needs a new code; an approval unused after 15 minutes is gone.
+3. **Ask for approval.** A clean message is blocked with `Sending needs the principal's approval of this exact message ... type approve followed by the code <code>`. Show the principal the exact text and recipients, in full, and the code. `synthesis approvals` lists what is waiting.
+4. **When they type `approve <code>`,** make the identical call again. A changed call needs a new code; an approval unused after 15 minutes is gone, and so is one the harness declined after the guard let it through (references/composing.md).
 5. **Verify** (binding rule 8): fetch the draft or sent message and compare recipients, subject and paragraphs with what was approved.
 6. **Record** the send where the correspondence skills say (transcript, plan), with its message id.
