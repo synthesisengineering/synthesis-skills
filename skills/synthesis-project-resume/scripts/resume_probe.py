@@ -3,8 +3,7 @@
 
 Reads a knowledge source's project index plus the project directory and
 emits the static half of the resumption brief as JSON: identity, goal,
-status, newest session, cross-machine changes, and the project format
-version the R9 stale-format guard consumes.
+status, newest session and cross-machine changes.
 
 Usage:
     resume_probe.py <source-root> <project-id> [--changes N]
@@ -12,53 +11,70 @@ Usage:
 Exit 0 with the JSON document on stdout. Exit 2 when the source root
 or index is unreadable; exit 3 when the project id is unknown (the
 R6 start path). A missing git remote degrades to empty recent_changes,
-never an error (R10).
+never an error (R10). Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
+ENGINE_VERSION = "2.0.0"
 
-ENGINE_VERSION = "1.0.0"
 
-# v1 layout: CONTEXT.md + REFERENCE.md + sessions/. v2 adds the
-# .synthesis-project.yaml marker; unrecognized markers report "unknown".
-FORMAT_V1 = ("CONTEXT.md", "REFERENCE.md", "sessions")
+def _scalar(raw: str) -> str:
+    raw = raw.strip()
+    quoted = re.match(r"""(["'])(.*?)\1\s*(?:#.*)?$""", raw)
+    return quoted.group(2) if quoted else re.sub(r"\s+#.*$", "", raw)
 
 
 def load_index(source_root: Path) -> list[dict]:
-    index_path = source_root / "projects" / "index.yaml"
-    data = yaml.safe_load(index_path.read_text(encoding="utf-8"))
-    if isinstance(data, dict):
-        data = data.get("projects", [])
-    if not isinstance(data, list):
+    """Each project's top-level fields from projects/index.yaml, under `projects:` or as a bare list.
+
+    Folded (`>`) and literal (`|`) values are read; nested lists and maps are skipped.
+    """
+    text = (source_root / "projects" / "index.yaml").read_text(encoding="utf-8")
+    bare = not re.search(r"^projects:", text, re.M)
+    entries: list[dict] = []
+    started, item_indent, field_indent, block = bare, None, None, None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            if block and not line.strip():
+                block[2].append("")
+            continue
+        indent, body = len(line) - len(line.lstrip()), line.strip()
+        if block and indent > block[3]:
+            block[2].append(body)
+            continue
+        if block:
+            entries[-1][block[0]] = (" " if block[1] == ">" else "\n").join(block[2]).strip()
+            block = None
+        if not started:
+            started = body.startswith("projects:")
+            continue
+        if indent == 0 and not body.startswith("-") and entries:
+            break  # the next top-level key
+        if body.startswith("- ") and (item_indent is None or indent == item_indent):
+            entries.append({})
+            item_indent, field_indent, body = indent, indent + 2, body[2:]
+        elif not entries or indent != field_indent:
+            continue
+        key, colon, value = body.partition(":")
+        if colon and re.fullmatch(r"[A-Za-z_][\w-]*", key.strip()):
+            if value.strip() in (">", "|", ">-", "|-"):
+                block = (key.strip(), value.strip()[0], [], field_indent)
+            elif value.strip():
+                entries[-1][key.strip()] = _scalar(value)
+    if block:
+        entries[-1][block[0]] = (" " if block[1] == ">" else "\n").join(block[2]).strip()
+    if not started:
         raise ValueError("projects/index.yaml must hold a project list")
-    return [entry for entry in data if isinstance(entry, dict)]
-
-
-def format_version(project_dir: Path) -> str:
-    # Mirrors synthesis-project-management project_format.detect, which is
-    # authoritative. Kept local so the probe stays dependency-free.
-    if not project_dir.is_dir():
-        return "missing"
-    marker = project_dir / ".synthesis-project.yaml"
-    if marker.is_file():
-        try:
-            data = yaml.safe_load(marker.read_text(encoding="utf-8")) or {}
-        except (OSError, ValueError):
-            return "unknown"
-        return "v2" if data.get("format_version") == 2 else "unknown"
-    present = [(project_dir / name).exists() for name in FORMAT_V1]
-    if all(present):
-        return "v1"
-    return "partial"
+    return [entry for entry in entries if entry.get("id")]
 
 
 def newest_session(project_dir: Path) -> tuple[str | None, str | None]:
@@ -116,7 +132,6 @@ def probe(source_root: Path, project_id: str, count: int = 5) -> dict:
         "updated": str(entry.get("last_session") or entry.get("updated", "") or ""),
         "newest_session": period,
         "session_mtime": mtime,
-        "format_version": format_version(project_dir),
         "recent_changes": recent_changes(source_root, project_id, count),
     }
 

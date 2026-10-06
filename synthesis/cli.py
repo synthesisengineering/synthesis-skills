@@ -93,9 +93,15 @@ def cmd_brief(args) -> int:
     return 0
 
 
-def cmd_handoff(args) -> int:
-    print("\n".join(project.handoff(_session(args), args.message)))
+def cmd_resume(args) -> int:
+    print(project.resume(args.project, getattr(args, "session", "") or paths.session_id(), switch=args.switch))
     return 0
+
+
+def cmd_handoff(args) -> int:
+    lines = project.handoff(_session(args), args.message)
+    print("\n".join(lines))
+    return 0 if lines and lines[-1].startswith("READY") else 1
 
 
 def cmd_approvals(args) -> int:
@@ -147,6 +153,10 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("brief", help="print a project's directive and current state")
     s.add_argument("project", nargs="?", default="")
     s.set_defaults(fn=cmd_brief)
+    s = sub.add_parser("resume", help="pick up a project: directive, state, next actions and warnings, or the question to ask first")
+    s.add_argument("project", help="project id, or the project folder's absolute path")
+    s.add_argument("--switch", action="store_true", help="switch this session to the project after the principal agreed")
+    s.set_defaults(fn=cmd_resume)
     s = sub.add_parser("handoff", help="commit and push changes inside this session's claims")
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)

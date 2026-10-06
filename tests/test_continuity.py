@@ -37,6 +37,18 @@ def test_compaction_reinjects_the_directive_and_current_state(tmp_path, write_co
     assert "Older notes" not in context
 
 
+def test_compaction_brings_back_this_sessions_own_project_never_another_sessions(tmp_path, write_config):
+    root = _knowledge(tmp_path, write_config).parent.parent
+    other = root / "projects" / "beta"
+    other.mkdir()
+    (other / "PRIME-DIRECTIVE.md").write_text("# Beta directive\nNever touch alpha.\n", encoding="utf-8")
+    board.touch("S1", project="alpha")
+    board.touch("S2", project="beta")  # the most recent writer; there is no global pointer to follow
+    context = json.loads(_hook("session-start", {"session_id": "S1", "source": "compact"}).stdout)
+    text = context["hookSpecificOutput"]["additionalContext"]
+    assert "do not repair v4" in text and "Never touch alpha" not in text
+
+
 def test_session_start_registers_the_session_and_reports_unread_messages(tmp_path, write_config):
     _knowledge(tmp_path, write_config)
     board.touch("S2")  # messages reach only sessions on the board (R2.3)
@@ -65,7 +77,8 @@ def test_handoff_commits_and_pushes_only_this_sessions_claims(tmp_path):
     (repo / "mine" / "a.md").write_text("mine\n")
     (repo / "theirs" / "b.md").write_text("theirs\n")
     board.claim("S1", [f"{repo}/mine/**"])
-    assert "committed and pushed" in project.handoff("S1")[0]
+    report = project.handoff("S1")
+    assert "committed 1 file(s)" in report[0] and "and pushed to origin/" in report[0] and report[-1].startswith("READY")
     committed = subprocess.run(["git", "-C", str(remote), "log", "--name-only", "--format="],
                                capture_output=True, text=True).stdout.split()
     assert committed == ["mine/a.md"]

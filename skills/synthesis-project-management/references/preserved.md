@@ -1,0 +1,595 @@
+# Preserved: what project management 3.0.0 does not carry, and why
+
+Ruling D8: a rewritten skill loses nothing. This file says what the v5 rewrite
+of synthesis-project-management did not carry from 2.21.6 (`origin/main` on
+2026-10-05) and why, and holds the 2.21.6 SKILL.md verbatim. The 2.21.6
+reference files are verbatim in [preserved-coordination.md](preserved-coordination.md)
+and [preserved-state.md](preserved-state.md). [coverage-map.md](coverage-map.md)
+maps every part to its new home. Nothing in these three files is current
+procedure.
+
+## Contents
+
+- [Why the machinery was cut](#why-the-machinery-was-cut)
+- [Rules that lived only in code](#rules-that-lived-only-in-code)
+- [Incidents and lessons behind the carried rules](#incidents-and-lessons-behind-the-carried-rules)
+- [The 2.21.6 SKILL.md](#the-2216-skillmd)
+
+## Why the machinery was cut
+
+The 2.21.6 skill sat on 46 modules and 36,354 lines of Python across this
+skill, context lifecycle, checkpoint and resume (v5 code evaluation, project
+state, 2026-10-05). The modules written before 2026-09-02 answered real
+needs: the coordination board, worktree retirement, the context doctor,
+anchor-safe edits, header currency, Codex dispatch and the handoff queue.
+Most of the 36 written from 2026-09-02 to 2026-09-28 served other machinery:
+leases, fleet, admission, custody, transactions, team contracts, migrations
+and retained runtimes. `coordination.py` grew from 284 lines on 2026-07-29 to
+6,654 on 2026-10-03; `project_state.py` from 1,202 to 3,758 in a month.
+
+Measured costs that decided the cut:
+
+- The board was one 2.1 MB, 7,200-line markdown file every hook re-read, with
+  393 MB of backups. v5 keeps one small file per session (R2.5).
+- The peer send gate took 88 ms median on a plain `git status` and blocked any
+  Bash call it could not parse. v5 hooks stay under 50 ms and resolve peers on
+  the board instead (R8.1, R8.2).
+- The inbox hook forced a network lease fetch on every prompt. v5 hooks never
+  touch the network (R8.3).
+- Structured state (`CURRENT_STATE.json`) was adopted by six projects, five of
+  them about this machinery, and its Stop hook blocked every turn for two days
+  with a message that did not match its condition (lesson 2026-09-08, "a gate's
+  error message is part of its interface"). v5 keeps the current-state block in
+  CONTEXT.md and re-injects it at session start and after compaction (R1.2).
+- The fleet registry enrolled two Macs once; `last_seen` never advanced. The
+  lease, park, seal, subscription and team-contract layers were never enabled
+  on any real board. v5 claims are per Mac and git carries records between
+  Macs (R1.4).
+- Format versions v1 and v2: three projects outside worktrees carried the v2
+  marker. v5 has one plain-markdown format, so there is nothing to migrate.
+
+What replaced each piece is in [coverage-map.md](coverage-map.md#scripts).
+
+## Rules that lived only in code
+
+These were enforced by `coordination.py` and had no prose home. v5 states them
+as binding rules (SKILL.md rules 3 to 6 and 11, and
+[coordination.md](coordination.md)):
+
+- One context owner per project (`same_project_rejects_two_context_owners`).
+- Autonomous claims keep priority over interactive ones (2.21.6 rule 6).
+- Stale claims became advisory and were never deleted (the advisory-row rule).
+- A reader meeting newer state names its version and the fix (lesson
+  2026-09-01, "version skew is permanent and readers must diagnose it").
+- `projects/index.yaml` had many writers, serialized by record transactions
+  (lesson 2026-09-02, "a lock cannot fix a single-slot shape"); v5 serializes
+  them with a claim on the file.
+
+## Incidents and lessons behind the carried rules
+
+- **2026-08-20, wrong project.** A named project was resolved over the
+  session's own contradicting context and a full session's work landed in the
+  wrong project's records. Carried as binding rule 9 and in `synthesis resume`.
+- **2026-08-19 to 2026-09-02, seven misdeliveries.** Each chose a peer by a
+  display name at the moment of sending. Carried as binding rule 7; the board
+  refuses ambiguous and display-name addresses.
+- **2026-09-03, global pointer.** A fallback to the global active-project
+  pointer delivered a message to the wrong session and gave a commit the wrong
+  identity. v5 has no global pointer; each session's state is its own file.
+- **2026-09-01, five release-train overtakes.** Two parallel releases overtook
+  each other five times in a day; message-based sequencing fails when an
+  autonomous session does not re-read the board mid-transaction. Carried in
+  [coordination.md](coordination.md#release-trains).
+- **2026-08-30, the Codex stdin hang.** Carried in [codex-dispatch.md](codex-dispatch.md).
+- **Git index collisions.** `git add` extends the index; a bare commit swept
+  another agent's staged files (lessons 2026-05-13 and 2026-07-17). Carried as
+  binding rule 8 and in `synthesis handoff`, which commits with `--only`.
+- **Worktree loss.** `git checkout -- .` ran in the wrong worktree three times
+  (lesson 2026-09-01, stale paths); a worktree holding a never-merged fix was
+  nearly discarded; an unsafe cleanup sentinel deleted a repository (lesson
+  2026-07-29). Carried by `synthesis worktree retire`, which takes paths
+  explicitly and refuses dirty, unmerged, main and current-directory targets.
+
+## The 2.21.6 SKILL.md
+
+Verbatim from `skills/synthesis-project-management/SKILL.md` at 2.21.6. Links inside point where they pointed then.
+
+---
+name: synthesis-project-management
+description: "Lightweight project management system designed for human-agent collaboration, optimized for context preservation and cross-agent coordination across sessions. Use when asked to: project management, project setup, project tracking, synthesis project, manage project, set up project, project structure, session protocol, parallel root sessions, advisory locks, cross-agent coordination."
+license: "CC0-1.0"
+depends_on: ["synthesis-context-lifecycle"]
+metadata:
+  author: "Rajiv Pant"
+  version: "2.21.6"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
+---
+
+# Synthesis Project Management System
+
+A lightweight project management system designed for human-agent collaboration. Optimized for context preservation across conversation sessions and context compaction events.
+
+For multi-person work, first read the mandatory [team contract](references/team-contract.md) and [managed workflow requirements](references/team-managed-workflows.md); declared attribution never replaces native identity, leases or host ACLs.
+## Configuration
+
+These values are user-specific. Update them for your environment.
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `ai_knowledge_workspace` | `ai-knowledge-{workspace}` | Root directory for your ai-knowledge repo (e.g., `ai-knowledge-rajiv`) |
+| `projects_path` | `projects/` | Directory within the workspace for all project folders |
+| `index_file` | `projects/index.yaml` | Single index file for all projects |
+| `lessons_path` | `lessons/` | Cross-project lessons and patterns directory |
+---
+
+## Design Principles
+
+1. **Discoverability over documentation** — Agents can search/grep; humans need quick orientation. Prefer consistent naming conventions over maintained indexes.
+2. **Convention over configuration** — Consistent structure means less cognitive load. When everything follows the same pattern, both humans and agents know where to look.
+3. **Single source of truth** — No duplicate indexes to maintain. Files should be self-describing through front matter and naming conventions.
+4. **Self-describing files** — Date prefixes, status in index.yaml, front matter metadata. No separate documentation that can get stale.
+5. **Agents do the work** — Templates are obsolete. To create something new, examine an existing example and adapt it. Agents excel at this.
+6. **Coordinate before concurrent writes** — Separate root sessions share a
+   session registry and message board outside the repositories they edit. Every
+   session reads it, registers its project, claims its write areas, and records
+   its isolated worktree before editing.
+7. **One context owner per project** — Parallel sessions may contribute to one
+   project, but only one session writes canonical project context. Other
+   sessions write isolated contribution artifacts for deterministic
+   reconciliation.
+
+---
+
+## Problem This Solves
+
+When working with AI assistants on multi-session projects:
+- **Context compaction** (conversation summarization) loses detailed progress
+- **Session boundaries** create information gaps
+- **Tool switching** between Claude Code, Codex, Cursor, and other agents can strand context in tool-specific transcripts
+- **Multiple projects** create confusion about current state
+- **Parallel root sessions** can edit the same repository without seeing each
+  other's in-flight state
+- **Lessons learned** get lost instead of compounding
+
+This system provides persistent state that survives context loss. Project files are
+the durable memory layer; chat history, model memory and compaction summaries are insufficient.
+A user can pause in one capable agent environment and continue in another. Built-in per-project
+memory is single-tool, single-machine and not version-controlled; see [records and conventions](references/records-and-conventions.md).
+
+---
+
+## System Architecture
+
+All project management lives in one location within your ai-knowledge workspace:
+
+```
+ai-knowledge-{workspace}/
+└── projects/
+    ├── index.yaml               # Single index for ALL projects (status field, not folders)
+    │
+    ├── {project-id}/            # Project folders (flat structure)
+    │   ├── CONTEXT.md           # Working memory — active state (budget: ≤150 lines)
+    │   ├── REFERENCE.md         # Semantic memory — stable facts (updated in place)
+    │   ├── sessions/            # Episodic memory — archived session logs
+    │   │   └── YYYY-MM.md       #   Monthly files
+    │   ├── README.md            # Static documentation (optional)
+    │   └── resources/           # Project data and artifacts (optional)
+    │       ├── in/              # Inputs
+    │       ├── artifacts/       # Working data
+    │       ├── out/             # Outputs
+    │       └── scripts/         # One-off scripts
+    │
+ai-knowledge-{workspace}/
+└── lessons/                    # Cross-workspace lessons (top-level, no underscore, ADR-017)
+    └── YYYY-MM-DD-*.md         # Date-prefixed for discoverability
+```
+
+### Key Structural Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **Flat project folders** | Status is in `index.yaml`, not folder names. No moving folders when status changes. |
+| **`lessons/` at top level (no underscore)** | Lessons are a peer content domain to projects, not a sub-component. Top-level layout matches semantic equality (ADR-017). |
+| **Three-tier context** | CONTEXT.md (working memory), REFERENCE.md (stable facts), sessions/ (history). See the synthesis-context-lifecycle skill. On-disk format versions (v1/v2) and the migration contract live in references/project-formats.md. |
+| **Date-prefixed lesson files** | Enables time-based discovery. `ls -t` shows recent. No index needed. |
+| **No templates folder** | Agents examine existing examples and adapt. Templates are a pre-AI pattern. |
+| **No patterns.md** | Patterns are lessons with `type: pattern` in front matter. One folder to search. |
+---
+
+## Project Naming
+
+Two rules, keyed to whether the project has a defined end state:
+
+- **Bounded projects** (ones that will someday reach `completed`) get
+  **verb-first outcome names** stating the finish line:
+  `migrate-blog-to-astro`, `release-kb-company-wide`. With the outcome in the
+  name, "is this done?" answers itself and zombie projects show on sight.
+- **Ongoing projects** (`ongoing` status — operations seats, stewardships)
+  keep **noun names** for the thing being stewarded (`payments-platform`);
+  there is no finish line to state.
+
+**Generic verbs are banned** (`do-`, `work-on-`, `handle-`, `manage-`,
+`run-`, `support-`): the verb must name the specific outcome, and when no
+specific verb fits, the project is probably `ongoing` or needs splitting.
+**Existing projects keep their names** — renames churn paths and history for
+no behavioral gain; `status`, not the name, is the machine-readable field.
+Full rationale:
+[references/records-and-conventions.md](references/records-and-conventions.md).
+
+---
+
+For explicit selected-project upgrades, follow [the migration owner](references/project-migration.md): exact preview consent, source custody and native admission remain mandatory; installation is not migration.
+## Components
+
+### 1. Project Index (`index.yaml`)
+
+Discovery index for all projects. Status is a field, not a folder: `active`
+(being worked), `paused`, `ongoing`, `completed`, or `archived`.
+
+```yaml
+projects:
+  - id: migrate-blog-to-astro        # bounded → verb-first outcome name
+    name: Migrate Blog to Astro
+    status: active
+    description: Brief description of what this project accomplishes
+    tags: [tag1, tag2]
+```
+
+Full multi-status example:
+[references/records-and-conventions.md](references/records-and-conventions.md).
+**Update when:** project status changes or a project is added. For structured
+projects, derive session currency; a present stale `last_session` is evidence,
+not truth. One confined resolver also binds parent plans into state hashes.
+Details: [references/project-state-recovery.md](references/project-state-recovery.md).
+
+### 2. Tiered Context Architecture
+
+Projects use a three-tier context system that separates information by lifecycle. This prevents unbounded growth of context files and keeps AI collaborators effective across long-running projects.
+
+**Detailed documentation:** See the synthesis-context-lifecycle skill for templates, migration guides, decision trees, and quality metrics.
+
+**The three tiers:**
+
+| Tier | File | Purpose | Budget | Update pattern |
+|------|------|---------|--------|---------------|
+| Working memory | CONTEXT.md | Current state, active tasks, recent sessions | ≤150 lines (hard) | Every session |
+| Semantic memory | REFERENCE.md | Stable facts (team, URLs, architecture) | ≤300 lines (soft) | Updated in place when facts change |
+| Episodic memory | sessions/YYYY-MM.md | Archived session logs | No budget | Append-only, monthly files |
+
+**Archival protocol:** At session start, if CONTEXT.md exceeds 120 lines: archive completed tasks and old session logs to sessions/, move stable facts to REFERENCE.md, verify content exists in destination, then remove from CONTEXT.md. Archive FIRST, delete second — two-phase commit. Autopilot receipts bind complete retained evidence; [execution basis](references/execution-basis.md) specifies streaming inventory, resource bounds and fresh capture after schema changes.
+
+### 3. Lessons (`lessons/`)
+
+Cross-project mistakes, insights, and patterns, one folder, date-prefixed
+files (`YYYY-MM-DD-topic-slug.md`). Incidents carry `type: incident` front
+matter with What Happened / Root Cause / Impact / Lesson / Prevention;
+generalized insights carry `type: pattern` with Context / Problem / Solution
+/ Examples. Full format blocks:
+[references/records-and-conventions.md](references/records-and-conventions.md).
+**Update when:** immediately when you learn something reusable.
+
+### 4. Agent Attribution
+
+When multiple agents contribute materially, the session log carries
+provenance: one italic `*Attribution — agent: … · model: … · effort: … ·
+scope: … · verified: … · ref: …*` line per contributing agent at the end of
+the entry. Record `model`/`effort` only when explicitly provided — otherwise
+the literal word `unknown`, never inferred; `verified` names only checks
+that actually ran; never record secrets. Attribute only when it helps future
+work. Full rules and the canonical convention:
+[references/records-and-conventions.md](references/records-and-conventions.md)
+and the synthesis-context-lifecycle skill.
+
+## The Protocol
+
+### During Work
+
+```
+Complete task → Update CONTEXT.md → local receipt → Next task
+```
+
+**NOT:** task → task → task → (context compaction) → lost details. Preserve material inputs before dependent work, compaction or handoff using the [material-context protocol](../synthesis-context-lifecycle/references/material-context.md). Retain rationale, temporary conditions, uncertainty and amendments; inspect the shared checkpoint/doctor result even when structured state is NOT_APPLICABLE.
+
+### Session Start
+
+1. **Read the coordination board** — If `~/.synthesis/coordination/active-sessions.md` exists, read it before any write and register or refresh this session's project, worktree, branch, context role, and claims
+2. **Resolve before reading** — Run `scripts/project_state.py resolve` against the Git-tracked index with `--no-fetch --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0`; use only its causally selected state. A failed or conflicting selection stops dependent project reads/writes, including build and migration.
+An unfinished context-editor record transaction blocks selection and managed verification. Reconcile its retained intent through the existing context editor under fresh exact authority before treating any partial record set as current. A journal is evidence, never permission to claim or overwrite files.
+
+3. **Read the selected state** — Read `CURRENT_STATE.json` when present, CONTEXT.md, the linked plan, REFERENCE.md, and latest session; validate the available hashes and semantics. Absence of structured state does not authorize a migration.
+4. **Check line count** — If CONTEXT.md >150 lines, archive before starting work
+5. **Search lessons/** — Search for relevant past experiences.
+6. **Check related projects** — Look at `related:` tags in index.yaml.
+
+### Session End
+
+1. **Final CONTEXT.md update** — Ensure all sections current (≤150 lines)
+2. **Archive if needed** — Move old sessions to sessions/, stable facts to REFERENCE.md
+3. **Attribute if warranted** — If multiple agents/models contributed materially, end the session-log entry with Attribution line(s) (see Agent Attribution)
+4. **Refresh adopted structured state** — For a project already using `CURRENT_STATE.json`, regenerate it and its compiled block after each meaningful source phase.
+   Prose-only projects retain their context protocol; checkpoint commands report non-applicability only after verifying state was never adopted.
+   For adopted v2 format projects, after the final session entry run `scripts/project_format.py refresh <project-dir>` under the records claim to refresh `sessions/INDEX.md` and unverified resume candidates. Review candidates without treating them as verified obligations. This owner leaves `CURRENT_STATE.json` to `project_state.py`; see [project formats](references/project-formats.md) for interruption recovery.
+5. **Verify local continuity** — Confirm this native session's attributed state is readable and its local handoff is ready.
+   Structured projects additionally require their session- and claim-bound Stop receipt. `NOT_APPLICABLE` does not certify pending edits.
+   Do not create a commit or network push solely because the user is switching clients on this machine.
+6. **Release coordination claims** — Mark the session released or narrow its claims before pausing. Existing-row mutations require the actual claiming seat. A typed administrative reason, failed caller-ownership check, app closure or age is not operator authorization to release another or an unbound active seat.
+
+For an explicitly requested refresh-and-report pass, use the current installed
+`synthesis-checkpoint` mode. It inspects and reports without project edits,
+state generation, activation or claim acquisition; normal record-owner closure
+above applies only to work actually written under accepted authority.
+An unclaimed session inspecting a discovered structured project, with valid native identity, no exact-session pending edits and a clean Git subtree, can finish with `NOT_APPLICABLE`; this issues no receipt and proves neither successful recovery nor execution authority.
+An exact-session source-only manifest may also remain after a completed local pause. Stop verifies the complete local receipt against committed files, Git identity and current attribution before accepting observer non-applicability;
+it preserves the manifest and grants no checkpoint or publication authority.
+Unresolved evidence remains explicit; see the checkpoint refresh reference for
+failure termination and client-specific behavior.
+For identity mismatches and stranded attribution, follow [checkpoint closure recovery](references/checkpoint-closure-recovery.md). A Stop
+diagnostic identifies an obligation; it does not authorize unrelated repair.
+
+### Cross-Agent Session Coordination
+
+Durable project files solve handoff across time; they do not prevent two live
+root sessions from writing the same files at once. Concurrent Claude Code,
+Codex, Cursor, or other root sessions share the coordination board at
+`~/.synthesis/coordination/active-sessions.md` — outside any repository a
+session may restructure. Schema v4 rows carry: canonical UUIDv7 plus compact
+and speakable aliases (and any legacy mapping), agent, machine, the
+client session ref (client-native delivery handle, registered automatically
+at claim), project, start/heartbeat, mode, isolated worktree/branch pairs,
+goal, claimed area globs, context role, and status; `## Messages` is the
+append-only addressed bus, `## Protocol` the human-readable rules.
+
+Use `scripts/coordination.py` for atomic, file-locked updates:
+
+```bash
+# Review claims that have gone quiet (reports only; never mutates)
+python3 <synthesis-project-management-root>/scripts/coordination.py stale
+
+# Read before writing
+python3 <synthesis-project-management-root>/scripts/coordination.py status
+
+# Claim one or more source areas
+python3 <synthesis-project-management-root>/scripts/coordination.py claim \
+  --agent "OpenAI Codex" --project example-project \
+  --mode autonomous --context-role owner --goal "Cross-client conformance" \
+  --workspace "/tmp/synthesis-skills-b @ feature/cross-client" \
+  --area "synthesis-skills/**" --area "ai-knowledge-*/projects/**"
+
+# Refresh the lease timestamp at every checkpoint
+python3 <synthesis-project-management-root>/scripts/coordination.py heartbeat \
+  --session s-6adk-06yc-yqb2
+
+# Verify the current index against this session's exact board claim
+python3 <synthesis-project-management-root>/scripts/coordination.py \
+  check-staged --session s-6adk-06yc-yqb2 --repository /path/to/worktree
+
+# Resolve a peer: exact address per lane + the receipt the send gate matches
+python3 <synthesis-project-management-root>/scripts/coordination.py resolve \
+  --to example-project --role owner
+
+# This shell's identity, seat, and lanes; unread bus messages for its seat
+python3 <synthesis-project-management-root>/scripts/coordination.py whoami
+python3 <synthesis-project-management-root>/scripts/coordination.py inbox --mark-read
+
+# Leave a handoff (--to must resolve; --free-address records exceptions; --durable for handoffs future seats must receive: references/project-durable-delivery.md)
+printf '%s\n' "Source checks pass; live install awaits authorization." |
+  python3 <synthesis-project-management-root>/scripts/coordination.py message \
+    --from s-6adk-06yc-yqb2 --to crater-sunset-alone-okay-23907
+
+# Release every claim at session end
+python3 <synthesis-project-management-root>/scripts/coordination.py release \
+  --session s-6adk-06yc-yqb2
+```
+
+`claim` allocates the identity and prints all three exact forms (UUID,
+compact, speakable); any form selects the session, letters like `AX` are
+migrated legacy aliases, and claims are the `--area` resource paths. Bit
+layout and lookup contract:
+[references/session-identity.md](references/session-identity.md).
+Check-staged selector precedence and override recording:
+[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md)
+("Commit authority").
+
+Rules:
+
+1. **Read at SessionStart and every synthesis checkpoint.**
+2. **Claim before write.** Claim the smallest coherent area currently needed before
+   creating a branch or editing; exact files suit independent edits, directories
+   suit coordinated multi-file work. Expand an accepted claim before extra writes;
+   do not reserve speculative future work. Name the synthesis project across repos.
+   For absent checkouts use `scripts/create_worktree.py`; claim-dependent `--then` effects and bounded resnapshot follow [the coordination protocol](references/parallel-agent-protocol.md#absent-checkout-creation).
+3. **Do not write through overlap.** If a claim conflicts, stop writes in that
+   area and all dependent effects; use the message log or the user to sequence work.
+4. **Share checkouts only with disjoint areas.** Same worktree/branch is allowed
+   when claimed areas are disjoint (banner names who is there); same-file work
+   needs isolated worktrees, and sharing seats commit only their own paths.
+5. **One context owner.** A project has one `owner` session for `CONTEXT.md`,
+   `REFERENCE.md`, `sessions/`, its controlling plan, and `projects/index.yaml`.
+   Same-project `contributor` sessions claim non-overlapping implementation
+   areas and write their result to a session-specific contribution artifact.
+   The owner verifies and reconciles those artifacts into canonical context.
+6. **Autonomous claim keeps priority.** When an autonomous and interactive
+   session overlap, the autonomous session keeps its existing claim; the
+   interactive session yields unless the user explicitly reorders them.
+   Exception: idle-holder paths narrow administratively under the receipt ([request-narrow and escalation](references/parallel-agent-protocol.md#idle-holder-escalation)).
+7. **Direct sends need a receipt; addresses are resolved, never guessed.**
+   `resolve` issues a delivery receipt for one target; the plugin's gate
+   admits a direct send only at that exact address, re-verified live. Names,
+   titles, and `[ref]` labels are never addresses; the message carries your
+   board id; the same text to a second peer is a refused broadcast. The bus
+   reaches the addressed seat at its next prompt: unresolvable means bus.
+8. **Heartbeat, narrow and release explicitly.** At checkpoints and task/phase
+   changes, refresh the heartbeat, review scope and promptly release completed areas.
+   Quiet past the stale threshold, a row is ADVISORY: no blocking, grants on the
+   bus; heartbeat to re-assert, narrowing first on collision. `stale` reports quiet
+   claims. Session IDs are addresses: own-seat mutations require that seat; admin
+   release needs explicit authorization and recorded reason.
+9. **Advisory does not mean optional.** The filesystem cannot stop every tool,
+   so the protocol and checkpoint hooks make the shared obligation visible.
+
+Inbox actions retain the current hook's authenticated identity through the board transaction, regardless of shell exports. Seat heartbeat updates compare the exact captured seat before writing, preserving concurrent release, owner replacement or other seat changes. Board commit failure cannot produce a successful action receipt.
+
+The script uses an OS file lock, verified backups, and atomic replacement,
+and refuses overlapping areas, duplicate context owners, and contributor claims
+on canonical context. Sharing one checkout with disjoint areas is granted with
+a banner. Cross-machine simultaneity requires the git-backed lease
+(compare-and-swap on a shared remote, fail-closed when unreachable); retire merged worktrees with
+`scripts/retire_worktree.py`, never by hand. Apply the [nested retirement, claim binding and temporary-work recovery rules](references/parallel-agent-protocol.md#registered-nested-retirement-and-existing-temporary-work). Board file shape:
+[references/active-sessions-template.md](references/active-sessions-template.md).
+Lease bootstrap and retirement, worktree-retirement mechanics, peer addressing,
+digests, administrative release, and canonical landing:
+[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md), [references/canonical-landing.md](references/canonical-landing.md).
+
+### Cross-Agent Handoff
+
+Before pausing work that may continue in another tool, the outgoing agent runs
+this protocol automatically. The principal does not invoke lifecycle commands
+or save state by hand:
+
+1. Update `CONTEXT.md` with current state, decisions, and next actions
+2. Move stable facts into `REFERENCE.md`
+3. Append chronological detail to `sessions/YYYY-MM.md`
+4. End the session-log entry with an Attribution line for the departing agent (see Agent Attribution) — the receiving agent should know who did what, with what verification
+5. Save substantial plans, audits, or checklists under `resources/artifacts/`
+6. Verify `LOCAL_READY` or `LOCAL_RECOVERABLE`; a same-machine client switch does not require a commit, push, or manual lifecycle command
+7. If `synthesis-agent-conformance` is installed, run its `activate`,
+   `pointer`, and `continuity --readiness local` commands for the project
+8. When changing computers, run `synthesis-mac-sync` remote-handoff mode, then
+   verify `continuity --readiness remote`. Day-end performs the same transition.
+9. Release or transfer this session's coordination claims. Normal release recoverably archives its session's active-project pointer; another session's pointer is untouched. Normal release is caller-bound; administrative release is distinct and audited.
+
+A cross-session merge or fast-forward request names the target head it was tested against (`fast-forward clean as of main=<sha>`); the receiver re-runs `git merge-base --is-ancestor <current-target-head> <source-head>` against the target's current head, not the named sha, before acting, and any advance of the target since the named head invalidates the claim.
+
+Resuming from another agent: run `scripts/project_state.py resolve` against the
+Git-tracked index before reading prose. Divergence is `CONFLICT`; unreadable or
+unreachable evidence is `UNKNOWN`. Full evidence, ordering, safe-fast-forward,
+and receipt contract: [references/project-state-recovery.md](references/project-state-recovery.md).
+Pointer semantics and cross-computer recovery preconditions:
+[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md)
+("Resuming and the active-project pointer").
+
+### The Handoff Queue — Work Transfer Between Agents
+
+The protocol above hands a project's *state* between tools. When two root
+sessions collaborate on one project, the *work item* itself also needs a
+transport that is not the principal's clipboard. `scripts/handoff.py` is that
+transport:
+
+```bash
+handoff.py write --to codex --from claude --file prompt.md [--round N]
+handoff.py read  --as codex          # oldest pending addressed to me
+handoff.py list                      # full queue, both directions
+handoff.py done  --id h-XXXXXXXXXX   # close a claimed handoff
+```
+
+Two rules keep this supervised:
+
+- **Nothing self-triggers.** An agent reads the queue when the principal, or
+  a coordination-board message the principal's protocol allows, says the
+  other side is done. Announce every `write` with `coordination.py message`
+  (the script prints the exact command). Supervision by exception is the
+  point; unattended is not uncontrolled.
+- **The queue is one of two directions.** It moves work *between agents*.
+  Decisions *between agent and principal* travel as a decision packet
+  (`synthesis-decision-packet`). Together they remove the principal as the
+  transport layer while leaving every crossing visible in the project.
+
+Payload integrity (sha256-pinned files, atomic queue writes, refuse-to-guess
+reader identity):
+[references/parallel-agent-protocol.md](references/parallel-agent-protocol.md)
+("Handoff queue mechanics").
+
+### Parallel Sub-Agent Dispatch
+
+Fan-out to multiple sub-agents working the same project concurrently — a batch of parallel repo migrations, a multi-agent reorganization run, several research tasks feeding one project — is now a common pattern, not an edge case. Two risks are specific to concurrent writers and aren't covered by the sequential protocols above.
+
+**Git-index collisions.** When more than one agent (or background process) can commit to the same repo in the same window, `git add <your files>` followed by a bare `git commit` does not commit only what you just added — it commits everything currently staged, including anything another agent staged first. `git add` extends the index; it does not replace it. Before every commit in a repo where concurrent writers are plausible, run `git status --short` and `git diff --cached --name-only` first, and commit only the paths this invocation intends (`git commit -o <paths>`, or unstage what isn't yours). Treat this as a mechanical prefix to the commit step, not a judgment call reserved for commits that "feel risky" — the risk lives in what might already be staged, which by definition isn't visible without looking first. (General git-mechanics and repo-scoping rules live in synthesis-context-lifecycle's Commit Protocol; this is the one addition specific to concurrent writers in the same repo.)
+
+**Tracking-doc aggregation.** A sub-agent dispatched against its own slice of a project — its own repo, its own batch — correctly leaves its siblings' in-flight work alone. That discipline has a side effect: no single agent sees the combined result. A shared tracking doc (CONTEXT.md, index.yaml) updated only by whichever agent happened to touch it last will under- or overstate what the batch actually accomplished. After any parallel dispatch, the orchestrator — not an individual sub-agent — reads every report as a set, reconciles them, and updates CONTEXT.md/index.yaml to reflect the true combined state.
+
+Sub-agents spawned by one orchestrator remain governed by that orchestrator.
+Independent root sessions use the cross-agent coordination board above; do not
+mistake a shared git worktree or shared chat history for coordination.
+
+---
+
+### Dispatching to Codex — use the wrapper, never bare `codex exec`
+
+`scripts/codex_dispatch.py` is the supported path for sending a prompt to
+Codex non-interactively:
+
+```bash
+python3 scripts/codex_dispatch.py --doctor
+python3 scripts/codex_dispatch.py --prompt-file brief.md --out review.txt --report-only
+```
+
+It removes three production-observed failures: the silent stdin hang
+(`stdin=DEVNULL` always), stalls indistinguishable from work (it watches
+output growth, not elapsed time), and the false "Codex is unavailable"
+(`--doctor` resolves the binary and proves authentication — never report
+Codex unreachable without running it). Incident detail:
+[references/codex-dispatch.md](references/codex-dispatch.md).
+
+## File Requirements by Project Status
+
+| Status | CONTEXT.md | REFERENCE.md | sessions/ | CONTEXT.md budget |
+|--------|------------|-------------|-----------|------------------|
+| active | Required | When needed | When needed | ≤150 lines |
+| paused | Required | When needed | When needed | ≤150 lines |
+| ongoing | Required | When needed | When needed | ≤150 lines |
+| completed | Required (summary) | Optional | Optional | ≤80 lines |
+| archived | Frozen | Frozen | Frozen | N/A |
+
+Resuming a `paused` project carries the highest scope-drift risk of any status — see the scope re-verification step in Project Discovery below before dispatching work against one.
+
+---
+
+## Project Discovery
+
+When a user mentions a project:
+
+1. Read `projects/index.yaml`
+2. Match user's phrase against project `name`, `description`, `id`, `tags`
+3. **Check the match against the session's own context before switching.**
+   A session usually carries project evidence of its own: the conversation's
+   established project, the session name, the active-project pointer, the
+   working directory. When the named project *contradicts* that evidence,
+   surface the contradiction and ask ("This session has been working project
+   Y — did you mean X, or should this stay in Y?"); never silently resolve
+   to the name. Names are typed by humans navigating many similarly-named
+   projects, so a name is one signal, not an override; a silent wrong
+   resolution sends a full session's work to the wrong project's records
+   (this happened on 2026-08-20). Resolve without asking only when name and
+   session evidence agree, or when the session carries no project evidence
+   at all.
+4. If matched (and confirmed where step 3 required it), resolve through the
+   Git-tracked registry with `scripts/project_state.py resolve --no-fetch
+   --no-coordination-refresh` and `GIT_OPTIONAL_LOCKS=0` before reading project
+   prose. Do not request automatic fast-forward for a local checkpoint.
+   CONFLICT/FAIL/UNKNOWN stops dependent reads and writes; preserve the candidate
+   evidence instead of running build or migration to silence the result.
+   For a selected project, run the context-lifecycle Session Start Protocol.
+5. Summarize current state and next steps
+6. **Re-verify scope before dispatching work, especially for a paused project.** CONTEXT.md's "N items remaining" (or any count a plan document asserts is current) is a claim made at write time, not a live query — it goes stale the moment anything else touches the same corpus, even a workstream that has nothing to do with this project and doesn't know it exists. Before batch-dispatching agents against a stated scope, re-derive it from live state with a cheap direct check (`find`, `grep`, `wc -l` against the actual files or repos) rather than trusting the document's count. This is cheapest immediately before dispatch — the highest-leverage moment to catch drift, before agent-hours are spent at the wrong scope — and it applies even within a single session, since a count computed early in a long run can go stale by the time a later phase acts on it. If the recount disagrees with the document, update the document in the same pass rather than silently working around the discrepancy. (Distinct from context-lifecycle's Session Start Protocol, which verifies CONTEXT.md's own freshness against this project's git log — that catches a stale *file*; this catches a stale *scope claim* that can drift even when the file itself looks current.)
+7. Begin work from where it left off
+
+---
+
+## Common Mistakes
+
+| Mistake | Consequence | Prevention |
+|---------|-------------|------------|
+| Treating a valid claim as completed project recovery | Retained obligations or recipient usability remain unverified | Apply [project outcome review](references/autopilot-project-quality.md): obligation preservation, causal recovery, exact current ownership and handoff usability are separate checks |
+| Not updating CONTEXT.md | Lost progress after compaction | Update after EVERY task |
+| Deferring updates to "session end" | Forget to update | Update immediately |
+| Putting management files in project repos | Exposes internal process | Keep in ai-knowledge-{workspace} |
+| Not checking lessons/ | Repeat mistakes | Grep at session start |
+| Creating separate patterns.md | Duplicate, gets stale | Use `type: pattern` in lessons/ |
+| Maintaining index files for lessons | Gets stale | Use date prefixes, `ls -t` |
+| Trusting a paused project's stated remaining-scope count | Batch-dispatches the wrong amount of work — wastes agent-hours on already-done items, or silently leaves new items undone | Re-derive the count from live disk/repo state immediately before dispatch, even when the document looks current |
+| Bare `git commit` in a repo where sub-agents dispatch concurrently | Sweeps another agent's staged work into your commit | `git status --short` / `git diff --cached --name-only` before every commit; commit only your own paths |
+| Editing before reading or claiming the coordination board | Two root sessions overwrite or invalidate each other's work | Read at SessionStart/checkpoint; claim source-area globs before writes |
+| Resolving a named project over the session's own contradicting context | A full session's work lands in the wrong project's records while the intended project's ask goes unfulfilled | When the name and the session's evidence disagree, ask a one-line clarifying question before switching (Project Discovery step 3) |
+
+---

@@ -1,22 +1,33 @@
-# Material context: capture, association and meaning
+# Material context: what to capture before compaction or handoff
+
+A healthy record is not the same as a faithful one. A checkpoint can pass while
+the user's instruction, its reason or its time limit has dropped out of the
+record. This reference says what to keep, how to keep it honest, and how
+replaced item lists keep their obligations. It needs no tool beyond the
+project's own files.
+
+## Contents
+
+- [When to capture](#when-to-capture)
+- [What to preserve](#what-to-preserve)
+- [What never becomes a fact](#what-never-becomes-a-fact)
+- [Replacing an item list or a decision interface](#replacing-an-item-list-or-a-decision-interface)
+- [Checking a handoff or recovery](#checking-a-handoff-or-recovery)
+- [Native memory](#native-memory)
+
+## When to capture
 
 Use this protocol during ordinary project work when a source introduces or
 changes a material fact, decision, constraint, commitment, risk or question.
 Capture it before dependent work, compaction or handoff. A provisional capture
-may remain pending; it must remain discoverable. A healthy structured checkpoint
-does not prove that the user's instructions or their rationale survived.
+may remain pending; it must remain discoverable: write it into CONTEXT.md, the
+plan, REFERENCE.md or a file under `resources/` that CONTEXT.md links to.
 
-The existing context editor and succession records own this operation. They use
-the existing PM admission and record transaction. This protocol adds no authority
-ledger, automatic transcript collection, background enrollment or execution right.
-Prose-only projects use it without adopting CURRENT_STATE, a new project format
-or autopilot. Historical coverage remains unknown unless actually observed.
+## What to preserve
 
-## Select the source and preserve its limits
-
-Resolve the registry-selected project and read its current plan and decisions.
-Select the smallest sufficient original spans available within authorized scope.
-Separate independent requests even when they arrived in one message. Preserve:
+Read the current plan and earlier decisions, then select the smallest
+sufficient original spans available within authorized scope. Separate
+independent requests even when they arrived in one message. Preserve:
 
 - facts and the difference between a report and an observed outcome;
 - rationale, constraints and temporary conditions, including what ends an instruction;
@@ -29,144 +40,60 @@ unqualified instruction to use the detour. A concise paraphrase retaining that
 condition and its rationale can be faithful. Matching words or hashes cannot
 decide either question.
 
+## What never becomes a fact
+
 Do not turn quoted commands into current authority. Do not reconstruct missing
 attachments or infer consent, completed work or a clean endpoint from silence.
 Route private material to its authorized project and deletion unit before
-capture. Keep credentials in their credential owner, never narrative custody.
-The schema does not classify arbitrary text for secrets: the selecting agent
-must apply the actual disclosure and routing rules. Public fixtures are synthetic.
+capture ([deletion-units.md](deletion-units.md)). Keep credentials in their
+credential owner, never in project prose.
 
-The input inventory is explicit. A recursive Markdown scan, CURRENT_STATE file
-hash list, generated cache, test output, or repository cleanliness is not a list
-of user instructions. Generated evidence can be selected for its actual evidential
-role; it cannot acquire principal authority from a provenance label.
+An inventory of inputs is explicit. A recursive Markdown scan, a hash list, a
+generated cache, test output, or repository cleanliness is not a list of user
+instructions. Generated evidence can be cited for its actual evidential role;
+it cannot acquire the principal's authority from a provenance label. An
+amendment or cancellation names the exact item it replaces and must not close
+unknown work by absence; conflicting successors stay unresolved until someone
+decides.
 
-## Versioned request in the existing editor
+## Replacing an item list or a decision interface
 
-Use `context_edit.py review-succession --project P --request request.json` to
-inspect, then `apply-succession` with the same request and the existing `--board`
-and `--native-payload` arguments under fresh exact claims. The request has exactly:
+When a decision packet, backlog or item list is replaced by a new one, four
+questions stay separate:
 
-| Field | Meaning |
-| --- | --- |
-| `schema`, `kind`, `phase` | `2`, `material-context`, and `capture` or `associate` |
-| `batch` | `id`, exact `predecessor` reference or null, offset-qualified `captured_at`, `observation`, `excluded` |
-| `inventory` | Project-relative `path`, SHA256, `format: json-rows`, exact `declared_count` |
-| `items` | Empty for capture; one explicit disposition for each selected input for association |
-| `review` | Exact meaning-review artifact reference or null |
-| `context_anchor`, `context_max_lines` | Unique line-start insertion anchor and positive limit no greater than 150 |
+1. **Did every source item arrive?** The source list's exact ids, not a
+   narrative total or the receiver's list, define the denominator. Missing,
+   extra and duplicate ids cannot make a complete transfer.
+2. **What evidence exists?** Each item points at the exact text it came from;
+   strong evidence for one item cannot make an incomplete transfer complete.
+3. **Was a choice recorded?** Only a recorded ruling for that exact item counts;
+   ordinary historical prose stays an unverified historical record, and a
+   narrative "answered" cannot close an item.
+4. **May work execute or close?** Never from the transfer itself. The action's
+   own approval and outcome are checked where the action happens.
 
-References contain `path`, `sha256` and, when a span is required, a nonempty
-unique exact `anchor`. A selected binary attachment can use a whole-file source
-reference without an invented text anchor; exact custody does not interpret it.
-Links, symlinks and foreign paths do not widen scope.
-The source inventory is `{"rows": [...]}`. Each row contains exactly:
+Every unanswered decision carries forward by exact id. Archive the original
+bytes before changing live records, and never turn a transfer or archive into
+an approval. Decision packets do this by id (synthesis-decision-packet).
 
-- `id`; `kind`: fact, decision, constraint, commitment, risk, question, amendment,
-  cancellation or nonmaterial;
-- `source`: exact span reference or null; `availability`: retained or unavailable;
-- `provenance`: `origin` (primary, quoted, relayed, unknown), `attribution`,
-  `event_time` (reported text or null), `authority: source-claim-not-current-authority`;
-- `required_aspects`: a unique subset of facts, rationale, condition, uncertainty;
-  and `reason`: selection, limitation or nonmaterial rationale.
+## Checking a handoff or recovery
 
-The batch observation contains `scope: declared-inputs`, `start`, `end` and
-`gaps`. Unknown locators are null; gaps remain stated. `excluded` lists separate
-`{id, reason}` objects and cannot overlap selected IDs. This records the observed
-frontier, not a claim that the whole session was captured. Required aspects are
-selected judgments; an omitted aspect in the inventory is not automatically found.
+Trace each remaining obligation from its durable source to a current record,
+an owner and a next action. Compare obligation identities and meaningful
+content, not just counts; an omitted obligation or a changed unresolved status
+is a defect even when the handoff reads well. Judge handoff usability against
+the receiving worker's actual task: it should name the remaining outcome, the
+relevant sources, the authority boundaries, the effects awaiting
+reconciliation and the next step. A clean structural check proves structure,
+never that meaning survived.
 
-Each association item contains exactly `id`, `status`, `destination`, `aspects`,
-`not_applicable`, `owner`, `next_action`, `supersedes`, `reason`. Status is open,
-amended, unknown, recorded, cancelled, retired or nonmaterial. Destination and
-next action are span references or null. `aspects` maps each retained aspect to
-its actual destination span. `not_applicable` supplies reasons for other aspects;
-it cannot waive a required condition. Active items require a next action and an
-owner (use explicit UNKNOWN plus a reason when needed). Nonmaterial items cannot
-erase a selected material item or manufacture a new obligation.
+## Native memory
 
-Capture retains the input denominator with empty items and null review. It
-reports CAPTURED_PENDING. Association names the exact capture as predecessor and
-retains its batch identity and inventory; changing the input denominator needs
-an explicit new record. An amendment or cancellation names the exact prior
-record and item in `supersedes: {record: REFERENCE, id: ID}`. It preserves prior
-bytes and must not close unknown work by absence. Conflicting successors remain
-unresolved. Retired records remain documentary; format refresh will not recreate
-an exact retained terminal span as a new candidate. A changed source needs review.
-
-## Review meaning against actual retained spans
-
-A meaning-review artifact has `schema: 1`, `kind: material-meaning-review`, exact
-`inventory_sha256`, `dispositions_sha256` (SHA256 of the owner's canonical encoded
-request items), `reviewer`, `plan`, `earlier_decisions`, `answers`, `limitations`.
-Reviewer, plan and earlier decisions are retained references. Each answer has
-`id`, `question`, `source_refs`, `record_refs`, `assessment`, `reason`. Citations
-must belong to that selected input and its destinations. Assessment is faithful,
-deficient or uncertain. A PASS flag cannot replace cited reasoning.
-
-Ask whether the current record reconstructs the report, rationale, constraints,
-temporary conditions, uncertainty, requested actions and subsequent changes.
-Read the cited source, plan and earlier decisions. Review concision on meaning;
-do not reject a faithful paraphrase for style. Bind review to the actual input
-and destination generation, and repeat it when those sources change.
-
-Deterministic validation establishes structure and custody only. A caller's
-faithful assessment yields REVIEW_EVIDENCE_PRESENT_UNVERIFIED, never semantic
-acceptance. False confidence in a supplied review cannot make a source true.
-Independent blind/model calibration and actual endpoint observations require
-genuine separately retained runs. Their absence stays pending or UNKNOWN.
-
-## Recovery and reporting
-
-Application first preserves immutable source custody and a discoverable prepared
-record. One existing record transaction then commits the receipt and CONTEXT
-pointer. Source replacements and claim changes are fenced again at commit.
-An interrupted live transaction blocks managed consumers until the existing
-`recover-transaction` owner reconciles it. A prepared pre-transaction record
-requires inspecting custody and an exact retry under current authority. A changed
-request or changed input is not an exact retry. Never delete an interrupted prefix.
-
-Checkpoint and doctor expose the shared `record_succession.material_context`
-projection, including for ordinary projects before structured NOT_APPLICABLE.
-It separates input coverage, record integrity, association reachability, semantic
-review, current authority and endpoint recovery. It also reports whole-session
-and historical coverage, examined/skipped counts, bounded costs and limitations.
-VERIFIED_FOR_DECLARED_INPUTS is only a declared-denominator result. UNKNOWN,
-CAPTURED_PENDING, SOURCE_UNAVAILABLE, PRESENT_BUT_UNREACHABLE,
-CHANGED_REQUIRES_REVIEW and INCOMPLETE must remain visible.
-
-Restore a missing forward link from CONTEXT or REFERENCE to retained associations
-without rewriting the incident or replaying an ambiguous effect. Read referenced
-sources to reconstruct meaning. The optional autopilot capsule carries reference
-and status projections; it reuses the same record owner and existing quality
-rubric. It never copies a second narrative archive or clears an authority fence.
-
-Scans are bounded to 256 records/items, 1,024 reference observations, 16 MiB
-charged source bytes, 4,096 artifact entries and 30 seconds aggregate observation
-(10 seconds per reader). Navigation follows project-relative Markdown links
-from CONTEXT/REFERENCE to depth four with bounded entries. Exhaustion retains an
-INCOMPLETE prefix and its limit, never evidence of absence. Measured bytes,
-references and elapsed time are separate from unknown model cost.
-
-
-## Failed observations and current work admission
-
-An observed empty legacy inventory keeps material coverage unknown without
-enrolling that project or inventing a material obligation. A refused, malformed
-or incomplete observation keeps reconciliation pending even when no record could
-be appended. Consumers validate the record and request objects before kind
-dispatch. The existing prepared transaction envelope remains a pending capture;
-its exact request hash is checked without requiring committed derived fields.
-
-A stored clear recovery is a historical journal observation. The existing
-work/effect admission constraint observes current material alongside native,
-instruction and artifact currentness. Changed, incomplete or unreachable material
-requires reconciliation before subsequent work. Unchanged current material still
-permits legitimate subsequent effects through their existing owners.
-
-Generated resume-state refresh uses terminal dispositions only when current
-material applicability is complete and unambiguous. Conflicting or changed
-retirement evidence retains the explicit source as an unverified candidate;
-healthy current retirement and cancellation do not recreate that candidate.
-These checks establish bounded structure and currentness, never independent
-semantic correctness, principal approval or an external effect outcome.
+Each harness's native memory stays on as a capture buffer, never a record. The
+day-end ritual (synthesis-daily-rituals) reviews it, moves what is durable into
+the owning repository and record — lessons to the personal lessons root,
+project facts to the owning REFERENCE.md, voice material to the owning private
+skill, workspace content to its deletion unit, the ALWAYS-PRESERVE kinds to the
+permanent root — and resolves conflicts in favor of the synthesis record. Never
+disable native memory or delete a harness's memory files to make a sweep look
+complete.

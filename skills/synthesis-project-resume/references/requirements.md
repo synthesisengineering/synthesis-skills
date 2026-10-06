@@ -3,8 +3,24 @@
 Open-source requirements for `synthesis-project-resume` and its
 companion surface in synthesis-console. The problem: one principal,
 several computers, several agentic harnesses per computer (Claude
-Code, Codex, Muse, Cursor, and more coming). Any project must start
-or resume in any harness on any machine with full context, safely.
+Code, Codex, Muse, and more coming). Any project must start or resume
+in any harness on any machine with full context, safely. v5 delivers
+R1 to R8 and R10 through `synthesis resume` and the procedure in
+SKILL.md; R9 retired with format versions.
+
+## Contents
+
+- [R1 — One prompt resumes anywhere](#r1--one-prompt-resumes-anywhere)
+- [R2 — The skill detects the session situation](#r2--the-skill-detects-the-session-situation)
+- [R3 — Fresh resume loads full context, verified](#r3--fresh-resume-loads-full-context-verified)
+- [R4 — Never write through a live foreign claim](#r4--never-write-through-a-live-foreign-claim)
+- [R5 — Cross-machine continuity is ordinary](#r5--cross-machine-continuity-is-ordinary)
+- [R6 — Start is a degenerate resume](#r6--start-is-a-degenerate-resume)
+- [R7 — Console shows recency first, groups on demand](#r7--console-shows-recency-first-groups-on-demand)
+- [R8 — Resume brief, not resume dump](#r8--resume-brief-not-resume-dump)
+- [R9 — Stale-context guard (retired)](#r9--stale-context-guard-retired)
+- [R10 — Harness-neutral, name-addressed](#r10--harness-neutral-name-addressed)
+- [Console UX contract (companion surface)](#console-ux-contract-companion-surface)
 
 ## R1 — One prompt resumes anywhere
 
@@ -22,7 +38,7 @@ workspace <name>.
 
 Harnesses that load synthesis skills natively invoke the skill by
 name. Skill-less harnesses locate the skill file via the lookup
-order in the skill's §1.
+order in the skill's procedure.
 
 No flags, no setup, no harness-specific variants. One prompt shape.
 
@@ -42,17 +58,20 @@ On invocation the skill classifies the session into exactly one of:
 
 Classification is behavioral and harness-neutral: the agent compares
 the requested project against the project its loaded context names.
-No harness-specific session APIs.
+`synthesis resume` applies the same three cases to the project on the
+session's own board file.
 
 ## R3 — Fresh resume loads full context, verified
 
 A fresh resume reads, in order: the source's `projects/index.yaml`
-entry, `CONTEXT.md`, `REFERENCE.md`, the two most recent session
-files, `RESUME_STATE.json` (v2 resume state), `CURRENT_STATE.json`
-(operational handoff), and any handoff queue entries. It pulls
-the knowledge repo first so "full context" includes work done on
-other Macs. It states what it loaded and the newest item's date —
-never claims context it did not read.
+entry, `CONTEXT.md` (its current-state block first), the plan its one
+`Plan:` field names, `REFERENCE.md`, the two most recent session
+files, and any brief another agent left in `resources/artifacts/`
+with a board message pointing at it. It fetches the knowledge repo
+first, when the network allows, so "full context" includes work done
+on other Macs, and fast-forwards only a clean checkout. It states what
+it loaded and the newest item's date — never claims context it did
+not read.
 
 ## R4 — Never write through a live foreign claim
 
@@ -69,14 +88,17 @@ because project memory lives in synced repos, not in chat history.
 The skill treats "another machine worked here" as the normal case:
 it surfaces what changed elsewhere since this machine last touched
 the project (git log on the project path), so the principal sees
-continuity, not a cold start.
+continuity, not a cold start. It never pulls over this machine's
+uncommitted changes, and it reports two diverged copies as a
+conflict instead of picking one by date.
 
 ## R6 — Start is a degenerate resume
 
 Starting a brand-new project uses the same prompt shape and the same
 skill: unknown id → the skill interviews (name, goal, workspace,
 repo family) and scaffolds the project per the project-management
-contract. One entry point for start and resume.
+contract. One entry point for start and resume. An unknown id is
+never resolved to a similar existing name.
 
 ## R7 — Console shows recency first, groups on demand
 
@@ -90,25 +112,24 @@ screen and one paste.
 ## R8 — Resume brief, not resume dump
 
 The resumption brief fits on one screen: project goal in one line,
-where it stands, the newest three facts, open loops with owners,
-and the suggested next action. Full context is loaded; the brief is
-what the principal reads. Detail stays a question away.
+where it stands, the newest three facts, open loops with owners, and
+the suggested next action. Full context is loaded; the brief is what
+the principal reads. Detail stays a question away.
 
-## R9 — Stale-context guard
+## R9 — Stale-context guard (retired)
 
-If the project's format version is older than the installed
-project-management system (see the versioned format contract), the
-skill says so, upgrades the project through the migration path, and
-then resumes. Resume never strands a project on a dead format — and
-never breaks one mid-upgrade: migrate-verify-resume, in that order.
+v5 has one plain-markdown project format, so there is no older
+format to upgrade before resuming. The original requirement is
+preserved verbatim in [preserved.md](preserved.md).
 
 ## R10 — Harness-neutral, name-addressed
 
 The skill is addressed by name and works from repo paths alone. It
 assumes no slash commands, no plugin loader APIs, no MCP servers,
 no network beyond git remotes. Anything it needs beyond the repo
-(board claims, fleet registry) degrades to a named, read-only
-limitation — never a silent skip and never a crash.
+(board claims) degrades to a named, read-only limitation — never a
+silent skip and never a crash. An unreachable remote is said once,
+and the resume continues from local files.
 
 ## Console UX contract (companion surface)
 
