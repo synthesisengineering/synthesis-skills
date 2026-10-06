@@ -84,7 +84,7 @@ def _dialogue_lines(text: str) -> list[tuple[str | None, str, str]]:
         line = raw_line.strip()
         if not line:
             continue
-        if verify_transcripts.STANDALONE_TS_RE.match(raw_line):
+        if verify_transcripts.STANDALONE_TS_RE.match(raw_line.lstrip("#")):  # Gemini writes '### 00:01:45'
             bare = verify_transcripts.TIMESTAMP_RE.search(line)
             pending = bare.group(0) if bare else None
             continue

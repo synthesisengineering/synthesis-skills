@@ -18,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   file that drove the retired board), archiving it under `~/.synthesis/v5/archive/`, and links
   the v5 command there. Before, a 4.x install kept the old command on PATH, so `synthesis
   claim` and `synthesis who` reached the retired board.
+- The meeting-transcripts commitment scan reads Gemini's `### HH:MM:SS` block headings as
+  times. It treated them as section breaks, so every candidate from a Gemini transcript printed
+  `[no timestamp]`.
 
 ## [5.0.1] - 2026-10-06
 

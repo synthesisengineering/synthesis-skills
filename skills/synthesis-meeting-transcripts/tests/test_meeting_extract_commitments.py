@@ -153,3 +153,11 @@ def test_e24_a_gemini_time_carries_across_its_block_and_resets_at_a_section() ->
     text = ("00:01:12\nAlice Chen: Hello.\nBob Smith: I will help.\n00:03:00\nAlice Chen: Let me help.\n"
             "## Notes\nBob Smith: I will help.\n")
     assert [c["timestamp"] for c in SCAN.scan(text)["candidates"]] == ["00:01:12", "00:03:00", None]
+
+
+def test_a_gemini_time_heading_stamps_its_block() -> None:
+    """Gemini transcripts mark each block with a '### HH:MM:SS' heading (seen 2026-10-06); a heading that is only
+    a time stamps its block, while any other heading still ends it."""
+    text = ("## Transcript\n### 00:00:58\n**Alice Chen: **I will send it.\n### 00:01:45\n**Bob Smith: **Let me check.\n"
+            "## Notes\n**Bob Smith: **I will help.\n")
+    assert [c["timestamp"] for c in SCAN.scan(text)["candidates"]] == ["00:00:58", "00:01:45", None]
