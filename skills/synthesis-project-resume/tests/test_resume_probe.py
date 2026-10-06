@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -53,6 +54,15 @@ def test_probe_reports_newest_session(source_root: Path) -> None:
     doc = probe(source_root, "demo-project")
     assert doc["newest_session"] == "2026-09"
     assert doc["session_mtime"] is not None
+
+
+def test_an_older_period_edited_later_is_recent_but_not_newest(source_root: Path) -> None:
+    sessions = source_root / "projects" / "demo-project" / "sessions"
+    os.utime(sessions / "2026-09.md", (1_700_000_000, 1_700_000_000))
+    os.utime(sessions / "2026-08.md", (1_800_000_000, 1_800_000_000))
+    doc = probe(source_root, "demo-project")
+    assert doc["newest_session"] == "2026-09"
+    assert doc["session_mtime"].startswith("2027-01-15")  # the August log's later write
 
 
 def test_probe_ignores_generated_index(source_root: Path) -> None:

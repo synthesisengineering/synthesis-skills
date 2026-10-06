@@ -35,8 +35,15 @@ jobs:
           # Ubuntu 24.04 blocks the unprivileged user namespace bwrap needs; 22.04 has no such switch.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --die-with-parent --unshare-all --ro-bind / / true
+      - name: Chrome's headless shell for the decision-packet browser tests
+        # Full Chrome's headless mode hangs on --dump-dom of the packet page; the shell does not.
+        shell: bash
+        run: |
+          browser=$(npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path "$RUNNER_TEMP/browsers" | tail -n 1 | awk '{print $NF}')
+          test -x "$browser"
+          echo "SYNTHESIS_TEST_CHROMIUM=$browser" >> "$GITHUB_ENV"
       - name: Core tests, source lint and every skill's tests, wherever they live
         run: python -m pytest -q tests/ skills/
         env:
           SYNTHESIS_REQUIRE_SANDBOX: "1"  # sandbox tests fail instead of skipping
-          SYNTHESIS_REQUIRE_CHROMIUM: ${{ runner.os == 'Linux' && '1' || '' }}  # Linux runners ship google-chrome
+          SYNTHESIS_REQUIRE_CHROMIUM: "1"  # browser tests fail instead of skipping

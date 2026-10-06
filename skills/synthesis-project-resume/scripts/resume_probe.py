@@ -51,9 +51,9 @@ def newest_session(project_dir: Path) -> tuple[str | None, str | None]:
     )
     if not files:
         return None, None
-    newest = max(files, key=lambda p: p.stat().st_mtime)
-    mtime = datetime.fromtimestamp(newest.stat().st_mtime, tz=timezone.utc)
-    return newest.stem, mtime.isoformat()
+    # The newest period is the latest name (YYYY-MM); recency is the latest write to any session file.
+    mtime = datetime.fromtimestamp(max(p.stat().st_mtime for p in files), tz=timezone.utc)
+    return files[-1].stem, mtime.isoformat()
 
 
 def recent_changes(source_root: Path, project_id: str, count: int) -> list[dict]:
