@@ -44,9 +44,8 @@ DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge rid
 # Scripts run outside a session (scheduled sweeps, autopilot wakes and backstops) need a stable path too.
 STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synthesis-promotion-gate")
 CLI_SCRIPT = """#!/bin/sh
-d=$(cd "$(dirname "$0")/.." && pwd)
-PYTHONPATH="$d/current" exec python3 -m synthesis "$@"
-"""
+exec python3 -c 'import os, sys; sys.path[0] = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(sys.argv.pop(1)))), "current"); from synthesis.cli import main; sys.exit(main())' "$0" "$@"
+"""  # through a link (~/.local/bin/synthesis) and from any folder: the runtime, not a checkout in the working directory
 
 
 def _home() -> Path:

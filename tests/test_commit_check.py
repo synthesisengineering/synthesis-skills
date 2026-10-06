@@ -35,7 +35,7 @@ def _commit(repo, name, text, env_extra=None):
 
 def test_credentials_are_refused(repo):
     result = _commit(repo, "config.txt", f"key = {FAKE_AWS}\n")
-    assert result.returncode != 0 and "AWS access key" in result.stderr
+    assert result.returncode != 0 and "looks like an AWS access key" in result.stderr
 
 
 def test_ordinary_commit_passes(repo):

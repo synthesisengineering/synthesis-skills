@@ -51,11 +51,19 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     assert install.install(v2).endswith(str(isolated_home / "current"))  # idempotent
 
 
-def test_cli_shim_runs_the_installed_copy(tmp_path, isolated_home):
+def test_cli_shim_runs_the_installed_copy_through_a_link_from_any_folder(tmp_path, isolated_home):
+    """setup.py links ~/.local/bin/synthesis to the shim; a checkout in the working directory
+    (its own synthesis/ package) must not stand in for the installed runtime."""
     install.install(_plugin_copy(tmp_path))
-    out = subprocess.run([str(isolated_home / "bin" / "synthesis"), "version"], capture_output=True, text=True,
-                         env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
-    assert out.returncode == 0 and out.stdout.strip().startswith("5.")
+    link, decoy = tmp_path / "local-bin" / "synthesis", tmp_path / "checkout" / "synthesis"
+    link.parent.mkdir()
+    link.symlink_to(isolated_home / "bin" / "synthesis")
+    decoy.mkdir(parents=True)
+    (decoy / "__init__.py").write_text('__version__ = "decoy"\n')
+    for command in (isolated_home / "bin" / "synthesis", link):
+        out = subprocess.run([str(command), "version"], capture_output=True, text=True, cwd=decoy.parent,
+                             env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
+        assert out.returncode == 0 and out.stdout.strip().startswith("5."), out.stderr
 
 
 def test_hook_commands_in_the_plugin_never_name_a_version_folder():

@@ -317,7 +317,7 @@ def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float,
         probe = EXAMPLE_KEYS.sub(b" ", KEY_HEADER.sub(b" ", line)).decode("utf-8", "replace")
         name = next((n for n, rx in tier0 if rx.search(probe)), None)
         if name:
-            found.append(f"{_show(path, number, line)}  <- looks like a {name}; remove it, and rotate it if it was real")
+            found.append(f"{_show(path, number, line)}  <- looks like {'an' if name[0] in 'AEIOU' else 'a'} {name}; remove it, and rotate it if it was real")
         if KEY_HEADER.search(line) or KEY_INLINE.search(line) or KEY_BODY.fullmatch(line):
             by_path.setdefault(path, set()).add(number)
         if path not in skip:  # a path with invalid UTF-8 or a newline earns no exclusion
