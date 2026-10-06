@@ -62,3 +62,102 @@ def test_release_drops_claims():
     assert len(board.load("A").claims) == 1
     board.release("A")
     assert board.load("A").claims == []
+
+
+def _age(session_id, seconds):
+    s = board.load(session_id)
+    s.seen = time.time() - seconds
+    board.save(s)
+
+
+def test_tilde_relative_and_symlink_spellings_of_one_path_conflict(tmp_path, monkeypatch):
+    real = tmp_path / "real"
+    (real / "sub").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(real)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    board.claim("A", ["~/real/sub/**"])
+    monkeypatch.chdir(tmp_path)
+    for spelling in ("real/sub/x.md", str(tmp_path / "link" / "sub" / "x.md"), "~/link/sub"):
+        with pytest.raises(board.ClaimConflict):
+            board.claim("B", [spelling])
+
+
+def test_a_star_stays_inside_its_segment_and_double_star_covers_the_subtree(tmp_path):
+    board.claim("A", [f"{tmp_path}/a/*"])
+    board.claim("B", [f"{tmp_path}/a/b/c"])  # `*` stops at "/"
+    with pytest.raises(board.ClaimConflict):
+        board.claim("C", [f"{tmp_path}/a/b"])
+    board.claim("D", [f"{tmp_path}/d/**"])
+    with pytest.raises(board.ClaimConflict):
+        board.claim("E", [f"{tmp_path}/d/b/c"])
+
+
+def test_a_claim_may_name_a_path_that_does_not_exist_yet(tmp_path):
+    board.claim("A", [f"{tmp_path}/worktrees/new-feature/**"])
+    with pytest.raises(board.ClaimConflict):
+        board.claim("B", [f"{tmp_path}/worktrees/new-feature/README.md"])
+
+
+def test_reclaiming_merges_areas(tmp_path):
+    board.claim("A", [f"{tmp_path}/one/**"])
+    board.claim("A", [f"{tmp_path}/two/**"])
+    assert board.load("A").claims == sorted([f"{tmp_path}/one/**", f"{tmp_path}/two/**"])
+
+
+def test_takeover_refuses_whole_when_a_live_session_also_overlaps_and_changes_nothing(tmp_path):
+    board.claim("STALE", [f"{tmp_path}/p/a/**"])
+    _age("STALE", board.STALE_SECONDS + 1)
+    board.claim("LIVE", [f"{tmp_path}/p/b/**"])
+    with pytest.raises(board.ClaimConflict, match="held by LIVE"):
+        board.claim("NEW", [f"{tmp_path}/p/**"], take_stale=True)
+    assert board.load("STALE").claims == [f"{tmp_path}/p/a/**"]  # no partial takeover
+
+
+def test_taken_stale_claims_stay_on_record_and_a_second_taker_is_refused(tmp_path):
+    board.claim("A", [f"{tmp_path}/p/**"])
+    _age("A", board.STALE_SECONDS + 1)
+    board.claim("B", [f"{tmp_path}/p/**"], take_stale=True)
+    assert board.load("A").ceded == [f"{tmp_path}/p/**"]
+    with pytest.raises(board.ClaimConflict, match="held by B"):
+        board.claim("C", [f"{tmp_path}/p/**"], take_stale=True)
+
+
+def test_a_session_with_no_recorded_time_keeps_blocking(tmp_path):
+    board.claim("A", [f"{tmp_path}/p/**"])
+    s = board.load("A")
+    s.seen = 0
+    board.save(s)
+    with pytest.raises(board.ClaimConflict):
+        board.claim("B", [f"{tmp_path}/p/**"], take_stale=True)
+
+
+def test_a_fresh_machine_with_no_board_lists_no_sessions():
+    assert board.sessions() == []
+
+
+def test_a_newer_schema_is_named_not_rewritten(isolated_home, capsys):
+    import json
+    from synthesis import cli
+    folder = isolated_home / "state" / "sessions"
+    folder.mkdir(parents=True)
+    newer = {"session": "N", "schema": board.SCHEMA + 1, "seen": time.time(), "claims": [], "future_field": 1}
+    (folder / "N.json").write_text(json.dumps(newer))
+    assert cli.main(["who"]) == 0
+    assert "newer synthesis" in capsys.readouterr().out
+    assert json.loads((folder / "N.json").read_text()) == newer
+
+
+def test_a_shell_cannot_act_as_another_session(monkeypatch, tmp_path):
+    from synthesis import cli
+    board.claim("OTHER", [f"{tmp_path}/p/**"])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "MINE")
+    with pytest.raises(SystemExit, match="belongs to session MINE"):
+        cli.main(["--session", "OTHER", "release"])
+    assert board.load("OTHER").claims == [f"{tmp_path}/p/**"]
+
+
+def test_a_claim_usage_error_reads_as_no_claim(capsys):
+    from synthesis import cli
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["claim"])
+    assert exit_info.value.code != 0 and "claimed" not in capsys.readouterr().out

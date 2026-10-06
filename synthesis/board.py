@@ -1,7 +1,8 @@
 """Coordination board: who is working where, and messages between sessions (R2).
 
 Each session is one small JSON file, so no hook ever re-reads a large shared
-file. A claim is an absolute path; a trailing "/**" claims the whole subtree.
+file. A claim is an absolute path; a trailing "/**" claims the whole subtree, and
+`*` inside a segment matches within that segment only (it never crosses "/").
 A message goes to exactly one live session, named by its id, its short name or
 `project:<id>`; an address that names none or several is refused, never guessed.
 """
@@ -9,6 +10,7 @@ A message goes to exactly one live session, named by its id, its short name or
 from __future__ import annotations
 
 import base64
+import fnmatch
 import hashlib
 import json
 from contextlib import contextmanager
@@ -20,6 +22,9 @@ from pathlib import Path
 from synthesis import paths
 
 STALE_SECONDS = 8 * 3600
+SCHEMA = 1  # a session file from a newer synthesis says so; a reader never rewrites it
+NEWER: list[str] = []  # session files this reader met in a newer schema, for `synthesis who`
+GLOB = set("*?[")
 BROADCAST_SECONDS = 3600
 
 
@@ -38,15 +43,18 @@ class Session:
     goal: str = ""
     cwd: str = ""
     claims: list[str] = field(default_factory=list)
+    ceded: list[str] = field(default_factory=list)  # claims another session took over while this one was stale
     started: float = 0.0
     seen: float = 0.0
+    schema: int = SCHEMA
 
     def __post_init__(self):
         self.short = self.short or short_name(self.session)
 
     @property
     def stale(self) -> bool:
-        return time.time() - self.seen > STALE_SECONDS
+        """Quiet past the threshold. A session with no recorded time keeps blocking."""
+        return bool(self.seen) and time.time() - self.seen > STALE_SECONDS
 
 
 class ClaimConflict(Exception):
@@ -89,8 +97,10 @@ def sessions() -> list[Session]:
     for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
         try:
             data = json.loads(file.read_text(encoding="utf-8"))
+            if int(data.get("schema", 1)) > SCHEMA and file.name not in NEWER:
+                NEWER.append(file.name)
             found.append(Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__}))
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             continue
     return found
 
@@ -107,21 +117,39 @@ def touch(session_id: str, **updates) -> Session:
     return session
 
 
-def _parts(claim: str) -> tuple[tuple[str, ...], bool]:
+def normalize(claim: str) -> str:
+    """One spelling per path: `~` expanded and the literal prefix resolved through symlinks.
+    The part from the first glob segment on is kept as written (a pattern cannot be resolved)."""
     subtree = claim.endswith("/**")
-    base = claim[:-3] if subtree else claim
-    return Path(os.path.realpath(os.path.expanduser(base))).parts, subtree
+    parts = Path(os.path.expanduser(claim[:-3] if subtree else claim)).parts
+    i = next((k for k, part in enumerate(parts) if GLOB & set(part)), len(parts))
+    prefix = os.path.realpath(os.path.join(*parts[:i]) if i else ".")
+    return os.path.join(prefix, *parts[i:]) + ("/**" if subtree else "")
+
+
+def _parts(claim: str) -> tuple[tuple[str, ...], bool]:
+    norm = normalize(claim)
+    subtree = norm.endswith("/**")
+    return Path(norm[:-3] if subtree else norm).parts, subtree
+
+
+def _segment(x: str, y: str) -> bool:
+    gx, gy = GLOB & set(x), GLOB & set(y)
+    if gx and gy:
+        return True  # two patterns may meet; refusing is the safe answer
+    if gx or gy:
+        return fnmatch.fnmatchcase(y, x) if gx else fnmatch.fnmatchcase(x, y)
+    return x == y
 
 
 def overlaps(a: str, b: str) -> bool:
+    """Whether some path falls under both claims."""
     (pa, sa), (pb, sb) = _parts(a), _parts(b)
-    if pa == pb:
+    if not all(_segment(x, y) for x, y in zip(pa, pb)):
+        return False
+    if len(pa) == len(pb):
         return True
-    if sa and pb[: len(pa)] == pa:
-        return True
-    if sb and pa[: len(pb)] == pb:
-        return True
-    return False
+    return (sa and len(pa) < len(pb)) or (sb and len(pb) < len(pa))
 
 
 def holders(path: str, *, exclude: str = "") -> list[Session]:
@@ -151,20 +179,27 @@ def claim(session_id: str, claims: list[str], *, take_stale: bool = False, **upd
 
 
 def _claim(session_id: str, claims: list[str], *, take_stale: bool = False, **updates) -> Session:
-    normalized = [c if c.endswith("/**") else os.path.realpath(os.path.expanduser(c)) for c in claims]
-    for c in normalized:
-        for other in sessions():
-            if other.session == session_id or not any(overlaps(c, o) for o in other.claims):
-                continue
-            if other.stale and take_stale:
-                other.claims = [o for o in other.claims if not overlaps(c, o)]
-                save(other)
-                notify(other.session, session_id, f"Took over your stale claim on {c}.")
-                continue
+    normalized = [normalize(c) for c in claims]
+    ceding = []
+    for other in sessions():  # decide everything before changing anything
+        if other.session == session_id:
+            continue
+        hit = [o for o in other.claims if any(overlaps(c, o) for c in normalized)]
+        if not hit:
+            continue
+        wanted = next(c for c in normalized if any(overlaps(c, o) for o in hit))
+        if not other.stale or not take_stale:
             raise ClaimConflict(
-                f"{c} overlaps a claim held by {other.session} ({other.harness}, project "
+                f"{wanted} overlaps a claim held by {other.session} ({other.harness}, project "
                 f"{other.project or '-'}: {other.goal or 'no goal'})"
                 + ("; it is stale, retry with --take" if other.stale else ""))
+        ceding.append((other, hit))
+    for other, hit in ceding:  # stale claims move to `ceded`, kept on record, never silently dropped
+        other.claims = [o for o in other.claims if o not in hit]
+        other.ceded = sorted(set(other.ceded) | set(hit))
+        save(other)
+        notify(other.session, session_id, "Took over your stale claim(s): " + ", ".join(hit)
+               + f". They are listed under `ceded` in your session file; ask {session_id} before working there again.")
     session = touch(session_id, **updates)
     session.claims = sorted(set(session.claims) | set(normalized))
     save(session)
@@ -175,7 +210,8 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
     session = load(session_id)
     if session is None:
         return None
-    session.claims = [] if claims is None else [c for c in session.claims if c not in claims]
+    gone = None if claims is None else {normalize(c) for c in claims}
+    session.claims = [] if gone is None else [c for c in session.claims if c not in gone]
     save(session)
     return session
 

@@ -12,7 +12,10 @@ from synthesis import __version__, board, paths, project
 
 
 def _session(args) -> str:
-    session_id = getattr(args, "session", "") or paths.session_id()
+    given, own = getattr(args, "session", ""), paths.session_id()
+    if given and own and given != own:  # a shell acts only as the session it belongs to
+        sys.exit(f"refused: this shell belongs to session {own}; it cannot act as {given}")
+    session_id = given or own
     if not session_id:
         sys.exit("no session id: pass --session or run inside a harness session")
     return session_id
@@ -37,7 +40,11 @@ def cmd_release(args) -> int:
 
 def cmd_who(args) -> int:
     now = time.time()
-    for s in sorted(board.sessions(), key=lambda s: -s.seen):
+    found = board.sessions()
+    for name in board.NEWER:
+        print(f"note: session file {name} was written by a newer synthesis (schema above {board.SCHEMA}); "
+              "update this plugin to read it fully, and never edit the file by hand")
+    for s in sorted(found, key=lambda s: -s.seen):
         if s.stale and not args.all:
             continue
         age = int((now - s.seen) / 60)
