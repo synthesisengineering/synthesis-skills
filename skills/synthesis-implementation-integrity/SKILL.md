@@ -1,13 +1,14 @@
 ---
 name: synthesis-implementation-integrity
-description: "Post-implementation verification protocol that catches incomplete work, hidden shortcuts, and gaps between 'tests pass' and 'production works.' Systematically traces data chains, detects placeholders, audits test honesty, and verifies environment parity. Use when asked to: verify implementation, check completeness, implementation review, is this done, built properly, no shortcuts, verify work, completion check, integrity check, self-review, pre-PR check, ship check."
+description: "Verify an implementation is genuinely complete before calling it done: trace data chains, find placeholders, audit test honesty, check environment parity and boundaries. Use to verify implementation, check completeness, answer is this done, or run an integrity, self-review, pre-PR or ship check."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.4.1"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Implementation Integrity
@@ -17,340 +18,28 @@ consumers. Tests establish only the behavior they exercise; inspect the changed
 data paths, deployment assumptions and required boundaries that those tests do
 not cover. Find and repair concrete gaps, then make an acceptance decision.
 
-Verification has an endpoint: every applicable required criterion is supported,
-findings are resolved by their proper owner, and any required delivery read-back
-is complete. Passing adequate checks is evidence to use, not a reason to invent
-another round of scrutiny. Preserve failures and unknowns honestly.
-
-For autopilot task contracts, use the owning [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods. Inspect the executed consumer's code and expectation as well as its result; a disconnected or fixed-answer check is a substantive defect. Semantic calibration cannot certify execution, and execution cannot certify that the chosen check answers the user's question.
-
----
-
-Before verification, follow [verification custody](../synthesis-implementation-integrity/references/verification-custody.md): use an isolated copy by default; shared-checkout checks must restore only their own authenticated changes, preserving concurrent edits and unresolved evidence.
-
-## When to Invoke
-
-Run this protocol:
-
-- **After completing any non-trivial implementation** — before declaring it done
-- **After adding a field, column, or property** that flows through multiple system layers
-- **After implementing the same pattern across multiple components** — the last one gets the least attention
-- **For schema, config, or deployment changes** — verify the actual migration, configuration and target-environment criteria; green unit tests alone do not establish them
-- **When someone (human or AI) says "it's done"** — use this to give an evidence-based answer
-
-Skip for trivial changes (typo fixes, comment updates, single-line config edits).
-
----
-
-## Where This Fits — Verification Chain
-
-Five complementary skills cover verification at different scopes and lifecycle phases:
-
-| Skill | Scope | Cadence | Core question |
-|-------|-------|---------|---------------|
-| **synthesis-implementation-integrity** (this one) | A single change | After every non-trivial implementation | "Is this change genuinely complete?" |
-| **synthesis-code-audit** | A diff (changed code) | After implementation, before or during review | "Does this diff meet quality standards?" |
-| **synthesis-preflight** | A branch | Before creating a PR | "Is this branch ready to merge?" |
-| **synthesis-pr-review** | A change proposed for merge | Every pull request | "Should this change enter the codebase?" |
-| **synthesis-codebase-review** | The entire system | Periodic or at milestones | "Is this system healthy?" |
-
-These are complementary scopes, not five mandatory successive audits. Choose
-checks from the task's risks and explicit repository requirements. One review
-may satisfy several scopes when it actually covers them; consume that evidence
-at the next gate. Broaden to system review when the change creates a concrete
-system risk or the user requested it, not because the smaller review passed.
-
-**The critical difference:** Codebase-review evaluates the system as-is. This skill evaluates the delta between what was and what should now be. Codebase-review might give the system a clean bill of health while this skill reveals that the specific change you just made has a missing link. They catch different classes of problems.
-
----
-
-## Scope and stopping rule
-
-Read the current change and its acceptance criteria. Select the relevant passes
-below, recording genuinely inapplicable ones with a reason. Missing required
-evidence is unresolved, never N/A. Explicit repository and user gates still run.
-
-Read the implementation and the checks, including actual execution and skipped
-coverage. Exercise real boundary behavior where a mock would hide the relevant
-risk. Use existing tests when they already discriminate correct from defective
-behavior; add tests for uncovered behavior. Compilation, fixture success and
-live delivery establish different facts.
-
-After a repair, rerun its reproducer and affected checks plus every gate the
-repository requires. Preserve valid evidence for unchanged inputs and consumers.
-Further investigation needs a specific unresolved criterion or counterexample.
-A new reviewer or renewed feeling of uncertainty alone does not reopen accepted
-work. When the required evidence is complete, return the verdict and advance to
-the authorized delivery step.
-
-## The Seven Integrity Passes
-
-These passes are a risk catalog. Apply the relevant ones to the complete changed
-behavior; do not turn every invocation into seven new reports.
-
-### Pass 1: Chain Completeness
-
-**Catches:** Missing links in data flows, values computed but never stored, fields added at one layer but missing at another, state changes that don't propagate to every consumer.
-
-Every piece of data in a software system flows through a chain of layers. The specific layers vary by architecture, but the principle is universal: **if you add or modify data at any layer, every downstream layer must also handle it.**
-
-Trace every new or modified data element through its full lifecycle:
-
-| Link | Question | How to verify |
-|------|----------|---------------|
-| **Origin** | Where is the value first created or received? | Read the function that produces it |
-| **Transport** | How does it move between layers? | Check return values, payloads, events, props, context |
-| **Validation** | Is it validated where it enters the system? | Check entry points for validation logic |
-| **Transformation** | Is it transformed correctly at each boundary? | Check serializers, mappers, adapters, formatters |
-| **Storage** | Is it persisted correctly? | Check the schema, model, AND the migration |
-| **Retrieval** | Can it be read back accurately? | Check queries, selectors, fetchers include the field |
-| **Presentation** | Does it reach the end user or consumer? | Check UI components, API responses, reports, exports |
-
-**The critical test:** Search for the new field or function name across the entire codebase. Every layer that handles the entity should reference it. A layer that doesn't is a broken link — even if everything else works.
-
-**Challenge question:** "For every new data element I introduced, can I name every file that touches it and confirm each one handles it correctly?" If you can't name them from memory, search for them. If you find fewer references than expected, something is missing.
-
-### Pass 2: Placeholder and Deferral Detection
-
-**Catches:** TODO comments, stub implementations, "for now" compromises, hardcoded values, temporary workarounds that become permanent.
-
-Search all changed files for these patterns:
-
-**Code markers:**
-```
-TODO, FIXME, HACK, XXX, TEMP, TEMPORARY
-NotImplementedError, raise NotImplementedError
-pass  (as sole function body)
-unimplemented!(), todo!()  (Rust)
-throw new Error("not implemented")
-// stub, # stub, /* stub */
-```
-
-**Natural language signals in comments:**
-- "for now" — a known compromise the author planned to revisit
-- "temporary" or "quick fix" — intent to replace that almost never happens
-- "should be" or "ought to" — awareness of the right approach that wasn't taken
-- "works but" — acknowledged limitations
-- "revisit" or "come back to" — explicitly deferred work
-
-**Hardcoded values that should be configuration:**
-- Magic numbers without named constants
-- URLs, endpoints, or email addresses in source code
-- Credentials or tokens in source (should be environment variables)
-- Feature flags set to literal `true`/`false`
-
-**For each finding:** Is this an intentional scope boundary or an accidental omission? Intentional boundaries should have documentation explaining the decision. A bare `TODO` is not documentation — it's a placeholder for documentation.
-
-**Challenge question:** "If a senior engineer reviewed this code with no context, would any line make them ask 'is this finished?' or 'why is this hardcoded?'" If yes, address it now or document why it's intentional.
-
-### Pass 3: Test Honesty
-
-**Catches:** Tests that exist but don't verify the change, tests that pass because they mock the critical parts, false confidence from green suites.
-
-**Core question:** Do the tests that "cover" this change actually execute the code path that could fail in production?
-
-**Step 1: Identify the risky code path.** The path most likely to fail in production. Usually involves database commits, external API calls, file system operations, or environment-specific configuration.
-
-**Step 2: Read the tests that cover this path.** For each test, ask:
-- Does it use the real implementation, or mock the critical dependency?
-- Does it commit to a real database, or roll back before the commit that would expose schema mismatches?
-- If it mocks a dependency, does the mock faithfully reproduce production behavior — including error cases?
-- Does it test only the success path, or both success and failure?
-
-**Step 3: Check for the mock gap.** If the service layer is mocked in route tests, those tests cannot verify that the service and route interact correctly. This is where integration tests matter — and where they're most often absent.
-
-**Step 4: Check test naming vs. test behavior.** A test named `test_create_output_with_timing` that never asserts on a timing value is a false signal. The name implies coverage that doesn't exist.
-
-**Step 5: Check discrimination.** Determine whether existing assertions would
-catch the relevant defect in the changed path. Unchanged tests can provide valid
-coverage, including a regression test that fails before the fix and passes after
-it. Test-file changes are neither necessary nor sufficient evidence. Add or
-repair assertions only where coverage is missing or dishonest.
-
-**Step 6: Separate skipped from passed.** "X passed, Y skipped, 0 failed" is not the same claim as "tests pass" — it's "the tests that ran didn't fail, and some tests didn't run at all." A skip is an absence of information, not a green light. Read what was actually skipped, not just the aggregate count, and ask specifically: could the skipped set contain the one test that validates the exact property this decision depends on? For a cosmetic or environment-gated test, a skip is usually neutral. For a security, data-integrity, or irreversibility claim, it isn't — if the answer isn't a confident no, go run the skipped test before treating the suite as passing.
-
-*Field case:* a suite reporting "911 passed, 29 skipped, 0 failed" read as green. The 29 skips were exactly the tests gated behind a live database connection — including the one test that validated a workspace-isolation security control. When that test finally ran, it failed: the isolation was silently a no-op, because the connecting database role carried a built-in bypass for the exact policy meant to enforce it. Nothing in the aggregate summary surfaced this — the one test that would have caught it was simply never executed.
-
-**Challenge question:** "If I deleted the implementation I just wrote but left the tests, would any test fail?" If no test would fail, the tests don't actually cover the change. And separately: "Of everything that was skipped, could any of it have been the test that mattered?"
-
-### Pass 4: Environment Parity
-
-**Catches:** "Works on my machine" failures caused by differences between dev, test, staging, and production.
-
-| Gap | What breaks | How to check |
-|-----|-------------|--------------|
-| Test DB is fresh, prod DB is persistent | Missing migrations, missing columns | Verify ALTER TABLE/migration for every schema change |
-| Test uses SQLite, prod uses PostgreSQL | Type differences, dialect issues | Check for DB-specific syntax or behavior |
-| Dev has local filesystem, prod has cloud storage | Path errors, permission failures | Check for hardcoded paths or local-only assumptions |
-| Dev has all env vars, CI/CD may not | Missing configuration | Verify deployment config includes new variables |
-| Dev runs one instance, prod runs multiple | Race conditions, shared state | Check for in-memory state that should be in a shared store |
-| Dev has current code, CDN serves cached assets | Stale JS/CSS after deploy | Check cache-busting for changed static assets |
-| Dev logs to console, prod logs to aggregator | Missing structured fields | Verify log format matches prod expectations |
-
-**The key question:** What assumptions does this code make about its runtime environment, and do those assumptions hold in every environment where it will run?
-
-**Challenge question:** "If I deployed this to a brand-new environment right now, what would break before a user could successfully use this feature?" Walk through the first request mentally — from DNS to response.
-
-### Pass 5: Diminishing Attention Audit
-
-**Catches:** Errors in the last item of a series, copy-paste mistakes, incomplete implementations hidden by confidence from earlier successes.
-
-When the same pattern is implemented across multiple components (three services, four endpoints, five models), cognitive attention follows a predictable curve:
-
-- **First implementation:** High attention, careful work
-- **Middle implementations:** Moderate attention, pattern-following
-- **Last implementation:** Low attention, false confidence from earlier successes
-
-This is not a character flaw — it's a documented cognitive pattern. Experienced engineers and AI agents both exhibit it.
-
-**The protocol:**
-
-1. Identify the last component that was implemented in the series
-2. Verify it with FIRST-item diligence — read line by line, don't pattern-match
-3. Check that names, types, and references are correct for THIS component, not a previous one (copy-paste errors leave the previous component's identifiers in place)
-4. If the last item touches fewer files than the first, ask why — fewer files may mean skipped steps, not simpler requirements
-5. Count the layers completed for the last item against the first — every layer the first item has, the last item should also have
-
-**The heuristic:** The Nth implementation in a series of N is the most likely to have a bug. Give it more scrutiny, not less.
-
-**Challenge question:** "Am I confident about the last implementation because I verified it, or because the first two worked?" If the answer is the latter, that confidence is borrowed, not earned.
-
-### Pass 6: Companion Change Completeness
-
-**Catches:** Backend changes without frontend updates, code changes without config updates, feature additions without documentation or monitoring.
-
-Most non-trivial changes require companion changes elsewhere in the system:
-
-| Primary change | Expected companion |
-|---------------|-------------------|
-| New API endpoint | Client code, API docs, auth configuration |
-| New database field | Migration, serialization, UI display, API response |
-| New environment variable | Deployment config, CI/CD config, documentation |
-| Backend logic change | Updated error messages, updated UI states |
-| New feature | Feature flag config, monitoring, alerting |
-| Dependency upgrade | Lock file update, compatibility checks |
-| API contract change | Client library update, versioning |
-| New error type | Error handling in callers, user-facing message |
-
-**Verification:** For each file changed, ask: "What other files would a fully complete implementation of this change require?" Then check whether those files were also changed. If not, determine whether they were unchanged because they didn't need changing, or because the change was forgotten.
-
-**Challenge question:** "If I handed the list of changed files to another engineer and asked 'is anything missing?', would they spot a gap I missed?" Mentally role-play the conversation.
-
-### Pass 7: Boundary Verification
-
-**Catches:** Invalid assumptions where your code meets external systems, user input, or other services.
-
-System boundaries are where controlled internal code meets uncontrolled external reality. Verify every boundary the change touches:
-
-- **User input:** Validated before use? Error messages helpful without leaking internals?
-- **Outbound APIs:** What happens when the external service is slow, returns unexpected data, or is unavailable?
-- **Inbound APIs:** New endpoints authenticated? Request format validated?
-- **Database:** Queries parameterized? Transactions used where atomicity is required?
-- **File system:** Paths validated? Behavior defined for missing files?
-- **Configuration:** Behavior defined for missing values? Sensible defaults or clear errors?
-
-**Challenge question:** "What is the worst thing an external system could send me, and does my code handle it without crashing, leaking data, or corrupting state?"
-
----
-
-## Quick Integrity Check (5 minutes)
-
-For smaller changes that don't warrant all seven passes, run this condensed version:
-
-1. **Grep the new field/function name** across the full codebase — is it referenced in every layer it should be?
-2. **Search changed files** for `TODO`, `FIXME`, `for now`, `temporary`, `stub`
-3. **Read the most critical test** — does it exercise the actual code path, mock it away, or was it skipped entirely? A skip is not a pass.
-4. **Ask:** "If I deploy this to a fresh environment, what would I need to configure for it to work?"
-5. **If this is the Nth implementation in a series:** re-read the Nth one as carefully as the first
-
-If a check exposes a gap, run the passes and consumer checks that resolve that gap. Broaden when its cause affects more of the system; do not automatically restart every pass.
-
----
-
-## Domain-Specific Checks
-
-Apply the relevant section based on what the change involves.
-
-### Database / ORM
-
-The most common "tests pass, production breaks" pattern: test databases are created fresh from model definitions. Production databases have persistent schemas. A new column that appears automatically in test databases requires an explicit migration in production. No migration means no column means production crash — with a green test suite.
-
-- [ ] Every new column exists on the model AND has a migration for existing tables
-- [ ] Column types match between model definition and migration
-- [ ] Nullable vs. non-nullable is intentional; non-nullable columns have a default or data migration
-- [ ] Indexes exist for columns used in WHERE, ORDER BY, or JOIN clauses
-- [ ] Migration is idempotent (safe to run more than once)
-- [ ] Rollback path exists or the change is explicitly forward-only
-- [ ] Existing or new tests exercise the changed write/read path and migration against persistent state; inspect assertions and execution, not whether test files changed
-
-### API
-
-- [ ] New endpoints have authentication and authorization checks
-- [ ] Request validation exists for all user-supplied input
-- [ ] Response format is consistent with existing endpoints
-- [ ] Error responses follow established patterns
-- [ ] Rate limiting applies if the endpoint is externally accessible
-- [ ] API documentation is updated
-
-### Frontend / UI
-
-- [ ] Loading state exists (not just the "data loaded" state)
-- [ ] Error state exists (not just the happy path)
-- [ ] Empty state exists (what shows when there's no data?)
-- [ ] Responsive behavior works if the project requires it
-- [ ] Interactive elements are keyboard-accessible
-- [ ] Static asset changes have cache-busting in place
-
-### Configuration & Deployment
-
-- [ ] New environment variables are documented with expected values
-- [ ] Deployment configuration includes new variables
-- [ ] Secrets use the project's secret management, not config files
-- [ ] Feature flags have defined defaults for all environments
-- [ ] Infrastructure-as-code is updated if infrastructure changed
-
----
-
-## The Integrity Report
-
-Record the verdict, applicable coverage, findings and remaining gate in the existing handoff or review record. Use the format below when useful; a second standalone report is unnecessary when that information already exists:
-
-```
-## Implementation Integrity Report
-
-**Change:** [One-line description]
-**Date:** YYYY-MM-DD
-
-### Verdict: PASS / ISSUES FOUND / INCOMPLETE
-
-### Passes Completed
-- [x] Chain Completeness
-- [x] Placeholder Detection
-- [x] Test Honesty
-- [x] Environment Parity
-- [ ] Diminishing Attention (single implementation — not applicable)
-- [x] Companion Changes
-- [x] Boundary Verification
-
-### Findings
-
-| # | Pass | Finding | Severity | Action |
-|---|------|---------|----------|--------|
-| 1 | Chain | `timing_seconds` not on OutputModel | Critical | Add column to model |
-| 2 | Environment | No migration for existing output table | Critical | Add idempotent ALTER TABLE |
-| 3 | Test Honesty | No test asserts on timing value | Medium | Add assertion |
-
-### Verdict Notes
-[Brief explanation of verdict and any caveats]
-```
-
-**Severity:**
-- **Critical** — production will break or data will be lost
-- **High** — production may break under specific, realistic conditions
-- **Medium** — functionality degraded but not broken
-- **Low** — quality or maintainability concern, not a runtime issue
-
----
+## Binding rules
+
+1. **Verify the outcome through its actual consumers.** Tests establish only the behavior they exercise; inspect the changed data paths, deployment assumptions and boundaries they do not cover.
+2. **Follow [verification custody](references/verification-custody.md):** an isolated copy by default; shared-checkout checks restore only their own authenticated changes, preserving concurrent edits.
+3. **Missing required evidence is unresolved, never N/A.** Record a genuinely inapplicable pass with its reason; explicit repository and user gates still run.
+4. **A skip is not a pass.** Read what was skipped; when a security, data-integrity or irreversibility claim rests on it, run the skipped test.
+5. **Trace every new data element through every layer,** and verify the Nth implementation in a series with first-item diligence.
+6. **A bare `TODO` or "for now" does not ship.** If it is not acceptable as permanent code, it is not acceptable to ship; an intentional scope boundary is documented.
+7. **Verification has an endpoint.** When the required evidence is complete, return the verdict and advance; reopen accepted work only for a specific unresolved criterion or counterexample.
+8. **For autopilot task contracts, use the [software](references/autopilot-software-quality.md) and [data/document](references/autopilot-data-quality.md) methods.** A disconnected or fixed-answer check is a substantive defect.
+9. **Releases need executable acceptance, extracted values and boundary authority,** as the three sections below set out. A verifier is evidence; it never grants approval.
+
+## Contents
+
+- [references/scope-and-report.md](references/scope-and-report.md): when to invoke, the scope and stopping rule, verification custody and autopilot methods, and the integrity report template with severities. Read it at the start of every verification and when recording the verdict.
+- [references/passes.md](references/passes.md): the seven integrity passes and the five-minute quick check. Read the passes that fit the change; use the quick check for small ones.
+- [references/domain-checks.md](references/domain-checks.md): checklists for database/ORM, API, frontend/UI, configuration and deployment. Read the one the change touches.
+- [references/verification-custody.md](references/verification-custody.md): verifying in a shared workspace. Read it before any verification.
+- [references/autopilot-software-quality.md](references/autopilot-software-quality.md) and [references/autopilot-data-quality.md](references/autopilot-data-quality.md): outcome review methods for autopilot task contracts.
+- [references/background.md](references/background.md): the verification chain, anti-patterns, and related skills. Read it when choosing between this skill and preflight, code-audit, pr-review or codebase-review.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.4.1 text now lives.
+- Executable Acceptance Manifests, Extract, Do Not Restate, Authority Lives at the Boundary: below.
 
 ## Executable Acceptance Manifests
 
@@ -408,46 +97,3 @@ A verifier can establish membership, execution, polarity, and coverage for its
 declared universe. It does not manufacture approval, disclosure authority, or
 permission for the state change it precedes; those remain with their owning
 boundary and principal.
-
-## Anti-Patterns This Protocol Prevents
-
-### "Tests Pass, Ship It"
-Treating a green test suite as proof of an environment or consumer it never exercised. Verify the missing required boundary, then accept adequate current evidence; do not demand new tests solely because existing tests passed unchanged.
-
-### "I Did the First Two Right, So the Third Is Fine"
-Cognitive attention degrades with repetition. The last implementation in a series inherits confidence from earlier successes without inheriting the diligence. The diminishing attention audit catches what familiarity breeds.
-
-### "I'll Come Back to This"
-TODO comments and "for now" compromises have an expected lifespan of forever. Code ships with the deferral, the deferral becomes the implementation, and nobody comes back. If it's not acceptable as permanent code, it's not acceptable to ship.
-
-### "The Pattern Is the Same, I Just Copy It"
-Copy-paste across components introduces component-specific errors — wrong table names, wrong field types, references to the previous component. The pattern may be identical, but every proper noun changes.
-
-### "It Compiles, Therefore It Works"
-Compilation checks syntax and type safety. It does not check that the right data flows to the right place, that migrations exist, that configuration is complete, or that the production environment matches the assumptions the code makes.
-
----
-
-## Relationship to Other Skills
-
-This skill is part of a verification chain. Together these skills cover code quality from implementation through system health:
-
-| Skill | Scope | Who runs it | Analogy |
-|-------|-------|-------------|---------|
-| **implementation-integrity** (this) | Single change | The implementer, on their own work | A pilot's pre-flight checklist |
-| **synthesis-code-audit** | A diff (changed code) | The implementer or reviewer | An instrument panel reading |
-| **synthesis-preflight** | A branch | The implementer, before PR | A pre-departure clearance |
-| **synthesis-pr-review** | Change proposed for merge | A peer reviewer | An inspector's acceptance test |
-| **synthesis-codebase-review** | Entire system | An auditor or lead | An annual structural inspection |
-
-**The handoff:** Carry the accepted evidence and unresolved findings into preflight and any required peer review. Preserve distinct independence requirements without rerunning covered checks just to fit another skill's report format. System-wide review follows an actual system-wide risk or requested milestone.
-
-Other related skills:
-
-| Skill | Relationship |
-|-------|-------------|
-| **synthesis-code-planning** | Plans the approach before implementation; this skill verifies the result after |
-| **synthesis-code-integration** | Verifies the merge is safe; this skill verifies the implementation is complete before merge |
-| **synthesis-review-triage** | Prioritizes which PR to review next; upstream of pr-review in the review workflow |
-
-This skill is the bridge between "I wrote the code" and "I'd stake my reputation on it." Run it before the code leaves your hands.

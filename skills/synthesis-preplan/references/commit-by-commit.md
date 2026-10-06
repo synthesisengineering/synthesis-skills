@@ -5,6 +5,17 @@ the `synthesis-preplan` skill (which produces the inputs) and by your
 planning step (which consumes this doc when drafting the plan). Used
 directly when executing a plan by hand.
 
+Contents:
+- Not every change belongs here (the single-commit lane)
+- Preconditions
+- Step 0: todo list and branch, before the first commit
+- Briefing structure
+- Per-commit cycle: three rules the verify step keeps needing; why per-commit verification; why checkpoint between commits
+- Todo-list discipline
+- Audit dimensions
+- End-of-plan phase: 1. final audit on the full diff, 2. end-to-end verification (with edge cases), 3. test-sufficiency self-review, 4. plan-conformance review, 5. branch-wide reconciliation
+- Workflow summary
+
 ## Not every change belongs here
 
 Work that is **one reviewable commit and decides nothing** runs

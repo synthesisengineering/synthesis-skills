@@ -9,6 +9,13 @@ fast-check / full-gate split, the amend-over-follow-up rule, the audit
 dimensions — live one file away. Do not re-type them here; a copy of that file
 has drifted every time one has been made.
 
+Contents:
+- The routing test: hard disqualifiers, who chooses
+- Why these gates drop and those do not
+- The cycle: Steps 0 to 8, from todo list and branch to close-out and ship
+- Tripwires — abort to the full lane
+- Project deltas, and waivers
+
 ## The routing test
 
 The [decision ownership contract](../../synthesis-thinking-framework/references/decision-ownership.md)

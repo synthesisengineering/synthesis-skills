@@ -1,158 +1,87 @@
 ---
 name: synthesis-adversarial-review
-description: "Run bounded, differently-shaped-agent adversarial review against the principal's outcome, with artifact-complete rounds, production-topology handoffs, explicit concessions, a fail-closed finding ledger, sufficiency rulings, and independent post-publication acceptance. Use for adversarial review, cross-agent review, red-team collaboration, review rounds, finding-ledger work, or reviewer handoffs."
+description: "Run bounded adversarial review by differently shaped agents against the principal's outcome: artifact-complete rounds, production-topology handoffs, concessions, a fail-closed finding ledger, sufficiency rulings, post-publication acceptance. Use for adversarial, cross-agent or red-team review."
 license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.1"
+  version: "2.0.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  format: v5
 ---
 
 # Synthesis Adversarial Review
 
+Differently shaped agents attack the same work from different blind spots, in bounded rounds, to deliver what the principal asked to ship.
+
 Before freezing or accepting a package, apply the mandatory [domain contracts and replay scorecard](references/domain-review-contract.md); validate exact source bindings with `scripts/review_contract.py` and retain the existing ledger/action owners.
-## Purpose
 
-Adversarial collaboration is useful when differently shaped agents attack the same work
-from different blind spots. It is not an invitation to maximize rounds. The review exists
-to deliver the principal's outcome: the artifacts and enforced boundaries the principal
-asked to ship, at the accepted quality bar. Reviewer satisfaction, control growth, and a
-large finding count are not completion criteria.
+## Binding rules
 
-For [typed domain review](../synthesis-autopilot/references/domain-quality.md), freeze the accepted requirement, source universe, domain method and rubric before the attempt. Use sound controls that preserve legitimate creative variation and seeded defects that change the user's outcome. Keep semantic calibration, actual consumer execution and target readback separate. Recheck the original evidence after a repair; replacing a reviewer without changed work or a concrete open risk does not justify another round.
+The headings below are the protocol's sections, in the order `scripts/protocol_acceptance.py` checks. [references/protocol.md](references/protocol.md) holds each section in full.
 
-This skill governs the review protocol. It does not grant publication, deployment,
-communication, or repair authority. Those approval boundaries survive the review.
+### Purpose
 
-Apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md).
-Record the technical sufficiency owner and the controlling instruction before review.
-Explicit supervised checkpoints remain binding; a designated integrator may resolve
-technical sufficiency under delegation without asking the principal again. Existing
-user grants persist within their exact scope. Preferences and receipts cannot create
-authority or weaken required acceptance criteria.
+1. **The review exists to deliver the principal's outcome:** the artifacts and enforced boundaries the principal asked to ship, at the accepted quality bar. Reviewer satisfaction, control growth and a large finding count are not completion criteria.
+2. **The review grants no publication, deployment, communication or repair authority.** Apply the shared [decision ownership contract](../synthesis-thinking-framework/references/decision-ownership.md) and record the technical sufficiency owner first.
+3. **For [typed domain review](../synthesis-autopilot/references/domain-quality.md), freeze the accepted requirement, source universe, domain method and rubric before the attempt.** Replacing a reviewer without changed work or a concrete open risk does not justify another round.
 
-## Before Round One: Proportionality Contract
+### Before Round One: Proportionality Contract
 
-Record this section in the engagement plan before dispatching a reviewer:
+4. **Record the contract before dispatching a reviewer:** the principal outcome; the Closed review universe; consequence and depth; a Round-trip budget that counts principal courier crossings; and the Stop rule.
 
-1. **Principal outcome.** State the outcome in the principal's terms, including the
-   artifact or system boundary that must ship.
-2. **Closed review universe.** Enumerate the artifacts, surfaces, and decision planes.
-   Each assigned plane receives a per-artifact terminal disposition in the same round.
-3. **Consequence and depth.** Name the harm the review is meant to prevent and the one
-   verifier generation justified by that harm.
-4. **Round-trip budget.** Set a budget for principal courier crossings. Agent-to-agent
-   transport is not a principal crossing; a required human copy/paste is. Declare,
-   batch, and count every such crossing. Exceeding the budget is a blocked-state alert.
-5. **Stop rule.** Define green artifact acceptance, allowed open risks, approval gates,
-   and the sufficiency checkpoint. Fewer rounds must come from complete coverage and
-   stronger fixtures, never from fewer checks or lower quality.
+### Roles and Blind-Spot Rotation
 
-If the universe cannot be enumerated, record why and define the bounded derivation that
-will close it. “Representative samples” do not support a closed-world completion claim.
+5. **Executor and Adversarial reviewer are separate roles.** Rotate the blind spot, not the agent name. Concession is health: record what each side conceded.
 
-## Roles and Blind-Spot Rotation
+### Adjudication and Separation of Duties
 
-Use at least two roles:
+6. **An adjudicator settles surviving disagreements** and owns ledger transitions. The repairer never edits, moves or deletes the reviewer's reproducer without the adjudicator's recorded approval.
 
-- **Executor:** owns the principal's artifacts, production implementation, and repairs.
-- **Adversarial reviewer:** derives attacks independently, attempts to falsify the
-  executor's claims, and does not inherit the executor's preferred abstraction.
+### Goal-Focused Round
 
-Rotate the blind spot, not merely the agent name. Useful rotations include artifact versus
-control plane, semantic versus structural evidence, producer versus consumer, pre-change
-versus post-change state, and source versus destination representation. The reviewer reads
-the bounded evidence package but independently re-derives the load-bearing facts.
+7. **Every goal-focused round runs five terminal stages:**
+   1. **Contract.** Restate the outcome, decision owners, approval gates, artifact universe and attack plane.
+   2. **Attack.** Derive counterexamples from the production path; encode real defects as failing fixtures before repair.
+   3. **Disposition.** One terminal row per artifact and finding; prose and executable repair are not interchangeable.
+   4. **Concept sweep.** Search the whole evidence package for the claim a repair displaced.
+   5. **Sufficiency.** Record established, open, and risk of shipping now. At a principal-owned or supervised checkpoint, the principal's ruling terminates the loop.
+8. **A `ship-blocking` finding stays in the delivery** until repaired, conceded or resolved by its decision owner; a `ship-improving` finding names its follow-up project. A repair reopens only its failed criteria.
 
-Concession is health. A loop in which neither side ever reverses is two agents defending
-priors. Every round records which claims the executor conceded, which the reviewer
-conceded, and which remain evidence-bearing disagreements.
+### Sidecars, Evidence, and Handoff Topology
 
-## Adjudication and Separation of Duties
+9. **Sidecars are claims.** Every handoff names the production entry point, the enforcing boundary, the receipt consumer, the exact artifacts, each finding's reproducer, the concept sweep owed after a provenance correction, and what the evidence does not verify.
 
-A third role settles what concession cannot. Use it in every engagement with
-evidence-bearing disagreements:
+### Finding Ledger
 
-- **Adjudicator:** decides concede-or-challenge on each surviving disagreement,
-  owns finding-state transitions in the ledger, and writes the transition
-  rationale. The adjudicator authors neither attacks nor repairs in the same
-  round it judges.
+10. **One ledger per engagement, edited only through `scripts/finding_ledger.py`** (command below). Each finding carries a state, a classification, an authority label, a separate enforcement outcome, evidence, and a follow-up project when ship-improving.
 
-Separation rule: the repairer (executor) may add acceptance evidence but must
-not edit, move, or delete the reviewer's reproducer — the command or procedure
-that reproduces each finding. Reproducer changes need the adjudicator's
-explicit approval, recorded in the finding's transition history. A repair that
-cannot pass beside an untouched reproducer is not a repair.
+### Bounded Control Depth
 
-Transitions stay inside the ledger's state set (`open | challenged |
-repaired-prose | repaired-source | repaired-verified | conceded |
-awaiting-principal`) with the compare-before-write discipline below. The
-adjudicator's transitions carry the `principal-rule` or `agent-heuristic`
-authority label of the evidence they rest on, never a bare verdict.
+11. **A finding in generation N+1 of an unrequested control stops control growth;** generation N+2 needs an explicit principal decision.
 
-Revisit trigger (ruled 2026-09-19): the three roles live in this one skill by
-decision, not by default. If this skill's size or a role-confusion incident
-(a reviewer editing a reproducer, an adjudication bypassed) demonstrates that
-packaging is the fix, re-open the three-skill split then.
+### Bounded Post-Publication Acceptance
 
-## Goal-Focused Round
+12. **After publication, a second agent derives the live universe from destination state** and records a per-artifact matrix. A correction beyond the current grant needs fresh approval.
 
-One goal-focused round has five terminal stages:
+### Agent-Principal Norms
 
-1. **Contract.** Restate the principal's outcome, recorded decisions and their owners, approval gates,
-   assigned artifact universe, and this round's attack plane.
-2. **Attack.** Derive counterexamples from the production path. Start controls at
-   generation zero: encode motivating real defects as failing fixtures before repair.
-3. **Disposition.** Give every artifact and finding one terminal row. Valid labels include
-   accepted, blocked, repaired-prose, repaired-source, repaired-verified, conceded, and
-   awaiting-principal; prose and executable repair are not interchangeable.
-4. **Concept sweep.** Search the whole evidence package for the semantic claim a repair
-   displaced. A corrected row beside stale summaries, receipts, headings, or sidecars is
-   not a correction.
-5. **Sufficiency.** Record established, open, and risk of shipping now. The delegated
-   integrator decides technical sufficiency against the accepted criteria. At a
-   principal-owned or explicitly supervised checkpoint, the principal's ruling terminates the loop.
-   A technical ruling does not grant publication or waive an unsatisfied action gate.
+13. **Surface a known-false claim once,** in the principal's terms. A proposed loosening nominates the loosener for review. Approval fatigue is a failure mode.
 
-Until artifact acceptance is green, most effort belongs to the principal's artifacts.
-System improvements route separately unless they block delivery. A `ship-improving`
-finding names its follow-up project; it does not extend the current delivery. A
-`ship-blocking` finding remains in the delivery until repaired, conceded by the reviewer,
-or resolved by its recorded decision owner within that owner's authority. New factual
-counterevidence can reopen a locked premise through that owner; retain the prior decision
-and invalidate dependent evidence. The reviewer never silently rewrites the premise.
+### Completion Report
 
-Once required acceptance is satisfied, close the round and advance the accepted
-artifacts to their authorized next step. Repairs reopen their failed criteria
-and affected dependencies, not every previously accepted artifact. Name the
-changed input, factual counterevidence or uncovered criterion before reopening
-accepted work. Another reviewer's stylistic preference is not a new requirement.
-For corpus work, retain item-level dispositions so one article's repair does not
-restart review of the entire accepted corpus. A revision brief is not a revised
-article when the task requires finished prose.
+14. **Report the principal outcome first** and name the unverified remainder. "The reviewer is satisfied" is never a completion signal.
 
-## Sidecars, Evidence, and Handoff Topology
+## Contents
 
-Sidecars are claims. A manifest, receipt, verifier output, summary, or acceptance matrix
-has no more authority than the production boundary that consumes it. Verify the claimed
-artifact set and state rather than accepting the sidecar because it is structured.
+- [references/protocol.md](references/protocol.md): every protocol section in full, with the reasons, the ledger field list and the post-publication steps. Read the matching section before running that stage of a review.
+- [references/domain-review-contract.md](references/domain-review-contract.md): the domain review package, its four profiles and seven records, mechanical controls and the replay scorecard. Read it before freezing or accepting any package.
+- [references/profiles.json](references/profiles.json) and [references/schemas/](references/schemas/): the review profiles and the seven record schemas that `scripts/review_contract.py` validates. Read them when building a review package.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.1 text now lives.
+- Finding ledger command: below.
 
-Every review handoff names the applicable boundaries below; for a prose-only review, identify the reader-facing artifact and publication authority rather than inventing a receipt service:
-
-- the **production entry point** whose behavior matters;
-- the **enforcing boundary** that can refuse the state-changing action;
-- the **receipt consumer** that validates the receipt before permitting that action;
-- the exact artifacts, hashes, versions, and declared representations in scope;
-- the command or procedure that reproduces each finding;
-- the concept sweep required after any attribution or provenance correction;
-- what the evidence does not verify.
-
-A diagnostic is not an acceptance test; an acceptance test is not an enforced gate. Only
-a fail-closed caller at the state-changing boundary can issue an authority receipt.
-
-## Finding Ledger
+## Finding ledger command
 
 Create one YAML ledger per engagement in the owning project's `resources/` directory:
 
@@ -166,73 +95,4 @@ python3 scripts/finding_ledger.py init \
   --proportionality 'AGENT HEURISTIC: <bounded rationale>'
 ```
 
-Each finding must carry:
-
-- one state: `open | challenged | repaired-prose | repaired-source |
-  repaired-verified | conceded | awaiting-principal`;
-- one classification: `ship-blocking | ship-improving`;
-- an authority label: `principal-rule | agent-heuristic`, plus a provenance id;
-- an enforcement outcome in a separate field;
-- evidence and an append-only transition history;
-- a follow-up project when classified `ship-improving`.
-
-The authority label and enforcement outcome answer different questions. `AGENT HEURISTIC`
-may be the honest provenance label while enforcement is still wrong. Exercise every report
-branch and verify finding, authority, and enforcement outcome independently.
-
-Ledger edits are compare-before-write operations. `transition` requires the recorded prior
-state; missing or duplicate ids, stale expected state, unknown keys, invalid classification,
-and symlink targets refuse without writing. Every command requires the owning project's
-literal `resources/` root, rejects a target outside it or any symlinked path component, and
-holds the resources-directory lock across read, expected-state comparison, replacement,
-and read-back. Use `validate` before handoff.
-
-Acceptance manifests label each case `diagnostic | acceptance-test | enforced-gate`.
-Section-shape and vocabulary checks are diagnostics, not behavioral acceptance. A manifest
-does not issue an authority receipt. Native agent scenarios establish protocol behavior;
-only a fail-closed caller at the state-changing boundary can claim an enforced gate.
-
-## Bounded Control Depth
-
-Verifying a verifier once is legitimate. A finding in generation N+1 of a control the
-principal did not request stops control growth; it does not automatically start generation N+2. If a round's findings are entirely self-inflicted by the newly introduced control,
-record them, state the consequence for the principal's outcome, and refuse another control
-round without an explicit principal decision.
-
-This bound does not waive a defect in the requested artifacts or enforcing boundary. It
-prevents an auxiliary control from becoming the mission.
-
-## Bounded Post-Publication Acceptance
-
-Publication or deployment begins a separate acceptance phase; it is not implied by a
-successful build or publisher-authored receipt.
-
-1. A second agent derives the live artifact universe from destination state, not from the
-   publisher's receipt.
-2. Validate the verifier with a known-good and known-bad positive control before
-   interpreting a uniform result.
-3. Record a per-artifact matrix across source, live origin, discovery surfaces, links,
-   hygiene, and destination-specific deployment terminal state.
-4. Distinguish exact-session readiness from aggregate project hygiene and prove durable
-   artifact, board delivery, lifecycle receipt, remote publication, and receiver
-   acceptance independently.
-5. End when every artifact has a terminal verdict. Generic review does not reopen an
-   approval already exercised. For a reproduced correction, the existing action owner
-   checks whether the current grant covers the exact new payload and target. Obtain
-   fresh approval when that action exceeds the grant or its policy requires it; do not
-   infer renewed permission from a technical acceptance record.
-
-## Agent-Principal Norms
-
-- An agent has standing to surface a known-false claim once in the principal's own stated
-  terms, especially when the agent is the reason the claim is known false.
-- A proposed constraint loosening nominates the loosener for review.
-- Principal rules and agent heuristics remain explicitly labeled. Approval fatigue is a
-  failure mode: a gate that fires on trivia teaches rubber-stamping.
-
-## Completion Report
-
-Report the principal outcome first, then the artifact matrix, ship-blocking findings,
-ship-improving follow-ups, concessions, courier-crossing count, sufficiency ruling, and
-approval gates. Name the unverified remainder. “The reviewer is satisfied” is never a
-completion signal.
+Use `validate` before every handoff.
