@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.4] - 2026-10-06
+
+- **The runtime only moves forward on its own.** Each session start passes the plugin folder its harness
+  loaded, and the hook installed that runtime whenever it differed, so a session still on an older plugin
+  (one that started or compacted after an upgrade) switched every harness back to the older release. The
+  hook now installs only a newer release; setup, `release.py` and `synthesis install` still install what
+  they are given, which is how a deliberate rollback is done. A session whose runtime was rolled back is
+  told so in one line instead of an upgrade note.
+- One release-number parser serves the installer, the doctor and the upgrade note.
+
 ## [5.0.3] - 2026-10-06
 
 - **Sessions learn of an upgrade.** A session that last saw an older release gets one note at its next

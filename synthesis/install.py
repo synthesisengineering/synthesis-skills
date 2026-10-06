@@ -3,9 +3,11 @@
 Hooks call ~/.synthesis/v5/bin/synthesis-hook, whose command text never
 changes between releases, so a harness's hook approval survives upgrades and a
 harness deleting an old plugin folder never breaks a running task. At each
-session start the hook passes the plugin folder the harness loaded; if its code
-differs from the installed copy, it is installed beside the old one and
-`current` switches atomically.
+session start the hook passes the plugin folder the harness loaded; if it is a
+newer release than the installed copy, it is installed beside the old one and
+`current` switches atomically. A session still on an older plugin (one that
+resumes or compacts after an upgrade) never switches it back; an explicit
+install (setup, release, `synthesis install`) installs whatever it is given.
 
 Run: python3 -S <plugin>/synthesis/install.py [plugin root] [--git-hooks]
      python3 -S <plugin>/synthesis/install.py uninstall [--dry-run]
@@ -18,6 +20,7 @@ changed it since, and removes only files install wrote that are still unedited.
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -69,6 +72,19 @@ def _stable_skill_files(plugin_root: Path):
                 yield f"skills/{name}/scripts/{path.name}", path
 
 
+def version_tuple(text: str) -> tuple:
+    return tuple(int(p) for p in text.split(".")) if re.fullmatch(r"\d+\.\d+\.\d+", text or "") else ()
+
+
+def version(root: Path) -> tuple:
+    """The release number in <root>/synthesis/__init__.py, as a comparable tuple; () if unreadable."""
+    try:
+        text = (Path(root) / "synthesis" / "__init__.py").read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    return version_tuple("".join(re.findall(r'__version__ = "([\d.]+)"', text)[:1]))
+
+
 def current_hash() -> str:
     try:
         return (_home() / "current" / "HASH").read_text(encoding="utf-8").strip()
@@ -86,12 +102,16 @@ def _write_exec(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def install(plugin_root: Path) -> str:
-    """Install the plugin's runtime if it differs from the current one. Returns a one-line report."""
+def install(plugin_root: Path, forward_only: bool = False) -> str:
+    """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
+
+    forward_only (the session-start hook): leave everything alone unless the plugin is a newer release."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
+    if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
+        return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
     wanted = package_hash(plugin_root)
     if wanted != current_hash():
         release = home / "releases" / wanted

@@ -586,17 +586,13 @@ def fetch_text(url: str, timeout: float = 5) -> str:
     raise errors[0]
 
 
-def version_tuple(text: str) -> tuple:
-    return tuple(int(p) for p in text.split(".")) if re.fullmatch(r"\d+\.\d+\.\d+", text or "") else ()
-
-
 def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Check:
     """installed: harness -> version. Behind is a warning; ahead of the channel is never a downgrade."""
     try:
         latest = json.loads(fetch(RELEASE_MANIFEST.format(ref=ref))).get("version", "")
     except (OSError, ValueError) as exc:
         return Check("warn", "latest release", f"could not read the {ref} release: {exc}")
-    behind = [f"{h} {v}" for h, v in sorted(installed.items()) if version_tuple(v) < version_tuple(latest)]
+    behind = [f"{h} {v}" for h, v in sorted(installed.items()) if install.version_tuple(v) < install.version_tuple(latest)]
     if behind:
         return Check("warn", "latest release", f"{ref} is {latest}; behind: {', '.join(behind)} "
                      "(run the onboarding setup again, or release.py --install-only from a checkout)")

@@ -168,3 +168,6 @@ def test_a_session_on_an_older_release_is_told_once_what_changed(isolated_home):
     assert f"upgraded from 0.0.2 to {__version__}" in note and "The newest change" in note
     assert "already had" not in note and "An older one" not in note
     assert "was upgraded" not in prompt("OLD") and board.load("OLD").version == __version__
+    board.touch("AHEAD", project="alpha", version="99.0.0")  # the runtime was rolled back under it
+    note = prompt("AHEAD")
+    assert f"rolled back from 99.0.0 to {__version__}" in note and "upgraded" not in note and "newest" not in note
