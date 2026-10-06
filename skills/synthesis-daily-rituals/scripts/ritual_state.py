@@ -31,6 +31,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 _PLUGIN = Path(__file__).resolve().parents[3]
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".synthesis" / "v5") / "current"):
     if (_root / "synthesis" / "rituals.py").is_file():
         sys.path.insert(0, str(_root))

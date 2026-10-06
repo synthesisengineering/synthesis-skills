@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.5] - 2026-10-06
+
+- **The doctor leaves nothing running.** Codex's app-server runs `git ls-remote` for its marketplace when
+  it starts, and the doctor killed only the app-server, so git outlived it; the Console reported processes
+  left behind on about one run in four. Each harness CLI now runs in its own process group, and the doctor
+  kills the group when it is done.
+- **Skill scripts no longer write bytecode into an installed plugin.** 35 scripts import the plugin's own
+  modules; run from an installed plugin, that import wrote `__pycache__` into it, which Muse treats as a
+  changed bundle. Each now turns bytecode off before its first local import, and a source lint keeps it so.
+- `repo_sync_check.py` replaces its report whole, so the Console never reads half of one.
+- `autopilot_cli.py status --json` prints the runs as a JSON list.
+
 ## [5.0.4] - 2026-10-06
 
 - **The runtime only moves forward on its own.** Each session start passes the plugin folder its harness

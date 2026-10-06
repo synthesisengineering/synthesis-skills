@@ -22,6 +22,7 @@ import pathlib
 import re
 import sys
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from build_packet import (parse_iso_date, review_assets_ready, slugify, spec_digest,  # noqa: E402
                           strict_json, validate, write_preserved)

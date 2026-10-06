@@ -106,7 +106,9 @@ $ python3 -S "$AP" status
 ```
 
 Open blockers print as `blocker: ...` and open questions for the principal as
-`question: ...`.
+`question: ...`. `status --json` prints the same runs as a JSON list (plan, status,
+owner, this_session, edited_min, next, open, total, waiting_on, continuation,
+first_wake, backstop, blockers, questions) for tools such as the Console.
 
 **Cycle**, once per wake; a bare spin is refused:
 

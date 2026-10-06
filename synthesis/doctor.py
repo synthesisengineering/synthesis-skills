@@ -345,7 +345,7 @@ def app_server_query(binary: str, method: str, params: dict, timeout: float = 15
     """One JSON-RPC request to `codex app-server --stdio`; never mutates Codex state."""
     import selectors
     proc = subprocess.Popen([binary, "app-server", "--stdio"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True, bufsize=1)
+                            stderr=subprocess.PIPE, text=True, bufsize=1, start_new_session=True)
     selector, stderr, deadline = selectors.DefaultSelector(), [], time.monotonic() + timeout
     selector.register(proc.stdout, selectors.EVENT_READ)
     selector.register(proc.stderr, selectors.EVENT_READ)
@@ -375,8 +375,17 @@ def app_server_query(binary: str, method: str, params: dict, timeout: float = 15
         raise RuntimeError(f"{method} gave no answer: " + " | ".join(stderr[-3:]))
     finally:
         selector.close()
-        proc.kill()
-        proc.wait()
+        _reap(proc)
+
+
+def _reap(proc) -> None:
+    """Kill the child's whole process group and wait: a harness CLI starts helpers of its own (Codex's
+    app-server runs `git ls-remote` for its marketplace) that would otherwise outlive the doctor."""
+    try:
+        os.killpg(proc.pid, 9)
+    except (ProcessLookupError, PermissionError):
+        pass
+    proc.wait()
 
 
 def _explicit_only(skill_md: Path) -> bool:
@@ -767,7 +776,7 @@ def _assign(table: dict, key: list, raw: str) -> None:
 def _start(argv: list):
     try:
         return subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True)
+                                stderr=subprocess.PIPE, text=True, start_new_session=True)
     except OSError as exc:
         return exc
 
@@ -779,9 +788,10 @@ def _finish(proc, timeout: float = CLI_TIMEOUT):
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _reap(proc)
         proc.communicate()
         return None, f"`{' '.join(proc.args)}` timed out after {timeout:.0f} s"
+    _reap(proc)  # helpers it started (git, MCP servers) end with it
     starts = [i for i in (out.find("{"), out.find("[")) if i >= 0]
     try:
         return json.JSONDecoder().raw_decode(out[min(starts):])[0], ""

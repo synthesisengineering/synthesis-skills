@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 from synthesis import doctor, install  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)

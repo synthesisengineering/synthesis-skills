@@ -20,9 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2026-10-06: the once-per-release upgrade note (25), calendar writes that email no one (9) and a repository
 # naming itself (7). 5.0.4 adds 18 to both so a session still on an older plugin can no longer switch the
 # stable runtime back (a defect found live that day), after the three version parsers became one.
+# 5.0.5 adds 10 to the core (the doctor reaps each harness CLI's whole process group) and 55 to the plugin:
+# those 10, a bytecode guard ahead of the first local import in 35 scripts (38; Muse refuses a bundle with
+# stray __pycache__), the repo guard's atomic report (2) and autopilot's JSON status (5).
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5249
-PLUGIN_BUDGET = 20406
+CORE_BUDGET = 5259
+PLUGIN_BUDGET = 20461
 
 
 def _lines(files):

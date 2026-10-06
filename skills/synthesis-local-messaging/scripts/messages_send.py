@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 
 HERE = Path(__file__).resolve().parent
 HANDLE = re.compile(r"^(\+[1-9][0-9]{6,14}|[^\s@]+@[^\s@]+\.[^\s@]+)$")
@@ -173,5 +174,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.dont_write_bytecode = True
     sys.exit(main())

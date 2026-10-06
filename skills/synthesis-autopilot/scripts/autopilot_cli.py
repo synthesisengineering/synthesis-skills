@@ -19,6 +19,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
 from synthesis import board, paths  # noqa: E402
 from synthesis.autopilot import (  # noqa: E402
@@ -155,27 +156,31 @@ def cmd_status(args) -> int:
     folder = paths.state() / "autopilot"
     files = sorted(folder.glob("*.json")) if args.all and folder.is_dir() else (
         [_pointer_file(session)] if session else [])
-    shown = 0
+    runs = []
     for file in files:
         try:
             plan = load(json.loads(file.read_text(encoding="utf-8"))["plan"])
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        shown += 1
-        owner = plan.field("owner session")
-        age = int((time.time() - plan.path.stat().st_mtime) / 60)
-        items, total = plan.open_items(), len(plan.items("checklist"))
-        print(f"{plan.path}\n  status: {plan.field('status') or '?'}  owner: {owner}"
-              f"{' (this session)' if owner == session else ''}  plan edited {age} min ago")
-        print(f"  next: {items[0] if items else '-'}  ({len(items)} of {total} items open)")
+        items, owner = plan.open_items(), plan.field("owner session")
+        runs.append({"plan": str(plan.path), "status": plan.field("status") or "?", "owner": owner,
+                     "this_session": owner == session, "edited_min": int((time.time() - plan.path.stat().st_mtime) / 60),
+                     "next": items[0] if items else "", "open": len(items), "total": len(plan.items("checklist")),
+                     **{name.replace(" ", "_"): plan.field(name) for name in ("waiting on", "continuation", "first wake", "backstop")},
+                     "blockers": [t for done, t in plan.items("blockers") if not done], "questions": _questions(plan)})
+    if args.json:  # the Console and other tools read this instead of re-parsing plan files
+        print(json.dumps(runs, indent=2))
+        return 0
+    for run in runs:
+        print(f"{run['plan']}\n  status: {run['status']}  owner: {run['owner']}"
+              f"{' (this session)' if run['this_session'] else ''}  plan edited {run['edited_min']} min ago")
+        print(f"  next: {run['next'] or '-'}  ({run['open']} of {run['total']} items open)")
         for name in ("waiting on", "continuation", "first wake", "backstop"):
-            if plan.field(name):
-                print(f"  {name}: {plan.field(name)}")
-        for text in [t for done, t in plan.items("blockers") if not done]:
-            print(f"  blocker: {text}")
-        for text in _questions(plan):
-            print(f"  question: {text}")
-    if not shown:
+            if run[name.replace(" ", "_")]:
+                print(f"  {name}: {run[name.replace(' ', '_')]}")
+        print("".join(f"  blocker: {text}\n" for text in run["blockers"]) + "".join(
+            f"  question: {text}\n" for text in run["questions"]), end="")
+    if not runs:
         print("no autopilot plan engaged" + (" on this machine" if args.all else " by this session"))
     return 0
 
@@ -327,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(fn=cmd_engage)
     s = sub.add_parser("status", help="this session's run, or every run on this machine with --all")
     s.add_argument("--all", action="store_true")
+    s.add_argument("--json", action="store_true", help="the runs as a JSON list")
     s.set_defaults(fn=cmd_status)
     s = sub.add_parser("cycle", help="record a wake in the cycle ledger; a bare spin is refused")
     s.add_argument("--plan", required=True)

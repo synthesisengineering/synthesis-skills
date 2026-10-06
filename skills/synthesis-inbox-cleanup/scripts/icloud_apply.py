@@ -10,7 +10,8 @@ Nothing is permanently deleted: trash goes to the Trash mailbox (recoverable ~30
 on most providers, including iCloud). Each run re-derives dispositions from the CURRENT
 inbox, so stages can run independently.
 """
-import argparse, re, collections
+import argparse, re, collections, sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, resolve, msg_fields
 
 TARGET = {"newsletter": "Newsletters", "archive": "Archive", "trash": "Trash"}

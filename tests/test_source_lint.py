@@ -240,3 +240,39 @@ def test_the_collection_rule_finds_hidden_folders_and_shared_names(tmp_path):
         "skills/b/.cache/test_y.py: inside .cache/, which pytest does not enter",
         "skills/a/scripts/test_x.py, skills/c/tests/test_x.py: same module name test_x.py; rename all but one",
         "skills/e/test_z.py, tests/test_z.py: same module name test_z.py; rename all but one"]
+
+
+def bytecode_writers(root: Path) -> list:
+    """Scripts that import one of their own modules (a sibling, or the plugin's synthesis package) before
+    turning bytecode off. Run from an installed plugin, that import writes __pycache__ into it, and Muse,
+    which verifies its bundle against its lock record, then refuses the whole plugin (4.102.1)."""
+    import ast
+    found = []
+    for path in sorted(root.glob("skills/*/scripts/*.py")):
+        if path.name.startswith("test_"):
+            continue
+        local = {p.stem for p in path.parent.glob("*.py")} | {"synthesis", "setup"}
+        for statement in ast.parse(path.read_text(encoding="utf-8")).body:
+            text = ast.unparse(statement)
+            if "sys.dont_write_bytecode = True" in text:
+                break
+            if any(isinstance(n, ast.Import) and any(a.name.split(".")[0] in local for a in n.names)
+                   or isinstance(n, ast.ImportFrom) and not n.level and (n.module or "").split(".")[0] in local
+                   for n in ast.walk(statement)):
+                found.append(f"{path.relative_to(root)}:{statement.lineno}")
+                break
+    return found
+
+
+def test_no_script_writes_bytecode_into_an_installed_plugin():
+    assert bytecode_writers(ROOT) == []
+
+
+def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
+    folder = tmp_path / "skills" / "a" / "scripts"
+    folder.mkdir(parents=True)
+    (folder / "helper.py").write_text("X = 1\n")
+    (folder / "early.py").write_text("import sys\nsys.dont_write_bytecode = True\nimport helper\n")
+    (folder / "late.py").write_text("import sys\nimport helper\nif __name__ == '__main__':\n    sys.dont_write_bytecode = True\n")
+    (folder / "lazy.py").write_text("def f():\n    from synthesis import board\n")
+    assert bytecode_writers(tmp_path) == ["skills/a/scripts/late.py:2", "skills/a/scripts/lazy.py:1"]

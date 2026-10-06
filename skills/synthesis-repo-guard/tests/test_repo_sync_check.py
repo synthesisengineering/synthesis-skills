@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -57,6 +58,16 @@ def test_each_kind_of_stranded_work_is_reported_and_a_clean_repo_is_not(home, tm
     assert report["total_repos"] == 4 and report["dirty_count"] == 2
     files = next(r for r in report["repos"] if r["name"] == "dirty")["issues"][0]["files"]
     assert files == ["?? \" leading-space.md\""]  # status columns survive: nothing is stripped
+    assert sorted(p.name for p in (home / ".synthesis" / "repo-guard").iterdir()) == ["last-report.json"]
+
+
+def test_the_report_is_replaced_whole_never_written_in_place(home, tmp_path, monkeypatch):
+    """The Console polls last-report.json; a reader must see the old report or the new one, never half of one."""
+    (tmp_path / "ws").mkdir()
+    replaced = []
+    monkeypatch.setattr(rsc.os, "replace", lambda a, b: (replaced.append((Path(a).name, Path(b).name)), os.rename(a, b)))
+    rsc.main(["--workspace", str(tmp_path / "ws"), "--quiet"])
+    assert replaced and replaced[0][1] == "last-report.json" and replaced[0][0].startswith(".last-report.")
 
 
 def test_the_scan_only_reads(home, tmp_path, monkeypatch):
