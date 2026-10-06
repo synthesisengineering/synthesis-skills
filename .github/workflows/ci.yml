@@ -39,3 +39,4 @@ jobs:
         run: python -m pytest -q tests/ skills/
         env:
           SYNTHESIS_REQUIRE_SANDBOX: "1"  # sandbox tests fail instead of skipping
+          SYNTHESIS_REQUIRE_CHROMIUM: ${{ runner.os == 'Linux' && '1' || '' }}  # Linux runners ship google-chrome

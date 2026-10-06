@@ -34,6 +34,8 @@ def find_chromium():
 
 
 CHROMIUM = find_chromium()
+if CHROMIUM is None and os.environ.get("SYNTHESIS_REQUIRE_CHROMIUM") == "1":  # CI on Linux: a missing browser fails
+    raise RuntimeError("SYNTHESIS_REQUIRE_CHROMIUM=1 but no Chromium was found")
 pytestmark = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
 
 PRELUDE = """<script>
