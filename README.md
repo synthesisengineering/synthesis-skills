@@ -410,7 +410,8 @@ Each skill declares its license as an SPDX identifier in the `license` field of 
 - **[Apache 2.0](LICENSE-APACHE)**: 24 skills, mostly those built around executable
   code.
 
-The plugin manifests declare the package as `Apache-2.0 AND CC0-1.0`.
+The core outside `skills/` (the `synthesis/` runtime, `hooks/`, `install.sh`, `onboard.sh`
+and the tests) is Apache 2.0. The plugin manifests declare the package as `Apache-2.0 AND CC0-1.0`.
 
 ## Related
 

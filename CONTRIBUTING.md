@@ -126,4 +126,6 @@ affects portability, safety, or a public interface. See
 By contributing, you agree that your contribution is licensed under the
 repository's existing dual-license structure: CC0 for methodology content and
 Apache 2.0 for executable scripts. Within a skill folder, the license declared
-in that skill's `SKILL.md` frontmatter applies.
+in that skill's `SKILL.md` frontmatter applies. The core outside `skills/` (the
+`synthesis/` runtime, `hooks/`, `install.sh`, `onboard.sh` and the tests) is
+Apache 2.0.

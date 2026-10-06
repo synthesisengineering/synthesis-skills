@@ -61,7 +61,8 @@ rules survive as tests and as prose in the skills.
 **Install.** Native plugins in Claude Code, Codex and Muse, with one stable hook
 path that survives plugin upgrades. `onboard.sh` sets up a new Mac through the
 onboarding skill's `setup.py`. Muse now lists four skills it was missing:
-agent-guardrails, local-messaging, meeting-prep and project-resume.
+agent-guardrails, local-messaging, meeting-prep and project-resume. The core (the
+`synthesis/` runtime, hooks, `install.sh` and `onboard.sh`) is Apache 2.0.
 
 ## [4.154.12] - 2026-10-05
 
