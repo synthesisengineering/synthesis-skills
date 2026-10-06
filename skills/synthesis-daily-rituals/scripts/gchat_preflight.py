@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SURFACE = "gchat"
-PAGE_CAP = 100
+PAGE_CAP = 100  # the space-list call's default page size; --page-size names the one actually requested
 SPACE_ID = re.compile(r"^spaces/[A-Za-z0-9_-]+$")
 RECORD = re.compile(r"^\s*[-*]\s*(?P<name>.*?)\s*\(ID:\s*(?P<id>spaces/[A-Za-z0-9_-]+),\s*Type:\s*(?P<type>[A-Z_]+)\)\s*$")
 HEADER = re.compile(r"Found\s+(?P<count>\d+)\s+Chat spaces", re.IGNORECASE)
@@ -130,15 +130,13 @@ def in_scope(kind: str, scope: dict) -> bool:
     return str(scope.get(key, "all")).lower() == "all"
 
 
-def bound(records: list[Target], claimed: int | None) -> str | None:
-    """Why the enumeration cannot be called complete, or None when it can."""
-    if len(records) >= PAGE_CAP:
+def bound(records: list[Target], claimed: int | None, page_size: int = PAGE_CAP) -> str | None:
+    """Why the enumeration cannot be called complete, or None when it can: a full page may be truncated."""
+    if len(records) >= page_size:
         claim = f" (header claimed {claimed})" if claimed is not None and claimed > len(records) else ""
-        return (f"page returned {len(records)} records, the wrapper's cap, and no cursor exists "
+        return (f"page returned {len(records)} records, the full page size requested, and no cursor exists "
                 f"to page further{claim}")
-    if claimed is not None and claimed > len(records):
-        return f"header claimed {claimed} spaces but {len(records)} records were returned"
-    return None
+    return f"header claimed {claimed} spaces but {len(records)} records were returned" if claimed is not None and claimed > len(records) else None
 
 
 def census(targets: list[Target]) -> str:
@@ -190,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--spaces", help="file holding the text the space-list call returned this run")
     parser.add_argument("--json", action="store_true", help="print the declared set as JSON instead of the table")
     parser.add_argument("--out", help="also write the declared set JSON here (the gate's --targets-from)")
+    parser.add_argument("--page-size", type=int, default=PAGE_CAP, help="the page_size the space-list call was given")
     args = parser.parse_args(argv)
 
     try:
@@ -218,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
               "as a quiet day", file=sys.stderr)
         return 2
 
-    enumeration_bound = bound(enumerated, claimed) if args.spaces else None
+    enumeration_bound = bound(enumerated, claimed, args.page_size) if args.spaces else None
     declared = declared_set(targets)
     if args.out:
         out = Path(args.out).expanduser()

@@ -250,13 +250,13 @@ def turn_end_reason(plan: Plan, payload: dict, settings: dict) -> str | None:
         problems += [f"no probe recorded for the capability claim: {t[:80]}"
                      for t in blockers if ABSENCE.search(t) and "probe:" not in t.lower()]
         return (f"Your autopilot plan {where} says blocked, but " + "; ".join(problems) + ". Alert the principal "
-                f"(autopilot_cli.py alert), note 'alerted <time> (<outcome>)' on each blocker, and record "
-                f"'probe: <command> -> <output>' for any missing capability.") if problems else None
+                "(autopilot_cli.py alert), note 'alerted <time> (<outcome>)' on each blocker, and record "
+                "'probe: <command> -> <output>' for any missing capability.") if problems else None
     if status == "waiting":
         problems = [] if plan.field("waiting on") else ["no 'Waiting on:' line names the external event"]
         problems += _continuation_problems(plan, payload, float(settings.get("first_wake_grace_seconds", FIRST_WAKE_GRACE)))
         return (f"Your autopilot plan {where} says waiting, but " + "; ".join(problems) + ". Set up the "
-                f"continuation, or set Status: running and do the work that does not depend on the wait.") if problems else None
+                "continuation, or set Status: running and do the work that does not depend on the wait.") if problems else None
     if status != "running" or payload.get("background_tasks"):
         return None  # paused by the principal, unknown, or a running task will wake this session
     items = plan.open_items()

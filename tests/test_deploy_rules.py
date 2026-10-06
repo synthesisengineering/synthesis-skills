@@ -1,7 +1,6 @@
 """R3.2 and R3.7: which commands deploy which site, and the date rules no approval overrides."""
 
 import json
-import re
 import subprocess
 import time
 from pathlib import Path

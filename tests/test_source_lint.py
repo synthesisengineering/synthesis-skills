@@ -13,7 +13,6 @@ import re
 import subprocess
 from pathlib import Path
 
-import pytest
 
 from synthesis import doctor
 

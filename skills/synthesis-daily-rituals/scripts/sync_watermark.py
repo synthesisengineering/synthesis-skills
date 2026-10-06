@@ -215,7 +215,7 @@ def defer(workspace: str, surface: str, reason: str, target: str | None = None,
 def _judge(data: dict, key: str, through, moment: datetime, since, max_age) -> dict:
     deferral = data["deferrals"].get(key) or {}
     at = _stored(deferral.get("deferred_at"))
-    live = at is not None and moment - at <= DEFERRAL_MAX_AGE
+    live = at is not None and moment - at <= DEFERRAL_MAX_AGE and (since is None or at >= since)  # this run's, not an earlier one's
     fresh = through is not None and (since is None or through >= since) and (max_age is None or moment - through <= max_age)
     state = "current" if fresh else ("deferred" if live else ("missing" if through is None else "stale"))
     return {"key": key, "through": stamp(through) if through else None, "state": state,
@@ -251,7 +251,7 @@ def status(workspace: str, surfaces=(), targets: dict | None = None, *, since=No
             blocking += blocked
         elif surface_row["blocking"]:
             blocking.append(surface)
-        rows.append({**surface_row, "targets": target_rows})
+        rows.append({**surface_row, "targets": [dict(t, state="deferred", blocking=False) for t in target_rows] if surface_row["state"] == "deferred" else target_rows})
     return {"workspace": workspace, "as_of": stamp(moment), "since": stamp(since) if since else None,
             "bound_source": bound_source, "surfaces": rows, "blocking": blocking}
 

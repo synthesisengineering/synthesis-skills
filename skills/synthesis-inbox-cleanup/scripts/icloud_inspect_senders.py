@@ -30,7 +30,6 @@ This script makes no changes to the mailbox. Read-only.
 import argparse
 import collections
 import email
-import os
 import re
 from email.utils import parsedate_to_datetime
 
@@ -96,7 +95,7 @@ def main():
             except Exception:
                 pass
 
-        print(f"\nFrom variants:")
+        print("\nFrom variants:")
         for f, c in froms.most_common(5):
             print(f"  {c:4d}  {f}")
 

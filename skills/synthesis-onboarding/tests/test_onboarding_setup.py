@@ -44,7 +44,7 @@ def test_claude_update_refreshes_the_marketplace_then_the_plugin(tmp_path, monke
     binary, log = fake_cli(tmp_path, "claude", {"plugin list": (0, listing), "plugin": (0, "")})
     monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
     assert "claude: updated synthesis-skills 5.0.0" == setup.install_plugin("claude", binary)
-    assert calls(log)[1:3] == [f"plugin marketplace update synthesis-engineering", f"plugin update {PLUGIN_ID}"]
+    assert calls(log)[1:3] == ["plugin marketplace update synthesis-engineering", f"plugin update {PLUGIN_ID}"]
 
 
 def test_codex_update_upgrades_the_snapshot_before_adding(tmp_path, monkeypatch):
@@ -57,8 +57,6 @@ def test_codex_update_upgrades_the_snapshot_before_adding(tmp_path, monkeypatch)
 
 
 def test_a_new_install_adds_the_marketplace_on_stable(tmp_path, monkeypatch):
-    state = tmp_path / "installed"
-    listing = [{"id": PLUGIN_ID, "version": "5.0.0", "enabled": True}]
     binary, log = fake_cli(tmp_path, "claude", {"plugin list": (0, []), "plugin": (0, "")})
     monkeypatch.setattr(setup, "configured_ref", lambda client: None)
     entries = iter([None, {"version": "5.0.0", "enabled": True}])

@@ -412,7 +412,7 @@ def install_org_skills(repo: Path) -> list:
     for skill in [p.parent for p in nested or flat]:
         for root in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"):
             dest = root / skill.name
-            if dest.exists() and ledger.get(str(dest)) != _digest(dest):
+            if dest.exists() and ledger.get(str(dest)) != _digest(dest) and not _from_4x(dest, repo, skill):
                 lines.append(f"{dest}: kept (changed since setup wrote it, or not written by setup)")
                 continue
             setup.export_tree(skill, dest)  # staging, then an atomic rename
@@ -421,6 +421,19 @@ def install_org_skills(repo: Path) -> list:
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return lines
+
+
+def _from_4x(dest: Path, repo: Path, skill: Path) -> bool:
+    """4.x wrote this copy from this repository and nobody edited it: its files equal those at the commit it recorded."""
+    try:
+        commit, prefix = json.loads((dest / ".source.json").read_text(encoding="utf-8"))["source_commit"], f"{skill.relative_to(repo)}/"
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    tree = _git(["ls-tree", "-r", str(commit), "--", prefix], repo)
+    want = {line.split("\t", 1)[1][len(prefix):]: line.split()[2] for line in tree.stdout.splitlines()} if not tree.returncode else {}
+    have = {str(f.relative_to(dest)): _git(["hash-object", str(f)], repo).stdout.strip()
+            for f in dest.rglob("*") if f.is_file() and f.name not in (".source.json", ".DS_Store")}
+    return bool(want) and want == have
 
 
 def _digest(folder: Path) -> str:

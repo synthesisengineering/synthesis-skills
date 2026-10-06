@@ -116,10 +116,21 @@ def test_short_page_and_page_cap_mark_the_set_bounded() -> None:
         f"- Space {i} (ID: spaces/AAAAcap{i:05d}, Type: SPACE)\n" for i in range(MODULE.PAGE_CAP)
     )
     records, claimed = MODULE.parse_enumeration(capped)
-    assert "cap" in MODULE.bound(records, claimed)
+    assert "full page" in MODULE.bound(records, claimed)
 
     records, claimed = MODULE.parse_enumeration(ENUMERATION)
     assert MODULE.bound(records, claimed) is None
+
+
+def test_a_page_shorter_than_the_requested_size_is_complete() -> None:
+    """2026-10-06: page_size 1000 returned 546 records with a header of 546, and the fixed cap of 100 called it
+    bounded; page_size 500 returning exactly 500 is the truncated case."""
+    page = lambda n: f"Found {n} Chat spaces (type: SPACE):\n" + "".join(  # noqa: E731
+        f"- Space {i} (ID: spaces/AAAAcap{i:05d}, Type: SPACE)\n" for i in range(n))
+    records, claimed = MODULE.parse_enumeration(page(546))
+    assert MODULE.bound(records, claimed, page_size=1000) is None
+    records, claimed = MODULE.parse_enumeration(page(500))
+    assert "full page" in MODULE.bound(records, claimed, page_size=500)
 
 
 def test_merge_keeps_config_labels_and_adds_enumerated_spaces(tmp_path: Path) -> None:

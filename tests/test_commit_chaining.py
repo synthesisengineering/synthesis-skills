@@ -1,7 +1,6 @@
 """R3.3, E37-E38: under a global hooks path the commit check still runs each repository's own
 pre-commit hooks, honors the `.githooks/required` declaration, and never runs itself twice."""
 
-import os
 import subprocess
 import sys
 from pathlib import Path

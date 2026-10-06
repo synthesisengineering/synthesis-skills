@@ -21,6 +21,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - The meeting-transcripts commitment scan reads Gemini's `### HH:MM:SS` block headings as
   times. It treated them as section breaks, so every candidate from a Gemini transcript printed
   `[no timestamp]`.
+- Setup refreshes organization skills that 4.x installed when nobody edited them since: their
+  files equal the source repository at the commit the 4.x copy recorded. Before, v5 kept every
+  such copy as "not written by setup", so upgraders kept old skills while setup said installed.
+- Sync watermarks: a deferral counts only when it was recorded in the current run, so one from
+  the day before no longer excuses unread targets; a deferred surface shows its targets deferred,
+  so the printout matches the exit code. The Google Chat preflight takes `--page-size` and calls
+  a page complete when it is shorter than the size requested.
+- Day-start's Google Chat step says the cross-space search never stands in for a read, and where
+  the sender's `users/<id>` comes from when a read returns names only.
+- Lint: unused imports and variables and placeholder-free f-strings removed across the plugin
+  and its tests.
 
 ## [5.0.1] - 2026-10-06
 

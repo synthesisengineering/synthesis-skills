@@ -238,7 +238,7 @@ def test_cli_plan_and_report(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path))
     manifest = write_manifest(tmp_path)
     WATERMARKS.begin(WS, "day-start")
-    out = capsys.readouterr()
+    capsys.readouterr()  # drop begin's output
     assert MAILBOXES.main(["--manifest", str(manifest), "--workspace", WS, "plan"]) == 0
     plan_out = capsys.readouterr().out
     assert "life@mac.com" in plan_out and "alias@example.com" not in plan_out

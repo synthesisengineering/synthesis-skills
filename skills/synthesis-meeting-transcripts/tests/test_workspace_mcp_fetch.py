@@ -6,7 +6,6 @@ from __future__ import annotations
 import importlib.util
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import os
 from pathlib import Path
 import sys
 import threading
