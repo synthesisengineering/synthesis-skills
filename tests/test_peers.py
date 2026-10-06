@@ -145,3 +145,26 @@ def test_resolve_is_a_plain_lookup_with_no_side_effects(isolated_home):
     with pytest.raises(board.AddressError):
         board.resolve("nobody")
     assert sorted(p.name for p in (isolated_home / "state").rglob("*")) == before
+
+
+def test_a_session_on_an_older_release_is_told_once_what_changed(isolated_home):
+    """Rajiv, 2026-10-06: after an upgrade, a session resumed or still running should learn of it without a new skill.
+    A new session records the release silently; one that last saw an older release gets the changelog once."""
+    from synthesis import __version__, paths
+    (paths.home() / "current").mkdir(parents=True, exist_ok=True)
+    (paths.home() / "current" / "CHANGELOG.md").write_text(
+        f"# Changelog\n\n## [{__version__}] - 2026-10-07\n\n- The newest change.\n\n## [0.0.2] - 2026-10-06\n\n"
+        "- A change the session already had.\n\n## [0.0.1] - 2026-10-05\n\n- An older one.\n", encoding="utf-8")
+
+    def prompt(session_id):
+        return subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"],
+                              input=json.dumps({"session_id": session_id, "prompt": "carry on"}),
+                              capture_output=True, text=True, cwd=ROOT, env=dict(os.environ)).stdout
+
+    board.touch("NEW", project="alpha")
+    assert "was upgraded" not in prompt("NEW") and board.load("NEW").version == __version__
+    board.touch("OLD", project="alpha", version="0.0.2")
+    note = prompt("OLD")
+    assert f"upgraded from 0.0.2 to {__version__}" in note and "The newest change" in note
+    assert "already had" not in note and "An older one" not in note
+    assert "was upgraded" not in prompt("OLD") and board.load("OLD").version == __version__

@@ -136,3 +136,20 @@ def test_the_example_config_is_valid():
     for rule in CONFIG["forbidden_phrases"]:
         re.compile(rule["pattern"])
     assert "persona casing" in guards.check(SLACK, {"channel_id": "C1", "message": "Sent by HelperBot."}, CONFIG)
+
+
+@pytest.mark.parametrize("tool_input,quiet", [
+    ({"action": "update", "event_id": "e1", "start_time": "2026-10-07T07:00", "send_updates": "none"}, True),
+    ({"summary": "Travel hold", "visibility": "private", "sendUpdates": "none"}, True),
+    ({"summary": "Sync", "attendees": ["a@example.com"], "send_updates": "none"}, False),
+    ({"action": "update", "event_id": "e1", "send_updates": "all"}, False),
+    ({"action": "update", "event_id": "e1"}, False),
+])
+def test_a_calendar_write_that_emails_no_one_needs_no_approval(tool_input, quiet):
+    """Rajiv's ruling, 2026-10-06: calendar writes wait for approval because invitations email people in his
+    name; a write that names no attendees and turns notifications off emails no one."""
+    config = {"send_tools": ["mcp__*__manage_event", "mcp__*__create_event", "mcp__*__respond_to_event"]}
+    tool = "mcp__workspace__manage_event" if "action" in tool_input else "mcp__workspace__create_event"
+    reason = guards.check(tool, tool_input, config)
+    assert (reason is None) is quiet, reason
+    assert guards.check("mcp__workspace__respond_to_event", {"event_id": "e1", "send_updates": "none"}, config)

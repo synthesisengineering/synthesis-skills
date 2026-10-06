@@ -302,7 +302,14 @@ def _show(path: bytes, number: int, line: bytes) -> str:
     return f"{path.decode('utf-8', 'backslashreplace')}:{number}: " + "".join(c if c >= " " else "?" for c in text)
 
 
-def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, approve, staged: bool = True) -> list[str]:
+def _own(found: str, own: set) -> bool:
+    """A repository naming itself (a product's name in its own app repository) is not a disclosure (Rajiv, 2026-10-06)."""
+    plain = re.sub(r"[^a-z0-9]", "", found.lower())
+    return len(plain) >= 4 and any(plain in name for name in own)
+
+
+def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, approve, staged: bool = True,
+         own: set = frozenset()) -> list[str]:
     """Credentials and keys in every line; exposure patterns outside catalog files and allowlisted lines, each
     hit then put to `approve`. Lines with invalid UTF-8 are matched through a replacement view and never exempted.
     A key header is left to the key rule (header plus body), whichever tier-0 pattern names it."""
@@ -323,7 +330,7 @@ def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float,
         if path not in skip:  # a path with invalid UTF-8 or a newline earns no exclusion
             shown = path.decode("utf-8", "replace")
             skip[path] = shown.encode("utf-8") == path and "\n" not in shown and any(rx.search(shown) for rx in excluded)
-        if exposed and not skip[path] and any(rx.search(text) for rx in exposed):
+        if exposed and not skip[path] and any(not _own(m.group(0), own) for rx in exposed for m in rx.finditer(text)):
             if not (valid and any(rx.search("+" + text) for rx in allow)):
                 hits.append((path, number, line))
     for path, numbers in by_path.items():
@@ -445,11 +452,12 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
     patterns = exposure(policy, cls) if message is None else exposure(policy, "strict") if wanted else []
     approved = read_allowances(store) if patterns else {}  # read whenever it could decide a line, so damage shows at once
     approve = lambda hits: unapproved(hits, identity(remotes), store, approved) if hits else []  # noqa: E731
+    own = {re.sub(r"[^a-z0-9]", "", s.lower()) for u in remotes for s in re.split(r"[/:]", u.removesuffix(".git"))[-2:]}
     if message is not None:  # commit messages stay generic wherever outsiders read the log (2025-12-21)
-        return scan(message_lines(message), policy, patterns, deadline, approve, False), [], cls
+        return scan(message_lines(message), policy, patterns, deadline, approve, False, own), [], cls
     diff = git_bytes(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/",
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
-    found = scan(added(diff), policy, patterns, deadline, approve)
+    found = scan(added(diff), policy, patterns, deadline, approve, own=own)
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
               for n in names if n and SECRET_FILE.search(os.fsdecode(n))]

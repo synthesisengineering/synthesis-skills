@@ -11,6 +11,7 @@ only for the event that needs them.
 
 import json
 import os
+import re
 import sys
 import time
 
@@ -35,6 +36,25 @@ def _emit(event, context="", deny=""):
     return 0
 
 
+def _upgrade_note(session_id, me) -> str:
+    """Once per release, tell a session that last saw an older runtime what changed (Rajiv, 2026-10-06)."""
+    from synthesis import __version__, board, paths
+    if me is None or me.version == __version__:
+        return ""
+    seen = me.version
+    board.touch(session_id, version=__version__)
+    log = paths.home() / "current" / "CHANGELOG.md"
+    text = log.read_text(encoding="utf-8") if seen and log.is_file() else ""
+    number = lambda v: tuple(int(x) for x in re.findall(r"\d+", v)[:3])  # noqa: E731
+    sections = [s.strip() for s in re.split(r"(?m)^(?=## \[)", text) if (m := re.match(r"## \[([\d.]+)\]", s))
+                and number(seen) < number(m.group(1)) <= number(__version__)]
+    return "" if not seen else (
+        f"synthesis was upgraded from {seen} to {__version__} since this session last saw it. Hooks and guards already "
+        f"run {__version__}; skill text loaded earlier in this conversation is {seen}'s. Before relying on a skill the "
+        "changes below name, re-read its SKILL.md, or run the synthesis-checkpoint skill in refresh-and-report mode for a "
+        "full pass; restarting the app reloads everything.\n\n" + ("\n\n".join(sections) or "(no changelog found)")[:3000])
+
+
 def session_start(payload):
     from synthesis import autopilot, board, paths, project
 
@@ -45,6 +65,7 @@ def session_start(payload):
     session = board.touch(session_id, harness=paths.harness(payload), cwd=payload.get("cwd") or None,
                           briefed=known.project if known else "")
     notes = [time.strftime("Local time: %A %Y-%m-%d %H:%M %Z (%z), from the session-start hook.")]
+    notes += [n for n in [_upgrade_note(session_id, known)] if n]
     project_dir = project.find(session.project) if session.project else None
     notes += [project.brief(project_dir)] if project_dir else []
     run = autopilot.brief(payload)
@@ -68,6 +89,7 @@ def user_prompt_submit(payload):
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)
+        notes += [n for n in [_upgrade_note(session_id, me)] if n]
         if me and me.project and me.project != me.briefed:  # after `synthesis use`, once
             from synthesis import project
             found = project.find(me.project)
