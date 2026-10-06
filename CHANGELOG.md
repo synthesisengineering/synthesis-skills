@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   instructions, as it already accepted the reverse. Repositories that keep their
   instructions in `CLAUDE.md` with `AGENTS.md` as a link were reported as reading
   different instructions when both harnesses read one file.
+- When the shell guard refuses a script fed on stdin because another part of the command
+  names a synthesis state or transcript path, the refusal now says to run the script on
+  its own. The rule itself is unchanged: a heredoc cannot be told apart from the rest of
+  the line, and a variable set elsewhere could carry the path into the script.
 
 ## [5.0.1] - 2026-10-06
 
