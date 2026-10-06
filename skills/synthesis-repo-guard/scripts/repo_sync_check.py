@@ -102,7 +102,9 @@ def main(argv=None) -> int:
                   "total_repos": len(results), "dirty_count": len(dirty), "repos": results}
         folder = Path.home() / ".synthesis" / "repo-guard"
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / "last-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        partial = folder / f".last-report.{os.getpid()}.json"  # the Console polls the file; it never sees half of it
+        partial.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        os.replace(partial, folder / "last-report.json")
     if args.json and not args.quiet:
         print(json.dumps(dirty, indent=2))
     elif not args.quiet:

@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts"):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))

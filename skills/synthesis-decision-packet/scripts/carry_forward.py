@@ -25,6 +25,7 @@ import json
 import pathlib
 import sys
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import record_rulings as rr  # noqa: E402
 from build_packet import spec_digest, strict_json, validate  # noqa: E402

@@ -24,6 +24,8 @@ import email
 import re
 from email.utils import parseaddr
 
+import sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, dec
 
 

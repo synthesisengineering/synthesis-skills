@@ -20,10 +20,12 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 import setup
 from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
 

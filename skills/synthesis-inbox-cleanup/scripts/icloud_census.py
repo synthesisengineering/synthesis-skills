@@ -14,6 +14,8 @@ Read-only: INBOX is opened readonly=True. Makes no changes to the mailbox.
 """
 import imaplib, email, collections
 from email.utils import parseaddr
+import sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import HOST, USER_CANDIDATES, MANIFEST_PATH, get_password, dec, _load_yaml
 
 MASKED_DOMAINS = {"icloud.com", "privaterelay.appleid.com"}

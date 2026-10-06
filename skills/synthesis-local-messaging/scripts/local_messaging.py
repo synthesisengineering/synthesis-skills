@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 
 MAX_BODY = 256 * 1024
 MAX_PAGE = 100
@@ -416,5 +417,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.dont_write_bytecode = True
     sys.exit(main())

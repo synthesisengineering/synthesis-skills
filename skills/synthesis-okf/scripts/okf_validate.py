@@ -27,6 +27,7 @@ import re
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
 from synthesis import yamlish  # noqa: E402
 

@@ -78,7 +78,7 @@ v5 file, most of the 3.6.7 text in the preserved files.
 |---|---|---|
 | `autopilot_gate.py register`: mission required, binding to session and project, claim covers the plan | `engage` (checklist, criteria, horizon required; board claim on the plan) | `test_engage_*`, `test_15_*` |
 | `continuation`: mechanism, next wake and survival required; cron job id; cron UNVERIFIED until `cron-fired`; 60-minute grace | Plan lines `Continuation:`, `First wake:`, `Backstop:`; `_continuation_problems` | `test_6_*`, `test_7_*` |
-| `status` read-only, `--json` | `status` and `status --all` (human text; the plan itself is the machine-readable record) | `test_24_*` |
+| `status` read-only, `--json` | `status`, `status --all` and `status --json` (the same runs as a JSON list, since 5.0.5) | `test_24_*` |
 | `cycle`: a wake that advanced nothing must name the wait | `cycle` | `test_9_*` |
 | `blocker --alerted`: no blocker without an alert | `Status: blocked` needs `alerted` on each open blocker | `test_23_25_*` |
 | `close --goals-met` or `--incomplete REASON`; refuses scratch-only citations; refuses without verified checklist | `close`; `close_problems` reads `## Required evidence` and the standing checklist | `test_8_*`, `test_10_*` to `test_14_*` |

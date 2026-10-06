@@ -5,7 +5,8 @@ Applies the manifest to every INBOX message and reports the action plan
 (keep / archive / trash / newsletter) with per-sender breakdowns. NO changes.
 Shares disposition logic with the executor via _lib (cannot diverge).
 """
-import collections
+import collections, sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, resolve, msg_fields
 
 

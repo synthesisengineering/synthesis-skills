@@ -486,6 +486,12 @@ def test_24_status_shows_every_runs_next_item_blockers_and_open_questions(tmp_pa
     assert str(path) in out and "next: 2. Migrate /orders  (2 of 3 items open)" in out
     assert "question: Keep the v1 endpoints alive for a week?" in out and "staging DB" not in out
     assert "blocker: Waiting on the vendor's API key" in out
+    assert run("--session", "S1", "status", "--json") == 0
+    [row] = json.loads(capsys.readouterr().out)
+    assert row["plan"] == str(path) and row["this_session"] and (row["open"], row["total"]) == (2, 3)
+    assert row["next"] == "2. Migrate /orders" and row["questions"] == ["Keep the v1 endpoints alive for a week?"]
+    assert row["blockers"] == ["Waiting on the vendor's API key; alerted x"]
+    assert run("--session", "S9", "status", "--json") == 0 and json.loads(capsys.readouterr().out) == []
 
 
 # ---- scenario 30 and R6.3: nothing old is read; compaction brings the run back ----

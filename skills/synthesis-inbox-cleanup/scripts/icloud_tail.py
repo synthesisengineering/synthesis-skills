@@ -4,7 +4,8 @@
 These currently default to KEEP — the long-tail work-list for classification.
 READ-ONLY. Shares disposition logic with planner/executor via _lib.
 """
-import collections
+import collections, sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, resolve, msg_fields
 
 

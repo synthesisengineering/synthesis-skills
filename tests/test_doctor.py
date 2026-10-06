@@ -790,3 +790,34 @@ def test_hand_made_or_edited_packets_are_flagged(tmp_path):
     check = doctor.check_packets([tmp_path])
     assert check.status == "warn" and "2 of 3" in check.detail
     assert "edited after generation" in check.detail and "no generator marker" in check.detail
+
+
+def test_a_harness_cli_leaves_no_helper_running_after_the_doctor(tmp_path):
+    """2026-10-06: Codex's app-server runs `git ls-remote` when it starts; killing only the app-server left
+    git running in the doctor's process group, and the Console reported processes left behind."""
+    marker = tmp_path / "helper.pid"
+    fake = tmp_path / "codex"
+    fake.write_text(f"""#!/bin/sh
+sleep 30 &
+echo $! > {marker}
+while read line; do
+  case "$line" in
+    *'"id": 0'*) echo '{{"id": 0, "result": {{}}}}' ;;
+    *'"id": 1'*) echo '{{"id": 1, "result": {{"data": []}}}}' ;;
+  esac
+done
+""")
+    fake.chmod(0o755)
+    assert doctor.app_server_query(str(fake), "skills/list", {}) == {"data": []}
+    helper = int(marker.read_text())
+    with pytest.raises(ProcessLookupError):
+        for _ in range(50):  # killed with the group; give the kernel a moment to reap it
+            os.kill(helper, 0)
+            time.sleep(0.02)
+    proc = doctor._start([str(fake)])  # the plugin listings: reaped the same way when they finish
+    proc.stdin and proc.stdin.close()
+    doctor._finish(proc, timeout=0.5)
+    with pytest.raises(ProcessLookupError):
+        for _ in range(50):
+            os.kill(int(marker.read_text()), 0)
+            time.sleep(0.02)

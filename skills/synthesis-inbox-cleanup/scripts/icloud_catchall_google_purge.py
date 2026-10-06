@@ -40,6 +40,8 @@ Dry-run by default; --apply to actually trash. Trash is recoverable ~30 days.
 """
 import argparse, collections, re, email
 from email.utils import getaddresses
+import sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, dec, CONFIG
 
 GOOGLE_EXACT = {"google.com", "googlemail.com", "googleapis.com"}

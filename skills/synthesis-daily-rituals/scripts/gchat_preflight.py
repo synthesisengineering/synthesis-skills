@@ -69,6 +69,7 @@ class Target:
         return self.space is not None
 
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 def _load_yaml(path: Path) -> dict:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
     from synthesis.yamlish import load

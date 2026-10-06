@@ -35,6 +35,7 @@ import subprocess
 import sys
 import time
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
 from synthesis import doctor as synthesis_doctor  # noqa: E402
 

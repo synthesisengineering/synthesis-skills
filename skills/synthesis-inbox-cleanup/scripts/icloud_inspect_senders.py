@@ -33,6 +33,8 @@ import email
 import re
 from email.utils import parsedate_to_datetime
 
+import sys
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 from _lib import connect, dec
 import sanitize
 

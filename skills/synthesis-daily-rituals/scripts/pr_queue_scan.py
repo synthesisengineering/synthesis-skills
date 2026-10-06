@@ -57,6 +57,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
 from synthesis.yamlish import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
 
