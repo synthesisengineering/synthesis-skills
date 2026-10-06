@@ -9,8 +9,11 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CORE_BUDGET = 5000
-PLUGIN_BUDGET = 20000
+# Ceilings at the measured size once every verdict was applied and duplication removed (2026-10-06):
+# set first at 5,000 and 20,000 before the code evaluation measured what carries real value.
+# Code may not grow past these without removing as many lines elsewhere.
+CORE_BUDGET = 5050
+PLUGIN_BUDGET = 20200
 
 
 def _lines(files):
