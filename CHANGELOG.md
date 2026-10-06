@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.1] - 2026-10-06
+
+- The `synthesis` command works through the `~/.local/bin/synthesis` link that setup
+  creates. It found its runtime from the folder it was called through, so the link
+  failed with "No module named synthesis", and inside a synthesis-skills checkout it ran
+  the checkout's code instead of the installed release. It now resolves its own path
+  and puts the runtime first on Python's path. The test calls it through a link from a
+  folder holding a decoy package; the old test ran from the repository root, where the
+  checkout hid the bug.
+- The commit check's refusal reads "an AWS access key" (it said "a AWS access key").
+
 ## [5.0.0] - 2026-10-06
 
 A rebuild of the synthesis work system from its requirements. The skills keep every
