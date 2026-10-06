@@ -16,9 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # flow collections in the YAML reader (the inbox rules use them), which let every skill drop PyYAML
 # while the skills' own scripts shrank by as much as they grew. The plugin rose 10 more in 5.0.2: setup's
 # recognition of unedited 4.x-installed organization skills, and release reporting what it matched,
-# after pyflakes found nothing left to remove. Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5190
-PLUGIN_BUDGET = 20347
+# after pyflakes found nothing left to remove. 5.0.3 adds 41 to both for three things Rajiv asked for on
+# 2026-10-06: the once-per-release upgrade note (25), calendar writes that email no one (9) and a repository
+# naming itself (7). Code may not grow past these without removing as many lines elsewhere.
+CORE_BUDGET = 5231
+PLUGIN_BUDGET = 20388
 
 
 def _lines(files):

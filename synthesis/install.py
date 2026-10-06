@@ -103,6 +103,8 @@ def install(plugin_root: Path) -> str:
                 (staging / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, staging / rel)
             (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
+            if (plugin_root / "CHANGELOG.md").is_file():  # the upgrade note quotes it to running sessions
+                shutil.copy2(plugin_root / "CHANGELOG.md", staging / "CHANGELOG.md")
             (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
             os.replace(staging, release)
         link = home / f".current.{os.getpid()}"

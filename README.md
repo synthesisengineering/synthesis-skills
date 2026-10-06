@@ -190,7 +190,9 @@ To update, run the installer again with the `plugin` step:
 curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- plugin
 ```
 
-An install that follows `main` or a pinned release keeps it. To uninstall, run
+An install that follows `main` or a pinned release keeps it. Sessions already open pick up an upgrade on their own: the hooks run
+the new release at once, and at its next prompt each session gets one note naming the release it
+moved to and what changed, with the step to refresh any skill text it loaded earlier. To uninstall, run
 `python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py uninstall --dry-run`
 to see what would go, then again without `--dry-run`. It removes the plugin from each
 harness, restores your previous `core.hooksPath`, removes the unedited files the install

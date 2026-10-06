@@ -896,10 +896,18 @@ def shell_command(tool_input: dict) -> str:
     return shlex.join(value) if isinstance(value, list) else str(value)
 
 
+def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
+    """A calendar write that names no attendees and turns notifications off emails no one, so it needs no
+    approval (Rajiv's ruling, 2026-10-06: the gate exists because invitations email people in his name)."""
+    notify = str(tool_input.get("send_updates", tool_input.get("sendUpdates", ""))).strip().lower()
+    return bool(re.search(r"(?:create|update|manage)_event$", tool)) and notify == "none" and not tool_input.get("attendees")
+
+
 def _sends(tool: str, tool_input: dict, config: dict) -> bool:
     """A send tool by name, or any server's `send_message` that addresses a mailbox or Chat space
     (the Gmail connector's server name is an id that no name pattern can anticipate)."""
-    return is_send_tool(tool, config) or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input))
+    return ((is_send_tool(tool, config) and not _quiet_calendar_write(tool, tool_input))
+            or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:

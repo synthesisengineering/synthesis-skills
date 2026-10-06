@@ -111,6 +111,16 @@ def test_exposure_patterns_follow_the_repository_class(tmp_path, policy, remote,
         assert "unapproved disclosure" in result.stderr
 
 
+def test_a_repository_naming_itself_is_not_a_disclosure(tmp_path, policy):
+    """Rajiv, 2026-10-06: a strict repository's heading naming its own product needed an approval code twice in a day.
+    The repository's own owner or name passes there; every other protected name still blocks."""
+    repo = make_repo(tmp_path, "git@bitbucket.org:other-org/bluebird-ios.git")
+    assert commit(repo, {"a.md": "# Bluebird iOS\n"}).returncode == 0
+    result = commit(repo, {"b.md": "# Bluebird iOS, for Example Daily\n"})
+    assert result.returncode != 0 and "unapproved disclosure" in result.stderr
+    assert commit(make_repo(tmp_path / "other", STRICT), {"a.md": "# Bluebird iOS\n"}).returncode != 0
+
+
 def test_mixed_remotes_take_the_stricter_class(tmp_path, policy):
     repo = make_repo(tmp_path, PERSONAL)
     subprocess.run(["git", "-C", str(repo), "remote", "set-url", "--add", "--push", "origin", STRICT], check=True)

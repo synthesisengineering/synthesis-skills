@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.3] - 2026-10-06
+
+- **Sessions learn of an upgrade.** A session that last saw an older release gets one note at its next
+  prompt or start: the release it moved to, the changelog sections in between, and the step to refresh
+  skill text it loaded earlier (re-read a changed skill, or run synthesis-checkpoint in
+  refresh-and-report mode). Hooks and guards already run the new release; a new session records the
+  release silently. Install copies the changelog into each release for the note to quote.
+- **Calendar writes that email no one** (no attendees named, notifications set to none) no longer wait
+  for approval; anything with attendees or notifications, and every RSVP, still does. Account routing
+  still applies to every calendar call.
+- **A repository naming itself** is not a disclosure: in a strict repository a protected name that is the
+  repository's own owner or name (for example a product's name in its own app repository) passes; every
+  other protected name still needs approval.
+- The plugin and core line ceilings rise by 41 for these three.
+
 ## [5.0.2] - 2026-10-06
 
 - `synthesis doctor` accepts an `AGENTS.md` that links to `CLAUDE.md` as the same

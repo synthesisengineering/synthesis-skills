@@ -5,6 +5,13 @@ readiness, or report upgrade findings. It works for a first or repeated
 refresh. The short user invocation is: "Run the current installed
 synthesis-checkpoint skill in refresh-and-report mode."
 
+## When it starts
+
+After a release installs, the hooks run the new version at once, and a session that last saw an
+older one gets a note at its next prompt or start: the two versions, the changelog sections in
+between, and this mode as the way to refresh skill text loaded earlier. The note comes once per
+session per release. Run this mode then, or whenever asked.
+
 ## Scope
 
 Stay with this conversation's established project and workspace. This mode
