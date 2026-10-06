@@ -24,8 +24,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from simple_yaml import load  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis.yamlish import load  # noqa: E402
 
 STATUSES = ("active", "on-demand", "dormant")
 RUN_TYPES = ("day-start", "midday", "day-end", "weekly-review")

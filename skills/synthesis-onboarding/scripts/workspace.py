@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import setup
-import yaml_subset
+from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
 
 ARCHIVE_NOTE = "<!-- synthesis-instructions:generated -->"
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
@@ -134,7 +134,7 @@ def workspace_entries(kb_dir: Path, ws_root: Path) -> tuple:
     manifest = kb_dir / ".agents" / "repos.yaml"
     if not manifest.is_file():
         return [], [f"{manifest} not found: only the knowledge repository was set up"]
-    repos = yaml_subset.load(manifest.read_text(encoding="utf-8"), str(manifest)).get("repos") or []
+    repos = yamlish.load_mapping(manifest.read_text(encoding="utf-8"), str(manifest)).get("repos") or []
     entries, notes = [], []
     for repo in repos:
         remotes = repo.get("remotes") or {}
@@ -440,7 +440,7 @@ def render_instructions(org_text: str, personal_text: str = "") -> str:
 def org_preferences(url: str) -> tuple:
     """(clients, marketplace ref) the organization's manifest asks for."""
     root, _ = acquire_org(url)
-    eco = validate_org_manifest(yaml_subset.load((root / ".agents" / "onboarding.yaml").read_text(
+    eco = validate_org_manifest(yamlish.load_mapping((root / ".agents" / "onboarding.yaml").read_text(
         encoding="utf-8"), ".agents/onboarding.yaml")).get("ecosystem") or {}
     ref = f"v{eco['version_pin']}" if eco.get("version_pin") else ("main" if eco.get("channel") == "edge" else "stable")
     return list(eco.get("clients") or ["claude", "codex"]), ref
@@ -448,7 +448,7 @@ def org_preferences(url: str) -> tuple:
 
 def enroll(url: str, progress, personal_source: str = "", adopt: bool = False) -> list:
     root, commit = acquire_org(url)
-    manifest = validate_org_manifest(yaml_subset.load((root / ".agents" / "onboarding.yaml").read_text(
+    manifest = validate_org_manifest(yamlish.load_mapping((root / ".agents" / "onboarding.yaml").read_text(
         encoding="utf-8"), ".agents/onboarding.yaml"))
     org, help_text = manifest["org"], manifest.get("auth_help") or ""
     ws_root = Path.home() / "workspaces" / org["workspace"]
@@ -493,7 +493,7 @@ if __name__ == "__main__":  # check an organization manifest: python3 workspace.
     if len(sys.argv) != 3 or sys.argv[1] != "check":
         sys.exit("usage: python3 workspace.py check <path to .agents/onboarding.yaml>")
     try:
-        manifest = validate_org_manifest(yaml_subset.load(Path(sys.argv[2]).read_text(encoding="utf-8"), sys.argv[2]))
+        manifest = validate_org_manifest(yamlish.load_mapping(Path(sys.argv[2]).read_text(encoding="utf-8"), sys.argv[2]))
     except (OSError, ValueError, setup.SetupError) as exc:
         print(f"invalid: {exc}")
         sys.exit(2)

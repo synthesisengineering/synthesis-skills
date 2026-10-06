@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
 
 import sync_watermark as watermarks
 
@@ -39,7 +40,7 @@ UNREACHABLE_PREFIX = "unreachable:"
 
 def load_manifest(path: Path) -> dict:
     """Parse and validate a mailboxes manifest, fail-closed on any gap."""
-    from simple_yaml import load
+    from synthesis.yamlish import load
 
     try:
         data = load(path.read_text(encoding="utf-8"))

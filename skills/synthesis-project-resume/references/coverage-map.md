@@ -60,7 +60,7 @@ the retired format upgrade.
 
 | Script | Verdict | v5 home | Tests |
 |---|---|---|---|
-| scripts/resume_probe.py | KEEP | the same script; `format_version` dropped (as the evaluation named); PyYAML replaced by a standard-library index reader | tests/test_resume_probe.py |
+| scripts/resume_probe.py | KEEP | the same script; `format_version` dropped (as the evaluation named); PyYAML replaced by a standard-library index reader; since 2026-10-05 the plugin's shared `synthesis/yamlish.py`, which reads a description continued on more-indented lines whole (the embedded reader kept only its first line) | tests/test_resume_probe.py |
 
 ## Scenarios
 

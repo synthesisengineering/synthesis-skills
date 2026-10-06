@@ -14,6 +14,7 @@ reason is in [preserved.md](preserved.md).
 - [3.6.7 SKILL.md](#367-skillmd)
 - [3.6.7 reference files](#367-reference-files)
 - [Evaluation scenarios and where each is held](#evaluation-scenarios-and-where-each-is-held)
+- [Changes after 4.0.0](#changes-after-400)
 
 ## Coverage check results
 
@@ -194,3 +195,24 @@ Numbers are section 3 of the v5 code evaluation for autopilot. Tests are in
 | 28 | Low context: continue and rely on re-injection | [continuation.md](continuation.md#capability-probe-volatile-state-compaction); `test_session_start_brief_*` |
 | 29 | Software acceptance rests on executed checks | [domain-quality.md](domain-quality.md); criteria need evidence (`test_12_*`) |
 | 30 | Old engagement records are never read | `test_30_*` |
+
+## Changes after 4.0.0
+
+**2026-10-05: the helper commands moved out of the core.** The commands an agent
+runs by hand (`engage`, `status`, `cycle`, `close`, `alert`, `wake-prompt`,
+`takeover`, with `set_field`, `append_to_section`, `DEFAULT_STANDING` and the alert
+text) moved from the core's `synthesis/autopilot.py` to this skill's
+`scripts/autopilot_cli.py`, following the plugin's rule that code a hook or the
+`synthesis` CLI needs lives in `synthesis/` and code an agent runs from a skill
+lives in the skill. The core keeps what the Stop and SessionStart hooks call
+(`check`, `evaluate`, `brief`) and the plan reader they use (`Plan`, `load`,
+`close_problems`, `evidence_problems`, the continuation and backstop checks,
+the pointer files); the script imports those from it. The install copies the
+script into the runtime (`STABLE_SKILL_SCRIPTS` in `synthesis/install.py`), so
+`$AP` in [SKILL.md](../SKILL.md), [continuation.md](continuation.md),
+[turn-end-check.md](turn-end-check.md#helper-commands) and
+[plan-file.md](plan-file.md) now names that copy. The blocked-run request and the
+wake prompt name `autopilot_cli.py`. No rule changed. Every test in
+`tests/test_autopilot.py` still holds; it runs the commands from the script, and
+`test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs` checks
+that every documented `$AP` path is the installed copy and that it runs from there.

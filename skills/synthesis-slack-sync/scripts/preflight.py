@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slack sync preflight: resolve every read target from the sync config, fail closed.
 
-Standard library only: the config is read with a small block-style YAML subset parser
+Standard library only: the config is read with the plugin's YAML reader, `synthesis/yamlish.py`
 (or as JSON when the file ends in .json).
 
 A sync config carries two id-like fields per DM entry: ``id`` (the user id,
@@ -40,6 +40,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis.yamlish import load_mapping  # noqa: E402
+
 SURFACE = "slack"
 CLASSES = (
     # (config key, class label, read-id field, accepted prefixes)
@@ -65,79 +68,6 @@ class Target:
         return self.read_id is not None
 
 
-def _scalar(text: str):
-    """One YAML scalar: quoted or bare text, true/false, null, or a flow list of scalars."""
-    text = text.strip()
-    if len(text) >= 2 and text[0] == text[-1] == '"':
-        try:
-            return json.loads(text)  # YAML's double-quoted escapes (\u2014, \n, \") are JSON's
-        except ValueError as exc:
-            raise ConfigError(f"unsupported escape in {text[:40]!r}") from exc
-    if len(text) >= 2 and text[0] == text[-1] == "'":
-        return text[1:-1].replace("''", "'")
-    if text.startswith("[") and text.endswith("]"):
-        return [_scalar(part) for part in text[1:-1].split(",") if part.strip()]
-    if text.startswith(("{", "&", "*", "|", ">")):
-        raise ConfigError(f"unsupported YAML form {text[:20]!r}: write block-style lists of `key: value` entries")
-    return {"true": True, "false": False, "null": None, "~": None, "": None}.get(text.lower(), text)
-
-
-def _uncomment(line: str) -> str:
-    quote = None
-    for i, char in enumerate(line):
-        if char in "'\"" and quote in (None, char):
-            quote = None if quote else char
-        elif char == "#" and quote is None and (i == 0 or line[i - 1] in " \t"):
-            return line[:i]
-    return line
-
-
-def parse_yaml(text: str) -> dict:
-    """The block-style YAML subset a sync config uses, with the standard library only: top-level
-    `key: value` scalars, and `key:` followed by `- field: value` entries or nested `field: value`."""
-    data: dict = {}
-    key = entry = None
-    for number, raw in enumerate(text.splitlines(), 1):
-        line = _uncomment(raw).rstrip()
-        if not line.strip():
-            continue
-        if "\t" in line[:len(line) - len(line.lstrip())]:
-            raise ConfigError(f"line {number}: tabs are not valid YAML indentation")
-        body = line.strip()
-        if not line[0].isspace():
-            name, colon, value = body.partition(":")
-            if not colon or not name.strip():
-                raise ConfigError(f"line {number}: expected `key: value`")
-            key, entry = name.strip(), None
-            data[key] = _scalar(value) if value.strip() else None
-            continue
-        if key is None:
-            raise ConfigError(f"line {number}: indented line before any key")
-        if body == "-" or body.startswith("- "):
-            if data[key] is None:
-                data[key] = []
-            if not isinstance(data[key], list):
-                raise ConfigError(f"line {number}: {key} mixes a list with other values")
-            body = body[1:].strip()
-            if ":" not in body or body.startswith(("'", '"')):
-                data[key].append(_scalar(body))  # a bare scalar entry; resolve_targets refuses it
-                entry = None
-                continue
-            entry = {}
-            data[key].append(entry)
-        elif entry is None:
-            if data[key] is None:
-                data[key] = {}
-            if not isinstance(data[key], dict):
-                raise ConfigError(f"line {number}: unexpected indented line under {key}")
-            entry = data[key]
-        name, colon, value = body.partition(":")
-        if not colon or not name.strip():
-            raise ConfigError(f"line {number}: expected `field: value`")
-        entry[name.strip()] = _scalar(value)
-    return data
-
-
 def _load_config(path: Path) -> dict:
     try:
         text = path.read_text(encoding="utf-8")
@@ -149,7 +79,10 @@ def _load_config(path: Path) -> dict:
         except ValueError as exc:
             raise ConfigError(f"{path} is not valid JSON: {exc}") from exc
     else:
-        payload = parse_yaml(text)
+        try:
+            payload = load_mapping(text, str(path))
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
     if not isinstance(payload, dict):
         raise ConfigError(f"{path} must be a mapping at the top level")
     return payload

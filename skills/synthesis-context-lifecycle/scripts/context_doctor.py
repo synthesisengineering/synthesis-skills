@@ -25,6 +25,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis.yamlish import load  # noqa: E402
+
 CONTEXT_ACTIVE, CONTEXT_COMPLETED, REFERENCE, REFERENCE_INDEX = 150, 80, 300, 150
 CANONICAL = {"active", "paused", "completed", "archived"}
 TERMINAL = {"completed", "complete", "archived", "superseded"}
@@ -99,46 +102,15 @@ def read(path: Path) -> str:
         raise CannotTell(f"could not read {path}: {exc}") from exc
 
 
-def _scalar(raw: str):
-    raw = raw.strip()
-    if len(raw) > 1 and raw[0] == raw[-1] and raw[0] in "\"'":
-        return raw[1:-1]
-    return {"true": True, "yes": True, "false": False, "no": False, "null": None, "~": None}.get(raw.lower(), raw)
-
-
-def index_entries(text: str) -> list[dict]:
-    """The flat fields of each project in index.yaml, under `projects:` or as a bare top-level list.
-    A dash deeper than an entry's own fields belongs to a nested list (tags), not a new entry."""
-    items, in_list, key_indent, entry_indent, field_indent = [], False, -1, None, None
-    bare = not re.search(r"^projects:", text, re.M)
-    for raw in text.splitlines():
-        line = re.sub(r"\s+#.*$", "", raw).rstrip() if not raw.lstrip().startswith("#") else ""
-        if not line.strip():
-            continue
-        indent, body = len(line) - len(line.lstrip()), line.strip()
-        if not in_list:
-            if bare or body.startswith("projects:"):
-                in_list, key_indent = True, (-1 if bare else indent)
-            if not bare:
-                continue
-        if indent <= key_indent and not body.startswith("-"):
-            break
-        if body.startswith("- "):
-            if entry_indent is not None and indent > entry_indent:
-                continue
-            items.append({})
-            entry_indent, field_indent, body = indent, None, body[2:].strip()
-        elif not items or entry_indent is None or indent <= entry_indent:
-            continue
-        else:
-            field_indent = indent if field_indent is None else field_indent
-            if indent > field_indent:
-                continue
-        if ":" in body:
-            key, _, value = body.partition(":")
-            if key.strip() not in items[-1]:
-                items[-1][key.strip()] = None if value.strip() in (">", "|", ">-", "|-", "") else _scalar(value)
-    return [i for i in items if "id" in i]
+def index_entries(path: Path) -> list[dict]:
+    """Each project's entry in index.yaml, under `projects:` or as a bare top-level list, read by the
+    plugin's YAML reader. An index it cannot read is one the doctor cannot judge."""
+    try:
+        data = load(read(path))
+    except ValueError as exc:
+        raise CannotTell(f"could not read {path}: {exc}") from exc
+    items = data.get("projects") if isinstance(data, dict) else data
+    return [item for item in (items if isinstance(items, list) else []) if isinstance(item, dict) and "id" in item]
 
 
 def _verdict(value: str):
@@ -457,7 +429,7 @@ def audit_root(root: Path, today: date, only: Path | None = None, named: bool = 
     if code or not top:
         raise CannotTell(f"{root} is not inside a git repository")
     repo = Path(top).resolve()
-    by_id = {str(e["id"]): e for e in index_entries(read(index_path))} if index_path.is_file() else {}
+    by_id = {str(e["id"]): e for e in index_entries(index_path)} if index_path.is_file() else {}
     state, repo_findings = repo_state(repo, projects.resolve())
     source = [Finding(f"({root.name})", c, s, m, r) for c, s, m, r in repo_findings]
     if not index_path.is_file() and folders:

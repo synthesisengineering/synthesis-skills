@@ -70,9 +70,11 @@ remains and that a real blocker is an acceptable answer.
 
 ## Helper commands
 
-`AP="$HOME/.synthesis/v5/current/synthesis/autopilot.py"` (the installed
-runtime). Each helper takes `--session <id>` before the command name when the
-shell does not carry the harness's id (Claude Code shells carry
+`AP="$HOME/.synthesis/v5/current/skills/synthesis-autopilot/scripts/autopilot_cli.py"`
+(this skill's `scripts/autopilot_cli.py` as the install copies it into the runtime;
+the turn-end check stays in the core, `synthesis/autopilot.py`). Each helper takes
+`--session <id>` before the command name when the shell does not carry the
+harness's id (Claude Code shells carry
 `$CLAUDE_CODE_SESSION_ID`, Codex `$CODEX_THREAD_ID`). Output below is real,
 with the plan path shortened to `<plan>` and the close refusal's list cut after
 its first standing item.
@@ -152,7 +154,7 @@ delivered one; the written report in the plan is always required.
 
 ```text
 $ python3 -S "$AP" wake-prompt --plan <plan>
-Autopilot wake for the plan at <plan>. Read that plan before anything else. If its Status is done, incomplete or cancelled, do no work: delete this scheduled job, read the deletion back, and stop. If another session owns it, run `autopilot.py status --all`; take it over only when the plan has been silent longer than its Silent after: line allows, otherwise message the owner and stop. Otherwise verify the plan's state against git and the files on disk, record this wake in the cycle ledger, and continue the next open checklist item.
+Autopilot wake for the plan at <plan>. Read that plan before anything else. If its Status is done, incomplete or cancelled, do no work: delete this scheduled job, read the deletion back, and stop. If another session owns it, run `autopilot_cli.py status --all`; take it over only when the plan has been silent longer than its Silent after: line allows, otherwise message the owner and stop. Otherwise verify the plan's state against git and the files on disk, record this wake in the cycle ledger, and continue the next open checklist item.
 ```
 
 **Takeover** of a plan whose owner has gone silent past `Silent after:`:

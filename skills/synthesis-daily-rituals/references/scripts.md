@@ -2,7 +2,8 @@
 
 Read before running a script. `<rituals>` is this skill's folder; `<W>` is the workspace. Every
 script is standard-library Python that runs on Apple's `/usr/bin/python3`; the YAML manifests are
-read by `scripts/simple_yaml.py`, which refuses anything it cannot read rather than half-reading it.
+read by the plugin's one YAML reader, `synthesis/yamlish.py`, which refuses anything it cannot read rather
+than half-reading it.
 
 | Command | What it prints | Exit |
 |---|---|---|

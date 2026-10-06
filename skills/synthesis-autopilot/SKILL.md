@@ -39,6 +39,7 @@ skills that already exist rather than restating them.
 - [references/plan-file.md](references/plan-file.md): the plan-file convention, the template, and the lines the check reads. Read when writing or editing a plan.
 - [references/continuation.md](references/continuation.md): continuation and backstop per harness (Claude Code, Codex, Muse), re-entry, runaway control. Read before the first turn of any run longer than one turn.
 - [references/turn-end-check.md](references/turn-end-check.md): when the check asks and what bounds it, and every helper command with its output. Read when the check fires or before a helper.
+- `scripts/autopilot_cli.py`: the helper commands (`$AP` below); the turn-end check itself is the core's `synthesis/autopilot.py`.
 - [references/delegation.md](references/delegation.md): the 2.4.0 activation rules, delegation contract, decision protocol, orchestration, coordination, standing gates, fan-out and alerts. Read at engagement and before each decision or dispatch.
 - [references/execution-doctrine.md](references/execution-doctrine.md): delivery versus acceptance, ready work, retries, external effects, children, verification. Read when a step fails, waits, touches an outside system, or a child returns.
 - [references/domain-quality.md](references/domain-quality.md): what each kind of work must pass. Read before writing completion criteria and before accepting.
@@ -48,7 +49,7 @@ skills that already exist rather than restating them.
 ## Procedure
 
 Helpers run as `python3 -S "$AP" <command>`, with
-`AP="$HOME/.synthesis/v5/current/synthesis/autopilot.py"`.
+`AP="$HOME/.synthesis/v5/current/skills/synthesis-autopilot/scripts/autopilot_cli.py"`, the copy of this skill's script the install keeps in the runtime.
 
 1. **Engage.** Tell the user in one line: mode plus plan path. Anchor with synthesis-checkpoint, read the board and inbox, and claim what the run will write.
 2. **Plan.** Write the plan in the project from the template, then `engage --plan <path>`. If the horizon passes this turn, set up and record the continuation and backstop now, and put the plan path and next item in CONTEXT.md's current-state block so compaction brings them back.

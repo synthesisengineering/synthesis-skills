@@ -29,6 +29,8 @@ import time
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from synthesis import yamlish  # noqa: E402
+
 CREDENTIALS = {
     "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
     "GitHub token": r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{60,}\b",
@@ -65,89 +67,18 @@ class Refused(ValueError):
     """The check can't establish a clean commit: the reason blocks it."""
 
 
-# --- the policy file: a strict YAML subset, read without third-party packages ----------------
-# Comments, nested mappings by indentation, lists of scalars, `key: []` and scalars. Anything
-# else (tabs, flow collections, anchors, block scalars) is an error that blocks the commit,
-# never a guess: one interpreter lacking PyYAML once let commits pass unscanned (2026-07-28).
-
-
-def _scalar(raw: str, n: int):
-    s = raw.strip()
-    if not s or s[0] in "[{&*|>?":
-        raise Refused(f"line {n}: {'empty value' if not s else repr(s[0]) + ' is outside the supported YAML subset'}")
-    if len(s) > 1 and s[0] == s[-1] == "'":
-        return s[1:-1].replace("''", "'")
-    if len(s) > 1 and s[0] == s[-1] == '"':  # literal text: decoding escapes would turn a regex \b into a backspace
-        return s[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    if s[0] in "'\"":
-        raise Refused(f"line {n}: unterminated quoted string")
-    low = s.lower()
-    if low in ("true", "yes", "on", "false", "no", "off"):
-        return low in ("true", "yes", "on")
-    return None if low in ("null", "~") else int(s) if re.fullmatch(r"-?\d+", s) else s
-
-
-def _unquoted(text: str, char: str) -> int:
-    """Index of the first `char` outside quotes (a `#` only where it starts a comment), else -1."""
-    single = double = False
-    for i, c in enumerate(text):
-        if c == "'" and not double:
-            single = not single
-        elif c == '"' and not single:
-            double = not double
-        elif c == char and not single and not double and (char != "#" or i == 0 or text[i - 1] in " \t"):
-            return i
-    return -1
+# --- the policy file and the ledger: the shared YAML reader in its strict subset -------------
+# Comments, nested mappings by indentation, lists of scalars, `key: []` and one-line scalars, with
+# double-quoted text kept literal (decoding escapes would turn a regex \b into a backspace).
+# Anything else (tabs, flow collections, anchors, block scalars) is an error that blocks the
+# commit, never a guess: one interpreter lacking PyYAML once let commits pass unscanned (2026-07-28).
 
 
 def parse_yaml(text: str) -> dict:
-    root: dict = {}
-    stack: list = [(-1, root)]
-    pending = None
-    for n, raw in enumerate(text.splitlines(), 1):
-        if "\t" in raw:
-            raise Refused(f"line {n}: a tab character; indent with spaces")
-        cut = _unquoted(raw, "#")
-        line = (raw if cut < 0 else raw[:cut]).rstrip()
-        if not line.strip():
-            continue
-        indent, content = len(line) - len(line.lstrip(" ")), line.strip()
-        item = content == "-" or content.startswith("- ")
-        if pending:
-            depth, parent, key = pending
-            parent[key] = ([] if item else {}) if indent > depth else {}
-            if indent > depth:
-                stack.append((indent, parent[key]))
-            pending = None
-        while indent < stack[-1][0]:
-            stack.pop()
-        top, node = stack[-1]
-        if indent > top and top != -1:
-            raise Refused(f"line {n}: unexpected indentation")
-        if item:
-            value = content[1:].strip()
-            if not isinstance(node, list):
-                raise Refused(f"line {n}: a list item outside a list")
-            if not value or value.endswith(":") or re.match(r"[^'\"]*:\s", value):
-                raise Refused(f"line {n}: nested lists and mappings inside lists are outside the supported subset")
-            node.append(_scalar(value, n))
-            continue
-        if not isinstance(node, dict):
-            raise Refused(f"line {n}: a mapping entry inside a list is outside the supported subset")
-        colon = _unquoted(content, ":")
-        if colon <= 0:
-            raise Refused(f"line {n}: expected `key:` or `key: value`")
-        key, rest = content[:colon].strip(), content[colon + 1:].strip()
-        key = str(_scalar(key, n)) if key[0] in "'\"" else key
-        if key in node:
-            raise Refused(f"line {n}: duplicate key {key}")
-        if not rest:
-            pending = (indent, node, key)
-        else:
-            node[key] = [] if re.fullmatch(r"\[ *\]", rest) else _scalar(rest, n)
-    if pending:
-        pending[1][pending[2]] = {}
-    return root
+    try:
+        return yamlish.load_mapping(text, strict=True)
+    except ValueError as exc:
+        raise Refused(str(exc)) from None
 
 
 def leaves(node) -> list:

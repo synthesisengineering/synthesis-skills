@@ -1,19 +1,25 @@
-"""Read the YAML the ritual manifests use, with the Python standard library only.
+"""The plugin's one YAML reader, with the Python standard library only.
 
-The ritual scripts read `.agents/repos.yaml`, `.agents/mailboxes.yaml`,
-`.agents/gchat-sync.yaml`, `projects/index.yaml` and the workers registry.
-Apple's /usr/bin/python3 has no PyYAML, and a script that skips itself when an
-import fails reports an unscanned queue as an empty one. So this reads the
-subset those files use, the same way on every interpreter: block mappings and
-sequences, `- key: value` items, flow lists of scalars, `{}` and `[]`, quoted
-and plain scalars (plain ones may continue on more-indented lines), `|` and `>`
-block scalars, and comments. Booleans and nulls follow YAML 1.1 as PyYAML reads
-them, so `ritual_sync: no` is False. Dates stay strings. Anything else (anchors,
-aliases, tags, flow mappings, tabs, duplicate keys) raises ValueError: a manifest
+Apple's /usr/bin/python3 has no PyYAML, a guard once failed open over a missing
+YAML module, and a script that skips itself when an import fails reports an
+unscanned queue as an empty one. So every YAML file synthesis reads (the commit
+policy and disclosure ledger, `.agents/*.yaml` manifests, `projects/index.yaml`,
+sync configs, the workers registry) goes through this, the same way on every
+interpreter. It reads the subset those files use: block mappings and sequences,
+`- key: value` items, flow lists of scalars, `{}` and `[]`, quoted and plain
+scalars (plain ones may continue on more-indented lines), `|` and `>` block
+scalars, and comments. Booleans and nulls follow YAML 1.1 as PyYAML reads them,
+so `ritual_sync: no` is False. Dates stay strings. Anything else (anchors,
+aliases, tags, flow mappings, tabs, duplicate keys) raises ValueError: a file
 this cannot read is refused, never half-read.
 
-    from simple_yaml import load
-    data = load(path.read_text(encoding="utf-8"))
+    from synthesis.yamlish import load, load_mapping
+    data = load(path.read_text(encoding="utf-8"), source=str(path))
+
+`strict=True` is the commit check's narrower subset for its policy and ledger:
+nested mappings, lists of scalars, `[]` and one-line scalars, with double-quoted
+text kept literal (only `\\"` and `\\\\` decode), because decoding escapes would turn
+a regex's `\\b` into a backspace. Everything else, a tab anywhere included, is refused.
 """
 
 from __future__ import annotations
@@ -58,13 +64,17 @@ def _split_flow(inner: str) -> list[str]:
     return parts + [inner[start:]]
 
 
-def scalar(raw: str):
+def scalar(raw: str, strict: bool = False):
     raw = raw.strip()
     if raw[:1] in ("&", "*", "!", "@", "`", "%") or raw[:1] == "{" and raw != "{}":
         raise ValueError(f"unsupported YAML (anchor, alias, tag or flow mapping): {raw}")
+    if raw[:1] in ("|", ">"):  # a block scalar with an indentation indicator, such as |2
+        raise ValueError(f"unsupported block scalar header: {raw}")
     if raw[:1] == '"':
         if len(raw) < 2 or not raw.endswith('"'):
             raise ValueError(f"unterminated double-quoted string: {raw}")
+        if strict:  # literal: a regex's \b stays a backslash and a b
+            return raw[1:-1].replace('\\"', '"').replace("\\\\", "\\")
         return json.loads(raw)
     if raw[:1] == "'":
         if len(raw) < 2 or not raw.endswith("'"):
@@ -74,7 +84,7 @@ def scalar(raw: str):
         if not raw.endswith("]"):
             raise ValueError(f"multi-line flow lists are not supported: {raw}")
         inner = raw[1:-1].strip()
-        return [scalar(part) for part in _split_flow(inner)] if inner else []
+        return [scalar(part, strict) for part in _split_flow(inner)] if inner else []
     if raw == "{}":
         return {}
     if raw == "" or raw in ("null", "Null", "NULL", "~"):
@@ -104,13 +114,13 @@ def _quote_end(text: str):
     return None
 
 
-def _split_key(text: str):
+def _split_key(text: str, strict: bool = False):
     """(key, rest) when `text` is `key: value` or `key:`, else None."""
     if text[:1] in ("'", '"'):
         end = _quote_end(text)
         if end is None or text[end + 1:end + 2] != ":" or text[end + 2:end + 3] not in ("", " "):
             return None
-        return scalar(text[:end + 1]), text[end + 2:].strip()
+        return scalar(text[:end + 1], strict), text[end + 2:].strip()
     if text[:1] in ("[", "{"):
         return None
     for i, ch in enumerate(text):
@@ -141,9 +151,10 @@ def _dash(text: str) -> bool:
 
 
 class _Reader:
-    def __init__(self, text: str):
+    def __init__(self, text: str, strict: bool):
         self.lines = text.splitlines()
         self.i = 0
+        self.strict = strict
 
     def peek(self):
         while self.i < len(self.lines):
@@ -174,9 +185,11 @@ class _Reader:
                 raise ValueError(f"line {self.i + 1}: unexpected indentation")
             self.i += 1
             rest = nxt[1][1:].lstrip()
+            if self.strict and (not rest or _split_key(rest, True) is not None):
+                raise ValueError(f"line {self.i}: nested lists and mappings inside lists are outside the supported subset")
             if not rest:
                 out.append(self.node(indent + 1))
-            elif _split_key(rest) is not None:
+            elif _split_key(rest, self.strict) is not None:
                 out.append(self.mapping(indent + len(nxt[1]) - len(rest), first=rest))
             else:
                 out.append(self.value(rest, indent))
@@ -194,7 +207,7 @@ class _Reader:
                 text = nxt[1]
             else:
                 text, first = first, None
-            pair = _split_key(text)
+            pair = _split_key(text, self.strict)
             if pair is None:
                 raise ValueError(f"line {self.i}: expected `key: value`, found {text!r}")
             key, rest = pair
@@ -203,20 +216,26 @@ class _Reader:
             out[key] = self.value(rest, indent) if rest else self.node(indent, indentless=True)
 
     def value(self, rest: str, indent: int):
+        if self.strict and (rest in _BLOCK or rest[:1] in ("[", "{") and not re.fullmatch(r"\[ *\]", rest)):
+            raise ValueError(f"line {self.i}: {rest[:20]!r} is outside the supported subset")
         if rest in _BLOCK:
             return self.block_scalar(rest, indent)
         if rest[:1] in ("'", '"') and _quote_end(rest) is None:
+            if self.strict:
+                raise ValueError(f"line {self.i}: unterminated quoted string")
             pieces = [rest]  # a quoted scalar folds its line breaks
             while self.i < len(self.lines) and _quote_end(_fold(pieces)) is None:
                 pieces.append(self.lines[self.i].strip())
                 self.i += 1
-            return scalar(_strip_comment(_fold(pieces)))
-        result = scalar(rest)
+            return scalar(_strip_comment(_fold(pieces)), self.strict)
+        result = scalar(rest, self.strict)
         if isinstance(result, str) and rest[:1] not in ("'", '"'):
             while True:  # a plain scalar may continue on more-indented lines
                 nxt = self.peek()
                 if nxt is None or nxt[0] <= indent:
                     return result
+                if self.strict:
+                    raise ValueError(f"line {self.i + 1}: unexpected indentation")
                 result += " " + nxt[1]
                 self.i += 1
         return result
@@ -238,15 +257,17 @@ class _Reader:
         return text if style.endswith("-") or not text else text + "\n"
 
 
-def load(text: str):
-    """Parse one YAML document of the supported subset."""
-    reader = _Reader(text)
+def _document(text: str, strict: bool):
+    if strict and "\t" in text:  # the strict subset refuses a tab anywhere, not only in indentation
+        line = text.count("\n", 0, text.index("\t")) + 1
+        raise ValueError(f"line {line}: a tab character; indent with spaces")
+    reader = _Reader(text, strict)
     nxt = reader.peek()
     if nxt is None:
         return None
     if _dash(nxt[1]):
         result = reader.sequence(nxt[0])
-    elif _split_key(nxt[1]) is not None:
+    elif _split_key(nxt[1], strict) is not None:
         result = reader.mapping(nxt[0])
     else:
         reader.i += 1
@@ -254,3 +275,21 @@ def load(text: str):
     if reader.peek() is not None:
         raise ValueError(f"line {reader.i + 1}: content after the document ends")
     return result
+
+
+def load(text: str, source: str = "", strict: bool = False):
+    """Parse one YAML document of the supported subset; `source` prefixes any error."""
+    try:
+        return _document(text, strict)
+    except ValueError as exc:
+        if not source:
+            raise
+        raise ValueError(f"{source}: {exc}") from None
+
+
+def load_mapping(text: str, source: str = "", strict: bool = False) -> dict:
+    """A document that must be a mapping at the top; an empty document is {}."""
+    data = load(text, source, strict)
+    if data is not None and not isinstance(data, dict):
+        raise ValueError(f"{source or 'the document'}: expected a mapping at the top, found a {type(data).__name__}")
+    return data or {}

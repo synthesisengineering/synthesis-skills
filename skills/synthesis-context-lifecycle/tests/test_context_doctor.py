@@ -258,6 +258,16 @@ def test_unreadable_or_non_git_sources_cannot_be_called_healthy(tmp_path, capsys
     assert run("--root", str(tmp_path / "missing"), capsys=capsys)[0] == 2
 
 
+def test_an_index_the_yaml_reader_refuses_cannot_be_called_healthy(kb, capsys):
+    """index.yaml is read by the plugin's YAML reader; one it refuses (here a duplicate key) is a
+    source the doctor cannot judge, never a root with no projects in it."""
+    index = kb / "projects" / "index.yaml"
+    index.write_text(index.read_text(encoding="utf-8") + "    status: paused\n", encoding="utf-8")
+    publish(kb)
+    code, out = run("--root", str(kb), "--json", capsys=capsys)
+    assert code == 2 and "duplicate key" in json.loads(out)["error"]
+
+
 def test_nothing_to_audit_is_not_a_clean_result(tmp_path, capsys):
     root = tmp_path / "empty"
     (root / "projects").mkdir(parents=True)

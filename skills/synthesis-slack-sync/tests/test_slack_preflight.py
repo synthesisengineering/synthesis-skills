@@ -197,33 +197,21 @@ def test_rituals_take_the_declared_set_from_preflight() -> None:
 # --- the config is read with the standard library only (R8.5) -----------------------------------
 
 
-def test_the_yaml_subset_reads_the_documented_config_shape() -> None:
+def test_the_documented_config_shape_reads(tmp_path: Path) -> None:
     text = (SKILLS_ROOT / "synthesis-slack-sync" / "references" / "configuration.md").read_text(encoding="utf-8")
     example = text.split("```yaml\n", 1)[1].split("```", 1)[0]
-    data = MODULE.parse_yaml(example)
+    data = MODULE._load_config(write_config(tmp_path, example))
     assert data["workspace"] == "example-workspace"
     assert data["dm_channels"] == [] and data["group_dm_channels"] == []
     assert [c["id"] for c in data["channels"]] == ["C0EXAMPLE01", "C0EXAMPLE02"]
 
 
-def test_the_yaml_subset_handles_quotes_escapes_comments_and_booleans() -> None:
-    data = MODULE.parse_yaml(
-        'workspace: w  # trailing comment\n'
-        'channels:\n'
-        '  # - id: C0COMMENTED\n'
-        '  - id: "C0QUOTED"\n'
-        '    name: "Alpha \\u2014 Beta # not a comment"\n'
-        "    other: 'it''s'\n"
-        '    active: false\n'
-        'dm_channels: []\n')
-    entry = data["channels"][0]
-    assert entry == {"id": "C0QUOTED", "name": "Alpha \u2014 Beta # not a comment", "other": "it's", "active": False}
-    assert data["dm_channels"] == []
+# Quotes, escapes, comments and booleans: the shared reader's cases in tests/test_yamlish.py.
 
 
 @pytest.mark.parametrize("text", ["channels:\n  - {id: C1}\n", "  indented: first\n", "channels:\n\t- id: C1\n",
                                   "no colon here\n"])
-def test_the_yaml_subset_refuses_what_it_cannot_read(tmp_path: Path, text: str) -> None:
+def test_a_config_that_cannot_be_read_or_declares_nothing_is_refused(tmp_path: Path, text: str) -> None:
     done = run_cli("--config", str(write_config(tmp_path, text)))
     assert done.returncode == 2 and "error" in done.stderr
 

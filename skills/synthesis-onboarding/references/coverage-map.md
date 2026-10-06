@@ -95,7 +95,7 @@ organizations); version 3.0.0; `format: v5`.
 
 | Old script | Lines | Verdict | Now |
 |---|---:|---|---|
-| `onboard.py` | 6,617 | SLIM | `scripts/setup.py` (plugin, Codex overlay, runtime, first config, uninstall) and `scripts/workspace.py` (workspaces, organizations, scaffold); YAML reader in `scripts/yaml_subset.py` |
+| `onboard.py` | 6,617 | SLIM | `scripts/setup.py` (plugin, Codex overlay, runtime, first config, uninstall) and `scripts/workspace.py` (workspaces, organizations, scaffold); YAML reader in `scripts/yaml_subset.py`, since replaced by the plugin's one reader, `synthesis/yamlish.py` (its cases are in `tests/test_yamlish.py`) |
 | `system_contract.py` | 3,410 | CUT | `validate_org_manifest` and `validate_repository_url` salvaged into `workspace.py` |
 | `synthesis_cli.py` | 2,699 | REPLACE | `setup.py` commands and the core `synthesis` CLI |
 | `release_runtime.py` | 2,331 | SLIM | The core stable hook (`synthesis/install.py` HOOK_SCRIPT, `synthesis/hook.py`) |

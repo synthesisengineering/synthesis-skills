@@ -252,8 +252,10 @@ def test_a_changed_refetch_keeps_the_old_copy(monkeypatch, tmp_path):
     assert len(list((tmp_path / "repo" / "transcripts" / "meetings").glob("standup-2026-10-05.old-*.md"))) == 1
 
 
-def test_config_reader_handles_the_documented_schema():
-    data = FM.parse_yaml(CONFIG.format(repo="/abs/repo"))
+def test_config_reader_handles_the_documented_schema(tmp_path):
+    path = tmp_path / "meeting-transcripts.yaml"
+    path.write_text(CONFIG.format(repo="/abs/repo"), encoding="utf-8")
+    data = FM.load_config(path)
     assert data["meeting_patterns"]["standup"] == 'name contains "Standup" and name contains "Notes by Gemini"'
     assert data["generic_pattern"] == 'name contains "{{name}}"'
 

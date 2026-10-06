@@ -30,7 +30,7 @@ or a scratchpad (R9.2).
 Write the plan from the [template](#template), then engage it:
 
 ```sh
-python3 -S "$HOME/.synthesis/v5/current/synthesis/autopilot.py" engage --plan <plan path>
+python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-autopilot/scripts/autopilot_cli.py" engage --plan <plan path>
 ```
 
 Engage refuses a plan with no `- [ ]` items under `## Checklist`, none under

@@ -40,7 +40,8 @@ SYNTHESIS_GIT_HOOK=$(basename "$0") exec python3 -S "$d/current/synthesis/commit
 """
 GIT_HOOKS = ("pre-commit", "pre-merge-commit", "commit-msg")
 DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge ride every release into bin/
-STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup",)  # scripts run outside a session need a stable path too
+# Scripts run outside a session (scheduled sweeps, autopilot wakes and backstops) need a stable path too.
+STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot")
 CLI_SCRIPT = """#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 PYTHONPATH="$d/current" exec python3 -m synthesis "$@"

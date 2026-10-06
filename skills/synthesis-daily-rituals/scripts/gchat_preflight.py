@@ -70,8 +70,8 @@ class Target:
 
 
 def _load_yaml(path: Path) -> dict:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from simple_yaml import load
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+    from synthesis.yamlish import load
 
     try:
         payload = load(path.read_text(encoding="utf-8"))

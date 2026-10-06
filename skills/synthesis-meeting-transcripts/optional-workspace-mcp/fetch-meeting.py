@@ -40,50 +40,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE.parents[2]))  # the plugin root, which holds synthesis/
 import mcp_client  # noqa: E402
 import verify_transcripts  # noqa: E402
+from synthesis.yamlish import load_mapping  # noqa: E402
 
 DOC_TYPE = "application/vnd.google-apps.document"
 PAGE_SIZE = 100
 
-# --- Config loading (a block-style YAML subset; the same reader as synthesis-slack-sync's preflight) ---
-
-
-def _scalar(text: str):
-    text = text.strip()
-    if len(text) >= 2 and text[0] == text[-1] == '"':
-        return json.loads(text)  # YAML's double-quoted escapes are JSON's
-    if len(text) >= 2 and text[0] == text[-1] == "'":
-        return text[1:-1].replace("''", "'")
-    if text.startswith(("{", "[", "&", "*", "|", ">")) and text != "[]":
-        raise ValueError(f"unsupported YAML form {text[:20]!r}; use block style")
-    return {"true": True, "false": False, "null": None, "~": None, "": None, "[]": []}.get(text.lower(), text)
-
-
-def parse_yaml(text: str) -> dict:
-    """Top-level `key: value` scalars and one level of nested `field: value` mappings."""
-    data, key = {}, None
-    for number, raw in enumerate(text.splitlines(), 1):
-        quote, line = None, raw
-        for i, char in enumerate(raw):
-            if char in "'\"" and quote in (None, char):
-                quote = None if quote else char
-            elif char == "#" and quote is None and (i == 0 or raw[i - 1] in " \t"):
-                line = raw[:i]
-                break
-        if not line.strip():
-            continue
-        name, colon, value = line.strip().partition(":")
-        if not colon or not name:
-            raise ValueError(f"line {number}: expected `key: value`")
-        if not line[0].isspace():
-            key = name.strip()
-            data[key] = _scalar(value) if value.strip() else {}
-        elif key is not None and isinstance(data[key], dict):
-            data[key][name.strip()] = _scalar(value)
-        else:
-            raise ValueError(f"line {number}: unexpected indented line")
-    return data
+# --- Config loading (the plugin's YAML reader, synthesis/yamlish.py) ---
 
 
 def find_config() -> Path:
@@ -103,7 +68,7 @@ def find_config() -> Path:
 
 
 def load_config(path: Path) -> dict:
-    cfg = parse_yaml(path.read_text(encoding="utf-8"))
+    cfg = load_mapping(path.read_text(encoding="utf-8"), str(path))
     # v0.2.0 schema (2026-04-22): transcripts_repo replaces ai_knowledge_repo
     # to align with synthesis-slack-sync v2.0.0+ and the workspace-rooted layout.
     required = ["workspace", "google_account", "transcripts_path", "transcripts_repo"]

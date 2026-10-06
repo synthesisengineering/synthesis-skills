@@ -101,7 +101,7 @@ v5 changes: description rewritten to 300 characters and now names Muse; version 
 | `skill_outputs.py` | 194 | SLIM | `doctor.check_packets` |
 | `active_project.py` | 518 | REPLACE | Board session files (`synthesis use`) |
 | `live_receipt.py` | 441 | REPLACE | SessionStart output and doctor checks |
-| `yaml_runtime.py`, `vendor/pyyaml/` | 116 + 5,971 | REPLACE | Standard-library core; onboarding `scripts/yaml_subset.py` |
+| `yaml_runtime.py`, `vendor/pyyaml/` | 116 + 5,971 | REPLACE | Standard-library core; the plugin's one YAML reader, `synthesis/yamlish.py` (onboarding's `scripts/yaml_subset.py` until 2026-10-05) |
 | `vendor_bundle.py`, `vendor_native.py`, `vendor_hermes.py`, `vendor_probe.py`, `hermes_adapter.py`, `hermes_source.py`, `signed_receipt.py`, `provider_intake.py`, `native_transcript_identity.py`, `report_contract.py`, `capability_evidence.py` | 4,684 | CUT | Deleted; reasons in the install-release evaluation |
 | Tests in `scripts/` (10,845 lines) | | | Replaced by `tests/test_doctor.py` and `tests/test_source_lint.py` |
 

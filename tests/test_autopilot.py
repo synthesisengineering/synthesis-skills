@@ -1,4 +1,5 @@
-"""R6: the autopilot plan file and its turn-end check.
+"""R6: the autopilot plan file, its turn-end check (synthesis/autopilot.py) and the commands an
+agent runs by hand (skills/synthesis-autopilot/scripts/autopilot_cli.py).
 
 Scenario numbers refer to section 3 of the v5 code evaluation for autopilot.
 """
@@ -6,6 +7,7 @@ Scenario numbers refer to section 3 of the v5 code evaluation for autopilot.
 import json
 import os
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -15,10 +17,14 @@ from pathlib import Path
 
 import pytest
 
-from synthesis import autopilot, board, guards
+from synthesis import autopilot, board, guards, install
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_DOC = ROOT / "skills" / "synthesis-autopilot" / "references" / "plan-file.md"
+SKILL = ROOT / "skills" / "synthesis-autopilot"
+TEMPLATE_DOC = SKILL / "references" / "plan-file.md"
+CLI = SKILL / "scripts" / "autopilot_cli.py"
+sys.path.insert(0, str(CLI.parent))
+import autopilot_cli as cli  # noqa: E402
 
 HEADER = {
     "Status": "running",
@@ -54,7 +60,7 @@ def write_plan(tmp_path, *, header=None, checklist=("- [x] 1. Migrate /users", "
 
 
 def run(*argv) -> int:
-    return autopilot.main([str(a) for a in argv])
+    return cli.main([str(a) for a in argv])
 
 
 def engage(session, path) -> None:
@@ -76,7 +82,7 @@ def done_ready(tmp_path, **header):
     project = tmp_path / "kb" / "projects" / "alpha"
     (project / "resources" / "evidence").mkdir(parents=True, exist_ok=True)
     (project / "resources" / "evidence" / "test-run.md").write_text("42 passed\n", encoding="utf-8")
-    standing = [f"- [x] {i}: {t} — done, see the session log" for i, t in autopilot.DEFAULT_STANDING]
+    standing = [f"- [x] {i}: {t} — done, see the session log" for i, t in cli.DEFAULT_STANDING]
     return write_plan(tmp_path, header=header, checklist=("- [x] 1. Migrate /users", "- [x] 2. Migrate /orders"),
                       criteria=("- [x] Endpoint tests pass — pytest tests/api: 42 passed",),
                       evidence=("- [test run](../evidence/test-run.md)",), standing=standing)
@@ -91,7 +97,7 @@ def test_engage_fills_owner_status_and_standing_checklist_and_claims_the_plan(tm
     assert plan.field("owner session") == "S1" and plan.status == "running"
     assert autopilot._age_seconds(plan.field("engaged")) < 120
     ids = {re.split(r"[:\s]", t, maxsplit=1)[0] for _, t in plan.items("standing checklist")}
-    assert ids == {i for i, _ in autopilot.DEFAULT_STANDING}
+    assert ids == {i for i, _ in cli.DEFAULT_STANDING}
     assert str(path) in board.load("S1").claims
     assert "next item: 2. Migrate /orders" in capsys.readouterr().out
 
@@ -114,7 +120,7 @@ def test_engage_refuses_a_plan_without_checklist_criteria_or_horizon(tmp_path, c
 def test_the_documented_template_engages_as_written(tmp_path):
     doc = TEMPLATE_DOC.read_text(encoding="utf-8")
     template = re.search(r"```markdown\n(.*?)\n```", doc, re.S).group(1)
-    for item_id, _ in autopilot.DEFAULT_STANDING:
+    for item_id, _ in cli.DEFAULT_STANDING:
         assert item_id in doc
     for name in ("Status:", "Owner session:", "Engaged:", "Horizon:", "Continuation:", "First wake:",
                  "Backstop:", "Waiting on:", "Silent after:"):
@@ -449,17 +455,17 @@ def test_23_alerts_carry_counts_only_and_a_muted_alert_is_suppressed_not_deliver
     which = lambda name: f"/usr/bin/{name}"
     mute = tmp_path / "quiet-audio"
     mute.touch()
-    outcomes = autopilot.alert("blocked", 2, mute_flag=mute, run=fake, which=which)
+    outcomes = cli.alert("blocked", 2, mute_flag=mute, run=fake, which=which)
     assert outcomes == [("banner", "posted"), ("audio", "suppressed (mute flag)")]
     assert len(calls) == 1 and "2 question(s)" in calls[0][-1] and "alpha" not in calls[0][-1]
     mute.unlink()
-    assert dict(autopilot.alert("done", 1, mute_flag=mute, run=fake, which=which))["audio"] == "played"
+    assert dict(cli.alert("done", 1, mute_flag=mute, run=fake, which=which))["audio"] == "played"
 
     def broken(command, **kwargs):
         raise OSError("no display")
 
-    assert dict(autopilot.alert("budget", 3, mute_flag=mute, run=broken, which=which))["banner"] == "failed (OSError)"
-    assert dict(autopilot.alert("done", 1, mute_flag=mute, run=fake, which=lambda n: None)) == {
+    assert dict(cli.alert("budget", 3, mute_flag=mute, run=broken, which=which))["banner"] == "failed (OSError)"
+    assert dict(cli.alert("done", 1, mute_flag=mute, run=fake, which=lambda n: None)) == {
         "banner": "unavailable (no osascript)", "audio": "unavailable (no say)"}
 
 
@@ -531,10 +537,33 @@ def test_a_cold_hook_process_stays_inside_the_hook_budget(tmp_path, isolated_hom
 def test_the_helpers_run_as_a_script_without_site_packages(tmp_path, isolated_home):
     path = write_plan(tmp_path)
     env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
-    script = ROOT / "synthesis" / "autopilot.py"
-    out = subprocess.run([sys.executable, "-S", str(script), "--session", "S1", "engage", "--plan", str(path)],
+    out = subprocess.run([sys.executable, "-S", str(CLI), "--session", "S1", "engage", "--plan", str(path)],
                          capture_output=True, text=True, env=env)
     assert out.returncode == 0, out.stderr
-    out = subprocess.run([sys.executable, "-S", str(script), "--session", "S1", "status"],
+    out = subprocess.run([sys.executable, "-S", str(CLI), "--session", "S1", "status"],
                          capture_output=True, text=True, env=env)
     assert "status: running" in out.stdout
+
+
+def test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs(tmp_path, isolated_home):
+    """Every `$HOME/.synthesis/v5/current/...` path the skill documents is a file the install puts in
+    the runtime, and the helpers run from there with only the runtime on the path."""
+    docs = [SKILL / "SKILL.md"] + sorted((SKILL / "references").glob("*.md"))
+    documented = {m.group(1) for doc in docs if not doc.name.startswith("preserved")
+                  for m in re.finditer(r"\$HOME/\.synthesis/v5/current/([\w./-]+\.py)", doc.read_text(encoding="utf-8"))}
+    assert documented == {"skills/synthesis-autopilot/scripts/autopilot_cli.py"}
+    assert cli.wake_prompt("<plan>") in (SKILL / "references" / "turn-end-check.md").read_text(encoding="utf-8")
+    assert "synthesis-autopilot" in install.STABLE_SKILL_SCRIPTS
+    plugin = tmp_path / "plugin"
+    shutil.copytree(ROOT / "synthesis", plugin / "synthesis", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(CLI.parent, plugin / "skills" / "synthesis-autopilot" / "scripts",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    install.install(plugin)
+    shutil.rmtree(plugin)  # the runtime copy must stand alone
+    helper = isolated_home / "current" / "skills" / "synthesis-autopilot" / "scripts" / "autopilot_cli.py"
+    path = write_plan(tmp_path)
+    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home), "HOME": str(tmp_path)}
+    out = subprocess.run([sys.executable, "-S", str(helper), "--session", "S1", "engage", "--plan", str(path)],
+                         capture_output=True, text=True, env=env, cwd=str(tmp_path))
+    assert out.returncode == 0, out.stderr
+    assert "Continue with the next one now" in stop("S1")

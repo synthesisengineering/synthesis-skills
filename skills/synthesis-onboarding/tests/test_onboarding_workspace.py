@@ -273,7 +273,7 @@ def test_organization_git_runs_with_only_https_and_ssh_and_no_injected_config(mo
 
 
 def _manifest(**changes):
-    from yaml_subset import load
+    from synthesis.yamlish import load
     data = load(MANIFEST.format(skills="https://example.test/s.git", kb="https://example.test/k.git"))
     data.update(changes)
     return data
@@ -341,7 +341,7 @@ def test_a_new_workspace_gets_a_committed_knowledge_repository_and_links(tmp_pat
     assert (repo / ".agents" / "knowledge-base.yaml").is_file() and (repo / "projects" / "index.yaml").is_file()
     assert "{workspace}" not in (repo / "AGENTS.md").read_text() and (repo / "CLAUDE.md").read_text() == "@AGENTS.md\n"
     assert git("-C", str(repo), "status", "--porcelain") == "" and git("-C", str(repo), "log", "--oneline")
-    from yaml_subset import load
+    from synthesis.yamlish import load
     manifest = load((repo / ".agents" / "repos.yaml").read_text())
     assert manifest["repos"][0]["remotes"]["origin"] == "https://example.test/me/ai-knowledge-demo.git"
     assert os.readlink(repo.parent / "AGENTS.md") == "ai-knowledge-demo/.agents/workspace-AGENTS.md"

@@ -86,6 +86,19 @@ def test_index_folded_descriptions_nested_lists_and_bare_lists_parse_without_yam
     assert probe(tmp_path, "bare")["status"] == "paused"
 
 
+def test_a_description_continued_on_indented_lines_is_read_whole(tmp_path: Path) -> None:
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    (projects / "index.yaml").write_text(
+        "projects:\n  - id: long\n    name: 'It''s long'\n    description: The goal starts here\n"
+        "      and continues on the next line.\n    status: active\n",
+        encoding="utf-8",
+    )
+    doc = probe(tmp_path, "long")
+    assert doc["goal"] == "The goal starts here and continues on the next line."
+    assert doc["name"] == "It's long" and doc["status"] == "active"
+
+
 def test_unknown_project_raises_lookup(source_root: Path) -> None:
     with pytest.raises(LookupError):
         probe(source_root, "nope")

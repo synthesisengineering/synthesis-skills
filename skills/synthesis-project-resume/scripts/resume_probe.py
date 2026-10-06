@@ -18,63 +18,28 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis.yamlish import load  # noqa: E402
+
 ENGINE_VERSION = "2.0.0"
 
 
-def _scalar(raw: str) -> str:
-    raw = raw.strip()
-    quoted = re.match(r"""(["'])(.*?)\1\s*(?:#.*)?$""", raw)
-    return quoted.group(2) if quoted else re.sub(r"\s+#.*$", "", raw)
-
-
 def load_index(source_root: Path) -> list[dict]:
-    """Each project's top-level fields from projects/index.yaml, under `projects:` or as a bare list.
+    """Each project's entry in projects/index.yaml, under `projects:` or as a bare list, read by the
+    plugin's YAML reader: folded (`>`) and literal (`|`) values, nested lists and maps included."""
+    data = load((source_root / "projects" / "index.yaml").read_text(encoding="utf-8"))
+    items = data.get("projects") if isinstance(data, dict) else data
+    return [entry for entry in (items if isinstance(items, list) else []) if isinstance(entry, dict) and entry.get("id")]
 
-    Folded (`>`) and literal (`|`) values are read; nested lists and maps are skipped.
-    """
-    text = (source_root / "projects" / "index.yaml").read_text(encoding="utf-8")
-    bare = not re.search(r"^projects:", text, re.M)
-    entries: list[dict] = []
-    started, item_indent, field_indent, block = bare, None, None, None
-    for line in text.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            if block and not line.strip():
-                block[2].append("")
-            continue
-        indent, body = len(line) - len(line.lstrip()), line.strip()
-        if block and indent > block[3]:
-            block[2].append(body)
-            continue
-        if block:
-            entries[-1][block[0]] = (" " if block[1] == ">" else "\n").join(block[2]).strip()
-            block = None
-        if not started:
-            started = body.startswith("projects:")
-            continue
-        if indent == 0 and not body.startswith("-") and entries:
-            break  # the next top-level key
-        if body.startswith("- ") and (item_indent is None or indent == item_indent):
-            entries.append({})
-            item_indent, field_indent, body = indent, indent + 2, body[2:]
-        elif not entries or indent != field_indent:
-            continue
-        key, colon, value = body.partition(":")
-        if colon and re.fullmatch(r"[A-Za-z_][\w-]*", key.strip()):
-            if value.strip() in (">", "|", ">-", "|-"):
-                block = (key.strip(), value.strip()[0], [], field_indent)
-            elif value.strip():
-                entries[-1][key.strip()] = _scalar(value)
-    if block:
-        entries[-1][block[0]] = (" " if block[1] == ">" else "\n").join(block[2]).strip()
-    if not started:
-        raise ValueError("projects/index.yaml must hold a project list")
-    return [entry for entry in entries if entry.get("id")]
+
+def _text(entry: dict, key: str, default: str) -> str:
+    value = entry.get(key)
+    return default if value is None else str(value).strip()
 
 
 def newest_session(project_dir: Path) -> tuple[str | None, str | None]:
@@ -126,9 +91,9 @@ def probe(source_root: Path, project_id: str, count: int = 5) -> dict:
     return {
         "engine": ENGINE_VERSION,
         "id": project_id,
-        "name": entry.get("name", project_id),
-        "goal": entry.get("description", ""),
-        "status": entry.get("status", "unknown"),
+        "name": _text(entry, "name", project_id),
+        "goal": _text(entry, "description", ""),
+        "status": _text(entry, "status", "unknown"),
         "updated": str(entry.get("last_session") or entry.get("updated", "") or ""),
         "newest_session": period,
         "session_mtime": mtime,

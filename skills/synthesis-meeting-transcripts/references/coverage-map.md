@@ -42,7 +42,7 @@ Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line c
 | `verify_transcripts.py` (492) | KEEP | Kept (505): version 1.0.0; its exact-file reader came from the cut daily-rituals acquisition module and is now local (`read_exact`); `from __future__ import annotations` added so Apple's Python 3.9 runs it |
 | `extract_commitments.py` (178) | KEEP; make the docstring generic | Kept (180): the docstring tells the incident without names; version 1.0.0 |
 | `transcript_primary.py` (461), `acceptance-suite.yaml`, `fixtures/` | CUT | Binding rule 8, Step 4.6, transcript-primary-and-commit-gate.md; fixtures verbatim in preserved.md |
-| `optional-workspace-mcp/fetch-meeting.py` (678) | SLIM | Kept (351): fetch, tab selection by ID (folded `document_tabs.py`), an error is unknown, `--window` saved/unsaved listing; standard library only |
+| `optional-workspace-mcp/fetch-meeting.py` (678) | SLIM | Kept (351): fetch, tab selection by ID (folded `document_tabs.py`), an error is unknown, `--window` saved/unsaved listing; standard library only. Since 2026-10-05 its config is read by the plugin's shared `synthesis/yamlish.py` instead of an embedded reader |
 | `optional-workspace-mcp/mcp_client.py` (329) | SLIM | Kept (181): event parsing, nested error unwrapping, the 8 MiB cap; `urllib` instead of httpx; raw-capture custody dropped |
 | `optional-workspace-mcp/document_tabs.py` (207) | SLIM, fold into fetch-meeting | `tab_inventory` and `select_transcript` in fetch-meeting.py |
 | `optional-workspace-mcp/google_read.py` (174), `workspace_mcp_read.py` (241) | CUT | — |

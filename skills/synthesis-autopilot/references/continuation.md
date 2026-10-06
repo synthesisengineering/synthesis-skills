@@ -5,8 +5,8 @@ and Muse, and how its backstop stays visible and stoppable (R6.2). The
 per-harness facts come from the 2026-10-05 harness report (Claude Code 2.1.288,
 Codex CLI 0.160.0 and desktop 26.930, Muse 1.4.3). Re-check them when a harness
 updates: a capability is what a probe shows today, not what this page remembers.
-`$AP` below is `$HOME/.synthesis/v5/current/synthesis/autopilot.py`, the helper
-described in [turn-end-check.md](turn-end-check.md#helper-commands).
+`$AP` below is `$HOME/.synthesis/v5/current/skills/synthesis-autopilot/scripts/autopilot_cli.py`,
+the helper described in [turn-end-check.md](turn-end-check.md#helper-commands).
 
 ## Contents
 

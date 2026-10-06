@@ -57,8 +57,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from simple_yaml import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis.yamlish import load as load_yaml  # noqa: E402 -- stdlib reader; PyYAML is not on Apple's python3
 
 DEFAULT_THRESHOLD_DAYS = 0
 PER_REPO_TIMEOUT_S = 20

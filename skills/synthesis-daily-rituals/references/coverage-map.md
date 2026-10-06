@@ -127,18 +127,18 @@ Verdicts from `guards-rituals.md` (synthesis-daily-rituals rows).
 | `sync_watermark.py` (705) | SLIM | 345 | All the R5.2 rules; schema-1 migration and acquisition evidence cut. Longer than the 250 target because the CLI keeps its full help and status printout |
 | `repo_state.py` (450) | SLIM | 143 | Fetch and count without `coordination_process.py`; adds `--discover` (the strand scan for day-end and leaving a Mac, replacing the scan half of `repo_sync_check.py`) and `--ff` (refuses a dirty tree, compare-and-swap for other branches) |
 | `decay_sweep.py` (288) | KEEP | 288 | Unchanged |
-| `portfolio_review.py` (275) | KEEP | 264 | Dropped the `team_contract` import (team contracts CUT); PyYAML replaced by `simple_yaml.py`; console config path no longer reads `SYNTHESIS_HOME` |
+| `portfolio_review.py` (275) | KEEP | 264 | Dropped the `team_contract` import (team contracts CUT); PyYAML replaced by `simple_yaml.py` (now `synthesis/yamlish.py`); console config path no longer reads `SYNTHESIS_HOME` |
 | `pr_queue_scan.py` (402) | KEEP | 399 | PyYAML replaced: without it the scan skipped itself with exit 0, an unscanned queue reading as empty |
 | `mailboxes.py` (251) | KEEP | 249 | PyYAML replaced |
 | `gchat_preflight.py` (248) | KEEP | 247 | PyYAML replaced |
 | `day-end`, `day-end-nudge.sh` (183) | KEEP | 161 | The nudge asks `current/synthesis/rituals.py --owed-today` instead of embedding a query of its own; bash kept |
 | `com.synthesis.day-end-nudge.plist` | KEEP | unchanged | Template `synthesis install` loads |
-| (new) `simple_yaml.py` | — | 256 | Standard-library reader for the manifests; agrees with PyYAML on all 43 manifests on the author's Mac |
+| (new) `simple_yaml.py` | — | 256, then moved | Standard-library reader for the manifests; agrees with PyYAML on all 43 manifests on the author's Mac. Moved to the core as `synthesis/yamlish.py`, the plugin's one YAML reader (the commit check needs it too); the ritual scripts import it from there |
 | `acquisition_evidence.py`, `acquisition_transport.py`, `archive_publish.py` (929) | CUT | deleted | Caused the 2026-10-01 regression |
 | `credential_paths.py` (344) | REPLACE | deleted | The commit check's filename rule (scenario 50, guards helper) |
 | `install_day_end.py` (160) | REPLACE | deleted | `synthesis install` (wiring handed to the coordinator) |
 
-Python lines (non-test) before: 6,121; after: 2,496 in the skill (256 of them the new YAML reader) plus 151 in `synthesis/rituals.py`.
+Python lines (non-test) before: 6,121; after: 2,496 in the skill (256 of them the new YAML reader) plus 151 in `synthesis/rituals.py`. With the reader moved to `synthesis/yamlish.py`, the skill holds 2,241 (measured 2026-10-05).
 
 ## Tests
 
@@ -150,7 +150,7 @@ Python lines (non-test) before: 6,121; after: 2,496 in the skill (256 of them th
 | `test_decay_sweep.py`, `test_portfolio_review.py`, `test_pr_queue_scan.py`, `test_mailboxes.py`, `test_gchat_preflight.py`, `test_ownership_routing.py` | Same names under `tests/` | Moved; the team-boundary case removed with `team_contract` |
 | `test_acquisition_evidence.py`, `test_ritual_custody.py`, `test_ritual_evidence.py`, `test_ritual_read_identity.py`, `test_b11_ritual_ref_race.py` | Deleted | They tested cut custody and evidence machinery |
 | `test_skill_documents.py`, `test_version_record.py` | Deleted | The 500-line budget and version labels are replaced by `tests/test_skill_format.py` |
-| (new) | `tests/test_simple_yaml.py`, and `tests/test_rituals.py` in the core | The YAML reader; the SessionStart line and the nudge answer |
+| (new) | `tests/test_simple_yaml.py` (now `tests/test_yamlish.py` in the core, with the reader), and `tests/test_rituals.py` in the core | The YAML reader; the SessionStart line and the nudge answer |
 
 ## Edge cases and the test that holds each
 
@@ -179,4 +179,4 @@ Scenario numbers from `guards-rituals.md` section 3, and R1.2 from the same list
 | R1.4 (project-state) uncommitted changes on arrival: refuse to pull, list them | `tests/test_repo_state.py::test_uncommitted_changes_are_listed_and_never_pulled_over` |
 | Lesson 2026-09-14 one workspace's review silences another | `test_ritual_state.py::test_weekly_review_recorded_for_one_workspace_leaves_another_owed` |
 | R8.1 the session line stays fast | `test_rituals.py::test_the_line_is_fast_on_a_year_of_records` |
-| R8.5 Apple's Python reads every manifest | `tests/test_simple_yaml.py` |
+| R8.5 Apple's Python reads every manifest | `tests/test_yamlish.py` in the core |
