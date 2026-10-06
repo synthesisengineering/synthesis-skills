@@ -32,6 +32,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the sender's `users/<id>` comes from when a read returns names only.
 - Lint: unused imports and variables and placeholder-free f-strings removed across the plugin
   and its tests.
+- The day-end nudge's LaunchAgent template names the v5 launcher path; setup always wrote the
+  right path, but the shipped template still named the retired 4.x folder.
 
 ## [5.0.1] - 2026-10-06
 
