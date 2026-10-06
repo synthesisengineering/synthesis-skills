@@ -10,10 +10,8 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-try:
-    import yaml
-except ImportError:
-    sys.exit("kb-config requires PyYAML (pip install pyyaml)")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 
 CONFIG_RELATIVE = Path(".agents/knowledge-base.yaml")
@@ -223,10 +221,10 @@ def load_config(repo: Path, config_path: Path | None) -> tuple[Path, dict[str, A
     if not path.is_absolute():
         path = repo / path
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = yamlish.load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ValueError(f"missing configuration: {path}") from exc
-    except yaml.YAMLError as exc:
+    except ValueError as exc:
         raise ValueError(f"invalid YAML in {path}: {exc}") from exc
     return path, data
 

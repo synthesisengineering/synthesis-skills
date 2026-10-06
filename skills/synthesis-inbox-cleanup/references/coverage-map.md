@@ -42,7 +42,7 @@ Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-inbox-cleanup
 | `_lib.py`, `icloud_plan.py`, `icloud_tail.py`, `icloud_census.py`, `icloud_apply.py`, `icloud_archive_senders.py`, `icloud_inspect_senders.py`, `icloud_catchall_google_purge.py`, `resolve_scope.py`, `sanitize.py`, `m365_mailapp_cleanup.template.applescript` | KEEP | Unchanged |
 | `scan_impersonation.py` | KEEP, plus IR-19 | The principal rule from the branch: `principal.names` and exact `principal.addresses` in the private `impersonation.yaml`, refusal (exit 2) before any mail access when they are missing or invalid, `--check-config`. The branch's triple file-identity check on the config read became one bounded regular-file read with unique keys. 234 lines before, 394 after |
 | `templates/impersonation.example.yaml` | New, from the branch | Synthetic shape for the private file |
-| `install.sh` | SLIM | Seeds the private folder (700) and `config.yaml`, `rules.yaml` (600) without overwriting; refuses `/`, home, symlinked or file roots; reports PyYAML, certifi, the Keychain password, a missing stable engine path and a leftover 1.x engine copy (never deleted). The engine release copy, digest checks and pointer swap are gone: v5 installs the engine at `~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts`. 210 lines of bash before, 86 of POSIX sh after |
+| `install.sh` | SLIM | Seeds the private folder (700) and `config.yaml`, `rules.yaml` (600) without overwriting; refuses `/`, home, symlinked or file roots; reports certifi, the Keychain password, a missing stable engine path and a leftover 1.x engine copy (never deleted). The engine release copy, digest checks and pointer swap are gone: v5 installs the engine at `~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts`. 210 lines of bash before, 86 of POSIX sh after |
 | `tests/test_runtime_installer.sh`, `tests/fixtures/mv-no-h` | Removed | They tested the engine copy and its pointer (the 2026-08-24 `mv` regression); with no copy there is no pointer. The incident is in [preserved.md](preserved.md). `tests/test_inbox_installer.py` covers the new contract |
 
 Scenarios from section 3 of the evaluation and where each is held:
@@ -64,6 +64,8 @@ Scenarios from section 3 of the evaluation and where each is held:
 | E67 iCloud Message-ID needs a fetched map; "0 found" is a tool failure | references/pitfalls.md (2026-09-28). No public script moves by Message-ID |
 
 Prose changed with the scripts: references/setup-and-scoping.md (the architecture tree, setup steps 6 and 7, and a paragraph on what the installer reports; the old lines are verbatim in [preserved.md](preserved.md)); references/release-notes.md (a v2.0.0 note); references/pitfalls.md (three anonymized sweep pitfalls from the 2026-08-29 and 2026-09-28 lessons); SKILL.md (binding rules 15 to 17, the scan command in Contents).
+
+**2026-10-06.** `_lib.py`, `resolve_scope.py` and `scan_impersonation.py` read YAML through the plugin's standard-library reader (`synthesis/yamlish.py`) instead of PyYAML, which now reads one-line flow mappings such as `- {match: {from: x}, action: archive}`; the private rules, scopes and configuration files on the author's Mac read identically under both. The installer no longer reports PyYAML, and the engine, scope and impersonation tests run in CI instead of skipping there.
 
 ## The 1.6.2 frontmatter
 

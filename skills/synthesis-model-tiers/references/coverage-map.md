@@ -27,6 +27,8 @@ naming-rationale.md is under 150 lines and unchanged. catalog-verification.yaml 
 - Why these words: "The labels name the work you hand a model, not the model itself..." (link to naming-rationale.md)
 - Update protocol, step 2: "Record the documentation retrieval date per provider (`verified:`)..." (link to catalog-verification.yaml)
 
+**2026-10-06.** `scripts/test_catalog.py` reads both files through the plugin's standard-library YAML reader (`synthesis/yamlish.py`) instead of PyYAML, so CI runs it; both files read identically under each.
+
 ## The 2.2.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

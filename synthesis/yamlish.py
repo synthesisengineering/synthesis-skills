@@ -2,16 +2,16 @@
 
 Apple's /usr/bin/python3 has no PyYAML, a guard once failed open over a missing
 YAML module, and a script that skips itself when an import fails reports an
-unscanned queue as an empty one. So every YAML file synthesis reads (the commit
-policy and disclosure ledger, `.agents/*.yaml` manifests, `projects/index.yaml`,
-sync configs, the workers registry) goes through this, the same way on every
-interpreter. It reads the subset those files use: block mappings and sequences,
-`- key: value` items, flow lists of scalars, `{}` and `[]`, quoted and plain
-scalars (plain ones may continue on more-indented lines), `|` and `>` block
-scalars, and comments. Booleans and nulls follow YAML 1.1 as PyYAML reads them,
-so `ritual_sync: no` is False. Dates stay strings. Anything else (anchors,
-aliases, tags, flow mappings, tabs, duplicate keys) raises ValueError: a file
-this cannot read is refused, never half-read.
+unscanned queue as an empty one. So every YAML file synthesis and its skills read
+(the commit policy and ledger, `.agents/*.yaml` manifests, `projects/index.yaml`,
+sync configs, inbox rules, knowledge-base frontmatter) goes through this, the same
+way on every interpreter. It reads the subset those files use: block mappings and
+sequences, `- key: value` items, one-line flow collections (`- {a: {b: c}, d: [e]}`),
+quoted and plain scalars (plain ones may continue on more-indented lines), `|` and
+`>` block scalars, and comments. Booleans and nulls follow YAML 1.1 as PyYAML reads
+them, so `ritual_sync: no` is False. Dates stay strings; keys are text. Anything else
+(anchors, aliases, tags, multi-line flow, tabs, duplicate keys) raises ValueError:
+a file this cannot read is refused, never half-read.
 
     from synthesis.yamlish import load, load_mapping
     data = load(path.read_text(encoding="utf-8"), source=str(path))
@@ -49,25 +49,51 @@ def _strip_comment(text: str) -> str:
     return text.rstrip()
 
 
-def _split_flow(inner: str) -> list[str]:
-    parts, quote, start = [], None, 0
-    for i, ch in enumerate(inner):
-        if quote:
-            quote = None if ch == quote else quote
-        elif ch in "'\"":
-            quote = ch
-        elif ch in "[{":
-            raise ValueError(f"nested flow collections are not supported: [{inner}]")
-        elif ch == ",":
-            parts.append(inner[start:i])
-            start = i + 1
-    return parts + [inner[start:]]
+def _skip(text: str, i: int) -> int:
+    return len(text) - len(text[i:].lstrip(" "))
+
+
+def _flow_item(text: str, i: int):
+    """(value, index after it) for the flow node at text[i]: a collection, a quoted or a plain scalar."""
+    if text[i:i + 1] in ("[", "{"):
+        return _flow(text, i)
+    if text[i:i + 1] in ("'", '"'):
+        end = i + (_quote_end(text[i:]) or len(text)) + 1
+        return scalar(text[i:end]), end
+    j = i  # a plain scalar ends at , [ ] { } or at a colon before a space, , ] } or the line's end
+    while j < len(text) and text[j] not in ",[]{}" and not (text[j] == ":" and text[j + 1:j + 2] in ("", " ", ",", "]", "}")):
+        j += 1
+    return (scalar(text[i:j]) if text[i:j].strip() else None), j
+
+
+def _flow(text: str, i: int):
+    """(collection, index after it) for the flow collection opening at text[i]; it closes on its line."""
+    out, close = ({}, "}") if text[i] == "{" else ([], "]")
+    i = _skip(text, i + 1)
+    while i == len(text) or text[i] != close:
+        if i == len(text):
+            raise ValueError(f"unterminated flow collection (one line only): {text}")
+        start, (item, i) = i, _flow_item(text, i)
+        i = _skip(text, i)
+        if isinstance(out, dict):  # keys are text, as in a block mapping
+            key = item if text[start] in "'\"" else text[start:i].strip()
+            if text[i:i + 1] != ":" or isinstance(item, (dict, list)) or not key or key in out:
+                raise ValueError(f"a flow mapping holds `key: value` pairs with unique text keys: {text}")
+            out[key], i = _flow_item(text, _skip(text, i + 1))
+            i = _skip(text, i)
+        else:
+            out.append(item)
+        if text[i:i + 1] == ",":
+            i = _skip(text, i + 1)
+        elif i < len(text) and text[i] != close:
+            raise ValueError(f"expected ',' or {close!r} in a flow collection: {text}")
+    return out, i + 1
 
 
 def scalar(raw: str, strict: bool = False):
     raw = raw.strip()
-    if raw[:1] in ("&", "*", "!", "@", "`", "%") or raw[:1] == "{" and raw != "{}":
-        raise ValueError(f"unsupported YAML (anchor, alias, tag or flow mapping): {raw}")
+    if raw[:1] in ("&", "*", "!", "@", "`", "%"):
+        raise ValueError(f"unsupported YAML (anchor, alias or tag): {raw}")
     if raw[:1] in ("|", ">"):  # a block scalar with an indentation indicator, such as |2
         raise ValueError(f"unsupported block scalar header: {raw}")
     if raw[:1] == '"':
@@ -80,13 +106,11 @@ def scalar(raw: str, strict: bool = False):
         if len(raw) < 2 or not raw.endswith("'"):
             raise ValueError(f"unterminated single-quoted string: {raw}")
         return raw[1:-1].replace("''", "'")
-    if raw[:1] == "[":
-        if not raw.endswith("]"):
-            raise ValueError(f"multi-line flow lists are not supported: {raw}")
-        inner = raw[1:-1].strip()
-        return [scalar(part, strict) for part in _split_flow(inner)] if inner else []
-    if raw == "{}":
-        return {}
+    if raw[:1] in ("[", "{"):
+        value, end = _flow(raw, 0)
+        if raw[end:].strip():
+            raise ValueError(f"content after a flow collection: {raw}")
+        return value
     if raw == "" or raw in ("null", "Null", "NULL", "~"):
         return None
     if raw.lower() in _WORDS and raw in (raw.lower(), raw.capitalize(), raw.upper()):

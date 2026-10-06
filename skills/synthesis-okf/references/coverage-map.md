@@ -34,9 +34,11 @@ Verdicts from the v5 code evaluation (`tool-scripts.md`, synthesis-okf rows): `o
 |---|---|
 | `okf_validate.py` (189 lines), `okf_convert.py` (326 lines) | Unchanged. The published article on the validator documents its command line, which is the same. New tests: `tests/test_okf_validate.py` (scenario E92: frontmatter with a non-empty `type` on every non-reserved file, broken links reported only under `--check-links` and only as info, exit 2 for a missing bundle) and `tests/test_okf_convert.py` (`--dry-run` writes nothing; backfill never overwrites existing fields; the converted bundle validates) |
 | `okf_consistency.py` (630 lines) | 357 lines (target about 300), same command line, same seven checks, same messages, severities, ordering and exit codes: on a synthetic repository exercising every check, the old and new scripts printed byte-identical reports. The size came from one-finding-per-twelve-lines construction, now one helper call each. One defect fixed while slimming: an unsafe `topic_routing` path used to raise an uncaught error mid-report; it now exits 2 like every other contract error |
-| `scripts/test_okf_consistency.py` | `tests/test_okf_consistency.py` (path change only; PyYAML is skipped where missing, since CI's Python has only pytest) |
+| `scripts/test_okf_consistency.py` | `tests/test_okf_consistency.py` (path change; it ran only where PyYAML was installed until 2026-10-06, see below) |
 
 No prose changed: every command in SKILL.md and references/tools.md is unchanged.
+
+**2026-10-06.** The three scripts read YAML through the plugin's standard-library reader (`synthesis/yamlish.py`) instead of PyYAML, so they and their tests run on Apple's `/usr/bin/python3` and in CI, which had skipped all three test files. Dates in frontmatter stay text; the consistency check already normalized text dates. `okf_convert.py` backfill now adds the missing fields to the existing frontmatter and keeps every other byte, comments included, where it used to rewrite the whole block; a field present with an empty value is filled where it stands, and a block it cannot fill that way is reported as SKIP. `okf_consistency.py` uses `okf_validate.py`'s frontmatter splitter, as `okf_convert.py` already did, instead of its own copy.
 
 ## The 1.1.0 frontmatter
 

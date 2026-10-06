@@ -209,7 +209,7 @@ def test_the_documented_config_shape_reads(tmp_path: Path) -> None:
 # Quotes, escapes, comments and booleans: the shared reader's cases in tests/test_yamlish.py.
 
 
-@pytest.mark.parametrize("text", ["channels:\n  - {id: C1}\n", "  indented: first\n", "channels:\n\t- id: C1\n",
+@pytest.mark.parametrize("text", ["channels:\n  - {id: &c C1}\n", "  indented: first\n", "channels:\n\t- id: C1\n",
                                   "no colon here\n"])
 def test_a_config_that_cannot_be_read_or_declares_nothing_is_refused(tmp_path: Path, text: str) -> None:
     done = run_cli("--config", str(write_config(tmp_path, text)))

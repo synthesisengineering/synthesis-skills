@@ -10,6 +10,7 @@ reader refused a form PyYAML reads, the case now asserts PyYAML's reading.
 from __future__ import annotations
 
 import datetime
+import json
 
 import pytest
 
@@ -98,11 +99,17 @@ def test_reads_the_shapes_the_manifests_use() -> None:
 @pytest.mark.parametrize("text, reason", [
     ("a: &anchor 1\nb: *anchor\n", "anchor"),
     ("a: !!str 1\n", "tag"),
-    ("a: {b: 1}\n", "flow mapping"),
     ("a:\n\tb: 1\n", "tab"),
     ("a: 1\na: 2\n", "duplicate"),
-    ("a: [1, 2\n", "multi-line flow"),
-    ("a: [x, [y]]\n", "nested flow"),
+    ("a: [1, 2\n", "unterminated flow collection"),  # a flow collection closes on its own line
+    ("a: {b: [1,\n  2]}\n", "unterminated flow collection"),
+    ("a: {b: 1} c\n", "content after a flow collection"),
+    ("a: {b: 1, b: 2}\n", "unique text keys"),
+    ("a: [b: 1]\n", "expected ',' or ']'"),
+    ("a: {[b]: 1}\n", "unique text keys"),
+    ("a: {b, c: 1}\n", "key: value"),
+    ("a: {b: &x 1, c: *x}\n", "anchor"),
+    ("a: [x]y]\n", "content after a flow collection"),
     ("a: 1\n  b: 2\nc: [x\n", "unexpected indentation"),
     ("a: 'open\n", "unterminated single-quoted"),
     ("a: \"open\n", "unterminated double-quoted"),
@@ -113,6 +120,36 @@ def test_reads_the_shapes_the_manifests_use() -> None:
 def test_refuses_what_it_cannot_read(text: str, reason: str) -> None:
     with pytest.raises(ValueError, match=reason):
         load(text)
+
+
+@pytest.mark.parametrize("text, expected", [
+    # the inbox rules: one flow mapping per rule, nested matchers, quoted text with commas
+    ('rules:\n  - {match: {from: a@example.invalid, subject: "x, y"}, action: archive}   # why\n'
+     "  - {match: {domain: example.invalid}, action: keep, tags: [one, two]}\n",
+     {"rules": [{"match": {"from": "a@example.invalid", "subject": "x, y"}, "action": "archive"},
+                {"match": {"domain": "example.invalid"}, "action": "keep", "tags": ["one", "two"]}]}),
+    ("a: [x, [y, z], {k: v}, 'q, r', 3, true, null]\n", {"a": ["x", ["y", "z"], {"k": "v"}, "q, r", 3, True, None]}),
+    ("a: {url: http://example.invalid/x, empty: }\n", {"a": {"url": "http://example.invalid/x", "empty": None}}),
+    ("a: [ x , y , ]\n", {"a": ["x", "y"]}),  # spaces and a trailing comma, as PyYAML allows
+    ('{"name": "one line of JSON", "n": [1, 2.5, -3], "ok": false, "none": null}\n',
+     {"name": "one line of JSON", "n": [1, 2.5, -3], "ok": False, "none": None}),
+])
+def test_flow_collections_on_one_line_are_read_as_pyyaml_reads_them(text: str, expected) -> None:
+    assert load(text) == expected
+    agrees_with_pyyaml(text, expected)
+
+
+def test_flow_mapping_keys_are_text_as_block_mapping_keys_are() -> None:
+    assert load("a: {1: x, yes: y}\n") == load("a:\n  1: x\n  yes: y\n") == {"a": {"1": "x", "yes": "y"}}
+
+
+@pytest.mark.parametrize("data", [
+    {"a": {"b": 1, "c": [1, {"d": [2, 3]}, [4, [5]]]}, "e": "it's", "f": "2026-03-05", "g": "yes", "h": "x: y, z",
+     "i": "", " j": None, "k": [], "l": {}, "m": "two\nlines\u2028sep\x85", "n": "\u00dcn\u00efcode", "o": 1.5, "p": True},
+    [[1, 2], [3], {"x": {"y": [{"z": 1}]}}],
+])
+def test_a_json_document_is_read_as_json_reads_it(data) -> None:  # how tests and tools write YAML to read back
+    assert load(json.dumps(data)) == data
 
 
 def test_empty_documents_and_top_level_lists() -> None:
@@ -213,7 +250,6 @@ def test_quotes_escapes_comments_and_booleans() -> None:
 
 
 @pytest.mark.parametrize("text, reason", [
-    ("channels:\n  - {id: C1}\n", "flow mapping"),
     ("channels:\n\t- id: C1\n", "tab"),
     ("no colon here\n", "expected a mapping"),
 ])

@@ -13,8 +13,6 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("yaml")
-
 TESTS = Path(__file__).resolve().parent
 SCRIPTS = TESTS.parent / "scripts"
 

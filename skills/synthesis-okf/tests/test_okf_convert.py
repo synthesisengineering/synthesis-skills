@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-yaml = pytest.importorskip("yaml")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
@@ -45,11 +46,27 @@ def test_backfills_without_overwriting_and_the_bundle_validates(tmp_path):
     result = _convert(root)
     assert result.returncode == 0, result.stderr
     deploy = (root / "runbooks" / "deploy.md").read_text(encoding="utf-8")
-    meta = yaml.safe_load(deploy.split("---")[1])
+    meta = yamlish.load(deploy.split("---")[1])
     assert meta["type"] == "Runbook" and meta["title"] == "Deploy"
-    kept = yaml.safe_load((root / "runbooks" / "kept.md").read_text(encoding="utf-8").split("---")[1])
+    kept = yamlish.load((root / "runbooks" / "kept.md").read_text(encoding="utf-8").split("---")[1])
     assert kept["title"] == "Hand title" and kept["type"] == "Playbook"  # existing fields never overwritten
     assert (root / "index.md").is_file() and not (root / "README.md").exists()
     check = subprocess.run([sys.executable, str(SCRIPTS / "okf_validate.py"), str(root)],
                            capture_output=True, text=True, timeout=60)
     assert check.returncode == 0, check.stdout
+
+
+def test_backfill_adds_only_the_missing_fields_and_keeps_every_other_byte(tmp_path):
+    root = tmp_path / "source"
+    (root / "runbooks").mkdir(parents=True)
+    note = root / "runbooks" / "note.md"
+    head = ("# a comment the old converter dropped\ntitle: 'Quoted: title'\ncreated: 2026-03-05\n{type}"
+            "rules:\n  - {{match: {{from: x}}, action: keep}}\n")
+    note.write_text("---\n" + head.format(type="type:\n") + "---\n# Note\n\nBody.\n", encoding="utf-8")
+    curated = tmp_path / "descriptions.yaml"
+    curated.write_text("runbooks/note.md:\n  description: Curated, with a comma\n  tags: [kind:runbook]\n", encoding="utf-8")
+    result = _convert(root, "--descriptions", str(curated))
+    assert result.returncode == 0, result.stderr
+    assert note.read_text(encoding="utf-8") == ("---\n" + head.format(type="type: Runbook\n")
+                                                + 'description: Curated, with a comma\ntags:\n- "kind:runbook"\n'
+                                                + "---\n\n# Note\n\nBody.\n")

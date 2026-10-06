@@ -53,7 +53,9 @@ version.
 **Removed.** Per-edit attribution manifests, tool snapshots, Stop-time receipts,
 acquisition receipts, record transactions, leases, the multi-Mac fleet registry,
 team contracts, release acceptance machinery, the plugin cache guardian, the old
-autopilot engine, vendored PyYAML and the package launcher. Their incidents and
+autopilot engine, vendored PyYAML and every PyYAML import (one standard-library reader
+reads every YAML file, inbox rules and knowledge-base frontmatter included) and the
+package launcher. Their incidents and
 rules survive as tests and as prose in the skills.
 
 **Install.** Native plugins in Claude Code, Codex and Muse, with one stable hook

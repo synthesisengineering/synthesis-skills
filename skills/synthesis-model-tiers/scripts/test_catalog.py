@@ -3,9 +3,12 @@ from copy import deepcopy
 from datetime import date
 from pathlib import Path
 import os
+import sys
 from urllib.parse import urlparse
 import pytest
-import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 ROOT = Path(os.environ.get('MODEL_TIERS_ROOT', Path(__file__).resolve().parents[1]))
 ROLES = ('judgment', 'routine', 'bulk')
@@ -17,8 +20,8 @@ HOSTS = {
 }
 
 def read_pair():
-    return (yaml.safe_load((ROOT/'tiers.yaml').read_text()),
-            yaml.safe_load((ROOT/'references/catalog-verification.yaml').read_text()))
+    return (yamlish.load((ROOT/'tiers.yaml').read_text(encoding='utf-8')),
+            yamlish.load((ROOT/'references/catalog-verification.yaml').read_text(encoding='utf-8')))
 
 def validate(catalog, evidence):
     """Reject unverifiable table edits; this is an offline CI oracle, not live qualification."""
@@ -74,7 +77,7 @@ def test_shipped_catalog_contract():
 
 
 def test_verified_role_assignments():
-    catalog = yaml.safe_load((ROOT/'tiers.yaml').read_text())
+    catalog = yamlish.load((ROOT/'tiers.yaml').read_text(encoding='utf-8'))
     assert {role: catalog['providers']['openai'][role] for role in ROLES} == {
         'judgment': ['gpt-6-astra'], 'routine': ['gpt-6-sol'], 'bulk': ['gpt-6-luna']}
     assert catalog['providers']['anthropic']['judgment'] == ['claude-fable-5-1', 'claude-opus-5-5']

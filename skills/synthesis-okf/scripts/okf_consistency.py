@@ -28,10 +28,10 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Optional
 
-try:
-    import yaml
-except ImportError:
-    sys.exit("okf-consistency requires PyYAML (pip install pyyaml)")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from synthesis import yamlish  # noqa: E402
+from okf_validate import split_frontmatter  # noqa: E402  (beside this script; one splitter for all three)
 
 CONFIG_RELATIVE = Path(".agents/knowledge-base.yaml")
 TAG_RE = re.compile(r"^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9.-]*$")
@@ -60,16 +60,6 @@ class Finding:
     def render(self) -> str:
         location = f"{self.path}:{self.line}" if self.line else self.path
         return f"{location} — {self.severity} — {self.message}\n   fix: {self.fix}"
-
-
-def split_frontmatter(text: str) -> tuple:
-    """(frontmatter text or None, body, first body line number)."""
-    lines = text.splitlines(keepends=True)
-    if lines and lines[0].strip() == "---":
-        for index in range(1, len(lines)):
-            if lines[index].strip() == "---":
-                return "".join(lines[1:index]), "".join(lines[index + 1:]), index + 2
-    return None, text, 1
 
 
 def field_line(text: str, field: str) -> Optional[int]:
@@ -137,10 +127,10 @@ def safe_repo_path(repo: Path, relative: str) -> Path:
 def load_contract(repo: Path, configured: Optional[Path]) -> tuple:
     path = repo / CONFIG_RELATIVE if configured is None else (configured if configured.is_absolute() else repo / configured)
     try:
-        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        config = yamlish.load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ValueError(f"missing configuration: {path}") from exc
-    except yaml.YAMLError as exc:
+    except ValueError as exc:
         raise ValueError(f"invalid YAML in {path}: {exc}") from exc
     if not isinstance(config, dict):
         raise ValueError(f"configuration is not a mapping: {path}")
@@ -185,13 +175,14 @@ def check_document(repo: Path, bundle: Path, path: Path, config: dict, valid_tag
     def add(line, severity, message, fix):
         findings.append(Finding(rel, line, severity, message, fix))
 
-    fm_text, body, body_start = split_frontmatter(path.read_text(encoding="utf-8"))
+    fm_text, body = split_frontmatter(path.read_text(encoding="utf-8"))
+    body_start = fm_text.count("\n") + 3 if fm_text is not None else 1  # the body's first line number
     if fm_text is None:
         return [Finding(rel, 1, "CONFLICT", "missing or unterminated YAML frontmatter",
                         "add a parseable frontmatter block using the configured schema")]
     try:
-        meta = yaml.safe_load(fm_text)
-    except yaml.YAMLError as exc:
+        meta = yamlish.load(fm_text)
+    except ValueError as exc:
         return [Finding(rel, 1, "CONFLICT", f"frontmatter is not parseable YAML: {exc}", "repair the YAML before shipping")]
     if not isinstance(meta, dict):
         return [Finding(rel, 1, "CONFLICT", "frontmatter is not a mapping", "replace it with a key-value mapping")]

@@ -73,6 +73,8 @@ import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 CONFIG = Path.home() / ".synthesis" / "inbox-cleanup" / "impersonation.yaml"
 
@@ -199,25 +201,8 @@ def validate_config(data: object) -> tuple[dict[str, list[str]], dict[str, list[
 
 
 def load_config(path: Path = CONFIG) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    """Read the private policy: a bounded regular file (not a symlink), unique keys."""
-    try:
-        import yaml
-    except ImportError as exc:
-        raise ConfigError("PyYAML is required to read the impersonation configuration") from exc
-
-    class UniqueLoader(yaml.SafeLoader):
-        pass
-
-    def mapping(loader, node):
-        result = {}
-        for key_node, value_node in node.value:
-            key = loader.construct_object(key_node)
-            if not isinstance(key, str) or key in result:
-                raise ConfigError("configuration fields must be unique text keys")
-            result[key] = loader.construct_object(value_node)
-        return result
-
-    UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    """Read the private policy: a bounded regular file (not a symlink), unique keys.
+    The YAML reader refuses a repeated key and reads every key as text."""
     try:
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_CONFIG_BYTES:
@@ -225,10 +210,13 @@ def load_config(path: Path = CONFIG) -> tuple[dict[str, list[str]], dict[str, li
         raw = path.read_bytes()[:MAX_CONFIG_BYTES + 1]
         if len(raw) > MAX_CONFIG_BYTES:
             raise ConfigError("configuration must be a regular file of at most 64 KiB")
-        return validate_config(yaml.load(raw.decode("utf-8"), Loader=UniqueLoader))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        data = yamlish.load(raw.decode("utf-8"))
+    except ConfigError:
+        raise
+    except (OSError, UnicodeError, ValueError) as exc:
         raise ConfigError("cannot read valid impersonation configuration; "
                           "configure principal names and exact addresses") from exc
+    return validate_config(data)
 
 
 def domain_ok(domain: str, legit: list[str]) -> bool:

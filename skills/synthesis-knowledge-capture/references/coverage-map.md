@@ -25,6 +25,8 @@ Every part of the 1.2.0 SKILL.md and where it lives now. Nothing was removed, an
 
 `scripts/kb_scan.py` and `config.example.json` are unchanged. This skill has no tests of its own; no test elsewhere reads text from its SKILL.md.
 
+**2026-10-06.** `kb_scan.py` reads frontmatter through the plugin's YAML reader (`synthesis/yamlish.py`) instead of its own line-by-line scalar parser, which printed escaped quotes as `\"` and cut a title continued on a second line. On every knowledge base on the author's Mac the `--list` and `--stale` output is otherwise unchanged; a block the reader cannot read is reported on stderr and counts as undated. Its first tests are `tests/test_kb_scan.py`.
+
 ## The 1.2.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

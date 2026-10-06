@@ -14,9 +14,13 @@ Credentials:
   or fallback file ~/.synthesis/inbox-cleanup/imap.secret
   Never printed or logged.
 """
-import imaplib, email, subprocess, sys, os, ssl, yaml
+import imaplib, email, subprocess, sys, os, ssl
 from email.header import decode_header, make_header
 from email.utils import parseaddr
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 CONFIG_PATH = os.path.expanduser(
     os.environ.get(
@@ -36,8 +40,11 @@ def _load_yaml(path, what):
     if not os.path.exists(path):
         sys.exit(f"ERROR: {what} not found at {path}\n"
                  f"Run the installer first: scripts/install.sh")
-    with open(path, encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return yamlish.load(fh.read(), source=path)
+    except ValueError as exc:
+        sys.exit(f"ERROR: {what} at {path} is not readable YAML: {exc}")
 
 
 CONFIG = _load_yaml(CONFIG_PATH, "config")

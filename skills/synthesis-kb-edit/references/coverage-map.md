@@ -23,6 +23,8 @@ Every part of the 1.0.0 SKILL.md and where it lives now. Nothing was removed.
 
 The v5 code evaluation (`tool-scripts.md`, row `synthesis-kb-edit/scripts/kb_config.py`) ruled KEEP. `scripts/kb_config.py` (283 lines) is unchanged; its tests moved from `scripts/test_kb_config.py` to `tests/test_kb_config.py` (path change only, PyYAML skipped where missing) and gained `test_symlinked_contract_path_that_leaves_the_repo_is_refused`, which with the existing `test_rejects_path_escape` holds scenario E93 (a contract path that escapes the repository is refused). No prose changed.
 
+**2026-10-06.** `kb_config.py` reads the contract through the plugin's standard-library YAML reader (`synthesis/yamlish.py`) instead of PyYAML, so it and its tests run on Apple's `/usr/bin/python3` and in CI, which had skipped the test file.
+
 ## The 1.0.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

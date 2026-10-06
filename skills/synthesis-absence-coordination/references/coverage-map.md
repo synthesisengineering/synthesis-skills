@@ -29,6 +29,8 @@ message-templates.md is over 150 lines, so it gained a short contents list under
 
 `validate_config.py`, `test_validate_config.py` and `example-config.yaml` are unchanged, and the documented command `python3 validate_config.py ~/.synthesis/absence-coordination/config.yaml` stays in SKILL.md exactly as written.
 
+**2026-10-06.** `validate_config.py` and its test read YAML through the plugin's standard-library reader (`synthesis/yamlish.py`) instead of PyYAML, so the validator no longer exits 2 on a Python without PyYAML, and CI runs the test. Its command line and exit codes are unchanged.
+
 ## The 1.0.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.

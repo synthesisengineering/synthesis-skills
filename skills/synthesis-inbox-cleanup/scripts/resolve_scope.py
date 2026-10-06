@@ -39,6 +39,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
+
 DEFAULT_CONFIG = "~/.synthesis/inbox-cleanup/scopes.yaml"
 
 
@@ -48,15 +51,11 @@ def fail_unverified(msg: str) -> None:
 
 
 def load_config(path: Path) -> dict:
-    try:
-        import yaml
-    except ImportError:
-        fail_unverified("pyyaml is not installed; cannot parse scopes.yaml")
     if not path.exists():
         fail_unverified(f"no scope config at {path} — copy the schema from resolve_scope.py's docstring")
     try:
-        data = yaml.safe_load(path.read_text())
-    except Exception as exc:  # noqa: BLE001
+        data = yamlish.load(path.read_text(encoding="utf-8"), source=str(path))
+    except (OSError, UnicodeError, ValueError) as exc:
         fail_unverified(f"{path} is not parseable YAML: {exc}")
     if not isinstance(data, dict):
         fail_unverified(f"{path} did not parse to a mapping")

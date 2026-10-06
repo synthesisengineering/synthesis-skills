@@ -25,15 +25,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    sys.exit("okf-convert requires PyYAML (pip install pyyaml)")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 from okf_validate import split_frontmatter  # noqa: E402  (beside this script; one reader for both)
 
 RESERVED = {"index.md", "log.md"}
@@ -113,9 +112,42 @@ def git_timestamp(path: Path) -> str | None:
         return None
 
 
+PLAIN = re.compile(r"[A-Za-z][A-Za-z0-9 _.,/()'+-]*")  # text that YAML reads back as itself, unquoted
+EMPTY_LINE = r"\s*(?:\"\"|''|null|Null|NULL|~|\[\s*\])?\s*(?:#.*)?\n"
+
+
+def field(key: str, value) -> str:
+    """One frontmatter field holding text or a list of text, as both YAML readers read it back."""
+    def text(s):
+        s = str(s)
+        if PLAIN.fullmatch(s) and not s.endswith(" ") and s.lower() not in ("true", "false", "yes", "no", "on", "off", "null"):
+            return s
+        return '"' + "".join(c if c.isprintable() and c not in '"\\' else json.dumps(c)[1:-1] for c in s) + '"'
+    return f"{key}:\n" + "".join(f"- {text(v)}\n" for v in value) if isinstance(value, list) else f"{key}: {text(value)}\n"
+
+
 def dump_frontmatter(meta: dict) -> str:
-    body = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, default_flow_style=False)
-    return "---\n" + body.strip("\n") + "\n---\n\n"
+    return "---\n" + "".join(field(k, v) for k, v in meta.items()) + "---\n\n"
+
+
+def backfill_frontmatter(fm_str: str, meta: dict, additions: dict) -> str | None:
+    """The frontmatter with `additions` filled in and every other byte kept: an absent key is added
+    (`type` first, the rest last), a key with an empty one-line value is filled where it stands.
+    None when that cannot be done exactly."""
+    lines, head, tail = fm_str.splitlines(keepends=True), [], []
+    for key, value in additions.items():
+        spots = [i for i, line in enumerate(lines) if re.fullmatch(re.escape(key) + ":" + EMPTY_LINE, line)]
+        if key in meta and len(spots) != 1:
+            return None
+        if key in meta:
+            lines[spots[0]] = field(key, value)
+        else:
+            (head if key == "type" else tail).append(field(key, value))
+    text = "".join(head + lines + tail)
+    try:
+        return text if yamlish.load(text) == {**meta, **additions} else None
+    except ValueError:
+        return None
 
 
 def top_subdir(rel: Path) -> str:
@@ -156,7 +188,7 @@ def main(argv=None):
     type_map = dict(kv.split("=", 1) for kv in args.type_map.split(","))
     curated = {}
     if args.descriptions:
-        curated = yaml.safe_load(args.descriptions.read_text(encoding="utf-8")) or {}
+        curated = yamlish.load_mapping(args.descriptions.read_text(encoding="utf-8"), source=str(args.descriptions))
 
     md_files = sorted(bundle.rglob("*.md"))
     concept_meta: dict[str, dict] = {}   # rel-posix -> {type,title,description}
@@ -192,35 +224,37 @@ def main(argv=None):
 
         if fm_str is not None:
             try:
-                meta = yaml.safe_load(fm_str) or {}
-                assert isinstance(meta, dict)
-            except (yaml.YAMLError, AssertionError):
+                meta = yamlish.load(fm_str) or {}
+            except ValueError:
+                meta = None
+            if not isinstance(meta, dict):
                 changes.append(f"  SKIP bad-YAML  {rel_posix}  (unparseable frontmatter — fix manually)")
                 continue
             cur = curated.get(rel_posix, {})
-            backfilled = False
+            additions = {}
             if not meta.get("type"):
-                meta = {"type": ctype, **meta}
-                backfilled = True
+                additions["type"] = ctype
             if cur.get("description") and not meta.get("description"):
-                meta["description"] = cur["description"]
-                backfilled = True
+                additions["description"] = cur["description"]
             if cur.get("tags") and not meta.get("tags"):
-                meta["tags"] = cur["tags"]
-                backfilled = True
+                additions["tags"] = cur["tags"]
             if not meta.get("timestamp"):
                 ts = git_timestamp(md)
                 if ts:
-                    meta["timestamp"] = ts
-                    backfilled = True
+                    additions["timestamp"] = ts
+            filled = backfill_frontmatter(fm_str, meta, additions) if additions else fm_str
+            if filled is None:
+                changes.append(f"  SKIP backfill  {rel_posix}  (cannot add {sorted(additions)} without rewriting the frontmatter — fill them manually)")
+                continue
+            meta = {**meta, **additions}
             concept_meta[rel_posix] = {
                 "type": meta.get("type", ctype),
                 "title": meta.get("title") or derive_title(body) or md.stem,
                 "description": meta.get("description", ""),
             }
-            if backfilled and not args.dry_run:
-                md.write_text(dump_frontmatter(meta) + body.lstrip("\n"), encoding="utf-8")
-            if backfilled:
+            if additions and not args.dry_run:
+                md.write_text("---\n" + filled + "---\n\n" + body.lstrip("\n"), encoding="utf-8")
+            if additions:
                 changes.append(f"  backfill       {rel_posix}  -> {meta['type']}")
             continue
 

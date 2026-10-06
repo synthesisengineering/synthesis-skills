@@ -22,6 +22,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
+
 DEFAULT_PATH = "~/.synthesis/absence-coordination/config.yaml"
 
 CONTENT_POLICIES = {
@@ -63,21 +66,14 @@ def warn(msg: str, fix: str = "") -> None:
 
 
 def load(path: Path):
-    try:
-        import yaml
-    except ImportError:
-        print("UNVERIFIED: pyyaml is not installed, so the config could not be parsed.")
-        print("  -> pip install pyyaml (or run via `uv run --with pyyaml`)")
-        raise SystemExit(2)
-
     if not path.exists():
         print(f"UNVERIFIED: no config at {path}")
         print("  -> copy example-config.yaml there and fill it in")
         raise SystemExit(2)
 
     try:
-        data = yaml.safe_load(path.read_text())
-    except Exception as exc:  # noqa: BLE001 - report any parse failure verbatim
+        data = yamlish.load(path.read_text(encoding="utf-8"), source=str(path))
+    except (OSError, UnicodeError, ValueError) as exc:
         print(f"UNVERIFIED: {path} is not parseable YAML: {exc}")
         raise SystemExit(2)
 

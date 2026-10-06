@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
 import pytest
-
-yaml = pytest.importorskip("yaml")
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "okf_consistency.py"
@@ -47,7 +46,7 @@ def write_repo(tmp_path: Path, document: str, name: str = "example-concept.md") 
         },
     }
     (repo / ".agents" / "knowledge-base.yaml").write_text(
-        yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        json.dumps(config), encoding="utf-8"
     )
     target = concepts / name
     target.write_text(document, encoding="utf-8")

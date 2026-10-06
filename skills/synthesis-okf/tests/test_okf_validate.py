@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("yaml")
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "okf_validate.py"
 

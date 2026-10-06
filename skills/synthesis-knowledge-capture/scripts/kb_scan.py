@@ -25,6 +25,10 @@ import argparse
 import os
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 RESERVED = {"index.md", "log.md", "readme.md"}
 
@@ -51,30 +55,17 @@ def read_text(path: str) -> str:
         return ""
 
 
-def parse_frontmatter(text: str) -> dict:
-    """Minimal, dependency-free scalar frontmatter parse.
-
-    Extracts only the scalar keys this tool needs (type, title, timestamp).
-    List/nested values (e.g. tags) are ignored by design — no YAML dependency,
-    so behavior never changes with the environment.
-    """
-    if not text.startswith("---"):
+def parse_frontmatter(text: str, path: str = "") -> dict:
+    """The frontmatter as the plugin's YAML reader reads it (the same under any python3).
+    {} when there is none; an unreadable block is reported and treated as empty."""
+    lines = text.splitlines(keepends=True)
+    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None) if lines and lines[0].strip() == "---" else None
+    try:
+        fm = yamlish.load("".join(lines[1:end])) if end else {}
+    except ValueError as exc:
+        print(f"! unreadable frontmatter in {path}: {exc}", file=sys.stderr)
         return {}
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}
-    fm: dict[str, str] = {}
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        m = re.match(r"^([A-Za-z0-9_]+):\s*(.*)$", line)
-        if not m:
-            continue
-        key, raw = m.group(1).lower(), m.group(2).strip()
-        if raw.startswith("[") or raw == "" or raw.startswith("{"):
-            continue  # list/empty/map — not a scalar this tool tracks
-        fm[key] = raw.strip().strip('"').strip("'")
-    return fm
+    return fm if isinstance(fm, dict) else {}
 
 
 def scan_entity(bundle: str, terms: list[str]) -> int:
@@ -110,7 +101,7 @@ def scan_entity(bundle: str, terms: list[str]) -> int:
 def list_concepts(bundle: str) -> int:
     rows = []
     for path in iter_concepts(bundle):
-        fm = parse_frontmatter(read_text(path))
+        fm = parse_frontmatter(read_text(path), path)
         rows.append((os.path.relpath(path, bundle),
                      fm.get("type", "—"),
                      fm.get("title", "")))
@@ -127,8 +118,8 @@ def list_stale(bundle: str, cutoff: str) -> int:
         return 2
     stale = []
     for path in iter_concepts(bundle):
-        fm = parse_frontmatter(read_text(path))
-        ts = fm.get("timestamp", "")
+        fm = parse_frontmatter(read_text(path), path)
+        ts = str(fm.get("timestamp") or "")
         # ISO dates sort lexicographically; missing timestamp counts as stale.
         if not ts or ts < cutoff:
             stale.append((os.path.relpath(path, bundle), ts or "(none)"))

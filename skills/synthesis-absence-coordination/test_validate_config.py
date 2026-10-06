@@ -9,12 +9,15 @@ exit codes drift would miss the only failures that matter.
 from __future__ import annotations
 
 import copy
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
-import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # the plugin root, which holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 SKILL_DIR = Path(__file__).parent
 VALIDATOR = SKILL_DIR / "validate_config.py"
@@ -32,14 +35,14 @@ def run_validator(config_path: Path) -> subprocess.CompletedProcess:
 
 @pytest.fixture()
 def example_config() -> dict:
-    return yaml.safe_load(EXAMPLE.read_text())
+    return yamlish.load(EXAMPLE.read_text(encoding="utf-8"))
 
 
 @pytest.fixture()
 def write_config(tmp_path):
     def _write(cfg: dict) -> Path:
         p = tmp_path / "config.yaml"
-        p.write_text(yaml.safe_dump(cfg))
+        p.write_text(json.dumps(cfg))
         return p
 
     return _write

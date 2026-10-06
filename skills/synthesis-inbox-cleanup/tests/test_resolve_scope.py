@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 RESOLVER = Path(__file__).parent.parent / "scripts" / "resolve_scope.py"
 
@@ -39,7 +38,7 @@ def run(config: dict | None, *args: str, config_path: Path | None = None):
 @pytest.fixture()
 def config_file(tmp_path: Path) -> Path:
     p = tmp_path / "scopes.yaml"
-    p.write_text(yaml.safe_dump(CONFIG))
+    p.write_text(json.dumps(CONFIG))
     return p
 
 
@@ -84,7 +83,7 @@ def test_missing_config_exits_2(tmp_path):
 def test_malformed_account_is_a_defect(tmp_path):
     bad = {"version": 1, "accounts": [{"address": "x@example.com"}]}  # no workspace
     p = tmp_path / "scopes.yaml"
-    p.write_text(yaml.safe_dump(bad))
+    p.write_text(json.dumps(bad))
     r = run(bad, "--workspace", "acme", config_path=p)
     assert r.returncode == 1
     assert "DEFECT" in r.stderr
@@ -92,6 +91,6 @@ def test_malformed_account_is_a_defect(tmp_path):
 
 def test_empty_accounts_is_a_defect(tmp_path):
     p = tmp_path / "scopes.yaml"
-    p.write_text(yaml.safe_dump({"version": 1, "accounts": []}))
+    p.write_text(json.dumps({"version": 1, "accounts": []}))
     r = run(None, "--workspace", "personal", config_path=p)
     assert r.returncode == 1

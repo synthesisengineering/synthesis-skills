@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
 import pytest
-
-yaml = pytest.importorskip("yaml")
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "kb_config.py"
@@ -56,7 +55,7 @@ def write_repo(tmp_path: Path, config: dict | None = None) -> Path:
     (repo / "source" / "reference").mkdir(parents=True)
     (repo / "source" / "taxonomy.md").write_text("# Taxonomy\n", encoding="utf-8")
     (repo / ".agents" / "knowledge-base.yaml").write_text(
-        yaml.safe_dump(config or valid_config(), sort_keys=False),
+        json.dumps(config or valid_config()),
         encoding="utf-8",
     )
     return repo

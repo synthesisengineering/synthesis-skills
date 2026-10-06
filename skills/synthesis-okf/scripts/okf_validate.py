@@ -27,10 +27,8 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    sys.exit("okf-validate requires PyYAML (pip install pyyaml)")
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 RESERVED = {"index.md", "log.md"}
 # Warn only on broadly-applicable recommended fields. `resource` and `tags` are
@@ -74,8 +72,8 @@ def validate_concept(rel: str, text: str, rep: Report):
         rep.error(rel, "missing or unterminated YAML frontmatter block (§9.1)")
         return
     try:
-        fm = yaml.safe_load(fm_str)
-    except yaml.YAMLError as exc:
+        fm = yamlish.load(fm_str)
+    except ValueError as exc:
         rep.error(rel, f"unparseable frontmatter (§9.1): {exc}")
         return
     if not isinstance(fm, dict):
@@ -100,8 +98,8 @@ def validate_index(rel: str, text: str, is_root: bool, rep: Report):
             rep.error(rel, "index.md must not contain frontmatter except at bundle root (§6, §11)")
         else:
             try:
-                fm = yaml.safe_load(fm_str) or {}
-            except yaml.YAMLError as exc:
+                fm = yamlish.load(fm_str) or {}
+            except ValueError as exc:
                 rep.error(rel, f"unparseable root index frontmatter: {exc}")
                 fm = {}
             extra = [k for k in fm if k != "okf_version"]

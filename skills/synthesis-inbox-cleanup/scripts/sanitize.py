@@ -67,6 +67,8 @@ What it does NOT do:
 Pure functions. The only I/O is `make_nonce()` reading the system CSPRNG.
 Importable.
 """
+from __future__ import annotations
+
 import re
 import html as html_module
 import json

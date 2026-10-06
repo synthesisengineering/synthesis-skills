@@ -16,8 +16,6 @@ from pathlib import Path
 
 import pytest
 
-yaml = pytest.importorskip("yaml")
-
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "scan_impersonation.py"
 spec = importlib.util.spec_from_file_location("principal_scanner", SCRIPT)
 scan = importlib.util.module_from_spec(spec)
@@ -108,7 +106,7 @@ def test_invalid_name_policy_refuses(names):
 @pytest.mark.parametrize("defect", ["missing", "yaml", "duplicate", "unknown", "symlink", "oversize"])
 def test_config_refusals_happen_before_mail_import_or_auth(tmp_path, monkeypatch, defect):
     p = tmp_path / "impersonation.yaml"
-    p.write_text(yaml.safe_dump(config()))
+    p.write_text(json.dumps(config()))
     if defect == "missing":
         p.unlink()
     elif defect == "yaml":
@@ -116,7 +114,7 @@ def test_config_refusals_happen_before_mail_import_or_auth(tmp_path, monkeypatch
     elif defect == "duplicate":
         p.write_text("principal: {}\nprincipal: {}\n")
     elif defect == "unknown":
-        p.write_text(yaml.safe_dump({**config(), "principal_domains": ["public.example"]}))
+        p.write_text(json.dumps({**config(), "principal_domains": ["public.example"]}))
     elif defect == "symlink":
         p.rename(tmp_path / "target")
         p.symlink_to(tmp_path / "target")
@@ -130,7 +128,7 @@ def test_config_refusals_happen_before_mail_import_or_auth(tmp_path, monkeypatch
 
 def test_check_config_and_import_are_independent_of_mail_config(tmp_path):
     p = tmp_path / "impersonation.yaml"
-    p.write_text(yaml.safe_dump(config()))
+    p.write_text(json.dumps(config()))
     env = dict(os.environ, HOME=str(tmp_path / "empty-home"))
     result = subprocess.run([sys.executable, str(SCRIPT), "--config", str(p), "--check-config"],
                             env=env, capture_output=True, text=True, timeout=30)
@@ -148,7 +146,7 @@ def test_header_budget_is_an_explicit_refusal():
 def _main_findings(raw_headers, data, tmp_path, monkeypatch, capsys):
     """Run the read-only main path against synthetic connector bytes."""
     p = tmp_path / "header-policy.yaml"
-    p.write_text(yaml.safe_dump(data))
+    p.write_text(json.dumps(data))
 
     class Mail:
         def __init__(self):

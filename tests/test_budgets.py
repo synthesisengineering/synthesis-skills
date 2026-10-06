@@ -11,11 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # Ceilings at the measured size once every verdict was applied and duplication removed (2026-10-06):
 # set first at 5,000 and 20,000 before the code evaluation measured what carries real value.
-# Raised once, to 5,170 and 20,320, for the approval-provenance layer that closed the M5 self-approval
-# defect (2026-10-06), after removing every duplicate found. Code may not grow past these without
-# removing as many lines elsewhere.
-CORE_BUDGET = 5170
-PLUGIN_BUDGET = 20320
+# Raised to 5,170 and 20,320 for the approval-provenance layer that closed the M5 self-approval
+# defect (2026-10-06), after removing every duplicate found; then by 20 and 17 lines for one-line
+# flow collections in the YAML reader (the inbox rules use them), which let every skill drop PyYAML
+# while the skills' own scripts shrank by as much as they grew. Code may not grow past these
+# without removing as many lines elsewhere.
+CORE_BUDGET = 5190
+PLUGIN_BUDGET = 20337
 
 
 def _lines(files):

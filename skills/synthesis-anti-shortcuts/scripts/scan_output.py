@@ -17,7 +17,7 @@ curly quotes or backticks are exempt, as is any window an entry's own
 `exempt_when` patterns match. A bare use is flagged.
 
 Standard library only; runs on Python 3.9. `--catalog` also accepts a YAML
-catalog in the same shape when PyYAML is installed.
+catalog in the same shape.
 
 Exit codes:
   0 — Clean (no detections)
@@ -46,6 +46,9 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+from synthesis import yamlish  # noqa: E402
 
 CATALOG = Path(__file__).resolve().parents[1] / "costume-catalog.json"
 MATCH_KINDS = ("literal", "regex", "phrase_with_context")
@@ -97,14 +100,7 @@ class CatalogEntry:
 def _read_document(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() in (".yaml", ".yml"):
-        try:
-            import yaml  # type: ignore
-        except ImportError as exc:
-            raise ImportError(
-                "PyYAML is required to load a YAML catalog. Install it, or use a "
-                "JSON catalog (the shipped costume-catalog.json needs nothing)."
-            ) from exc
-        data = yaml.safe_load(text)
+        data = yamlish.load(text, source=str(path))
     else:
         data = json.loads(text)
     if not isinstance(data, dict) or not isinstance(data.get("phrases"), list):
@@ -267,7 +263,7 @@ def build_parser() -> argparse.ArgumentParser:
                      "that signal the lazy-shortcut antipattern."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=("Catalog: the skill's costume-catalog.json unless --catalog names another\n"
-                "(JSON, or YAML with PyYAML installed).\n\n"
+                "(JSON or YAML).\n\n"
                 "Exit codes:\n  0 — Clean (no detections)\n  1 — One or more detections found\n"
                 "  2 — Error\n"))
     parser.add_argument("input", nargs="?", default=None,

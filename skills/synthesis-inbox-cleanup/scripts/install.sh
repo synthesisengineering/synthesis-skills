@@ -5,7 +5,7 @@
 # Idempotent. Creates the private rules folder (~/.synthesis/inbox-cleanup/,
 # mode 700), seeds config.yaml and rules.yaml from the bundled templates only
 # when they are absent (it never overwrites), and reports what is still
-# missing: PyYAML, certifi, the Keychain password, and the engine's stable path.
+# missing: certifi, the Keychain password, and the engine's stable path.
 #
 # The engine is no longer copied here. The v5 runtime installs it at
 #   ~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts
@@ -74,7 +74,6 @@ fi
 if [ -d "$TARGET_DIR/engine" ]; then
     note "An engine copy from version 1.x is still at $TARGET_DIR/engine. Anything reading it runs old code: point it at $ENGINE, then remove that folder."
 fi
-python3 -c 'import yaml' 2>/dev/null || note "PyYAML is not installed; the scripts need it: pip3 install --user PyYAML"
 python3 -c 'import certifi' 2>/dev/null || note "certifi is not installed; verified IMAP TLS needs its CA bundle: pip3 install --user certifi"
 if command -v security >/dev/null 2>&1 && ! security find-generic-password -s inbox-cleanup-imap -w >/dev/null 2>&1; then
     note "No IMAP password in the Keychain (service inbox-cleanup-imap). Generate an app-specific password at your provider, then run: security add-generic-password -s inbox-cleanup-imap -a \"\$USER\" -w (paste when prompted, never in shell history). Fallback: $TARGET_DIR/imap.secret, mode 600."

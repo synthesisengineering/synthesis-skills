@@ -3,8 +3,9 @@
 The plugin manifests agree; the CHANGELOG names the version; skill names are unique and match
 their folders; every `depends_on` resolves; every skill carries an SPDX license and
 `agents/openai.yaml`; Muse's manifest lists every skill; Codex's skill catalog fits its
-budget; no personal path appears anywhere; and every config a skill documents as fail-closed
-ships an example, because a guard that refuses to run without config blocks a new user.
+budget; no personal path appears anywhere; nothing needs PyYAML (one standard-library YAML
+reader serves everything); and every config a skill documents as fail-closed ships an
+example, because a guard that refuses to run without config blocks a new user.
 """
 
 import json
@@ -130,6 +131,40 @@ def test_the_personal_path_rule_catches_real_paths_and_spares_placeholders(tmp_p
         assert personal_paths([ok]) == {}
     finally:
         ROOT = old
+
+
+# ---- one YAML reader -------------------------------------------------------------
+
+PYYAML = re.compile(r"^\s*(?:import\s+yaml\b|from\s+yaml\s+import\b)|importorskip\(\s*['\"]yaml['\"]|-c\s+['\"]import\s+yaml\b",
+                    re.M)
+OPTIONAL_PYYAML = {"tests/test_yamlish.py"}  # compares its readings with PyYAML's only where PyYAML is installed
+
+
+def pyyaml_users(root: Path) -> list:
+    """Code that needs PyYAML. Apple's /usr/bin/python3 has none and CI installs none, and a test
+    that skips without it leaves its script untested: every YAML read goes through synthesis/yamlish.py."""
+    files = [p for d in ("synthesis", "hooks", "skills", "tests") for p in (root / d).rglob("*")
+             if p.suffix in (".py", ".sh") and "__pycache__" not in p.parts and p.name != Path(__file__).name]
+    return sorted(p.relative_to(root).as_posix() for p in files if p.relative_to(root).as_posix() not in OPTIONAL_PYYAML
+                  and PYYAML.search(p.read_text(encoding="utf-8", errors="replace")))
+
+
+def test_nothing_needs_pyyaml():
+    assert pyyaml_users(ROOT) == []
+
+
+def test_the_yaml_rule_finds_pyyaml_and_spares_the_plugin_reader(tmp_path):
+    files = {"skills/a/scripts/x.py": "try:\n    import yaml\nexcept ImportError:\n    pass\n",
+             "skills/b/tests/test_b.py": 'yaml = pytest.importorskip("yaml")\n',
+             "skills/c/scripts/install.sh": "python3 -c 'import yaml' || echo missing\n",
+             "synthesis/y.py": "from yaml import safe_load\n",
+             "skills/d/scripts/ok.py": "from synthesis import yamlish\nCONFIG = 'rules.yaml'  # import yaml files\n",
+             "tests/test_yamlish.py": "    import yaml\n"}
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+    assert pyyaml_users(tmp_path) == ["skills/a/scripts/x.py", "skills/b/tests/test_b.py",
+                                      "skills/c/scripts/install.sh", "synthesis/y.py"]
 
 
 # ---- fail-closed configs ship an example ------------------------------------------
