@@ -17,6 +17,7 @@ CHECK = Path(__file__).resolve().parents[1] / "synthesis" / "commit_check.py"
 FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"  # split so this file never trips the scanner itself
 KEY = "-----BEGIN " + "RSA PRIVATE KEY-----"
 PAY_WORD, MARK_WORD = "sal" + "ary", "Propri" + "etary"  # split for the same reason as FAKE_AWS
+OPENSSH_MARKER = KEY[5:-5].replace('RSA', 'OPENSSH')  # an f-string may not nest its own quotes before 3.12
 BODY = ["MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun", "VTLw7onLRnrq0/IzW7yWR7QkrmBL7jTKEn5u+qKhbwKfBstIs+bMY2Zkp18gnTxK"]
 POLICY = """\
 config_version: 2
@@ -242,7 +243,7 @@ def test_git_output_is_bounded_in_size_and_time(tmp_path, monkeypatch):
 
 def test_a_key_header_alone_is_a_rule_not_a_key(tmp_path, policy):
     repo = make_repo(tmp_path, STRICT)
-    assert commit(repo, {"rules.yaml": f"markers:\n  - '{KEY[5:-5]}'\n  - '{KEY[5:-5].replace("RSA", "OPENSSH")}'\n"}).returncode == 0
+    assert commit(repo, {"rules.yaml": f"markers:\n  - '{KEY[5:-5]}'\n  - '{OPENSSH_MARKER}'\n"}).returncode == 0
     assert commit(repo, {"doc.md": f"A PEM file starts with `{KEY}`.\n"}).returncode == 0
 
 
