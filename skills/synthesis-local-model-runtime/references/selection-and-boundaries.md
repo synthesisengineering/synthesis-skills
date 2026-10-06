@@ -5,7 +5,7 @@ Read when choosing artifacts, placing a model store, using the per-machine mappi
 Contents:
 - Recommendation rules
 - Storage guard
-- Per-machine mapping (`inventory --save`, `resolve --family`)
+- Per-machine mapping (`machines.json`) and how automation finds a model
 - Runtime boundary: Ollama, LM Studio, llama.cpp and MLX-LM
 - Capability boundary: what this skill does not establish
 - Failure handling
@@ -14,6 +14,12 @@ Contents:
 
 - Model weights must fit along with the declared operating and context
   headroom. Disk fit alone is never enough.
+- Policy exclusions come first: an excluded artifact, family, organization or
+  base family (lineage) is never selected, by recommendation or by an explicit
+  `--artifact` request. With no `required_families`, the plan covers every
+  family that survives the exclusions.
+- A policy `planning_context_tokens` larger than an artifact's catalog value
+  blocks that artifact: the catalog's memory figures were sized for its value.
 - Prefer the highest-ranked artifact that meets recommended memory. Use a
   minimum-memory fit only when policy permits it, and label it constrained.
 - Account for all artifacts in a multi-model installation plan, even though
@@ -28,12 +34,6 @@ Contents:
   the artifact publisher, then capture the resolved local digest.
 - Never silently replace a requested artifact or quantization. A changed plan
   requires a new visible diff.
-- A local-import recovery preserves the catalog artifact id and runtime model
-  name but records `catalog-pinned-local-import` as the installation method.
-  It is a recovery path for verified cached layers, not another acquisition
-  channel.
-- Never equate zero recovery download with zero disk growth. Budget the exact
-  cached-layer total as worst-case additional runtime materialization.
 
 ## Storage guard
 
@@ -55,24 +55,28 @@ atomically. The mapping contains the safe hardware profile, selected catalog
 ids, resolved runtime metadata, verification results, and timestamps. It does
 not derive identity from hardware serials.
 
-Use `inventory --save` to register or refresh a machine without installing.
-Export the JSON when comparing several computers. Friendly machine labels are
-optional and should not contain private organization or client names.
+Each successful `install --yes` registers or refreshes the machine. Export the
+JSON when comparing several computers. Friendly machine labels
+(`--machine-label`) are optional and should not contain private organization
+or client names.
 
-Automation should call `resolve --family <family>` before using a local model.
-Resolution succeeds only when the current opaque machine record both selects
-and verifies that artifact; it returns the exact runtime name and the strongest
-available identity. Ollama uses a content digest. LM Studio uses a labeled
-runtime-metadata identity. This makes the mapping an enforcement input rather
-than a passive spreadsheet.
+Automation that needs a local model reads this computer's id from
+`machine-id`, takes from its `machines.json` record the one installed entry for
+the family it wants, and uses that entry only when the entry is both selected
+and installed and the runtime still lists the same name with the same identity
+(`ollama list` for a content digest; LM Studio's is a labeled runtime-metadata
+identity). Anything else, such as an unknown machine, a selected but
+uninstalled artifact, or a runtime that no longer reports the model, means
+refusing rather than guessing.
 
 ## Runtime boundary
 
-Version 1.1 uses capability-graded adapters:
+The runtime adapters are capability-graded:
 
 - Ollama is the default managed runtime. It supports catalog planning,
-  installation, inventory, digest verification, bounded benchmarks, service
-  configuration, and verified updates.
+  installation, inventory, digest verification, service configuration, and
+  verified updates; bounded benchmarks run through its own loopback API
+  (commands.md).
 - LM Studio is an optional managed runtime. It supports catalog planning,
   noninteractive exact downloads through `lms get`, JSON inventory, and
   runtime-metadata verification. Verified model-content updates and the
@@ -120,3 +124,6 @@ into an evasion or watermark-removal loop.
   under the effective runtime configuration remains unusable until that
   incompatibility is resolved and the bounded benchmark passes.
 - If disk, runtime, or model state changes after planning, rerun the plan.
+- A catalog verified more than three months ago is reported as stale (`catalog`
+  exits 1; plans carry a warning). Re-verify the entries you rely on before
+  authorizing a download.

@@ -40,11 +40,20 @@ both the repository and quantization in `lms ls --json --variants` output. A
 single generic term such as `q8_0` is invalid because it can match unrelated
 models.
 
-For a Hugging Face artifact with local-import recovery, fetch its public
-Ollama-compatible registry manifest and pin only GGUF model/projector layers.
-Record each full digest, media type, and byte size plus the manifest URL. Do not
-pin a layer from terminal progress output or infer it from a repository file
-name.
+Some entries carry `local_import_fallback`: the GGUF model and projector layers
+pinned from the public registry manifest, each with its full digest, media type
+and byte size. Since v5 nothing imports from them (cached-layer recovery was
+cut; see preserved.md). They remain evidence for checking a cached layer by
+hand with `shasum -a 256`; new entries need not add them.
+
+## Catalog age (the three-month rule)
+
+The catalog is dated evidence. `catalog` reports `verified_on`, `stale_after`
+(three calendar months later) and `age_days`, and exits 1 once the catalog is
+stale; `recommend` and `install` then carry a warning. Refresh it by running
+the update procedure above for every entry still `verified`, then set
+`verified_on` (and `catalog_version`) to the date of that review. Never move
+the date without re-opening the sources.
 
 ## Retirement
 

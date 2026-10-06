@@ -1,38 +1,12 @@
 # Transcript files and permalinks — formats
 
 Contents:
-- Deterministic acquisition output
 - Transcript File Format: channel file, DMs aggregator file, group DMs aggregator file
-- Slack Permalink Construction: visible text, the draft "Send to:" line, fallback without `slack_workspace_domain`, retrofitting older daily plans
+- Slack Permalink Construction: visible text, the draft "Send to:" line, fallback without `slack_workspace_domain`, older daily plans
 
 The file shapes every sync writes and the permalink form every recorded
 message takes. The binding rules are summarized in [sync-protocol.md](sync-protocol.md)
 ("Transcript Files and Permalinks") and SKILL.md binding rule 9; this file is the literal format.
-
-## Deterministic acquisition output
-
-The verified acquisition entry retains these same daily paths and uses a
-source-owned reversible raw codec. See [acquisition entries](../../synthesis-daily-rituals/references/acquisition-entry.md).
-Each message and reply has an explicit marker:
-
-```markdown
-**Message ID:** C123:1790560000.000000
-**User ID:** U123
-**Parent ID:** C123:1790560000.000000
-```
-
-DM/group-DM markers use their actual D/G conversation IDs. Exact text stays in a
-length-delimited Markdown fence; full source variants, reactions and attachments
-remain in the raw-metadata footer and original response custody. The renderer
-does not resolve names or invent speaker attribution. It may use a channel-ID
-subheading in a single-channel file so the existing known-thread parser has
-unambiguous identity.
-
-The illustrative hand-maintained shapes below are not proof of acquisition.
-They require the same Message ID markers before the evidence gate can use them.
-Existing non-codec archives remain readable for known-parent discovery; the
-automated publisher refuses to overwrite/merge them until an explicit source
-reconciliation establishes the new exact representation.
 
 ## Transcript File Format
 
@@ -40,7 +14,7 @@ Each file under `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/` follow
 
 ### Channel file (`slack/YYYY-MM-DD/<channel>.md`)
 
-One file per channel per day. The filename is the channel name without the leading `#` (e.g., `mmc-product-growth-squad.md`).
+One file per channel per day. The filename is the channel name without the leading `#` (e.g., `team-general.md`).
 
 ```markdown
 # Slack #[channel-name] — [Day], [Month] [Date], [Year]
@@ -167,15 +141,6 @@ New top-level messages don't need a permalink — there's no parent to link to.
 
 If the per-project config does not set `slack_workspace_domain`, the skill MUST emit a one-time warning ("permalinks disabled — set `slack_workspace_domain` to enable clickable links in transcripts and drafts") and fall back to the legacy `(TS: 1234567890.123456)` text format. The skill does not invent a domain.
 
-### Retrofitting older daily plans
+### Older daily plans
 
-`retrofit_permalinks.py` (shipped alongside `thread_checker.py` in this skill directory) converts a legacy daily plan or transcript file from the bare-TS format to the clickable-permalink format in one pass. It reads the workspace domain and channel-name → channel-ID map from a `slack-sync.yaml` config — generic-skill, no hardcoded workspace.
-
-```bash
-python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml>
-python3 retrofit_permalinks.py <plan.md> --config <slack-sync.yaml> --dry-run
-```
-
-Skip rules: lines containing only "parent thread TS" references are left as-is (the visible time on those lines refers to the reply, not the parent — linking it to the parent's TS would be wrong); lines with no resolvable channel hint are left unchanged (the script needs at least one `#channel-name` or `D0…`/`C0…` ID inline to construct a permalink). The script is idempotent — running it on an already-retrofitted file is a no-op.
-
-For multi-workspace daily plans (a single plan referencing messages from more than one Slack workspace), run the script once per workspace's `slack-sync.yaml`. Each pass linkifies only the TSes whose channel resolves via the config it was given; other lines fall through to the next pass.
+Files written before v3.1.0 keep the bare `(TS: 1234567890.123456)` form. They stay as they are: `thread_checker.py` reads both forms. The one-time retrofit script that linkified them was retired in v4.0.0 once no current plan used the old form; its text is in [preserved.md](preserved.md).

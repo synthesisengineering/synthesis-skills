@@ -22,13 +22,15 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 3. **Preflight decides the targets.** Steps 1, 3 and 3b read only its resolved-target list; taking an id such as `dm_id` from the config mid-sweep is banned.
 4. **Windows are printed, never typed:** `WINDOW_OLDEST` comes from `sync_watermark.py window`. Every declared target is read every sync.
 5. **Re-read every active thread** (today, yesterday, Step 1 indicators) in full; replies, the user's own included, never appear at channel level.
-6. **Save, then advance.** A watermark advances only after the write, with an acquisition-evidence receipt.
+6. **Save, then advance.** A watermark advances only after the write; a complete connector read advances it, with no token or receipt.
 7. **The user's own outbound discharges owed items.** An "unanswered" claim cites a read from this run (`status --since run` green).
 8. **Every synced section is backed by a read in the same turn;** no quote without a tool call this session that surfaced it.
 9. **Always record the TS** as a permalink; without `slack_workspace_domain`, warn once and use the bare-TS form, but never invent a domain.
 10. **Drafts use the mandatory format** and are researched in primary sources; the action plan is append-only.
 11. **Backfills are history.** Reconcile against newer local material before calling anything open.
 12. **Check the date** against two independent signals before naming a dated file.
+13. **Coverage is honest.** Detailed reads, every page; empty is "quiet" only after a positive control; the report names the declared count read and each target not read.
+14. **A sync never sends.** No send, draft or schedule tool; drafts go in the action plan.
 
 ## Contents
 
@@ -36,11 +38,12 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 - [references/lookups-and-absence.md](references/lookups-and-absence.md): the search-API rule, zero-result protocols, backfills, continuing conversations. Read it before any lookup, verification or backfill.
 - [references/provenance-and-errors.md](references/provenance-and-errors.md): provenance in full, dates, errors. Read it before writing a sync section or quoting anyone, or when a call fails.
 - [references/configuration.md](references/configuration.md): the config, multi-workspace registry, paths, prerequisites. Read it when setting up.
-- [references/transcript-formats.md](references/transcript-formats.md): file shapes, permalinks, retrofit. Read it when creating a transcript file.
+- [references/transcript-formats.md](references/transcript-formats.md): file shapes and permalinks. Read it when creating a transcript file.
 - [references/version-history.md](references/version-history.md): each release and its incident. Read it when a rule's reason matters.
-- [references/cross-workspace-visibility.md](references/cross-workspace-visibility.md), [references/slack-token-guide.md](references/slack-token-guide.md): visibility modes; minting tokens. Read them when `slack_workspaces.py doctor` fails.
+- [references/cross-workspace-visibility.md](references/cross-workspace-visibility.md): visibility modes and the workspace map. Read it when `slack_workspaces.py` exits 2 or a read would cross workspaces.
 - [templates/draft-block.md](templates/draft-block.md), [templates/sent-marker.md](templates/sent-marker.md): the literal draft and SENT forms. Read them before writing or marking a draft.
-- [references/coverage-map.md](references/coverage-map.md): where the 3.14.0 text lives.
+- [references/coverage-map.md](references/coverage-map.md): where the 3.14.0 text lives, and the M3 script changes.
+- [references/preserved.md](references/preserved.md): the retired acquisition, token and retrofit text. Read it only to review the cut.
 - The search-API rule, the step outline with every command, Provenance Discipline, When This Skill Runs: below.
 
 ## ⛔ NEVER Use Slack Search API for Lookups
@@ -55,19 +58,19 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 Every sync — whether day-start, mid-day, or day-end — follows these steps. No shortcuts, no skipped steps.
 
-Each step below is its command; the full step is in references/sync-protocol.md. Before any sync, `scripts/slack_workspaces.py doctor` names the readable workspaces (exit 1: a token is missing).
+Each step below is its command; the full step is in references/sync-protocol.md. Before any sync, `python3 <synthesis-slack-sync-root>/scripts/slack_workspaces.py` names the readable workspaces (exit 2: no map or unknown workspace).
 
 ### Step 0: Run the thread checker (MANDATORY)
 
-`python3 <synthesis-slack-sync-root>/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]`, also for `_dms.md` and `_group-dms.md`; every thread it lists is re-read in Step 2.
+`python3 <synthesis-slack-sync-root>/scripts/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]`, also for `_dms.md` and `_group-dms.md`; every thread it lists is re-read in Step 2.
 
 ### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
 
-`python3 <synthesis-slack-sync-root>/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set. Exit 1: a target is unresolved; exit 2: empty set or bad config.
+`python3 <synthesis-slack-sync-root>/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set Step 4's gate reads. Exit 1: a target is unresolved; exit 2: empty set or bad config.
 
 ### Step 1: Read channels for new top-level messages
 
-`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>`. Acquire through `synthesis exec-public synthesis-slack-sync/scripts/acquire.py` with the declared Web API adapter.
+`slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")`, with `WINDOW_OLDEST` printed by `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>`. Follow every page; the read rules are in references/sync-protocol.md.
 
 ### Step 2: Re-read ALL active threads — today AND recent days
 
@@ -83,7 +86,7 @@ The same read with `channel_id=RESOLVED_GROUP_DM_ID`.
 
 ### Step 4: Save to local transcripts
 
-Write, then `synthesis exec-public synthesis-daily-rituals/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest> --acquisition-evidence <receipt.json>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
+Write, then `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. Gate: `sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`.
 
 ### Step 5: Update action plan
 

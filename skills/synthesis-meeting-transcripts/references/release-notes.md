@@ -1,14 +1,30 @@
-# Release notes: 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
 Release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.0.0: the v5 script verdicts
 - 0.14.0 and 0.13.0
 - v0.5.3: a clean audit no longer looks like a broken one
 - v0.5.2: inferred-speaker annotation format and version-stamped output
 - v0.5.1: Plaud spaced timestamp ranges
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
+
+## 1.0.0 — the v5 script verdicts
+
+Version 1.0.0 (2026-10-05, milestone M3) applies the v5 code evaluation. The
+acquisition machinery of 0.12.0 to 0.14.0 is gone: the Google REST and
+workspace-mcp custody adapters, recorder readiness receipts, the source-inventory
+seam and the attribution receipt (`transcript_primary.py`). Its rules stay as
+protocol text: unknown coverage is a gap, an error is not absence, the transcript
+is chosen by tab ID, the watermark never passes an unsaved doc, and attribution
+comes from the verbatim transcript. `fetch-meeting.py` is standard-library Python
+again, with tab selection folded in and a `--window` listing of saved and unsaved
+docs; `mcp_client.py` is a small standard-library client. `verify_transcripts.py`
+and `extract_commitments.py` are unchanged in what they detect. The launchd label
+is generic (`com.synthesis.workspace-mcp`). The skill and its scripts carry 1.0.0
+together.
 
 ## 0.14.0 and 0.13.0
 

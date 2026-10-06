@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root {
+  --bg: #ffffff; --panel: #f7f8fa; --panel-2: #eef1f5; --ink: #14181f; --ink-2: #4a5568;
+  --ink-3: #6b7688; --line: #d8dee7; --line-2: #c3ccd8; --accent: #12395f;
+  --danger: #b3261e; --warn: #9a6400; --ok: #1c6b3f; --info: #1c4f8f; --muted: #5b6472;
+  --sel-fg: #ffffff; --chip: #e6ebf2; --focus: #2d6cdf;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10131a; --panel: #171b24; --panel-2: #1e2430; --ink: #e8ecf2; --ink-2: #b3bccb;
+    --ink-3: #8b95a6; --line: #2a3140; --line-2: #3a4356; --accent: #7fb0e8;
+    --danger: #ff8a80; --warn: #e8b04b; --ok: #6fcf97; --info: #7fb0e8; --muted: #9aa4b4;
+    --sel-fg: #10131a; --chip: #232a37; --focus: #7fb0e8;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10131a; --panel: #171b24; --panel-2: #1e2430; --ink: #e8ecf2; --ink-2: #b3bccb;
+  --ink-3: #8b95a6; --line: #2a3140; --line-2: #3a4356; --accent: #7fb0e8;
+  --danger: #ff8a80; --warn: #e8b04b; --ok: #6fcf97; --info: #7fb0e8; --muted: #9aa4b4;
+  --sel-fg: #10131a; --chip: #232a37; --focus: #7fb0e8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+  font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 96px; }
+header h1 { font-size: 25px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+header .sub { color: var(--ink-2); margin: 0 0 14px; }
+header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
+header .aud { color: var(--ink-3); font-size: 13px; margin: -10px 0 16px; }
+details.gloss { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+details.gloss summary { cursor: pointer; padding: 8px 12px; font-size: 13px; color: var(--ink-2); }
+details.gloss dl { margin: 0; padding: 4px 14px 12px; font-size: 13px; }
+details.gloss dt { font-weight: 600; margin-top: 6px; }
+details.gloss dd { margin: 0; color: var(--ink-2); }
+.impact { border-left: 3px solid var(--line); padding: 6px 10px; margin: 8px 0; font-size: 13.5px; }
+.impact b { color: var(--ink-2); }
+.counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.count {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 12px; min-width: 92px;
+}
+.count b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.count span { font-size: 12px; color: var(--ink-3); }
+.filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 22px; }
+.filters button {
+  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--chip); color: var(--ink-2); border: 1px solid transparent;
+}
+.filters button[aria-pressed="true"] { background: var(--accent); color: var(--sel-fg); }
+.filters button:focus-visible, .opts button:focus-visible, .bar button:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.row {
+  position: relative; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 15px 17px 15px 21px; margin: 0 0 12px; overflow: hidden;
+}
+.row::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--line-2);
+}
+.row[data-sev="high"]::before   { background: var(--danger); }
+.row[data-sev="medium"]::before { background: var(--warn); }
+.row[data-sev="low"]::before    { background: var(--ok); }
+.row[data-decided="yes"] { border-color: var(--line-2); }
+.row[hidden] { display: none; }
+.rid { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.rlabel { font-weight: 650; margin: 2px 0 7px; font-size: 16.5px; line-height: 1.35; }
+.rtext { color: var(--ink-2); margin: 0 0 9px; max-width: 82ch; }
+.rtext.reason::before {
+  content: "Recommendation "; font-weight: 650; color: var(--ink); letter-spacing: .01em;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 9px; }
+.chip {
+  font-size: 11.5px; font-family: var(--mono); background: var(--chip); color: var(--ink-3);
+  padding: 2px 8px; border-radius: 999px;
+}
+.links { margin: 0 0 9px; font-size: 13.5px; }
+.links a { color: var(--info); }
+.dis {
+  background: var(--panel-2); border-left: 3px solid var(--warn); border-radius: 0 7px 7px 0;
+  padding: 9px 13px; margin: 0 0 11px; font-size: 14px;
+}
+.dis .h { font-weight: 650; font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--warn); margin-bottom: 5px; }
+.dis p { margin: 3px 0; color: var(--ink-2); }
+.dis b { color: var(--ink); }
+.opts { display: flex; flex-wrap: wrap; gap: 7px; align-items: stretch; margin: 11px 0 0; }
+.opts button {
+  font: inherit; font-size: 13.5px; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+  background: var(--bg); color: var(--ink-2); border: 1px solid var(--line-2);
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  max-width: 100%;
+}
+/* The consequence sits ON the control, under its label: the principal reads what
+   pressing this button does at the point of pressing it, not in a block above. */
+.opts button .oconseq {
+  font-size: 12px; font-weight: 400; line-height: 1.35; color: var(--ink-3);
+  margin-top: 3px; max-width: 34ch;
+}
+.opts button[aria-pressed="true"] .oconseq { color: var(--sel-fg); opacity: .88; }
+.opts button[aria-pressed="true"] { color: var(--sel-fg); border-color: transparent; font-weight: 600; }
+.opts button[aria-pressed="true"][data-tone="danger"] { background: var(--danger); }
+.opts button[aria-pressed="true"][data-tone="warn"]   { background: var(--warn); }
+.opts button[aria-pressed="true"][data-tone="ok"]     { background: var(--ok); }
+.opts button[aria-pressed="true"][data-tone="info"]   { background: var(--info); }
+.opts button[aria-pressed="true"][data-tone="muted"]  { background: var(--muted); }
+/* The recommendation is marked ON the control, so the eye lands on it and agreeing is
+   one click. It is deliberately NOT pre-selected: a packet that starts fully decided
+   cannot tell "I agreed" from "I never looked", and the summary would then report
+   decisions nobody made. */
+.opts button[data-recommended="true"] {
+  border-color: var(--accent); border-width: 1.5px; font-weight: 600; color: var(--ink);
+}
+.opts button[data-recommended="true"] .olabel::before {
+  content: "★ "; color: var(--accent); font-size: 11px; vertical-align: 1px;
+}
+.opts button[aria-pressed="true"][data-recommended="true"] .olabel::before { color: var(--sel-fg); }
+.rec { font-size: 12px; color: var(--ink-3); margin-left: 2px; align-self: center; }
+.note { margin-top: 9px; }
+.note textarea {
+  width: 100%; min-height: 38px; font: inherit; font-size: 14px; padding: 8px 10px;
+  border-radius: 7px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink);
+  resize: vertical;
+}
+.note textarea::placeholder { color: var(--ink-3); }
+.bar {
+  position: sticky; bottom: 0; margin-top: 26px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+}
+.barhead { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.barhead > b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.bar .hint { margin: 12px 0 8px; color: var(--ink-2); font-size: 14px; }
+.bar textarea {
+  width: 100%; min-height: 130px; font-family: var(--mono); font-size: 12.5px; padding: 10px;
+  border-radius: 7px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink);
+}
+.bar .actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+#summarywrap[hidden] { display: none; }
+.bar button {
+  font: inherit; font-size: 14px; font-weight: 600; padding: 9px 16px; border-radius: 7px;
+  cursor: pointer; background: var(--accent); color: var(--sel-fg); border: none;
+}
+.bar button.secondary { background: var(--chip); color: var(--ink-2); font-weight: 500; }
+#copystatus { font-size: 13px; color: var(--ink-2); }
+@media (max-width: 620px) {
+  .wrap { padding: 18px 13px 80px; }
+  header h1 { font-size: 21px; }
+  header .intro { font-size: 14px; }
+  .count { min-width: 0; flex: 1 1 88px; padding: 7px 9px; }
+  .count b { font-size: 17px; }
+  /* Keep every control reachable on narrow screens, including long labels. */
+  .bar { padding: 9px 11px; }
+  .barhead { flex-wrap: wrap; gap: 8px; }
+  .barhead > b { font-size: 13px; white-space: nowrap; }
+  .bar .actions { gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .bar { max-height: 45vh; overflow: auto; }
+  .bar button { padding: 7px 10px; font-size: 13px; }
+  #copystatus { flex-basis: 100%; font-size: 12px; }
+}
+
+.review-material { border: 2px solid var(--line); border-radius: 10px; padding: 18px; margin: 16px 0; min-width: 0; }
+.review-material h3 { margin: 0 0 12px; }
+.review-asset { border-top: 1px solid var(--line); padding: 12px 0; min-width: 0; }
+.review-delivery { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 14px; }
+.review-delivery dt { font-weight: 600; } .review-delivery dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-content { font-size: 1rem; line-height: 1.65; overflow-wrap: anywhere; }
+.review-plain { white-space: pre-wrap; } .review-code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; }
+.review-exact textarea { width: 100%; box-sizing: border-box; resize: vertical; font: 0.9rem/1.5 monospace; }
+.review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; }
+.review-hint, .review-digest { font-size: 0.82rem; overflow-wrap: anywhere; } .review-status { width:100%; }
+.review-asset img, .review-asset video { max-width:100%; height:auto; } .review-asset audio { max-width:100%; }
+.review-unavailable { font-weight:600; } .opts button:disabled { cursor:not-allowed; opacity:0.55; }
+.review-material summary, .review-material a { overflow-wrap:anywhere; }
+.review-actions button { font: inherit; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink); background: var(--bg); cursor: pointer; }
+.review-actions a { color: var(--info); }
+.review-material :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.review-exact textarea { color: var(--ink); background: var(--bg); border: 1px solid var(--line-2); padding: 8px; }
+@media (max-width:520px) { .review-material {padding:12px;} .review-delivery {grid-template-columns:1fr;} .review-delivery dd {margin-bottom:6px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>__TITLE__</h1>
+  __SUBTITLE__
+  __INTRO__
+  __SCOPE__
+  __AUDIENCE__
+  __GLOSSARY__
+</header>
+
+<div class="counts" id="counts"></div>
+<div class="filters" id="filters"></div>
+<main id="rows"></main>
+
+<section class="bar">
+  <div class="barhead">
+    <b id="progress">Your decisions</b>
+    <div class="actions">
+      <button id="copy" type="button">Copy summary</button>
+      <button id="bulk" type="button" class="secondary" hidden>Take all remaining</button>
+      <button id="toggle" type="button" class="secondary" aria-expanded="false" aria-controls="summarywrap">Show text</button>
+      <button id="reset" type="button" class="secondary">Clear</button>
+      <span id="copystatus" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+  <div id="summarywrap" hidden>
+    <p class="hint">__SUMMARY_INTRO__</p>
+    <textarea id="summary" readonly aria-label="Decision summary"></textarea>
+  </div>
+</section>
+</div>
+
+<script type="application/json" id="spec">__SPEC_JSON__</script>
+<script>
+(function () {
+  "use strict";
+  var SPEC = JSON.parse(document.getElementById("spec").textContent);
+  var SPEC_DIGEST = "__CANONICAL_SPEC_SHA256__";
+  var KEY = "decision-packet:" + SPEC.storage_key + ":" + SPEC_DIGEST;
+  var rowsEl = document.getElementById("rows");
+  var rowElements = [];
+
+  function assetsReady(row) {
+    return (row.review_assets || []).every(function (a) { return !('unavailable' in a.content); });
+  }
+
+  // ---- state -------------------------------------------------------------
+  // localStorage can throw outright (private mode, blocked site data), so every
+  // access is guarded and the packet stays fully usable with no persistence.
+  var state = Object.create(null);
+  var persists = true;
+  try {
+    var stored = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+      SPEC.rows.forEach(function (r) {
+        if (!Object.prototype.hasOwnProperty.call(stored, r.id)) return;
+        var s = stored[r.id];
+        if (!s || typeof s !== "object" || Array.isArray(s)) return;
+        var valid = assetsReady(r) && optionsFor(r).some(function (o) { return o.value === s.choice; });
+        state[r.id] = { choice: valid ? s.choice : undefined,
+          note: typeof s.note === "string" ? s.note : "",
+          bulk: valid && s.choice === r.recommendation && s.bulk === true };
+      });
+    }
+  } catch (e) { state = Object.create(null); persists = false; }
+
+  function save() {
+    if (!persists) return;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); }
+    catch (e) { persists = false; }
+  }
+  function get(id) { return state[id] || {}; }
+  function set(id, patch) {
+    state[id] = Object.assign({}, get(id), patch);
+    save(); render();
+  }
+
+  function optionsFor(row) { return row.options || SPEC.options; }
+  function labelFor(row, value) {
+    var o = optionsFor(row).filter(function (x) { return x.value === value; })[0];
+    return o ? o.label : value;
+  }
+  function decisionOf(row) {
+    var s = get(row.id);
+    return assetsReady(row) && s.choice !== undefined ? s.choice : null;
+  }
+  function consequenceFor(row, o) {
+    // What pressing this button does, shown under its label. An explicit
+    // per-option text wins; otherwise the row's impact block maps "accept"
+    // to the recommended option and "decline" to every other one.
+    if (o.consequence) return o.consequence;
+    if (!row.impact || !row.recommendation) return "";
+    return row.recommendation === o.value ? row.impact.accept : row.impact.decline;
+  }
+
+  // ---- filters -----------------------------------------------------------
+  var active = "all";
+  function matches(row) {
+    if (active === "all") return true;
+    var f = (SPEC.filters || []).filter(function (x) { return x.id === active; })[0];
+    if (!f) return true;
+    if (f.undecided && decisionOf(row) === null) return true;
+    if (f.decided && decisionOf(row) !== null) return true;
+    if (f.disagreement && row.disagreement) return true;
+    if (f.tags && (row.tags || []).some(function (t) { return f.tags.indexOf(t) >= 0; })) return true;
+    if (f.severity && f.severity.indexOf(row.severity) >= 0) return true;
+    return false;
+  }
+
+  function renderFilters() {
+    var host = document.getElementById("filters");
+    if (host.childElementCount) return;
+    var all = [{ id: "all", label: "All " + SPEC.rows.length }].concat(SPEC.filters || []);
+    all.forEach(function (f) {
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = f.label;
+      b.setAttribute("aria-pressed", String(f.id === active));
+      b.addEventListener("click", function () { active = f.id; render(); });
+      host.appendChild(b);
+    });
+  }
+  function syncFilters() {
+    var all = [{ id: "all" }].concat(SPEC.filters || []);
+    Array.prototype.forEach.call(document.querySelectorAll("#filters button"), function (b, i) {
+      b.setAttribute("aria-pressed", String(all[i].id === active));
+    });
+  }
+
+  // ---- counts ------------------------------------------------------------
+  function renderCounts() {
+    var decided = SPEC.rows.filter(function (r) { return decisionOf(r) !== null; }).length;
+    var noted = SPEC.rows.filter(function (r) { return (get(r.id).note || "").trim(); }).length;
+    var agreed = SPEC.rows.filter(function (r) {
+      return r.recommendation && decisionOf(r) === r.recommendation;
+    }).length;
+    var overridden = SPEC.rows.filter(function (r) {
+      var d = decisionOf(r);
+      return d !== null && r.recommendation && d !== r.recommendation;
+    }).length;
+    var cards = [
+      ["Items", SPEC.rows.length],
+      ["Decided", decided],
+      ["Remaining", SPEC.rows.length - decided],
+      ["Took the recommendation", agreed],
+      ["Overrode it", overridden],
+      ["With a note", noted]
+    ];
+    if (SPEC.rows.some(function (r) { return r.disagreement; })) {
+      cards.push(["Disputed", SPEC.rows.filter(function (r) { return r.disagreement; }).length]);
+    }
+    document.getElementById("counts").innerHTML = cards.map(function (c) {
+      return '<div class="count"><b>' + c[1] + "</b><span>" + c[0] + "</span></div>";
+    }).join("");
+  }
+
+  function element(tag, text, cls) {
+    var node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+  function limitedMarkdown(text, target) {
+    // Deliberately small block grammar. No raw HTML, images, link expansion,
+    // extensions or network access; all content enters through textContent.
+    var lines = text.split(/\r\n|\r|\n/), paragraph = [], code = null, list = null;
+    function flush() {
+      if (paragraph.length) target.appendChild(element('p', paragraph.join('\n')));
+      paragraph = []; list = null;
+    }
+    lines.forEach(function (line) {
+      if (/^```/.test(line)) {
+        if (code === null) { flush(); code = []; }
+        else { target.appendChild(element('pre', code.join('\n'), 'review-code')); code = null; }
+      } else if (code !== null) code.push(line);
+      else if (!line.trim()) flush();
+      else if (/^#{1,6} /.test(line)) { flush(); target.appendChild(element('h4', line.replace(/^#{1,6} /, ''))); }
+      else if (/^[-*] /.test(line)) {
+        if (!list) { flush(); list = element('ul'); target.appendChild(list); }
+        list.appendChild(element('li', line.slice(2)));
+      } else { if (list) flush(); paragraph.push(line); }
+    });
+    flush();
+    if (code !== null) target.appendChild(element('pre', code.join('\n'), 'review-code'));
+  }
+  function copyExact(ta, status, details, exactText) {
+    if (details) details.open = true;
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+    var manual = ta.value === exactText ?
+      'Copy not confirmed. Exact text is selected; press Cmd+C or Ctrl+C.' :
+      'Copy not confirmed. The browser normalized line endings in the selection; download exact bytes.';
+    status.textContent = 'Exact text selected; requesting copy…';
+    var ok = false;
+    try { if (ta.value === exactText) ok = document.execCommand('copy') === true; } catch (e) {}
+    if (ok) { status.textContent = 'Browser reported copy success.'; return; }
+    var settled = false;
+    var timer = setTimeout(function () { settled = true; status.textContent = manual; }, 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        Promise.resolve(navigator.clipboard.writeText(exactText)).then(function () {
+          if (!settled) { settled = true; clearTimeout(timer); status.textContent = 'Browser reported copy success.'; }
+        }, function () { if (!settled) { settled = true; clearTimeout(timer); status.textContent = manual; } });
+      } else { settled = true; clearTimeout(timer); status.textContent = manual; }
+    } catch (e) { settled = true; clearTimeout(timer); status.textContent = manual; }
+  }
+  function renderReview(row) {
+    var section = element('section', undefined, 'review-material');
+    section.setAttribute('aria-label', 'Material for review: ' + row.label);
+    section.appendChild(element('h3', 'Material for review'));
+    var meta = element('dl', undefined, 'review-delivery');
+    [['Revision', row.revision], ['Delivery format', row.delivery.format],
+      ['Destinations', row.delivery.destinations.join('\n') || 'None declared'],
+      ['Attachments', row.delivery.attachments.join(', ') || 'None declared']].forEach(function (entry) {
+      meta.appendChild(element('dt', entry[0])); meta.appendChild(element('dd', entry[1]));
+    });
+    section.appendChild(meta);
+    section.appendChild(element('p', 'This material is separate from the recommendation. Byte integrity is not proof of authorship or approval.', 'review-hint'));
+    row.review_assets.forEach(function (asset) {
+      var box = element('section', undefined, 'review-asset');
+      box.dataset.assetId = asset.id;
+      box.setAttribute('aria-label', asset.title);
+      box.appendChild(element('h4', asset.title));
+      box.appendChild(element('p', 'Type: ' + asset.kind + ' · ID: ' + asset.id, 'review-hint'));
+      if (asset.description) box.appendChild(element('p', asset.description));
+      var content = asset.content;
+      if ('unavailable' in content) {
+        var missing = element('p', 'Unresolved material: ' + content.unavailable, 'review-unavailable');
+        missing.setAttribute('role', 'status'); box.appendChild(missing);
+        if (content.source) {
+          var ref = element('a', 'Open external reference (unverified; network only when clicked)');
+          ref.href = content.source; ref.target = '_blank'; ref.rel = 'noopener noreferrer';
+          ref.referrerPolicy = 'no-referrer'; box.appendChild(ref);
+        }
+        box.appendChild(element('p', 'No content was fetched. Row choices are disabled; record a note or rebuild with verified bytes.'));
+      } else {
+        box.appendChild(element('p', 'Bound SHA-256: ' + content.sha256, 'review-digest'));
+        var blob, filename, status = element('span', '', 'review-status');
+        status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+        var actions = element('div', undefined, 'review-actions');
+        if ('text' in content) {
+          var view = element('div', undefined, 'review-content');
+          if (asset.kind === 'markdown') limitedMarkdown(content.text, view);
+          else view.appendChild(element(asset.kind === 'code' ? 'pre' : 'div', content.text,
+            asset.kind === 'code' ? 'review-code' : 'review-plain'));
+          box.appendChild(view);
+          var details = element('details', undefined, 'review-exact');
+          details.appendChild(element('summary', 'Exact source text and manual copy'));
+          var ta = element('textarea'); ta.value = content.text; ta.readOnly = true; ta.rows = 8;
+          ta.setAttribute('aria-label', 'Exact source: ' + asset.title); details.appendChild(ta); box.appendChild(details);
+          var copy = element('button', 'Copy exact text'); copy.type = 'button';
+          copy.addEventListener('click', function () { copyExact(ta, status, details, content.text); }); actions.appendChild(copy);
+          blob = new Blob([content.text], {type: 'text/plain;charset=utf-8'}); filename = asset.id + '.txt';
+        } else {
+          var bytes = atob(content.base64), values = new Uint8Array(bytes.length);
+          for (var i = 0; i < bytes.length; i++) values[i] = bytes.charCodeAt(i);
+          blob = new Blob([values], {type: content.media_type}); filename = asset.filename;
+          box.appendChild(element('p', content.media_type + ' · ' + content.size + ' bytes', 'review-hint'));
+          if (asset.kind !== 'document') {
+            var media = element(asset.kind === 'image' ? 'img' : asset.kind);
+            if (asset.kind === 'image') { media.alt = asset.description; media.loading = 'lazy'; }
+            else { media.controls = true; media.preload = 'none'; media.setAttribute('aria-label', asset.description); }
+            media.src = 'data:' + content.media_type + ';base64,' + content.base64;
+            media.addEventListener('error', function () { status.textContent = 'Preview unavailable in this browser; download the bound bytes to inspect them.'; });
+            box.appendChild(media);
+          } else box.appendChild(element('p', 'Document preview unavailable here. Download the bound PDF and inspect it in a document reader. No embedded document code is executed.', 'review-unavailable'));
+        }
+        try {
+          var url = URL.createObjectURL(blob), download = element('a', 'Download exact bytes');
+          download.href = url; download.download = filename; actions.appendChild(download);
+          if ('text' in content || asset.kind === 'image') {
+            var open = element('a', 'Open bound content'); open.href = url; open.target = '_blank';
+            open.rel = 'noopener noreferrer'; actions.appendChild(open);
+          }
+          window.addEventListener('pagehide', function () { URL.revokeObjectURL(url); }, {once: true});
+        } catch (e) { status.textContent = 'This browser cannot create a download; exact text remains readable where supplied.'; }
+        actions.appendChild(status); box.appendChild(actions);
+      }
+      section.appendChild(box);
+    });
+    return section;
+  }
+
+  // ---- rows --------------------------------------------------------------
+  function buildRow(row) {
+    var el = document.createElement("article");
+    el.className = "row";
+    el.dataset.sev = row.severity || "none";
+    el.dataset.id = row.id;
+
+    var head = '<div class="rid">' + esc(row.id) + "</div>" +
+               '<div class="rlabel">' + esc(row.label) + "</div>";
+    if (row.prior_position) {
+      var p = row.prior_position;
+      head += '<section class="prior-position" aria-label="Prior principal position">' +
+        '<b>Prior principal position</b><p class="prior-statement" style="white-space:pre-wrap">' +
+        esc(p.statement) + '</p><p class="prior-source" style="white-space:pre-wrap">Source: ' + esc(p.source_ref) + '</p>';
+      [["Evidence supporting it", p.evidence_for], ["Evidence against it", p.evidence_against]].forEach(function (part) {
+        head += '<b>' + part[0] + '</b><ul>';
+        if (!part[1].length) head += '<li>No evidence recorded in this packet; coverage is unknown.</li>';
+        part[1].forEach(function (entry) {
+          head += '<li style="white-space:pre-wrap">' + esc(entry.statement) + '<br>Source: ' + esc(entry.source_ref) + '</li>';
+        });
+        head += '</ul>';
+      });
+      head += '</section>';
+    }
+    if (row.context)   head += '<p class="rtext">' + esc(row.context) + "</p>";
+    if ((row.tags || []).length) {
+      head += '<div class="chips">' + row.tags.map(function (t) {
+        return '<span class="chip">' + esc(t) + "</span>";
+      }).join("") + "</div>";
+    }
+    if ((row.links || []).length) {
+      head += '<div class="links">' + row.links.map(function (l) {
+        return '<a href="' + esc(l.href) + '" target="_blank" rel="noopener">' + esc(l.label) + "</a>";
+      }).join(" · ") + "</div>";
+    }
+    if (row.impact) {
+      head += '<div class="impact"><b>If you take the recommendation:</b> ' + esc(row.impact.accept) +
+              '<br><b>If you don’t:</b> ' + esc(row.impact.decline) + "</div>";
+    }
+    if (row.disagreement) {
+      var d = row.disagreement;
+      head += '<div class="dis"><div class="h">Unresolved disagreement — your call</div>' +
+        "<p><b>" + esc(d.a.who) + ":</b> " + esc(d.a.view) + "</p>" +
+        "<p><b>" + esc(d.b.who) + ":</b> " + esc(d.b.view) + "</p></div>";
+    }
+    if (row.reasoning) head += '<p class="rtext reason">' + esc(row.reasoning) + "</p>";
+    el.innerHTML = head;
+
+    if (row.review_assets) {
+      var anchor = el.querySelector(".prior-position") || el.querySelector(".rlabel");
+      el.insertBefore(renderReview(row), anchor.nextSibling);
+    }
+
+    var opts = document.createElement("div");
+    opts.className = "opts";
+    optionsFor(row).forEach(function (o) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.dataset.tone = o.tone || "info";
+      b.dataset.value = o.value;
+      b.disabled = !assetsReady(row);
+      if (b.disabled) b.title = "Resolve unavailable review material before choosing";
+      var lab = document.createElement("span");
+      lab.className = "olabel"; lab.textContent = o.label;
+      b.appendChild(lab);
+      var text = consequenceFor(row, o);
+      if (text) {
+        var why = document.createElement("span");
+        why.className = "oconseq"; why.textContent = text;
+        b.appendChild(why);
+      }
+      if (row.recommendation === o.value) {
+        b.dataset.recommended = "true";
+        b.title = "The agent recommends this";
+      }
+      b.addEventListener("click", function () {
+        // An individual click always clears the bulk flag: touching a row IS
+        // considering it, and the record must not keep calling it a bulk accept.
+        set(row.id, {
+          choice: decisionOf(row) === o.value ? undefined : o.value,
+          bulk: false
+        });
+      });
+      opts.appendChild(b);
+    });
+    if (row.recommendation) {
+      var hint = document.createElement("span");
+      hint.className = "rec";
+      hint.textContent = "recommended: " + labelFor(row, row.recommendation);
+      opts.appendChild(hint);
+    }
+    el.appendChild(opts);
+
+    var note = document.createElement("div");
+    note.className = "note";
+    var ta = document.createElement("textarea");
+    ta.rows = 1;
+    ta.placeholder = "Anything the buttons cannot say…";
+    ta.value = get(row.id).note || "";
+    ta.setAttribute("aria-label", "Note on " + row.id);
+    ta.addEventListener("input", function () {
+      state[row.id] = Object.assign({}, get(row.id), { note: ta.value });
+      save(); renderCounts(); renderSummary();
+    });
+    note.appendChild(ta);
+    el.appendChild(note);
+    return el;
+  }
+
+  function render() {
+    renderFilters(); syncFilters(); renderCounts();
+    if (!rowsEl.childElementCount) {
+      rowElements = SPEC.rows.map(function (r) {
+        var el = buildRow(r);
+        rowsEl.appendChild(el);
+        return el;
+      });
+    }
+    SPEC.rows.forEach(function (r, index) {
+      // IDs remain exact data, including control characters. Retain the DOM
+      // reference instead of converting an ID into CSS selector source.
+      var el = rowElements[index];
+      el.hidden = !matches(r);
+      var d = decisionOf(r);
+      el.dataset.decided = d === null ? "no" : "yes";
+      Array.prototype.forEach.call(el.querySelectorAll(".opts button"), function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.value === d));
+      });
+    });
+    renderSummary();
+  }
+
+  // ---- summary -----------------------------------------------------------
+  function renderSummary() {
+    // Keep note text stable across clipboard/editor line-ending and trailing-
+    // whitespace transport. Indentation and spacing within a line still matter.
+    function normalizeNote(note) {
+      return note.replace(/\r\n?/g, "\n").split("\n").map(function (line) {
+        return line.trimEnd();
+      }).join("\n").trim();
+    }
+    var lines = [SPEC.title, "=".repeat(SPEC.title.length), ""];
+    var decided = 0;
+    SPEC.rows.forEach(function (r) {
+      var s = get(r.id), d = decisionOf(r);
+      if (d !== null) decided++;
+      var mark = d === null ? "— not yet decided" : labelFor(r, d);
+      if (d !== null && r.recommendation) {
+        if (d !== r.recommendation) {
+          mark += "  (OVERRODE: recommended " + labelFor(r, r.recommendation) + ")";
+        } else {
+          // A bulk acceptance is a different fact from an individual one, and the
+          // agent reading this paste must not read the first as the second.
+          mark += s.bulk ? "  (accepted in bulk)" : "  (took the recommendation)";
+        }
+      }
+      lines.push(r.id + "  " + r.label);
+      lines.push("    -> " + mark);
+      var note = normalizeNote(s.note || "");
+      if (note) lines.push("    note: " + note);
+      lines.push("");
+    });
+    lines.push("Decided " + decided + " of " + SPEC.rows.length + ".");
+    var bulk = SPEC.rows.filter(function (r) { return get(r.id).bulk; }).length;
+    if (bulk) {
+      lines.push(bulk + " of those were accepted in bulk rather than considered one by one — " +
+                 "weight them accordingly.");
+    }
+    if (!persists) lines.push("(This browser blocked local storage, so nothing was saved between sittings.)");
+    lines.push("Decision packet binding v2: " + JSON.stringify({
+      schema_version: 2, spec_sha256: SPEC_DIGEST,
+      selections: SPEC.rows.map(function (r) {
+        var s = get(r.id);
+        return {id: r.id, choice: decisionOf(r), note: normalizeNote(s.note || ""), bulk: s.bulk === true};
+      }), storage_blocked: !persists
+    }));
+    document.getElementById("summary").value = lines.join("\n");
+    document.getElementById("progress").textContent =
+      decided + " of " + SPEC.rows.length + " decided";
+
+    // The bulk control exists so that a genuinely routine set (forty patch bumps) does
+    // not cost forty considered clicks. It is deliberately NOT a default state: an
+    // affirmative, labelled gesture leaves an honest record, whereas a pre-selected
+    // recommendation would make "I agreed" indistinguishable from "I never looked".
+    var remaining = SPEC.rows.filter(function (r) {
+      return r.recommendation && assetsReady(r) && decisionOf(r) === null;
+    }).length;
+    var bulkBtn = document.getElementById("bulk");
+    bulkBtn.hidden = remaining === 0;
+    bulkBtn.textContent = "Take all remaining (" + remaining + ")";
+  }
+
+  function revealSummary() {
+    var wrap = document.getElementById("summarywrap");
+    var btn = document.getElementById("toggle");
+    wrap.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    btn.textContent = "Hide text";
+  }
+
+  // ---- copy --------------------------------------------------------------
+  // Order matters and is load-bearing. Selecting FIRST guarantees a manual
+  // Cmd/Ctrl+C always works, even when both programmatic paths are blocked —
+  // as they are inside a sandboxed artifact iframe with no clipboard-write
+  // permission. A copy control that fails silently is a bug; this one always
+  // says which path it took.
+  function copySummary() {
+    var ta = document.getElementById("summary");
+    var status = document.getElementById("copystatus");
+    // A hidden textarea cannot be selected, and selection is the fallback that always
+    // works — so reveal before doing anything else.
+    revealSummary();
+    ta.removeAttribute("readonly");
+    ta.focus(); ta.select();
+    try { ta.setSelectionRange(0, ta.value.length); } catch (e) {}
+    ta.setAttribute("readonly", "");
+
+    // Say something SYNCHRONOUSLY. The async clipboard path below may resolve late or
+    // never, and an empty status in the meantime is exactly the silent failure this
+    // control exists to avoid. Every later branch overwrites this line.
+    status.textContent = "Selected — copying…";
+
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    if (ok) { status.textContent = "Copied. Paste it back in one message."; return; }
+
+    var settled = false;
+    function blocked() {
+      if (settled) return;
+      settled = true;
+      status.textContent = "Copy not confirmed — the text is selected, so press " +
+        (navigator.platform.indexOf("Mac") >= 0 ? "Cmd+C" : "Ctrl+C") + ".";
+    }
+    var timer = setTimeout(blocked, 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        Promise.resolve(navigator.clipboard.writeText(ta.value)).then(function () {
+          if (!settled) { settled = true; clearTimeout(timer); status.textContent = "Copied. Paste it back in one message."; }
+        }, function () { clearTimeout(timer); blocked(); });
+        return;
+      }
+    } catch (e) {}
+    clearTimeout(timer); blocked();
+  }
+
+  document.getElementById("copy").addEventListener("click", copySummary);
+  document.getElementById("bulk").addEventListener("click", function () {
+    var pending = SPEC.rows.filter(function (r) {
+      return r.recommendation && assetsReady(r) && decisionOf(r) === null;
+    });
+    if (!pending.length) return;
+    if (!window.confirm(
+      "Accept the recommendation on " + pending.length + " remaining item" +
+      (pending.length === 1 ? "" : "s") + " without deciding them individually?\n\n" +
+      "They will be marked as accepted in bulk in the summary, so the difference stays visible."
+    )) return;
+    pending.forEach(function (r) {
+      state[r.id] = Object.assign({}, get(r.id), { choice: r.recommendation, bulk: true });
+    });
+    save(); render();
+    document.getElementById("copystatus").textContent =
+      pending.length + " accepted in bulk.";
+  });
+
+  document.getElementById("toggle").addEventListener("click", function () {
+    var wrap = document.getElementById("summarywrap");
+    if (wrap.hidden) { revealSummary(); return; }
+    wrap.hidden = true;
+    this.setAttribute("aria-expanded", "false");
+    this.textContent = "Show text";
+  });
+  document.getElementById("reset").addEventListener("click", function () {
+    if (!window.confirm("Clear every saved answer in this packet?")) return;
+    state = Object.create(null);
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    rowsEl.innerHTML = "";
+    document.getElementById("copystatus").textContent = "Cleared.";
+    render();
+  });
+
+  function esc(s) {
+    return String(s === undefined || s === null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  render();
+})();
+</script>
+</body>
+</html>

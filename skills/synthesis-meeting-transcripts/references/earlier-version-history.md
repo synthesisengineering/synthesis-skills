@@ -10,8 +10,8 @@ rules. Other seats record nothing — not even a pointer.
 ## v0.10.0 — Saved transcripts get read for obligations
 
 v0.10.0 (2026-09-18) closes the §5b gap: verification proved fidelity
-while nothing asked whether anything was owed — Rajiv's "Oh of course"
-to Paul Smurl's celebration of life sat in a filed transcript no one
+while nothing asked whether anything was owed — the principal's "Oh of
+course" to a friend's memorial service sat in a filed transcript no one
 read for obligations. New Step 4.7 runs `extract_commitments.py` over
 the saved
 file and presents every timestamped candidate for principal

@@ -106,9 +106,8 @@ images can also open through a local Blob URL. Blob URLs do not confer external
 publication or network authority.
 
 All decoded review material together is limited to 4 MiB. Spec files are
-limited to 8 MiB and must be stable regular files; symlink files, special nodes,
-late replacement and oversized inputs are refused. Standard input has the same
-byte ceiling; its caller owns stream lifetime. The final generated HTML also
+limited to 8 MiB, whether read from a file or from standard input; the generator
+reads the spec once and builds from those bytes. The final generated HTML also
 has an 8 MiB ceiling, matching the existing context-doctor reader. JSON escaping
 and page markup count toward that ceiling, so an otherwise valid large spec may
 be refused before filing. Use fewer assets or explicit unresolved references
@@ -140,7 +139,7 @@ Neither a locally generated page nor a perfect pasted summary authenticates a
 principal. Existing authentic grants remain valid within their original scope;
 this format does not require reapproval of an already authorized action.
 
-The generation, DOM, keyboard, persistence, download and copy-failure fixtures
+The generation, recording and browser fixtures (`tests/test_packet_*.py`)
 use only synthetic material. Their passing results prove transport and reader
 behavior, not a real recipient, principal approval, publication or native agent
 acceptance. Before handing over a real packet, inspect its complete content at

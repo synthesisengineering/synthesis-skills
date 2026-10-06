@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Fetch an AI-generated meeting transcript (Gemini notes + full word-for-word transcript)
 from Google Drive via a self-hosted workspace-mcp server, and save to the project's local
-transcript archive.
+transcript archive. Standard library only.
 
 Cross-platform: macOS, Linux, Windows.
 
 Usage:
   fetch-meeting.py [MEETING-NAME] [--date YYYY-MM-DD] [--account EMAIL]
+  fetch-meeting.py --window FROM THROUGH        # which docs in the window are saved, which are not
 
 Examples:
   fetch-meeting.py                      # today's standup (default)
@@ -14,58 +15,75 @@ Examples:
   fetch-meeting.py standup --date 2026-04-21
   fetch-meeting.py "PDE Leadership"     # uses generic_pattern from config
   fetch-meeting.py standup --account me@work.example.com   # override account
+  fetch-meeting.py --window 2026-10-01 2026-10-05
 
 Config: reads .agents/meeting-transcripts.yaml starting from CWD and walking up.
 Falls back to .claude/meeting-transcripts.yaml for existing projects.
 
-Use the verified synthesis exec-public entry. Its pinned interpreter requires
-httpx and PyYAML; see the acquisition entry reference for explicit setup.
+The transcript is chosen by the document's own tab ID (`--transcript-tab-id`, or config
+`transcript_tab_id`), else by a tab title (config `transcript_tab_title`, default "Transcript")
+that exactly one tab in a complete tab list carries. A tool error is "unknown", never "no
+transcript". Exit 0 saved and verified; 1 not found, unknown or incomplete; 2 bad usage.
 """
 
 from __future__ import annotations
 
 import argparse
-import time
-
-try:
-    import fcntl
-except ImportError:
-    fcntl = None
 import datetime as dt
 import json
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
 
-try:
-    import httpx
-    import yaml
-except ImportError as exc:
-    print(
-        f"Missing dependency in the verified interpreter: {exc.name}.", file=sys.stderr
-    )
-    print(
-        "Install httpx and PyYAML into the selected interpreter through authorized environment setup; do not select an unverified interpreter.",
-        file=sys.stderr,
-    )
-    sys.exit(2)
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))
+import mcp_client  # noqa: E402
+import verify_transcripts  # noqa: E402
+
+DOC_TYPE = "application/vnd.google-apps.document"
+PAGE_SIZE = 100
+
+# --- Config loading (a block-style YAML subset; the same reader as synthesis-slack-sync's preflight) ---
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mcp_client import (
-    call_tool_text,
-    _parse_sse,
-    bounded_post,
-    _init_session,
-    session_headers,
-)
-from document_tabs import select_tabs
+def _scalar(text: str):
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] == '"':
+        return json.loads(text)  # YAML's double-quoted escapes are JSON's
+    if len(text) >= 2 and text[0] == text[-1] == "'":
+        return text[1:-1].replace("''", "'")
+    if text.startswith(("{", "[", "&", "*", "|", ">")) and text != "[]":
+        raise ValueError(f"unsupported YAML form {text[:20]!r}; use block style")
+    return {"true": True, "false": False, "null": None, "~": None, "": None, "[]": []}.get(text.lower(), text)
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import verify_transcripts
 
-# --- Config loading -----------------------------------------------------------
+def parse_yaml(text: str) -> dict:
+    """Top-level `key: value` scalars and one level of nested `field: value` mappings."""
+    data, key = {}, None
+    for number, raw in enumerate(text.splitlines(), 1):
+        quote, line = None, raw
+        for i, char in enumerate(raw):
+            if char in "'\"" and quote in (None, char):
+                quote = None if quote else char
+            elif char == "#" and quote is None and (i == 0 or raw[i - 1] in " \t"):
+                line = raw[:i]
+                break
+        if not line.strip():
+            continue
+        name, colon, value = line.strip().partition(":")
+        if not colon or not name:
+            raise ValueError(f"line {number}: expected `key: value`")
+        if not line[0].isspace():
+            key = name.strip()
+            data[key] = _scalar(value) if value.strip() else {}
+        elif key is not None and isinstance(data[key], dict):
+            data[key][name.strip()] = _scalar(value)
+        else:
+            raise ValueError(f"line {number}: unexpected indented line")
+    return data
 
 
 def find_config() -> Path:
@@ -80,65 +98,26 @@ def find_config() -> Path:
     raise FileNotFoundError(
         "No .agents/meeting-transcripts.yaml or .claude/meeting-transcripts.yaml "
         "found in current tree. "
-        "See synthesis-meeting-transcripts/SKILL.md for the schema."
+        "See synthesis-meeting-transcripts/references/setup.md for the schema."
     )
 
 
 def load_config(path: Path) -> dict:
-    with path.open() as f:
-        cfg = yaml.safe_load(f)
+    cfg = parse_yaml(path.read_text(encoding="utf-8"))
     # v0.2.0 schema (2026-04-22): transcripts_repo replaces ai_knowledge_repo
     # to align with synthesis-slack-sync v2.0.0+ and the workspace-rooted layout.
     required = ["workspace", "google_account", "transcripts_path", "transcripts_repo"]
     missing = [k for k in required if not cfg.get(k)]
     if missing:
-        # Backward-compat hint: if someone has v1.x schema (ai_knowledge_repo),
-        # tell them what to rename.
         if cfg.get("ai_knowledge_repo") and "transcripts_repo" in missing:
             raise ValueError(
                 f"Config {path} uses pre-v0.2.0 schema (ai_knowledge_repo). "
                 "Rename ai_knowledge_repo to transcripts_repo and set it to the "
-                "absolute path of the workspace-private repo. See the SKILL.md "
-                "for the current schema."
+                "absolute path of the workspace-private repo. See references/setup.md."
             )
         raise ValueError(f"Config {path} missing required keys: {missing}")
     cfg["transcripts_repo"] = str(Path(cfg["transcripts_repo"]).expanduser())
     return cfg
-
-
-# --- MCP HTTP client ----------------------------------------------------------
-
-
-def mcp_call(url: str, tool: str, args: dict, *, capture=None) -> str:
-    """Call an MCP tool over HTTP streamable transport, return concatenated text content."""
-    with httpx.Client(timeout=60, follow_redirects=False, trust_env=False) as c:
-        sid = _init_session(c, url=url, capture=capture, client_name="fetch-meeting.py")
-        r = bounded_post(
-            c,
-            url,
-            capture=capture,
-            headers=session_headers(sid),
-            json={
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/call",
-                "params": {"name": tool, "arguments": args},
-            },
-        )
-    r.raise_for_status()
-    return call_tool_text(_parse_sse(r.text))
-
-
-def server_reachable(url: str) -> bool:
-    try:
-        base = url.rsplit("/mcp", 1)[0]
-        r = httpx.get(f"{base}/health", timeout=5)
-        return r.status_code == 200
-    except Exception:
-        return False
-
-
-# --- Pattern resolution -------------------------------------------------------
 
 
 def resolve_pattern(cfg: dict, meeting: str) -> str:
@@ -146,532 +125,226 @@ def resolve_pattern(cfg: dict, meeting: str) -> str:
     patterns = cfg.get("meeting_patterns") or {}
     if meeting in patterns:
         return patterns[meeting]
-    generic = (
-        cfg.get("generic_pattern")
-        or 'name contains "{{name}}" and name contains "Notes by Gemini"'
-    )
+    generic = cfg.get("generic_pattern") or 'name contains "{{name}}" and name contains "Notes by Gemini"'
     return generic.replace("{{name}}", meeting)
 
 
-# --- File IO helpers ----------------------------------------------------------
-
-
 def slugify(name: str) -> str:
-    s = name.lower()
-    s = re.sub(r"[^\w\s-]", "", s).strip()
-    s = re.sub(r"[\s_-]+", "-", s)
-    return s
+    s = re.sub(r"[^\w\s-]", "", name.lower()).strip()
+    return re.sub(r"[\s_-]+", "-", s)
 
 
-def extract_content(raw: str) -> str:
-    """Strip the workspace-mcp 'File: ... --- CONTENT ---' header, return body only."""
-    marker = "--- CONTENT ---"
-    if marker in raw:
-        return raw.split(marker, 1)[1].lstrip("\n")
-    return raw
+def server_reachable(url: str) -> bool:
+    try:
+        with mcp_client.OPENER.open(urllib.request.Request(url.rsplit("/mcp", 1)[0] + "/health"), timeout=5) as r:
+            return r.status == 200
+    except Exception:
+        return False
 
 
-def inventory_documents(
-    list_documents, *, source, account, start, through, positive_control, max_pages=100
-):
-    """Enumerate all declared source documents using an owner-bound adapter.
-
-    Adapter response is {ok, documents:[{source_id, occurred_at}], next_cursor,
-    complete, tool_call_id}. occurred_at is the configured source's explicit
-    window timestamp, never inferred from title or file ordering. Raw response
-    preservation belongs to the caller. No source is omitted for relevance.
-    """
-    if (
-        start.tzinfo is None
-        or through.tzinfo is None
-        or start > through
-        or not 1 <= max_pages <= 100
-    ):
-        raise ValueError("invalid source inventory window or page bound")
-    sys.path.insert(
-        0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
-    )
-    from acquisition_evidence import validate_recorder_control
-
-    validate_recorder_control(
-        positive_control,
-        source=source,
-        account=account,
-        after=through,
-        now=dt.datetime.now().astimezone(),
-    )
-    cursor = None
-    seen = set()
-    docs = []
-    ids = set()
-    calls = []
-    deadline = time.monotonic() + 120
-    for _ in range(max_pages):
-        if time.monotonic() >= deadline:
-            raise ValueError("source inventory time bound reached")
-        page = list_documents(
-            source=source,
-            account=account,
-            oldest=start.isoformat(),
-            latest=through.isoformat(),
-            cursor=cursor,
-            limit=100,
-        )
-        if time.monotonic() >= deadline:
-            raise ValueError("source inventory time bound reached")
-        if not isinstance(page, dict) or page.get("ok") is not True:
-            raise ValueError("source inventory failed; coverage unknown")
-        call_id = page.get("tool_call_id")
-        if not isinstance(call_id, str) or not call_id:
-            raise ValueError("source inventory raw provenance missing")
-        calls.append(call_id)
-        rows = page.get("documents")
-        if not isinstance(rows, list) or len(rows) > 1000:
-            raise ValueError("source inventory page invalid")
-        for row in rows:
-            key = row.get("source_id")
-            at = dt.datetime.fromisoformat(row.get("occurred_at"))
-            if (
-                not isinstance(key, str)
-                or not key
-                or key in ids
-                or at.tzinfo is None
-                or not start <= at <= through
-            ):
-                raise ValueError(
-                    "source inventory duplicate ID or invalid window timestamp"
-                )
-            docs.append(row)
-            ids.add(key)
-            if len(docs) > 10000:
-                raise ValueError("source document bound reached")
-        next_cursor = page.get("next_cursor")
-        if next_cursor not in (None, "") and not isinstance(next_cursor, str):
-            raise ValueError("source inventory invalid pagination cursor")
-        if next_cursor is None or next_cursor == "":
-            if page.get("complete") is not True:
-                raise ValueError("source inventory completion unknown")
-            return {
-                "documents": docs,
-                "complete": True,
-                "next_cursor": None,
-                "from": start.isoformat(),
-                "through": through.isoformat(),
-                "observed_at": dt.datetime.now().astimezone().isoformat(),
-                "positive_control": positive_control,
-                "tool_call_id": calls[-1],
-                "tool_call_ids": calls,
-            }
-        if not isinstance(next_cursor, str) or next_cursor in seen:
-            raise ValueError("source inventory repeated cursor")
-        seen.add(next_cursor)
-        cursor = next_cursor
-    raise ValueError("source inventory page bound reached; coverage unknown")
+# --- Tabs: chosen by stable ID; every way of not finding one has its own reason (IR-57) ---------
 
 
-def recorder_readiness(cfg, mcp_url, account, *, call=None):
-    """Perform a declared read-only identity probe, distinct from server health.
-
-    The connector adapter must return authenticated/account fields; text-only,
-    expired, and mismatched-account responses remain unknown/refused. Tool
-    semantics are declared by the owner configuration, never guessed by name.
-    """
-    call = call or mcp_call
-    probe = cfg.get("recorder_probe")
-    if (
-        not isinstance(probe, dict)
-        or probe.get("semantics") != "authentication-read-only"
-    ):
-        raise ValueError(
-            "recorder sign-in unknown: owner-declared read-only probe missing"
-        )
-    if (
-        not isinstance(probe.get("tool"), str)
-        or not probe["tool"]
-        or not isinstance(probe.get("arguments", {}), dict)
-    ):
-        raise ValueError("invalid recorder identity probe")
-    payload = json.loads(call(mcp_url, probe["tool"], probe.get("arguments", {})))
-    if (
-        not isinstance(payload, dict)
-        or payload.get("authenticated") is not True
-        or payload.get("account") != account
-        or not isinstance(payload.get("tool_call_id"), str)
-        or not payload["tool_call_id"].strip()
-    ):
-        raise ValueError("recorder sign-in failed or account mismatch")
-    return {
-        "status": "authenticated",
-        "account": account,
-        "observed_at": dt.datetime.now().astimezone().isoformat(),
-        "tool": probe["tool"],
-        "tool_call_id": payload["tool_call_id"],
-        "native_acceptance": False,
-    }
+def tab_inventory(text: str, file_id: str) -> tuple:
+    """(tabs, complete) from inspect_doc_structure's JSON. Unparseable is not "no tabs"."""
+    head = f"Document structure analysis for {file_id}:"
+    body = text.split(head, 1)[1] if head in text else text
+    body = body.rsplit("\n\nLink: ", 1)[0].strip()
+    try:
+        document = mcp_client.strict_json(body)
+    except ValueError:
+        return None, False
+    if not isinstance(document, dict) or not isinstance(document.get("tabs"), list):
+        return None, False
+    complete = document.get("tabsComplete", True) is True and document.get("truncated", False) is False \
+        and not document.get("nextPageToken")
+    tabs, pending = [], list(document["tabs"])
+    while pending:
+        tab = pending.pop(0)
+        tab_id = tab.get("tab_id", tab.get("tabId")) if isinstance(tab, dict) else None
+        if not isinstance(tab_id, str) or not tab_id or any(t["tab_id"] == tab_id for t in tabs) or len(tabs) > 1000:
+            raise ValueError("missing or duplicate tab ID")
+        tabs.append({"tab_id": tab_id, "title": str(tab.get("title", ""))})
+        pending.extend(tab.get("child_tabs", tab.get("childTabs", [])) or [])
+    return tabs, complete
 
 
-def save_verified(path, content, *, force=False):
-    sys.path.insert(
-        0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
-    )
-    from archive_publish import _publish
-
-    def validate(target, digest):
-        return verify_transcripts.audit_files(
-            [target], expected_hashes={str(target): digest}
-        )
-
-    return _publish(path, content, validate=validate, force=force)
-
-
-def acquire_window(
-    cfg,
-    *,
-    mode,
-    through,
-    backfill,
-    capture_root,
-    evidence_path=None,
-    advance=False,
-    force=False,
-    home=None,
-):
-    """Actual declared acquisition → exact archives → existing watermark owner."""
-    sys.path.insert(
-        0, str(Path(__file__).resolve().parents[2] / "synthesis-daily-rituals/scripts")
-    )
-    from acquisition_transport import Capture, ReadTransport, output_path
-    from archive_publish import publish_json
-    import sync_watermark
-    from acquisition_evidence import moment, validate
-    from google_read import GoogleRead
-    import workspace_mcp_read
-
-    if mode not in {"health", "inventory", "fetch"} or advance and mode != "fetch":
-        raise ValueError("invalid acquisition mode or advance intent")
-    if mode == "fetch":
-        evidence_path = output_path(evidence_path)
-    output_path(capture_root, directory=True)
-    now = dt.datetime.now().astimezone()
-    through = sync_watermark.parse_moment(through, dt.datetime.now().astimezone())
-    if through > now:
-        raise ValueError("future acquisition window")
-    relative_archive = Path(cfg["transcripts_path"])
-    if (
-        relative_archive.is_absolute()
-        or ".." in relative_archive.parts
-        or not Path(cfg["transcripts_repo"]).is_absolute()
-    ):
-        raise ValueError(
-            "archive configuration must name an absolute repository and relative transcript path"
-        )
-    output_path(Path(cfg["transcripts_repo"]) / relative_archive, directory=True)
-    workspace = cfg["workspace"]
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", workspace):
-        raise ValueError("invalid workspace identity")
-    window = sync_watermark.window(workspace, "meetings", now=through, home=home)
-    start = moment(window["from"] or backfill)
-    if start > through:
-        raise ValueError("invalid acquisition window")
-    # Validate all non-secret contract fields before resolving a credential
-    # or opening a connector session. The adapter is exactly the declared one.
-    if cfg.get("acquisition_adapter", {}).get("kind") == workspace_mcp_read.KIND:
-        adapter = workspace_mcp_read.WorkspaceMcpRead(cfg, None)
-        capture = Capture(capture_root)
-        transport = workspace_mcp_read.McpTransport(adapter.url, capture)
+def select_transcript(tabs, complete: bool, tab_id: str | None = None, title: str | None = None) -> dict:
+    """Which tab holds the transcript. status: transcript, no-source or unknown, with a reason."""
+    if tabs is None:
+        return {"status": "unknown", "reason": "tab-inventory-unavailable"}
+    if not complete:
+        return {"status": "unknown", "reason": "tab-inventory-incomplete"}
+    if tab_id:
+        chosen = [t for t in tabs if t["tab_id"] == tab_id]
+        reason = "transcript-tab-absent"
     else:
-        adapter = GoogleRead(cfg, None)
-        capture = Capture(capture_root)
-        transport = ReadTransport(cfg["acquisition_adapter"].get("token"), capture)
-    adapter.transport = transport
+        chosen = [t for t in tabs if t["title"] == (title or "Transcript")]
+        reason = "transcript-tab-absent"
+        if len(chosen) > 1:
+            return {"status": "unknown", "reason": "transcript-tab-title-not-unique"}
+    if not chosen:
+        return {"status": "no-source", "reason": reason}  # only a complete inventory can say this
+    return {"status": "transcript", "reason": None, "transcript_tab_id": chosen[0]["tab_id"]}
+
+
+def fetch_document(url: str, account: str, file_id: str, tab_id: str | None, title: str | None) -> dict:
+    call = lambda tool, args: mcp_client.call_tool(tool, {"user_google_email": account, **args}, url, "fetch-meeting.py")
     try:
-        readiness = adapter.readiness()
-        health = {
-            "dependencies": "available",
-            "transport": "responsive",
-            "recorder": readiness,
-            "native_acceptance": False,
-        }
-        if mode == "health":
-            return health
-        control = adapter.positive_control()
-        inventory = inventory_documents(
-            adapter.list_documents,
-            source="google-drive",
-            account=cfg["google_account"],
-            start=start,
-            through=through,
-            positive_control=control,
-        )
-        if mode == "inventory":
-            return {
-                "health": health,
-                "inventory": inventory,
-                "custody": capture.summary(include_receipts=False),
-                "can_advance": False,
-            }
-        archive_root = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"]
-        if not archive_root.is_absolute() or ".." in archive_root.parts:
-            raise ValueError("archive root must be a physical absolute path")
-        receipts = []
-        for doc in inventory["documents"]:
-            selected = adapter.transcript(doc["source_id"])
-            content = (
-                f"# Meeting source {doc['source_id']}\n\n**Source ID:** google-drive:{doc['source_id']}\n"
-                f"**Transcript tab ID:** {selected['transcript_tab_id']}\n"
-                f"**Raw response SHA256:** {', '.join(selected['raw_sha256'])}\n\n"
-                "## Tool notes — lossy derivative\n\n"
-                + selected["notes"]
-                + "\n\n## Verbatim transcript\n\n"
-                + selected["transcript"]
-            )
-            filename = "meetings/" + doc["source_id"] + ".md"
-            saved = save_verified(archive_root / filename, content, force=force)
-            receipts.append({"path": filename, "sha256": saved["sha256"]})
-        evidence = {
-            "schema": 1,
-            "workspace": workspace,
-            "surface": "meetings",
-            "from": start.isoformat(),
-            "through": through.isoformat(),
-            "archive_root": str(archive_root),
-            "archives": receipts,
-            "declared_sources": ["google-drive"],
-            "sources": [
-                {
-                    "id": "google-drive",
-                    "account": cfg["google_account"],
-                    "readiness": readiness,
-                    "inventory": inventory,
-                }
-            ],
-            "custody": capture.summary(),
-        }
-        checked = validate(
-            evidence,
-            workspace=workspace,
-            surface="meetings",
-            through=through,
-            previous=moment(window["from"]) if window["from"] else None,
-        )
-        if not evidence_path:
-            raise ValueError("fetch requires an exact evidence output path")
-        saved_evidence = publish_json(evidence_path, evidence)
-        result = {
-            "coverage": checked,
-            "evidence": saved_evidence,
-            "saved_files": receipts,
-            "custody": capture.summary(include_receipts=False),
-        }
-        if advance:
-            result["watermark"] = sync_watermark.advance(
-                workspace,
-                "meetings",
-                through.isoformat(),
-                acquisition=evidence,
-                home=home,
-                now=dt.datetime.now().astimezone(),
-            )
-        return result
-    finally:
-        transport.close()
+        structure = call("inspect_doc_structure", {"document_id": file_id})
+        try:
+            tabs, complete = tab_inventory(structure, file_id)
+        except ValueError as exc:
+            return {"status": "unknown", "reason": "tab-inventory-unavailable", "detail": str(exc)}
+        result = select_transcript(tabs, complete, tab_id, title)
+        if result["status"] == "unknown":
+            return result
+        texts = {t["tab_id"]: call("get_doc_as_markdown", {"document_id": file_id, "tab_id": t["tab_id"],
+                                                          "include_comments": False}) for t in tabs}
+    except ValueError as exc:  # an error is "unknown", never "no transcript"
+        return {"status": "unknown", "reason": "tool-error", "detail": str(exc)}
+    chosen = result.get("transcript_tab_id")
+    result["notes"] = "\n\n".join(f"### {t['title']}\n\n{texts[t['tab_id']]}" for t in tabs if t["tab_id"] != chosen)
+    result["transcript"] = texts.get(chosen, "")
+    if result["status"] == "transcript" and not result["transcript"].strip():
+        result.update(status="no-source", reason="transcript-tab-empty")
+    return result
 
 
-def acquisition_main(argv):
-    parser = argparse.ArgumentParser(
-        description="Bounded declared meeting acquisition; no implicit adapter fallback"
-    )
-    parser.add_argument(
-        "--mode", choices=["health", "inventory", "fetch"], required=True
-    )
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--through", required=True)
-    parser.add_argument("--backfill-from", required=True)
-    parser.add_argument("--capture-dir", required=True)
-    parser.add_argument("--evidence")
-    parser.add_argument("--advance", action="store_true")
-    parser.add_argument("--force", action="store_true")
-    args = parser.parse_args(argv)
-    try:
-        result = acquire_window(
-            load_config(Path(args.config)),
-            mode=args.mode,
-            through=args.through,
-            backfill=args.backfill_from,
-            capture_root=args.capture_dir,
-            evidence_path=args.evidence,
-            advance=args.advance,
-            force=args.force,
-        )
-        print(json.dumps(result, ensure_ascii=False))
-        return 0
-    except (ValueError, OSError, KeyError, TypeError) as exc:
-        print(
-            json.dumps(
-                {"coverage": "unknown", "can_advance": False, "reason": str(exc)}
-            )
-        )
-        return 2
+# --- The window: every source doc, saved or not (IR-55) ---------------------------------------
 
 
-# --- Main ---------------------------------------------------------------------
+ROW = re.compile(r'Name: "(?P<name>[^"\n]*)" \(ID: (?P<id>[A-Za-z0-9_-]+)(?:, Type: (?P<type>[^,)]+))?'
+                 r'(?:[^)\n]*?Modified: (?P<modified>[0-9T:.+\-Z]+))?')
+
+
+def saved_ids(meetings: Path) -> dict:
+    found = {}
+    for path in sorted(meetings.glob("*.md")) if meetings.is_dir() else []:
+        head = path.read_text(encoding="utf-8", errors="replace")[:4000]
+        for doc_id in re.findall(r"google-drive:([A-Za-z0-9_-]+)|/document/d/([A-Za-z0-9_-]+)", head):
+            found.setdefault(doc_id[0] or doc_id[1], path.name)
+    return found
+
+
+def window(url: str, cfg: dict, account: str, start: dt.date, through: dt.date) -> dict:
+    """Every doc the declared patterns find in [start, through], marked saved or unsaved, and the
+    moment the bookmark may advance to: never past the first unsaved doc."""
+    query_window = f'modifiedTime > "{start.isoformat()}T00:00:00" and modifiedTime < "{(through + dt.timedelta(days=1)).isoformat()}T00:00:00"'
+    patterns = cfg.get("meeting_patterns") or {}
+    patterns = patterns or {"(generic)": resolve_pattern(cfg, "Notes by Gemini")}
+    docs, bounded = {}, []
+    for name, pattern in patterns.items():
+        text = mcp_client.call_tool("search_drive_files", {"user_google_email": account, "query": f"{pattern} and {query_window}",
+                                                           "page_size": PAGE_SIZE, "detailed": True}, url, "fetch-meeting.py")
+        rows = [m.groupdict() for m in ROW.finditer(text)]
+        if len(rows) >= PAGE_SIZE:
+            bounded.append(name)  # a full page may hide more: the window cannot be called complete
+        for row in rows:
+            if row["type"] in (None, DOC_TYPE):
+                docs.setdefault(row["id"], {**row, "pattern": name})
+    saved = saved_ids(Path(cfg["transcripts_repo"]) / cfg["transcripts_path"] / "meetings")
+    listed = sorted(docs.values(), key=lambda d: d["modified"] or "")
+    for doc in listed:
+        doc["saved"] = saved.get(doc["id"])
+    unsaved = [d for d in listed if not d["saved"]]
+    advance = "" if bounded else (unsaved[0]["modified"] or "") if unsaved else f"{through.isoformat()}T23:59:59"
+    return {"from": start.isoformat(), "through": through.isoformat(), "documents": listed,
+            "unsaved": [d["id"] for d in unsaved], "bounded_patterns": bounded,
+            "advance_through": advance or None,
+            "note": "the search shows what Drive returned; it cannot prove the listing complete"}
+
+
+def save(out_file: Path, text: str, force: bool) -> None:
+    if out_file.exists():
+        if out_file.read_text(encoding="utf-8") == text:
+            return
+        if not force:
+            raise FileExistsError(f"{out_file} exists with different content; use --force to replace it")
+        out_file.rename(out_file.with_name(f"{out_file.stem}.old-{dt.datetime.now():%Y%m%d%H%M%S}.md"))
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(text, encoding="utf-8")
 
 
 def main(argv=None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if "--mode" in argv:
-        return acquisition_main(argv)
-
-    p = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    p.add_argument(
-        "meeting", nargs="?", default="standup", help="Meeting name (default: standup)"
-    )
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("meeting", nargs="?", default="standup", help="Meeting name (default: standup)")
     p.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
-    p.add_argument(
-        "--account", default=None, help="Override google_account from config"
-    )
-    p.add_argument(
-        "--transcript-tab-id", help="provider stable ID, never a title match"
-    )
-    p.add_argument(
-        "--readiness-only",
-        action="store_true",
-        help="probe recorder identity; do not fetch or write",
-    )
-    p.add_argument(
-        "--force", action="store_true", help="Overwrite if transcript already saved"
-    )
-    p.add_argument(
-        "--port", type=int, default=int(os.environ.get("WORKSPACE_MCP_PORT", 8765))
-    )
+    p.add_argument("--account", default=None, help="Override google_account from config")
+    p.add_argument("--transcript-tab-id", help="the document's own stable tab ID, never a title match")
+    p.add_argument("--window", nargs=2, metavar=("FROM", "THROUGH"), help="list the window's docs, saved and unsaved")
+    p.add_argument("--force", action="store_true", help="Replace a saved transcript (the old one is kept as .old-*.md)")
+    p.add_argument("--port", type=int, default=int(os.environ.get("WORKSPACE_MCP_PORT", 8765)))
     args = p.parse_args(argv)
-
-    target_date = args.date or dt.date.today().isoformat()
-
     try:
-        config_path = find_config()
-        cfg = load_config(config_path)
+        cfg = load_config(find_config())
     except (FileNotFoundError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
-
     account = args.account or cfg["google_account"]
     mcp_url = f"http://localhost:{args.port}/mcp"
-
     if not server_reachable(mcp_url):
         print(f"ERROR: workspace-mcp not reachable at {mcp_url}", file=sys.stderr)
         print("       Run ./start.sh or verify server status.", file=sys.stderr)
         return 1
 
-    try:
-        readiness = recorder_readiness(cfg, mcp_url, account)
-    except (ValueError, RuntimeError, OSError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 1
-    if args.readiness_only:
-        print(json.dumps(readiness))
-        return 0
+    if args.window:
+        try:
+            listing = window(mcp_url, cfg, account, dt.date.fromisoformat(args.window[0]), dt.date.fromisoformat(args.window[1]))
+        except ValueError as exc:
+            print(json.dumps({"coverage": "unknown", "reason": str(exc)}))
+            return 1
+        print(json.dumps(listing, indent=2))
+        return 1 if listing["unsaved"] or listing["bounded_patterns"] else 0
 
-    # Compute out path (v0.2.0 schema — workspace is implicit in transcripts_repo name)
-    out_dir = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"] / "meetings"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_file = out_dir / f"{slugify(args.meeting)}-{target_date}.md"
-
-    if out_file.exists() and not args.force:
-        print(f"Already exists: {out_file}")
-        print("Use --force to overwrite.")
-        return 1
-
-    # Resolve pattern and bracket date
-    pattern = resolve_pattern(cfg, args.meeting)
+    target_date = args.date or dt.date.today().isoformat()
     start = dt.date.fromisoformat(target_date)
-    end = start + dt.timedelta(days=1)
-    query = f'{pattern} and modifiedTime > "{start.isoformat()}T00:00:00" and modifiedTime < "{end.isoformat()}T00:00:00"'
-
+    pattern = resolve_pattern(cfg, args.meeting)
+    query = (f'{pattern} and modifiedTime > "{start.isoformat()}T00:00:00" and '
+             f'modifiedTime < "{(start + dt.timedelta(days=1)).isoformat()}T00:00:00"')
     print(f"Searching Drive ({account}) for: {args.meeting} on {target_date}")
     print(f"  Pattern: {pattern}")
-
-    search = mcp_call(
-        mcp_url,
-        "search_drive_files",
-        {"user_google_email": account, "query": query, "page_size": 5},
-    )
-
-    ids = re.findall(r"ID:\s*([A-Za-z0-9_-]+)", search)
-    if len(set(ids)) != 1:
-        print(
-            f"No matching doc found for '{args.meeting}' on {target_date} in {account}'s Drive.",
-            file=sys.stderr,
-        )
+    try:
+        search = mcp_client.call_tool("search_drive_files", {"user_google_email": account, "query": query, "page_size": 5},
+                                      mcp_url, "fetch-meeting.py")
+    except ValueError as exc:
+        print(f"ERROR: search failed, coverage unknown: {exc}", file=sys.stderr)
+        return 1
+    ids = sorted(set(re.findall(r"ID:\s*([A-Za-z0-9_-]+)", search)))
+    if len(ids) != 1:
+        print(f"{'No matching doc' if not ids else 'More than one doc'} found for '{args.meeting}' on {target_date} "
+              f"in {account}'s Drive: {', '.join(ids) or 'none'}", file=sys.stderr)
         print(f"Query tried: {query}", file=sys.stderr)
         return 1
     file_id = ids[0]
     print(f"Found doc: {file_id}")
-    print(
-        "Fetching content; structured tab completeness still requires verification..."
-    )
-
-    raw = mcp_call(
-        mcp_url,
-        "get_drive_file_content",
-        {"user_google_email": account, "file_id": file_id},
-    )
-    selected = select_tabs(
-        extract_content(raw),
-        transcript_tab_id=args.transcript_tab_id or cfg.get("transcript_tab_id"),
-    )
-    if selected["status"] == "unknown" or selected["reason"] == "transcript-tab-absent":
-        print(json.dumps(selected), file=sys.stderr)
+    selected = fetch_document(mcp_url, account, file_id, args.transcript_tab_id or cfg.get("transcript_tab_id"),
+                              cfg.get("transcript_tab_title"))
+    if selected["status"] == "unknown":
+        print(json.dumps({k: v for k, v in selected.items() if k not in ("notes", "transcript")}), file=sys.stderr)
         return 1
     if selected["status"] == "no-source":
-        content = (
-            "⚠️ summary-only — no verbatim transcript returned for the declared tab ID.\n\n"
-            + "<!-- VERIFIER: no-source-transcript --> "
-            + selected["reason"]
-            + "\n\n"
-            + "## Tool notes — lossy derivative\n\n"
-            + selected["notes"]
-        )
-        print(
-            "WARNING: "
-            + selected["reason"]
-            + "; preserved source notes are not primary transcript evidence.",
-            file=sys.stderr,
-        )
+        body = ("⚠️ summary-only — no verbatim transcript in the document.\n\n<!-- VERIFIER: no-source-transcript --> "
+                f"{selected['reason']}\n\n## Tool notes — lossy derivative\n\n{selected['notes']}")
+        print(f"WARNING: {selected['reason']}; the saved notes are not primary transcript evidence.", file=sys.stderr)
     else:
-        content = (
-            "## Tool notes — lossy derivative\n\n"
-            + selected["notes"]
-            + "\n\n## Verbatim transcript\n\n"
-            + selected["transcript"]
-        )
-    if not content.strip():
-        print("ERROR: fetched doc but content was empty.", file=sys.stderr)
-        return 1
-
-    weekday = start.strftime("%A")
-    month = start.strftime("%B")
-    human = f"{weekday}, {month} {start.day}, {start.year}"
-    title = args.meeting.title()
-
-    header = (
-        f"# {title} — {human}\n\n"
-        f"**Source:** Gemini meeting notes + full transcript\n"
-        f"**Google Doc:** https://docs.google.com/document/d/{file_id}/edit\n"
-        f"**Source ID:** google-drive:{file_id}\n"
-        f"**Transcript tab ID:** {selected['transcript_tab_id']}\n"
-        f"**Fetched via:** workspace-mcp ({account}) — {dt.date.today().isoformat()}\n\n"
-        f"---\n\n"
-    )
+        body = f"## Tool notes — lossy derivative\n\n{selected['notes']}\n\n## Verbatim transcript\n\n{selected['transcript']}"
+    human = f"{start.strftime('%A')}, {start.strftime('%B')} {start.day}, {start.year}"
+    header = (f"# {args.meeting.title()} — {human}\n\n"
+              f"**Source:** Gemini meeting notes + full transcript\n"
+              f"**Google Doc:** https://docs.google.com/document/d/{file_id}/edit\n"
+              f"**Source ID:** google-drive:{file_id}\n"
+              f"**Transcript tab ID:** {selected.get('transcript_tab_id') or 'none'}\n"
+              f"**Fetched via:** workspace-mcp ({account}) — {dt.date.today().isoformat()}\n\n---\n\n")
+    out_file = Path(cfg["transcripts_repo"]) / cfg["transcripts_path"] / "meetings" / f"{slugify(args.meeting)}-{target_date}.md"
     try:
-        receipt = save_verified(out_file, header + content, force=args.force)
-    except (OSError, ValueError) as exc:
+        save(out_file, header + body, args.force)
+    except OSError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps({"saved_files": [receipt]}, indent=2))
-    return 0
+    audit = verify_transcripts.audit_files([out_file])[0]
+    print(json.dumps({"saved": str(out_file), "verification": audit["status"]}))
+    return 0 if audit["status"] in ("OK", "OK (no-source-transcript)") else 1
 
 
 if __name__ == "__main__":

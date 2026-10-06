@@ -29,7 +29,7 @@ When CONTEXT.md / daily plan / sessions logs cite a Slack message ("X said Y at 
 
 ### Automated backstop
 
-A Stop hook at `~/.claude/hooks/quote-provenance-checker.py` (installed alongside `~/.claude/hooks/lazy-shortcut-detector.py` for the parallel discipline) scans the conversation transcript for Slack-TS-shaped values written into transcript / daily-plan / context files that did NOT appear elsewhere in the session — no MCP read, no Read tool result, no user message containing them, no other tool input. Candidates are logged to `~/.claude/quote-provenance-log.jsonl` with the file path, the fabricated TS values, and a stderr warning. The hook does NOT block writes; it makes violations visible after the fact for the user to review.
+The old per-turn hook that scanned Slack timestamps written into transcript, plan and context files is retired with the old hooks. In v5 the plugin's turn-end check sends a reply back once when it quotes someone with words that appear nowhere in the session's record; it reads the reply, not the files written. So checking every TS and quote you write against the read that returned it is part of writing it (the rules above), and the day's files are the place to re-check at day-end.
 
 ### What this rule is NOT
 

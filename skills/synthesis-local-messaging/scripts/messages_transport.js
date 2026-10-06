@@ -16,7 +16,7 @@ function run(argv) {
     }
     if (!keys(packet, ["protocol", "payload", "digest", "expires_ms"]) || packet.protocol !== 1 || !/^[a-f0-9]{64}$/.test(packet.digest) || !Number.isSafeInteger(packet.expires_ms)) throw Error("packet contract");
     if (!keys(packet.payload, ["tool_name", "tool_input"]) || packet.payload.tool_name !== "synthesis.messages.send" || !keys(body, ["request_id", "destination", "text", "route"])) throw Error("payload contract");
-    if (!keys(route, ["account_id", "service", "chat_id", "participant_id", "database_account_id", "database"]) || route.service !== "iMessage") throw Error("explicit route required");
+    if (!keys(route, ["account_id", "service", "chat_id", "participant_id"]) || route.service !== "iMessage") throw Error("explicit route required");
     if (typeof body.text !== "string" || !body.text.trim() || body.text.length > 65536 || body.text.indexOf("\u0000") !== -1) throw Error("text bound");
     for (const key of Object.keys(route)) if (typeof route[key] !== "string" || !route[key] || route[key].length > 4096) throw Error("route bound");
     if (typeof body.destination !== "string" || !/^(\+[1-9][0-9]{6,14}|[^\s@]+@[^\s@]+\.[^\s@]+)$/.test(body.destination)) throw Error("recipient contract");

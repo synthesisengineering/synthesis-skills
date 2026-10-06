@@ -1,6 +1,6 @@
-# Coverage map: slack sync 3.14.0 to 4.0.0
+# Coverage map: slack sync 3.14.0 to 4.0.0, and the M3 script pass
 
-Every part of the 3.14.0 SKILL.md and where it lives now. Nothing was removed.
+Read when checking where a rule of the 3.14.0 text lives now (ruling D8). Every part of the 3.14.0 SKILL.md and where it lives now. The prose restructure removed nothing; the M3 script pass below retired the acquisition, token and retrofit text, verbatim in [preserved.md](preserved.md), with the reason for each.
 
 | 3.14.0 section | Now |
 |---|---|
@@ -9,38 +9,67 @@ Every part of the 3.14.0 SKILL.md and where it lives now. Nothing was removed.
 | Title and first paragraph | SKILL.md (verbatim) |
 | Second and third paragraphs (protocol versus config; pointers to version history, formats and templates) | references/configuration.md, "Protocol and config" (verbatim apart from the pointer line's link paths); the pointers are also SKILL.md Contents entries |
 | Configuration (YAML with schema comments) | references/configuration.md (verbatim) |
-| Multi-workspace registry (v3.11.0), path resolution summary, ADR-014 paragraph | references/configuration.md (verbatim); the `scripts/slack_workspaces.py doctor` pre-sync check is also named in SKILL.md under Sync Protocol |
+| Multi-workspace registry (v3.11.0), path resolution summary, ADR-014 paragraph | references/configuration.md (verbatim) until M3, when the registry paragraph was restated for the workspace map in the synthesis config (no tokens; `slack_workspaces.py` without `doctor`); old paragraph in preserved.md. Path summary and ADR-014 unchanged |
 | Prerequisites | references/configuration.md (verbatim) |
 | ⛔ NEVER Use Slack Search API for Lookups: first paragraph and "The only valid uses" | SKILL.md (verbatim) and references/lookups-and-absence.md (verbatim); binding rule 1 |
 | The rest of that section: Slack-search failure paragraph, The question-shape trigger, A zero-result search is NEVER evidence of absence, Backfills and archive imports | references/lookups-and-absence.md (verbatim apart from three link paths); binding rules 1, 2 and 11 |
-| Sync Protocol, Steps 0 to 5 and Draft Message Format (MANDATORY) | references/sync-protocol.md (verbatim apart from four link paths). SKILL.md keeps the same step headings, the protocol's opening sentence and a one-line outline of each step carrying its exact command; binding rules 3 to 7 and 10 distill the steps |
-| Transcript Files and Permalinks | references/sync-protocol.md (verbatim apart from one link path); binding rule 9 |
-| Provenance Discipline and its five subsections | references/provenance-and-errors.md (verbatim); SKILL.md keeps the heading with a one-line summary; binding rule 8 |
+| Sync Protocol, Steps 0 to 5 and Draft Message Format (MANDATORY) | references/sync-protocol.md (verbatim apart from four link paths; in M3 the two acquisition paragraphs were replaced by the Step 1 read rules, Source D and the Step 4 denominator and Step 5 never-sends bullets were added, and the `synthesis exec-public` and `--acquisition-evidence` commands were restated; old lines in preserved.md). SKILL.md keeps the same step headings, the protocol's opening sentence and a one-line outline of each step carrying its exact command; binding rules 3 to 7 and 10 distill the steps |
+| Transcript Files and Permalinks | references/sync-protocol.md (verbatim apart from one link path; the retrofit bullet retired in M3); binding rule 9 |
+| Provenance Discipline and its five subsections | references/provenance-and-errors.md (verbatim; in M3 the Automated backstop paragraph, about an old private Stop hook, was restated for v5's turn-end reply check); SKILL.md keeps the heading with a one-line summary; binding rule 8 |
 | Date Verification | references/provenance-and-errors.md (verbatim); binding rule 12 |
 | Following Continuing Conversations | references/lookups-and-absence.md (verbatim) |
 | Error Handling | references/provenance-and-errors.md (verbatim) |
 | When This Skill Runs | SKILL.md (verbatim) |
 
-## Text other tests read from SKILL.md
+## Text other tests read
 
-These tests read this SKILL.md, so the text they look for stays in it:
-
-- `skills/synthesis-daily-rituals/scripts/test_skill_documents.py`: the headings "## ⛔ NEVER Use Slack Search API for Lookups", "### Step 0: Preflight", "### Step 2: Re-read ALL active threads", "#### Draft Message Format (MANDATORY)" and "## Provenance Discipline"; the phrases "A zero-result search is NEVER evidence of absence", `WINDOW_OLDEST`, `RESOLVED_CONVERSATION_ID`, `sync_watermark.py advance`, "own outbound", "Always record the TS" and "never invent a domain"; and the name of every file in references/ and templates/. Its moved-block checks read version-history.md and transcript-formats.md, whose headings are unchanged.
-- `skills/synthesis-daily-rituals/scripts/test_sync_watermark.py`: `sync_watermark.py window`, `sync_watermark.py advance`, `WINDOW_OLDEST`, "own outbound", "unanswered", "status --since run", "preflight", "banned", `dm_id`, "### Step 0: Preflight" and "resolved-target list"; and the absence of `LAST_SYNC_TIMESTAMP`, "For each channel in the config" and "For each DM channel in the config".
-- `scripts/test_preflight.py`: "scripts/preflight.py --config" and "census", and the absence of "produced by hand".
+Before M3, three tests read this skill's prose: synthesis-daily-rituals' `test_skill_documents.py` and `test_sync_watermark.py`, and this skill's `scripts/test_preflight.py`. The daily-rituals helper removed or rewrote its two in the same milestone. This skill's preflight test moved to `tests/test_slack_preflight.py`; it still requires "scripts/preflight.py --config" and "census" (now read from SKILL.md and references/sync-protocol.md together), the absence of "produced by hand", and that the daily-rituals skill's Markdown names `preflight.py` and "never a stored copy".
 
 ## Existing reference files and templates
 
 - version-history.md and transcript-formats.md are over 150 lines, so each gained a short contents list under its title.
-- version-history.md gained a v4.0.0 entry, newest first, as its own convention requires, and two broken template links were corrected (see below); nothing else in it changed.
-- transcript-formats.md: one pointer was corrected (see below); nothing else changed.
-- cross-workspace-visibility.md, slack-token-guide.md, templates/draft-block.md and templates/sent-marker.md are unchanged.
+- version-history.md gained a v4.0.0 entry, newest first, as its own convention requires, and two broken template links were corrected (see below). In M3 the v4.0.0 entry gained a paragraph on the script verdicts.
+- transcript-formats.md: one pointer was corrected (see below). In M3 its "Deterministic acquisition output" section and the retrofit section were retired (verbatim in [preserved.md](preserved.md)); a short "Older daily plans" note replaces the latter.
+- cross-workspace-visibility.md: in M3 its registry and token lines were restated for the workspace map in the synthesis config (old lines in preserved.md); the doctrine is unchanged.
+- slack-token-guide.md: retired whole in M3 with the token machinery it described (verbatim in preserved.md).
+- templates/draft-block.md and templates/sent-marker.md are unchanged.
 
-## Scripts and tests
+## Scripts in v5 (M3)
 
-Every script and test (`thread_checker.py`, `retrofit_permalinks.py`, `scripts/*.py`) is unchanged, and every documented command, flag and path is kept exactly as written, in SKILL.md, references/sync-protocol.md or references/configuration.md. `scripts/test_preflight.py::test_preflight_is_in_the_shared_ci_group` failed before this change and still fails: it reads `.github/workflows/validate.yml`, which the v5 branch replaced with `ci.yml`.
+Verdicts from the v5 code evaluation (tool scripts, slack sync). Line counts are `wc -l`.
+
+| Old script (lines) | Verdict | Now (lines) |
+|---|---|---|
+| `thread_checker.py` (583) | SLIM: keep the checklist half | `scripts/thread_checker.py` (196): every thread parent and every unsent draft's target; a draft's target is now read from its own section only (reading 20 lines past the next heading took the following draft's target) |
+| `scripts/preflight.py` (173) | KEEP, "drop the `--json` set it emits for the gate" | `scripts/preflight.py` (251). `--json`/`--out` kept: their consumer is not the cut acquisition gate but the watermark status (`sync_watermark.py status --targets-from`), which the daily-rituals slim keeps, and whose file must be derived this run (2026-09-01). PyYAML replaced by a standard-library block-YAML reader (or JSON), so it runs on Apple's Python 3.9 |
+| `scripts/slack_workspaces.py` (427) | SLIM: the map and the visibility rule | `scripts/slack_workspaces.py` (91), reading `slack_workspaces` from the synthesis config; `init`, `list`, `doctor`, `readable` and tokens gone |
+| `scripts/acquire.py` (585), `scripts/connector_replay.py` (698) | CUT: served the acquisition gate | Read rules in sync-protocol.md |
+| `scripts/slack_read.py` (280) | CUT: never configured | The Slack connector |
+| `retrofit_permalinks.py` (294) | CUT: job finished | — |
+| Tests (1,403 lines in `scripts/`) | Kept where they test kept code | `tests/test_slack_preflight.py`, `tests/test_slack_thread_checker.py`, `tests/test_slack_workspaces.py`, `tests/test_slack_sync_protocol.py`; `test_preflight_is_in_the_shared_ci_group` (read the retired `validate.yml`) removed |
+
+## Edge cases and where each is held
+
+| Scenario | Rule | Test |
+|---|---|---|
+| E01 whole thread re-read, no lower bound | sync-protocol.md Step 2 ("Never use the `oldest` parameter") | `test_slack_sync_protocol.py::test_e01_*` |
+| E02 replies to older threads found by search | Step 2 Source D | `test_e02_*` |
+| E03 DMs read by `D` id; `U` refused; missing `D` reported by name | preflight | `test_slack_preflight.py::test_e03_*` |
+| E04 quiet only after a positive control | Step 1 read rules; binding rule 13 | `test_e04_*` |
+| E05 repeated cursor or unclear end is incomplete | Step 1 read rules | `test_e05_*` |
+| E06 detailed reads | Step 1 read rules | `test_e06_*` |
+| E07 every declared target re-read from its last read moment | Step 1 ("Every declared target is read every sync") | `test_e07_*` |
+| E08 a message from another channel is not filed under the requested one | Step 1 read rules | `test_e08_*` |
+| E09 a saved connector read advances the watermark, no token or receipt | Step 1 read rules; Step 4; binding rule 6 | `test_e09_*` |
+| E10 an unsent draft's target thread is on the re-read list | thread checker | `test_slack_thread_checker.py::test_e10_*` |
+| E11 Slack Connect messages saved like any other | Step 1 read rules | `test_e11_*` |
+| E12 isolated mode reads no other workspace | cross-workspace-visibility.md; `slack_workspaces.py` | `test_slack_workspaces.py::test_e12_*` |
+| E13 a sync calls no send or draft tool | Step 5; binding rule 14 | `test_e13_*` |
+| E14 the report names its denominator and every unread target | Step 4; binding rule 13 | `test_e14_*` |
 
 ## Lines the coverage check reports, and why
+
+Since M3 the check reports two lines, deliberately: references/version-history.md, "Aggregation conventions", and references/transcript-formats.md, "Channel file", the example channel file names. The 3.14.0 lines named channels of a client workspace; this is a public repository (requirement R7.4), so the examples are now generic (`team-general.md`, `eng-pull-requests.md`) and the old lines are not quoted anywhere in the skill. They are readable with `git show origin/main:skills/synthesis-slack-sync/references/version-history.md` and `.../transcript-formats.md`.
 
 Thirteen lines are not carried over verbatim; `v5-skill-coverage-check.py` reported them until this block quoted them.
 
@@ -66,9 +95,9 @@ message takes. The binding rules are summarized in [SKILL.md](../SKILL.md)
 - [`templates/sent-marker.md`](templates/sent-marker.md) — sent-state marker template (schema v1)
 ````
 
-## The 3.14.0 frontmatter
+## Frontmatter before v5 (verbatim)
 
-Kept whole, so the old description and keys stay on record.
+The 3.14.0 frontmatter, kept whole so the old description and keys stay on record.
 
 ```yaml
 ---

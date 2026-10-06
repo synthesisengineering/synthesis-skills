@@ -5,7 +5,7 @@ The origin measurement, how this skill relates to its neighbors, the changelog a
 Contents:
 - The origin measurement: why the other shapes fail
 - Relationship to other skills: autopilot, the adversarial review family, the handoff queue
-- Changelog 1.0.0 to 1.5.0
+- Changelog 1.0.0 to 2.0.0
 - Related
 
 The 1.8.0 SKILL.md still carried this version line under its title, though its frontmatter said 1.8.0:
@@ -46,6 +46,13 @@ the burden of structuring the response falls on the person, every time, for ever
 
 ## Changelog
 
+- **2.0.0 (2026-10-05)** — v5. The page template and the schema text moved to `assets/`,
+  and the generator produces byte-identical pages from them. `record_rulings.py` keeps its
+  spec-bound parsing and quotes what it received when it refuses; it no longer takes
+  `--provenance` or `--legacy-unbound` or records input digests. The generator no longer
+  checks input-file identity or retired specs, and `-o` writes a working copy. New
+  `carry_forward.py` carries every unanswered decision forward by its exact id. Tests moved
+  to `tests/`.
 - **1.5.0 (2026-09-20)** — Enforcement: the generator emits a provenance marker pinning the embedded spec; `record_rulings.py` refuses pastes with no filed `-spec.json`; the context doctor's `skill-outputs` check fails unmarked live packets as defects. After a session hand-authored two packets.
 - **1.4.0 (2026-09-14)** — Option labels must name consequences: READER findings for bare
   acknowledgements and for two labels that do not differ in a content word, fatal under

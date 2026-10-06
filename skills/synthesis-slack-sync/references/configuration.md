@@ -1,11 +1,11 @@
 # Slack sync: configuration, paths and prerequisites
 
-Read when setting up a project, or when a path, token or workspace is wrong.
+Read when setting up a project, or when a path or workspace is wrong.
 
 Contents:
 - Protocol and config: what the skill provides and what the per-project config provides
 - Configuration: `.agents/slack-sync.yaml` with schema comments
-- Multi-workspace registry (v3.11.0), path resolution summary (v3.0.0), private-repo discovery (ADR-014)
+- Multi-workspace map (v3.11.0; in the synthesis config since v4.0.0), path resolution summary (v3.0.0), private-repo discovery (ADR-014)
 - Prerequisites
 
 ## Protocol and config
@@ -67,20 +67,31 @@ group_dm_channels: []
 
 If the config file is missing, the skill should warn and ask the user to create one.
 
-## Multi-workspace registry (v3.11.0)
+## Multi-workspace map (v3.11.0; in the synthesis config since v4.0.0)
 
-A principal with several Slack workspaces declares them once per machine in
-`~/.synthesis/slack-workspaces.yaml` (seed with
-`scripts/slack_workspaces.py init`; tokens are `PLACEHOLDER` until provided,
-never literals). Before any sync, run
-`scripts/slack_workspaces.py doctor` from inside the session workspace: exit 0
-names the readable set, exit 1 names the workspace whose token is still
-missing. Visibility doctrine — unified (default focus plus purpose-bound
-cross-workspace reads) versus isolated (session workspace only, with
-machine-level enforcement) — lives in
-`references/cross-workspace-visibility.md`; token minting and installation in
-`references/slack-token-guide.md`. Syncs read only the `readable` set the
-registry reports for the session workspace.
+A principal with several Slack workspaces declares them once per machine in the
+synthesis config (`~/.synthesis/v5/config.json`, or `$SYNTHESIS_HOME/config.json`):
+
+```json
+"slack_workspaces": {
+  "mode": "unified",
+  "workspaces": {
+    "example-workspace": {"domain": "example-workspace.slack.com"},
+    "personal": {"domain": "example-personal.slack.com"}
+  }
+}
+```
+
+The keys are the session-workspace names (the `~/workspaces/<name>` folders).
+Before any sync, run `python3 <synthesis-slack-sync-root>/scripts/slack_workspaces.py`
+from inside the session workspace (or with `--session-workspace <name>`): it prints
+the mode, each workspace's domain and the readable set; exit 2 means the map is
+missing or malformed or the session workspace is not in it. Visibility doctrine —
+unified (default focus plus purpose-bound cross-workspace reads) versus isolated
+(session workspace only, with machine-level enforcement) — lives in
+`references/cross-workspace-visibility.md`. Syncs read only the readable set it
+reports, each through the Slack connector the session has for that workspace. No
+token is stored or needed: reads go through the harness's Slack connector.
 
 **Path resolution summary (v3.0.0):**
 - Channel transcripts: `{transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel-name>.md`

@@ -8,6 +8,7 @@ Contents:
 - Generate it and file it: the commands
 - What comes back: the paste
 - Record the rulings: the rulings file it becomes
+- Carry forward what is still open: `carry_forward.py`
 - Notes on writing good rows
 
 ## The situation
@@ -246,20 +247,8 @@ That writes `2026-09-14-dependency-sweep-q3-rulings.json`:
     "spec_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15"
   },
   "ruled_on": "2026-09-14",
-  "spec": {
-    "file": "2026-09-14-dependency-sweep-q3-spec.json",
-    "file_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15",
-    "canonical_sha256": "1083c7b8660aa75fadec429cb038ebd79f379098cba1160f35c806993404ec15"
-  },
-  "summary_sha256": "eb862170b00ae2f1b67b37f9d13dad7ee4147205ef4c35ebf3f4ae6c6dd05b07",
-  "provenance": {
-    "status": "unattributed-paste",
-    "authority_ref": null,
-    "principal": null,
-    "received_at": null,
-    "scope": null,
-    "source_ref": null
-  },
+  "spec_file": "2026-09-14-dependency-sweep-q3-spec.json",
+  "storage_blocked": false,
   "authorization": {
     "granted": false,
     "authentication": "unverified",
@@ -273,15 +262,33 @@ The final binding line belongs to the copy output; include it with the paste. Ch
 meaning or mismatched rows refuse before filing. Identical imports are idempotent;
 revised specs, pages and responses receive separate names while earlier bytes survive.
 
-The unknown provenance and `authorization.granted: false` fields are deliberate: this
+The `authorization.granted: false` and `authentication: unverified` fields are deliberate: this
 synthetic record does not authenticate a principal. A real action owner must verify the
 trusted user instruction and exact operation. The format does not revoke grants already
-supplied by the user. Historical unbound summaries remain readable through
-`--legacy-unbound --stdout` without rewriting their records.
+supplied by the user.
 
-`scripts/test_build_packet.py` exercises this exact example through the recorder CLI.
+`tests/test_packet_rulings.py` exercises this exact example through the recorder CLI.
 Retain all versions in the owning project so another session can inspect the source,
 response and authority separately.
+
+## Carry forward what is still open
+
+Suppose the principal had decided D-01 and left D-02 undecided. Before building a follow-up
+packet, carry the open row forward by its id:
+
+```bash
+python3 scripts/carry_forward.py PROJECT/resources/artifacts/2026-09-14-dependency-sweep-q3-spec.json \
+    --successor dep-sweep-continued.json
+```
+
+It counts the rulings filed beside the spec that bind to it, writes a spec holding only D-02
+(id, options and context unchanged, `carried_from` naming the original spec) and prints
+`wrote dep-sweep-continued.json: carried 1 of 2 decisions forward by exact id: D-02 (fewer
+than five: build with --allow-small or ask in chat)`. In this example both rows were
+decided, so it writes nothing and prints `all 2 decisions have recorded rulings; nothing to
+carry forward`. Build the successor with `build_packet.py --file-into` like any packet. A
+meeting note or chat message that calls D-02 settled does not close it; only a recorded
+ruling does.
 
 ## Notes on writing good rows
 

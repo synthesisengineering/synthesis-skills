@@ -1,0 +1,98 @@
+Decision-packet spec (JSON)
+===========================
+
+{
+  "title":       "Code review — content pipeline",         REQUIRED, one line
+  "subtitle":    "12 findings from an adversarial pass",    optional
+  "intro":       "Markdown-free prose shown under the title.",  optional
+  "scope":       "Exact target, payload and limits of these choices.", optional
+  "storage_key": "pipeline-review-2026-09", optional; defaults to a slug of the title.
+                                         Saved state also binds the complete spec
+                                         digest, so changed meaning starts empty.
+  "summary_intro": "Paste this back to the agent.",  optional
+  "audience":    "One sentence: who reads this and what they already know.",
+                                          optional in the format, REQUIRED by the
+                                          reader contract in SKILL.md - it is the
+                                          audience you must write every row for.
+  "carried_from": "2026-09-14-dependency-sweep-q3-spec.json",  optional; written by
+                                          carry_forward.py --successor: the spec whose
+                                          unanswered rows this one carries forward.
+  "glossary": [                           optional - one-clause meanings for every
+    {"term": "holdout",                   term of art any row still needs after
+     "meaning": "test material set aside  plain-language rewriting. Rendered as a
+      in advance so a rule is judged on   collapsible band under the intro.
+      text it was not tuned on"}
+  ],
+
+  Rows may additionally declare exact material for review:
+  "revision": "draft-3",                  REQUIRED with review_assets
+  "delivery": {"format": "Plain text", "destinations": ["reader@example.test"],
+               "attachments": ["diagram"]},
+  "review_assets": [
+    {"id": "draft", "title": "Complete draft", "kind": "correspondence",
+     "content": {"text": "Full exact body", "sha256": "SHA-256 of UTF-8 body"}}
+  ]
+  These fields belong to each ROW, not the packet root. They bind every saved
+  choice and returned ruling. See references/review-assets.md for the complete
+  closed text/binary/unresolved union, safe Markdown grammar and byte ceilings.
+  Unavailable assets are visible but cannot carry a selected ruling. External
+  references are never fetched, and records do not authorize any action.
+
+  "options": [                            REQUIRED — the default choice set for every row
+    {"value": "fix-now",  "label": "Fix it before the next release",
+     "tone": "danger", "consequence": "The release waits for the fix."},
+    {"value": "fix-later","label": "Ship now, fix it next sprint", "tone": "warn"},
+    {"value": "waive",    "label": "Leave it as it is",            "tone": "muted"}
+  ],
+  tone ∈ {danger, warn, ok, muted, info} — colours the selected button only.
+  value: a non-empty string, unique within its set — it keys the button's
+         pressed state and the summary's label. A set offers at least two.
+  label: what pressing the button DOES, in the principal's terms, on one line.
+         A bare acknowledgement (Yes, No, OK, Cancel, Accept, Decline, Approve,
+         Reject, Do it, Go, Stop, "Yes, do that", "No thanks", or any of these
+         padded with a stopword: "Accept it", "Do that") or two labels that
+         share every content word raise READER findings; --strict-reader
+         refuses them.
+  consequence: optional — shown under the label on the button itself. Without
+         it, the row's impact.accept sits under the recommended option and
+         impact.decline under every other option.
+
+  "filters": [                            optional; name these from the CONTENT
+    {"id": "needs-fix", "label": "Needs a fix", "tags": ["correctness"]},
+    {"id": "disputed",  "label": "We disagreed", "disagreement": true},
+    {"id": "undecided", "label": "Not yet decided", "undecided": true}
+  ],
+  A filter matches if ANY of its declared criteria match. "undecided" is computed live
+  from saved state; "disagreement" matches rows carrying a disagreement block.
+
+  "rows": [                               REQUIRED
+    {
+      "id":    "F-01",                    REQUIRED — stable; it keys localStorage
+      "label": "Unbounded retry loop in the publish worker",   REQUIRED, one line
+      "context":  "What the reader needs to judge it.",        optional
+      "reasoning":"Why the agent recommends what it does.",    optional
+      "impact": {                          optional in the format, REQUIRED by the
+        "accept": "What actually happens   reader contract: the consequences of
+                   if they take your       agreeing and of not agreeing, stated in
+                   recommendation.",       outcomes the principal cares about -
+        "decline": "What happens if they   never in internal treatment vocabulary.
+                   do not."
+      },
+      "recommendation": "fix-now",        optional but STRONGLY expected — MARKS
+                                          a button (never pre-selects it: a packet
+                                          that opens decided records nobody's
+                                          judgment). No recommendation on any row
+                                          means the packet is a questionnaire; see the
+                                          anti-trigger in SKILL.md.
+      "severity": "high",                 optional ∈ {high, medium, low, none}
+                                          — drives the coloured rail
+      "tags":  ["correctness", "worker"], optional — drive filters and read as chips
+      "links": [{"label": "worker.py:214", "href": "https://..."}],   optional
+      "disagreement": {                   optional — surface it, never resolve it first
+        "a": {"who": "Reviewer A", "view": "Ship it; the retry is bounded upstream."},
+        "b": {"who": "Reviewer B", "view": "Upstream bound was removed in v0.91."}
+      },
+      "options": [...]                    optional per-row override of the choice set
+    }
+  ]
+}

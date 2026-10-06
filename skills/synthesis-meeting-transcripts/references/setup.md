@@ -57,6 +57,11 @@ meeting_patterns:
 # {{name}} is substituted with the user's natural-language meeting name.
 generic_pattern: 'name contains "{{name}}" and name contains "Notes by Gemini"'
 
+# OPTIONAL (workspace-mcp fetch) — the title of the tab holding the verbatim transcript,
+# used only when exactly one tab in a complete tab list carries it. Default: Transcript.
+# A document's own tab ID always wins: fetch-meeting.py --transcript-tab-id <id>.
+transcript_tab_title: "Transcript"
+
 # OPTIONAL — Filename date format for saved transcripts. Default: YYYY-MM-DD
 # Produces: {transcripts_repo}/{transcripts_path}/meetings/{meeting-name-slug}-{date}.md
 filename_date_format: "YYYY-MM-DD"

@@ -35,11 +35,9 @@ Do not infer that a symlink points somewhere safe from its visible prefix.
   from command success alone.
 - Preserve partial-download diagnostics, but do not write a false installed
   record.
-- A registry-timeout recovery must use only catalog-pinned cached GGUF layers,
-  verify their full SHA-256 digests and exact sizes, and create same-volume
-  temporary hard links. `--recover-cached` must skip acquisition rather than
-  retrying the failed registry request. Never accept a filename or a completed
-  progress bar as content verification.
+- A failed pull writes nothing. Never import a partial or unpinned download by
+  hand, and never accept a filename or a completed progress bar as content
+  verification.
 - Do not delete a retained registry blob from the runtime-owned store. Report
   it as possible reclaimable cache; cleanup requires a separate, bounded
   reference audit and explicit authorization.
@@ -51,8 +49,9 @@ and removes absolute path prefixes before inventory output.
 
 ## Local API
 
-Generation and metadata calls use loopback HTTP only. The executable has no
-option to send prompts to a remote host. A future remote adapter is a separate
+Metadata calls use loopback HTTP only, and the script sends no prompts at all;
+the documented benchmark calls the same loopback API. Nothing has an option to
+send prompts to a remote host. A future remote adapter is a separate
 capability and requires its own disclosure and credential review.
 
 HTTP error bodies are preserved only up to a fixed bound so architecture and

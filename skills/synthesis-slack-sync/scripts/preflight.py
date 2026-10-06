@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Slack sync preflight: resolve every read target from the sync config, fail closed.
 
+Standard library only: the config is read with a small block-style YAML subset parser
+(or as JSON when the file ends in .json).
+
 A sync config carries two id-like fields per DM entry: ``id`` (the user id,
 ``U…``) and ``dm_id`` (the conversation id, ``D…``). Channels and group DMs
 use ``id`` for the conversation, so a reader that reaches for ``id``
@@ -18,8 +21,9 @@ Resolution therefore belongs in one place that fails closed. This script:
   derivation shows up as a wrong shape instead of quiet empties;
 * validates the id prefix per class — ``C``/``G`` for channels and group
   DMs, ``D`` for DMs; a ``U``-prefixed id in a read set is never a target;
-* emits the declared set the daily-rituals watermark gate consumes
-  (``--json`` / ``--out``: ``{"slack": ["C…", "D…"]}``), derived at sync time
+* emits the declared set the daily-rituals watermark status consumes
+  (``--json`` / ``--out``: ``{"slack": ["C…", "D…"]}``, the file
+  ``sync_watermark.py status --targets-from`` reads), derived at sync time
   and never hand-maintained;
 * refuses an empty resolved set or a malformed config (exit 2), and exits 1
   when any declared target is unresolved so the sweep report must name it.
@@ -61,17 +65,91 @@ class Target:
         return self.read_id is not None
 
 
+def _scalar(text: str):
+    """One YAML scalar: quoted or bare text, true/false, null, or a flow list of scalars."""
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] == '"':
+        try:
+            return json.loads(text)  # YAML's double-quoted escapes (\u2014, \n, \") are JSON's
+        except ValueError as exc:
+            raise ConfigError(f"unsupported escape in {text[:40]!r}") from exc
+    if len(text) >= 2 and text[0] == text[-1] == "'":
+        return text[1:-1].replace("''", "'")
+    if text.startswith("[") and text.endswith("]"):
+        return [_scalar(part) for part in text[1:-1].split(",") if part.strip()]
+    if text.startswith(("{", "&", "*", "|", ">")):
+        raise ConfigError(f"unsupported YAML form {text[:20]!r}: write block-style lists of `key: value` entries")
+    return {"true": True, "false": False, "null": None, "~": None, "": None}.get(text.lower(), text)
+
+
+def _uncomment(line: str) -> str:
+    quote = None
+    for i, char in enumerate(line):
+        if char in "'\"" and quote in (None, char):
+            quote = None if quote else char
+        elif char == "#" and quote is None and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
+def parse_yaml(text: str) -> dict:
+    """The block-style YAML subset a sync config uses, with the standard library only: top-level
+    `key: value` scalars, and `key:` followed by `- field: value` entries or nested `field: value`."""
+    data: dict = {}
+    key = entry = None
+    for number, raw in enumerate(text.splitlines(), 1):
+        line = _uncomment(raw).rstrip()
+        if not line.strip():
+            continue
+        if "\t" in line[:len(line) - len(line.lstrip())]:
+            raise ConfigError(f"line {number}: tabs are not valid YAML indentation")
+        body = line.strip()
+        if not line[0].isspace():
+            name, colon, value = body.partition(":")
+            if not colon or not name.strip():
+                raise ConfigError(f"line {number}: expected `key: value`")
+            key, entry = name.strip(), None
+            data[key] = _scalar(value) if value.strip() else None
+            continue
+        if key is None:
+            raise ConfigError(f"line {number}: indented line before any key")
+        if body == "-" or body.startswith("- "):
+            if data[key] is None:
+                data[key] = []
+            if not isinstance(data[key], list):
+                raise ConfigError(f"line {number}: {key} mixes a list with other values")
+            body = body[1:].strip()
+            if ":" not in body or body.startswith(("'", '"')):
+                data[key].append(_scalar(body))  # a bare scalar entry; resolve_targets refuses it
+                entry = None
+                continue
+            entry = {}
+            data[key].append(entry)
+        elif entry is None:
+            if data[key] is None:
+                data[key] = {}
+            if not isinstance(data[key], dict):
+                raise ConfigError(f"line {number}: unexpected indented line under {key}")
+            entry = data[key]
+        name, colon, value = body.partition(":")
+        if not colon or not name.strip():
+            raise ConfigError(f"line {number}: expected `field: value`")
+        entry[name.strip()] = _scalar(value)
+    return data
+
+
 def _load_config(path: Path) -> dict:
     try:
-        import yaml  # PyYAML: the same dependency the repository's tests use
-    except ImportError as exc:  # pragma: no cover - environment-specific
-        raise ConfigError("PyYAML is required to read the sync config") from exc
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
+    if path.suffix == ".json":
+        try:
+            payload = json.loads(text)
+        except ValueError as exc:
+            raise ConfigError(f"{path} is not valid JSON: {exc}") from exc
+    else:
+        payload = parse_yaml(text)
     if not isinstance(payload, dict):
         raise ConfigError(f"{path} must be a mapping at the top level")
     return payload
@@ -135,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="path to .agents/slack-sync.yaml")
     parser.add_argument("--json", action="store_true", help="print the declared set as JSON instead of the table")
-    parser.add_argument("--out", help="also write the declared set JSON to this file (the gate's --targets-from)")
+    parser.add_argument("--out", help="also write the declared set JSON to this file (sync_watermark.py status --targets-from)")
     args = parser.parse_args(argv)
 
     try:

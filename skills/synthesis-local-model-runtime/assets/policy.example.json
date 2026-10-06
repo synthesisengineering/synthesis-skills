@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "required_families": ["qwen", "glm", "kimi", "deepseek"],
+  "excluded_families": [],
   "excluded_organizations": [],
   "excluded_base_families": [],
   "excluded_artifacts": [],

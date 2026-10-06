@@ -50,11 +50,14 @@ Wire this into:
   - Pre-commit hook (optional)
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import os
 import json
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -69,7 +72,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "0.14.0"
+SCRIPT_VERSION = "1.0.0"
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -185,6 +188,35 @@ def content_complete(content, min_markers=5, min_speakers=10):
     )
 
 
+MAX_FILE_BYTES = 16 * 1024 * 1024
+
+
+def read_exact(path: Path) -> bytes:
+    """The exact bytes of one regular file, opened without following a symlink and checked
+    unchanged across the read, so a stale neighbor or an alias cannot stand in for it."""
+    path = Path(os.path.abspath(path))
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES:
+            raise ValueError(f"not a bounded regular file: {path.name}")
+        chunks, size = [], 0
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > MAX_FILE_BYTES:
+                raise ValueError(f"file grew past the bound while read: {path.name}")
+        after = os.fstat(fd)
+        if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns) or size != before.st_size:
+            raise ValueError(f"file changed while read: {path.name}")
+    finally:
+        os.close(fd)
+    return b"".join(chunks)
+
+
 def audit_files(
     paths,
     min_markers=5,
@@ -220,18 +252,8 @@ def audit_files(
             continue
 
         if strict:
-            # Reuse the public acquisition reader: exact bytes, bounded regular
-            # files, no aliases or concurrent identity changes.
-            from importlib.util import spec_from_file_location, module_from_spec
-
-            helper = (
-                Path(__file__).resolve().parents[1]
-                / "synthesis-daily-rituals/scripts/acquisition_evidence.py"
-            )
-            spec = spec_from_file_location("_transcript_acquisition_read", helper)
-            module = module_from_spec(spec)
-            spec.loader.exec_module(module)
-            payload = module.read_bytes(path)
+            # Exact bytes of one regular file, no alias, unchanged while read.
+            payload = read_exact(path)
             content = payload.decode("utf-8")
             if expected_hashes is not None and hashlib.sha256(
                 payload
@@ -358,16 +380,7 @@ def main(argv=None) -> int:
             paths = args.file
             if args.saved_manifest:
                 manifest = Path(args.saved_manifest)
-                from importlib.util import spec_from_file_location, module_from_spec
-
-                helper = (
-                    Path(__file__).resolve().parents[1]
-                    / "synthesis-daily-rituals/scripts/acquisition_evidence.py"
-                )
-                spec = spec_from_file_location("_saved_manifest_reader", helper)
-                module = module_from_spec(spec)
-                spec.loader.exec_module(module)
-                entries = module.read_json(manifest)
+                entries = json.loads(read_exact(manifest))
                 if not isinstance(entries, list) or len(entries) > 10000:
                     raise ValueError("saved manifest must be a bounded list")
                 paths = [e["path"] for e in entries]

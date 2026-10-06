@@ -34,7 +34,7 @@ TIER="${WORKSPACE_MCP_TOOL_TIER:-complete}"
 CREDS_DIR="${GOOGLE_MCP_CREDENTIALS_DIR:-$HOME/.google_workspace_mcp/credentials}"
 
 install_macos() {
-  local label="com.rajivpant.workspace-mcp"
+  local label="com.synthesis.workspace-mcp"
   local plist="$HOME/Library/LaunchAgents/$label.plist"
   local log_dir="$HOME/Library/Logs/workspace-mcp"
 

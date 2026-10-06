@@ -4,7 +4,7 @@
 set -euo pipefail
 
 uninstall_macos() {
-  local label="com.rajivpant.workspace-mcp"
+  local label="com.synthesis.workspace-mcp"
   local plist="$HOME/Library/LaunchAgents/$label.plist"
 
   if [ ! -f "$plist" ]; then

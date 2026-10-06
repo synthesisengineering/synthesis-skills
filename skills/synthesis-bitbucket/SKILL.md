@@ -26,8 +26,8 @@ Rules 1 to 3 are the 1.2.2 safety rules, numbered as before.
 1. **Reads are free; writes are deliberate.** Never `approve`, `merge`, `decline`, or `create` without the operator's explicit intent for that specific PR.
 2. **One command surface.** Do not mix `bkt`, raw `curl`, and git-host web UIs in one workflow — state drifts and auth surfaces multiply.
 3. **Repo-level skills do not travel.** A skill checked into one repo is not loaded when the session works elsewhere. Install this skill (and your team's companion) at the personal/agent level so the command surface is present in every session.
-4. **Bind every repository call with one literal `--repo <slug>`** (`api` takes its canonical literal path instead). Never use a mutable active context as repository evidence, even for reads or loops.
-5. **A parsed binding identifies a target only.** It grants no send, review, merge or publication authority.
+4. **Every repository-acting `bkt` command names exactly one literal `--repo <slug>`** (`api` takes its canonical literal path instead). A shared default context never selects the repository, even for reads or loops: the next session can change it.
+5. **Naming the repository identifies a target only.** It grants no send, review, merge or publication authority.
 6. **`bkt pipeline run` can deploy.** Verify its effects and the applicable deployment authorization first.
 7. **Pin a reviewed `bkt` version** and re-review the diff before upgrading: it is a community tool with write access to your repos.
 8. **Git uses SSH keys; `bkt` uses the token.** A REST token does not necessarily authenticate git HTTPS, and the context host must match `bkt auth status` exactly.
@@ -36,7 +36,8 @@ Rules 1 to 3 are the 1.2.2 safety rules, numbered as before.
 
 - [references/setup.md](references/setup.md): install and pin, authenticate (OAuth or a scoped API token), configure a connection context, and the context-host gotcha. Read it when `bkt` is not yet installed or authenticated, or when a call fails with "host not found".
 - [references/pr-queue.md](references/pr-queue.md): how `scripts/pr_queue.py` builds the daily-rituals PR queue and when it reports `unscanned`. Read it when working on or interpreting the PR-queue scan.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.2 text now lives.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.2 text now lives, and the script changes of milestone M3.
+- [references/preserved.md](references/preserved.md): the retired binding-validator text, verbatim. Read it only to review what was cut.
 - Explicit repository binding, Command catalog, the `gh` → `bkt` map, When NOT to apply: below.
 
 ## Explicit repository binding
@@ -55,12 +56,11 @@ use its canonical literal `/repositories/<workspace>/<repo>/...` or Data Center
 `/rest/api/1.0/projects/<key>/repos/<repo>/...` path. An unresolved, redirected or
 traversing path is not a binding. Never add an unsupported flag to manufacture one.
 
-`scripts/repository_binding.py` validates the declared CLI grammar without calling
-the provider or reading global context. The private shared pre-tool owner calls
-this verified public module through its Codex and Claude pre-tool adapters; unknown syntax refuses with
-a diagnostic. A client without an enrolled native pre-tool adapter has skill guidance, not demonstrated mechanical enforcement. Verify adapter capability and native acceptance before claiming parity. The parser result identifies a target only: it grants no send,
-review, merge or publication authority. Refresh its grammar from the reviewed
-CLI's own help when adopting another CLI version, and retain refusal controls.
+This is a rule the agent applies, not a mechanical check: before running a
+repository-acting command, read it back and confirm it names exactly one `--repo`
+(or one canonical `api` path). Naming the repository identifies a target only:
+it grants no send, review, merge or publication authority. When adopting another
+`bkt` version, recheck the documented flags against its own `--help`.
 
 ## Command catalog
 

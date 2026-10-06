@@ -16,23 +16,30 @@ If you use Anthropic's hosted Gmail + Drive connectors and a single Google accou
 | `uninstall-autostart.sh` | Removes the auto-start configuration |
 | `mcp_client.py` | Small JSON-RPC client used by `fetch-meeting.py` to call MCP tools over HTTP |
 
-## Verified acquisition and one-off lookup
+## Fetching one meeting, and checking a window
 
-For complete declared account/folder/window acquisition, use the verified
-Python health/inventory/fetch route in [declared acquisition entries](../../synthesis-daily-rituals/references/acquisition-entry.md).
-It explicitly selects the Google REST adapter; no service or token fallback
-occurs. The documented workspace-mcp plain-text response does not supply stable
-tab identity. A title lookup therefore cannot certify full-window coverage.
+`fetch-meeting.py` uses only the Python standard library, so any `python3` runs it
+(Apple's `/usr/bin/python3` included). From a project with
+`.agents/meeting-transcripts.yaml`:
 
-The separate one-off lookup still uses the local MCP server:
-
-```text
-synthesis exec-public synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py standup --date 2026-04-21
+```bash
+python3 <synthesis-meeting-transcripts-root>/optional-workspace-mcp/fetch-meeting.py standup --date 2026-04-21
+python3 <synthesis-meeting-transcripts-root>/optional-workspace-mcp/fetch-meeting.py --window 2026-10-01 2026-10-05
 ```
 
-This mode requires source-native structured tab evidence before a verified save.
-Service setup remains in the existing start/install owners and requires the
-owner's authorization; acquisition does not install a service.
+The first finds the one doc matching the meeting's pattern on that date, lists its
+tabs, picks the transcript by tab ID (or by a title exactly one tab carries), saves
+notes and verbatim transcript with the `**Source ID:**` and `**Transcript tab ID:**`
+headers, and runs `verify_transcripts.py` on the saved file; it prints the path and
+the verdict. A tool error, an unreadable or incomplete tab list, or two matching docs
+saves nothing and exits 1. A complete tab list with no transcript tab saves the notes
+with the no-source marker.
+
+The second lists every doc the declared patterns find in the window, saved or
+unsaved, and `advance_through`: the moment the meetings watermark may move to (the
+window end, or just before the first unsaved doc). Drive's listing carries no
+completeness flag, so a full page leaves `advance_through` empty, and the listing is
+what Drive returned, not proof that nothing else exists.
 
 ## When the MCP tools go missing
 
@@ -66,18 +73,19 @@ no heartbeat is indistinguishable from a guard that is working.
 
 ## Prerequisites
 
-- The verified runtime's selected interpreter contains httpx and PyYAML. Follow
-  the dependency setup in the acquisition reference; a temporary uv interpreter
-  is not the installed verified runtime.
-- The existing meeting-transcripts YAML has the exact account/archive settings.
-- MCP lookup additionally needs the declared local server and actual account
-  authentication. The direct adapter instead consumes one explicitly referenced
-  read token and the declared folder/tab contract; it never acquires a token.
+- `python3` (3.9 or later); no third-party packages.
+- The meeting-transcripts YAML has the account and archive settings
+  (references/setup.md).
+- The local workspace-mcp server is running and signed in to that account. The
+  service doctor reports supervisor and HTTP liveness with its 0/1/2 exit codes;
+  its `ACCOUNT: not checked` line is deliberate: a read as the declared account
+  (for example `python3 mcp_client.py list_calendars '{"user_google_email": "<account>"}'`)
+  shows which account answers.
 
-The service doctor reports supervisor/HTTP liveness and retains its 0/1/2 exit
-semantics. Its RECORDER UNKNOWN line is intentional. Actual declared account
-authentication is observed only by the Python health route, and neither health
-plane establishes complete source coverage.
+The service is installed under the launchd label `com.synthesis.workspace-mcp`
+(systemd: `workspace-mcp.service`). An install from an earlier release may carry a
+personal label; run `uninstall-autostart.sh` from that release, or `launchctl bootout`
+the old label and remove its plist, then run `./install-autostart.sh`.
 
 ## Why separate from the skill core
 

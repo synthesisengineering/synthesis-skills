@@ -20,6 +20,20 @@ absence claims and backfills to `lookups-and-absence.md`; provenance, dates and
 errors to `provenance-and-errors.md`; configuration to `configuration.md`. No
 rule changed; `coverage-map.md` maps every section.
 
+The same release then applied the v5 code verdicts (milestone M3). The
+acquisition gate is gone: `acquire.py`, `connector_replay.py`, `slack_read.py`
+and `thread_checker.acquire_channel` existed to give a Python reader receipts
+the watermark would accept, and on 2026-10-01 that requirement stopped every
+bookmark for a workspace that reads through connectors although each sync ran
+in full. The rules that code enforced (detailed reads, every page, no message
+filed under the wrong conversation, quiet only after a positive control, reply
+discovery by search, a coverage report that names its denominator) are protocol
+text in `sync-protocol.md`. A connector read, once saved, advances the
+watermark. The workspace registry kept its map and visibility mode, now in the
+synthesis config, and dropped tokens; `retrofit_permalinks.py` retired with its
+job done; `thread_checker.py` moved into `scripts/` and keeps its checklist;
+`preflight.py` reads its config with the standard library alone.
+
 ## v3.14.0 — Recorded connector acquisition
 
 v3.14.0 (2026-10-02): acquire complete conversation and thread coverage from
@@ -271,7 +285,7 @@ Per-channel-per-day solves both: each file is scoped to one channel's activity o
 
 ### Aggregation conventions
 
-- **Channels get one file each per day.** `mmc-product-growth-squad.md`, `tech-csa-pull-requests.md`, etc.
+- **Channels get one file each per day.** `team-general.md`, `eng-pull-requests.md`, etc.
 - **DMs are aggregated** into `_dms.md` per day. DMs are typically lower-volume; daily context across all people is more useful than per-person files.
 - **Group DMs are aggregated** into `_group-dms.md` per day. Same rationale.
 - **The `_`-prefix** on `_dms.md` and `_group-dms.md` sorts them to the top of the directory listing, visually signaling they are aggregators rather than channel files.

@@ -2,9 +2,11 @@
 """Extract candidate commitments from a saved meeting transcript.
 
 Step 4.7 (§5b): the verifier proves the transcript is faithful; nothing
-asked whether anything in it is owed. Rajiv's "Oh of course" to Paul
-Smurl's celebration of life sat eleven months in a filed transcript no
-one read for obligations. This scanner finds first-person commitment
+asked whether anything in it is owed. A principal's spoken "of course" to
+a friend's invitation to a memorial service sat eleven months in a filed
+transcript no one read for obligations, and the service was missed
+(lesson 2026-09-17: a coverage claim must name its denominator, instance
+3). This scanner finds first-person commitment
 shapes — I'll, I will, of course, let me, send me, I promise, by <date> —
 with their timestamps and speakers, and prints them as CANDIDATES. It
 never creates tasks, files, or calendar entries; the agent presents the
@@ -28,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_transcripts
 
-SCRIPT_VERSION = "0.14.0"
+SCRIPT_VERSION = "1.0.0"
 
 _TS_IN_BRACKET = re.compile(r"\[\s*(\d{1,2}:\d{2}(?::\d{2})?)")
 

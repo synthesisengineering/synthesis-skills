@@ -9,7 +9,7 @@ Contents:
 - Do not extract content from the Gemini email summary
 - Step 4: Save to local transcript archive (the header block)
 - Step 4.5: Mandatory verification with `verify_transcripts.py`, the no-source marker, file-name exclusions
-- Step 4.6: Verify source grade with `transcript_primary.py` before attribution
+- Step 4.6: Resolve attribution from the verbatim transcript
 - Step 4.7: Extract candidate commitments with `extract_commitments.py`
 - Step 4.8: Stamp confirmed commitments with their owner
 - Step 5: Update indices; Step 6: Cleanup and commit
@@ -48,7 +48,7 @@ Use the available Drive file-read tool to fetch the full content. Gemini notes d
 1. **Notes** — summary, next steps, paraphrased details with timestamps
 2. **Transcript** — word-for-word transcription with speaker attribution
 
-Unwrap every JSON-RPC/MCP tool-result envelope with the optional client's `call_tool_text` before reading text. An outer or nested tool error is unknown coverage. Select the transcript by the provider's stable tab ID through `document_tabs.select_tabs`, never by title, order, or a regular expression over flattened text. Missing tab inventory, incomplete tab inventory, missing content, absent declared tab, and empty returned tab have distinct reasons. Only a complete tab inventory establishes `transcript-tab-absent`; neither an error nor a flattened summary authorizes a no-source marker. Preserve every returned notes/transcript byte and the provider's tab IDs. Connector adapters must actually expose these capabilities; capability absence is a surfaced readiness gap.
+Unwrap every JSON-RPC/MCP tool-result envelope (the optional client's `mcp_client.call_tool_text` does this) before reading text. An outer or nested tool error is unknown coverage. Select the transcript by the document's stable tab ID, never by order or a regular expression over flattened text; a tab title selects only when exactly one tab in a complete tab list carries it, and the chosen tab's ID is then recorded. With workspace-mcp, `fetch-meeting.py` lists the tabs (`inspect_doc_structure`) and reads each one (`get_doc_as_markdown`). An unreadable tab list, an incomplete tab list, a title two tabs share, an absent declared tab, an empty returned tab and a tool error have distinct reasons. Only a complete tab list establishes `transcript-tab-absent`; neither an error nor a flattened summary authorizes a no-source marker. Preserve every returned notes/transcript byte and the provider's tab IDs. A connector that cannot list tabs leaves the choice to you: read the document and say which part you saved.
 
 ### ⚠️ DO NOT extract content from the Gemini email summary
 
@@ -115,34 +115,19 @@ If the verifier is missing or unrunnable, report verification unavailable and pr
 
 If you want to keep one of these in the meetings directory but still audit it, rename it without the excluded prefix.
 
-### Step 4.6: Verify source grade before attribution
+### Step 4.6: Resolve attribution from the verbatim transcript
 
 Before a quote, approval, warning, decision, action owner, or close paraphrase
-cites an artifact as primary, classify the artifact and then bind the claim to
-one raw message location:
-
-```bash
-python3 <synthesis-meeting-transcripts-root>/transcript_primary.py \
-    classify <artifact> --json
-
-python3 <synthesis-meeting-transcripts-root>/transcript_primary.py \
-    authorize-attribution <artifact> \
-    --location 'permalink:https://example.slack.com/archives/C123/p1700000000000001' \
-    --json
-```
-
-`classify` is a diagnostic and never issues authority. A derived artifact exits
-1 even when it calls itself a transcript. `authorize-attribution` also exits 1
-unless the file has dense, complete raw provider-message records and the
-supplied `permalink:` or `message_ts:` belongs to one of those records in the
-same input bytes. A
-`thread_ts:` identifies a conversation, not the exact message supporting a
-claim, so it is not sufficient for attribution authority.
-
-The receipt expires when the file's bytes change. It does not verify semantic
-fidelity, speaker identity beyond the stored labels, capture completeness
-outside the artifact, or whether a later consumer cites the verified message
-honestly; those limits remain in every result.
+cites a meeting record, find the moment in the verbatim transcript and take the
+actor from the speaker line there. A tool summary, a "Decisions" section or an
+action-item list is a lossy derivative: it can say what happened, never who did
+it. Passive constructions in AI notes ("he was warned", "it was decided") are
+attribution vacuums. When the transcript does not settle who acted, keep the
+passive form or say the actor is unknown; never fill the slot with the most
+salient person. The canonical incident (2026-07-07) and the hierarchy of evidence
+are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md).
+`verify_transcripts.py` (Step 4.5) is what tells a transcript from a summary; a
+file it calls `INCOMPLETE` cannot support attribution.
 
 ### Step 4.7: Extract candidate commitments (v0.10.0)
 

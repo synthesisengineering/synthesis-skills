@@ -48,7 +48,7 @@ say ""
 
 OS="$(uname -s)"
 case "$OS" in
-  Darwin) UNIT="$HOME/Library/LaunchAgents/com.rajivpant.workspace-mcp.plist" ;;
+  Darwin) UNIT="$HOME/Library/LaunchAgents/com.synthesis.workspace-mcp.plist" ;;
   Linux)  UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/workspace-mcp.service" ;;
   *)      unknown "unsupported OS '$OS'" "auto-start checks only cover macOS and Linux"; UNIT="" ;;
 esac
@@ -93,7 +93,7 @@ fi
 # ------------------------------------------------------------ supervisor state
 SUPERVISOR_UNKNOWN=0
 if [ "$OS" = "Darwin" ] && [ -f "$UNIT" ]; then
-  LAUNCH_OUTPUT="$(launchctl print "gui/$UID/com.rajivpant.workspace-mcp" 2>&1)"
+  LAUNCH_OUTPUT="$(launchctl print "gui/$UID/com.synthesis.workspace-mcp" 2>&1)"
   LAUNCH_EXIT=$?
   if [ "$LAUNCH_EXIT" -eq 0 ]; then
     LAST_EXIT="$(printf '%s\n' "$LAUNCH_OUTPUT" | sed -n 's/^[[:space:]]*last exit code = //p' | head -1)"
@@ -189,7 +189,7 @@ if command -v curl >/dev/null 2>&1 && [ "$LISTENING" = "1" ]; then
 fi
 
 # This doctor establishes supervisor/service liveness, never account identity.
-echo "RECORDER: UNKNOWN; use the verified Python acquisition --mode health route for declared account checks."
+echo "ACCOUNT: not checked; this doctor proves the service runs, not which Google account it reads as (a read through mcp_client.py shows that)."
 
 # -------------------------------------------------------------------- verdict
 say ""

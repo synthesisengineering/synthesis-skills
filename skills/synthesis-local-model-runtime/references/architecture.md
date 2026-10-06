@@ -16,8 +16,7 @@
    the safe profile, intended selections, and resolved installed artifacts.
 
 Installation transitions merge selections so an explicit one-model command
-cannot erase earlier verified choices. A deliberate inventory refresh replaces
-the selection set with the policy's current recommendation.
+cannot erase earlier verified choices. A failed installation writes nothing.
 
 The catalog predicts. The runtime receipt establishes what is present. The
 benchmark establishes what happened in one bounded run. Keep these claims
@@ -66,8 +65,6 @@ An adapter must implement:
 - installation by argument-array subprocess with no shell evaluation;
 - resolved artifact metadata including a local digest or content identity;
 - an explicit capability map;
-- a loopback-only bounded generation call when benchmarking is supported;
-- explicit unload when benchmarking is supported;
 - before-and-after content identity when updates are supported.
 
 The macOS Homebrew configuration adapter is narrower than the serving adapter.
@@ -79,6 +76,9 @@ a global service setting, the planner evaluates every selected artifact against
 the same effective value. Re-profile after Homebrew upgrades or service
 regeneration.
 
+Bounded benchmarks are not part of the script: they use the runtime's own
+loopback API with an explicit unload (`keep_alive: 0`), as commands.md shows.
+
 Ollama implements the complete contract. Hugging Face GGUF ids remain
 Ollama artifacts after import, so the inventory records the full runtime name
 and resolved Ollama digest in addition to upstream and publisher metadata.
@@ -89,15 +89,9 @@ names the quantization publisher for that target. A successful download is not
 enough: the adapter re-enumerates JSON inventory and requires one unambiguous
 repository-plus-quantization match before writing inventory.
 
-For Hugging Face registry timeouts after all large layers are present, the
-adapter may use Ollama's supported local multi-GGUF create path. The catalog
-pins the registry manifest URL plus each GGUF model/projector layer's full
-digest, media type, and size. The adapter re-hashes every cached layer, creates
-same-volume temporary hard links, imports the directory, removes the links,
-and then applies the normal runtime identity and inventory gates.
-The hard links eliminate a separate staging copy. Ollama may still normalize a
-GGUF into a new runtime layer and retain the registry cache, so the recovery
-receipt budgets the full layer total as possible additional disk use.
+A pull that fails is a failure with no inventory write. Rerunning it is the
+recovery: Ollama keeps the layers it already holds, so only missing pieces
+transfer again.
 
 ## Schema evolution
 
@@ -106,8 +100,8 @@ version may add fields but must reject an unknown higher schema unless a tested
 migration exists. Do not silently reinterpret capacity units or runtime model
 ids.
 
-Catalog schema 1 remains readable as Ollama-only input. Schema 2 adds optional
-runtime targets. An absent LM Studio target blocks that artifact for LM Studio;
+The script reads catalog schema 2, which added optional runtime targets to the
+Ollama-only schema 1. An absent LM Studio target blocks that artifact for LM Studio;
 the planner may select another verified artifact in the family, but it never
 constructs a target from model-name similarity.
 
@@ -121,9 +115,9 @@ identity produces `already-current`. Either is successful evidence. A failed
 pull or absent post-pull model produces a failed receipt.
 
 `--all` means every installed Ollama model. It is never the implicit default.
-When an existing per-machine inventory maps one of the updated names, the
-successful result refreshes that record atomically. Models outside the
-inventory still receive receipts without creating an opaque machine identity.
+An update never creates an opaque machine identity or rewrites the inventory;
+its receipt carries the new identity, and a later `install --artifact ID --yes`
+refreshes the inventory record.
 
 ## Cross-machine use
 

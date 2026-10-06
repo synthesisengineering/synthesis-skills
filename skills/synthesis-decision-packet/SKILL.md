@@ -38,16 +38,18 @@ Rules 1 to 6 are the six load-bearing properties in their original order, so "th
 11. **Open every generated packet before handing it over.** Both permanent defects were found by loading the page, not reading the source.
 12. **A recorded ruling authorizes nothing** (`authorization.granted: false`). The action owner checks principal, scope and exact target before acting.
 13. **Show the complete material** for correspondence, code, images, media or documents in `review_assets`; external references are never fetched.
+14. **Unanswered decisions carry forward by exact id; only a recorded ruling closes one.** `carry_forward.py` writes the successor spec, and refuses a reconciliation with missing, extra or duplicate ids or a narrative "answered" with no ruling recorded against the exact spec.
 
 ## Contents
 
 - [references/authoring.md](references/authoring.md): the six properties in full, review material, prior positions, content requirements, the reader contract. Read it before writing any spec.
-- [references/filing-and-authority.md](references/filing-and-authority.md): the commands, filing, recording rulings, schema-2 records, provenance and action authority, retiring a packet. Read it when generating, filing or recording.
+- [references/filing-and-authority.md](references/filing-and-authority.md): the commands and what they print, filing, recording rulings, schema-2 records, action authority, carrying unanswered decisions forward. Read it when generating, filing, recording or replacing a packet.
 - [references/enforcement.md](references/enforcement.md): integrity markers, what the generator refuses, the two permanent fixtures. Read it when a build is refused, the doctor flags a packet, or before changing the generator.
 - [references/review-assets.md](references/review-assets.md): the review-asset contract. Read it before constructing `review_assets`.
 - [references/worked-example.md](references/worked-example.md): a complete spec, the filed copies, the paste and its rulings file. Read it before your first packet.
 - [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and the handoff queue (`synthesis-project-management/scripts/handoff.py`), changelog, related skills. Read it when choosing between this skill and a neighbor.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.8.0 text now lives.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.8.0 text and each old script now lives. Read it when tracing an old rule or command.
+- [references/preserved.md](references/preserved.md): lines the v5 script pass replaced, verbatim, with the reason. Read it when you need the earlier wording.
 - When to use it, When NOT to use it, Use: below.
 
 ## When to use it
@@ -90,4 +92,10 @@ python3 scripts/build_packet.py spec.json --strict-reader \
 python3 scripts/record_rulings.py paste.txt \
     --spec PROJECT/resources/artifacts/<date>-<slug>-spec.json \
     --file-into PROJECT/resources/artifacts/         # -> <date>-<slug>-rulings.json
+python3 scripts/carry_forward.py PROJECT/resources/artifacts/<date>-<slug>-spec.json \
+    --successor next-spec.json                       # the unanswered rows, ids unchanged
+python3 scripts/carry_forward.py PROJECT/resources/artifacts/<date>-<slug>-spec.json \
+    --check reconciliation.json                      # every id answered or carried, once
 ```
+
+Output: the generator prints READER/NOTE findings and each path written; the recorder `filed <path>  (N of M decided; no action authority granted)`; `carry_forward.py` the ids carried or `reconciled N ids: ...`. Refusals print their reasons (the recorder quotes what it received) and exit 2. Template and schema text: `assets/`.
