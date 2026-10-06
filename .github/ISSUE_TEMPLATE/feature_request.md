@@ -1,6 +1,6 @@
 ---
 name: Ecosystem improvement
-about: Propose an improvement to onboarding, continuity, safety, or conformance
+about: Propose an improvement to a skill, onboarding, continuity or safety
 title: "[Proposal] "
 labels: proposal
 ---

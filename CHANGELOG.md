@@ -17,11 +17,13 @@ running on Apple's Python 3.9:
 - Session start restates the local time, the active project's PRIME-DIRECTIVE and
   current state, the session's own autopilot run and one ritual line, including
   after compaction.
-- Sends, calendar, mail and drive-share calls wait for the principal to type
-  `approve <code>`; the approval binds the whole call and is used once.
-- Deploys need approval of the exact command; future or changed publish dates and a
-  rapid redeploy are refused; recursive deletes of protected roots and force pushes
-  to default branches are refused.
+- Message sends wait for the principal to type `approve <code>`; the approval binds
+  the whole call and is used once. Calendar, mail and drive-share calls are checked
+  against the account the workspace uses, before any approval.
+- Deploys need approval of the exact command; future or changed publish dates are
+  refused, and a second deploy of the same site within 45 minutes needs its own
+  approval; recursive deletes of protected roots and force pushes to default
+  branches are refused.
 - The reply check sends a reply back once for deferring language, quotes with no
   source in the session, and (when configured) file names that are not links.
 - A global commit check scans for credentials and unapproved disclosures, checks

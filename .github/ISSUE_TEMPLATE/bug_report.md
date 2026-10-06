@@ -16,9 +16,10 @@ Describe the user-visible behavior and what you expected.
 - Synthesis Skills plugin version:
 - Operating system:
 
-## Evidence plane
+## Where it failed
 
-Which layer failed: source, installed, live, continuity, or capability?
+The source (a test or the repository), the installed plugin (`synthesis doctor`
+output), or a live session (what the hook or skill did)?
 
 ## Reproduction
 

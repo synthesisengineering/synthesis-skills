@@ -3,8 +3,8 @@
 ## Purpose
 
 This public repository is the canonical source for portable synthesis
-engineering skills. It is packaged as one native plugin for OpenAI Codex and
-Claude Code while remaining compatible with the Agent Skills standard.
+engineering skills. It is packaged as one native plugin for Claude Code, OpenAI
+Codex and Muse while remaining compatible with the Agent Skills standard.
 
 ## Canonical Sources
 
@@ -28,7 +28,8 @@ here, verify it, merge it to `main`, then update the installed plugins.
 2. Keep shared behavior agent-neutral. Put client-specific metadata and event
    translation in the corresponding adapter.
 3. Give each skill one canonical directory under `skills/`.
-4. Keep `SKILL.md` below 500 lines; move detailed material into `references/`.
+4. Keep `SKILL.md` under 8,000 bytes in the v5 format (`docs/skill-format.md`); move
+   detailed material into `references/`.
 5. Keep executable behavior in version-controlled scripts with deterministic
    tests.
 6. Protective checks fail closed when required state or dependencies cannot be

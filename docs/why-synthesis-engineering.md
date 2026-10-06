@@ -3,7 +3,7 @@
 AI coding products keep getting better. That makes synthesis engineering more
 useful, not less.
 
-Claude Code, ChatGPT Codex, and other agent runtimes are powerful working
+Claude Code, Codex, Muse and other agent harnesses are powerful working
 environments. Each has its own tools, security model, plugins, session lifecycle,
 and strengths. None should be reduced to a replaceable model endpoint. At the
 same time, a user's projects, methods, knowledge, decisions, and safety rules
@@ -34,19 +34,25 @@ single session, but it cannot make the operating system durable by itself.
 Synthesis engineering combines six public capabilities:
 
 1. **Portable methods.** Skills follow the [Agent Skills](https://agentskills.io)
-   standard and keep provider-specific metadata in adapters.
+   standard, in one format that every supported harness reads whole, and keep
+   provider-specific metadata in adapters.
 2. **Durable project state.** `CONTEXT.md`, `REFERENCE.md`, session logs, and
    committed plans let a different agent or machine recover the work from
-   version control.
-3. **Concurrent-work coordination.** Lease-backed claims make simultaneous
-   sessions visible and prevent overlapping writes from being treated as a
-   social convention.
-4. **Safety controls.** Hooks, guards, and explicit authority gates make
-   destructive or outward-facing actions reviewable.
-5. **Runtime evidence.** Conformance separates source correctness, installed
-   state, live delivery, continuity, and authenticated capability.
-6. **Progressive onboarding.** One engine supports an individual power user,
-   an engineering team, and an organization with shared configuration.
+   version control, and the session-start hook re-injects a project's directive
+   and current state, including after compaction.
+3. **Concurrent-work coordination.** Sessions claim the paths they will write on
+   a shared board, one small file per session. Claims make simultaneous work
+   visible, and the optional commit check refuses a commit inside another live
+   session's claim, so overlapping writes are not left to social convention.
+4. **Safety controls.** Hooks hold sends and deploys for the person's approval of
+   the exact call and refuse destructive commands, the same way in every
+   harness; the commit check adds credential and disclosure scanning.
+5. **Verification.** One test command covers the core and every skill, and
+   `synthesis doctor` checks what is actually installed in each harness, whether
+   its hooks are wired, and whether the person has trusted them.
+6. **Progressive onboarding.** One setup script serves a person on one Mac, a
+   workspace moving to a new Mac, and an organization whose members share
+   configuration from a data-only repository.
 
 The same architecture supports synthesis coding, synthesis writing, project
 management, knowledge work, and operational workflows. The artifact changes;
@@ -60,31 +66,33 @@ their own execution, permissions, user experience, and integrations. The
 ecosystem provides a shared contract beneath them and adapters at their edges.
 
 It is also not a prompt collection. Skills include activation metadata,
-scripts, references, tests, installation, lifecycle rules, and evidence about
-the runtime in which they execute.
+scripts with tests, references, and coverage maps that record where each rule
+lives; the runtime adds hooks that enforce the safety rules instead of asking
+the model to remember them.
 
 ## Why vendors should care
 
 An agent vendor benefits when users can trust upgrades, move substantial work
 into the product, and diagnose failures without guesswork. Synthesis engineering
-offers reusable fixtures for plugin discovery, hook delivery, context budgets,
-session continuity, and authenticated capability. Those fixtures can expose
-integration defects before users experience them as lost work.
+offers reusable tests for hook registration and latency, skill-format budgets
+matched to how harnesses truncate and re-attach skills, and doctor checks for
+installed plugin bytes and hook trust. Those checks can expose integration
+defects before users experience them as lost work.
 
 The project does not ask vendors to standardize their products into sameness.
 It asks for enough observable interfaces that users can prove what each product
-did. OpenAI's app-server interfaces and Anthropic's plugin and hook contracts
-already provide much of that substrate. Other runtimes can implement the same
-five-plane evidence contract without copying either product.
+did. The plugin and hook contracts of Claude Code and Codex already provide most
+of what the runtime needs. Another harness can meet the same
+[runtime contract](runtime-integration.md) without copying either product.
 
 ## Why contributors should care
 
 This is a place to work on agent engineering beyond benchmark scores: durable
 state, human authority, interoperability, failure semantics, onboarding,
 writing systems, and the operating practices that make agents useful over
-months. Contributions can be a skill, a runtime fixture, a connector probe, a
-safer installer, an accessibility improvement, or a documented workflow from a
-field that agent tooling usually overlooks.
+months. Contributions can be a skill, a harness adapter, a guard, a safer
+installer, an accessibility improvement, or a documented workflow from a field
+that agent tooling usually overlooks.
 
 The governing question is direct: can a person begin meaningful work in one
 capable agent, continue in another, and verify that neither client silently

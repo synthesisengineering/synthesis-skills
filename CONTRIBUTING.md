@@ -1,28 +1,27 @@
 # Contributing to Synthesis Skills
 
 Synthesis Skills is a provider-neutral layer for durable project state,
-portable skills, safety controls, and runtime evidence. Contributions should
-improve that shared layer while respecting the native strengths of each agent
-client.
+portable skills, and safety controls. Contributions should improve that shared
+layer while respecting the native strengths of each agent harness.
 
 ## Choose a contribution lane
 
-- **Report a runtime gap.** Use the bug template and include the client,
-  surface, plugin version, command output, and whether the evidence came from
-  source, installed files, or a live session.
+- **Report a bug.** Use the bug template and include the harness and its
+  version, the plugin version (`synthesis version`), the `synthesis doctor`
+  output, and whether you saw the problem in a live session or only in a test.
 - **Improve an existing skill.** Explain the user problem and add a regression
   test when scripts or routing behavior change.
 - **Add a skill.** Start with the skill-proposal template. State who needs it,
   what phrase should activate it, and why an existing skill cannot own the
   workflow.
-- **Add a runtime adapter.** Follow the five-plane integration contract in
-  [docs/runtime-integration.md](docs/runtime-integration.md). A new adapter
-  must report unsupported and unverifiable capabilities explicitly.
+- **Add or improve a harness adapter.** Follow
+  [docs/runtime-integration.md](docs/runtime-integration.md). An adapter must
+  state what the harness cannot do rather than report it as working.
 - **Improve onboarding or documentation.** Test the instructions as a new user
-  on the audience path you are changing.
+  on the path you are changing.
 
-Documentation fixes, runtime fixtures, accessibility improvements, connector
-probes, and examples from non-coding work are all useful contributions.
+Documentation fixes, test fixtures, accessibility improvements, and examples
+from non-coding work are all useful contributions.
 
 ## Before opening a pull request
 
@@ -30,50 +29,63 @@ probes, and examples from non-coding work are all useful contributions.
 2. Create a feature branch. Keep one user-visible concern per pull request.
 3. Preserve the public/private boundary. Do not include names, local paths,
    credentials, client data, or organization-specific procedures.
-   Promotion acceptance (POL-1, ruled 2026-09-21): this repo accepts
-   mechanisms strangers can configure — detectors, guards, parsers, and
-   capabilities promoted opt-in behind configuration, with the personal
-   surface audited out and the absence tested. Opinions, kernel pieces,
-   ledgers, adapters, and secrets are never accepted here. Promoted code
-   ships inert until configured and is maintained under the community
-   posture in [SUPPORT.md](SUPPORT.md).
-4. Run the source conformance check:
+   This repository accepts mechanisms strangers can configure: detectors,
+   guards, parsers, and capabilities, opt-in behind configuration, with the
+   personal surface audited out and its absence tested. A person's opinions and
+   rule texts, instruction kernels, disclosure ledgers, personal adapters and
+   secrets stay in private layers. Code moved here from a private layer ships
+   inert until configured and is maintained under the community posture in
+   [SUPPORT.md](SUPPORT.md).
+4. Run the same check CI runs:
 
    ```bash
-   python3 skills/synthesis-agent-conformance/scripts/conformance.py source --source-root .
+   python3 -m pytest -q tests/ skills/
    ```
 
-5. Run the tests closest to the change. If you changed a runtime adapter, also
-   supply installed and live evidence or identify the exact human/runtime gate.
-6. Complete the pull request template. A static contract probe is not live
-   acceptance evidence.
+   It covers the core, every skill's tests, the skill format, the budgets and
+   hook latency, and the source lint (manifests agree, the CHANGELOG's newest
+   entry is the manifest version, every skill has a license and Codex
+   metadata, no personal paths). Code must also run on Python 3.9, the version
+   macOS ships as `/usr/bin/python3`.
+5. If you changed install or hook wiring, run `synthesis doctor` on a machine
+   with the plugin installed and start a fresh session in each affected
+   harness. Say in the pull request what you saw. A test that runs the hook
+   script directly is not proof that a harness delivered the event.
+6. Complete the pull request template.
 
 ## Skill structure
 
-Every skill includes:
+Every skill follows [docs/skill-format.md](docs/skill-format.md):
 
 ```text
 skills/skill-name/
-├── SKILL.md            # Agent Skills instructions and frontmatter
-├── agents/openai.yaml  # Codex discovery and invocation policy
-├── references/         # Supporting material, when needed
-├── scripts/            # Executable implementation, when needed
-└── assets/             # Templates or examples, when needed
+├── SKILL.md            # frontmatter, purpose, binding rules, contents, procedure
+├── agents/openai.yaml  # Codex display text and invocation policy
+├── references/         # material for one step or situation, listed in Contents
+├── scripts/            # executable parts, when needed
+├── tests/              # tests for those scripts, collected by CI
+└── assets/             # templates or examples, when needed
 ```
 
 ### SKILL.md requirements
 
-- Use valid YAML frontmatter with `name`, `description`, `license`,
-  `depends_on`, and `metadata`. The SPDX license identifier selects the
+- Frontmatter has `name`, `description`, `license`, `depends_on` and
+  `metadata`, with `metadata.format: v5` and the skill's own
+  `metadata.version`. The SPDX license identifier selects the
   repository-level `LICENSE-CC0` or `LICENSE-APACHE` terms.
-- Make the description specific enough to route real user requests.
-- Keep the body under 500 lines. Move detailed material to `references/`.
-- Write instructions in imperative form.
-- Include examples when they clarify a decision or failure mode.
+- The description says when to use the skill, in at most 300 characters.
+- `SKILL.md` stays under 8,000 bytes. It opens with one short paragraph, then
+  `## Binding rules`, then `## Contents`, then the procedure.
+- Every file in `references/` is listed in Contents with a line saying when to
+  read it. Each is at most 1,500 lines; one over 150 lines opens with its own
+  contents list.
+- A rewrite carries `references/coverage-map.md`, listing every rule of the old
+  text and where it now lives, and puts anything not kept in
+  `references/preserved.md` with the reason.
+- Show every script the skill uses with its exact command line and what it
+  prints.
 - Keep the skill standalone. Public skills cannot depend on personal agent
   instructions or private configuration.
-- If the skill covers writing or style, include standalone defaults in
-  `references/voice-defaults.md`.
 
 ### Codex metadata requirements
 
@@ -85,7 +97,7 @@ skills/skill-name/
   explicitly invocable through the router.
 - The explicit invocation prompt must name the skill with `$skill-name`.
 - Do not weaken Claude Code trigger descriptions to fit a Codex catalog budget.
-  Client-specific metadata is the adapter layer.
+  Harness-specific metadata is the adapter layer.
 
 ## Quality standard
 
@@ -95,8 +107,9 @@ A contribution is ready when:
 - tests cover failure paths, not only the happy path;
 - destructive targets are resolved and validated before mutation;
 - protection fails closed when its dependencies cannot run;
-- source, installed state, and live runtime are not conflated;
-- Claude Code and Codex behavior are both preserved or the client-specific
+- what the source does, what is installed, and what a live session showed are
+  reported separately;
+- Claude Code, Codex and Muse behavior is preserved, or the harness-specific
   difference is documented and tested;
 - documentation matches the commands and current product surfaces;
 - no generated or installed cache was edited as the source of truth.
@@ -112,4 +125,5 @@ affects portability, safety, or a public interface. See
 
 By contributing, you agree that your contribution is licensed under the
 repository's existing dual-license structure: CC0 for methodology content and
-Apache 2.0 for executable scripts.
+Apache 2.0 for executable scripts. Within a skill folder, the license declared
+in that skill's `SKILL.md` frontmatter applies.

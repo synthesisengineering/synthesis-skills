@@ -9,15 +9,13 @@ Describe the source change and its public interface.
 ## Runtime impact
 
 - Claude Code:
-- ChatGPT Codex desktop/CLI:
-- Other clients:
+- Codex (desktop or CLI):
+- Muse:
 
 ## Evidence
 
-- [ ] Source conformance passes
-- [ ] Relevant unit and integration tests pass
-- [ ] Installed evidence supplied or marked not applicable
-- [ ] Live evidence supplied for runtime behavior, or the exact human/runtime gate is named
+- [ ] `python3 -m pytest -q tests/ skills/` passes (the same command CI runs)
+- [ ] For installed behavior: `synthesis doctor` output, or the harness step a person must take
 - [ ] Destructive and failure paths were tested where applicable
 
 ## Public boundary
