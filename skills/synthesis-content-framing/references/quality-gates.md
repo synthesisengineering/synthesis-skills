@@ -2,6 +2,13 @@
 
 Detailed blocking gates, safety rules, and quality standards for synthesis engineering content. Every article must pass all gates before publication.
 
+Contents:
+- Blocking gates: Gate 1 Topic, Gate 2 Sophistication (audience standards, scale and complexity, sophistication tests), Gate 3 Engagement
+- Safety rules: incident confirmation, confession detection, deployment verification
+- Quality standards: the content value gate (four tests and a section-level audit) and example ethics
+- Pre-publish checklist: blocking gates (including Gate 4 Confidentiality), critical safety rules, quality standards, operational checks
+- Examples of correct framing
+
 ---
 
 # BLOCKING GATES

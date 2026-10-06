@@ -5,6 +5,17 @@
 **Status:** Active and accelerating (2026)
 **Related protocols:** C1-SYNTH-001 (AI-generated synthetic sources), C1-URLROT-001 (URL rot vs. hallucination distinction)
 
+Contents:
+- 1. The Problem: what citation laundering is and why the v1.1.0 framework needed revision
+- 2. Why This Matters at 2026 Scale
+- 3. Detection Protocol: five steps, from building the citation graph to scoring the claim's true source count
+- 4. Worked Examples: five cases
+- 5. Tools and Aids
+- 6. Revision to v1.1.0 Section 2 Multi-Source Confidence Framework
+- 7. Limitations
+- 8. Summary
+- Bibliography for this file
+
 This file specifies the concrete graph-traversal procedure that section 2 of the parent SKILL.md (Multi-Source Confidence Framework) depends on. v1.1.0 of synthesis-fact-checking established the principle that cross-corroboration among LLM outputs is not independent verification. It did not specify the trace-back procedure that turns the principle into operational practice. This file is that procedure.
 
 ---

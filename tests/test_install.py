@@ -78,3 +78,24 @@ def test_first_session_start_bootstraps_from_the_exact_registered_command(tmp_pa
     assert out.returncode == 0, out.stderr
     assert (home / ".synthesis" / "v5" / "bin" / "synthesis-hook").is_file()
     assert (home / ".synthesis" / "v5" / "state" / "sessions" / "fresh.json").is_file()
+
+
+def test_install_writes_global_git_hooks_that_run_the_commit_check(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    for name in install.GIT_HOOKS:
+        hook = isolated_home / "git-hooks" / name
+        assert os.access(hook, os.X_OK) and "commit_check.py" in hook.read_text()
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "k.txt").write_text("key AKIA" + "ABCDEFGHIJKLMNOP\n")
+    subprocess.run(["git", "-C", str(repo), "add", "k.txt"], check=True)
+    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
+    out = subprocess.run(["git", "-C", str(repo), "-c", f"core.hooksPath={isolated_home / 'git-hooks'}",
+                          "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "x"],
+                         capture_output=True, text=True, env=env)
+    assert out.returncode != 0 and "AWS access key" in out.stderr
+
+
+def test_bootstrap_command_writes_no_bytecode_into_the_plugin_folder():
+    command = json.loads((ROOT / "hooks" / "hooks.json").read_text())["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert "python3 -B -S" in command

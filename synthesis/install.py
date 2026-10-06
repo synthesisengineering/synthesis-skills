@@ -25,6 +25,12 @@ HOOK_SCRIPT = """#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 exec python3 -S "$d/current/synthesis/hook.py" "$@"
 """
+GIT_HOOK_SCRIPT = """#!/bin/sh
+# Global git hook (core.hooksPath): the synthesis commit check, then the repository's own hook.
+d=$(cd "$(dirname "$0")/.." && pwd)
+SYNTHESIS_GIT_HOOK=$(basename "$0") exec python3 -S "$d/current/synthesis/commit_check.py" "$@"
+"""
+GIT_HOOKS = ("pre-commit", "pre-merge-commit")
 CLI_SCRIPT = """#!/bin/sh
 d=$(cd "$(dirname "$0")/.." && pwd)
 PYTHONPATH="$d/current" exec python3 -m synthesis "$@"
@@ -81,6 +87,8 @@ def install(plugin_root: Path) -> str:
         os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
     _write_exec(home / "bin" / "synthesis-hook", HOOK_SCRIPT)
     _write_exec(home / "bin" / "synthesis", CLI_SCRIPT)
+    for name in GIT_HOOKS:
+        _write_exec(home / "git-hooks" / name, GIT_HOOK_SCRIPT)
     config = home / "config.json"
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")

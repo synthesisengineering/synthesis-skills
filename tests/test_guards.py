@@ -103,7 +103,8 @@ def test_force_push_only_to_default_branches_is_refused(command, blocked):
 
 @pytest.mark.parametrize("tool,tool_input", [("exec_command", {"cmd": ["rm", "-rf", str(Path.home())]}),
                                              ("shell", {"command": ["bash", "-lc", "rm -rf ~"]}),
-                                             ("local_shell", {"command": "rm -rf ~"})])
+                                             ("local_shell", {"command": "rm -rf ~"}),
+                                             ("bash", {"command": "rm -rf ~"})])  # Muse's spelling
 def test_every_harness_shell_tool_is_guarded(tool, tool_input):
     assert guards.check(tool, tool_input, {}) is not None
 
@@ -124,3 +125,27 @@ def test_unreadable_config_blocks_sends_and_bash_but_not_other_tools(isolated_ho
         assert json.loads(out.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
     out = _hook("pre-tool-use", {"tool_name": "Read", "tool_input": {}}, env)
     assert out.stdout.strip() == ""
+
+
+def test_unreadable_config_blocks_routed_calendar_and_mail_calls(isolated_home):
+    import os
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    (isolated_home / "config.json").write_text("{not json", encoding="utf-8")
+    env = {**os.environ, "SYNTHESIS_HOME": str(isolated_home)}
+    out = _hook("pre-tool-use", {"tool_name": "mcp__google__create_event", "tool_input": {"summary": "x"}}, env)
+    assert json.loads(out.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkeypatch):
+    reason = guards.check(SLACK, MESSAGE, {})
+    approvals.grant_from_prompt(f"approve {_code(reason)}")
+    assert guards.check(SLACK, MESSAGE, {}) is None
+    assert list((isolated_home / "state" / "approvals").iterdir()) == []
+    guards.check(SLACK, {**MESSAGE, "message": "another"}, {})
+    import os
+    import time
+    old = time.time() - approvals.TTL_SECONDS - 60
+    for f in (isolated_home / "state" / "approval-requests").iterdir():
+        os.utime(f, (old, old))
+    approvals.request("send", "fresh", "fresh")
+    assert [f.stem for f in (isolated_home / "state" / "approval-requests").iterdir()] == [approvals.digest("send", "fresh")[:6]]

@@ -65,11 +65,11 @@ def pre_tool_use(payload):
     try:
         config = paths.config()
     except (OSError, ValueError) as exc:
-        if tool in guards.SHELL_TOOLS or guards.is_send_tool(tool, {}):
+        if guards.guarded(tool, tool_input):
             return _emit("PreToolUse", deny=f"synthesis guard config is unreadable ({exc}); fix {paths.config_file()}")
         return 0
     try:
-        reason = guards.check(tool, tool_input, config)
+        reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None)
     except Exception as exc:  # a guard that can't decide must not wave the call through
         reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
     return _emit("PreToolUse", deny=reason) if reason else 0

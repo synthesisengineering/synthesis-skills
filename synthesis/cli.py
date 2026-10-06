@@ -106,6 +106,11 @@ def cmd_approvals(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    from synthesis import doctor
+    return doctor.main(args.rest)
+
+
 def cmd_version(args) -> int:
     print(__version__)
     return 0
@@ -146,17 +151,21 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
+    s = sub.add_parser("doctor", help="check the runtime, hooks and each harness's install", add_help=False)
+    s.add_argument("rest", nargs=argparse.REMAINDER)
+    s.set_defaults(fn=cmd_doctor)
     sub.add_parser("version").set_defaults(fn=cmd_version)
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if "worktree" in argv:  # hand everything after it to the worktree command untouched
-        split = argv.index("worktree")
-        args = parser().parse_args(argv[:split] + ["worktree"])
-        args.rest = argv[split + 1:]
-        return cmd_worktree(args)
+    for name, fn in (("worktree", cmd_worktree), ("doctor", cmd_doctor)):
+        if name in argv:  # hand everything after it to that command's own parser untouched
+            split = argv.index(name)
+            args = parser().parse_args(argv[:split] + [name])
+            args.rest = argv[split + 1:]
+            return fn(args)
     args = parser().parse_args(argv)
     return args.fn(args)
 

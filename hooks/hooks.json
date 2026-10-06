@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; [ -x \"$h\" ] || python3 -S \"$1/synthesis/install.py\" \"$1\" >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
+            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; [ -x \"$h\" ] || python3 -B -S \"$1/synthesis/install.py\" \"$1\" >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
             "timeout": 10
           }
         ]
@@ -24,7 +24,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|exec_command|exec|shell|local_shell|run_shell_command|mcp__.*(send|draft|reply|forward|schedule).*",
+        "matcher": "Bash|bash|exec_command|exec|shell|local_shell|run_shell_command|mcp__.*(send|draft|reply|forward|schedule|(create|update|delete|manage|respond_to)_event|focus_time|out_of_office|trash_|share_file|drive_file_permissions|drive_access).*",
         "hooks": [
           {
             "type": "command",

@@ -1,7 +1,11 @@
 """Git pre-commit check (R2.1, R3.3): secrets, unapproved disclosures, other sessions' claims.
 
-Installed as the global pre-commit hook; it then runs the repository's own
-pre-commit hook, if it has one, so per-repo checks still apply.
+Installed as the global pre-commit hook (core.hooksPath). A global hooks path
+makes git skip every repository's own hooks, so after its own checks this runs
+them (E37): the repository's `.githooks/pre-commit` delegate, then its
+`.git/hooks/pre-commit`, each once and never itself. A repository that declares
+`.githooks/required` (on disk, or still in the index being committed, E38)
+refuses the commit when its delegate is missing or not executable.
 """
 
 import os
@@ -21,6 +25,10 @@ CREDENTIALS = {
     "OpenAI key": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b",
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
 }
+HOOK = os.environ.get("SYNTHESIS_GIT_HOOK", "pre-commit")  # pre-merge-commit sets this
+# Holds the git directory whose commit was already checked, so a repository hook that calls the
+# synthesis check again returns at once, while a commit in another repository is still checked.
+CHAINED = "SYNTHESIS_COMMIT_CHECKED"
 
 
 def _git(*args):
@@ -70,27 +78,64 @@ def problems(config, session_id, repo_root):
     return found
 
 
-CHAINED = "SYNTHESIS_COMMIT_CHECKED"
+def _same(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.realpath(a) == os.path.realpath(b)
 
 
-def main():
+def repository_hooks(repo_root, common_dir, running):
+    """(hooks to run, problem): the repository's own pre-commit hooks, minus the one running now."""
+    delegate = os.path.join(repo_root, ".githooks", HOOK)
+    declared = os.path.lexists(os.path.join(repo_root, ".githooks", "required")) or _git(
+        "-C", repo_root, "ls-files", "--error-unmatch", "--", ".githooks/required").returncode == 0
+    if declared:  # an unstaged rm leaves the declaration in the index; a staged `git rm` withdraws it
+        if not os.path.lexists(delegate):
+            return [], ".githooks/required is declared but .githooks/pre-commit is missing: create it as an executable file and commit it beside the marker"
+        if not os.path.isfile(delegate):
+            return [], ".githooks/required is declared but .githooks/pre-commit is not a regular file: replace it with an executable file"
+        if not os.access(delegate, os.X_OK):
+            return [], ".githooks/required is declared but .githooks/pre-commit is not executable: run chmod +x .githooks/pre-commit"
+    chain = []
+    for hook in (delegate, os.path.join(common_dir, "hooks", HOOK)):
+        if not os.path.isfile(hook) or any(_same(hook, h) for h in [running] + chain):
+            continue
+        if os.access(hook, os.X_OK):
+            chain.append(hook)
+        else:
+            print(f"synthesis commit check: skipped {hook}: not executable"
+                  + (" (add .githooks/required to make this an error)" if hook == delegate else ""), file=sys.stderr)
+    return chain, None
+
+
+def main(argv=None):
     from synthesis import paths
 
-    if os.environ.get(CHAINED) == "1":  # re-entered through the repository's own hook: already checked
+    where = _git("rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir", "--git-path", f"hooks/{HOOK}")
+    lines = where.stdout.splitlines()
+    if where.returncode != 0 or len(lines) != 4:
+        print(f"synthesis commit check: cannot locate the repository ({where.stderr.strip()}); commit blocked", file=sys.stderr)
+        return 1
+    repo_root, git_dir, common_dir, running = lines[0], lines[1], os.path.abspath(lines[2]), os.path.abspath(lines[3])
+    if os.environ.get(CHAINED) == git_dir:  # a repository hook called the check again: already done
         return 0
-    repo_root = _git("rev-parse", "--show-toplevel").stdout.strip()
     try:
         config = paths.config()
     except (OSError, ValueError) as exc:
         print(f"synthesis commit check: config unreadable ({exc}); commit blocked", file=sys.stderr)
         return 1
     found = problems(config, paths.session_id(), repo_root)
+    chain, problem = repository_hooks(repo_root, common_dir, running)
+    found += [problem] if problem else []
     if found:
         print("synthesis commit check refused this commit:\n  " + "\n  ".join(found), file=sys.stderr)
         return 1
-    local = os.path.join(_git("rev-parse", "--git-common-dir").stdout.strip() or ".git", "hooks", "pre-commit")
-    if os.access(local, os.X_OK):
-        return subprocess.run([local], env={**os.environ, CHAINED: "1"}).returncode
+    for hook in chain:
+        code = subprocess.run([hook, *(sys.argv[1:] if argv is None else argv)], env={**os.environ, CHAINED: git_dir}).returncode
+        if code != 0:
+            print(f"synthesis commit check: the repository's own hook {hook} refused this commit (exit {code})", file=sys.stderr)
+            return code
     return 0
 
 

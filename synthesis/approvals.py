@@ -34,10 +34,23 @@ def request(kind: str, subject, summary: str) -> str:
     """File (or refresh) a pending request; returns the code the principal types."""
     key = digest(kind, subject)
     code = key[:6]
+    _expire()
     path = _dir("approval-requests") / f"{code}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"kind": kind, "digest": key, "summary": summary, "at": time.time()}), encoding="utf-8")
     return code
+
+
+def _expire() -> None:
+    """Drop requests and grants older than the TTL, so state never grows (R8.3)."""
+    cutoff = time.time() - TTL_SECONDS
+    for name in ("approval-requests", "approvals"):
+        for path in _dir(name).glob("*.json") if _dir(name).is_dir() else []:
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def grant_from_prompt(prompt: str) -> list[str]:
@@ -69,4 +82,6 @@ def consume(kind: str, subject) -> bool:
         data = json.loads(spent.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return False
+    finally:
+        spent.unlink(missing_ok=True)
     return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS

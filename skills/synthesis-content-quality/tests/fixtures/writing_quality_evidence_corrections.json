@@ -394,12 +394,12 @@
         "5166b41f2ab102d934fcfef507c55e6ad80510a8a2a9eda5f50f105d7486a9bf"
       ],
       "replacement_text": [
-        "  version: 1.1.0"
+        "  version: \"1.1.1\""
       ],
       "replacement_sha256": [
-        "2566afa10bfb2031d439f19efdb0ba82c759e1f1918aacdf9374a4293c1f0691"
+        "69e45bb4252c7e5834af452321a47cc4132687f39ad298c881ca41805407a974"
       ],
-      "reason": "Record the additive writing-craft release version without changing a writing rule."
+      "reason": "Record the additive writing-craft release version without changing a writing rule (1.1.1, commit 8bd4ded, adds the pointer to the writing outcome review and quotes the version string)."
     },
     {
       "path": "skills/synthesis-writing-pitfalls/SKILL.md",

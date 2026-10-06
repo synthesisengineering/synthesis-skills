@@ -1,7 +1,7 @@
 # Slop Detection Skill Manifest
 
-**Version:** 1.0
-**Date:** 2026-05-19
+**Version:** 1.1
+**Date:** 2026-10-05
 **License:** CC0-1.0
 **Canonical URL:** https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/tools/slop-detection/manifest.md
 
@@ -20,15 +20,21 @@ If you are an AI agent reading this file because a user asked you to apply the s
 
 ## Required skill files (essential, approximately 30K tokens)
 
-These five SKILL.md files contain the complete methodology, the pattern catalog at section-summary level, the cross-cutting layer (causal taxonomy, combined-signal fingerprints, two-axis calibration), and the quick-reference checklist. An AI agent applying these files alone can produce a high-quality slop analysis. Fetch every URL in this section.
+Together these files contain the complete methodology, the pattern catalog at section-summary level, the cross-cutting layer (causal taxonomy, combined-signal fingerprints, two-axis calibration), and the quick-reference checklist. Each SKILL.md holds its skill's binding rules, procedure and a contents list; where a skill moved part of its methodology into references/ to keep SKILL.md short, that file is listed right after its SKILL.md. An AI agent applying these files alone can produce a high-quality slop analysis. Fetch every URL in this section.
 
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/SKILL.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/verification-steps.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/error-patterns.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/temporal-and-translation.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/review-log-and-checklist.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-pitfalls/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-pitfalls/references/catalog.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-craft/SKILL.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-writing-craft/references/principles.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-clean-text/SKILL.md
 
-## Extended reference files (deep mode, approximately 250K tokens)
+## Extended reference files (deep mode, approximately 290K tokens)
 
 These are the references/ subfolders for the primary and companion skills. They contain the full per-pattern detail (all 14 fields per pattern), the per-family fingerprint catalogs, the combined-signal fingerprint catalog, the calibration tables, the historical patterns archive, the detailed fact-checking protocols, the per-family hallucination signatures, the citation-laundering detection protocol, the production incident archive, and consolidated bibliographies.
 
@@ -44,7 +50,12 @@ For most analyses on most chatbots, the Required skill files above are sufficien
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/historical-patterns.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-content-quality/references/bibliography.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols-quotes.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols-sources.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/detailed-protocols-model-families.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/per-family-hallucination-signatures.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/per-family-signatures-claude-gpt-gemini.md
+- https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/per-family-signatures-llama-grok-deepseek-mistral-qwen.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/citation-laundering-detection.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/production-incident-archive.md
 - https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/main/skills/synthesis-fact-checking/references/bibliography.md

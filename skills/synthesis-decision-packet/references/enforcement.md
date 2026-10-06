@@ -1,0 +1,50 @@
+# Decision packet: enforcement and the permanent fixtures
+
+How generator output is verified rather than trusted, what the generator refuses, and the two defects held by regression fixtures. Moved verbatim from the 1.8.0 SKILL.md. Read it when the context doctor flags a packet, when a build is refused, or before changing the generator.
+
+## Enforcement (v1.5.0) — generator output is verified, not trusted
+
+Every page `build_packet.py` emits carries an integrity marker pinning its
+embedded payload (`synthesis-decision-packet spec-sha256`) and a separate
+canonical input-spec digest used by the summary and browser persistence.
+These are integrity checks, not proof of generator authorship or user identity.
+`record_rulings.py` validates the current spec and every selected value before
+filing. The context doctor's existing `skill-outputs` check fails
+any packet page under a project's `resources/artifacts/` that is not
+verifiable generator output: unmarked with no filed rulings is a defect
+(rebuild with the generator or remove it); a marker that disagrees with
+the embedded spec is a defect (never hand-edit generator output); a
+closed record (unmarked but ruled) warns. The rule ships on every
+machine with install, upgrade, and doctor — it is not a local note.
+
+**Generate from a data array; never hand-author rows.** Thirty hand-written blocks drift. One
+array with a render loop cannot. That is the whole reason this is a generator rather than a
+template.
+
+The generator validates before it emits and refuses to build a broken packet: duplicate ids
+(they key persistence), ids with leading, trailing or doubled whitespace or a line break (the
+summary line is `id  label`, split on its first double space), a line break in the title, a row
+label or an option label (the paste is one line per field, and a packet that builds must file),
+an option set with fewer than two options (a one-button set records no decision), two options
+in one set sharing a value or a value that is not a non-empty string (the value keys the pressed
+state and the summary label through a DOM dataset, which stores strings), a recommendation
+outside its own option set, a packet with no recommendations at all, malformed option sets at
+the packet level or on a row, malformed disagreement, impact, or glossary blocks.
+
+## Two defects that are permanent fixtures
+
+Both shipped in the reference implementation; one reached the principal in real use. They are
+regression-tested in `scripts/test_build_packet.py`.
+
+- **Charset in the first bytes.** Without `<meta charset="utf-8">` ahead of everything, typographic
+  punctuation renders as mojibake when served over a plain local HTTP server. *Found by loading
+  the page, not by reading the source* — which is why the fixture asserts on bytes and why you
+  should always open a generated packet before handing it over.
+- **The copy control must never fail silently.** `navigator.clipboard.writeText` is blocked inside
+  a sandboxed artifact iframe with no `clipboard-write` permission; in the origin run the button
+  did nothing and *said* nothing, and the principal worked around it by hand. The required order:
+  **select the textarea first** so a manual ⌘C/Ctrl+C always works, say something *synchronously*,
+  then `document.execCommand("copy")` (which does work in sandboxed iframes), then the async API,
+  and report honestly which path succeeded. A third fixture was added on 2026-08-28 after driving
+  the real button surfaced an empty status line while the async promise was unsettled — an
+  unbounded silent interval is the same defect as a permanent one.

@@ -1,0 +1,46 @@
+{
+  "_about": "Real incident shapes, anonymized, kept as data so v5 never has to rediscover them. Placeholders: {site}, {elsewhere}, {client_ws}, {personal_ws}.",
+  "git_c_push": {
+    "_incident": "2026-08-30: `git -C <site> push` from an unrelated directory published a live site with no approval check.",
+    "cwd": "{elsewhere}",
+    "commands": [
+      "git -C {site} push origin main",
+      "git -c push.default=current -C {site} push",
+      "cd {site} && git push",
+      "cd {site}\ngit push origin main",
+      "(cd {site} && git push)",
+      "env GIT_TRACE=0 git -C {site} push"
+    ],
+    "not_pushes": [
+      "git commit -m \"fix site push\"",
+      "git -C {site} commit -m push",
+      "git -C {site} log --oneline push"
+    ]
+  },
+  "signed_agent_message": {
+    "_incident": "2026-08-03: a rule against a miscased brand was applied case-insensitively and blocked every correctly signed agent message.",
+    "tool": "mcp__slack__slack_send_message",
+    "rules": [
+      {"name": "brand casing", "pattern": "\\bHelperBot\\b", "case_sensitive": true, "why": "the agent's name is spelled Helperbot"},
+      {"name": "no apologies", "pattern": "\\bsorry\\b", "why": "never apologize in the principal's messages"}
+    ],
+    "passes": {"channel_id": "C0EXAMPLE", "message": "The draft is in the shared folder.\n\n🤖 Helperbot, on behalf of the principal · helperbot.example"},
+    "blocked": {"channel_id": "C0EXAMPLE", "message": "The draft is in the shared folder.\n\n🤖 HelperBot, on behalf of the principal · helperbot.example"}
+  },
+  "flat_article_layout": {
+    "_incident": "2026-08-29: a post dated the next afternoon went live the evening before, then was re-dated and republished 28 minutes later. 2026-08-31: the flat-layout site had escaped the date scans entirely.",
+    "path": "astro-site/src/content/articles/{slug}.md",
+    "text": "---\ntitle: \"An essay\"\ndescription: \"What it is about: details\"\ndate: {date}\nauthor: \"The principal\"\n---\n\nBody text.\n"
+  },
+  "nested_article_layout": {
+    "path": "content/posts/{yyyy}/{mm}/{dd}-{slug}/index.md",
+    "text": "---\ntitle: \"A post\"\ndate: {date}\n---\n\nBody text.\n"
+  },
+  "client_calendar_invite": {
+    "_incident": "2026-09-11: an invitation to client colleagues was created through the personal calendar connector and went out with a personal organizer; it could not be unsent.",
+    "cwd": "{client_ws}/projects/kickoff",
+    "tool": "mcp__0a1b2c3d__create_event",
+    "input": {"summary": "Kickoff", "startTime": "2026-09-12T10:00:00-04:00", "endTime": "2026-09-12T10:30:00-04:00",
+              "attendees": [{"email": "colleague@clientco.example"}]}
+  }
+}

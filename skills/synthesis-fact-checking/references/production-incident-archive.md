@@ -4,6 +4,14 @@
 **Last updated:** 2026-05-18
 **Scope:** documented production incidents in which AI-generated content escaped human verification and reached publication, the courts, a paying audience, or peer review. Each entry records what was published, what specifically failed in the writer's or editor's fact-checking, which v2.0 protocol would have caught it, lessons for newsroom editors and fact-checkers, and verification notes for each cornerstone fact.
 
+Contents:
+- Table of Incidents: the fifteen incidents with year, domain and cornerstone protocol
+- Incidents 1 to 15, each with what happened, what failed, which protocol would have caught it, lessons, and sources
+- Cross-cutting patterns across the incident archive
+- Verification status summary
+- How to use this archive in fact-checking workflows
+- Cross-references
+
 Every entry is a discrete catalog section. This file is a reference, not a narrative. Cross-references to `references/detailed-protocols.md` use the C1 IDs from v2.0 of the SKILL. Cross-references to v2.0 SKILL.md sections 4a through 4g (the refreshed Common Error Patterns) cite the C2 IDs.
 
 Honest verification labels matter more than impressive incident counts. Where a fact has been independently verified during the writing of this file, it is recorded as `[verified 2026-05-18]` with the source. Where it has not, it is flagged with `[unverified at expansion]`, `[partially verified]`, or `[opus-expansion-unverified]` per the upgrade plan's verification protocol.

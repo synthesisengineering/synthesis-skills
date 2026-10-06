@@ -42,6 +42,6 @@ def harness() -> str:
         return "claude-code"
     if os.environ.get("CODEX_THREAD_ID"):
         return "codex"
-    if os.environ.get("MUSE_SESSION_ID"):
+    if os.environ.get("MUSE_SESSION_ID") or os.environ.get("MUSE_PLUGIN_ROOT"):
         return "muse"
     return "unknown"

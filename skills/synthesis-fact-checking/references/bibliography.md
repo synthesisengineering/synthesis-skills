@@ -8,6 +8,15 @@
 
 **Anchor convention.** C1-* references protocols in `detailed-protocols.md` (NESTED, PARAPH, COMPOSITE, POSSHIFT, TRANS, URLROT, SYNTH, LAUNDER, TOOLHALL). C2-4a through C2-4g references refreshed common error patterns. Per-family signatures use `FAMILY-NN` (CLAUDE, GPT, GEMINI, DEEPSEEK, LLAMA, GROK).
 
+Contents:
+- 1. Academic papers on hallucination, citation accuracy, and RAG fidelity: verified, cited only, and benchmarks
+- 2. Journalism integrity organizations and methodology pages
+- 3. Production incident sources (2025-2026 cases)
+- 4. Tool methodology pages and detector documentation
+- 5. Synthesis project internal cross-references
+- Verification status summary
+- Maintenance notes
+
 ---
 
 ## 1. Academic papers on hallucination, citation accuracy, and RAG fidelity
@@ -184,7 +193,7 @@ All entries in this section anchor to `production-incident-archive.md` by defaul
 
 ## 5. Synthesis project internal cross-references
 
-Paths below are relative to the author's workspace root — the directory
+Paths below are relative to the author's workspace root: the directory
 that holds these project checkouts.
 
 Bucket paths share the prefix `ai-knowledge-rajiv/projects/synthesis-quality-skills-upgrade/resources/artifacts/`. Abbreviated as `<bucket>/` below.
