@@ -174,6 +174,25 @@ def test_e22_an_unsaved_doc_is_named_and_the_bookmark_stops_before_it(monkeypatc
     assert result["advance_through"] == "2026-10-02T15:00:00Z"
 
 
+def test_e22_a_blockquote_source_line_marks_its_doc_saved(monkeypatch, tmp_path):
+    """2026-10-07: archives also name the doc on a provenance line, `> Source: Gemini doc `<id>``. The window
+    read only the header and link forms, called those docs unsaved and held the watermark back."""
+    cfg = config(tmp_path)
+    meetings = Path(cfg["transcripts_repo"]) / "transcripts" / "meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "standup-2026-10-01.md").write_text(
+        "# Standup — 2026-10-01\n\n> Source: Gemini doc `1Doc_A-x` — tabs Notes (`t.n1`), Transcript (`t.k2`).\n")
+    (meetings / "weekly-2026-10-03.md").write_text(
+        '# Weekly\n\n> Source: Gemini notes doc "Weekly - Notes by Gemini", Drive ID `docC` (host\'s meeting).\n')
+    (meetings / "notes.md").write_text("# Notes\n\n> Fetched: by `docB`, which is not its source.\nSource: `docB`\n")
+    listing = row("1Doc_A-x", "2026-10-01T15:00:00Z") + row("docB", "2026-10-02T15:00:00Z") + row("docC", "2026-10-03T15:00:00Z")
+    monkeypatch.setattr(FM.mcp_client, "call_tool", FakeDrive(TABS, TEXTS, listing=listing))
+    result = FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3))
+    assert {d["id"]: d["saved"] for d in result["documents"]} == {
+        "1Doc_A-x": "standup-2026-10-01.md", "docB": None, "docC": "weekly-2026-10-03.md"}
+    assert result["unsaved"] == ["docB"] and result["advance_through"] == "2026-10-02T15:00:00Z"
+
+
 def test_e22_a_full_search_page_is_bounded_and_never_advances(monkeypatch, tmp_path):
     cfg = config(tmp_path)
     listing = "".join(row(f"doc{i}", f"2026-10-01T{i % 24:02d}:00:00Z") for i in range(FM.PAGE_SIZE))

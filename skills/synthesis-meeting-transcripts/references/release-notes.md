@@ -1,8 +1,9 @@
-# Release notes: 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
 Release notes that opened the 0.14.0 SKILL.md, in their original order. The v0.4.0 and v0.5.0 notes carry live rules, so they are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md); v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.0.1: saved meetings found by their blockquote source line
 - 1.0.0: the v5 script verdicts
 - 0.14.0 and 0.13.0
 - v0.5.3: a clean audit no longer looks like a broken one
@@ -10,6 +11,14 @@ Contents:
 - v0.5.1: Plaud spaced timestamp ranges
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
+
+## 1.0.1 — saved meetings found by their blockquote source line
+
+- `fetch-meeting.py --window` also counts a meeting as saved when its file names the doc on a
+  `> Source:` line in backticks (``> Source: Gemini doc `<id>` ``), so it no longer reports those as
+  unsaved or holds the meetings watermark back.
+- `verify_transcripts.py` no longer points at `transcript_primary.py`, which 1.0.0 removed; it names
+  the attribution reading rule in `protocol-steps.md` Step 4.6.
 
 ## 1.0.0 — the v5 script verdicts
 

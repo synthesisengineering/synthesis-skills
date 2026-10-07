@@ -20,9 +20,10 @@ The declared set has two parts:
   ``scope`` (the wrapper's type filter is not trusted), marked BOUNDED when
   the header count exceeds the records parsed or a page cap was hit.
 
-Output: the resolved-target table for the sync report, a census by type, a
-BOUND line when the enumeration was capped or short, and (``--json`` /
-``--out``) the ``{"gchat": [space ids]}`` the watermark gate consumes. Exit 0
+Output: the resolved-target table for the sync report, its census by type and
+its enumeration line (BOUNDED when capped or short); ``--json`` prints the same
+as one object, and ``--out`` writes its ``declared`` part, the
+``{"gchat": [space ids]}`` the watermark gate consumes. Exit 0
 when the set is complete, 1 when it is bounded or a config target is
 unresolved (the report must name it), 2 on an empty set or a malformed
 config. Nothing is guessed: a config target that is not ``spaces/<id>`` is
@@ -133,11 +134,11 @@ def in_scope(kind: str, scope: dict) -> bool:
 
 def bound(records: list[Target], claimed: int | None, page_size: int = PAGE_CAP) -> str | None:
     """Why the enumeration cannot be called complete, or None when it can: a full page may be truncated."""
+    short = claimed is not None and claimed > len(records)
     if len(records) >= page_size:
-        claim = f" (header claimed {claimed})" if claimed is not None and claimed > len(records) else ""
         return (f"page returned {len(records)} records, the full page size requested, and no cursor exists "
-                f"to page further{claim}")
-    return f"header claimed {claimed} spaces but {len(records)} records were returned" if claimed is not None and claimed > len(records) else None
+                f"to page further{f' (header claimed {claimed})' if short else ''}")
+    return f"header claimed {claimed} spaces but {len(records)} records were returned" if short else None
 
 
 def census(targets: list[Target]) -> str:
@@ -164,30 +165,34 @@ def merge(core: list[Target], enumerated: list[Target]) -> list[Target]:
     return core + [t for t in enumerated if t.space not in known]
 
 
-def render_table(workspace: str, targets: list[Target], enumeration_bound: str | None,
-                 enumerated: bool) -> str:
-    lines = [f"# Google Chat preflight — workspace {workspace}", "",
-             "| type | space | label | source | status |", "|---|---|---|---|---|"]
-    for target in targets:
-        status = "resolved" if target.resolved else f"UNRESOLVED — {target.reason}"
-        lines.append(f"| {target.kind} | {target.space or '—'} | {target.label} | {target.source} | {status} |")
-    lines.extend(["", census(targets)])
+def report(workspace: str, targets: list[Target], enumeration_bound: str | None, enumerated: bool) -> dict:
+    """What both modes print: --json emits this object, the table renders it, so `census` and `enumeration`
+    are the exact lines the sync report quotes."""
     if not enumerated:
-        lines.append("enumeration: none supplied — the declared set is the config core only; "
-                     "coverage is partial and the gate must say so")
+        line = ("enumeration: none supplied — the declared set is the config core only; "
+                "coverage is partial and the gate must say so")
     elif enumeration_bound:
-        lines.append(f"BOUNDED: {enumeration_bound} — coverage is partial; defer the surface with this bound, "
-                     "never advance past it")
+        line = f"BOUNDED: {enumeration_bound} — coverage is partial; defer the surface with this bound, never advance past it"
     else:
-        lines.append("enumeration: complete (header count matches the records parsed, below the page cap)")
-    return "\n".join(lines)
+        line = "enumeration: complete (header count matches the records parsed, below the page cap)"
+    rows = [{"type": t.kind, "space": t.space, "label": t.label, "source": t.source,
+             "status": "resolved" if t.resolved else f"UNRESOLVED — {t.reason}"} for t in targets]
+    return {"workspace": workspace, "targets": rows, "census": census(targets), "enumeration": line,
+            "bound": enumeration_bound, "declared": declared_set(targets)}
+
+
+def render_table(result: dict) -> str:
+    lines = [f"# Google Chat preflight — workspace {result['workspace']}", "",
+             "| type | space | label | source | status |", "|---|---|---|---|---|"]
+    lines += [f"| {r['type']} | {r['space'] or '—'} | {r['label']} | {r['source']} | {r['status']} |" for r in result["targets"]]
+    return "\n".join(lines + ["", result["census"], result["enumeration"]])
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="path to .agents/gchat-sync.yaml")
     parser.add_argument("--spaces", help="file holding the text the space-list call returned this run")
-    parser.add_argument("--json", action="store_true", help="print the declared set as JSON instead of the table")
+    parser.add_argument("--json", action="store_true", help="print the table's data as JSON: targets, census and enumeration lines, declared set")
     parser.add_argument("--out", help="also write the declared set JSON here (the gate's --targets-from)")
     parser.add_argument("--page-size", type=int, default=PAGE_CAP, help="the page_size the space-list call was given")
     args = parser.parse_args(argv)
@@ -219,15 +224,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     enumeration_bound = bound(enumerated, claimed, args.page_size) if args.spaces else None
-    declared = declared_set(targets)
+    result = report(str(config.get("workspace") or "?"), targets, enumeration_bound, bool(args.spaces))
     if args.out:
         out = Path(args.out).expanduser()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(declared, indent=2) + "\n", encoding="utf-8")
-    if args.json:
-        print(json.dumps(declared, indent=2))
-    else:
-        print(render_table(str(config.get("workspace") or "?"), targets, enumeration_bound, bool(args.spaces)))
+        out.write_text(json.dumps(result["declared"], indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2, ensure_ascii=False) if args.json else render_table(result))
 
     partial = []
     unresolved = [t for t in targets if not t.resolved]

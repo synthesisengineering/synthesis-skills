@@ -37,7 +37,12 @@ with the no-source marker.
 
 The second lists every doc the declared patterns find in the window, saved or
 unsaved, and `advance_through`: the moment the meetings watermark may move to (the
-window end, or just before the first unsaved doc). Drive's listing carries no
+window end, or just before the first unsaved doc). A doc counts as saved when the
+first 4,000 characters of a file in the archive's `meetings/` folder name its ID in
+one of three forms: the `**Source ID:** google-drive:<id>` header this script
+writes, a Google Doc link (`/document/d/<id>`), or a blockquote provenance line
+whose first backticked ID is the doc's (`` > Source: Gemini doc `<id>` — ... ``).
+Drive's listing carries no
 completeness flag, so a full page leaves `advance_through` empty, and the listing is
 what Drive returned, not proof that nothing else exists.
 

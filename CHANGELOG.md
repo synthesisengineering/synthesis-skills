@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.6] - 2026-10-07
+
+Three defects the operations sessions reported from their first rituals on v5:
+- **Meetings already saved are recognized.** `fetch-meeting.py --window` read a saved meeting's doc id
+  only from a `google-drive:` header or a document link, so archives that name it on a `> Source:` line
+  showed as unsaved and the meetings watermark was held back. It now reads that line too
+  (synthesis-meeting-transcripts 1.0.1).
+- **No pointer to a removed script.** `verify_transcripts.py` told readers to run `transcript_primary.py`,
+  which 1.0.0 removed in favor of the attribution reading rule; it now names that rule.
+- **The Chat preflight's JSON carries the census.** `gchat_preflight.py --json` printed only the targets;
+  it now carries the `census` and `enumeration` lines the ritual quotes, plus `bound` and `declared`. Table
+  mode is unchanged, and `--out` still writes only the declared set the gate reads.
+- The bytecode lint now covers every script in a skill, not only `scripts/` folders, and three scripts
+  outside them turn bytecode off before their first local import.
+
 ## [5.0.5] - 2026-10-06
 
 - **The doctor leaves nothing running.** Codex's app-server runs `git ls-remote` for its marketplace when

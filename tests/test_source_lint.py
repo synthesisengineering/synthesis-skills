@@ -248,8 +248,8 @@ def bytecode_writers(root: Path) -> list:
     which verifies its bundle against its lock record, then refuses the whole plugin (4.102.1)."""
     import ast
     found = []
-    for path in sorted(root.glob("skills/*/scripts/*.py")):
-        if path.name.startswith("test_"):
+    for path in sorted(root.glob("skills/*/**/*.py")):  # every folder: a skill-root or helper-folder script ships too
+        if path.name.startswith("test_") or "tests" in path.relative_to(root).parts:
             continue
         local = {p.stem for p in path.parent.glob("*.py")} | {"synthesis", "setup"}
         for statement in ast.parse(path.read_text(encoding="utf-8")).body:
@@ -275,4 +275,12 @@ def test_the_bytecode_rule_finds_a_late_guard_and_spares_an_early_one(tmp_path):
     (folder / "early.py").write_text("import sys\nsys.dont_write_bytecode = True\nimport helper\n")
     (folder / "late.py").write_text("import sys\nimport helper\nif __name__ == '__main__':\n    sys.dont_write_bytecode = True\n")
     (folder / "lazy.py").write_text("def f():\n    from synthesis import board\n")
-    assert bytecode_writers(tmp_path) == ["skills/a/scripts/late.py:2", "skills/a/scripts/lazy.py:1"]
+    # Until 2026-10-07 only scripts/ was checked, and three scripts in other folders imported before the guard.
+    helper = tmp_path / "skills" / "b" / "optional-helper"
+    helper.mkdir(parents=True)
+    (helper / "client.py").write_text("X = 1\n")
+    (helper / "fetch.py").write_text("import sys\nimport client\n")
+    (tmp_path / "skills" / "b" / "tests").mkdir()
+    (tmp_path / "skills" / "b" / "tests" / "conftest.py").write_text("from synthesis import board\n")
+    assert bytecode_writers(tmp_path) == ["skills/a/scripts/late.py:2", "skills/a/scripts/lazy.py:1",
+                                          "skills/b/optional-helper/fetch.py:2"]

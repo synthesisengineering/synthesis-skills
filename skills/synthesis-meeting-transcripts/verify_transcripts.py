@@ -72,7 +72,7 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.0.1"
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -145,7 +145,7 @@ CONTROL_CLASS = "diagnostic"
 UNVERIFIED_REMAINDER = [
     "whether a no-source-transcript marker truthfully reflects the provider source",
     "capture completeness beyond the bytes in the audited files",
-    "attribution-level primary-source eligibility; use transcript_primary.py",
+    "attribution-level primary-source eligibility; take the actor from the verbatim transcript (references/protocol-steps.md Step 4.6)",
 ]
 
 
@@ -236,16 +236,16 @@ def audit_files(
     ):
         raise ValueError("exact saved files must be a nonempty bounded unique list")
     for path in sorted(normalized):
+        size_kb = round(path.stat().st_size / 1024, 1)
         # Skip prefix-based exclusions unless --no-skip
         if not no_skip and path.name.startswith(SKIP_PREFIXES):
-            size_kb = path.stat().st_size / 1024
             results.append(
                 {
                     "file": path.name,
                     "timestamps": 0,
                     "speakers": 0,
                     "has_transcript_heading": False,
-                    "size_kb": round(size_kb, 1),
+                    "size_kb": size_kb,
                     "status": "SKIPPED",
                 }
             )
@@ -267,14 +267,13 @@ def audit_files(
 
         # Explicit marker for source-Doc-has-no-transcript meetings
         if NO_SOURCE_TRANSCRIPT_MARKER in content:
-            size_kb = path.stat().st_size / 1024
             results.append(
                 {
                     "file": path.name,
                     "timestamps": count_timestamps(content),
                     "speakers": count_speaker_lines(content),
                     "has_transcript_heading": has_transcript_section_heading(content),
-                    "size_kb": round(size_kb, 1),
+                    "size_kb": size_kb,
                     "status": "OK (no-source-transcript)",
                 }
             )
@@ -284,7 +283,6 @@ def audit_files(
         speakers = count_speaker_lines(content)
         standalone = count_standalone_timestamp_lines(content)
         has_heading = has_transcript_section_heading(content)
-        size_kb = path.stat().st_size / 1024
         # Diarized case: enough timestamps AND enough speaker lines (Gemini or Plaud, incl. [t-t] range form).
         # Undiarized case: enough standalone-timestamp lines (running transcript with no speaker labels).
         # A Details-SUMMARY passes neither — it has few speaker lines and ~0 standalone-timestamp lines,
@@ -297,7 +295,7 @@ def audit_files(
                 "speakers": speakers,
                 "standalone_ts_lines": standalone,
                 "has_transcript_heading": has_heading,
-                "size_kb": round(size_kb, 1),
+                "size_kb": size_kb,
                 "status": "OK" if ok else "INCOMPLETE",
             }
         )

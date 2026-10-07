@@ -378,6 +378,20 @@ def test_exact_files_refuse_a_symlink_alias_and_a_digest_mismatch(tmp_path):
     assert v.main(["--saved-manifest", str(good)]) == 0
 
 
+def test_the_remainder_points_only_at_files_this_skill_ships(tmp_path, capsys):
+    """It told readers to run transcript_primary.py, which v5 cut (references/preserved.md: the need is a
+    reading rule). Every script or reference the run names must exist in this skill, in both output modes."""
+    skill = pathlib.Path(v.__file__).resolve().parent
+    _write(tmp_path, "standup-2026-10-05.md", "## Verbatim transcript\n\n" + DIALOGUE)
+    assert v.main([str(tmp_path)]) == 0 and v.main([str(tmp_path), "--json"]) == 0
+    named = re.findall(r"[\w/.-]+\.(?:py|md)\b", "\n".join(v.UNVERIFIED_REMAINDER))
+    assert named and [n for n in named if not (skill / n).is_file()] == []
+    out = capsys.readouterr().out
+    assert all(item in out for item in v.UNVERIFIED_REMAINDER) and "transcript_primary" not in out
+    assert "### Step 4.6: Resolve attribution from the verbatim transcript" in (
+        skill / "references" / "protocol-steps.md").read_text(encoding="utf-8")
+
+
 def test_runs_under_apple_python(tmp_path):
     import subprocess
     if not pathlib.Path("/usr/bin/python3").exists():
