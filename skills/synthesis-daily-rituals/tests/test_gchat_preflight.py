@@ -179,8 +179,49 @@ def test_cli_without_an_enumeration_is_the_config_core_only_and_partial(tmp_path
     done = run_cli("--config", str(write(tmp_path, "c.yaml", CONFIG)), "--json")
 
     assert done.returncode == 1
-    assert json.loads(done.stdout) == {"gchat": ["spaces/AAAAdm000001", "spaces/AAAAgrp00001"]}
+    payload = json.loads(done.stdout)
+    assert payload["declared"] == {"gchat": ["spaces/AAAAdm000001", "spaces/AAAAgrp00001"]}
+    assert payload["enumeration"].startswith("enumeration: none supplied") and payload["bound"] is None
     assert "config core only" in done.stderr
+
+
+TABLE = """# Google Chat preflight — workspace example-workspace
+
+| type | space | label | source | status |
+|---|---|---|---|---|
+| DIRECT_MESSAGE | spaces/AAAAdm000001 | Jane Doe (DM) | config | resolved |
+| GROUP_CHAT | — | Project Alpha (group) | config | UNRESOLVED — users/107000000000000000000 is a person, not a space |
+| DIRECT_MESSAGE | spaces/AAAAdm000002 | Unnamed Space | enumeration | resolved |
+| SPACE | spaces/AAAAsp000001 | Engineering | enumeration | resolved |
+| GROUP_CHAT | spaces/AAAAgrp00001 | Project Alpha | enumeration | resolved |
+
+census: 2 DIRECT_MESSAGE / 1 GROUP_CHAT / 1 SPACE / 1 unresolved
+enumeration: complete (header count matches the records parsed, below the page cap)
+"""
+
+
+def test_json_carries_the_census_and_enumeration_lines_the_table_prints(tmp_path: Path) -> None:
+    """2026-10-07: --json printed only the declared set, so a ritual told to quote the census and the
+    enumeration line had to rerun table mode on the same inputs. Both modes now carry the same lines."""
+    config = str(write(tmp_path, "c.yaml", CONFIG.replace("space: spaces/AAAAgrp00001", "space: users/107000000000000000000")))
+    complete = str(write(tmp_path, "complete.txt", ENUMERATION))
+    bounded = str(write(tmp_path, "bounded.txt", ENUMERATION.replace("Found 4", "Found 443")))
+    assert run_cli("--config", config, "--spaces", complete).stdout == TABLE  # table mode as it always printed
+    for spaces, opening in ((complete, "enumeration: complete ("), (bounded, "BOUNDED: header claimed 443"),
+                            (None, "enumeration: none supplied")):
+        argv = ["--config", config, *(["--spaces", spaces] if spaces else [])]
+        table, out = run_cli(*argv), tmp_path / "declared.json"
+        done = run_cli(*argv, "--json", "--out", str(out))
+        payload = json.loads(done.stdout)
+        assert done.returncode == table.returncode == 1  # the person id stays unresolved
+        assert table.stdout.splitlines()[-2:] == [payload["census"], payload["enumeration"]]
+        assert payload["census"].endswith("/ 1 unresolved") and payload["enumeration"].startswith(opening)
+        assert (payload["bound"] is not None) == (spaces == bounded)
+        rows = [f"| {r['type']} | {r['space'] or '—'} | {r['label']} | {r['source']} | {r['status']} |"
+                for r in payload["targets"]]
+        assert rows == [line for line in table.stdout.splitlines()[4:] if line.startswith("| ")]
+        assert payload["declared"] == json.loads(out.read_text(encoding="utf-8"))
+        assert "users/" not in json.dumps(payload["declared"])
 
 
 def test_cli_refuses_an_empty_set_and_a_malformed_config(tmp_path: Path) -> None:

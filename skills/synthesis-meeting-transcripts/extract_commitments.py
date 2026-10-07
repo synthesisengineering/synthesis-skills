@@ -26,6 +26,7 @@ import re
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_transcripts
@@ -113,9 +114,8 @@ def scan(text: str, *, speaker: str | None = None) -> dict:
         dialogue += 1
         if speaker is not None and speaker.lower() not in line_speaker.lower():
             continue
-        lowered = utterance
         for shape, pattern in _COMMITMENT_SHAPES:
-            if pattern.search(lowered):
+            if pattern.search(utterance):
                 candidates.append(
                     {
                         "timestamp": timestamp,

@@ -38,6 +38,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE.parents[2]))  # the plugin root, which holds synthesis/
@@ -142,14 +143,12 @@ def select_transcript(tabs, complete: bool, tab_id: str | None = None, title: st
         return {"status": "unknown", "reason": "tab-inventory-incomplete"}
     if tab_id:
         chosen = [t for t in tabs if t["tab_id"] == tab_id]
-        reason = "transcript-tab-absent"
     else:
         chosen = [t for t in tabs if t["title"] == (title or "Transcript")]
-        reason = "transcript-tab-absent"
         if len(chosen) > 1:
             return {"status": "unknown", "reason": "transcript-tab-title-not-unique"}
     if not chosen:
-        return {"status": "no-source", "reason": reason}  # only a complete inventory can say this
+        return {"status": "no-source", "reason": "transcript-tab-absent"}  # only a complete inventory can say this
     return {"status": "transcript", "reason": None, "transcript_tab_id": chosen[0]["tab_id"]}
 
 
@@ -184,10 +183,11 @@ ROW = re.compile(r'Name: "(?P<name>[^"\n]*)" \(ID: (?P<id>[A-Za-z0-9_-]+)(?:, Ty
 
 
 def saved_ids(meetings: Path) -> dict:
+    """Doc ID to saved file: a `**Source ID:**` header, a Google Doc link, or a `> Source:` line's first backticked ID."""
     found = {}
     for path in sorted(meetings.glob("*.md")) if meetings.is_dir() else []:
         head = path.read_text(encoding="utf-8", errors="replace")[:4000]
-        for doc_id in re.findall(r"google-drive:([A-Za-z0-9_-]+)|/document/d/([A-Za-z0-9_-]+)", head):
+        for doc_id in re.findall(r"(?:google-drive:|/document/d/)([A-Za-z0-9_-]+)|^>[ \t]*Source:[^\n]*?`([A-Za-z0-9_-]+)`", head, re.M):
             found.setdefault(doc_id[0] or doc_id[1], path.name)
     return found
 
@@ -196,8 +196,7 @@ def window(url: str, cfg: dict, account: str, start: dt.date, through: dt.date) 
     """Every doc the declared patterns find in [start, through], marked saved or unsaved, and the
     moment the bookmark may advance to: never past the first unsaved doc."""
     query_window = f'modifiedTime > "{start.isoformat()}T00:00:00" and modifiedTime < "{(through + dt.timedelta(days=1)).isoformat()}T00:00:00"'
-    patterns = cfg.get("meeting_patterns") or {}
-    patterns = patterns or {"(generic)": resolve_pattern(cfg, "Notes by Gemini")}
+    patterns = cfg.get("meeting_patterns") or {"(generic)": resolve_pattern(cfg, "Notes by Gemini")}
     docs, bounded = {}, []
     for name, pattern in patterns.items():
         text = mcp_client.call_tool("search_drive_files", {"user_google_email": account, "query": f"{pattern} and {query_window}",

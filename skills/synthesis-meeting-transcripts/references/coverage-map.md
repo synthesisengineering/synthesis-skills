@@ -32,6 +32,7 @@ The prose restructure kept `version: "0.14.0"` because `verify_transcripts.py` a
 
 - `optional-workspace-mcp/fetch-meeting.py` now points at `synthesis-meeting-transcripts/references/setup.md` for the schema (it said SKILL.md).
 - A comment in `verify_transcripts.py` asks for "a matching entry to SKILL.md's changelog" when output changes. The release notes live in references/release-notes.md and references/earlier-version-history.md.
+- `verify_transcripts.py`'s unverified remainder still said "use transcript_primary.py" after M3 cut that script. Since 2026-10-07 it points at the reading rule that replaced it, protocol-steps.md Step 4.6; `test_the_remainder_points_only_at_files_this_skill_ships` holds every file it names to one the skill ships.
 
 ## Scripts in v5 (M3)
 
@@ -60,7 +61,7 @@ Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line c
 | E19 `_*`, `gdoc-*`, `email-*` files are skipped and named | `test_e19_*` |
 | E20 transcript by stable tab ID; distinct reasons for empty, missing, incomplete, ambiguous | `test_workspace_mcp_fetch.py::test_e20_*` |
 | E21 an outer or nested tool error is unknown, never "no transcript" | `test_e21_*` |
-| E22 the bookmark does not pass an unsaved doc, which the report names | `test_e22_*` |
+| E22 the bookmark does not pass an unsaved doc, which the report names; a doc named by a `**Source ID:**` header, a Google Doc link or a `> Source:` line's backticked ID is saved | `test_e22_*` (the provenance-line form: `test_e22_a_blockquote_source_line_marks_its_doc_saved`) |
 | E23 commitment candidates listed with speaker and time; nothing created unconfirmed | `test_meeting_extract_commitments.py` (`test_gemini_bold_line_flags_shape`, `test_plaud_timestamp_is_captured`, `test_stamp_*`); binding rule 9 |
 | E24 Gemini lines without timestamps take the preceding block's time | `test_meeting_extract_commitments.py::test_e24_a_gemini_time_carries_across_its_block_and_resets_at_a_section` |
 | E25 a moved checkout is a stale service path (exit 1); unreadable state exits 2 | `test_workspace_mcp_doctor.py::test_e25_a_moved_checkout_is_a_stale_unit_path_defect`, `test_restricted_launchd_and_port_visibility_are_unknown` |
