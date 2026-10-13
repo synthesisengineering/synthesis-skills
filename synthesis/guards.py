@@ -875,6 +875,10 @@ SCRIPTED_WRITE = re.compile(
     r"|open|write|system|popen|exec\w*|spawn\w*)\b|\bshutil\.|\bsubprocess\b|\bsqlite3\b"
     r"|\bfs\.\w*(?:[Ww]rite|[Aa]ppend|rename|unlink|rm|mkdir|copy|symlink|truncate|chmod)|createWriteStream"
     r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\(|open\s*\(\s*\w+\s*,\s*['\"]\+?[>|]")
+# A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
+# window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+                              r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 
 
@@ -897,8 +901,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
             targets += [os.path.join(where, os.path.expanduser(os.path.expandvars(w)))
                         for w in (words[-1:] if head in COPIERS else words[1:])]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
-        if SCRIPT.match(head) and re.search(r"\bfrom\s+synthesis(?:\.\w+)?\s+import\b[^\n;]*\b(?:sends|approvals)\b"
-                                            r"|\bsynthesis\.(?:sends|approvals)\b", script):
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
             why = why or "runs a script that writes where the synthesis state or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"

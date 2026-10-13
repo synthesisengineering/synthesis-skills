@@ -37,9 +37,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.9 adds 320 to both for Rajiv's 2026-10-13 rulings: approval on every channel, recognized by what a call does,
 # and send windows (synthesis/sends.py 220, guard wiring 61, `synthesis sends` 29, the window note in the hooks 8),
 # and the Docs image key as a built-in credential (2). The preferred-names check came in at zero net.
+# 5.0.10 adds 3 so a read-only script may import the window and approval code; writing calls stay refused.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5629
-PLUGIN_BUDGET = 20977
+CORE_BUDGET = 5632
+PLUGIN_BUDGET = 20980
 
 
 def _lines(files):

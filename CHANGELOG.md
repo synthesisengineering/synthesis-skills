@@ -4,6 +4,12 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.10] - 2026-10-13
+
+- **Reading the send window or approvals from a script is allowed again.** 5.0.9 refused any script that
+  imported the window or approval code, which also refused a read-only check. The shell guard now refuses
+  only a script that opens a window, grants or spends an approval, or writes into synthesis state.
+
 ## [5.0.9] - 2026-10-13
 
 Rajiv's rulings of 2026-10-13:
