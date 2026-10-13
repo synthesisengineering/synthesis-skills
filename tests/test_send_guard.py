@@ -167,3 +167,50 @@ def test_a_branding_link_in_html_counts_as_branding_and_a_phrase_split_by_a_link
     assert "persona-marker-without-branding" in guards.check(tool, unbranded, CONFIG)
     split = {**call, "body": '<p>I am <a href="https://example.com/">sorry</a> for the delay.</p>'}
     assert "delay-apology" in guards.check(tool, split, CONFIG)
+
+
+# Rajiv, 2026-10-13: an agent message addressed someone by their official first name. The example config lists
+# that pair with example.test identifiers; the name is checked only in a call that carries one of them.
+GOES_BY_BOB = "this message involves someone who goes by Bob; write Bob, not Robert"
+BOB_EMAIL = {**EMAIL, "to": ["bob@example.test"], "htmlBody": "<p>Robert, the plan is attached.</p>",
+             "body": "Robert, the plan is attached."}
+
+
+@pytest.mark.parametrize("tool,call", [
+    (DRAFT, BOB_EMAIL),
+    (DRAFT, {**BOB_EMAIL, "to": ["a@example.com"], "cc": ["BOB@example.test"]}),
+    (DRAFT, {**BOB_EMAIL, "htmlBody": "<p>Bob, the plan is attached.</p>", "body": "Bob, the plan is attached.",
+             "subject": "Robert's plan"}),
+    (SLACK, {"channel_id": "U0EXAMPLE", "message": "Robert, the plan is attached."}),
+    (SLACK, {"channel_id": "C0EXAMPLE", "message": "Thanks <@U0EXAMPLE>. Robert's notes are the valuable part."}),
+])
+def test_an_official_first_name_is_refused_when_the_call_identifies_someone_who_goes_by_another(tool, call):
+    reason = guards.check(tool, call, CONFIG)
+    assert GOES_BY_BOB in reason and "approve" not in reason, reason
+
+
+@pytest.mark.parametrize("tool,call", [
+    (DRAFT, {**BOB_EMAIL, "to": ["kathryn@other.example"]}),  # another Robert: no identifier of Bob's in the call
+    (SLACK, {"channel_id": "C0EXAMPLE", "message": "Robert, the plan is attached."}),
+    (SLACK, {"channel_id": "C0EXAMPLE", "message": "Thanks <@U0OTHER>. Robert's notes are the valuable part."}),
+])
+def test_the_same_first_name_for_someone_else_is_never_blocked(tool, call):
+    assert "approval" in guards.check(tool, call, CONFIG)
+
+
+@pytest.mark.parametrize("tool,call", [
+    (DRAFT, {**BOB_EMAIL, "htmlBody": "<p>Bob, the plan is attached.</p>", "body": "Bob, the plan is attached."}),
+    # the address field keeps the directory's display name; only the words a person reads change
+    (DRAFT, {**BOB_EMAIL, "to": ["Robert Example <bob@example.test>"], "htmlBody": "<p>Bob, the plan is attached.</p>",
+             "body": "Bob, the plan is attached."}),
+    (SLACK, {"channel_id": "C0EXAMPLE", "message": "Thanks <@U0EXAMPLE>. Bob's notes are the valuable part."}),
+    (SLACK, {"channel_id": "U0EXAMPLE", "message": "Bob, the notes are at kathryn.notes.example."}),  # case-sensitive
+])
+def test_the_preferred_name_passes(tool, call):
+    assert "approval" in guards.check(tool, call, CONFIG)
+
+
+def test_no_preferred_names_key_means_no_name_check():
+    config = {k: v for k, v in CONFIG.items() if k != "preferred_names"}
+    assert "approval" in guards.check(DRAFT, BOB_EMAIL, config)
+    assert "approval" in guards.check(SLACK, {"channel_id": "U0EXAMPLE", "message": "Robert, the plan is attached."}, config)

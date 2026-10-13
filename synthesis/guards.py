@@ -29,12 +29,12 @@ SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
 GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"}
 
 # --- sends (R3.1) -------------------------------------------------------------------------------
-# The approval binds the whole call (recipients, subject, thread headers, every body part and
-# attachment) and is keyed by its digest, so sessions composing at once never share a slot
-# (2026-09-02). Before an approval is asked for, the text must pass the register scan and the
-# format rules: email is HTML with no break inside a paragraph and no markdown (2026-09-23), no
-# text a person reads breaks a paragraph, a persona signature is a link (2026-08-30), and
-# threading headers carry literal Message-IDs (2026-08-20, 2026-08-28).
+# The approval binds the whole call (recipients, subject, thread headers, every body part and attachment) and is
+# keyed by its digest, so sessions composing at once never share a slot (2026-09-02). Before an approval is asked
+# for, the text must pass the register scan and the format rules: email is HTML with no break inside a paragraph
+# and no markdown (2026-09-23), no text a person reads breaks a paragraph, a persona signature is a link
+# (2026-08-30), threading headers carry literal Message-IDs (2026-08-20, 2026-08-28), and someone the call
+# identifies who goes by another name is called by it, not by their official first name (2026-10-13).
 
 EMAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message", "create_draft", "update_draft",
                          "send_email", "reply", "forward"})
@@ -136,8 +136,7 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
     """Why this outgoing message can't go as written, before anyone is asked to approve it."""
     fmt = config.get("message_format") or {}
     breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs"))
-    strings = list(_strings(tool_input))
-    html_format = tool_input.get("body_format") == "html"
+    strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
         texts.append(text)
@@ -178,8 +177,7 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
         problems += [f"{k}: a line break falls inside a paragraph; join each paragraph onto one line, or separate "
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
-    signature = config.get("signature") or {}
-    raw = "\n".join(t for _, t in strings)
+    signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
     if any(m and m in raw for m in signature.get("markers", [])) and not any(
             fnmatch.fnmatchcase(tool, p) for p in signature.get("plain_url_tools", [])):
         shown = LINKED.sub(" ", raw)
@@ -187,6 +185,11 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
         if exposed:
             problems.append(f"the signature shows {', '.join(exposed)} as text; on a channel that renders links the "
                             "persona name itself must be the link")
+    for person in config.get("preferred_names", []):  # only in a call carrying one of their identifiers (2026-10-13)
+        official, preferred = person.get("official", ""), person.get("preferred", "")
+        if official and any(i and str(i).lower() in raw.lower() for i in person.get("identifiers", [])) and any(
+                k not in ADDRESSED and re.search(rf"\b{re.escape(official)}\b", t) for k, t in strings):
+            problems.append(f"this message involves someone who goes by {preferred}; write {preferred}, not {official}")
     return problems
 
 
@@ -195,8 +198,14 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     problems = message_problems(tool, tool_input, config)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
-    subject = {"tool": tool, "input": tool_input}
+    from synthesis import sends
+    subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
+    summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
+    if sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
+        sends.log(chan, tool, summary, "window", session)
+        return None
     if approvals.consume("send", subject, session):
+        sends.log(chan, tool, summary, "approval", session)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request("send", subject, f"{tool}: {text[:120]}")
@@ -888,6 +897,9 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
             targets += [os.path.join(where, os.path.expanduser(os.path.expandvars(w)))
                         for w in (words[-1:] if head in COPIERS else words[1:])]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
+        if SCRIPT.match(head) and re.search(r"\bfrom\s+synthesis(?:\.\w+)?\s+import\b[^\n;]*\b(?:sends|approvals)\b"
+                                            r"|\bsynthesis\.(?:sends|approvals)\b", script):
+            why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
             why = why or "runs a script that writes where the synthesis state or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
@@ -917,10 +929,62 @@ def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
 
 
 def _sends(tool: str, tool_input: dict, config: dict) -> bool:
-    """A send tool by name, or any server's `send_message` that addresses a mailbox or Chat space
-    (the Gmail connector's server name is an id that no name pattern can anticipate)."""
-    return ((is_send_tool(tool, config) and not _quiet_calendar_write(tool, tool_input))
+    """A tool that delivers words to people, by name or by what its name says it does (every channel, Rajiv,
+    2026-10-13), or any server's `send_message` that addresses a mailbox or Chat space (the Gmail connector's
+    server name is an id no name pattern can anticipate). Work in the principal's own repositories is not a send."""
+    from synthesis import sends
+    if sends.own_repo(sends.tool_repo(tool_input), config):
+        return False
+    return (((is_send_tool(tool, config) or sends.says(tool, config)) and not _quiet_calendar_write(tool, tool_input))
             or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
+
+
+def _project(session: dict | None) -> str:
+    from synthesis import board
+    me = board.load(paths.session_id(session)) if paths.session_id(session) else None
+    return me.project if me else ""
+
+
+def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A shell command that posts words to people waits for the principal's code, as a connector send does, and
+    opening a send window needs it too. The register scan reads the command and any body file it sends."""
+    import hashlib
+    from synthesis import sends
+    posts, opening = [], False
+    for words, where in _parse(command, cwd)[0]:
+        opening = opening or sends.opens_window(words)
+        chan = sends.command_send(words, where, config)
+        if chan:
+            body, problem = sends.attached(words, where)
+            if problem:
+                return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
+            posts.append((chan, body))
+    if opening:
+        subject = {"command": command, "cwd": cwd}
+        if approvals.consume("send-window", subject, session):
+            return None
+        code = approvals.request("send-window", subject, f"open a send window: {command[:140]}")
+        return ("Opening a send window lets signed Ragbot sends go without a per-message code until it ends. Show the "
+                f"principal this exact command and ask them to type {approvals.how(code)}. Then run the identical command again.")
+    if not posts:
+        return None
+    body, chans = "\n\n".join(b for _, b in posts), sorted({c for c, _ in posts})
+    problems = message_problems("Bash", {"command": command, "attached": body}, config)
+    if problems:
+        return "This command posts a message that can't go out as written: " + "; ".join(problems[:6]) + "."
+    summary = f"{', '.join(chans)}: {command[:160]}"
+    if all(sends.covered(c, [command, body], _project(session), config) for c in chans):
+        for c in chans:
+            sends.log(c, "shell", summary, "window", session)
+        return None
+    subject = {"command": command, "cwd": cwd, "attached": hashlib.sha256(body.encode("utf-8")).hexdigest()}
+    if approvals.consume("send", subject, session):
+        for c in chans:
+            sends.log(c, "shell", summary, "approval", session)
+        return None
+    code = approvals.request("send", subject, summary)
+    return (f"This command posts to {', '.join(chans)} on the principal's behalf. Show them the exact command and its "
+            f"message and ask them to type {approvals.how(code)}. Then run the identical command again.")
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
@@ -939,10 +1003,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if tool in SHELL_TOOLS:
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
-                or check_deploy(command, config, cwd, session))
+                or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session))
+    # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
-    if reason:
-        return reason  # before the send approval, so no approval is spent on the wrong account
-    if _sends(tool, tool_input, config):
-        return check_send(tool, tool_input, config, session)
-    return None
+    return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)

@@ -90,7 +90,14 @@ def session_start(payload):
     notes += [n for n in (run, line) if n]
     unread = board.inbox(session_id, session.project)
     notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
+    notes += [n for n in [_window_note()] if n]
     return _emit("SessionStart", context="\n\n".join(notes))
+
+
+def _window_note() -> str:
+    from synthesis import sends
+    window = sends.window()
+    return sends.describe(window) if window else ""
 
 
 def user_prompt_submit(payload):
@@ -115,6 +122,7 @@ def user_prompt_submit(payload):
                   + (cut.format(len(m["text"]) - 1500) if len(m["text"]) > 1500 else "") for m in unread[:5]]
         if len(unread) > 5:
             notes.append(f"{len(unread) - 5} more unread: run `synthesis inbox`.")
+    notes += [n for n in [_window_note()] if n]  # every session sees an open window (Rajiv, 2026-10-13)
     return _emit("UserPromptSubmit", context="\n\n".join(notes))
 
 

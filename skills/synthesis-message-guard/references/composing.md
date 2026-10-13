@@ -70,6 +70,9 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
   skill is the source of truth the register patterns derive from).
 - **Invented precision:** every number in the text has a source.
 - **Recipient address:** right person, right address, right account.
+- **Names:** everyone the text greets or names is called by the name they go by
+  (`synthesis-agent-correspondence` binding rule 12). The guard catches only the
+  people the principal's `preferred_names` lists, when the call identifies them.
 - **Branding:** for a send as the agent, the persona branding the correspondence skill
   requires.
 
@@ -88,6 +91,7 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
 | Markdown (`[x](https://...)`, `**bold**`, `# heading`) | Email bodies | `markdown never renders in email ...` |
 | A line break inside a paragraph | Email plain parts; every chat message | `<field>: a line break falls inside a paragraph ...` |
 | Persona signature shown as a bare domain | Any message carrying a configured persona marker | `the signature shows <domain> as text ...` |
+| A person's official first name (whole word, case-sensitive), outside the address fields | Any message whose call carries one of that person's `preferred_names` identifiers (an address, a Slack user or DM id) | `this message involves someone who goes by <preferred>; write <preferred>, not <official>` |
 
 Blank lines separate paragraphs. A line starting a list item (`-`, `*`, `•`, `+`, `1.`),
 a quote (`>`) or a table row (`|`) starts its own line, and fenced code keeps its lines.

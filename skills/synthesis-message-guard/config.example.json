@@ -32,5 +32,12 @@
     "markers": ["🤖"],
     "domains": ["helperbot.example"],
     "plain_url_tools": []
-  }
+  },
+  "preferred_names": [
+    {
+      "official": "Robert",
+      "preferred": "Bob",
+      "identifiers": ["bob@example.test", "U0EXAMPLE"]
+    }
+  ]
 }
