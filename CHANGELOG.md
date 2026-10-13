@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.8] - 2026-10-13
+
+- **Decision packets read comfortably** (synthesis-decision-packet 2.1.0, from Rajiv's review of a
+  three-decision packet on 2026-10-08 that carried the same eleven assets in every row). A text asset can
+  carry the version the principal already reviewed (`baseline`); the page shows the changed words first and
+  keeps the complete text one click away. Identical material is shown once and later rows point back to it.
+  An HTML message (`format: "html"`) is read as its words, with the exact markup under "Exact HTML as sent".
+  `reference` material is folded away, settled items go in a `handled` list apart from the decisions, and a
+  row's context comes before its material. New READER findings flag raw HTML in the reading path and a
+  reading path over 6,000 characters per decision. An omitted header part no longer leaves a blank line.
+  Binding rule 15 adds the Codex practice: ask in the final reply, never only in a question card.
+- **The meeting window never passes a meeting still under way** (synthesis-meeting-transcripts 1.1.0). The
+  suggested watermark is the earliest of the window's end, two hours before the run and just before each
+  unsaved doc was created, with an explicit offset and a stated reason. Each run names the patterns it
+  searched and lists notes docs none of them found. Docs image links carrying an access key are redacted when a
+  transcript is saved, and the transcript audit fails a file that still holds one.
+- **The message reader no longer stalls on three kinds of row** (synthesis-local-messaging 1.1.0). An outgoing
+  row with no chat link is placed in its recipient's one-to-one chat when there is exactly one. A link or
+  attachment row whose body the reader does not decode is recorded with a marker (`[link]`,
+  `[attachment: image/jpeg]`) instead of holding the cursor. Gaps that remain can be closed by a by-hand
+  review naming exactly those rows (`--review`), which the principal approves by typed code. Any caption
+  sent with a photo or link is not read.
+
 ## [5.0.7] - 2026-10-13
 
 Fixes for defects other sessions reported on the board from 2026-10-07 to 10-13:

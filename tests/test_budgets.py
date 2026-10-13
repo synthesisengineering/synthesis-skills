@@ -28,9 +28,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # versions were kept (11), a write guard that tells a read from a write (9), HTML link targets counting as
 # branding in the send guard (4) and a doctor that says "cannot tell" for a CLI or trust state it cannot read
 # (4). A scan for unreferenced definitions and repeated blocks across the core found nothing to remove.
+# 5.0.8 adds 146 to the plugin: the decision packet's reading path Rajiv asked for on 2026-10-08 (153: changes
+# against a reviewed baseline, HTML messages as their words, material shown once, a handled list, reading-burden
+# checks), the message reader's three gaps (56) and the meeting window's in-progress hold (5, after two shared
+# helpers recovered 5), less the reader's unused sandbox runner (73), the meeting config's April migration
+# hint (8) and two unreferenced definitions (4). A plugin-wide scan found nothing else unreferenced. Then 18 more
+# so saved meeting transcripts never keep a Docs image's access key (reported the same day).
 # Code may not grow past these without removing as many lines elsewhere.
 CORE_BUDGET = 5309
-PLUGIN_BUDGET = 20511
+PLUGIN_BUDGET = 20657
 
 
 def _lines(files):

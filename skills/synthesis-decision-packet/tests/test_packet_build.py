@@ -372,3 +372,96 @@ def test_file_into_needs_an_existing_directory_and_date_needs_file_into(tmp_path
     assert cli(path, "--stdout", "--date", "2026-09-14").returncode == 2
     (tmp_path / "a").mkdir()
     assert cli(path, "--file-into", tmp_path / "a", "--date", "2026-02-30").returncode == 2
+
+
+# ---- the reading path: DP-UX, 2026-10-08 -------------------------------------------------------
+# Three decisions carried eleven assets each, six of them email HTML shown as code, 90,012 characters in
+# all. The principal found the packet overwhelming. Each test below holds one acceptance criterion.
+
+def _embedded(page):
+    return json.loads(DOCTOR_SPEC.search(page).group(1).replace("\\u003c", "<"))
+
+
+def _baselined(aid, before, after, kind="correspondence", **extra):
+    asset = {**text_asset(aid, kind, after), **extra}
+    asset["baseline"] = {"label": "the draft you reviewed on October 7", "text": before,
+                         "sha256": hashlib.sha256(before.encode("utf-8")).hexdigest()}
+    return asset
+
+
+def test_the_same_material_in_several_rows_is_shown_once_and_the_others_point_back():
+    shared = text_asset("letter", "correspondence", "Dear fixture,\n\nThe one shared letter.")
+    current = spec(rows=[{**r, **review_row([dict(shared)])} for r in spec()["rows"]])
+    rows = _embedded(bp.build(current))["rows"]
+    assert "same_as" not in rows[0]["review_assets"][0]
+    assert [r["review_assets"][0]["same_as"] for r in rows[1:]] == [{"row": 0, "asset": 0, "label": "Synthetic finding 1"}] * 4
+    assert bp.spec_digest(current) == bp.spec_digest(json.loads(json.dumps(current)))  # the spec itself is untouched
+    assert not [p for p in bp.validate(current) if "reading path" in p]
+
+
+def test_a_change_against_the_reviewed_baseline_is_shown_with_exact_recovery_kept():
+    before = "Hello, fixture.\n\nThe launch is on Monday.\n\nOne.\n\nTwo.\n\nThree.\n\nRegards."
+    after = "Hello, fixture.\n\nThe launch is on Tuesday.\n\nOne.\n\nTwo.\n\nThree.\n\nRegards.\n\nP.S. Added."
+    changes = bp.changes(before, after)
+    assert changes[0] == ["same", "Hello, fixture."]
+    assert changes[1] == ["mod", [["same", "The launch is on "], ["del", "Monday."], ["add", "Tuesday."]]]
+    assert ["gap", 2] in changes and changes[-1] == ["add", "P.S. Added."]
+    assert bp.changes(before, before) == []
+    current = spec(rows=[{**spec()["rows"][0], **review_row([_baselined("letter", before, after)])}] + spec()["rows"][1:])
+    assert not hard(bp.validate(current))
+    asset = _embedded(bp.build(current))["rows"][0]["review_assets"][0]
+    assert asset["changes"] == changes and asset["content"]["text"] == after and asset["baseline"]["text"] == before
+    bad = json.loads(json.dumps(current))
+    bad["rows"][0]["review_assets"][0]["baseline"]["sha256"] = "0" * 64
+    assert any("baseline" in p for p in hard(bp.validate(bad)))
+
+
+def test_an_html_message_is_read_as_its_words_and_raw_markup_in_the_reading_path_is_a_reader_finding():
+    markup = ('<p>Hello, <b>fixture</b>.</p><p>Read <a href="https://example.com/plan">the plan</a> or '
+              '<a href="mailto:a@example.com">write</a>.</p>')
+    assert bp.shown_text(markup) == "Hello, fixture.\n\nRead the plan (https://example.com/plan) or write."
+
+    def packet(asset):
+        return spec(rows=[{**spec()["rows"][0], **review_row([asset])}] + spec()["rows"][1:])
+    raw = packet(text_asset("msg", "correspondence", markup))
+    assert any("raw HTML in the reading path" in p for p in bp.validate(raw))
+    for fine in ({"format": "html"}, {"reference": True}):
+        current = packet({**text_asset("msg", "correspondence", markup), **fine})
+        assert not [p for p in bp.validate(current) if "raw HTML" in p], fine
+    assert any("raw HTML" in p for p in bp.validate(packet(text_asset("src", "code", markup))))
+    assert not [p for p in bp.validate(packet({**text_asset("src", "code", markup), "markup_review": True})) if "raw HTML" in p]
+    shown = _embedded(bp.build(packet({**text_asset("msg", "correspondence", markup), "format": "html"})))
+    assert shown["rows"][0]["review_assets"][0]["shown"].startswith("Hello, fixture.")
+    for field, value, kind in (("format", "html", "code"), ("format", "markdown", "correspondence"),
+                               ("reference", False, "plain_text"), ("markup_review", True, "correspondence")):
+        assert any(field in p for p in hard(bp.validate(packet({**text_asset("x", kind, "text"), field: value})))), field
+
+
+def test_a_long_reading_path_is_a_reader_finding_and_showing_changes_clears_it():
+    long_text = "\n\n".join(f"Paragraph {i} of a long synthetic message, with enough words to weigh." for i in range(600))
+    edited = long_text.replace("Paragraph 7 of", "Paragraph seven of")
+    heavy = spec(rows=[{**r, **review_row([text_asset(f"m{i}", "plain_text", long_text + str(i))])}
+                       for i, r in enumerate(spec()["rows"])])
+    assert any("reading path carries" in p for p in bp.validate(heavy))
+    light = spec(rows=[{**r, **review_row([_baselined(f"m{i}", long_text + str(i), edited + str(i), "plain_text")])}
+                       for i, r in enumerate(spec()["rows"])])
+    assert not [p for p in bp.validate(light) if "reading path" in p]
+    referenced = spec(rows=[{**r, **review_row([{**text_asset(f"m{i}", "plain_text", long_text + str(i)), "reference": True}])}
+                            for i, r in enumerate(spec()["rows"])])
+    assert not [p for p in bp.validate(referenced) if "reading path" in p]
+
+
+def test_what_was_handled_without_the_principal_is_listed_apart_from_the_decisions():
+    current = spec(handled=[{"item": "Typo in the subject", "how": "fixed in draft 3; nothing to decide."}])
+    page = bp.build(current)
+    assert 'aria-label="Already handled"' in page and "Typo in the subject" in page and "(1)" in page
+    assert 'aria-label="Already handled"' not in bp.build(spec())
+    for bad in ([{"item": "x"}], [{"item": "x", "how": "y", "extra": 1}], "not a list"):
+        assert any("handled" in p for p in hard(bp.validate(spec(handled=bad)))), bad
+
+
+def test_syn04_omitted_header_parts_leave_no_blank_line():
+    page = bp.build(spec())
+    header = page[page.index("<header>"):page.index("</header>")]
+    assert not [line for line in header.splitlines() if not line.strip()]
+    assert "<h1>" in header and "Written for:" in header

@@ -8,7 +8,8 @@ open the database for writing refuses before SQLite runs. Each run reads one pag
 window and prints it as JSON: candidate notes that point at a message (app, database,
 message id, row, chat) without copying its text, plus coverage (rows examined, skips by
 reason, gaps). Pages are saved in STATE_DIR before the cursor moves; a page with a gap does
-not move it. Exit 0 with the page, or 2 with {"status": "REFUSED", "reason": ...}.
+not move it until a by-hand review the principal approves (--review REVIEW.json) names exactly
+its gaps. Exit 0 with the page, or 2 with {"status": "REFUSED", "reason": ...}.
 """
 
 from __future__ import annotations
@@ -38,10 +39,16 @@ MAX_PAGE = 100
 MAX_SECONDS = 5
 APPLE_EPOCH = 978307200
 REQUEST_KEYS = {"schema", "adapter", "database", "start", "end", "page_size", "excluded_chats", "self_names"}
+LINK = "com.apple.messages.URLBalloonProvider"  # balloon_bundle_id of a rich link preview
+MIME = re.compile(r"[a-z0-9][a-z0-9.+-]{0,126}/[a-z0-9][a-z0-9.+-]{0,126}", re.I)
 
 
 class Refused(ValueError):
     """Incomplete or unsafe input never becomes complete coverage."""
+
+
+class Undecoded(Refused):
+    """A body in an encoding the reader does not decode; a broken bound or malformed data is not this."""
 
 
 def digest(value) -> str:
@@ -113,7 +120,7 @@ def decode_body(text, body) -> str:
     if not isinstance(body, bytes) or not body or len(body) > MAX_BODY:
         raise Refused("missing/oversized attributed body")
     if not body.startswith(b"bplist00") or len(body) < 40:
-        raise Refused("unsupported attributedBody encoding; typedstream is not unarchived")
+        raise Undecoded("unsupported attributedBody encoding; typedstream is not unarchived")
     # Bound the binary plist allocation before the parser allocates object tables.
     if not 1 <= int.from_bytes(body[-24:-16], "big") <= 2048:
         raise Refused("binary plist object count exceeds limit")
@@ -122,7 +129,7 @@ def decode_body(text, body) -> str:
     except Exception as exc:
         raise Refused("malformed attributedBody") from exc
     if not isinstance(data, dict) or data.get("$archiver") != "NSKeyedArchiver" or data.get("$version") != 100000:
-        raise Refused("unsupported keyed archive")
+        raise Undecoded("unsupported keyed archive")
     objects, top = data.get("$objects"), data.get("$top")
     if not isinstance(objects, list) or not 1 <= len(objects) <= 2048 or not isinstance(top, dict) or set(top) != {"root"}:
         raise Refused("archive object bound/root")
@@ -141,9 +148,9 @@ def decode_body(text, body) -> str:
         if isinstance(item, dict):
             strings = [k for k in ("NSString", "NS.string") if k in item]
             if len(strings) != 1 or set(item) - {"NSString", "NS.string", "$class", "NS.attributes"}:
-                raise Refused("unsupported attributed-string fields")
+                raise Undecoded("unsupported attributed-string fields")
             return value(item[strings[0]], depth + 1)
-        raise Refused("unsupported archive object")
+        raise Undecoded("unsupported archive object")
 
     result = value(top["root"])
     if not result or len(result.encode()) > MAX_BODY:
@@ -173,9 +180,10 @@ def _require_confined(path) -> None:
 SCHEMAS = {
     "imessage-v1": {
         "message": {"guid", "text", "attributedBody", "date", "is_from_me", "handle_id",
-                    "associated_message_type", "cache_has_attachments"},
-        "handle": {"id"}, "chat": {"chat_identifier"},
-        "chat_message_join": {"chat_id", "message_id"}, "chat_handle_join": {"chat_id", "handle_id"}},
+                    "associated_message_type", "cache_has_attachments", "balloon_bundle_id"},
+        "handle": {"id"}, "chat": {"chat_identifier"}, "attachment": {"mime_type"},
+        "chat_message_join": {"chat_id", "message_id"}, "chat_handle_join": {"chat_id", "handle_id"},
+        "message_attachment_join": {"message_id", "attachment_id"}},
     "whatsapp-v1": {
         "ZWAMESSAGE": {"Z_PK", "ZSTANZAID", "ZTEXT", "ZMESSAGEDATE", "ZISFROMME", "ZFROMJID",
                        "ZCHATSESSION", "ZMESSAGETYPE"},
@@ -186,15 +194,27 @@ QUERIES = {
         (select count(*) from chat_message_join j where j.message_id=m.ROWID),
         (select c.chat_identifier from chat_message_join j join chat c on c.ROWID=j.chat_id where j.message_id=m.ROWID limit 1),
         (select count(*) from chat_handle_join cj where cj.chat_id=(select j.chat_id from chat_message_join j where j.message_id=m.ROWID limit 1)),
-        length(cast(m.text as blob)),length(m.attributedBody)
+        length(cast(m.text as blob)),length(m.attributedBody),h.ROWID
         from message m left join handle h on h.ROWID=m.handle_id
         where m.ROWID>? and m.ROWID<=? and m.date>=? and m.date<? order by m.ROWID limit ?""",
     "whatsapp-v1": """select m.Z_PK,m.ZSTANZAID,m.ZMESSAGEDATE,m.ZISFROMME,m.ZFROMJID,0,m.ZMESSAGETYPE,
         (select count(*) from ZWACHATSESSION c where c.Z_PK=m.ZCHATSESSION),c.ZCONTACTJID,
-        case when c.ZSESSIONTYPE=1 then 2 when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0
+        case when c.ZSESSIONTYPE=1 then 2 when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0,null
         from ZWAMESSAGE m left join ZWACHATSESSION c on c.Z_PK=m.ZCHATSESSION
         where m.Z_PK>? and m.Z_PK<=? and m.ZMESSAGEDATE>=? and m.ZMESSAGEDATE<? order by m.Z_PK limit ?""",
+    "direct": """select c.chat_identifier from chat_handle_join cj join chat c on c.ROWID=cj.chat_id
+        where cj.handle_id=? and (select count(*) from chat_handle_join x where x.chat_id=cj.chat_id)=1""",
+    "attached": """select a.mime_type from message_attachment_join j join attachment a on a.ROWID=j.attachment_id
+        where j.message_id=? order by a.ROWID limit 8""",
 }
+
+
+def _marker(db, rowid, balloon):
+    """What a link or attachment row is, from its own columns, standing in for a body the reader cannot decode."""
+    if balloon == LINK:
+        return "[link]"
+    kinds = [k if isinstance(k, str) and MIME.fullmatch(k) else "unknown type" for (k,) in db.execute(QUERIES["attached"], (rowid,))]
+    return kinds and "[attachment: " + ", ".join(kinds) + "]"
 
 
 def _classify(text, mine):
@@ -251,10 +271,18 @@ def read_page(page) -> dict:
             raise Refused("snapshot truncated")
         raw = db.execute(QUERIES[adapter], (page["after"], upper, (start - APPLE_EPOCH) * scale,
                                             (end - APPLE_EPOCH) * scale, page["page_size"])).fetchall()
-        notes, skips, gaps, after = [], Counter(), [], page["after"]
-        for rowid, guid, date, mine, sender, reaction, media, joins, chat, members, ntext, nbody in raw:
+        notes, skips, gaps, marked, by_handle, after = [], Counter(), [], [], [], page["after"]
+        for rowid, guid, date, mine, sender, reaction, media, joins, chat, members, ntext, nbody, handle in raw:
             after = rowid
             reason = None
+            if joins == 0 and mine == 1 and handle is not None:  # an outgoing row's handle is its one recipient
+                direct = db.execute(QUERIES["direct"], (handle,)).fetchall()
+                if len(direct) != 1:
+                    gaps.append({"row": rowid, "reason": "ambiguous chat attribution: unjoined outgoing row; "
+                                 f"{len(direct)} one-to-one chats with its handle"})
+                    continue
+                (chat,), joins, members = direct[0], 1, 1
+                by_handle.append(rowid)
             if not isinstance(chat, str) or joins != 1 or members < 1:
                 gaps.append({"row": rowid, "reason": "ambiguous chat attribution"})
                 continue
@@ -289,14 +317,18 @@ def read_page(page) -> dict:
                 gaps.append({"row": rowid, "reason": "body or pointer byte bound"})
                 continue
             if imessage:
-                text, body = db.execute("select text,attributedBody from message where ROWID=?", (rowid,)).fetchone()
+                text, body, balloon = db.execute("select text,attributedBody,balloon_bundle_id from message where ROWID=?",
+                                                 (rowid,)).fetchone()
             else:
-                text, body = db.execute("select ZTEXT,null from ZWAMESSAGE where Z_PK=?", (rowid,)).fetchone()
+                text, body, balloon = db.execute("select ZTEXT,null,null from ZWAMESSAGE where Z_PK=?", (rowid,)).fetchone()
             try:
                 content = decode_body(text, body)
             except Refused as exc:
-                gaps.append({"row": rowid, "reason": str(exc)})
-                continue
+                content = isinstance(exc, Undecoded) and imessage and _marker(db, rowid, balloon)
+                if not content:
+                    gaps.append({"row": rowid, "reason": str(exc)})
+                    continue
+                marked.append({"row": rowid, "marker": content})  # stands in for any text the reader did not read
             if members > 1 and not any(re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", content, re.I)
                                        for n in page["self_names"]):
                 skips["group-not-addressed"] += 1
@@ -314,7 +346,7 @@ def read_page(page) -> dict:
                 "meaning": "candidate only; no unanswered/completion/calendar claim"})
         return {"schema": 1, "notes": notes, "coverage": {
             "window": [page["start"], page["end"]], "after": after, "upper": upper, "examined": len(raw),
-            "skipped": dict(skips), "gaps": gaps,
+            "skipped": dict(skips), "gaps": gaps, "marked": marked, "by_handle": by_handle, "reviewed": [],
             "complete": not gaps and (after == upper or len(raw) < page["page_size"]),
             "scope": "one SQLite snapshot page; ROWID range, not history of edits/deletions or unseen schemas"}}
     except sqlite3.Error as exc:
@@ -361,8 +393,27 @@ def _write(path: Path, value) -> None:
     os.replace(tmp, path)
 
 
-def scan(request, state) -> dict:
-    """Read the next page of the window; save it, then move the cursor. A gap leaves the cursor."""
+def _close(coverage, review, subject) -> None:
+    """Close this page's gaps on a by-hand review the principal approved, naming exactly these rows and reasons."""
+    rows = review.get("rows") if isinstance(review, dict) and set(review) == {"rows"} else None
+    if (not isinstance(rows, list) or any(not isinstance(r, dict) or type(r.get("row")) is not int for r in rows)
+            or sorted(rows, key=lambda r: r["row"]) != coverage["gaps"]):
+        raise Refused('a review names exactly this page\'s gaps, as {"rows": [{"row": N, "reason": "..."}]}; '
+                      "this page holds " + json.dumps(coverage["gaps"])[:2000])
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root or the installed runtime: holds synthesis/
+    from synthesis import approvals
+    if not approvals.consume("message-gap-review", subject):
+        code = approvals.request("message-gap-review", subject, "close message-reader gaps reviewed by hand, rows "
+                                 + ", ".join(str(g["row"]) for g in coverage["gaps"])[:160])
+        raise Refused("Closing these gaps needs the principal's approval of this review: " + json.dumps(coverage["gaps"])[:2000]
+                      + f". Show them the rows and reasons and ask them to type {approvals.how(code)}. Then run the "
+                      "identical command again.")
+    coverage["reviewed"], coverage["gaps"] = coverage["gaps"], []
+
+
+def scan(request, state, review=None) -> dict:
+    """Read the next page of the window; save it, then move the cursor. A gap leaves the cursor until a
+    by-hand review the principal approves names exactly the page's gaps."""
     validate(request)
     state = Path(state)
     if state.is_symlink():
@@ -387,6 +438,9 @@ def scan(request, state) -> dict:
         after = cursor["after"] if cursor else 0
         page = run_page({**request, "after": after, "upper": cursor["upper"] if cursor else None})
         coverage = page["coverage"]
+        if coverage["gaps"] and review is not None:
+            _close(coverage, review, {**binding, "gaps": coverage["gaps"]})
+            coverage["complete"] = coverage["after"] == coverage["upper"] or coverage["examined"] < request["page_size"]
         if coverage["gaps"]:
             return page  # reported, and the window does not advance past it
         name = f"page-{after:012d}-{coverage['after']:012d}.json"
@@ -400,16 +454,18 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], allow_abbrev=False)
     parser.add_argument("--request", help="explicit read-only request JSON")
     parser.add_argument("--state", help="this window's own state directory")
+    parser.add_argument("--review", help="a by-hand review naming exactly this page's gaps, for the principal to approve")
     parser.add_argument("--worker", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
         if args.worker:
             result = read_page(json.loads(Path(args.worker).read_text(encoding="utf-8")))
         elif args.request and args.state:
-            result = scan(json.loads(physical(Path(args.request).absolute()).read_text(encoding="utf-8")), args.state)
+            review = args.review and json.loads(physical(Path(args.review).absolute()).read_text(encoding="utf-8"))
+            result = scan(json.loads(physical(Path(args.request).absolute()).read_text(encoding="utf-8")), args.state, review)
         else:
             raise Refused("explicit request and state directory required")
-    except (Refused, OSError, ValueError) as exc:
+    except (Refused, OSError, ValueError, ImportError) as exc:
         print(json.dumps({"status": "REFUSED", "reason": str(exc)}))
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))

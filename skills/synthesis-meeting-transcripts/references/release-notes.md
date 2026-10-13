@@ -12,6 +12,22 @@ Contents:
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
 
+## 1.1.0 — the window never suggests passing a meeting still under way
+
+`fetch-meeting.py --window` suggested the end of the day as the new watermark even while meetings were in
+progress, which would have skipped their transcripts (reported 2026-10-08). The suggestion is now the earliest
+of the window's end (UTC, as Drive reads it), two hours before the run, and one second before each unsaved
+doc was created, always with an explicit offset; `advance_reason` says which. Each run names the patterns it
+searched, and lists Gemini notes docs no declared pattern found under `undeclared`. A next-page token or an
+incomplete-search warning bounds a listing like a full page. The pre-0.2.0 config hint is gone: a config
+missing `transcripts_repo` is refused with the missing keys.
+
+Docs screenshots exported to markdown link `googleusercontent.com` with an access key that opens the image to
+anyone holding the URL (94 had reached saved transcripts by 2026-10-13). `fetch-meeting.py` now redacts each
+key to `REDACTED` when it saves, and `verify_transcripts.py` fails a file that still carries one, naming it,
+with `keyed_image_files` in its JSON. A transcript saved by hand is redacted with
+`verify_transcripts.redact_image_keys`.
+
 ## 1.0.1 — saved meetings found by their blockquote source line
 
 - `fetch-meeting.py --window` also counts a meeting as saved when its file names the doc on a

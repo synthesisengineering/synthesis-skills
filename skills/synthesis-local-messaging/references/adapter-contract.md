@@ -26,8 +26,9 @@ needs its own state directory.
 Supported shapes are explicit schema contracts, not universal app-version
 claims:
 
-- `imessage-v1`: `message`, `handle`, `chat`, `chat_message_join`, and
-  `chat_handle_join`; message dates are nanoseconds since 2001-01-01 UTC.
+- `imessage-v1`: `message`, `handle`, `chat`, `chat_message_join`,
+  `chat_handle_join`, `attachment`, and `message_attachment_join`; message
+  dates are nanoseconds since 2001-01-01 UTC.
   Required columns are listed in `SCHEMAS` in the reader. Ambiguous chat joins
   refuse attribution. Message GUID plus database, row, and chat identify a
   pointer; an app URL is not invented.
@@ -36,12 +37,62 @@ claims:
   zero means direct and one means group in this named contract. Other shapes
   and enum values are unavailable until independently qualified.
 
+An iMessage row names its chat through one `chat_message_join` row. An outgoing
+row (`is_from_me` 1) that has a handle but no join is attributed to that
+handle's one-to-one chat, the chat whose only `chat_handle_join` member is that
+handle, when exactly one exists: an outgoing row's handle is its recipient.
+Excluded chats, the window and every skip rule then apply to it as to any
+message in that chat, and `coverage.by_handle` lists its row. With no such chat
+or several, the row stays a gap whose reason gives the count. An incoming row's
+handle is its sender, who may write in any chat, so an unjoined incoming row
+stays a gap, as does a row with several joins.
+
 Plain text is bounded at 256 KiB. A restricted binary NSKeyedArchiver plist
 can supply `NSString` or `NS.string` through bounded UID references. The reader
 checks the binary object count before parsing, rejects cycles and unsupported
 structures, and never instantiates archived classes. Typedstream, XML archives,
 compressed bodies, and attachment extraction are unsupported. A decoding gap
 prevents the cursor from advancing.
+
+One case is recorded instead of held. When an iMessage body is in an encoding
+the reader does not decode (typedstream, or a keyed archive of another shape)
+and the row's own columns show what it is, the row gets a content marker: `[link]`
+for a rich link (`balloon_bundle_id` is `com.apple.messages.URLBalloonProvider`),
+or `[attachment: image/jpeg]` listing the `mime_type` of each attachment that
+`message_attachment_join` names (at most eight; `unknown type` when it is absent
+or not a plain MIME type). The marker stands in for the text in the skip rules,
+so it never matches a candidate class or a group self name, and
+`coverage.marked` lists each such row with its marker. A caption sent with the
+link or attachment is not read: open a marked row in the app when it matters.
+A row with neither, a broken bound and malformed data still hold the window.
+
+## Closing a gap by hand
+
+A gap holds the window until it is resolved. Excluding the chat resolves it
+with a new request and state directory. When the rows have been read in the
+app instead, a by-hand review the principal approves closes them. Write the
+page's gaps, each row with the reason the page reports, to a file:
+
+```json
+{"rows": [{"row": 1234, "reason": "ambiguous chat attribution"}]}
+```
+
+and run the same command with `--review REVIEW.json` added. A review must name
+exactly the page's gaps; otherwise the reader refuses and prints the gaps the
+page holds, and nothing is put to the principal. The first run files a request
+with the v5 approvals (`synthesis/approvals.py`) and refuses with a code. Show
+the principal the rows and reasons; after they type `approve <code>` in their
+own prompt, the identical command closes the gaps. The approval covers
+this request, this database file and these exact gaps, is spent once, and
+counts only when the harness's record of the session shows the principal
+typing it, so an agent cannot close a gap on its own. The saved page lists the
+closed rows under `coverage.reviewed` and the cursor moves on. A run stopped
+after the approval is spent and before the page is saved asks again. On a page
+without gaps the review is not used.
+
+Completeness keeps its meaning: every examined row is a note, a skip by a stated
+rule, a marked row, or a row the principal closed by name, recorded in the page
+the cursor passed.
 
 ## The sandbox and SQLite
 
@@ -72,7 +123,8 @@ truncated. No database-wide hashing or copying is performed.
 ## State and output
 
 Output is a bounded page of candidate notes and pointers plus examined range,
-skip counts, gaps and the sandbox used. Candidate categories
+skip counts, gaps and the sandbox used, with the rows that are `marked`,
+attributed `by_handle` or `reviewed`. Candidate categories
 are heuristic. No raw message body or media bytes enter the result. Exclusion
 and window tests precede logical body fetch/decoding; SQLite may read storage
 pages containing neighboring data internally.

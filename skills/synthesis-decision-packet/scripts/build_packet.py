@@ -22,8 +22,10 @@ import argparse
 import base64
 import binascii
 import datetime
+import difflib
 import hashlib
 import html
+import html.parser
 import json
 import pathlib
 import re
@@ -71,6 +73,11 @@ SIGNATURES = {
     "application/pdf": lambda d: d.startswith(b"%PDF-"),
 }
 FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
+# The reader's path: what an asset shows before anything is opened. DP-UX, 2026-10-08: three decisions
+# carried eleven assets each, six of them email HTML shown as code, 90,012 characters in all; the principal
+# found the packet overwhelming. Wire markup, repeated bytes and unchanged text belong behind a click.
+MARKUP = re.compile(r"<(?:p|div|span|br|a|b|i|em|strong|ul|ol|li|html|body|table|h[1-6])\b[^>]*>", re.I)
+READING_CHARS_PER_DECISION = 6000
 
 
 def strict_json(raw: str):
@@ -236,6 +243,128 @@ def _image_size(media: str, d: bytes) -> tuple:
     return 0, 0
 
 
+def _baseline_ok(b) -> bool:
+    return (isinstance(b, dict) and set(b) == {"label", "text", "sha256"} and _text(b["label"], 256)
+            and isinstance(b["text"], str) and 0 < len(b["text"].encode("utf-8")) <= MAX_TEXT_BYTES
+            and b["sha256"] == hashlib.sha256(b["text"].encode("utf-8")).hexdigest())
+
+
+class _Shown(html.parser.HTMLParser):
+    """The words an HTML message shows, paragraph by paragraph, each link's address after its words."""
+    BLOCKS = {"p", "div", "li", "blockquote", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "table"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.href = [], []
+
+    def handle_starttag(self, tag, attrs):
+        self.out.append("\n\n" if tag in self.BLOCKS else "\n" if tag == "br" else "")
+        if tag == "a":
+            self.href.append(dict(attrs).get("href") or "")
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self.href:
+            link = self.href.pop()
+            self.out.append(f" ({link})" if link and not link.startswith("mailto:") else "")
+        self.out.append("\n\n" if tag in self.BLOCKS else "")
+
+    def handle_data(self, data):
+        self.out.append(re.sub(r"\s+", " ", data))
+
+
+def shown_text(markup: str) -> str:
+    reader = _Shown()
+    reader.feed(markup)
+    reader.close()
+    return re.sub(r"\n[ \t]*(?:\n[ \t]*)+", "\n\n", "".join(reader.out)).strip()
+
+
+def _paragraphs(text: str) -> list:
+    parts = [p.strip() for p in re.split(r"\n\s*\n", text.replace("\r\n", "\n")) if p.strip()]
+    return parts if len(parts) > 1 else [line for line in text.splitlines() if line.strip()]
+
+
+def changes(before: str, after: str, context: int = 1) -> list:
+    """What changed from before to after, paragraph by paragraph: ["same"|"del"|"add", text], ["mod",
+    [[op, words], ...]] for a paragraph edited in place, and ["gap", n] for n unchanged paragraphs left out."""
+    a, b, out = _paragraphs(before), _paragraphs(after), []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            keep = a[i1:i2]
+            if len(keep) > 2 * context + 1:
+                head = keep[:context] if out else []
+                tail = keep[-context:] if i2 < len(a) or j2 < len(b) else []  # a change follows in either text
+                out += [["same", t] for t in head] + [["gap", len(keep) - len(head) - len(tail)]] + [["same", t] for t in tail]
+            else:
+                out += [["same", t] for t in keep]
+        elif op == "replace" and i2 - i1 == j2 - j1:
+            for old, new in zip(a[i1:i2], b[j1:j2]):
+                x, y, words = re.findall(r"\S+\s*", old), re.findall(r"\S+\s*", new), []
+                for wop, k1, k2, m1, m2 in difflib.SequenceMatcher(None, x, y, autojunk=False).get_opcodes():
+                    words += [["same", "".join(x[k1:k2])]] if wop == "equal" else (
+                        ([["del", "".join(x[k1:k2])]] if k2 > k1 else []) + ([["add", "".join(y[m1:m2])]] if m2 > m1 else []))
+                out.append(["mod", words])
+        else:
+            out += [["del", t] for t in a[i1:i2]] + [["add", t] for t in b[j1:j2]]
+    return out if any(o[0] != "same" and o[0] != "gap" for o in out) else []
+
+
+def _shown(asset: dict, text: str) -> str:
+    return shown_text(text) if asset.get("format") == "html" else text
+
+
+def page_assets(rows: list) -> list:
+    """Rows as the page shows them: each set of bytes once (a later row points back to the first), a
+    message in HTML as its words, and text with a reviewed baseline as what changed since it."""
+    first, out = {}, []
+    for ri, row in enumerate(rows):
+        if "review_assets" not in row:
+            out.append(row)
+            continue
+        assets = []
+        for ai, asset in enumerate(row["review_assets"]):
+            asset, content = dict(asset), asset["content"]
+            key = (asset["kind"], content.get("sha256"))
+            if "sha256" in content and key in first:
+                asset["same_as"] = first[key]
+            elif "sha256" in content:
+                first[key] = {"row": ri, "asset": ai, "label": row.get("label", "")}
+            if "text" in content and asset.get("format") == "html":
+                asset["shown"] = shown_text(content["text"])
+            if "text" in content and "baseline" in asset:
+                asset["changes"] = changes(_shown(asset, asset["baseline"]["text"]), _shown(asset, content["text"]))
+            assets.append(asset)
+        out.append({**row, "review_assets": assets})
+    return out
+
+
+def _reading_problems(rows: list) -> list:
+    """READER findings for what the page puts in front of the principal before anything is opened."""
+    problems, chars, decisions = [], 0, 0
+    for i, row in enumerate(page_assets(rows)):
+        decisions += 1
+        chars += sum(len(row.get(k) or "") for k in ("context", "reasoning"))
+        for asset in row.get("review_assets", []):
+            text = asset["content"].get("text") if isinstance(asset.get("content"), dict) else None
+            if not isinstance(text, str) or asset.get("reference") or "same_as" in asset:
+                continue
+            if MARKUP.search(text) and asset.get("format") != "html" and not asset.get("markup_review"):
+                problems.append(f"READER: rows[{i}] asset {asset['id']!r} puts raw HTML in the reading path - give a "
+                                'message as correspondence with "format": "html" so the page shows its words and keeps '
+                                'the exact markup one click away, mark wire copies "reference": true, or, when the '
+                                'markup itself is the decision, say so with "markup_review": true')
+            if "changes" in asset:
+                chars += sum(len(o[1]) if o[0] != "mod" else sum(len(w[1]) for w in o[1]) for o in asset["changes"]
+                             if o[0] != "gap")
+            else:
+                chars += len(asset.get("shown") or text)
+    if decisions and chars > READING_CHARS_PER_DECISION * decisions:
+        problems.append(f"READER: the reading path carries {chars:,} characters for {decisions} decisions - show what "
+                        'changed since the version the principal reviewed ("baseline"), mark complete or wire copies '
+                        '"reference": true, and keep context to what this decision needs')
+    return problems
+
+
 def review_assets_ready(row: dict) -> bool:
     """False when any asset is unavailable: such a row takes notes but no choice."""
     return all("unavailable" not in a["content"] for a in row.get("review_assets", []))
@@ -260,7 +389,8 @@ def _review_problems(row: dict, where: str) -> tuple:
         delivery = None
     for index, asset in enumerate(assets):
         at = f"{where} review_assets[{index}]"
-        if not isinstance(asset, dict) or set(asset) - {"id", "title", "kind", "content", "description", "filename"}:
+        if not isinstance(asset, dict) or set(asset) - {"id", "title", "kind", "content", "description", "filename",
+                                                        "format", "baseline", "reference", "markup_review"}:
             problems.append(f"{at} has unknown fields or is not an object")
             continue
         aid, kind, content = asset.get("id"), asset.get("kind"), asset.get("content")
@@ -274,6 +404,14 @@ def _review_problems(row: dict, where: str) -> tuple:
             continue
         if "description" in asset and not _text(asset["description"]):
             problems.append(f"{at} description is invalid")
+        problems += [f"{at} {k}: {why}" for k, ok, why in (
+            ("format", asset.get("format") == "html" and kind in ("correspondence", "plain_text"),
+             'only "html", on correspondence or plain_text'),
+            ("reference", asset.get("reference") is True, "only true, to keep it out of the reading path"),
+            ("markup_review", asset.get("markup_review") is True and kind == "code", "only true, on code"),
+            ("baseline", kind in TEXT_KINDS and _baseline_ok(asset.get("baseline")),
+             "needs exactly label (a reviewed version's name), text and that text's sha256, on a text kind"))
+            if k in asset and not ok]
         if kind in BINARY_TYPES and not _text(asset.get("description")):
             problems.append(f"{at} requires an accessible description")
         if not isinstance(content, dict):
@@ -314,7 +452,7 @@ def _review_problems(row: dict, where: str) -> tuple:
                 width, height = _image_size(content["media_type"], data)
                 if not (0 < width <= 8192 and 0 < height <= 8192 and width * height <= 16_777_216):
                     problems.append(f"{at} image dimensions are unavailable or exceed decoded bounds")
-        total += len(data)
+        total += len(data) + (len(asset["baseline"]["text"].encode("utf-8")) if _baseline_ok(asset.get("baseline")) else 0)
         if content.get("sha256") != hashlib.sha256(data).hexdigest():
             problems.append(f"{at} review content digest differs from actual bytes")
     if delivery and (len(set(delivery["attachments"])) != len(delivery["attachments"])
@@ -396,7 +534,7 @@ def validate(spec: dict) -> list:
     if len(rows) < 5:
         problems.append(f"NOTE: only {len(rows)} rows. Below about five parallel decisions, just ask in chat - "
                         "see the anti-trigger in SKILL.md. Pass --allow-small to build anyway.")
-    seen, review_bytes = set(), 0
+    seen, review_bytes, assets_ok = set(), 0, True
     for i, r in enumerate(rows):
         if not isinstance(r, dict):
             problems.append(f"rows[{i}] must be an object")
@@ -415,6 +553,7 @@ def validate(spec: dict) -> list:
         problems += _row_problems(r, i, opts)
         asset_problems, asset_bytes = _review_problems(r, f"rows[{i}]")
         problems, review_bytes = problems + asset_problems, review_bytes + asset_bytes
+        assets_ok = assets_ok and not asset_problems
     if review_bytes > MAX_BINARY_BYTES:
         problems.append("review_assets exceed aggregate byte limit")
     problems += [f"{k} must be a string" for k in ("subtitle", "intro", "summary_intro", "audience", "scope",
@@ -429,6 +568,12 @@ def validate(spec: dict) -> list:
     for g in glossary if isinstance(glossary, list) else [None]:
         if not isinstance(g, dict) or not g.get("term") or not g.get("meaning"):
             problems.append("glossary must be a list of {term, meaning}")
+    handled = spec.get("handled", [])
+    if not (isinstance(handled, list) and len(handled) <= 64 and all(
+            isinstance(h, dict) and set(h) == {"item", "how"} and _text(h["item"], 512) and _text(h["how"])
+            for h in handled)):
+        problems.append("handled must be a list of at most 64 {item, how}: what was settled without the principal, "
+                        "and how")
     # Reader contract: warnings by default, fatal under --strict-reader, which SKILL.md requires
     # for packets handed to a principal. Origin: a 15-row packet in project-internal language
     # collected 0 decisions from the principal whose plain-language packets ran 30/30.
@@ -439,6 +584,8 @@ def validate(spec: dict) -> list:
     if missing:
         problems.append("READER: rows without an 'impact' block (what happens if they accept / decline, "
                         "in the principal's terms): " + ", ".join(missing))
+    if assets_ok and all(isinstance(r, dict) for r in rows):  # the reading path is measurable only on valid assets
+        problems += _reading_problems(rows)
     if not any(isinstance(r, dict) and r.get("recommendation") for r in rows):
         problems.append("no row carries a recommendation. A packet without recommendations is a "
                         "questionnaire, which means the analysis is not finished - see SKILL.md.")
@@ -450,7 +597,7 @@ def build(spec: dict) -> str:
     hard = [p for p in validate(spec) if not p.startswith(("NOTE:", "READER:"))]
     if hard:
         raise ValueError("invalid spec: " + "; ".join(hard))
-    page_spec = dict(spec)
+    page_spec = dict(spec, rows=page_assets(spec["rows"]))
     page_spec.setdefault("storage_key", slugify(spec["title"]))
     page_spec.setdefault("filters", [])
     # Escaping every "<" keeps spec text such as "</script>" or "<!--<script>" from ending
@@ -459,9 +606,10 @@ def build(spec: dict) -> str:
 
     def para(key, cls, prefix=""):
         return f'<p class="{cls}">{prefix}{html.escape(spec[key])}</p>' if spec.get(key) else ""
-    glossary = spec.get("glossary") or []
+    glossary, handled = spec.get("glossary") or [], spec.get("handled") or []
     terms = "".join(f"<dt>{html.escape(str(g['term']))}</dt><dd>{html.escape(str(g['meaning']))}</dd>"
                     for g in glossary)
+    done = "".join(f"<li><b>{html.escape(h['item'])}</b> {html.escape(h['how'])}</li>" for h in handled)
     fields = {
         "__TITLE__": html.escape(spec["title"]), "__SPEC_JSON__": payload,
         "__CANONICAL_SPEC_SHA256__": spec_digest(spec),
@@ -469,10 +617,15 @@ def build(spec: dict) -> str:
         "__SCOPE__": para("scope", "intro", "Scope: "), "__AUDIENCE__": para("audience", "aud", "Written for: "),
         "__GLOSSARY__": (f'<details class="gloss"><summary>Terms used below ({len(glossary)})</summary>'
                          f"<dl>{terms}</dl></details>") if glossary else "",
+        "__HANDLED__": (f'<section class="handled" aria-label="Already handled"><b>Already handled, nothing to decide '
+                        f"({len(handled)})</b><ul>{done}</ul></section>") if handled else "",
         "__SUMMARY_INTRO__": html.escape(spec.get("summary_intro")
                                          or "Work through the rows, then copy this and paste it back in one message."),
     }
     template = (ASSETS / "packet-template.html").read_text(encoding="utf-8")
+    empty = [re.escape(k) for k, v in fields.items() if not v]
+    if empty:  # an empty placeholder takes its whole line with it, leaving no blank line (SYN-04, 2026-10-07)
+        template = re.sub(r"(?m)^[ \t]*(?:%s)\n" % "|".join(empty), "", template)
     # One substitution pass, so spec text that contains a placeholder stays text.
     page = re.sub("|".join(map(re.escape, fields)), lambda m: fields[m.group()], template)
     marker = f"<!-- synthesis-decision-packet spec-sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()} -->\n"

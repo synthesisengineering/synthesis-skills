@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The local message reader (E81 to E83). Synthetic SQLite only; no native app or personal path."""
+"""The local message reader (E81 to E83, and the reported gaps of 2026-10-08 and 2026-10-13). Synthetic
+SQLite only; no native app or personal path."""
 
 from __future__ import annotations
 
@@ -16,7 +17,10 @@ import sys
 import pytest
 
 import local_messaging as lm
-from local_messaging_fixtures import add, imessage, request
+from local_messaging_fixtures import TYPEDSTREAM, add, approve, imessage, request
+
+LINK = "com.apple.messages.URLBalloonProvider"  # the iMessage schema's balloon_bundle_id for a rich link
+UNDECODED = "unsupported attributedBody encoding; typedstream is not unarchived"
 
 
 def run(path, tmp_path, **kw):
@@ -235,6 +239,130 @@ def test_state_is_one_reader_at_a_time_and_never_adopts_foreign_files(tmp_path, 
         fcntl.flock(held, fcntl.LOCK_EX)
         with pytest.raises(lm.Refused, match="busy"):
             lm.scan(request(path), state)
+
+
+# --- an unjoined outgoing row belongs to its recipient's one-to-one chat ----------------------
+
+
+def test_unjoined_outgoing_row_takes_its_handles_one_to_one_chat(tmp_path, need_sandbox):
+    path, db = imessage(tmp_path / "source")
+    row = add(db, "I will send the plan tomorrow.", mine=1, join=False)
+    add(db, "I will send it later.", mine=1, join=False, day=-3)  # outside the window, as for any message
+    db.close()
+    result = run(path, tmp_path)
+    coverage = result["coverage"]
+    assert coverage["gaps"] == [] and coverage["complete"] and coverage["by_handle"] == [row]
+    assert coverage["examined"] == 1
+    assert result["notes"][0]["pointer"]["chat"] == "synthetic-chat"
+    assert result["notes"][0]["class"] == "promise-candidate"
+    excluded = run(path, tmp_path, excluded_chats=["synthetic-chat"])["coverage"]
+    assert excluded["skipped"] == {"excluded-chat": 1} and excluded["gaps"] == [] and excluded["complete"]
+
+
+@pytest.mark.parametrize("setup,count", [("no chat", 0), ("group only", 0), ("two direct chats", 2)])
+def test_unjoined_outgoing_row_without_exactly_one_direct_chat_stays_a_gap(tmp_path, need_sandbox, setup, count):
+    path, db = imessage(tmp_path / "source")
+    if setup == "no chat":
+        db.execute("delete from chat_handle_join")
+    elif setup == "group only":  # the handle's only chat has another member
+        db.execute("insert into handle values('+15559876543')")
+        db.execute("insert into chat_handle_join values(1, 2)")
+    else:
+        db.execute("insert into chat values('synthetic-chat-2')")
+        db.execute("insert into chat_handle_join values(2, 1)")
+    db.commit()
+    outgoing = add(db, "I will send the plan tomorrow.", mine=1, join=False)
+    incoming = add(db, "Can you send the plan?", join=False)  # a sender's handle does not name the chat
+    db.close()
+    coverage = run(path, tmp_path)["coverage"]
+    assert coverage["gaps"] == [
+        {"row": outgoing, "reason": f"ambiguous chat attribution: unjoined outgoing row; {count} one-to-one chats with its handle"},
+        {"row": incoming, "reason": "ambiguous chat attribution"}]
+    assert not coverage["complete"] and coverage["by_handle"] == []
+
+
+# --- a link or attachment row the decoder cannot read carries a marker ------------------------
+
+
+def test_undecodable_link_and_attachment_rows_carry_a_marker_and_do_not_hold_the_window(tmp_path, need_sandbox):
+    path, db = imessage(tmp_path / "source")
+    photo = add(db, None, TYPEDSTREAM, attachments=["image/jpeg"])
+    link = add(db, None, TYPEDSTREAM, balloon=LINK, attachments=[None])  # a rich link's payload attachment has no type
+    odd = add(db, None, TYPEDSTREAM, attachments=[None, "not a\nmime type"])
+    group = add(db, None, TYPEDSTREAM, attachments=["video/quicktime"], chat=2)
+    db.executescript("insert into chat values('synthetic-group'); insert into handle values('+15559876543');"
+                     "insert into chat_handle_join values(2, 1); insert into chat_handle_join values(2, 2);")
+    db.close()
+    result = run(path, tmp_path, page_size=4)
+    coverage = result["coverage"]
+    assert coverage["gaps"] == [] and coverage["complete"] and result["notes"] == []
+    assert coverage["marked"] == [{"row": photo, "marker": "[attachment: image/jpeg]"}, {"row": link, "marker": "[link]"},
+                                  {"row": odd, "marker": "[attachment: unknown type, unknown type]"},
+                                  {"row": group, "marker": "[attachment: video/quicktime]"}]
+    assert coverage["skipped"] == {"no-deterministic-candidate": 3, "group-not-addressed": 1}
+
+
+def test_a_row_whose_text_is_genuinely_unreadable_still_holds_the_window(tmp_path, need_sandbox):
+    path, db = imessage(tmp_path / "source")
+    plain = add(db, None, TYPEDSTREAM)  # no attachment and no link: its text is all the row holds
+    flagged = add(db, None, TYPEDSTREAM, media=1)  # flagged as media, but no attachment row names one
+    malformed = add(db, None, b"bplist00" + b"0" * 32, attachments=["image/png"])  # a bound, not an encoding
+    db.close()
+    coverage = run(path, tmp_path, page_size=3)["coverage"]
+    assert [g["row"] for g in coverage["gaps"]] == [plain, flagged, malformed]
+    assert coverage["gaps"][0]["reason"] == UNDECODED and coverage["marked"] == []
+
+
+# --- a by-hand review the principal approves closes exactly the gaps it names -----------------
+
+
+@pytest.fixture
+def principal(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))  # the session's transcript lives here
+    monkeypatch.setenv("SYNTHESIS_SESSION", "S-reader")
+
+
+def test_a_principal_approved_review_closes_the_gaps_it_names_and_is_recorded(tmp_path, need_sandbox, principal, capsys):
+    path, db = imessage(tmp_path / "source")
+    held = add(db, None, TYPEDSTREAM)
+    add(db)
+    db.close()
+    state, review = tmp_path / "state", {"rows": [{"row": held, "reason": UNDECODED}]}
+    files = {"request.json": request(path), "review.json": review}
+    for name, value in files.items():
+        (tmp_path / name).write_text(json.dumps(value))
+    assert lm.main(["--request", str(tmp_path / "request.json"), "--state", str(state),
+                    "--review", str(tmp_path / "review.json")]) == 2
+    asked = json.loads(capsys.readouterr().out)
+    assert asked["status"] == "REFUSED" and "approval of this review" in asked["reason"]
+    assert not (state / "cursor.json").exists()
+    approve(asked["reason"])
+    page = lm.scan(request(path), state, review)
+    assert page["coverage"]["reviewed"] == review["rows"] and page["coverage"]["gaps"] == []
+    assert page["coverage"]["complete"] and len(page["notes"]) == 1
+    assert json.loads(next(state.glob("page-*.json")).read_text())["coverage"]["reviewed"] == review["rows"]
+    assert json.loads((state / "cursor.json").read_text())["complete"]
+
+
+def test_a_review_names_exactly_the_pages_gaps_and_a_grant_alone_closes_nothing(tmp_path, need_sandbox, principal):
+    path, db = imessage(tmp_path / "source")
+    held = add(db, None, TYPEDSTREAM)
+    db.close()
+    state = tmp_path / "state"
+    for wrong in ({"rows": [{"row": held, "reason": "another reason"}]}, {"rows": []}, [held],
+                  {"rows": [{"row": held, "reason": UNDECODED}, {"row": held + 1, "reason": UNDECODED}]},
+                  {"rows": [{"row": True, "reason": UNDECODED}]}, {"rows": [{"row": held, "reason": UNDECODED}], "x": 1}):
+        with pytest.raises(lm.Refused, match="exactly this page's gaps"):
+            lm.scan(request(path), state, wrong)
+    from synthesis import approvals
+    assert approvals.pending() == []  # nothing was put to the principal
+    review = {"rows": [{"row": held, "reason": UNDECODED}]}
+    with pytest.raises(lm.Refused, match="approval") as asked:
+        lm.scan(request(path), state, review)
+    approve(str(asked.value), typed=False)  # a grant written without the principal's own prompt behind it
+    with pytest.raises(PermissionError, match="only from the principal"):
+        lm.scan(request(path), state, review)
+    assert not (state / "cursor.json").exists() and not list(state.glob("page-*.json"))
 
 
 # --- schema, window and decoding --------------------------------------------------------------

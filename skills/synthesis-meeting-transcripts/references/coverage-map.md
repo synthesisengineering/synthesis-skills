@@ -61,12 +61,14 @@ Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line c
 | E19 `_*`, `gdoc-*`, `email-*` files are skipped and named | `test_e19_*` |
 | E20 transcript by stable tab ID; distinct reasons for empty, missing, incomplete, ambiguous | `test_workspace_mcp_fetch.py::test_e20_*` |
 | E21 an outer or nested tool error is unknown, never "no transcript" | `test_e21_*` |
-| E22 the bookmark does not pass an unsaved doc, which the report names; a doc named by a `**Source ID:**` header, a Google Doc link or a `> Source:` line's backticked ID is saved | `test_e22_*` (the provenance-line form: `test_e22_a_blockquote_source_line_marks_its_doc_saved`) |
+| E22 the bookmark does not pass an unsaved doc, which the report names; a doc named by a `**Source ID:**` header, a Google Doc link or a `> Source:` line's backticked ID is saved; a full page, a next-page token or Drive's incompleteSearch warning leaves the bookmark empty | `test_e22_*` (the provenance-line form: `test_e22_a_blockquote_source_line_marks_its_doc_saved`; the token and warning: `test_e22_a_next_page_token_or_an_incomplete_search_is_bounded_too`) |
 | E23 commitment candidates listed with speaker and time; nothing created unconfirmed | `test_meeting_extract_commitments.py` (`test_gemini_bold_line_flags_shape`, `test_plaud_timestamp_is_captured`, `test_stamp_*`); binding rule 9 |
 | E24 Gemini lines without timestamps take the preceding block's time | `test_meeting_extract_commitments.py::test_e24_a_gemini_time_carries_across_its_block_and_resets_at_a_section` |
 | E25 a moved checkout is a stale service path (exit 1); unreadable state exits 2 | `test_workspace_mcp_doctor.py::test_e25_a_moved_checkout_is_a_stale_unit_path_defect`, `test_restricted_launchd_and_port_visibility_are_unknown` |
 | E26 sparse launchd PATH and a recycled PID | `start.sh` (unchanged); `test_workspace_mcp_doctor.py::test_e26_sparse_path_finds_uvx_and_a_recycled_pid_is_not_a_running_server` |
 | E27 attribution comes from the verbatim transcript or the passive form stays | Binding rule 8; protocol-steps.md Step 4.6; transcript-primary-and-commit-gate.md (v0.4.0 item 3) |
+| E28 the bookmark suggestion is never later than two hours before the run (a meeting under way may have no doc yet), stops one second before an unsaved doc was created, and carries its offset (2026-10-08: a run at 11:23 offered 23:59:59 while two 11:00 meetings ran) | `test_workspace_mcp_fetch.py::test_e28_*` |
+| E29 every `--window` run names the only patterns it searched, and lists the Gemini notes docs no declared pattern finds as `undeclared` without holding the bookmark | `test_workspace_mcp_fetch.py::test_e29_*` |
 
 ## Lines the coverage check reports
 

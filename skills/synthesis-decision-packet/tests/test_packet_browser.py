@@ -10,6 +10,7 @@ The page is loaded from a local file with a throwaway profile; nothing touches t
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -51,7 +52,7 @@ Object.defineProperty(window, 'localStorage', {configurable: true,
 </script>"""
 DRIVER = """<script>
 (function () {
-  var out = {errors: window.packetErrors, injected: window.injected === true};
+  var out = {errors: window.packetErrors, injected: window.injected === true, reading: window.reading || null};
   function rows() { return Array.from(document.querySelectorAll('.row')); }
   function buttons(r) { return Array.from(r.querySelectorAll('.opts button')); }
   out.fresh = rows().map(function (r) {
@@ -86,11 +87,11 @@ def spec():
     }
 
 
-def drive(current, block_storage):
+def drive(current, block_storage, before_driver=""):
     page = bp.build(current)
     prelude = PRELUDE + (BLOCK_STORAGE if block_storage else "")
     page = page.replace('<script type="application/json"', prelude + '<script type="application/json"', 1)
-    page = page.replace("</body>", DRIVER + "</body>", 1)
+    page = page.replace("</body>", before_driver + DRIVER + "</body>", 1)
     # Chromium's socket path limit is short, so the profile lives in a short temporary folder.
     work = Path(tempfile.mkdtemp(prefix="packet-browser-", dir="/tmp"))
     try:
@@ -136,3 +137,55 @@ def test_e42_e45_e47_e48_the_real_page(block_storage, change):
     assert [r["accepted_in_bulk"] for r in parsed["rulings"]] == [False, True, True, True, True]
     if block_storage:
         assert rr.STORAGE_TRAILER in seen["summary"] and '"storage_blocked":true' in seen["summary"]
+
+
+READING = """<script>
+window.reading = Array.from(document.querySelectorAll('.row')).map(function (r) {
+  return Array.from(r.querySelectorAll('.review-asset')).map(function (box) {
+    var changes = box.querySelector('.review-changes'), ref = box.closest('details.review-reference');
+    var more = box.querySelector('details.review-more'), plain = box.querySelector('.review-content .review-plain');
+    var back = box.querySelector('a[href^="#asset-"]');
+    return {id: box.id, reference: !!ref, referenceOpen: !!(ref && ref.open), back: back ? back.getAttribute('href') : null,
+            target: back ? !!document.querySelector(back.getAttribute('href')) : null,
+            ins: changes ? Array.from(changes.querySelectorAll('ins, p.add')).map(function (n) { return n.textContent; }) : null,
+            del: changes ? Array.from(changes.querySelectorAll('del, p.del')).map(function (n) { return n.textContent; }) : null,
+            gap: changes && changes.querySelector('.gap') ? changes.querySelector('.gap').textContent : null,
+            completeHidden: more ? !more.open : null, plain: plain ? plain.textContent : null,
+            markupShown: Array.from(box.querySelectorAll('.review-content')).some(function (n) {
+              return /<p>|<a href/.test(n.textContent); })};
+  });
+});
+</script>"""
+
+
+def _text(aid, kind, text, **extra):
+    return {"id": aid, "title": f"Synthetic {aid}", "kind": kind, **extra,
+            "content": {"text": text, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}}
+
+
+def test_dp_ux_the_reading_path_in_a_real_page():
+    """DP-UX, 2026-10-08: a change is shown against the reviewed version, a message in HTML as its words,
+    shared material once, and reference material folded away; choices, notes and the paste still work."""
+    before = "Hello.\n\nThe launch is on Monday.\n\nOne.\n\nTwo.\n\nThree.\n\nRegards."
+    after = before.replace("Monday", "Tuesday")
+    markup = '<p>Hello, fixture.</p><p>See <a href="https://example.com/plan">the plan</a>.</p>'
+    shared = _text("shared", "plain_text", "The one shared note.")
+    envelope = {"revision": "draft-3", "delivery": {"format": "HTML email", "destinations": ["To: reader@example.test"],
+                                                    "attachments": []}}
+    current = spec()
+    current["rows"][0].update(envelope, review_assets=[
+        _text("letter", "correspondence", after, baseline={"label": "draft 2", "text": before,
+              "sha256": hashlib.sha256(before.encode("utf-8")).hexdigest()}),
+        _text("wire", "correspondence", markup, format="html"), dict(shared)])
+    current["rows"][1].update(envelope, review_assets=[dict(shared), _text("source", "code", markup, reference=True)])
+    seen = drive(current, False, READING)
+    assert seen["errors"] == []
+    letter, wire, first = seen["reading"][0]
+    assert letter["ins"] == ["Tuesday."] and letter["del"] == ["Monday."] and "unchanged paragraph" in letter["gap"]
+    assert letter["completeHidden"] is True
+    assert wire["plain"] == "Hello, fixture.\n\nSee the plan (https://example.com/plan)." and not wire["markupShown"]
+    again, source = seen["reading"][1]
+    assert again["back"] == "#" + first["id"] and again["target"] is True and again["plain"] is None
+    assert source["reference"] is True and source["referenceOpen"] is False
+    parsed = rr.parse_summary(seen["summary"], current)
+    assert parsed["decided"] == 5 and parsed["rulings"][0]["note"] == "Synthetic browser note"
