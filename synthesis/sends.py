@@ -4,6 +4,8 @@ list of tool names: a connector tool whose name delivers words, or a shell comma
 window lets signed Ragbot sends go without a per-message code for a while, and the ledger lists the day's
 sends for the daily plan's "On your behalf"."""
 
+from __future__ import annotations
+
 import fnmatch
 import json
 import os

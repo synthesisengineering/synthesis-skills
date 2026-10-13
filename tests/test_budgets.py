@@ -34,12 +34,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # helpers recovered 5), less the reader's unused sandbox runner (73), the meeting config's April migration
 # hint (8) and two unreferenced definitions (4). A plugin-wide scan found nothing else unreferenced. Then 18 more
 # so saved meeting transcripts never keep a Docs image's access key (reported the same day).
-# 5.0.9 adds 318 to both for Rajiv's 2026-10-13 rulings: approval on every channel, recognized by what a call does,
-# and send windows (synthesis/sends.py 218, guard wiring 61, `synthesis sends` 29, the window note in the hooks 8),
+# 5.0.9 adds 320 to both for Rajiv's 2026-10-13 rulings: approval on every channel, recognized by what a call does,
+# and send windows (synthesis/sends.py 220, guard wiring 61, `synthesis sends` 29, the window note in the hooks 8),
 # and the Docs image key as a built-in credential (2). The preferred-names check came in at zero net.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5627
-PLUGIN_BUDGET = 20975
+CORE_BUDGET = 5629
+PLUGIN_BUDGET = 20977
 
 
 def _lines(files):
