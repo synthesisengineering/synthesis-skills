@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.1"
+  version: "2.1.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -23,7 +23,7 @@ paste.**
 
 ## Binding rules
 
-Rules 1 to 6 are the six load-bearing properties in their original order, so "the sixth load-bearing property" still resolves. Later rules come from the other sections; new rules are appended.
+Rules 1 to 6 are the six load-bearing properties in their original order, so "the sixth load-bearing property" still resolves; new rules are appended.
 
 1. **Self-contained rows:** item, recommendation, reasoning, link. The principal never leaves the packet to decide.
 2. **Mark the recommendation on the control; never pre-select it.** A packet that opens decided reports decisions nobody made.
@@ -39,25 +39,25 @@ Rules 1 to 6 are the six load-bearing properties in their original order, so "th
 12. **A recorded ruling authorizes nothing** (`authorization.granted: false`). The action owner checks principal, scope and exact target before acting.
 13. **Show the complete material** for correspondence, code, images, media or documents in `review_assets`; external references are never fetched.
 14. **Unanswered decisions carry forward by exact id; only a recorded ruling closes one.** `carry_forward.py` writes the successor spec, and refuses a reconciliation with missing, extra or duplicate ids or a narrative "answered" with no ruling recorded against the exact spec.
+15. **Keep the reading path short:** changes against the reviewed `baseline`, material once, messages as their words, wire copies as `reference`, settled items in `handled`. On Codex, ask in the final reply, never only in a question card.
 
 ## Contents
 
-- [references/authoring.md](references/authoring.md): the six properties in full, review material, prior positions, content requirements, the reader contract. Read it before writing any spec.
+- [references/authoring.md](references/authoring.md): the six properties in full, review material, prior positions, content requirements, the reader contract, a comfortable reading path. Read it before writing any spec.
 - [references/filing-and-authority.md](references/filing-and-authority.md): the commands and what they print, filing, recording rulings, schema-2 records, action authority, carrying unanswered decisions forward. Read it when generating, filing, recording or replacing a packet.
 - [references/enforcement.md](references/enforcement.md): integrity markers, what the generator refuses, the two permanent fixtures. Read it when a build is refused, the doctor flags a packet, or before changing the generator.
 - [references/review-assets.md](references/review-assets.md): the review-asset contract. Read it before constructing `review_assets`.
 - [references/worked-example.md](references/worked-example.md): a complete spec, the filed copies, the paste and its rulings file. Read it before your first packet.
 - [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and board messages between agents (`synthesis msg`), changelog, related skills. Read it when choosing between this skill and a neighbor.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the 1.8.0 text and each old script now lives. Read it when tracing an old rule or command.
-- [references/preserved.md](references/preserved.md): lines the v5 script pass replaced, verbatim, with the reason. Read it when you need the earlier wording.
+- [references/coverage-map.md](references/coverage-map.md): where the 1.8.0 text and old scripts now live. Read it when tracing an old rule or command.
+- [references/preserved.md](references/preserved.md): lines the v5 script pass replaced, verbatim, with reasons. Read it for the earlier wording.
 - When to use it, When NOT to use it, Use: below.
 
 ## When to use it
 
 First apply [decision ownership](../synthesis-thinking-framework/references/decision-ownership.md).
-Packets collect decisions that actually belong to the principal. Execute choices
-already determined by constraints and resolve delegated technical choices without
-putting them back into a questionnaire. Honor an explicit supervised review request.
+Packets collect decisions that actually belong to the principal (binding rule 7).
+Honor an explicit supervised review request.
 Existing user grants remain usable within their scope; the new record format does
 not require the user to repeat them.
 

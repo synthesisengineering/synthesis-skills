@@ -227,3 +227,15 @@ The 2.0.0 line, verbatim:
 9. **Generate from a data array; never hand-author rows or hand-edit generator output.** The context doctor fails unverifiable packet pages.
 ```
 
+## A sentence in "When to use it" that restated binding rule 7
+
+Replaced in 2.1.0 (2026-10-13): binding rule 7 states the same rule ("Execute constraint-determined
+choices and resolve delegated technical choices yourself"), and the line made room for binding
+rule 15 within the 8,000-byte limit. The 2.0.1 lines, verbatim:
+
+```text
+Packets collect decisions that actually belong to the principal. Execute choices
+already determined by constraints and resolve delegated technical choices without
+putting them back into a questionnaire. Honor an explicit supervised review request.
+```
+

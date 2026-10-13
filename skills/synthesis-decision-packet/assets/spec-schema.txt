@@ -23,6 +23,10 @@ Decision-packet spec (JSON)
       in advance so a rule is judged on   collapsible band under the intro.
       text it was not tuned on"}
   ],
+  "handled": [                            optional - what was settled without the
+    {"item": "Typo in the subject",       principal, shown apart from the rows under
+     "how": "Fixed in draft 3."}          "Already handled". At most 64.
+  ],
 
   Rows may additionally declare exact material for review:
   "revision": "draft-3",                  REQUIRED with review_assets
@@ -30,8 +34,13 @@ Decision-packet spec (JSON)
                "attachments": ["diagram"]},
   "review_assets": [
     {"id": "draft", "title": "Complete draft", "kind": "correspondence",
-     "content": {"text": "Full exact body", "sha256": "SHA-256 of UTF-8 body"}}
+     "content": {"text": "Full exact body", "sha256": "SHA-256 of UTF-8 body"},
+     "baseline": {"label": "draft 2, which you reviewed", "text": "Earlier body",
+                  "sha256": "SHA-256 of it"},   optional: the page shows the changes first
+     "format": "html",                          optional: an HTML message, read as its words
+     "reference": true}                         optional: folded out of the reading path
   ]
+  "markup_review": true marks a code asset whose markup is itself the decision.
   These fields belong to each ROW, not the packet root. They bind every saved
   choice and returned ruling. See references/review-assets.md for the complete
   closed text/binary/unresolved union, safe Markdown grammar and byte ceilings.

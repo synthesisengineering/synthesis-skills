@@ -37,6 +37,8 @@ header h1 { font-size: 25px; line-height: 1.2; margin: 0 0 6px; letter-spacing: 
 header .sub { color: var(--ink-2); margin: 0 0 14px; }
 header .intro { color: var(--ink-2); max-width: 74ch; margin: 0 0 20px; }
 header .aud { color: var(--ink-3); font-size: 13px; margin: -10px 0 16px; }
+.handled { margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 14px; }
+.handled ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); } .handled li { margin: 3px 0; } .handled li b { color: var(--ink); }
 details.gloss { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 details.gloss summary { cursor: pointer; padding: 8px 12px; font-size: 13px; color: var(--ink-2); }
 details.gloss dl { margin: 0; padding: 4px 14px 12px; font-size: 13px; }
@@ -173,6 +175,11 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 .review-delivery { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 14px; }
 .review-delivery dt { font-weight: 600; } .review-delivery dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-content { font-size: 1rem; line-height: 1.65; overflow-wrap: anywhere; }
+.review-changes p { margin: 6px 0; white-space: pre-wrap; } .review-changes .same { color: var(--ink-2); }
+.review-changes .gap { color: var(--ink-3); font-style: italic; }
+.review-changes ins, .review-changes p.add { background: color-mix(in srgb, var(--ok) 16%, transparent); text-decoration: none; }
+.review-changes del, .review-changes p.del { background: color-mix(in srgb, var(--danger) 14%, transparent); text-decoration: line-through; }
+details.review-more > summary, details.review-reference > summary { cursor: pointer; color: var(--ink-2); padding: 4px 0; }
 .review-plain { white-space: pre-wrap; } .review-code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; }
 .review-exact textarea { width: 100%; box-sizing: border-box; resize: vertical; font: 0.9rem/1.5 monospace; }
 .review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; }
@@ -195,6 +202,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
   __INTRO__
   __SCOPE__
   __AUDIENCE__
+  __HANDLED__
   __GLOSSARY__
 </header>
 
@@ -398,21 +406,29 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     section.setAttribute('aria-label', 'Material for review: ' + row.label);
     section.appendChild(element('h3', 'Material for review'));
     var meta = element('dl', undefined, 'review-delivery');
-    [['Revision', row.revision], ['Delivery format', row.delivery.format],
-      ['Destinations', row.delivery.destinations.join('\n') || 'None declared'],
-      ['Attachments', row.delivery.attachments.join(', ') || 'None declared']].forEach(function (entry) {
+    [['Revision', row.revision], ['Goes out as', row.delivery.format],
+      ['Recipients', row.delivery.destinations.join('\n') || 'None declared'],
+      ['Attachments', row.delivery.attachments.join(', ') || 'None']].forEach(function (entry) {
       meta.appendChild(element('dt', entry[0])); meta.appendChild(element('dd', entry[1]));
     });
     section.appendChild(meta);
-    section.appendChild(element('p', 'This material is separate from the recommendation. Byte integrity is not proof of authorship or approval.', 'review-hint'));
-    row.review_assets.forEach(function (asset) {
+    var rowIndex = SPEC.rows.indexOf(row);
+    row.review_assets.forEach(function (asset, assetIndex) {
       var box = element('section', undefined, 'review-asset');
       box.dataset.assetId = asset.id;
+      box.id = 'asset-' + rowIndex + '-' + assetIndex;
       box.setAttribute('aria-label', asset.title);
       box.appendChild(element('h4', asset.title));
-      box.appendChild(element('p', 'Type: ' + asset.kind + ' · ID: ' + asset.id, 'review-hint'));
-      if (asset.description) box.appendChild(element('p', asset.description));
       var content = asset.content;
+      if (asset.same_as) {  // the same bytes are shown once, where they first appear
+        var back = element('p', 'The same material as in “' + asset.same_as.label + '”, shown there once. ', 'review-hint');
+        var jump = element('a', 'Go to it'); jump.href = '#asset-' + asset.same_as.row + '-' + asset.same_as.asset;
+        back.appendChild(jump); box.appendChild(back);
+        section.appendChild(box); return;
+      }
+      var about = 'Type: ' + asset.kind + (asset.format ? ' (' + asset.format + ')' : '') + ' · ID: ' + asset.id;
+      if (!('text' in content)) box.appendChild(element('p', about, 'review-hint'));
+      if (asset.description) box.appendChild(element('p', asset.description));
       if ('unavailable' in content) {
         var missing = element('p', 'Unresolved material: ' + content.unavailable, 'review-unavailable');
         missing.setAttribute('role', 'status'); box.appendChild(missing);
@@ -423,18 +439,27 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
         }
         box.appendChild(element('p', 'No content was fetched. Row choices are disabled; record a note or rebuild with verified bytes.'));
       } else {
-        box.appendChild(element('p', 'Bound SHA-256: ' + content.sha256, 'review-digest'));
+        var digest = element('p', 'Bound SHA-256: ' + content.sha256, 'review-digest');
+        if (!('text' in content)) box.appendChild(digest);
         var blob, filename, status = element('span', '', 'review-status');
         status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
         var actions = element('div', undefined, 'review-actions');
         if ('text' in content) {
           var view = element('div', undefined, 'review-content');
-          if (asset.kind === 'markdown') limitedMarkdown(content.text, view);
+          if ('shown' in asset) view.appendChild(element('div', asset.shown, 'review-plain'));
+          else if (asset.kind === 'markdown') limitedMarkdown(content.text, view);
           else view.appendChild(element(asset.kind === 'code' ? 'pre' : 'div', content.text,
             asset.kind === 'code' ? 'review-code' : 'review-plain'));
-          box.appendChild(view);
+          if (asset.changes) {  // what changed since the version already reviewed comes first
+            box.appendChild(renderChanges(asset));
+            var whole = element('details', undefined, 'review-more');
+            whole.appendChild(element('summary', 'Complete text as it stands now (optional)'));
+            whole.appendChild(view); box.appendChild(whole);
+          } else box.appendChild(view);
           var details = element('details', undefined, 'review-exact');
-          details.appendChild(element('summary', 'Exact source text and manual copy'));
+          details.appendChild(element('summary', asset.format === 'html' ? 'Exact HTML as sent, and manual copy' : 'Exact source text and manual copy'));
+          details.appendChild(element('p', about + '. Matching bytes are not proof of authorship or approval.', 'review-hint'));
+          details.appendChild(digest);
           var ta = element('textarea'); ta.value = content.text; ta.readOnly = true; ta.rows = 8;
           ta.setAttribute('aria-label', 'Exact source: ' + asset.title); details.appendChild(ta); box.appendChild(details);
           var copy = element('button', 'Copy exact text'); copy.type = 'button';
@@ -465,9 +490,27 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
         } catch (e) { status.textContent = 'This browser cannot create a download; exact text remains readable where supplied.'; }
         actions.appendChild(status); box.appendChild(actions);
       }
-      section.appendChild(box);
+      if (asset.reference) {  // optional material stays out of the reading path until opened
+        var ref = element('details', undefined, 'review-reference');
+        ref.appendChild(element('summary', 'Reference, optional: ' + asset.title));
+        ref.appendChild(box); section.appendChild(ref);
+      } else section.appendChild(box);
     });
     return section;
+  }
+
+  function renderChanges(asset) {
+    var wrap = element('div', undefined, 'review-changes');
+    wrap.appendChild(element('p', asset.changes.length ? 'What changed since ' + asset.baseline.label + ':'
+      : 'No change since ' + asset.baseline.label + '.', 'review-hint'));
+    asset.changes.forEach(function (c) {
+      if (c[0] === 'gap') { wrap.appendChild(element('p', '… ' + c[1] + ' unchanged paragraph' + (c[1] === 1 ? '' : 's') + ' …', 'gap')); return; }
+      if (c[0] !== 'mod') { wrap.appendChild(element('p', c[1], c[0])); return; }
+      var p = element('p', undefined, 'mod');
+      c[1].forEach(function (w) { p.appendChild(w[0] === 'same' ? document.createTextNode(w[1]) : element(w[0] === 'add' ? 'ins' : 'del', w[1])); });
+      wrap.appendChild(p);
+    });
+    return wrap;
   }
 
   // ---- rows --------------------------------------------------------------
@@ -518,8 +561,8 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
     if (row.reasoning) head += '<p class="rtext reason">' + esc(row.reasoning) + "</p>";
     el.innerHTML = head;
 
-    if (row.review_assets) {
-      var anchor = el.querySelector(".prior-position") || el.querySelector(".rlabel");
+    if (row.review_assets) {  // after what the decision is about, before what each choice does
+      var anchor = el.querySelector(".rtext:not(.reason)") || el.querySelector(".prior-position") || el.querySelector(".rlabel");
       el.insertBefore(renderReview(row), anchor.nextSibling);
     }
 

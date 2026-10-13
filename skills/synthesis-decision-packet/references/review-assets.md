@@ -79,6 +79,30 @@ independent clipboard readback. Where a textarea normalizes CR/CRLF, automatic
 copy receives the original string and the manual fallback names the limitation.
 Download preserves the exact UTF-8 bytes regardless of clipboard conventions.
 
+## The reading path: baselines, HTML messages and reference material
+
+Four optional asset fields keep the principal's reading short without losing exact
+recovery. Each belongs to the canonical spec digest.
+
+- `baseline` (text kinds): `{"label", "text", "sha256"}`, the version the principal
+  already reviewed. `label` names it in their terms (at most 256 bytes); `sha256`
+  must match `text`. The page shows the changes from the baseline first, paragraph
+  by paragraph and word by word within an edited paragraph, with unchanged runs
+  folded; the complete current text stays one click away. Baseline bytes count
+  toward the aggregate byte limit.
+- `format: "html"` (`correspondence` or `plain_text`): the text is a message's HTML.
+  The page shows its words (paragraphs kept, each link's address after its words)
+  and keeps the exact markup, copy and download under "Exact HTML as sent". With a
+  baseline, the changes compare those words.
+- `reference: true`: complete or wire material the decision does not turn on. The
+  page folds it under "Reference, optional".
+- `markup_review: true` (`code` only): the markup itself is what the principal
+  decides, so it may stay in the reading path.
+
+Identical bytes in several rows are shown once, where they first appear; each later
+row shows the title and a link back. The spec keeps every row's assets whole, so
+saved choices, rulings and delivery attachments bind exactly as before.
+
 ## Binary assets
 
 For binary content, require exactly `base64`, `sha256`, `size` and `media_type`.

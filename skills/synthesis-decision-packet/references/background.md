@@ -47,6 +47,12 @@ the burden of structuring the response falls on the person, every time, for ever
 
 ## Changelog
 
+- **2.1.0 (2026-10-13)** — a comfortable reading path (binding rule 15), from the principal's
+  review of a three-decision packet on 2026-10-08: changes against a reviewed `baseline` shown
+  first, identical material shown once, HTML messages read as their words with the exact markup
+  one click away, `reference` material folded, a `handled` list apart from the decisions, READER
+  findings for raw HTML and for a reading path over 6,000 characters per decision, the row's
+  context before its material, and no blank line where an omitted header part was (SYN-04).
 - **2.0.1 (2026-10-05)** — the handoff queue (`handoff.py`) that v5 removed is no longer
   named: work moves between agents as a brief file sent with `synthesis msg`. Binding rule 9
   names `synthesis doctor`, whose *decision packets* check flags unverifiable pages.

@@ -136,3 +136,39 @@ per-row `impact`, or carrying option labels that name no consequence. **Use it
 for every packet handed to a principal.** The warnings print either way;
 strictness is the difference between a warning you read and a packet they
 cannot.
+
+## A comfortable reading path (2026-10-08)
+
+Mechanics and plain labels are not enough when the material is heavy. Measured on
+2026-10-08: a packet of **three** decisions carried the same eleven assets in every
+row, six of them email HTML shown as code, 90,012 characters in all. The principal
+found it overwhelming and hard to read, and asked for differences instead of whole
+messages. Write so the principal can decide from the reading path alone:
+
+- **One findings summary first.** Use `intro` for what the review found, what it
+  means for the principal, and how many choices are genuinely theirs.
+- **What you settled is not a decision.** List it in `handled`, as `{item, how}`;
+  the page shows it apart from the rows, under "Already handled".
+- **Show what changed since the version they reviewed.** Give the text asset a
+  `baseline` (that version's text, its digest and a label such as "draft 2, which
+  you reviewed on October 7"). The page shows the changed words first and keeps the
+  complete text one click away; both texts stay bound to the spec.
+- **Each piece of material once.** The page shows identical bytes once and points
+  later rows back to it, so a repeat is never read twice; still put material in the
+  row it belongs to rather than in every row.
+- **A message is read as its words.** Give an HTML message as `correspondence` with
+  `"format": "html"`: the page shows what the recipient reads and keeps the exact
+  markup under "Exact HTML as sent". Mark wire copies and other complete material
+  the decision does not turn on `"reference": true`. Raw markup belongs in the
+  reading path only when the markup itself is what the principal decides
+  (`"markup_review": true` on a `code` asset).
+- **Disagreement stays visible.** Put each side in a row's `disagreement` block in
+  plain words, with who holds it.
+
+The generator raises READER findings for raw HTML in the reading path and for a
+reading path over 6,000 characters per decision; `--strict-reader` refuses both.
+
+**Asking in Codex.** Codex's native question cards disappear when the turn ends and
+leave no record. Put a question the principal must answer in the final reply, with
+the context needed to answer it, or in a filed packet; never only in a card.
+
