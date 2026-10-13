@@ -5,17 +5,16 @@ the Messages scripting bridge: synthetic accounts and chats only, nothing reache
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import sqlite3
 import subprocess
 
 import pytest
 
+from local_messaging_fixtures import approve as principal_approves
 import messages_send as ms
 
 NODE = shutil.which("node")
@@ -106,15 +105,7 @@ def approve(result: dict) -> None:
     """The principal types the code; the harness records it in the session's transcript, and the prompt hook
     grants it. The guard uses a grant only when that transcript shows the principal's own prompt."""
     assert result["status"] == "needs-approval", result
-    code = re.search(r"\bcode ([a-z0-9]{6})", result["reason"]).group(1)
-    record = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "-work" / "S-imessage.jsonl"
-    record.parent.mkdir(parents=True, exist_ok=True)
-    when = (datetime.now(timezone.utc) + timedelta(milliseconds=1)).isoformat()
-    with record.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"type": "user", "timestamp": when, "message": {"role": "user",
-                                                                                "content": f"please approve {code}"}}) + "\n")
-    from synthesis import approvals
-    assert approvals.grant_from_prompt(f"please approve {code}")
+    principal_approves(result["reason"])
 
 
 def pending_requests() -> list:

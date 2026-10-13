@@ -42,11 +42,11 @@ Line counts are `wc -l`. Verdicts from the v5 code evaluation (tool scripts, loc
 
 | Old script (lines) | Verdict | Now (lines) |
 |---|---|---|
-| `scripts/local_messaging.py` (804) | SLIM | `scripts/local_messaging.py` (420): read-only SQLite inside the sandbox, window query, skip rules, body decoder, pages saved before the cursor moves. The command line folded in; the request lost `after` and `upper`. Above the evaluation's 280-line estimate by the sandbox runner and the crash-safe cursor that E81 and E83 need |
+| `scripts/local_messaging.py` (804) | SLIM | `scripts/local_messaging.py` (420): read-only SQLite inside the sandbox, window query, skip rules, body decoder, pages saved before the cursor moves. The command line folded in; the request lost `after` and `upper`. Above the evaluation's 280-line estimate by the sandbox runner and the crash-safe cursor that E81 and E83 need. 476 after the fixes of 2026-10-13 (below) |
 | `scripts/local_messaging_cli.py` (32) | KEEP, fold into the reader | Folded into `local_messaging.py` |
 | `scripts/messages_boundary.py` (400), `messages_native.py` (307), `messages_outbound.py` (320) | REPLACE | The v5 send guard (`synthesis/guards.py` `check_send`, `synthesis/approvals.py`) around `scripts/messages_send.py` (177) and the read-only `scripts/messages_route.js` (24) |
 | `scripts/messages_transport.js` (46) | KEEP | Kept; its route contract drops `database_account_id` and `database`, which only the retired readback used |
-| `synthesis-autopilot/scripts/evaluation_artifacts.py` lines 201-289 (`_sandbox_command`, `sandbox_available`, `run_python_check`, with `_safe`, `_read`, `MAX_BYTES`) | KEEP, move to the consumer | `scripts/os_sandbox.py` (136), unchanged in behaviour |
+| `synthesis-autopilot/scripts/evaluation_artifacts.py` lines 201-289 (`_sandbox_command`, `sandbox_available`, `run_python_check`, with `_safe`, `_read`, `MAX_BYTES`) | KEEP, move to the consumer | `scripts/os_sandbox.py` (136), unchanged in behaviour. 63 since 2026-10-13: `run_python_check`, `_safe`, `_read` and `MAX_BYTES` removed, because the reader runs its worker with `_sandbox_command` and never called them; their sandbox-policy tests now run through that command |
 | Old tests (`scripts/test_*.py`, 1,704 lines) | Removed with the code they tested | `tests/` below |
 
 ## Edge cases and the tests that hold them
@@ -58,11 +58,28 @@ Line counts are `wc -l`. Verdicts from the v5 code evaluation (tool scripts, loc
 | E83 unsupported body or gap is reported and holds the window | `test_e83_unsupported_body_is_a_gap_not_an_empty_success`, `test_e83_a_gap_does_not_advance_the_window`, `test_e83_pages_advance_only_after_saving_and_a_complete_window_replays`, `test_e83_interrupted_cursor_write_rereads_the_same_page` |
 | E84 never resend after an uncertain outcome; a matching outbound row proves nothing | `test_imessage_send.py::test_e84_an_uncertain_outcome_is_never_resent`, `test_e84_a_matching_outbound_row_does_not_turn_uncertain_into_sent` |
 | R3.1 exact-text approval, one send per approval | `test_send_waits_for_exact_approval_then_sends_once`, `test_approval_covers_only_the_exact_text_and_recipient`, `test_forbidden_phrases_block_before_approval_and_bad_config_blocks_everything` |
-| Sandbox behaviour (moved with the code) | `test_local_messages_sandbox.py` (private reads, host writes and network denied; bounded output; no fork on macOS; no sandbox means no execution; the Linux loader paths) |
+| Sandbox behaviour (moved with the code) | `test_local_messages_sandbox.py` (through the reader's own sandbox command: private reads, writes to the database folder and outside, and network denied; no fork or spawn on macOS; no sandbox means the reader runs nothing; the Linux loader paths) |
 | Apple's Python 3.9 runs the reader | `test_local_messages_reader.py::test_command_line_reads_and_saves_a_page[/usr/bin/python3]` |
+| An unjoined outgoing row takes its handle's one one-to-one chat; none or several is a gap with the count | `test_local_messages_reader.py::test_unjoined_outgoing_row_takes_its_handles_one_to_one_chat`, `test_unjoined_outgoing_row_without_exactly_one_direct_chat_stays_a_gap` |
+| An undecodable link or attachment row is marked, not held; unreadable text still holds | `test_undecodable_link_and_attachment_rows_carry_a_marker_and_do_not_hold_the_window`, `test_a_row_whose_text_is_genuinely_unreadable_still_holds_the_window` |
+| A by-hand review closes a page's gaps only with the principal's approval of exactly those rows | `test_a_principal_approved_review_closes_the_gaps_it_names_and_is_recorded`, `test_a_review_names_exactly_the_pages_gaps_and_a_grant_alone_closes_nothing` |
 
 Sandbox tests skip where neither `sandbox-exec` nor `bwrap` can run a probe,
 and fail instead when `SYNTHESIS_REQUIRE_SANDBOX=1` is set (CI sets it).
+
+## Fixes of 2026-10-13
+
+Two field reports held windows on rows a person could read in the app: outgoing
+rows with a handle and no `chat_message_join` row ("ambiguous chat attribution",
+which an excluded chat could not clear), and link or attachment rows whose body
+is typedstream ("unsupported attributedBody encoding"). The reader now
+attributes the first to the handle's one one-to-one chat and marks the second,
+and a by-hand review the principal approves can close any other gap by name.
+The `imessage-v1` contract gained `message.balloon_bundle_id`, `attachment` and
+`message_attachment_join`. Where the text lives: binding rule 3, step 4 and the
+skip-rule paragraph in SKILL.md (the 1.0.0 lines are in preserved.md), and the
+chat attribution, marker and "Closing a gap by hand" text in
+[adapter-contract.md](adapter-contract.md).
 
 ## Frontmatter before v5 (verbatim)
 
