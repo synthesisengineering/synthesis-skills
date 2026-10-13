@@ -285,17 +285,34 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
     return _post(target.session, {"to": to, "session": target.session, "from": sender, "text": text})
 
 
-def inbox(session_id: str, project: str = "", *, mark_read: bool = False) -> list[dict]:
+def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent_hours: float = 0) -> list[dict]:
+    """The session's unread messages, oldest first; with recent_hours, every message from that many hours
+    back, read or not, so one that was cut or missed can be read again. Each carries its file name as `id`.
+    mark_read marks exactly the messages returned."""
     boxes = [session_id] + ([f"project:{project}"] if project else [])
+    since = time.time() - recent_hours * 3600 if recent_hours else None
     found = []
     for box in boxes:
         directory = _box(box)
         for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
-            read_marker = paths.state() / "read" / _session_file(session_id).stem / file.name
-            if read_marker.exists():
+            if since is None and _read_marker(session_id, file.name).exists():
                 continue
-            found.append(json.loads(file.read_text(encoding="utf-8")))
-            if mark_read:
-                read_marker.parent.mkdir(parents=True, exist_ok=True)
-                read_marker.touch()
+            message = {**json.loads(file.read_text(encoding="utf-8")), "id": file.name}
+            if since is None or message.get("at", 0) >= since:
+                found.append(message)
+    found.sort(key=lambda m: m.get("at", 0))
+    if mark_read:
+        mark_read_messages(session_id, found)
     return found
+
+
+def _read_marker(session_id: str, name: str) -> Path:
+    return paths.state() / "read" / _session_file(session_id).stem / name
+
+
+def mark_read_messages(session_id: str, messages: list) -> None:
+    """Mark only these messages read: a message is read once it has been shown, never before."""
+    for m in messages:
+        marker = _read_marker(session_id, m["id"])
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()

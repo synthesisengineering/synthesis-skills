@@ -153,3 +153,17 @@ def test_a_calendar_write_that_emails_no_one_needs_no_approval(tool_input, quiet
     reason = guards.check(tool, tool_input, config)
     assert (reason is None) is quiet, reason
     assert guards.check("mcp__workspace__respond_to_event", {"event_id": "e1", "send_updates": "none"}, config)
+
+
+def test_a_branding_link_in_html_counts_as_branding_and_a_phrase_split_by_a_link_still_blocks():
+    """An operations session, 2026-10-13: a rule requiring the persona's domain read only the tag-stripped text, where
+    an HTML signature keeps the domain in its href, so the canonical email signature could never pass."""
+    signed = ('<p>The plan is attached.</p><p>🤖 <em>I\'m the principal\'s <a href="https://helperbot.example/">'
+              'Helperbot</a>, sent under standing direction</em></p>')
+    call = {"to": "x@example.com", "subject": "Plan", "body_format": "html", "body": signed}
+    tool = "mcp__workspace-mcp__send_gmail_message"
+    assert "approval" in guards.check(tool, call, CONFIG)
+    unbranded = {**call, "body": "<p>The plan is attached.</p><p>🤖 <em>Helperbot, sent under standing direction</em></p>"}
+    assert "persona-marker-without-branding" in guards.check(tool, unbranded, CONFIG)
+    split = {**call, "body": '<p>I am <a href="https://example.com/">sorry</a> for the delay.</p>'}
+    assert "delay-apology" in guards.check(tool, split, CONFIG)

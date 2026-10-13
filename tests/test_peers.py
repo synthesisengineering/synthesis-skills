@@ -77,8 +77,9 @@ def test_a_message_carries_its_senders_id(isolated_home):
     with pytest.raises(board.AddressError, match="empty"):
         board.message("S1", "S2", "   ")
     board.message("S1", "S2", "signed")
-    assert board.inbox("S1") == [{"to": "S1", "session": "S1", "from": "S2", "text": "signed",
-                                  "at": board.inbox("S1")[0]["at"]}]
+    [got] = board.inbox("S1")
+    assert got == {"to": "S1", "session": "S1", "from": "S2", "text": "signed", "at": got["at"], "id": got["id"]}
+    assert got["id"].endswith(".json")  # the message's file, so exactly the shown messages can be marked read
 
 
 def test_the_same_text_to_a_second_session_is_refused_as_a_broadcast(isolated_home):
@@ -171,3 +172,52 @@ def test_a_session_on_an_older_release_is_told_once_what_changed(isolated_home):
     board.touch("AHEAD", project="alpha", version="99.0.0")  # the runtime was rolled back under it
     note = prompt("AHEAD")
     assert f"rolled back from 99.0.0 to {__version__}" in note and "upgraded" not in note and "newest" not in note
+
+
+def test_the_prompt_hook_marks_read_only_what_it_shows_and_marks_a_cut(isolated_home):
+    """A project session, 2026-10-13: the hook marked every unread message read but showed five, cut at 1,500
+    characters without a marker, so `synthesis inbox` pointed at an empty inbox and long messages lost text."""
+    board.touch("READER", project="alpha")
+    board.touch("WRITER", project="alpha")
+    long_text = "start " + "x" * 2000 + " end"
+    for n in range(6):
+        board.message("project:alpha", "WRITER", f"note {n}", durable=True)
+    board.message("project:alpha", "WRITER", long_text, durable=True)
+
+    def prompt():
+        return subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"],
+                              input=json.dumps({"session_id": "READER", "prompt": "carry on"}),
+                              capture_output=True, text=True, cwd=ROOT, env=dict(os.environ)).stdout
+
+    first = prompt()
+    assert first.count("Board message from") == 5 and "2 more unread" in first
+    left = board.inbox("READER", "alpha")
+    assert [m["text"] for m in left] == ["note 5", long_text]       # nothing shown is lost
+    second = prompt()
+    assert "note 5" in second and "[cut: " in second and " end" not in second and "more unread" not in second
+    assert board.inbox("READER", "alpha") == []
+    recent = board.inbox("READER", "alpha", recent_hours=1)
+    assert len(recent) == 7 and recent[-1]["text"] == long_text      # the whole message can be read again
+
+
+def test_a_session_recorded_before_versions_were_kept_is_told_if_it_predates_the_install(isolated_home):
+    """2026-10-07: synthesis-movement had run since before 5.0.3, so it had no recorded version and was never
+    told about the upgrade. A session that started on this release stays silent."""
+    from synthesis import __version__, paths
+    (paths.home() / "current").mkdir(parents=True, exist_ok=True)
+    (paths.home() / "current" / "CHANGELOG.md").write_text(
+        f"# Changelog\n\n## [{__version__}] - 2026-10-13\n\n- This release's change.\n\n## [0.0.1] - 2026-10-01\n\n- Old.\n",
+        encoding="utf-8")
+    board.touch("BEFORE", project="alpha", started=time.time() - 3600)
+    (paths.home() / "current" / "HASH").write_text("abc\n", encoding="utf-8")   # installed after BEFORE started
+    board.touch("AFTER", project="alpha", started=time.time() + 1)
+
+    def prompt(session_id):
+        return subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"],
+                              input=json.dumps({"session_id": session_id, "prompt": "carry on"}),
+                              capture_output=True, text=True, cwd=ROOT, env=dict(os.environ)).stdout
+
+    note = prompt("BEFORE")
+    assert f"upgraded to {__version__}" in note and "not recorded" in note and "This release's change" in note
+    assert "Old." not in note and "was upgraded" not in prompt("BEFORE")
+    assert "was upgraded" not in prompt("AFTER") and board.load("AFTER").version == __version__

@@ -267,6 +267,10 @@ def roots(tmp_path, monkeypatch):
     "cd /tmp && mv forged.jsonl {claude}/-work/s.jsonl",
     "cd {state}/approvals && echo '{{}}' > abc.json",
     "cd {claude}/-work && printf x >> s.jsonl",
+    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('{claude}/-work/s.jsonl').write_text('x')\nEOF",
+    "python3 - <<'EOF'\nimport os\nos.replace('/tmp/forged', '{state}/approvals/abc.json')\nEOF",
+    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('/tmp/forged').replace('{codex}/2026/10/05/rollout-x.jsonl')\nEOF",
+    "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['cp', '/tmp/x', '{claude}/-work/s.jsonl'])\nEOF",
 ])
 def test_writing_into_the_state_folder_or_a_transcript_is_refused(roots, command, tmp_path):
     command = command.format(**roots)
@@ -282,6 +286,11 @@ def test_writing_into_the_state_folder_or_a_transcript_is_refused(roots, command
     "sed -n 1,40p synthesis/hook.py",
     "python3 -m pytest -q tests/test_hooks_registration.py",
     "synthesis approvals",
+    # GUARD-READ-20261008: a bounded read-only lookup was refused because it printed with json.dumps
+    "python3 - <<'EOF'\nimport json, os\np = '{codex}/2026/10/05/rollout-x.jsonl'\nif os.path.exists(p):\n"
+    "    f = open(p, 'rb'); f.seek(0, 2); f.seek(max(f.tell() - 4096, 0))\n"
+    "    rows = [json.loads(l) for l in f.read().decode().splitlines() if l.strip()]\n"
+    "    print(json.dumps([r for r in rows if r.get('type') == 'user'][-1:]).replace('\\\\n', ' '), rows[-1]['x'] if rows else '')\nEOF",
 ])
 def test_reading_them_and_working_on_the_hook_source_is_allowed(roots, command, tmp_path):
     assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None

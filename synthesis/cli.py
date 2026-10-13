@@ -74,7 +74,7 @@ def cmd_worktree(args) -> int:
 def cmd_inbox(args) -> int:
     session_id = _session(args)
     me = board.load(session_id)
-    for m in board.inbox(session_id, me.project if me else "", mark_read=True):
+    for m in board.inbox(session_id, me.project if me else "", mark_read=True, recent_hours=args.recent):
         print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
     return 0
 
@@ -174,7 +174,9 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("worktree", help="create, retire or land a worktree", add_help=False)
     s.add_argument("rest", nargs=argparse.REMAINDER)
     s.set_defaults(fn=cmd_worktree)
-    sub.add_parser("inbox", help="show and mark unread messages").set_defaults(fn=cmd_inbox)
+    s = sub.add_parser("inbox", help="show and mark unread messages")
+    s.add_argument("--recent", type=float, default=0, metavar="HOURS", help="every message from the last HOURS, read or not")
+    s.set_defaults(fn=cmd_inbox)
     s = sub.add_parser("use", help="set this session's active project")
     s.add_argument("project")
     s.set_defaults(fn=cmd_use)

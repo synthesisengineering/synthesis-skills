@@ -128,7 +128,9 @@ def test_shell_name_probe(runtime):
 
 def test_plugin_entry_states(tmp_path):
     assert doctor.check_plugin("claude", None).status == "fail"
-    assert doctor.check_plugin("codex", None, "`codex plugin list` timed out").detail.endswith("timed out")
+    assert doctor.check_plugin("codex", None, "`codex plugin list` gave no JSON").status == "fail"
+    slow = doctor.check_plugin("codex", None, "cannot tell: `codex plugin list` did not answer within 45 s; run the doctor again")
+    assert slow.status == "warn" and "did not answer" in slow.detail  # 2026-10-10: slow, not broken
     off = {"enabled": False, "version": "5.0.0", "path": tmp_path}
     assert "disabled" in doctor.check_plugin("muse", off).detail
     on = {**off, "enabled": True}
@@ -354,6 +356,14 @@ def test_muse_hooks_awaiting_review_fail(tmp_path):
     assert doctor.check_muse_approval({"runtime_capabilities": []}).status == "fail"
 
 
+def test_unreadable_muse_trust_state_is_cannot_tell_not_a_failed_approval(tmp_path):
+    """SYN-03, 2026-10-07: inside Codex's sandbox Muse listed the four hooks but no trust state, and the
+    doctor said the plugin registers no hooks; run on the host, all four were approved."""
+    unreadable = {**muse_inspect(tmp_path), "runtime_capabilities": []}
+    check = doctor.check_muse_approval(unreadable)
+    assert check.status == "warn" and "cannot tell" in check.detail and "4 hooks" in check.detail
+
+
 def test_muse_manifest_is_wired_to_the_stable_hook(tmp_path):
     plugin = plugin_copy(tmp_path / "plugin")
     assert doctor.check_hooks_wired("muse", doctor.muse_hook_commands(muse_inspect(plugin))).status == "ok"
@@ -528,7 +538,7 @@ def test_a_hung_cli_is_bounded_and_reaped(tmp_path):
     proc = doctor._start([str(script)])
     start = time.monotonic()
     data, error = doctor._finish(proc, timeout=0.3)
-    assert data is None and "timed out" in error
+    assert data is None and error.startswith("cannot tell") and "did not answer" in error
     assert time.monotonic() - start < 5 and proc.returncode is not None
 
 

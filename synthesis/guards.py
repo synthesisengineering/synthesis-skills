@@ -71,11 +71,13 @@ def _strings(value, key: str = ""):
         yield key, value
 
 
-def _rendered(markup: str, breaks_ok: bool) -> tuple[str, list[str]]:
-    """The text an HTML part shows (entities decoded, tags gone), and what in it email must not carry."""
+def _rendered(markup: str, breaks_ok: bool) -> tuple[str, str, list[str]]:
+    """The text an HTML part shows (entities decoded, tags gone); that text followed by its link targets, which
+    rules read, so a branding link counts as branding and no phrase is split (2026-10-13); and what in it email
+    must not carry."""
     from html.parser import HTMLParser
     from urllib.parse import urlsplit
-    text, problems, stack, blocks = [], [], [], ("p", "div", "li", "blockquote")
+    text, links, problems, stack, blocks = [], [], [], [], ("p", "div", "li", "blockquote")
 
     def start(tag, attrs, closed=False):
         problems.extend([f"unsupported HTML element <{tag}>"] if tag not in HTML_TAGS else [])
@@ -87,6 +89,7 @@ def _rendered(markup: str, breaks_ok: bool) -> tuple[str, list[str]]:
                 problems.append("an HTML link must be https, http or mailto")
         text.append("\n\n" if tag in blocks else "\n" if tag == "br" else "")
         stack.extend([tag] if tag != "br" and not closed else [])
+        links.extend(v for n, v in attrs if n == "href" and v)
 
     def end(tag):
         if tag != "br":
@@ -103,7 +106,8 @@ def _rendered(markup: str, breaks_ok: bool) -> tuple[str, list[str]]:
     reader.handle_comment = lambda data: problems.append("HTML comments are not allowed in outgoing prose")
     reader.feed(markup)
     reader.close()
-    return "".join(text).strip(), problems + (["unclosed HTML element"] if stack else [])
+    shown = "".join(text).strip()
+    return shown, "\n\n".join([shown] + links), problems + (["unclosed HTML element"] if stack else [])
 
 
 def broken_paragraph(text: str) -> bool:
@@ -138,8 +142,8 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
     for key, text in strings:
         texts.append(text)
         if key in HTML_FIELDS or (html_format and key in BODY_FIELDS) or LOOKS_HTML.search(text):
-            shown, markup = _rendered(text, breaks_ok)
-            texts.append(shown)  # markup and entities must not hide a banned phrase (2026-07-29)
+            shown, with_links, markup = _rendered(text, breaks_ok)
+            texts.append(with_links)  # markup and entities must not hide a banned phrase (2026-07-29)
             html_parts.append((key, shown, markup))
     for rule in config.get("forbidden_phrases", []):
         # Case-insensitive unless the rule says otherwise: a rule against a miscased brand
@@ -852,7 +856,16 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
 COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync"})  # these write only their last argument
 WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rm", "unlink", "chmod"}
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
-SCRIPTED_WRITE = r"write|dump|rename|replace|unlink|remove|rmtree|copy|move|symlink|mkdir|touch|['\"][wax]b?\+?['\"]"
+# What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
+# read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
+SCRIPTED_WRITE = re.compile(
+    r"\bopen\([^)]*(?:,\s*|mode\s*=\s*)['\"][rbtU]*[wax+]|\.open\(\s*['\"][rbtU]*[wax+]"
+    r"|\.(?:write_text|write_bytes|writelines|touch|mkdir|rmdir|unlink|symlink_to|hardlink_to|chmod|truncate)\("
+    r"|\.(?:rename|replace)\(\s*[^,()]+\)"  # Path.rename/replace(target); str.replace takes two arguments
+    r"|\bos\.(?:remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime"
+    r"|open|write|system|popen|exec\w*|spawn\w*)\b|\bshutil\.|\bsubprocess\b|\bsqlite3\b"
+    r"|\bfs\.\w*(?:[Ww]rite|[Aa]ppend|rename|unlink|rm|mkdir|copy|symlink|truncate|chmod)|createWriteStream"
+    r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\(|open\s*\(\s*\w+\s*,\s*['\"]\+?[>|]")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 
 
