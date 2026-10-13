@@ -7,7 +7,7 @@ Cross-platform: macOS, Linux, Windows.
 
 Usage:
   fetch-meeting.py [MEETING-NAME] [--date YYYY-MM-DD] [--account EMAIL]
-  fetch-meeting.py --window FROM THROUGH        # which docs in the window are saved, which are not
+  fetch-meeting.py --window FROM THROUGH        # which docs in the window are saved, and how far the watermark may move
 
 Examples:
   fetch-meeting.py                      # today's standup (default)
@@ -48,6 +48,8 @@ from synthesis.yamlish import load_mapping  # noqa: E402
 
 DOC_TYPE = "application/vnd.google-apps.document"
 PAGE_SIZE = 100
+call = lambda url, account, tool, **args: mcp_client.call_tool(tool, {"user_google_email": account, **args}, url, "fetch-meeting.py")
+modified_in = lambda start, through: f'modifiedTime > "{start}T00:00:00" and modifiedTime < "{through + dt.timedelta(days=1)}T00:00:00"'
 
 # --- Config loading (the plugin's YAML reader, synthesis/yamlish.py) ---
 
@@ -70,18 +72,10 @@ def find_config() -> Path:
 
 def load_config(path: Path) -> dict:
     cfg = load_mapping(path.read_text(encoding="utf-8"), str(path))
-    # v0.2.0 schema (2026-04-22): transcripts_repo replaces ai_knowledge_repo
-    # to align with synthesis-slack-sync v2.0.0+ and the workspace-rooted layout.
     required = ["workspace", "google_account", "transcripts_path", "transcripts_repo"]
     missing = [k for k in required if not cfg.get(k)]
     if missing:
-        if cfg.get("ai_knowledge_repo") and "transcripts_repo" in missing:
-            raise ValueError(
-                f"Config {path} uses pre-v0.2.0 schema (ai_knowledge_repo). "
-                "Rename ai_knowledge_repo to transcripts_repo and set it to the "
-                "absolute path of the workspace-private repo. See references/setup.md."
-            )
-        raise ValueError(f"Config {path} missing required keys: {missing}")
+        raise ValueError(f"Config {path} missing required keys: {missing}; see references/setup.md")
     cfg["transcripts_repo"] = str(Path(cfg["transcripts_repo"]).expanduser())
     return cfg
 
@@ -153,9 +147,8 @@ def select_transcript(tabs, complete: bool, tab_id: str | None = None, title: st
 
 
 def fetch_document(url: str, account: str, file_id: str, tab_id: str | None, title: str | None) -> dict:
-    call = lambda tool, args: mcp_client.call_tool(tool, {"user_google_email": account, **args}, url, "fetch-meeting.py")
     try:
-        structure = call("inspect_doc_structure", {"document_id": file_id})
+        structure = call(url, account, "inspect_doc_structure", document_id=file_id)
         try:
             tabs, complete = tab_inventory(structure, file_id)
         except ValueError as exc:
@@ -163,8 +156,8 @@ def fetch_document(url: str, account: str, file_id: str, tab_id: str | None, tit
         result = select_transcript(tabs, complete, tab_id, title)
         if result["status"] == "unknown":
             return result
-        texts = {t["tab_id"]: call("get_doc_as_markdown", {"document_id": file_id, "tab_id": t["tab_id"],
-                                                          "include_comments": False}) for t in tabs}
+        texts = {t["tab_id"]: call(url, account, "get_doc_as_markdown", document_id=file_id, tab_id=t["tab_id"],
+                                   include_comments=False) for t in tabs}
     except ValueError as exc:  # an error is "unknown", never "no transcript"
         return {"status": "unknown", "reason": "tool-error", "detail": str(exc)}
     chosen = result.get("transcript_tab_id")
@@ -179,7 +172,8 @@ def fetch_document(url: str, account: str, file_id: str, tab_id: str | None, tit
 
 
 ROW = re.compile(r'Name: "(?P<name>[^"\n]*)" \(ID: (?P<id>[A-Za-z0-9_-]+)(?:, Type: (?P<type>[^,)]+))?'
-                 r'(?:[^)\n]*?Modified: (?P<modified>[0-9T:.+\-Z]+))?')
+                 r'(?:[^)\n]*?Created: (?P<created>[0-9T:.+\-Z]+))?(?:[^)\n]*?Modified: (?P<modified>[0-9T:.+\-Z]+))?')
+MARGIN_HOURS = 2  # this check reads Drive, never a calendar; on 2026-10-08 it passed two meetings still under way
 
 
 def saved_ids(meetings: Path) -> dict:
@@ -192,34 +186,40 @@ def saved_ids(meetings: Path) -> dict:
     return found
 
 
-def window(url: str, cfg: dict, account: str, start: dt.date, through: dt.date) -> dict:
-    """Every doc the declared patterns find in [start, through], marked saved or unsaved, and the
-    moment the bookmark may advance to: never past the first unsaved doc."""
-    query_window = f'modifiedTime > "{start.isoformat()}T00:00:00" and modifiedTime < "{(through + dt.timedelta(days=1)).isoformat()}T00:00:00"'
-    patterns = cfg.get("meeting_patterns") or {"(generic)": resolve_pattern(cfg, "Notes by Gemini")}
-    docs, bounded = {}, []
-    for name, pattern in patterns.items():
-        text = mcp_client.call_tool("search_drive_files", {"user_google_email": account, "query": f"{pattern} and {query_window}",
-                                                           "page_size": PAGE_SIZE, "detailed": True}, url, "fetch-meeting.py")
+def window(url: str, cfg: dict, account: str, start: dt.date, through: dt.date, now: dt.datetime | None = None) -> dict:
+    """The window's docs, saved or not, by declared pattern and as `undeclared`, and the earliest moment that holds the bookmark."""
+    now = (now or dt.datetime.now().astimezone()).replace(microsecond=0)
+    generic = resolve_pattern(cfg, "Notes by Gemini")
+    patterns = cfg.get("meeting_patterns") or {"(generic)": generic}
+    saved, docs, bounded = saved_ids(Path(cfg["transcripts_repo"]) / cfg["transcripts_path"] / "meetings"), {}, []
+    for name, pattern in list(patterns.items()) + ([("(undeclared)", generic)] if "(generic)" not in patterns else []):
+        text = call(url, account, "search_drive_files", query=f"{pattern} and {modified_in(start, through)}",
+                    page_size=PAGE_SIZE, detailed=True)
         rows = [m.groupdict() for m in ROW.finditer(text)]
-        if len(rows) >= PAGE_SIZE:
-            bounded.append(name)  # a full page may hide more: the window cannot be called complete
+        if len(rows) >= PAGE_SIZE or "nextPageToken:" in text or "incompleteSearch" in text:
+            bounded.append(name)  # more may exist: the listing cannot be called complete
         for row in rows:
             if row["type"] in (None, DOC_TYPE):
-                docs.setdefault(row["id"], {**row, "pattern": name})
-    saved = saved_ids(Path(cfg["transcripts_repo"]) / cfg["transcripts_path"] / "meetings")
+                docs.setdefault(row["id"], {**row, "pattern": name, "saved": saved.get(row["id"])})
     listed = sorted(docs.values(), key=lambda d: d["modified"] or "")
-    for doc in listed:
-        doc["saved"] = saved.get(doc["id"])
-    unsaved = [d for d in listed if not d["saved"]]
-    advance = "" if bounded else (unsaved[0]["modified"] or "") if unsaved else f"{through.isoformat()}T23:59:59"
-    return {"from": start.isoformat(), "through": through.isoformat(), "documents": listed,
-            "unsaved": [d["id"] for d in unsaved], "bounded_patterns": bounded,
-            "advance_through": advance or None,
+    unsaved = [d for d in listed if not d["saved"] and d["pattern"] in patterns]
+    holds = [(dt.datetime.combine(through, dt.time(23, 59, 59), dt.timezone.utc), "the window's end, in UTC as Drive reads it"),
+             (now - dt.timedelta(hours=MARGIN_HOURS), f"{MARGIN_HOURS} hours before the run: a meeting under way may have no doc yet")]
+    holds += [(dt.datetime.fromisoformat(d["created"].replace("Z", "+00:00")) - dt.timedelta(seconds=1),
+               f"just before unsaved doc {d['id']} was created") for d in unsaved if d["created"]]
+    at, why = min(holds) if not set(bounded) & set(patterns) and all(d["created"] for d in unsaved) else (
+        None, "a declared search may hide more docs, or an unsaved doc has no creation time")
+    return {"from": start.isoformat(), "through": through.isoformat(), "checked_at": now.isoformat(), "searched": patterns,
+            "scope": f"Only these patterns were searched: {', '.join(patterns)}. A doc none of them matches is not in `documents` "
+                     "and advance_through does not cover it; `undeclared` lists the Gemini notes docs no declared pattern found.",
+            "documents": [d for d in listed if d["pattern"] in patterns], "unsaved": [d["id"] for d in unsaved],
+            "undeclared": [d for d in listed if d["pattern"] not in patterns], "bounded_patterns": bounded,
+            "advance_through": at and at.astimezone(now.tzinfo).replace(microsecond=0).isoformat(), "advance_reason": why,
             "note": "the search shows what Drive returned; it cannot prove the listing complete"}
 
 
 def save(out_file: Path, text: str, force: bool) -> None:
+    text = verify_transcripts.redact_image_keys(text)  # an image's access key never reaches the repository
     if out_file.exists():
         if out_file.read_text(encoding="utf-8") == text:
             return
@@ -259,18 +259,16 @@ def main(argv=None) -> int:
             print(json.dumps({"coverage": "unknown", "reason": str(exc)}))
             return 1
         print(json.dumps(listing, indent=2))
-        return 1 if listing["unsaved"] or listing["bounded_patterns"] else 0
+        return 1 if listing["unsaved"] or not listing["advance_through"] else 0
 
     target_date = args.date or dt.date.today().isoformat()
     start = dt.date.fromisoformat(target_date)
     pattern = resolve_pattern(cfg, args.meeting)
-    query = (f'{pattern} and modifiedTime > "{start.isoformat()}T00:00:00" and '
-             f'modifiedTime < "{(start + dt.timedelta(days=1)).isoformat()}T00:00:00"')
+    query = f"{pattern} and {modified_in(start, start)}"
     print(f"Searching Drive ({account}) for: {args.meeting} on {target_date}")
     print(f"  Pattern: {pattern}")
     try:
-        search = mcp_client.call_tool("search_drive_files", {"user_google_email": account, "query": query, "page_size": 5},
-                                      mcp_url, "fetch-meeting.py")
+        search = call(mcp_url, account, "search_drive_files", query=query, page_size=5)
     except ValueError as exc:
         print(f"ERROR: search failed, coverage unknown: {exc}", file=sys.stderr)
         return 1

@@ -74,7 +74,7 @@ Before drafting the daily plan, sync every source-code repo the current workspac
 After any standup, planning session, or design review with auto-generated notes (e.g., Gemini in Google Meet):
 
 **Automated path (preferred)** — if the project uses `synthesis-meeting-transcripts`:
-- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to the configured meeting transcript archive. Configuration is in `.agents/meeting-transcripts.yaml` per project. Works with hosted Gmail/Drive connectors or a self-hosted multi-account MCP. Record the saved window with `sync_watermark.py advance --surface meetings --through <latest>`; a meeting whose transcript could not be saved is a gap to name, never a quiet day.
+- [ ] **Run `/synthesis-meeting-transcripts`** — the skill searches Gmail/Drive for today's Gemini-generated meeting notes doc, fetches both the summary and the full word-for-word transcript, and saves to the configured meeting transcript archive. Configuration is in `.agents/meeting-transcripts.yaml` per project. Works with hosted Gmail/Drive connectors or a self-hosted multi-account MCP. Record the saved window with `sync_watermark.py advance --surface meetings --through <T>`, T being the moment that skill's Step 0 gives (`advance_through` from `fetch-meeting.py --window`), never the end of a day still under way; a meeting whose transcript could not be saved is a gap to name, never a quiet day.
 - [ ] Read the saved transcript and extract action items, decisions, status changes.
 - [ ] Update CONTEXT.md with any new information from the meeting.
 

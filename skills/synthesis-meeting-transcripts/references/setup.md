@@ -48,6 +48,9 @@ transcripts_path: transcripts
 # Maps a short name the user types ("pull the standup") to a Drive search query.
 # The query is a Drive API v3 search expression matched against doc names.
 # Values with unspecified patterns fall back to the generic {{name}} pattern.
+# `fetch-meeting.py --window` searches only these, and says so in its output. A recurring
+# meeting with no pattern here is listed as `undeclared` (when its doc name matches the
+# generic pattern) and is not covered by the watermark it suggests: declare it here.
 meeting_patterns:
   standup: 'name contains "Daily Standup" and name contains "Notes by Gemini"'
   retro: 'name contains "Retrospective" and name contains "Notes by Gemini"'

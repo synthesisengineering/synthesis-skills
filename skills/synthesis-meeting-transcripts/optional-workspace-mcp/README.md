@@ -36,15 +36,48 @@ saves nothing and exits 1. A complete tab list with no transcript tab saves the 
 with the no-source marker.
 
 The second lists every doc the declared patterns find in the window, saved or
-unsaved, and `advance_through`: the moment the meetings watermark may move to (the
-window end, or just before the first unsaved doc). A doc counts as saved when the
+unsaved, and `advance_through`: the moment the meetings watermark may move to. It is
+the earliest of three moments, and `advance_reason` names the one that applied:
+
+- the end of the window. Drive reads the window's dates as UTC days, so the end of
+  2026-10-05 is 23:59:59 UTC;
+- two hours (`MARGIN_HOURS`) before the run, given as `checked_at`. The script reads
+  Drive and never a calendar, and a meeting still under way, or one whose notes have
+  not reached Drive, may have no doc to list yet. On 2026-10-08 a run at 11:23
+  suggested the end of the day while two meetings that began at 11:00 were still
+  running; the margin keeps the watermark behind any meeting that started in the two
+  hours before the check;
+- one second before each unsaved doc was created. A notes doc is created when
+  note-taking starts, so this is the earliest moment Drive shows for that meeting,
+  not the doc's last edit.
+
+The value is written in the run's local time with its offset, because
+`sync_watermark.py` reads a time without an offset as local time, and Python 3.9
+cannot read a trailing `Z`.
+
+A doc counts as saved when the
 first 4,000 characters of a file in the archive's `meetings/` folder name its ID in
 one of three forms: the `**Source ID:** google-drive:<id>` header this script
 writes, a Google Doc link (`/document/d/<id>`), or a blockquote provenance line
 whose first backticked ID is the doc's (`` > Source: Gemini doc `<id>` — ... ``).
-Drive's listing carries no
-completeness flag, so a full page leaves `advance_through` empty, and the listing is
-what Drive returned, not proof that nothing else exists.
+Drive's listing cannot prove itself complete. A full page, a `nextPageToken` line or
+Drive's `incompleteSearch` warning on a declared pattern's search names that pattern
+in `bounded_patterns` and leaves `advance_through` empty. The listing is what Drive
+returned, not proof that nothing else exists.
+
+Only the declared `meeting_patterns` are searched, and every run says so: `searched`
+holds each pattern's query and `scope` names them. A recurring meeting that no
+pattern matches is not in `documents`, and `advance_through` says nothing about it.
+When patterns are declared, the script also runs the config's generic pattern for
+"Notes by Gemini" over the same window and lists any notes doc that no declared
+pattern found under `undeclared`, saved or not. An undeclared doc does not hold the
+watermark; declare its meeting in `meeting_patterns` to cover it. A full page on that
+search appears as `(undeclared)` in `bounded_patterns` and does not hold the
+watermark either. With no patterns declared, the generic pattern is the only search,
+named `(generic)`.
+
+The command exits 0 when every declared doc is saved and `advance_through` is set,
+and 1 otherwise.
 
 ## When the MCP tools go missing
 

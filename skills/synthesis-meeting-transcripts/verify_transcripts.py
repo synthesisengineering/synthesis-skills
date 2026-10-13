@@ -72,7 +72,17 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "1.0.1"
+SCRIPT_VERSION = "1.1.0"
+
+# A Docs image exported to markdown links googleusercontent.com with an access key that opens the image to
+# anyone holding the URL; 94 such keys sat in saved transcripts by 2026-10-13. Saving redacts them, and the
+# audit fails a file that still carries one.
+KEYED_IMAGE = re.compile(r"(https://[A-Za-z0-9.-]*googleusercontent\.com/[^\s)\"'<>]*?[?&]key=)(?!REDACTED\b)[^&\s)\"'<>]+")
+
+
+def redact_image_keys(text: str) -> str:
+    return KEYED_IMAGE.sub(r"\1REDACTED", text)
+
 
 # Any HH:MM:SS or MM:SS anywhere — Gemini uses bare, bold, heading, and markdown-link forms
 TIMESTAMP_RE = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -297,6 +307,7 @@ def audit_files(
                 "has_transcript_heading": has_heading,
                 "size_kb": size_kb,
                 "status": "OK" if ok else "INCOMPLETE",
+                "keyed_image_links": len(KEYED_IMAGE.findall(content)),
             }
         )
     return results
@@ -413,6 +424,7 @@ def main(argv=None) -> int:
     # broken invocation is one operators learn to distrust, which is the same failure mode
     # the v0.5.1 false-positive fix existed to prevent, arriving from the other direction.
     incomplete_count = sum(1 for r in results if r["status"] == "INCOMPLETE")
+    keyed_files = [r["file"] for r in results if r.get("keyed_image_links")]
     skipped_count = sum(1 for r in results if r["status"] == "SKIPPED")
     no_source_count = sum(
         1 for r in results if r["status"] == "OK (no-source-transcript)"
@@ -447,6 +459,7 @@ def main(argv=None) -> int:
                     "incomplete_count": incomplete_count,
                     "skipped_count": skipped_count,
                     "no_source_count": no_source_count,
+                    "keyed_image_files": keyed_files,
                     "results": listed,
                 },
                 indent=2,
@@ -490,13 +503,17 @@ def main(argv=None) -> int:
         print("Unverified remainder:")
         for item in UNVERIFIED_REMAINDER:
             print(f"- {item}")
+        if keyed_files:
+            print()
+            print(f"{len(keyed_files)} file(s) carry Docs image links with an access key: {', '.join(keyed_files)}.")
+            print("Replace each key with REDACTED (verify_transcripts.redact_image_keys) before committing.")
         if incomplete_count:
             print()
             print("Incomplete files need backfill: re-fetch the source Google Doc")
             print("with the full transcript content and append under a")
             print("'## 📖 Full Gemini Notes + Verbatim Transcript' section.")
 
-    return 1 if incomplete_count else 0
+    return 1 if incomplete_count or keyed_files else 0
 
 
 if __name__ == "__main__":

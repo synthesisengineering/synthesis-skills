@@ -42,8 +42,8 @@ class FakeDrive:
         self.calls.append((tool, arguments))
         if tool in self.errors:
             raise ValueError("MCP tool returned an error; source coverage unknown")
-        if tool == "search_drive_files":
-            return self.listing
+        if tool == "search_drive_files":  # a listing per query, or one listing for every query
+            return self.listing(arguments["query"]) if callable(self.listing) else self.listing
         if tool == "inspect_doc_structure":
             return self.tabs if isinstance(self.tabs, str) else structure(arguments["document_id"], self.tabs)
         if tool == "get_doc_as_markdown":
@@ -149,14 +149,25 @@ def test_event_stream_skips_notifications_and_refuses_ambiguity():
 # --- E22: the window lists every doc, saved or not, and the bookmark stops before the unsaved ---
 
 
-def row(doc_id, modified, kind="application/vnd.google-apps.document"):
-    return (f'- Name: "Standup {doc_id} - Notes by Gemini" (ID: {doc_id}, Type: {kind}, Size: 10, '
-            f"Created: {modified}, Modified: {modified}, Last Edited By: Fixture <f@example.invalid>) Link: x\n")
+EDT = FM.dt.timezone(FM.dt.timedelta(hours=-4))
+RUN = FM.dt.datetime(2026, 10, 8, 11, 23, tzinfo=EDT)  # the 2026-10-08 report: two meetings began at 11:00
+LATER = FM.dt.datetime(2026, 10, 13, 9, 0, tzinfo=EDT)  # long after every window below
+
+
+def row(doc_id, modified, kind="application/vnd.google-apps.document", created=None, title="Standup"):
+    return (f'- Name: "{title} {doc_id} - Notes by Gemini" (ID: {doc_id}, Type: {kind}, Size: 10, '
+            f"Created: {created or modified}, Modified: {modified}, Last Edited By: Fixture <f@example.invalid>) Link: x\n")
 
 
 def config(tmp_path):
     return {"workspace": "example", "google_account": "reader@example.invalid", "transcripts_repo": str(tmp_path / "repo"),
             "transcripts_path": "transcripts", "meeting_patterns": {"standup": 'name contains "Standup"'}}
+
+
+def run_window(monkeypatch, cfg, listing, start, through, now):
+    drive = FakeDrive(TABS, TEXTS, listing=listing)
+    monkeypatch.setattr(FM.mcp_client, "call_tool", drive)
+    return FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], start, through, now=now), drive
 
 
 def test_e22_an_unsaved_doc_is_named_and_the_bookmark_stops_before_it(monkeypatch, tmp_path):
@@ -167,11 +178,10 @@ def test_e22_an_unsaved_doc_is_named_and_the_bookmark_stops_before_it(monkeypatc
     (meetings / "standup-2026-10-03.md").write_text("**Google Doc:** https://docs.google.com/document/d/docC/edit\n")
     listing = row("docA", "2026-10-01T15:00:00Z") + row("docB", "2026-10-02T15:00:00Z") + row("docC", "2026-10-03T15:00:00Z")
     listing += row("sheet", "2026-10-02T09:00:00Z", kind="application/vnd.google-apps.spreadsheet")
-    monkeypatch.setattr(FM.mcp_client, "call_tool", FakeDrive(TABS, TEXTS, listing=listing))
-    result = FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3))
+    result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3), LATER)
     assert [d["id"] for d in result["documents"]] == ["docA", "docB", "docC"]
     assert result["unsaved"] == ["docB"]
-    assert result["advance_through"] == "2026-10-02T15:00:00Z"
+    assert result["advance_through"] == "2026-10-02T10:59:59-04:00"  # one second before docB, with its offset
 
 
 def test_e22_a_blockquote_source_line_marks_its_doc_saved(monkeypatch, tmp_path):
@@ -186,19 +196,27 @@ def test_e22_a_blockquote_source_line_marks_its_doc_saved(monkeypatch, tmp_path)
         '# Weekly\n\n> Source: Gemini notes doc "Weekly - Notes by Gemini", Drive ID `docC` (host\'s meeting).\n')
     (meetings / "notes.md").write_text("# Notes\n\n> Fetched: by `docB`, which is not its source.\nSource: `docB`\n")
     listing = row("1Doc_A-x", "2026-10-01T15:00:00Z") + row("docB", "2026-10-02T15:00:00Z") + row("docC", "2026-10-03T15:00:00Z")
-    monkeypatch.setattr(FM.mcp_client, "call_tool", FakeDrive(TABS, TEXTS, listing=listing))
-    result = FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3))
+    result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3), LATER)
     assert {d["id"]: d["saved"] for d in result["documents"]} == {
         "1Doc_A-x": "standup-2026-10-01.md", "docB": None, "docC": "weekly-2026-10-03.md"}
-    assert result["unsaved"] == ["docB"] and result["advance_through"] == "2026-10-02T15:00:00Z"
+    assert result["unsaved"] == ["docB"] and result["advance_through"] == "2026-10-02T10:59:59-04:00"
 
 
 def test_e22_a_full_search_page_is_bounded_and_never_advances(monkeypatch, tmp_path):
     cfg = config(tmp_path)
     listing = "".join(row(f"doc{i}", f"2026-10-01T{i % 24:02d}:00:00Z") for i in range(FM.PAGE_SIZE))
-    monkeypatch.setattr(FM.mcp_client, "call_tool", FakeDrive(TABS, TEXTS, listing=listing))
-    result = FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1))
-    assert result["bounded_patterns"] == ["standup"] and result["advance_through"] is None
+    result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1), LATER)
+    assert result["bounded_patterns"] == ["standup", "(undeclared)"] and result["advance_through"] is None
+
+
+@pytest.mark.parametrize("tail", ["nextPageToken: page-2\n",
+                                  "WARNING: Google Drive did not search every corpus (incompleteSearch), so these results...\n"])
+def test_e22_a_next_page_token_or_an_incomplete_search_is_bounded_too(monkeypatch, tmp_path, tail):
+    """A short page with a token, or Drive's incompleteSearch flag, hides docs as surely as a full page."""
+    cfg = config(tmp_path)
+    result, _ = run_window(monkeypatch, cfg, row("docA", "2026-10-01T15:00:00Z") + tail,
+                           FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1), LATER)
+    assert "standup" in result["bounded_patterns"] and result["advance_through"] is None
 
 
 def test_e22_all_saved_advances_to_the_window_end(monkeypatch, tmp_path):
@@ -206,9 +224,82 @@ def test_e22_all_saved_advances_to_the_window_end(monkeypatch, tmp_path):
     meetings = Path(cfg["transcripts_repo"]) / "transcripts" / "meetings"
     meetings.mkdir(parents=True)
     (meetings / "a.md").write_text("**Source ID:** google-drive:docA\n")
-    monkeypatch.setattr(FM.mcp_client, "call_tool", FakeDrive(TABS, TEXTS, listing=row("docA", "2026-10-01T15:00:00Z")))
-    result = FM.window("http://localhost:1/mcp", cfg, cfg["google_account"], FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1))
-    assert result["unsaved"] == [] and result["advance_through"] == "2026-10-01T23:59:59"
+    result, _ = run_window(monkeypatch, cfg, row("docA", "2026-10-01T15:00:00Z"), FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1), LATER)
+    assert result["unsaved"] == [] and result["advance_through"] == "2026-10-01T19:59:59-04:00"  # 23:59:59 UTC
+
+
+# --- E28: the bookmark never passes the run, or a meeting not yet ended or saved (2026-10-08) ---
+
+
+def test_e28_the_bookmark_stays_behind_the_run_while_meetings_may_be_under_way(monkeypatch, tmp_path):
+    """At 11:23 the check offered 23:59:59 while two 11:00 meetings ran; neither had a notes doc Drive could list."""
+    cfg = config(tmp_path)
+    meetings = Path(cfg["transcripts_repo"]) / "transcripts" / "meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "standup-2026-10-08.md").write_text("**Source ID:** google-drive:docA\n")
+    listing = row("docA", "2026-10-08T13:40:00Z", created="2026-10-08T13:00:00Z")  # 09:00-09:30 EDT, saved
+    result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 8), FM.dt.date(2026, 10, 8), RUN)
+    assert result["advance_through"] == "2026-10-08T09:23:00-04:00"  # the run less the stated margin
+    assert result["advance_reason"].startswith(f"{FM.MARGIN_HOURS} hours before the run")
+    assert result["unsaved"] == [] and result["checked_at"] == "2026-10-08T11:23:00-04:00"
+    assert FM.dt.datetime.fromisoformat(result["advance_through"]) < FM.dt.datetime(2026, 10, 8, 11, 0, tzinfo=EDT)
+
+
+def test_e28_an_unsaved_meeting_holds_the_bookmark_before_its_doc_was_created(monkeypatch, tmp_path):
+    """A doc created when note-taking began and still being written: the bookmark stops before it was created, not at
+    its last edit."""
+    cfg = config(tmp_path)
+    listing = row("docB", "2026-10-02T15:30:00Z", created="2026-10-02T14:00:00Z")
+    result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3), LATER)
+    assert result["unsaved"] == ["docB"] and result["advance_through"] == "2026-10-02T09:59:59-04:00"
+    assert result["advance_reason"] == "just before unsaved doc docB was created"
+
+
+def test_e28_a_suggestion_names_its_offset_so_a_bookmark_reads_it_as_meant(monkeypatch, tmp_path):
+    """The bookmark reads a time without an offset as local, and Python 3.9 cannot read a trailing Z."""
+    cfg = config(tmp_path)
+    for listing in (row("docB", "2026-10-02T15:00:00.000Z"), ""):
+        result, _ = run_window(monkeypatch, cfg, listing, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 3), LATER)
+        moment = FM.dt.datetime.fromisoformat(result["advance_through"])
+        assert moment.tzinfo is not None and not result["advance_through"].endswith("Z")
+
+
+# --- E29: only the declared patterns are searched, and the output says so every time -----------
+
+
+def test_e29_the_output_names_the_patterns_it_searched_and_lists_undeclared_notes_docs(monkeypatch, tmp_path):
+    cfg = config(tmp_path)
+    cfg["meeting_patterns"]["retro"] = 'name contains "Retro"'
+    meetings = Path(cfg["transcripts_repo"]) / "transcripts" / "meetings"
+    meetings.mkdir(parents=True)
+    (meetings / "standup-2026-10-01.md").write_text("**Source ID:** google-drive:docA\n")
+    standup = row("docA", "2026-10-01T15:00:00Z")
+    planning = row("docX", "2026-10-01T16:00:00Z", title="Planning")  # a recurring meeting nobody declared
+    by_query = lambda query: standup if "Standup" in query else standup + planning if "Notes by Gemini" in query else ""
+    result, drive = run_window(monkeypatch, cfg, by_query, FM.dt.date(2026, 10, 1), FM.dt.date(2026, 10, 1), LATER)
+    assert result["searched"] == cfg["meeting_patterns"]
+    assert result["scope"].startswith("Only these patterns were searched: standup, retro. A doc none of them matches")
+    assert "advance_through does not cover it" in result["scope"]
+    assert [d["id"] for d in result["documents"]] == ["docA"] and result["unsaved"] == []
+    assert [(d["id"], d["saved"]) for d in result["undeclared"]] == [("docX", None)]
+    assert result["advance_through"] == "2026-10-01T19:59:59-04:00"  # an undeclared doc is reported, not a hold
+    assert len([tool for tool, _ in drive.calls if tool == "search_drive_files"]) == 3
+
+
+def test_e29_with_no_declared_patterns_the_generic_search_is_named(monkeypatch, tmp_path):
+    cfg = config(tmp_path)
+    del cfg["meeting_patterns"]
+    result, drive = run_window(monkeypatch, cfg, row("docA", "2026-10-01T15:00:00Z"), FM.dt.date(2026, 10, 1),
+                               FM.dt.date(2026, 10, 1), LATER)
+    assert result["scope"].startswith("Only these patterns were searched: (generic).") and result["undeclared"] == []
+    assert list(result["searched"]) == ["(generic)"] and len(drive.calls) == 1
+
+
+def test_e29_the_command_prints_the_scope_on_every_window_run(monkeypatch, tmp_path, capsys):
+    drive = FakeDrive(TABS, TEXTS, listing=row("doc1", "2026-10-05T15:00:00Z"))
+    assert run_main(monkeypatch, tmp_path, drive, "--window", "2026-10-05", "2026-10-05") == 1  # doc1 is unsaved
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["scope"].startswith("Only these patterns were searched: standup.") and printed["unsaved"] == ["doc1"]
 
 
 # --- the whole fetch: find, select, save, verify -----------------------------------------------
@@ -328,3 +419,9 @@ def test_client_http_errors_oversize_and_tool_errors_are_unknown(server, reply):
     Server.reply = reply
     with pytest.raises(ValueError):
         MCP.call_tool("get_doc_as_markdown", {}, server)
+
+
+def test_saving_a_transcript_redacts_docs_image_keys(tmp_path):
+    out = tmp_path / "meetings" / "planning-2026-10-05.md"
+    FM.save(out, "Notes ![](https://lh7-rt.googleusercontent.com/docsz/AD_4nX?key=k3yV4lue)\n", force=False)
+    assert out.read_text(encoding="utf-8") == "Notes ![](https://lh7-rt.googleusercontent.com/docsz/AD_4nX?key=REDACTED)\n"

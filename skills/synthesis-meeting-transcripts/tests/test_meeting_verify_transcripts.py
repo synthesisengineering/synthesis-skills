@@ -404,3 +404,18 @@ def test_runs_under_apple_python(tmp_path):
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_a_docs_image_key_is_redacted_and_a_saved_one_fails_the_audit(tmp_path, capsys):
+    """An operations session, 2026-10-13: Gemini notes exported to markdown link screenshots on
+    googleusercontent.com with an access key, and 94 keys had reached saved transcripts unnoticed."""
+    keyed = "![](https://lh7-rt.googleusercontent.com/docsz/AD_4nXfixture?key=k3yV4lue&w=640)"
+    redacted = "![](https://lh7-rt.googleusercontent.com/docsz/AD_4nXfixture?key=REDACTED&w=640)"
+    assert v.redact_image_keys(keyed) == redacted and v.redact_image_keys(redacted) == redacted
+    assert v.redact_image_keys("https://example.com/a?key=keep") == "https://example.com/a?key=keep"
+    saved = _write(tmp_path, "planning-2026-10-05.md", "## Verbatim transcript\n\n" + DIALOGUE + "\n" + keyed + "\n")
+    assert v.audit_files([saved])[0]["keyed_image_links"] == 1
+    assert v.main([str(tmp_path)]) == 1 and "planning-2026-10-05.md" in capsys.readouterr().out
+    saved.write_text(v.redact_image_keys(saved.read_text(encoding="utf-8")), encoding="utf-8")
+    assert v.main([str(tmp_path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["keyed_image_files"] == []
