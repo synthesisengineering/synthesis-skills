@@ -131,13 +131,39 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
     return found
 
 
-def opens_window(words: list) -> bool:
-    """`synthesis sends open`, however the CLI is spelled (its stable path, `python3 -m synthesis.cli`, the file)."""
+def window_asked(words: list) -> dict | None:
+    """The window `synthesis sends open` asks for, however the CLI is spelled and wherever its options sit
+    (`synthesis --session S sends open` opened one with no code on 2026-10-13); None for help or another command."""
     for i, w in enumerate(words):
-        if (os.path.basename(w) == "synthesis" or w in ("synthesis.cli", "synthesis/cli.py") or w.endswith("synthesis/cli.py")) \
-                and words[i + 1:i + 3] == ["sends", "open"]:
-            return True
-    return False
+        if os.path.basename(w) == "synthesis" or w in ("synthesis.cli", "synthesis/cli.py") or w.endswith("synthesis/cli.py"):
+            rest = words[i + 1:]
+            if "sends" in rest and "open" in rest[rest.index("sends") + 1:] and not {"-h", "--help"} & set(rest):
+                given = {}
+                for j, token in enumerate(rest):
+                    key, eq, value = token.partition("=")
+                    if key in ("--hours", "--channels", "--project"):
+                        given[key[2:]] = value if eq else (rest[j + 1] if j + 1 < len(rest) else "")
+                return asked(given.get("hours", 0), given.get("channels", ""), given.get("project", ""))
+    return None
+
+
+def window_refusal(window: dict) -> str:
+    from synthesis import approvals
+    scope = f"{window['hours']:g} h, {', '.join(window['channels']) or 'no channels'}" + (
+        f", project {window['project']}" if window["project"] else "")
+    code = approvals.request("send-window", window, f"open a send window: {scope}")
+    return (f"Opening a send window ({scope}) lets signed Ragbot sends go without a per-message code until it ends. "
+            f"Show the principal that scope and ask them to type {approvals.how(code)}. Then run the identical command again.")
+
+
+def asked(hours, channels: str, project: str) -> dict:
+    """A window request in one form, so the guard and the command bind the same approval."""
+    try:
+        hours = float(hours)
+    except ValueError:
+        hours = 0.0
+    return {"hours": hours, "channels": sorted({c.strip() for c in str(channels).split(",") if c.strip()}),
+            "project": str(project)}
 
 
 def attached(words: list, cwd: str) -> tuple[str, str]:
@@ -168,11 +194,15 @@ def window() -> dict:
     return data if data and float(data.get("until", 0)) > time.time() else {}
 
 
-def open_window(hours: float, channels: list, project: str = "") -> dict:
+def check_window(hours: float, channels: list) -> None:
     if not 0 < hours <= MAX_HOURS:
         raise ValueError(f"a send window lasts more than 0 and at most {MAX_HOURS} hours")
     if not channels:
         raise ValueError("name the channels it covers (for example slack,jira,bitbucket), or all")
+
+
+def open_window(hours: float, channels: list, project: str = "") -> dict:
+    check_window(hours, channels)
     data = {"opened": time.time(), "until": time.time() + hours * 3600, "channels": sorted(set(channels)),
             "project": project}
     paths.write_json(_window_file(), data)

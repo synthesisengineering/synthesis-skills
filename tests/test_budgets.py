@@ -38,9 +38,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # and send windows (synthesis/sends.py 220, guard wiring 61, `synthesis sends` 29, the window note in the hooks 8),
 # and the Docs image key as a built-in credential (2). The preferred-names check came in at zero net.
 # 5.0.10 adds 3 so a read-only script may import the window and approval code; writing calls stay refused.
+# 5.0.11 adds 44 so `synthesis sends open` itself refuses an agent without the principal's granted code (a
+# global option before `sends` slipped past the guard alone), whatever order its options take; help needs no code.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5632
-PLUGIN_BUDGET = 20980
+CORE_BUDGET = 5676
+PLUGIN_BUDGET = 21024
 
 
 def _lines(files):

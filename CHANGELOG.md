@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.11] - 2026-10-13
+
+- **A send window opens only with the principal's code, however the command is written.** An agent ran
+  `synthesis --session <id> sends open ...`; the guard matched `sends open` only right after `synthesis`, and
+  the command trusted the guard, so a window opened with no code (reported by a project session, closed within
+  a minute, no sends under it). Now `synthesis sends open` itself, run by an agent, opens only on a granted code
+  for exactly that window from the session's own transcript, and refuses otherwise; the guard reads the
+  command's options wherever they sit; `--help` and `-h` never need a code.
+
 ## [5.0.10] - 2026-10-13
 
 - **Reading the send window or approvals from a script is allowed again.** 5.0.9 refused any script that

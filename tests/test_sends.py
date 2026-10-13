@@ -95,8 +95,13 @@ def test_a_window_is_capped_ends_by_itself_and_can_be_scoped_to_a_project():
 
 
 def test_only_the_principal_opens_a_window(tmp_path, principal):
-    for command in ("synthesis sends open --hours 6 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --channels jira"):
-        assert "type approve" in guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path))
+    for command in ("synthesis sends open --hours 6 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --channels jira",
+                    # csa-2026-q3, 2026-10-13: a global option before `sends` opened a window with no code
+                    "synthesis --session S-principal sends open --hours 6 --channels jira",
+                    "synthesis sends open --hours=6 --channels=jira"):
+        assert "type approve" in guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)), command
+    for command in ("synthesis sends --help", "synthesis sends open --help", "synthesis --session S1 sends open -h"):
+        assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)) is None, command
     reason = guards.check("Bash", {"command": "synthesis sends open --hours 6 --channels jira"}, CONFIG, cwd=str(tmp_path))
     principal(reason)
     assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
@@ -112,13 +117,28 @@ def test_only_the_principal_opens_a_window(tmp_path, principal):
     assert guards.check("Bash", {"command": "synthesis sends close"}, CONFIG, cwd=str(tmp_path)) is None
 
 
+def _cli(*args):
+    return subprocess.run([sys.executable, "-m", "synthesis.cli", *args], capture_output=True, text=True, cwd=ROOT)
+
+
+def test_the_command_refuses_to_open_a_window_from_an_agent_without_the_principals_code(principal):
+    """The gate rests on the command, not on the guard matching its spelling (csa-2026-q3, 2026-10-13)."""
+    ask = ("--session", "S-principal", "sends", "open", "--hours", "3", "--channels", "jira,bitbucket")
+    refused = _cli(*ask)
+    assert refused.returncode == 2 and "type approve" in refused.stderr and sends.window() == {}
+    principal(refused.stderr)
+    assert _cli("sends", "open", "--hours", "3", "--channels", "jira").returncode == 2  # another scope: no grant
+    opened = _cli(*ask)
+    assert opened.returncode == 0 and "(bitbucket, jira)" in opened.stdout and sends.window()
+    assert _cli(*ask).returncode == 2  # the grant was spent
+    assert _cli("sends", "open", "--help").returncode == 0
+
+
 def test_the_command_line_and_the_prompt_hook_show_an_open_window():
-    def cli(*args):
-        return subprocess.run([sys.executable, "-m", "synthesis.cli", "sends", *args], capture_output=True, text=True, cwd=ROOT)
-    assert cli("open", "--hours", "13", "--channels", "jira").returncode == 2
-    opened = cli("open", "--hours", "3", "--channels", "jira,bitbucket")
-    assert opened.returncode == 0 and "(bitbucket, jira)" in opened.stdout
+    assert _cli("sends", "open", "--hours", "13", "--channels", "jira").returncode == 2
+    sends.open_window(3, ["jira", "bitbucket"])
+    assert "(bitbucket, jira)" in _cli("sends", "status").stdout
     hook = subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"], input=json.dumps(
         {"session_id": "S1", "prompt": "carry on"}), capture_output=True, text=True, cwd=ROOT).stdout
     assert "Send window open until" in hook
-    assert "closed" in cli("close").stdout and "no send window" in cli("status").stdout
+    assert "closed" in _cli("sends", "close").stdout and "no send window" in _cli("sends", "status").stdout
