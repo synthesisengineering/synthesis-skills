@@ -953,22 +953,17 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     opening a send window needs it too. The register scan reads the command and any body file it sends."""
     import hashlib
     from synthesis import sends
-    posts, opening = [], False
+    posts, window = [], None
     for words, where in _parse(command, cwd)[0]:
-        opening = opening or sends.opens_window(words)
+        window = window or sends.window_asked(words)
         chan = sends.command_send(words, where, config)
         if chan:
             body, problem = sends.attached(words, where)
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, body))
-    if opening:
-        subject = {"command": command, "cwd": cwd}
-        if approvals.consume("send-window", subject, session):
-            return None
-        code = approvals.request("send-window", subject, f"open a send window: {command[:140]}")
-        return ("Opening a send window lets signed Ragbot sends go without a per-message code until it ends. Show the "
-                f"principal this exact command and ask them to type {approvals.how(code)}. Then run the identical command again.")
+    if window:  # the command spends the grant itself (`synthesis sends open` refuses without one)
+        return None if approvals.held("send-window", window) else sends.window_refusal(window)
     if not posts:
         return None
     body, chans = "\n\n".join(b for _, b in posts), sorted({c for c, _ in posts})

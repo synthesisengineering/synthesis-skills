@@ -149,6 +149,12 @@ def typed(transcript_path: str, code: str, since: float, session_id: str = "") -
     return False
 
 
+def held(kind: str, subject) -> bool:
+    """A live grant of exactly this subject exists. Spends nothing: the command it lets run spends it."""
+    data = paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
+    return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS
+
+
 def consume(kind: str, subject, session: dict | None = None) -> bool:
     """True once for a live grant of exactly this subject that the principal's own prompt backs. The
     grant is spent either way; when the record does not back it, files the request again and raises."""

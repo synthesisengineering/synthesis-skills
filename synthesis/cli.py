@@ -82,14 +82,27 @@ def cmd_inbox(args) -> int:
 def cmd_sends(args) -> int:
     """The send window and the day's send ledger. Opening needs the principal: the guard asks for their code
     when an agent runs it; run in their own terminal, it opens directly."""
-    from synthesis import sends
+    from synthesis import approvals, sends
     if args.action == "open":
+        window = sends.asked(args.hours, args.channels, args.project)
         try:
-            window = sends.open_window(args.hours, [c.strip() for c in args.channels.split(",") if c.strip()], args.project)
+            sends.check_window(window["hours"], window["channels"])
         except ValueError as exc:
             print(exc, file=sys.stderr)
             return 2
-        print(sends.describe(window))
+        # Run by an agent (a harness's environment, or no terminal), it opens only on the principal's granted
+        # code for exactly this window, whatever the guard matched (2026-10-13: `--session` before `sends`
+        # slipped past the guard and a window opened with no code). In their own terminal, it opens directly.
+        if paths.harness() != "unknown" or not sys.stdin.isatty():
+            try:  # a shell acts only as its own session, so its own transcript must show the code
+                granted = approvals.consume("send-window", window, {"session_id": _session(args)})
+            except approvals.Unverified as exc:
+                print(exc, file=sys.stderr)
+                return 2
+            if not granted:
+                print(sends.window_refusal(window), file=sys.stderr)
+                return 2
+        print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"])))
     elif args.action == "close":
         print("send window closed" if sends.close_window() else "no send window was open")
     elif args.action == "status":

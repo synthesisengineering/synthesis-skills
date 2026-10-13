@@ -76,8 +76,11 @@ command sends (`--body-file`, `gh pr ... -F`, `--input`, `@file`) is read and sc
 cannot read is refused. Limits: a program that sends through its own code (a script calling an HTTP
 library) is not recognized; the binding rule covers it.
 
-**Windows.** Only the principal opens one: an agent running `synthesis sends open` gets an approval code to
-show them; run in their own terminal, it opens directly. A script that imports the approval or window code is
+**Windows.** Only the principal opens one. The command itself checks: run by an agent (a harness's
+environment, or no terminal), `synthesis sends open` opens only on the principal's granted code for exactly
+that window, read from the session's own transcript, and otherwise refuses with a code to show them; the guard
+also asks for the code before the command runs, wherever its options sit, and `--help` never needs one. Run in
+their own terminal, it opens directly (2026-10-13: a global option before `sends` slipped past the guard alone). A script that imports the approval or window code is
 refused. A window names its hours (at most 12), its channels (or `all`) and optionally a project; it ends by
 itself, and `synthesis sends close` ends it at once with no code. Every session sees it at each prompt. Each
 send it covers still passes the register scan and format rules, must carry a `send_window_signatures`
