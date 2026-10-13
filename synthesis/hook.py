@@ -104,8 +104,13 @@ def user_prompt_submit(payload):
     """Grant approvals the principal typed, brief a session whose project changed, deliver board messages."""
     from synthesis import approvals, board, paths
 
-    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(
-        str(payload.get("prompt") or payload.get("user_prompt") or ""))]
+    prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
+    waiting = set(approvals.pending())
+    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt)]
+    # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
+    notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
+              "been mistyped. Run the call again for a new code." for c in dict.fromkeys(
+                  m.lower() for m in approvals.CODE.findall(prompt)) if c not in waiting]
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)

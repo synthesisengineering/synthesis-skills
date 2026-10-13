@@ -142,3 +142,56 @@ def test_the_command_line_and_the_prompt_hook_show_an_open_window():
         {"session_id": "S1", "prompt": "carry on"}), capture_output=True, text=True, cwd=ROOT).stdout
     assert "Send window open until" in hook
     assert "closed" in _cli("sends", "close").stdout and "no send window" in _cli("sends", "status").stdout
+
+
+# --- reported by a project session, 2026-10-13, on 5.0.11 ---------------------------------------------
+
+BRANDING = {**CONFIG, "forbidden_phrases": [{"name": "retired-branding", "pattern": "helperbot(?!\\.example)",
+                                              "case_sensitive": True}]}
+
+
+def test_the_register_scan_reads_the_message_not_file_names_and_reads_a_body_from_cat(tmp_path):
+    clean, bad = tmp_path / "460-helperbot-comment.json", tmp_path / "461-reply.json"
+    clean.write_text('{"content": {"raw": "Merged; thanks."}}', encoding="utf-8")
+    bad.write_text('{"content": {"raw": "sent by helperbot"}}', encoding="utf-8")
+    post = "bkt api /repositories/team/app/pullrequests/5/comments -X POST -d \"$(cat {})\""
+    assert "posts to bitbucket" in guards.check("Bash", {"command": post.format(clean)}, BRANDING, cwd=str(tmp_path))
+    assert "retired-branding" in guards.check("Bash", {"command": post.format(bad)}, BRANDING, cwd=str(tmp_path))
+    unresolved = guards.check("Bash", {"command": post.format("$S/461-reply.json")}, BRANDING, cwd=str(tmp_path))
+    assert "cannot read" in unresolved
+    inline = 'bkt pr comment 5 -m "sent by helperbot"'
+    assert "retired-branding" in guards.check("Bash", {"command": inline}, BRANDING, cwd=str(tmp_path))
+
+
+def test_a_shell_send_approval_binds_where_it_runs_not_where_the_shell_started(tmp_path, principal):
+    repo, elsewhere = tmp_path / "repo", tmp_path / "elsewhere"
+    repo.mkdir()
+    elsewhere.mkdir()
+    command = f'cd {repo} && bkt pr comment 5 -m "Approved from my side."'
+    reason = guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path))
+    assert f"runs in {repo}" in reason
+    principal(reason)
+    assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(elsewhere)) is None
+
+
+def test_the_prompt_hook_names_a_typed_code_that_matched_nothing(tmp_path):
+    from synthesis import approvals
+    first = approvals.request("send", {"tool": "t", "input": 1}, "first send")
+    second = approvals.request("send", {"tool": "t", "input": 2}, "second send")
+    prompt = f"approve {first} / approve {second} / approve 9abcde"
+    out = subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"], input=json.dumps(
+        {"session_id": "S1", "prompt": prompt}), capture_output=True, text=True, cwd=ROOT).stdout
+    assert "first send" in out and "second send" in out
+    assert "Not granted: no pending request has the code 9abcde" in out and first not in out.split("Not granted")[1]
+
+
+def test_a_quoted_greater_than_sign_is_not_a_write_and_a_real_redirect_into_state_is(tmp_path, isolated_home):
+    from synthesis import paths
+    state = paths.state()
+    (state / "approval-requests").mkdir(parents=True, exist_ok=True)
+    read = (f"cd {state} && for f in approval-requests/*.json; do python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); "
+            "print({k: (v if k != 'code' else '<pending>') for k, v in d.items()})\" \"$f\"; done")
+    assert guards.check("Bash", {"command": read}, CONFIG, cwd=str(tmp_path)) is None
+    for write in (f"echo x > {state}/approvals/x.json", f"cd {state} && echo x >> approvals/x.json",
+                  f"bash -c 'echo x > {state}/approvals/x.json'"):
+        assert "writes into the synthesis state" in guards.check("Bash", {"command": write}, CONFIG, cwd=str(tmp_path)), write

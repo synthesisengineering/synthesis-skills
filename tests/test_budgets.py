@@ -40,9 +40,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.10 adds 3 so a read-only script may import the window and approval code; writing calls stay refused.
 # 5.0.11 adds 44 so `synthesis sends open` itself refuses an agent without the principal's granted code (a
 # global option before `sends` slipped past the guard alone), whatever order its options take; help needs no code.
+# 5.0.12 adds 40 for four defects a project session reported: the register scan reads the message (and $(cat
+# file) bodies), not file names; approvals bind where a command runs; untaken codes are named; parsed redirects.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5676
-PLUGIN_BUDGET = 21024
+CORE_BUDGET = 5716
+PLUGIN_BUDGET = 21064
 
 
 def _lines(files):

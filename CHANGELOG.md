@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.12] - 2026-10-13
+
+Four defects a project session reported on 5.0.11:
+- **The register scan reads the message, not the command line.** A scratch file's name tripped a branding
+  rule. A posting command's scan now covers its text words and every body it reads from a file, including
+  `$(cat file)`, which went unread before; options, URLs and file names are left out. A body named through a
+  variable is refused, since the guard cannot read it.
+- **A shell send's approval binds where the command runs.** It bound the directory the shell started in, so an
+  approved command that began with its own `cd` asked for a new code when run again from elsewhere. It now
+  binds the directory each posting command runs in, and the request names it.
+- **A typed code that matched nothing is named.** The prompt hook lists every code it could not grant (expired,
+  used or mistyped) instead of staying silent.
+- **A `>` inside a quoted string is not a write.** The state-folder check read redirects from the raw text, so
+  a read-only one-liner printing `'<pending>'` was refused; it now uses the parsed redirects (raw text only
+  when a line cannot be parsed). A command naming a pending code is still refused, and the refusal points to
+  `synthesis approvals`, which lists pending requests.
+
 ## [5.0.11] - 2026-10-13
 
 - **A send window opens only with the principal's code, however the command is written.** An agent ran
