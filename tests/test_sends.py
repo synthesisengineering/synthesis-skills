@@ -102,6 +102,13 @@ def test_only_the_principal_opens_a_window(tmp_path, principal):
     assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
     sneaky = "python3 -c 'from synthesis import sends; sends.open_window(12, [\"all\"])'"
     assert "send-window code" in guards.check("Bash", {"command": sneaky}, CONFIG, cwd=str(tmp_path))
+    grant = "python3 -c 'from synthesis import approvals; approvals.grant_from_prompt(\"approve abc123\")'"
+    assert "send-window code" in guards.check("Bash", {"command": grant}, CONFIG, cwd=str(tmp_path))
+    state = "python3 -c 'from synthesis import paths; (paths.state() / \"sends\" / \"window.json\").write_text(\"{}\")'"
+    assert "send-window code" in guards.check("Bash", {"command": state}, CONFIG, cwd=str(tmp_path))
+    # Reading stays allowed (2026-10-13: a read-only check of the installed guard was refused).
+    look = "python3 -c 'from synthesis import sends, guards; print(sends.window(), guards._sends(\"mcp__x__send_email\", {}, {}))'"
+    assert guards.check("Bash", {"command": look}, CONFIG, cwd=str(tmp_path)) is None
     assert guards.check("Bash", {"command": "synthesis sends close"}, CONFIG, cwd=str(tmp_path)) is None
 
 
