@@ -12,6 +12,11 @@
       "why": "no self-flagellation about availability"
     },
     {
+      "name": "persona-marker-without-branding",
+      "pattern": "(?s)\\A(?!.*helperbot\\.example).*🤖",
+      "why": "the persona marker appears only with its branding link"
+    },
+    {
       "name": "persona casing",
       "pattern": "\\bHelperBot\\b",
       "case_sensitive": true,

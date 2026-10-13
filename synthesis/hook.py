@@ -37,22 +37,33 @@ def _emit(event, context="", deny=""):
 
 
 def _upgrade_note(session_id, me) -> str:
-    """Once per release, tell a session that last saw an older runtime what changed (Rajiv, 2026-10-06)."""
+    """Once per release, tell a session that last saw an older runtime what changed (Rajiv, 2026-10-06). A
+    session recorded before 5.0.3 carries no version; if it started before this release was installed it is
+    told too, with this release's notes, since what it started on is unknown (2026-10-07, synthesis-movement)."""
     from synthesis import __version__, board, paths
     from synthesis.install import version_tuple as number
     if me is None or me.version == __version__:
         return ""
     seen = me.version
     board.touch(session_id, version=__version__)
+    try:
+        older = bool(me.started) and me.started < (paths.home() / "current" / "HASH").stat().st_mtime
+    except OSError:
+        older = False
+    if not seen and not older:
+        return ""  # a session that began on this release has nothing to catch up on
+    if seen and number(seen) > number(__version__):  # a deliberate rollback: say so plainly, no changelog
+        return f"synthesis was rolled back from {seen} to {__version__}; hooks and guards now run {__version__}."
     log = paths.home() / "current" / "CHANGELOG.md"
-    text = log.read_text(encoding="utf-8") if seen and log.is_file() else ""
+    text = log.read_text(encoding="utf-8") if log.is_file() else ""
     sections = [s.strip() for s in re.split(r"(?m)^(?=## \[)", text) if (m := re.match(r"## \[([\d.]+)\]", s))
-                and number(seen) < number(m.group(1)) <= number(__version__)]
-    if not seen or number(seen) > number(__version__):  # a deliberate rollback: say so plainly, no changelog
-        return seen and f"synthesis was rolled back from {seen} to {__version__}; hooks and guards now run {__version__}."
+                and (number(seen) if seen else number(__version__)[:2] + (number(__version__)[2] - 1,)) < number(m.group(1))
+                <= number(__version__)]
+    was = f"from {seen} " if seen else ""
+    loaded = f"{seen}'s" if seen else "from the release this session started on, which was not recorded"
     return (
-        f"synthesis was upgraded from {seen} to {__version__} since this session last saw it. Hooks and guards already "
-        f"run {__version__}; skill text loaded earlier in this conversation is {seen}'s. Before relying on a skill the "
+        f"synthesis was upgraded {was}to {__version__} since this session last saw it. Hooks and guards already "
+        f"run {__version__}; skill text loaded earlier in this conversation is {loaded}. Before relying on a skill the "
         "changes below name, re-read its SKILL.md, or run the synthesis-checkpoint skill in refresh-and-report mode for a "
         "full pass; restarting the app reloads everything.\n\n" + ("\n\n".join(sections) or "(no changelog found)")[:3000])
 
@@ -97,8 +108,11 @@ def user_prompt_submit(payload):
             found = project.find(me.project)
             notes += [project.brief(found)] if found else []
             board.touch(session_id, briefed=me.project)
-        unread = board.inbox(session_id, me.project if me else "", mark_read=True)
-        notes += [f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}" for m in unread[:5]]
+        unread = board.inbox(session_id, me.project if me else "")
+        board.mark_read_messages(session_id, unread[:5])  # only what is shown; the rest stay for `synthesis inbox`
+        cut = "\n[cut: {} more characters; `synthesis inbox --recent 24` shows it whole]"
+        notes += [f"Board message from {m['from']} to {m['to']}:\n{m['text'][:1500]}"
+                  + (cut.format(len(m["text"]) - 1500) if len(m["text"]) > 1500 else "") for m in unread[:5]]
         if len(unread) > 5:
             notes.append(f"{len(unread) - 5} more unread: run `synthesis inbox`.")
     return _emit("UserPromptSubmit", context="\n\n".join(notes))

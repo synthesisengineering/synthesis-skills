@@ -41,7 +41,7 @@ LISTINGS = {  # each harness's own read-only listing command
 HOOK_BUDGET_MS = 50
 CODEX_DOC_BYTES = 98_304
 CODEX_DEFAULT_DOC_BYTES = 32_768
-CLI_TIMEOUT = 20
+CLI_TIMEOUT = 45  # `codex plugin list` took 33 s on a slow network on 2026-10-10; it is still bounded
 SELF_TEST = {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}}
 
 
@@ -144,8 +144,8 @@ def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) ->
 
 def check_plugin(harness: str, entry: dict | None, error: str = "") -> Check:
     """entry: {"enabled": bool, "version": str, "path": Path | None, "problem": str}."""
-    if entry is None:
-        return Check("fail", f"{harness} plugin", error or f"{PLUGIN} is not installed")
+    if entry is None:  # a CLI that never answered says nothing about the install: warn, never pass or fail
+        return Check("warn" if error.startswith("cannot tell") else "fail", f"{harness} plugin", error or f"{PLUGIN} is not installed")
     if entry.get("problem"):
         return Check("fail", f"{harness} plugin", entry["problem"])
     if not entry.get("enabled"):
@@ -265,6 +265,10 @@ def check_muse_approval(inspect: dict) -> Check:
     hooks = [c for c in inspect.get("runtime_capabilities") or []
              if (c.get("candidate") or {}).get("kind") == "hook"]
     if not hooks:
+        declared = ((inspect.get("plugin") or {}).get("capabilities") or {}).get("hooks") or []
+        if declared:  # the manifest has hooks but Muse reported no trust state: unreadable here, not unapproved
+            return Check("warn", "muse hook approval", f"cannot tell whether Muse approved the {len(declared)} hooks: it "
+                         "reported no trust state, which happens when its state cannot be read from here (in a sandbox, for example)")
         return Check("fail", "muse hook approval", "the installed plugin registers no hooks")
     pending = [f"{c['candidate'].get('capability_id', '?')} ({c.get('status', 'unknown')})"
                for c in hooks if c.get("status") != "trusted_enabled"]
@@ -790,7 +794,7 @@ def _finish(proc, timeout: float = CLI_TIMEOUT):
     except subprocess.TimeoutExpired:
         _reap(proc)
         proc.communicate()
-        return None, f"`{' '.join(proc.args)}` timed out after {timeout:.0f} s"
+        return None, f"cannot tell: `{' '.join(proc.args)}` did not answer within {timeout:.0f} s; run the doctor again"
     _reap(proc)  # helpers it started (git, MCP servers) end with it
     starts = [i for i in (out.find("{"), out.find("[")) if i >= 0]
     try:

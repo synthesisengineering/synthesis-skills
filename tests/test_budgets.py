@@ -23,9 +23,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.5 adds 10 to the core (the doctor reaps each harness CLI's whole process group) and 55 to the plugin:
 # those 10, a bytecode guard ahead of the first local import in 35 scripts (38; Muse refuses a bundle with
 # stray __pycache__), the repo guard's atomic report (2) and autopilot's JSON status (5).
+# 5.0.7 adds 50 to both for fixes other sessions reported from 2026-10-07 to 10-13: board delivery that marks
+# read only what it shows and can re-show a cut message (22), the upgrade note for sessions recorded before
+# versions were kept (11), a write guard that tells a read from a write (9), HTML link targets counting as
+# branding in the send guard (4) and a doctor that says "cannot tell" for a CLI or trust state it cannot read
+# (4). A scan for unreferenced definitions and repeated blocks across the core found nothing to remove.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5259
-PLUGIN_BUDGET = 20461
+CORE_BUDGET = 5309
+PLUGIN_BUDGET = 20511
 
 
 def _lines(files):

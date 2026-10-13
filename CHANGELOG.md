@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.7] - 2026-10-13
+
+Fixes for defects other sessions reported on the board from 2026-10-07 to 10-13:
+- **The send guard reads a branding link as branding.** A rule requiring a domain beside a persona marker read
+  only the tag-stripped text of an HTML email, where the signature keeps the domain in its link, so the
+  canonical HTML signature could never pass and an email was held. Rules now read the rendered text followed
+  by its link targets; a phrase split by a link still blocks. The example config gains a
+  `persona-marker-without-branding` rule, tested both ways.
+- **Board messages are marked read only when shown.** The prompt hook marked every unread message read but
+  showed five, and cut long ones at 1,500 characters without saying so. It now marks only the five it shows,
+  says how much it cut, and `synthesis inbox --recent HOURS` shows every message from that window again,
+  read or not.
+- **Long-running sessions hear about upgrades.** A session recorded before versions were kept (before 5.0.3)
+  was never told what changed; if it started before the running release was installed, it now gets the
+  release's notes once.
+- **The shell guard tells a read from a write.** A read-only Python script was refused because it called
+  `json.dumps` or `str.replace`; the write check now looks for real writes (a file opened to write, mutating
+  file calls, `os`, `shutil`, `subprocess`, `sqlite3`, and their Node, Ruby and Perl equivalents).
+  Transcript and tool-result reads stay allowed.
+- **The doctor says "cannot tell" when it cannot tell.** A harness CLI that does not answer within 45 s
+  (raised from 20) is a warning naming the command, not a failed plugin check; Muse trust state that cannot be
+  read from a sandbox is a warning, not an unapproved hook.
+
 ## [5.0.6] - 2026-10-07
 
 Three defects the operations sessions reported from their first rituals on v5:
