@@ -18,10 +18,72 @@ no `~/.synthesis`.
 | `signature.markers` | Strings that mark a persona signature (for example the persona's emoji). |
 | `signature.domains` | Persona domains that must appear only inside a link on a link-capable channel. |
 | `signature.plain_url_tools` | Tool globs whose channel cannot render links, where the visible domain is the right form. |
+| `own_repos` | Repository globs (`owner/*`, `owner/name`) whose PRs, issues and comments are the principal's own work, not sends: GitHub connector tools naming that `owner`/`repo`, and `gh` commands whose `-R`, API path or `origin` remote names it. |
+| `not_send_tools` | Tool globs never treated as sends, for a tool whose name reads like one but reaches no person. |
+| `send_commands` | Extra `[channel, regex]` pairs for shell programs that post, matched from the start of a command's words (built in: `gh`, `bkt`, `glab`, `jira`/`acli`, `osascript` Messages or Mail, and `curl`, `wget`, HTTPie writes to another host). |
+| `send_window_signatures` | Regexes; inside an open send window, a send goes without a per-message code only if one matches its text. List the signatures of the lanes the principal lets a window cover. Empty means a window covers nothing. |
+| `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
 change formatting only. Grounding, register, recipient, branding, threading, approval and
 disclosure requirements stay in force.
+
+## Preferred names
+
+A person is addressed by the name they go by, not by the official first name a
+directory or an email header shows (`synthesis-agent-correspondence` binding rule 12;
+on 2026-10-13 an agent message addressed someone by the official first name a
+directory showed, not the name she goes by). Each `preferred_names` entry names one person:
+
+- `official`: the official first name, matched as a whole word and case-sensitively,
+  so "Robert's" is caught and a lowercase email local part is not.
+- `preferred`: the name they go by, which the problem text tells the agent to write.
+- `identifiers`: strings that identify that person on the channels the principal uses:
+  email addresses, a Slack user ID (which also appears inside mention syntax such as
+  `<@U0EXAMPLE>`), a Slack DM channel ID, a Jira account ID (as in `[~accountid:...]`).
+  Matched without regard to case anywhere in the call: recipients, channel, subject or
+  body.
+
+The guard flags the official name only when one of that entry's identifiers appears in
+the call, so a message to someone else who shares the first name is never blocked. It
+reads every string in the call (body, HTML body, subject, event title) except the
+address fields (`to`, `cc`, `bcc`, `recipient`, `recipients`, `space_id`, `space_name`,
+`user_google_email`), where a display name such as `Robert Example <bob@example.test>`
+is an address, not a greeting. Mention syntax stays whatever the platform requires;
+only the words around it change. The problem text names the preferred name:
+
+```text
+this message involves someone who goes by Bob; write Bob, not Robert
+```
+
+A message that names the person without any identifier in the call (a group channel
+where they are mentioned by name only) is not checked; the drafting rule still applies.
+An entry that is not an object stops every guarded send, like any malformed config
+(R3.5); `identifiers` is a list, never a single string.
+
+## Every channel and send windows (2026-10-13)
+
+The principal asked that approval cover "all communications sent for me / on my behalf, regardless of
+communications channel", and for a proper setting that suspends per-message approval for a while.
+
+**Recognition.** A connector tool is a send when its name has a saying verb (send, reply, forward, comment,
+post, publish, share, invite, respond, mention, schedule, submit, draft, notify, remind), or a writing verb
+(create, add, edit, update, manage, set) whose object is something people read (comment, message, issue,
+page, post, reply, review, draft, event, invite, reaction, canvas, envelope, request, ticket, thread, access,
+permission). A tool whose first verb reads (get, list, search...) is never a send; agent-to-agent tools are
+exempt. In the shell, each command a line runs is checked against the posting programs; a body file the
+command sends (`--body-file`, `gh pr ... -F`, `--input`, `@file`) is read and scanned, and one the guard
+cannot read is refused. Limits: a program that sends through its own code (a script calling an HTTP
+library) is not recognized; the binding rule covers it.
+
+**Windows.** Only the principal opens one: an agent running `synthesis sends open` gets an approval code to
+show them; run in their own terminal, it opens directly. A script that imports the approval or window code is
+refused. A window names its hours (at most 12), its channels (or `all`) and optionally a project; it ends by
+itself, and `synthesis sends close` ends it at once with no code. Every session sees it at each prompt. Each
+send it covers still passes the register scan and format rules, must carry a `send_window_signatures`
+signature, and is written to the day's ledger with the sends approved by code; `synthesis sends log
+[--date]` prints it for the daily plan's "On your behalf". Exact-text sends (the principal's own words) are
+outside every window: list only the signatures of lanes the principal allows.
 
 ## Calibration
 

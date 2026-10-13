@@ -128,7 +128,7 @@ none
 ```
 
 Decisions name principal-only decisions; Calendar contributes workspace conflicts;
-On your behalf carries staged/completed correspondence with ledger references;
+On your behalf carries staged/completed correspondence with ledger references, including every send `synthesis sends log --date <day>` lists (each send the guard let through, by code or in a send window);
 Waiting names open owners; Brief names remaining relevant items; Backlog carries
 plan additions/completions; Lesson candidates routes local candidate pointers for
 keep/drop review. Replace `none` only with actual observed work or candidate facts.

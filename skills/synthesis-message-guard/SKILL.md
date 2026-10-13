@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,6 +31,9 @@ format rules, and then the principal must approve that exact call.
 7. **Fix a register hit by rewriting the thought,** not by dodging the pattern. A rule that blocks the principal's own voice is miscalibrated, not strict (2026-08-03).
 8. **After an approved draft or send, read it back** through the transport and confirm the recipients and paragraphs landed intact. A clean draft is not a clean send.
 9. **Fail closed, narrowly.** An unreadable config blocks every send; session-to-session messages are never treated as correspondence.
+10. **Call people by the name they go by.** When the call carries an identifier the principal lists under `preferred_names` (an address, a Slack user or DM id), that person's official first name in the text is refused; mention syntax and address fields stay as the platform needs them (2026-10-13).
+11. **Every channel is guarded, by what a call does** (2026-10-13). A connector tool whose name delivers words (send, reply, comment, post, share, or creating or editing an issue, page, message or review) and a shell command that posts (`gh` and `bkt` comments and PR writes, their `api` writes, `curl`/`wget`/HTTPie writes to another host) wait for the code; work in the principal's `own_repos` does not. A program that sends some other way is still a send: ask first.
+12. **A send window is the principal's setting, never yours.** `synthesis sends open --hours N --channels ...` (at most 12 hours) needs their code; inside it, a send in a covered channel that carries a `send_window_signatures` signature goes without a per-message code, after the same register scan and format rules, and is logged. `synthesis sends close` ends it; `synthesis sends log` lists the day's sends for "On your behalf".
 
 ## Contents
 

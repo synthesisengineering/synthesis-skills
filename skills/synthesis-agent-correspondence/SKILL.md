@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.1"
+  version: "4.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -30,6 +30,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 9. **Signature links render natively per channel,** as the section below sets out.
 10. **Pass the three gates.** Read the whole thread and prior correspondence before composing; load the voice and anti-slop rules before drafting; re-read the live thread and re-verify every claim at send time. The verdict is send, revise or withdraw.
 11. **Get the exact call approved, then verify it.** Load `synthesis-message-guard` for construction and the principal's approval of the exact call, and read the draft or sent message back through the transport after an approved draft or send.
+12. **Call people by the name they go by.** In prose and greetings, use a person's preferred name where one is known: from the principal's preferred-names map, then a chat display name that differs from their real name, then the name they sign or use in their own messages. With none known, use the name they use in their own messages. Mention syntax stays what the platform requires.
 
 ## Contents
 
@@ -37,6 +38,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 - [references/gates-and-sending.md](references/gates-and-sending.md): channel disclosure, the three gates in full, email construction and verification, related skills. Read it before composing a reply and again at send time.
 - [references/personas-and-adoption.md](references/personas-and-adoption.md): the persona registry schema, archetype binding with example signatures, adoption steps, and migration from v1 and v2. Read it when configuring personas or writing a signature.
 - [references/persona-registry.example.yaml](references/persona-registry.example.yaml): a commented registry template. Read it when creating a registry.
+- [references/preferred-names.md](references/preferred-names.md): where a preferred name comes from, what stays as the platform requires, keeping the principal's map, the editor pass and the send guard's name check. Read it before greeting or naming anyone in a draft.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 3.1.2 text now lives.
 - [references/preserved.md](references/preserved.md): sentences replaced in 4.0.1 because they named send-guard machinery v5 removed, verbatim. Read only to review the change.
 - Signature links render natively per channel: below.

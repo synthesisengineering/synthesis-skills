@@ -31,6 +31,12 @@ def _check(tool, tool_input, config, cwd):
     return guards.check(tool, tool_input, config, cwd=str(cwd))
 
 
+def _routed(reason):
+    """Routing passed: nothing stops the call, or only the send approval that follows routing (a calendar write
+    is a send by what it does since 2026-10-13, as the principal's own config already made it)."""
+    return reason is None or reason.startswith("Sending needs the principal's approval")
+
+
 def test_the_incident_shape_is_refused_and_the_reason_names_the_right_account(ws):
     dirs, config = ws
     cwd = INCIDENT["cwd"].replace("{client_ws}", str(dirs["clientco"]))
@@ -48,21 +54,21 @@ def test_an_account_less_call_is_refused_even_with_no_default_account(ws):
 def test_the_workspace_account_is_allowed_and_another_account_is_refused(ws):
     dirs, config = ws
     call = {"action": "create", "summary": "x", "user_google_email": CLIENT.upper()}
-    assert _check("mcp__workspace-mcp__manage_event", call, config, dirs["clientco"]) is None
+    assert _routed(_check("mcp__workspace-mcp__manage_event", call, config, dirs["clientco"]))
     reason = _check("mcp__workspace-mcp__manage_event", {**call, "user_google_email": PERSONAL}, config, dirs["clientco"])
     assert f"would act as {PERSONAL}" in reason and f"account is {CLIENT}" in reason
 
 
 def test_the_personal_workspace_is_routed_too(ws):
     dirs, config = ws
-    assert _check("mcp__gcal__create_event", {"summary": "x"}, config, dirs["personal"]) is None  # default account
+    assert _routed(_check("mcp__gcal__create_event", {"summary": "x"}, config, dirs["personal"]))  # default account
     reason = _check("mcp__workspace-mcp__manage_event", {"action": "create", "user_google_email": CLIENT}, config, dirs["personal"])
     assert PERSONAL in reason
 
 
 def test_outside_every_workspace_nothing_is_routed(ws):
     dirs, config = ws
-    assert _check("mcp__gcal__create_event", {"summary": "x"}, config, dirs["elsewhere"]) is None
+    assert _routed(_check("mcp__gcal__create_event", {"summary": "x"}, config, dirs["elsewhere"]))
 
 
 def test_reads_are_never_routed(ws):
@@ -77,7 +83,7 @@ def test_the_deepest_configured_workspace_wins(ws, tmp_path):
     nested.mkdir()
     config["account_routing"]["workspaces"][str(nested)] = {"account": "me@partner.example"}
     call = {"action": "create", "user_google_email": "me@partner.example"}
-    assert _check("mcp__workspace-mcp__manage_event", call, config, nested) is None
+    assert _routed(_check("mcp__workspace-mcp__manage_event", call, config, nested))
     assert _check("mcp__workspace-mcp__manage_event", call, config, dirs["clientco"]) is not None
 
 
@@ -104,7 +110,7 @@ def test_an_aliased_account_name_and_a_display_address_are_accepted(ws):
 def test_apple_calendar_is_routed_by_calendar_name(ws):
     dirs, config = ws
     event = {"summary": "x", "start_date": "today at 2 PM", "end_date": "today at 3 PM"}
-    assert _check("mcp__apple-calendar__create_event", {**event, "calendar": "ClientCo Exchange"}, config, dirs["clientco"]) is None
+    assert _routed(_check("mcp__apple-calendar__create_event", {**event, "calendar": "ClientCo Exchange"}, config, dirs["clientco"]))
     assert _check("mcp__apple-calendar__create_event", {**event, "calendar": "Home"}, config, dirs["clientco"]) is not None
 
 
@@ -142,7 +148,7 @@ def test_malformed_routing_config_fails_closed(ws, routing):
 
 def test_no_routing_config_routes_nothing(ws):
     dirs, _ = ws
-    assert _check("mcp__gcal__create_event", {"summary": "x"}, {}, dirs["clientco"]) is None
+    assert _routed(_check("mcp__gcal__create_event", {"summary": "x"}, {}, dirs["clientco"]))
 
 
 def test_routed_calls_fail_closed_when_the_config_is_unreadable():

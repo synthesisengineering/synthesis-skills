@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.9] - 2026-10-13
+
+Rajiv's rulings of 2026-10-13:
+- **Approval on every channel** (synthesis-message-guard 2.1.0). A call is a send by what it does: a connector
+  tool whose name delivers words (send, reply, comment, post, share; creating or editing an issue, page,
+  message or review), in Jira, Confluence, GitHub, Bitbucket, Docs comments, Notion, Box, chat and email alike,
+  and a shell command that posts (`gh` and `bkt` comments and PR writes, their `api` writes, `curl`, `wget` and
+  HTTPie writes to another host, `osascript` Messages or Mail). A body file a command sends is read and
+  scanned. PRs, issues and comments in the principal's `own_repos` are not sends.
+- **Send windows.** `synthesis sends open --hours N --channels ...` (at most 12 hours, optionally one project)
+  needs the principal's code when an agent runs it. Inside it, a send in a covered channel that carries one of
+  `send_window_signatures` goes without a per-message code, after the same register scan and format rules.
+  `synthesis sends close` ends it at once; every session sees an open window at each prompt; `synthesis sends
+  log` lists the day's sends for the daily plan's "On your behalf".
+- **Preferred names** (synthesis-agent-correspondence, message guard rule 10). Address people by the name they
+  go by; the guard refuses an official first name when the call carries that person's identifier from
+  `preferred_names`.
+- **A Docs image link's access key is a built-in credential** in the commit check (synthesis-git-hooks 3.1.0),
+  refused in every repository; the redacted form passes.
+
 ## [5.0.8] - 2026-10-13
 
 - **Decision packets read comfortably** (synthesis-decision-packet 2.1.0, from Rajiv's review of a

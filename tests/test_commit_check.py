@@ -13,6 +13,8 @@ CHECK = Path(__file__).resolve().parents[1] / "synthesis" / "commit_check.py"
 # Two pieces: the commit check refuses any credential-shaped string and has no approval for one
 # (Tier 0), yet the scanner's own tests must feed it one. The value is a fixture, never a real key.
 FAKE_AWS = "AKIA" + "ABCDEFGHIJKLMNOP"
+# Built from two pieces, as the AWS fixture is: Tier 0 has no approval path (Rajiv approved this fixture, 2026-10-13).
+DOCS_IMAGE = "![](https://lh7-rt.googleusercontent.com/docsz/AD_4nXfixture?key=" + "Fixture_0123456789-abcd)"
 
 
 @pytest.fixture
@@ -38,6 +40,14 @@ def _commit(repo, name, text, env_extra=None):
 def test_credentials_are_refused(repo):
     result = _commit(repo, "config.txt", f"key = {FAKE_AWS}\n")
     assert result.returncode != 0 and "looks like an AWS access key" in result.stderr
+
+
+def test_a_docs_image_link_key_is_a_credential_and_its_redacted_form_passes(repo):
+    result = _commit(repo, "meetings/standup.md", f"Notes\n{DOCS_IMAGE}\n")
+    assert result.returncode != 0 and "Docs image link key" in result.stderr
+    subprocess.run(["git", "-C", str(repo), "reset", "-q"], check=True)
+    redacted = DOCS_IMAGE.split("key=")[0] + "key=REDACTED)"
+    assert _commit(repo, "meetings/standup.md", f"Notes\n{redacted}\n").returncode == 0
 
 
 def test_ordinary_commit_passes(repo):

@@ -79,6 +79,27 @@ def cmd_inbox(args) -> int:
     return 0
 
 
+def cmd_sends(args) -> int:
+    """The send window and the day's send ledger. Opening needs the principal: the guard asks for their code
+    when an agent runs it; run in their own terminal, it opens directly."""
+    from synthesis import sends
+    if args.action == "open":
+        try:
+            window = sends.open_window(args.hours, [c.strip() for c in args.channels.split(",") if c.strip()], args.project)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        print(sends.describe(window))
+    elif args.action == "close":
+        print("send window closed" if sends.close_window() else "no send window was open")
+    elif args.action == "status":
+        print(sends.describe(sends.window()) if sends.window() else "no send window is open")
+    else:
+        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):
+            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {e['summary']}")
+    return 0
+
+
 def cmd_use(args) -> int:
     if project.find(args.project) is None:
         print(f"no single project named {args.project} under {[str(r) for r in project.roots()]}", file=sys.stderr)
@@ -177,6 +198,14 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("inbox", help="show and mark unread messages")
     s.add_argument("--recent", type=float, default=0, metavar="HOURS", help="every message from the last HOURS, read or not")
     s.set_defaults(fn=cmd_inbox)
+    s = sub.add_parser("sends", help="open, close or show the send window; list the day's sends")
+    s.add_argument("action", choices=["open", "close", "status", "log"])
+    s.add_argument("--hours", type=float, default=0, help="how long the window stays open, at most 12")
+    s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
+                   "bitbucket,github,docs,notion,web, or all")
+    s.add_argument("--project", default="", help="cover only sends from sessions on this project")
+    s.add_argument("--date", default="", help="the ledger's day, YYYY-MM-DD (default today)")
+    s.set_defaults(fn=cmd_sends)
     s = sub.add_parser("use", help="set this session's active project")
     s.add_argument("project")
     s.set_defaults(fn=cmd_use)

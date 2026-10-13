@@ -41,6 +41,8 @@ CREDENTIALS = {
     "Anthropic key": r"\bsk-ant-[A-Za-z0-9_-]{20,}\b",
     "OpenAI key": r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b",
     "Google API key": r"\bAIza[0-9A-Za-z_-]{35}\b",
+    # A Docs image exported to markdown: the key opens the image to anyone with the URL (Rajiv, 2026-10-13).
+    "Docs image link key": r"googleusercontent\.com/[^\s\"'<>)]*[?&]key=[A-Za-z0-9_-]{16,}",
 }
 KEY_HEADER = re.compile(rb"BEGIN (?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED|SSH2) ){0,2}PRIVATE KEY", re.I)
 KEY_INLINE = re.compile(rb"PRIVATE KEY(?: BLOCK)?-----(?:\\[nr]|\s)+[A-Za-z0-9+/]{40,}", re.I)

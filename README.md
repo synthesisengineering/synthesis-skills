@@ -52,7 +52,8 @@ What PreToolUse holds:
 
 - **Sends and drafts** (Slack, Gmail, Mail and similar tools, plus any you add with
   `send_tools`). The text must first pass your `forbidden_phrases` and the format rules,
-  such as HTML email with whole paragraphs. Then the agent shows you the exact text and
+  such as HTML email with whole paragraphs, and call anyone your `preferred_names` lists
+  by the name they go by when the call identifies them. Then the agent shows you the exact text and
   recipient, and you type `approve <code>` in your own message. The approval covers that
   exact call once and expires after 15 minutes. Only the UserPromptSubmit hook can grant
   it, because it reads the prompt you typed, which the agent cannot write.
