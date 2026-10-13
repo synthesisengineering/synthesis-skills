@@ -166,19 +166,40 @@ def asked(hours, channels: str, project: str) -> dict:
             "project": str(project)}
 
 
-def attached(words: list, cwd: str) -> tuple[str, str]:
-    """(text, problem) of the files a posting command sends as its body (--body-file, gh's -F, --input, @file)."""
+CAT = re.compile(r"\$\(\s*cat\s+(['\"]?)([^)'\"]+?)\1\s*\)|`\s*cat\s+(['\"]?)([^`'\"]+?)\3\s*`")
+
+
+def message_text(words: list, cwd: str) -> tuple[str, str]:
+    """(text, problem): the message a posting command sends, which the register scan reads: its text words and
+    every body it reads from a file (--body-file, gh's -F, --input, @file, $(cat file)). Options, URLs and file
+    names are not the message (2026-10-13: a scratch file's name tripped a rule; $(cat file) went unread)."""
     flags = {"--body-file", "--input"} | ({"-F"} if os.path.basename(words[0]) == "gh" and words[1:2] in (["pr"], ["issue"]) else set())
-    names = [words[i + 1] for i, w in enumerate(words[:-1]) if w in flags]
-    names += [w.split("@", 1)[1] for w in words if re.match(r"(?:[\w.-]+=)?@[^@\s]+$", w)]
+    names, parts, takes = [], [], False
+    for word in words[1:]:
+        if takes:  # the file a body flag names
+            names.append(word)
+            takes = False
+            continue
+        if word in flags:
+            takes = True
+            continue
+        at = re.match(r"(?:[\w.-]+=)?@([^@\s]+)$", word)
+        if at:
+            names.append(at.group(1))
+            continue
+        names += [m.group(2) or m.group(4) for m in CAT.finditer(word)]
+        word = CAT.sub("", word)
+        word = word.partition("=")[2] if word.startswith("-") else word  # --body=text keeps its text
+        if word and (any(c.isspace() for c in word) or not ("/" in word or os.path.exists(os.path.join(cwd, word)))):
+            parts.append(word)
     texts = []
     for name in names:
         path = os.path.join(cwd, os.path.expanduser(name))
-        if name == "-" or not os.path.isfile(path):
+        if name == "-" or "$" in name or not os.path.isfile(path):
             return "", f"its body comes from {name}, which the guard cannot read to check"
         with open(path, encoding="utf-8", errors="replace") as handle:
             texts.append(handle.read(1_048_576))
-    return "\n\n".join(texts), ""
+    return "\n\n".join(parts + texts), ""
 
 
 # --- the window ---------------------------------------------------------------------------------

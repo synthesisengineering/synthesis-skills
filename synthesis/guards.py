@@ -481,13 +481,15 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in)."""
-    items, words, stdin, scripts, skip, piped = [], [], [], [], "", False
+    items, words, stdin, scripts, skip, piped, writes = [], [], [], [], "", False, []
     for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
                 stdin.append((rest[0], True))
             elif not skip:
                 words.append(rest[0])
+            elif skip in (">", ">>", ">|", "&>") or (skip == ">&" and not rest[0].isdigit()):
+                writes.append(rest[0])  # a file this command writes (2026-10-13: a `>` inside quotes is not one)
             skip = ""
         elif kind == "in":
             stdin.append((rest[0], rest[1]))
@@ -496,9 +498,9 @@ def _simple(tokens: list) -> list:
         elif kind == "redir":
             skip = rest[0]
         else:
-            if words or stdin or scripts:
-                items.append((words, stdin, scripts, piped))
-            words, stdin, scripts, skip = [], [], [], ""
+            if words or stdin or scripts or writes:
+                items.append((words, stdin, scripts, piped, writes))
+            words, stdin, scripts, skip, writes = [], [], [], "", []
             piped = rest[0] in ("|", "|&")
             if rest[0] in "()":
                 items.append(rest[0])
@@ -557,9 +559,10 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool]:
     return None, not command
 
 
-def _commands(command: str, cwd: str, depth: int = 0) -> list[tuple[list[str], str]]:
+def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
-    subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin."""
+    subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
+    collects (file, directory) for every redirect that writes a file."""
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
     found, outer, upstream = [], [], ""
@@ -570,7 +573,9 @@ def _commands(command: str, cwd: str, depth: int = 0) -> list[tuple[list[str], s
             elif outer:
                 cwd = outer.pop()  # a subshell's cd ends with it
             continue
-        words, stdin, scripts, piped = item
+        words, stdin, scripts, piped, targets = item
+        if writes is not None:
+            writes += [(t, cwd) for t in targets]
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
@@ -588,7 +593,7 @@ def _commands(command: str, cwd: str, depth: int = 0) -> list[tuple[list[str], s
                 scripts += [text for text, _ in stdin] + ([upstream] if piped else [])
         upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
         for script in scripts:
-            found += _commands(script, cwd, depth + 1)
+            found += _commands(script, cwd, depth + 1, writes)
     return found
 
 
@@ -888,10 +893,16 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
     raw = [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
     mine = store and store.name in text  # the store's own name: a write from inside its folder
     names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text] + ([store.name] if mine else [])
-    targets = [t.strip("'\"") for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names else []
+    redirects, readable = [], True
+    try:  # the files the parsed command writes; a `>` inside a quoted string is not one (2026-10-13)
+        _commands(text, cwd, writes=redirects) if names else None
+    except (Unreadable, StopIteration, IndexError):
+        readable = False
+    targets = [os.path.join(w, os.path.expanduser(os.path.expandvars(t))) for t, w in redirects]
+    targets += [t.strip("'\"") for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres = "", {cwd}
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
-        why = "carries a pending approval code"
+        why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     for words, where in _parse(command, cwd)[0]:
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
@@ -950,7 +961,8 @@ def _project(session: dict | None) -> str:
 
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
-    opening a send window needs it too. The register scan reads the command and any body file it sends."""
+    opening a send window needs it too. The register scan reads the message the command sends (its text words and
+    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule)."""
     import hashlib
     from synthesis import sends
     posts, window = [], None
@@ -958,31 +970,33 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
         window = window or sends.window_asked(words)
         chan = sends.command_send(words, where, config)
         if chan:
-            body, problem = sends.attached(words, where)
+            text, problem = sends.message_text(words, where)
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
-            posts.append((chan, body))
+            posts.append((chan, text, where))
     if window:  # the command spends the grant itself (`synthesis sends open` refuses without one)
         return None if approvals.held("send-window", window) else sends.window_refusal(window)
     if not posts:
         return None
-    body, chans = "\n\n".join(b for _, b in posts), sorted({c for c, _ in posts})
-    problems = message_problems("Bash", {"command": command, "attached": body}, config)
+    text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
+    problems = message_problems("Bash", {"message_text": text}, config)
     if problems:
         return "This command posts a message that can't go out as written: " + "; ".join(problems[:6]) + "."
-    summary = f"{', '.join(chans)}: {command[:160]}"
-    if all(sends.covered(c, [command, body], _project(session), config) for c in chans):
+    dirs = sorted({w for _, _, w in posts})  # where it runs, after its own cd: a re-run elsewhere is the same send
+    summary = f"{', '.join(chans)} (runs in {', '.join(dirs)}): {command[:160]}"
+    if all(sends.covered(c, [text], _project(session), config) for c in chans):
         for c in chans:
             sends.log(c, "shell", summary, "window", session)
         return None
-    subject = {"command": command, "cwd": cwd, "attached": hashlib.sha256(body.encode("utf-8")).hexdigest()}
+    subject = {"command": command, "runs_in": dirs, "message": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     if approvals.consume("send", subject, session):
         for c in chans:
             sends.log(c, "shell", summary, "approval", session)
         return None
     code = approvals.request("send", subject, summary)
-    return (f"This command posts to {', '.join(chans)} on the principal's behalf. Show them the exact command and its "
-            f"message and ask them to type {approvals.how(code)}. Then run the identical command again.")
+    return (f"This command posts to {', '.join(chans)} on the principal's behalf; it runs in {', '.join(dirs)}. Show "
+            f"them the exact command and its message and ask them to type {approvals.how(code)}. Then run the identical "
+            "command again from any directory: the approval binds where it runs, not where the shell started.")
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:

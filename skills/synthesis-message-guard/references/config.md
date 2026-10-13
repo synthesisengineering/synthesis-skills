@@ -71,9 +71,12 @@ post, publish, share, invite, respond, mention, schedule, submit, draft, notify,
 (create, add, edit, update, manage, set) whose object is something people read (comment, message, issue,
 page, post, reply, review, draft, event, invite, reaction, canvas, envelope, request, ticket, thread, access,
 permission). A tool whose first verb reads (get, list, search...) is never a send; agent-to-agent tools are
-exempt. In the shell, each command a line runs is checked against the posting programs; a body file the
-command sends (`--body-file`, `gh pr ... -F`, `--input`, `@file`) is read and scanned, and one the guard
-cannot read is refused. Limits: a program that sends through its own code (a script calling an HTTP
+exempt. In the shell, each command a line runs is checked against the posting programs. The register scan
+reads the message the command sends: its text words and every body it reads from a file (`--body-file`,
+`gh pr ... -F`, `--input`, `@file`, `$(cat file)`), never its options, URLs or file names; a body file the
+guard cannot read, or one named through a variable, is refused. The approval binds the command, its message
+and the directory each posting command runs in after its own `cd`, so the same command approved and run
+again from another directory still goes (2026-10-13). Limits: a program that sends through its own code (a script calling an HTTP
 library) is not recognized; the binding rule covers it.
 
 **Windows.** Only the principal opens one. The command itself checks: run by an agent (a harness's
