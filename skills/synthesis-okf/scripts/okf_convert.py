@@ -151,10 +151,6 @@ def backfill_frontmatter(fm_str: str, meta: dict, additions: dict) -> str | None
         return None
 
 
-def top_subdir(rel: Path) -> str:
-    return rel.parts[0] if len(rel.parts) > 1 else ""
-
-
 def resolve_type(rel: Path, type_map: dict, default: str) -> str:
     """Longest path-prefix match: the most specific subtree key wins.
     e.g. 'datasets/.../years' beats 'datasets/personal-private' for a year file."""

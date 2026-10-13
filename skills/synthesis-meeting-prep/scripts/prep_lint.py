@@ -77,7 +77,6 @@ INVENTED_PRECISION_RES = (
     re.compile(r"\bevery single\b", re.IGNORECASE),
     re.compile(r"\borderline (miraculous|impossible|perfect)\b", re.IGNORECASE),
 )
-BASIS_RE = re.compile(r"^basis\s*:", re.IGNORECASE | re.MULTILINE)
 NONTECHNICAL_RE = re.compile(
     r"non-?technical|not a technologist|business (reader|outcomes)",
     re.IGNORECASE,
