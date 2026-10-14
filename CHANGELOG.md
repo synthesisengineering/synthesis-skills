@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.13] - 2026-10-14
+
+- **The iMessage sender addresses Messages by bundle ID.** On this macOS the JXA name `Messages` resolves to
+  `com.apple.messages.AssistantExtension`, so `messages_route.js` and `messages_transport.js` failed with
+  "Application isn't running" (-600) while Messages was open, and every approved send was refused. Both now
+  use `Application("com.apple.MobileSMS")`; the test double requires that identifier.
+- **The route skips an account Messages cannot describe.** Three of six accounts on the same Mac answered
+  `serviceType` with "AppleEvent handler failed" (-10000), which stopped the route search before it reached the
+  iMessage account. Such an account is now skipped, never treated as a route.
+
 ## [5.0.12] - 2026-10-13
 
 Four defects a project session reported on 5.0.11:

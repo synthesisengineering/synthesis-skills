@@ -31,7 +31,7 @@ function run(argv) {
         return selected[0];
     }
     current();
-    const messages = Application("Messages");
+    const messages = Application("com.apple.MobileSMS");
     const account = exact(messages.accounts(), route.account_id, 64);
     if (account.enabled() !== true || account.connectionStatus() !== "connected" || account.serviceType() !== "iMessage") throw Error("account unavailable");
     const chat = exact(account.chats(), route.chat_id, 4096);
