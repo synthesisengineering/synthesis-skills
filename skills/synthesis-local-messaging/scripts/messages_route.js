@@ -5,11 +5,13 @@ function run(argv) {
     "use strict";
     if (argv.length !== 1 || !/^(\+[1-9][0-9]{6,14}|[^\s@]+@[^\s@]+\.[^\s@]+)$/.test(argv[0])) throw Error("recipient contract");
     const destination = argv[0];
-    const accounts = Application("Messages").accounts();
+    const accounts = Application("com.apple.MobileSMS").accounts();
     if (!Array.isArray(accounts) || accounts.length > 64) throw Error("selection bound");
     const routes = [];
     for (const account of accounts) {
-        if (account.serviceType() !== "iMessage") continue; // no SMS or RCS route, ever
+        let service;
+        try { service = account.serviceType(); } catch (error) { continue; } // an account Messages cannot describe is never a route
+        if (service !== "iMessage") continue; // no SMS or RCS route, ever
         const usable = account.enabled() === true && account.connectionStatus() === "connected";
         const chats = account.chats();
         if (!Array.isArray(chats) || chats.length > 4096) throw Error("selection bound");

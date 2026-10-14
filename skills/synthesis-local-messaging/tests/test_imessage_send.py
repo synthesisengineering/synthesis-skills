@@ -38,6 +38,10 @@ if (mode !== 'none') a.list.push(chat('chat-1', a, [person('participant-1', dest
 a.list.push(chat('chat-group', a, [person('p-2', dest, a), person('p-3', '+15550000003', a)]));
 a.list.push(chat('chat-other', a, [person('p-4', '+15550000004', a)]));
 const accounts = [a];
+if (mode === 'opaque') {  // Messages can list an account whose service type it cannot report (-10000)
+  accounts.unshift({id: () => 'account-x', enabled: () => true, connectionStatus: () => 'connected', chats: () => [],
+                    serviceType: () => { throw Error('AppleEvent handler failed.'); }});
+}
 if (mode === 'two-accounts') {
   const b = account('account-b', 'iMessage', true);
   b.list.push(chat('chat-b', b, [person('participant-b', dest, b)]));
@@ -46,7 +50,7 @@ if (mode === 'two-accounts') {
 const context = {ObjC: {import: () => {}, unwrap: x => x}, $: {NSUTF8StringEncoding: 4,
   NSFileHandle: {alloc: {initWithFileDescriptor: fd => ({get readDataToEndOfFile() { return fs.readFileSync(fd, 'utf8'); }})}},
   NSString: {alloc: {initWithDataEncoding: x => x}}},
-  Application: name => { if (name !== 'Messages') throw Error('unexpected app'); return {accounts: () => accounts,
+  Application: name => { if (name !== 'com.apple.MobileSMS') throw Error('unexpected app'); return {accounts: () => accounts,
     send: (text, options) => {
       fs.appendFileSync(world.calls, JSON.stringify({text, chat: options.to.id()}) + '\n');
       if (mode === 'lost') throw Error('lost after effect');
@@ -124,6 +128,13 @@ def test_send_waits_for_exact_approval_then_sends_once(messages):
     with pytest.raises(ms.Refused, match="Never resend"):
         ms.send(DEST, TEXT)
     assert len(messages.sends) == 1
+
+
+def test_an_account_without_a_readable_service_type_is_skipped(messages):
+    messages.route = messages.transport = "opaque"
+    approve(ms.send(DEST, TEXT))
+    assert ms.send(DEST, TEXT)["status"] == "dispatched"
+    assert messages.sends == [{"text": TEXT, "chat": "chat-1"}]
 
 
 def test_approval_covers_only_the_exact_text_and_recipient(messages):
