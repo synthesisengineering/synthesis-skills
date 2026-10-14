@@ -1,4 +1,8 @@
-"""R8: hooks fire only where they protect something, and every send tool is matched."""
+"""R8: hooks fire only where they protect something, and every send tool is matched.
+
+2026-10-14: the matcher listed send-shaped connector names, so `createJiraIssue` and every other tool the guard
+recognizes by what it does never reached it, and Edit and Write (which could write a send window by hand) were
+never checked. Every connector tool and every file-edit tool now reaches the guard; built-in reads do not."""
 
 import json
 import re
@@ -23,12 +27,17 @@ def test_only_the_four_needed_events_are_registered():
                                                                  "mcp__3cd455d4__respond_to_event",
                                                                  "mcp__workspace-mcp__manage_out_of_office",
                                                                  "mcp__7512aea3__share_file",
-                                                                 "mcp__workspace-mcp__set_drive_file_permissions"])
+                                                                 "mcp__workspace-mcp__set_drive_file_permissions",
+                                                                 "mcp__85ff0050-6527__createJiraIssue",
+                                                                 "mcp__atlassian__addCommentToJiraIssue",
+                                                                 "mcp__github__create_pull_request",
+                                                                 "mcp__c3621cad__notion-create-comment",
+                                                                 "mcp__workspace-mcp__manage_document_comment"]
+                         + sorted(guards.FILE_TOOLS))
 def test_guarded_tools_reach_the_hook(tool):
     assert re.fullmatch(HOOKS["PreToolUse"][0]["matcher"], tool)
 
 
-@pytest.mark.parametrize("tool", ["Read", "Edit", "Write", "Grep", "mcp__slack__slack_read_channel",
-                                  "mcp__apple-calendar__list_events", "mcp__3cd455d4__get_event"])
-def test_reads_and_edits_never_start_the_hook(tool):
+@pytest.mark.parametrize("tool", ["Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "TodoWrite"])
+def test_built_in_reads_never_start_the_hook(tool):
     assert not re.fullmatch(HOOKS["PreToolUse"][0]["matcher"], tool)

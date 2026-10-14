@@ -228,7 +228,7 @@ def list_open_prs(workspace: str, repo_slug: str, runner=subprocess.run,
     if "/" in repo_slug:
         raise ValueError(
             "repo_slug %r contains '/'; pass the repository slug alone (the part after the "
-            "workspace, e.g. 'content-scaling-agents'), with --workspace carrying the workspace"
+            "workspace, e.g. 'service-app'), with --workspace carrying the workspace"
             % repo_slug)
 
     if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value)

@@ -96,7 +96,7 @@ def test_a_window_is_capped_ends_by_itself_and_can_be_scoped_to_a_project():
 
 def test_only_the_principal_opens_a_window(tmp_path, principal):
     for command in ("synthesis sends open --hours 6 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --channels jira",
-                    # csa-2026-q3, 2026-10-13: a global option before `sends` opened a window with no code
+                    # A project session, 2026-10-13: a global option before `sends` opened a window with no code
                     "synthesis --session S-principal sends open --hours 6 --channels jira",
                     "synthesis sends open --hours=6 --channels=jira"):
         assert "type approve" in guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)), command
@@ -122,7 +122,7 @@ def _cli(*args):
 
 
 def test_the_command_refuses_to_open_a_window_from_an_agent_without_the_principals_code(principal):
-    """The gate rests on the command, not on the guard matching its spelling (csa-2026-q3, 2026-10-13)."""
+    """The gate rests on the command, not on the guard matching its spelling (a project session, 2026-10-13)."""
     ask = ("--session", "S-principal", "sends", "open", "--hours", "3", "--channels", "jira,bitbucket")
     refused = _cli(*ask)
     assert refused.returncode == 2 and "type approve" in refused.stderr and sends.window() == {}
@@ -195,3 +195,69 @@ def test_a_quoted_greater_than_sign_is_not_a_write_and_a_real_redirect_into_stat
     for write in (f"echo x > {state}/approvals/x.json", f"cd {state} && echo x >> approvals/x.json",
                   f"bash -c 'echo x > {state}/approvals/x.json'"):
         assert "writes into the synthesis state" in guards.check("Bash", {"command": write}, CONFIG, cwd=str(tmp_path)), write
+
+
+# --- reported by project sessions, 2026-10-13 and 10-14, on 5.0.12 -------------------------------------
+
+@pytest.mark.parametrize("command,posts", [
+    ('bkt -c work pr edit 5 --title "A clearer title"', True),  # a global option hid the subcommand
+    ("bkt -c work api /repositories/team/app/pullrequests/5 -X PUT -d '{\"title\": \"x\"}'", True),
+    ('gh -R team/app pr comment 3 --body "Looks good."', True),
+    ("bkt pr edit --help", False),
+    ("gh pr comment -h", False),
+    ("bkt -c work pr list", False),
+])
+def test_global_options_do_not_hide_a_post_and_help_is_never_one(command, posts, tmp_path):
+    reason = guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path))
+    assert (reason is not None and "posts to" in reason) is posts, reason
+
+
+HEREDOC = ("bkt api /repositories/team/app/pullrequests/5/comments -X POST -d \"$(python3 -c 'import json,sys; "
+           "print(json.dumps({{\\\"content\\\": {{\\\"raw\\\": sys.stdin.read()}}}}))' <<'MSG'\n{}\nMSG\n)\"")
+
+
+def test_a_heredoc_message_is_read_without_the_code_around_it(tmp_path):
+    whole = HEREDOC.format("First paragraph of the reply.\n\nSecond paragraph.")
+    assert "posts to bitbucket" in guards.check("Bash", {"command": whole}, CONFIG, cwd=str(tmp_path))
+    broken = HEREDOC.format("A paragraph that was\nhard-wrapped.")
+    assert "inside a paragraph" in guards.check("Bash", {"command": broken}, CONFIG, cwd=str(tmp_path))
+    unknown = 'bkt pr comment 5 -m "$(date)"'
+    assert "cannot read" in guards.check("Bash", {"command": unknown}, CONFIG, cwd=str(tmp_path))
+
+
+def test_an_escaped_emoji_in_json_is_the_emoji_and_a_body_rewritten_in_the_same_command_is_refused(tmp_path):
+    body = tmp_path / "comment.json"
+    body.write_text(json.dumps({"content": {"raw": SIGNED}}, ensure_ascii=True), encoding="utf-8")
+    assert "\\ud83e" in body.read_text(encoding="utf-8")
+    sends.open_window(1, ["bitbucket"])
+    post = f"bkt api /repositories/team/app/pullrequests/5/comments -X POST -d @{body}"
+    assert guards.check("Bash", {"command": post}, CONFIG, cwd=str(tmp_path)) is None  # the window sees the signature
+    rewrite = f"python3 make_body.py > {body} && {post}"
+    assert "write the file in one command" in guards.check("Bash", {"command": rewrite}, CONFIG, cwd=str(tmp_path))
+    sends.close_window()
+
+
+def test_file_tools_cannot_write_approvals_or_a_send_window(tmp_path, isolated_home):
+    from synthesis import paths
+    window = paths.state() / "sends" / "window.json"
+    assert "would write" in guards.check("Write", {"file_path": str(window), "content": "{}"}, CONFIG, cwd=str(tmp_path))
+    assert "would write" in guards.check("Edit", {"file_path": str(window), "old_string": "a", "new_string": "b"}, CONFIG)
+    patch = f"*** Begin Patch\n*** Add File: {window}\n+{{}}\n*** End Patch"
+    assert "would write" in guards.check("apply_patch", {"input": patch}, CONFIG, cwd=str(tmp_path))
+    assert "writes into the synthesis state" in guards.check("Bash", {"command": f"apply_patch <<'PATCH'\n{patch}\nPATCH"},
+                                                            CONFIG, cwd=str(tmp_path))
+    assert guards.check("Write", {"file_path": str(tmp_path / "notes.md"), "content": "x"}, CONFIG, cwd=str(tmp_path)) is None
+
+
+def test_a_python_script_that_only_cites_a_protected_path_may_write_a_project_record(tmp_path, isolated_home):
+    """An operations session, 2026-10-14: a stdin script writing project records was refused because the text it
+    wrote cited a transcript path. Only a write's target counts; a path carried in by a variable still does."""
+    from synthesis import paths
+    state = paths.state()
+    cites = f"python3 - <<'EOF'\nfrom pathlib import Path\nPath('notes.md').write_text('Source: {state}/sessions/x.json')\nEOF"
+    assert guards.check("Bash", {"command": cites}, CONFIG, cwd=str(tmp_path)) is None
+    for writes in (f"python3 - <<'EOF'\nopen('{state}/approvals/x.json', 'w').write('x')\nEOF",
+                   f"python3 - <<'EOF'\nimport os\nroot = '{state}'\np = os.path.join(root, 'sends', 'window.json')\n"
+                   "open(p, 'w').write('{}')\nEOF",
+                   f"python3 -c \"from pathlib import Path; Path('{state}/sends/window.json').write_text('x')\""):
+        assert "runs a script that writes" in guards.check("Bash", {"command": writes}, CONFIG, cwd=str(tmp_path)), writes

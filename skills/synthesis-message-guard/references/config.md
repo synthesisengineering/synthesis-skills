@@ -76,8 +76,21 @@ reads the message the command sends: its text words and every body it reads from
 `gh pr ... -F`, `--input`, `@file`, `$(cat file)`), never its options, URLs or file names; a body file the
 guard cannot read, or one named through a variable, is refused. The approval binds the command, its message
 and the directory each posting command runs in after its own `cd`, so the same command approved and run
-again from another directory still goes (2026-10-13). Limits: a program that sends through its own code (a script calling an HTTP
-library) is not recognized; the binding rule covers it.
+again from another directory still goes (2026-10-13). Global options before a subcommand (`bkt -c work pr
+edit`, `gh -R team/app pr comment`) do not hide it, and `--help` or `-h` never counts as a post. A substituted
+command's output is read only when it is `cat <file>` or a heredoc it reads (the code around the heredoc is not
+message); any other substitution is refused, since the guard cannot know what it prints. JSON is read as the
+strings it carries, so an escaped emoji is the emoji. A command that writes its body file and posts it in one
+line is refused, since the guard would read the old contents (2026-10-14).
+
+**Which calls reach the guard.** The hook's matcher sends every shell command, every connector tool
+(`mcp__*`) and every file-edit tool (Write, Edit, MultiEdit, NotebookEdit, `apply_patch`) to the guard; the
+guard decides. Until 2026-10-14 the matcher listed send-shaped names, so a connector tool recognized by what it
+does (`createJiraIssue`) never reached the guard. File-edit tools may not write into the synthesis state, a
+harness's transcripts or the approved commit lines, where approvals and send windows live.
+
+Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized, and
+computer use (an agent clicking Send in an app's window) is outside the guard; the binding rule covers both.
 
 **Windows.** Only the principal opens one. The command itself checks: run by an agent (a harness's
 environment, or no terminal), `synthesis sends open` opens only on the principal's granted code for exactly
