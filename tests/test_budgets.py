@@ -42,9 +42,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # global option before `sends` slipped past the guard alone), whatever order its options take; help needs no code.
 # 5.0.12 adds 40 for four defects a project session reported: the register scan reads the message (and $(cat
 # file) bodies), not file names; approvals bind where a command runs; untaken codes are named; parsed redirects.
+# 5.0.14 adds 144 for defects reported 10-13 and 10-14: a Python script judged by what it writes, not what it
+# quotes (about 50); file-edit tools kept out of approvals and windows; heredoc, JSON and rewritten bodies read
+# right; global options and help in posting commands.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5716
-PLUGIN_BUDGET = 21064
+CORE_BUDGET = 5860
+PLUGIN_BUDGET = 21208
 
 
 def _lines(files):

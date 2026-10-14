@@ -20,7 +20,7 @@ Run this per question, every time — it's the whole point of the pattern:
    | Tier | Means | Trailer example |
    |---|---|---|
    | **Verified** | Confirmed via a live verifying command / tool call this turn — file re-read, live query, `git log`, an API or calendar read | `Source: git tag -l 'v0.11*' (verified live) — Confidence: Verified` |
-   | **Cached** | Read from a context file, KB doc, or prior session log without re-verifying live — name the cache's own as-of/last-updated date when it carries one | `Source: csa-2026-q3/CONTEXT.md, as of 2026-08-31, not re-verified this session — Confidence: Cached` |
+   | **Cached** | Read from a context file, KB doc, or prior session log without re-verifying live — name the cache's own as-of/last-updated date when it carries one | `Source: project-x/CONTEXT.md, as of 2026-08-31, not re-verified this session — Confidence: Cached` |
    | **Uncertain** | No direct source found; this is inference or a best guess, not an observed fact | `Confidence: Uncertain — no source found; try <person/team/doc>` |
 
    A trailer is one line, not a paragraph — it names what was checked, nothing more. Never omit it: a fast answer with no stated confidence is indistinguishable from a guess, which defeats the entire pattern. **Cached is not a downgrade to apologize for** — plenty of quick answers are legitimately answered from a stable reference and that's fine to say plainly. What's not fine is a volatile fact (step 2's list: schedules, status, ship state, dates) answered as Cached when it should have been verified — that is a defect, not a shortcut: go verify, or say "Uncertain" and stop.

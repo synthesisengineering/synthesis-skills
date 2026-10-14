@@ -887,10 +887,89 @@ SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_wind
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 
 
+PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
+FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file", "apply_patch"}
+
+
+def _protected_roots(config: dict | None) -> list[str]:
+    """Where only the guard and the harness write: synthesis state, harness transcripts, approved commit lines."""
+    store = paths.line_allowances(config or {})
+    return [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
+
+
+def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str | None:
+    """An agent's own file tools (Write, Edit, apply_patch) may not write where approvals and send windows live
+    (2026-10-14: those tools never reached the guard, so a window could be written by hand)."""
+    text = str(tool_input.get("input") or tool_input.get("patch") or "") if tool == "apply_patch" else ""
+    targets = [a or b for a, b in PATCH_PATHS.findall(text)] or [str(tool_input.get(k)) for k in (
+        "file_path", "path", "notebook_path") if tool_input.get(k)]
+    roots = [os.path.realpath(r) for r in _protected_roots(config)]
+    hits = [t for t in targets if any(paths.inside(os.path.realpath(os.path.join(cwd, os.path.expanduser(t))), r)
+                                      for r in roots)]
+    return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
+            "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
+            "show them what needs approving.") if hits else None
+
+
+def _python_source(words: list, text: str) -> str:
+    """The Python a command runs: its -c program, or the heredoc it reads on stdin; "" for a script file."""
+    if "-c" in words[:-1]:
+        return words[words.index("-c") + 1]
+    if words[1:2] in ([], ["-"]):
+        try:
+            return "\n".join(t[1] for t in _lex(text) if t[0] == "in")
+        except (Unreadable, StopIteration, IndexError):
+            return ""
+    return ""
+
+
+def _python_writes(source: str, names: list) -> bool | None:
+    """Whether a Python program writes into a protected path: True, False, or None when it cannot be told
+    (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so a
+    project record that cites a transcript path is not a write into transcripts (2026-10-14)."""
+    import ast
+    try:
+        tree = ast.parse(source) if source.strip() else None
+    except SyntaxError:
+        tree = None
+    if tree is None or any(isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile", "__import__") for n in ast.walk(tree)):
+        return None
+    tainted, grew = set(), True
+
+    def named(node) -> bool:  # built from a protected path, directly or through an assigned name
+        return any((isinstance(n, ast.Constant) and isinstance(n.value, str) and any(m in n.value for m in names))
+                   or (isinstance(n, ast.Name) and n.id in tainted) for n in ast.walk(node))
+    while grew:
+        grew = False
+        for n in ast.walk(tree):
+            value = getattr(n, "value", None) if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) else None
+            if value is not None and named(value):
+                for target in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                    new = {x.id for x in ast.walk(target) if isinstance(x, ast.Name)} - tainted
+                    tainted, grew = tainted | new, grew or bool(new)
+    for n in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
+        func, args = n.func, n.args
+        attr = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
+        base = func.value if isinstance(func, ast.Attribute) else None
+        given = args[0:1] if base is not None else args[1:2]  # Path(p).open("w") takes its mode first; open(p, "w") second
+        mode = next(iter(given), next((k.value for k in n.keywords if k.arg == "mode"), None))
+        writes_mode = mode is not None and not (isinstance(mode, ast.Constant) and not re.search(r"[wax+]", str(mode.value)))
+        targets = ([args[0]] if attr == "open" and base is None and args and writes_mode else
+                   [base] + args[:1] if base is not None and attr in ("rename", "replace") else  # both ends change
+                   [base] if base is not None and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
+                                                            "symlink_to", "hardlink_to", "chmod", "truncate")
+                                                   or (attr == "open" and writes_mode)) else [])
+        if isinstance(base, ast.Name) and base.id in ("os", "shutil", "subprocess"):
+            targets = list(args)  # every argument of a filesystem or process call can name what it changes
+        if any(named(t) for t in targets):
+            return True
+    return False
+
+
 def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     text = command.replace("${HOME}", home).replace("$HOME", home)
-    raw = [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
+    raw = _protected_roots(config)
     mine = store and store.name in text  # the store's own name: a write from inside its folder
     names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text] + ([store.name] if mine else [])
     redirects, readable = [], True
@@ -914,8 +993,15 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script):
+        source = _python_source(words, text) if head.startswith("python") else ""
+        # The code decides only when every mention of a protected path is inside it; one named elsewhere on the line
+        # could reach the script through a variable (2026-10-06), so that stays judged by the whole command.
+        judged = _python_writes(source, names) if source and not any(n in text.replace(source, "") for n in names) else None
+        if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script) \
+                and judged is not False:
             why = why or "runs a script that writes where the synthesis state or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
+        if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
+            targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
@@ -965,12 +1051,20 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule)."""
     import hashlib
     from synthesis import sends
-    posts, window = [], None
-    for words, where in _parse(command, cwd)[0]:
+    posts, window, writes = [], None, []
+    try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
+        _commands(command, cwd, writes=writes)
+    except (Unreadable, StopIteration, IndexError):
+        pass
+    commands = _parse(command, cwd)[0]
+    written = {os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t, w in writes} | {
+        os.path.realpath(os.path.join(where, t)) for words, where in commands if os.path.basename(words[0]) in COPIERS | {"tee"}
+        for t in (words[-1:] if os.path.basename(words[0]) in COPIERS else words[1:])}
+    for words, where in commands:
         window = window or sends.window_asked(words)
         chan = sends.command_send(words, where, config)
         if chan:
-            text, problem = sends.message_text(words, where)
+            text, problem = sends.message_text(words, where, written)
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
@@ -1016,6 +1110,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
                 or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session))
+    if tool in FILE_TOOLS:
+        return check_file_write(tool, tool_input, cwd, config)
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)

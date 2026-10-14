@@ -31,10 +31,12 @@ CHANNELS = [("slack", "slack"), ("jira", "jira"), ("confluence", "confluence"), 
             ("event", "calendar"), ("calendar", "calendar"), ("document_comment", "docs"),
             ("spreadsheet_comment", "docs"), ("presentation_comment", "docs"), ("drive", "docs")]
 # (channel, pattern over the command's words) for programs that post; `curl` and its kin are judged by method and host
+# Global options may sit between a program and its subcommand: `bkt -c work pr edit` posted unseen (2026-10-14).
+OPTS = r"(?:\s+-\S+(?:\s+(?!-)\S+)?)*"
 COMMANDS = [
-    ("github", r"gh (?:pr|issue) (?:comment|create|edit|review)\b|gh (?:pr|issue) close\b.*(?:\s-c\b|\s--comment\b)"),
-    ("bitbucket", r"bkt pr (?:comment|create|edit|approve|decline|reopen|request-changes)\b"),
-    ("gitlab", r"glab (?:mr|issue) (?:note|comment|create|update)\b"),
+    ("github", rf"gh{OPTS}\s+(?:pr|issue)\s+(?:comment|create|edit|review)\b|gh{OPTS}\s+(?:pr|issue)\s+close\b.*(?:\s-c\b|\s--comment\b)"),
+    ("bitbucket", rf"bkt{OPTS}\s+pr\s+(?:comment|create|edit|approve|decline|reopen|request-changes)\b"),
+    ("gitlab", rf"glab{OPTS}\s+(?:mr|issue)\s+(?:note|comment|create|update)\b"),
     ("jira", r"(?:jira|acli)\b.*\b(?:comment|create|edit)\b"),
     ("messages", r"osascript\b.*\b(?:Messages|Mail)\b.*\bsend\b"),
 ]
@@ -114,9 +116,11 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
     """The channel a shell command posts to, or None. Own repositories (`own_repos`) are not sends."""
     head = os.path.basename(words[0])
     line = " ".join([head] + words[1:])
+    if {"-h", "--help"} & set(words[1:]):
+        return None  # help prints and posts nothing (2026-10-13: `bkt pr edit --help` asked for a code)
     if head in WEB:
         return "web" if _web_write(words) else None
-    if head in API and words[1:2] == ["api"]:
+    if head in API and re.match(rf"{head}{OPTS}\s+api\b", line):
         if not re.search(r"\s(?:-X|--method)[=\s]*(?:POST|PUT|PATCH|DELETE)\b|\s(?:-f|-F|--field|--raw-field|--input)\b",
                          " " + line) or ("graphql" in words and "mutation" not in line):
             return None
@@ -166,13 +170,46 @@ def asked(hours, channels: str, project: str) -> dict:
             "project": str(project)}
 
 
-CAT = re.compile(r"\$\(\s*cat\s+(['\"]?)([^)'\"]+?)\1\s*\)|`\s*cat\s+(['\"]?)([^`'\"]+?)\3\s*`")
+CAT = re.compile(r"\s*cat\s+(['\"]?)([^'\"\s]+)\1\s*")
 
 
-def message_text(words: list, cwd: str) -> tuple[str, str]:
-    """(text, problem): the message a posting command sends, which the register scan reads: its text words and
-    every body it reads from a file (--body-file, gh's -F, --input, @file, $(cat file)). Options, URLs and file
-    names are not the message (2026-10-13: a scratch file's name tripped a rule; $(cat file) went unread)."""
+def _substitutions(word: str) -> tuple[list, str]:
+    """The commands substituted into a word ($(...) and backticks), and the word without them."""
+    from synthesis.guards import _close
+    inner, rest, i = [], [], 0
+    while i < len(word):
+        if word.startswith("$(", i) or word[i] == "`":
+            start = i + (2 if word[i] == "$" else 1)
+            end = _close(word, start, "(" if word[i] == "$" else "`")
+            inner.append(word[start:end - 1])
+            i = end
+        else:
+            rest.append(word[i])
+            i += 1
+    return inner, "".join(rest)
+
+
+def _strings(value) -> list:
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    return [s for v in value for s in _strings(v)] if isinstance(value, list) else [value] if isinstance(value, str) else []
+
+
+def _readable(text: str) -> str:
+    """JSON is read as the strings it carries, so an escaped emoji is the emoji and its layout is not prose."""
+    if text.strip()[:1] in ("{", "["):
+        try:
+            return "\n\n".join(_strings(json.loads(text)))
+        except ValueError:
+            pass
+    return text
+
+
+def message_text(words: list, cwd: str, written: set = frozenset()) -> tuple[str, str]:
+    """(text, problem): the message a posting command sends, which the register scan reads: its text words, every
+    body it reads from a file (--body-file, gh's -F, --input, @file, $(cat file)) and every heredoc a substituted
+    command reads. Options, URLs, file names and the code around a heredoc are not the message (2026-10-13)."""
+    from synthesis import guards
     flags = {"--body-file", "--input"} | ({"-F"} if os.path.basename(words[0]) == "gh" and words[1:2] in (["pr"], ["issue"]) else set())
     names, parts, takes = [], [], False
     for word in words[1:]:
@@ -187,8 +224,16 @@ def message_text(words: list, cwd: str) -> tuple[str, str]:
         if at:
             names.append(at.group(1))
             continue
-        names += [m.group(2) or m.group(4) for m in CAT.finditer(word)]
-        word = CAT.sub("", word)
+        try:
+            commands, word = _substitutions(word)
+            for inner in commands:
+                cat, heredocs = CAT.fullmatch(inner), [t[1] for t in guards._lex(inner) if t[0] == "in"]
+                if not (cat or heredocs):
+                    return "", (f"its body comes from a command ({inner.strip()[:60]}) whose output the guard cannot "
+                                "read; put the text inline, in a heredoc, or in a file")
+                names, parts = names + ([cat.group(2)] if cat else []), parts + heredocs
+        except guards.Unreadable as exc:
+            return "", f"its text cannot be read ({exc})"
         word = word.partition("=")[2] if word.startswith("-") else word  # --body=text keeps its text
         if word and (any(c.isspace() for c in word) or not ("/" in word or os.path.exists(os.path.join(cwd, word)))):
             parts.append(word)
@@ -197,9 +242,12 @@ def message_text(words: list, cwd: str) -> tuple[str, str]:
         path = os.path.join(cwd, os.path.expanduser(name))
         if name == "-" or "$" in name or not os.path.isfile(path):
             return "", f"its body comes from {name}, which the guard cannot read to check"
+        if os.path.realpath(path) in written:
+            return "", (f"it writes {name} and posts it in one command, so the guard would check the old contents; "
+                        "write the file in one command and post it in the next")
         with open(path, encoding="utf-8", errors="replace") as handle:
             texts.append(handle.read(1_048_576))
-    return "\n\n".join(parts + texts), ""
+    return "\n\n".join(_readable(t) for t in parts + texts), ""
 
 
 # --- the window ---------------------------------------------------------------------------------

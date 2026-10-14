@@ -24,7 +24,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|bash|exec_command|exec|shell|local_shell|run_shell_command|mcp__.*(send|draft|reply|forward|schedule|(create|update|delete|manage|respond_to)_event|focus_time|out_of_office|trash_|share_file|drive_file_permissions|drive_access).*",
+        "matcher": "Bash|bash|exec_command|exec|shell|local_shell|run_shell_command|Write|Edit|MultiEdit|NotebookEdit|write_file|edit_file|apply_patch|mcp__.*",
         "hooks": [
           {
             "type": "command",

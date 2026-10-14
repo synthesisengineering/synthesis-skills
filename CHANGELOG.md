@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.14] - 2026-10-14
+
+Defects other sessions reported on 5.0.12, and two found while answering them (synthesis-message-guard 2.2.0):
+- **Every connector tool and file-edit tool reaches the guard.** The hook's matcher still listed send-shaped
+  tool names, so a tool the guard recognizes by what it does (creating a Jira issue, a Confluence page, a pull
+  request, a Notion or Docs comment) never reached it, and its sends were neither gated nor logged. The matcher
+  now sends every `mcp__*` tool and every file-edit tool; built-in reads still never start the hook. Codex and
+  Muse key their hook trust to the matcher, so each asks once to approve the hooks again.
+- **File-edit tools cannot write approvals or a send window.** Write, Edit, MultiEdit, NotebookEdit and
+  `apply_patch` (as a tool or a command) are refused inside the synthesis state, a harness's transcripts and the
+  approved commit lines.
+- **Global options no longer hide a post, and help is never one.** `bkt -c work pr edit ...` went through with no
+  code; `bkt pr edit --help` asked for one.
+- **A heredoc message is read without the code around it,** a substituted command whose output cannot be read is
+  refused, JSON is read as the strings it carries (an escaped emoji is the emoji), and a command that rewrites its
+  body file before posting it is refused, since the guard would read the old contents.
+- **A Python script is judged by what it writes, not what it quotes.** A stdin script writing project records was
+  refused because its text cited a transcript path; the guard now reads the code, and refuses only a write whose
+  target is a protected path (also through an assigned name). A path named elsewhere on the line still counts.
+
 ## [5.0.13] - 2026-10-14
 
 - **The iMessage sender addresses Messages by bundle ID.** On this macOS the JXA name `Messages` resolves to
@@ -5344,7 +5364,7 @@ Context changes were going uncommitted during long-running and resumed sessions 
 - **`synthesis-mac-sync`** — new skill: multi-Mac configuration sync via iCloud with git repo sync, machine inventory, and one-time action system
 
 ### Changed
-- **`synthesis-pr-review`** bumped to v1.1.0 — 6 improvements from CSA review sprint:
+- **`synthesis-pr-review`** bumped to v1.1.0 — 6 improvements from a review sprint:
   - Project-specific extension points (convention debt patterns, CLAUDE.md hooks)
   - Scope governance check (PR title vs. actual file scope)
   - Bundled test file detection

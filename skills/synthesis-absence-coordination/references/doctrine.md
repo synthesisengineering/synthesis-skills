@@ -77,8 +77,8 @@ skill should refuse to send it.
 Per audience, in plain terms:
 
 - **Who decides what.** Name a person per decision class, not one catch-all deputy.
-  "Ana for anything on the knowledge base, Jason for CSA delivery, everything else waits"
-  beats "Ana is covering."
+  "Kim for anything on the knowledge base, Lee for delivery, everything else waits"
+  beats "Kim is covering."
 - **What simply waits.** Explicitly. Permission to defer is the most useful thing you can
   give someone, and the thing they will not assume.
 - **What must not wait**, and what to do with it.

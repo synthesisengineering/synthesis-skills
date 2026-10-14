@@ -380,18 +380,18 @@ def test_scan_dispatches_bitbucket_origins_to_the_bitbucket_helper(monkeypatch):
     _inject_bkt_runner(monkeypatch, run)
 
     result = mod.scan(
-        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/content-scaling-agents.git"}}],
+        [{"name": "app", "remotes": {"origin": "git@bitbucket.org:team/service-app.git"}}],
         "ws", None, NOW)
 
-    assert result["scanned"] == ["csa"]
+    assert result["scanned"] == ["app"]
     assert result["unscanned"] == []
     assert [(i["number"], i["kind"], i["age_days"], i["repo"]) for i in result["found"]] == [
-        (41, "review-requested", 139, "team/content-scaling-agents"),
-        (42, "own-open", 4, "team/content-scaling-agents"),
+        (41, "review-requested", 139, "team/service-app"),
+        (42, "own-open", 4, "team/service-app"),
     ]
     assert run.calls == [
         ["bkt", "api", "/user", "--json"],
-        ["bkt", "api", "/repositories/team/content-scaling-agents/pullrequests",
+        ["bkt", "api", "/repositories/team/service-app/pullrequests",
          "--method", "GET", "--json", "--param", "state=OPEN", "--param", "pagelen=50",
          "--param", "fields=values.id,values.title,values.state,values.draft,values.created_on,values.author,values.reviewers,next",
          "--param", "page=1"],
@@ -427,9 +427,9 @@ def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_missing(monkeypatch):
     monkeypatch.setattr(mod, "query_bitbucket_repo",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("queried without bkt")))
     result = mod.scan(
-        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
+        [{"name": "app", "remotes": {"origin": "git@bitbucket.org:team/app.git"}}], "ws", None, NOW)
     assert result["scanned"] == []
-    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt CLI not installed",
+    assert result["unscanned"] == [{"repo": "app", "reason": "bkt CLI not installed",
                                      "state": "UNREACHABLE"}]
 
 
@@ -439,8 +439,8 @@ def test_scan_marks_bitbucket_repos_unscanned_when_bkt_is_unauthenticated(monkey
         return type("R", (), {"returncode": 1, "stdout": "", "stderr": "Error: not logged in"})()
     _inject_bkt_runner(monkeypatch, run)
     result = mod.scan(
-        [{"name": "csa", "remotes": {"origin": "git@bitbucket.org:team/csa.git"}}], "ws", None, NOW)
-    assert result["unscanned"] == [{"repo": "csa", "reason": "bkt api /user failed: Error: not logged in",
+        [{"name": "app", "remotes": {"origin": "git@bitbucket.org:team/app.git"}}], "ws", None, NOW)
+    assert result["unscanned"] == [{"repo": "app", "reason": "bkt api /user failed: Error: not logged in",
                                      "state": "UNREACHABLE"}]
 
 
@@ -519,9 +519,9 @@ repos:
 def test_main_prints_bitbucket_hits_and_json_carries_both_hosts(monkeypatch, capsys, tmp_path):
     p = write_yaml(tmp_path, """
 repos:
-  - name: csa
+  - name: app
     remotes:
-      origin: git@bitbucket.org:team/csa.git
+      origin: git@bitbucket.org:team/app.git
   - name: alpha
     remotes:
       origin: https://github.com/o/alpha.git
@@ -541,14 +541,14 @@ repos:
     assert "Waiting on your review (1)" in out
     # main() reads the real clock, so the age is computed the same way it is.
     age = mod.age_days(created, datetime.datetime.now(datetime.timezone.utc))
-    assert "%4dd  team/csa#9  awaiting me" % age in out
+    assert "%4dd  team/app#9  awaiting me" % age in out
 
     monkeypatch.setattr(mod.sys, "argv", ["pr_queue_scan.py", "--repos-yaml", str(p), "--login", "me", "--json"])
     assert mod.main() == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["scanned"] == ["csa", "alpha"]
+    assert data["scanned"] == ["app", "alpha"]
     assert data["login"] == "me"
-    assert [i["url"] for i in data["found"]] == ["https://bitbucket.org/team/csa/pull-requests/9"]
+    assert [i["url"] for i in data["found"]] == ["https://bitbucket.org/team/app/pull-requests/9"]
 
 
 @pytest.mark.parametrize("missing_reviewers", [False, True])
