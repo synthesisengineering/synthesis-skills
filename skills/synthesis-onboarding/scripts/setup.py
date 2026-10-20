@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from pathlib import Path
 
@@ -397,13 +398,13 @@ def unregister_day_end(dry_run: bool = False) -> list:
             plist.unlink()
         lines.append(f"{'would remove' if dry_run else 'removed'} the nudge schedule {plist}")
     elif plist.exists():
-        lines.append(f"kept {plist}: it runs another install's nudge")
+        lines.append(f"{'would keep' if dry_run else 'kept'} {plist}: it runs another install's nudge")
     if link.is_symlink() and os.path.realpath(link) == os.path.realpath(home / "bin" / "day-end"):
         if not dry_run:
             link.unlink()
         lines.append(f"{'would remove' if dry_run else 'removed'} {link}")
     elif os.path.lexists(link):
-        lines.append(f"kept {link}: it is not a link to this install's launcher")
+        lines.append(f"{'would keep' if dry_run else 'kept'} {link}: it is not a link to this install's launcher")
     return lines
 
 
@@ -432,7 +433,7 @@ def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="setup.py", description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(prog="setup.py", description=__doc__.split("\n\n")[0], allow_abbrev=False)
     parser.add_argument("command", nargs="?", default="all", choices=("all", "plugin", "workspace", "org", "uninstall"))
     parser.add_argument("--clients", default="", help="default claude,codex,muse (or what the organization asks for)")
     parser.add_argument("--ref", default="", help="marketplace ref: stable (default for new installs), main or vX.Y.Z")
@@ -452,21 +453,24 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     interactive = not args.no_input and can_ask()
     clients = [c.strip() for c in (args.clients or "claude,codex,muse").split(",") if c.strip() in doctor.HARNESSES]
-    failed = False
+    failed, scratch = False, Path(tempfile.mkdtemp(prefix="synthesis-dry-run-")) if args.dry_run else None
 
     def say(lines):  # each step's lines as soon as it finishes, so a long run never looks hung
         print("\n".join(lines), flush=True)
-    try:
+    try:  # a dry run writes only in scratch, which it removes: repositories are read through clones there
         if args.org_repo and args.command == "all":  # the organization's clients and release, unless given here
             import workspace
-            org_clients, org_ref = workspace.org_preferences(args.org_repo)
+            org_clients, org_ref = workspace.org_preferences(args.org_repo, scratch)
             clients, args.ref = (clients if args.clients else org_clients), args.ref or org_ref
         if args.command == "uninstall":
             return _uninstall(clients, args.dry_run)
         if args.command in ("all", "plugin"):
             plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run)
             say(plugin_lines)
-            if not args.dry_run:
+            if args.dry_run:
+                say([f"runtime: would install it from {REPO} into {install._home()}" + (", with the commit check in every "
+                     "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")])
+            else:
                 git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
                     "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
                     "--git-hooks", default=True))
@@ -479,19 +483,24 @@ def main(argv=None) -> int:
             progress = lambda line: print(line, flush=True)  # noqa: E731
             if args.command == "org" or args.org_repo:
                 say(workspace.enroll(args.org_repo or ask("Organization config repository URL", "--org-repo"),
-                                     progress, args.personal_source, args.adopt_workspace_instructions))
+                                     progress, args.personal_source, args.adopt_workspace_instructions, scratch))
             elif args.new:
-                say(workspace.new_workspace(args.new, args.kb))
+                say(workspace.new_workspace(args.new, args.kb, args.dry_run))
             else:
                 say(workspace.bring_workspace(args.kb, args.workspace, progress, args.adopt_workspace_instructions,
-                                              interactive))
+                                              interactive, scratch))
     except (SetupError, ValueError, OSError) as exc:  # a malformed manifest or an unwritable folder: say which
         say([f"stopped: {exc}"])
         failed = True
     except KeyboardInterrupt:
         print("\ninterrupted: run the same command again to resume; finished steps are kept", file=sys.stderr)
         return 130
-    if args.command != "workspace" and not args.dry_run:
+    finally:
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
+    if args.dry_run:
+        print("Dry run: nothing was changed.")
+    elif args.command != "workspace":
         print(RESTART)
     return 1 if failed else 0
 

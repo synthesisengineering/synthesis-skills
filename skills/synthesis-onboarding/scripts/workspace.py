@@ -53,15 +53,19 @@ def _git(args: list, cwd=None, env=None, timeout: float = 600):
 
 # ---- one repository: clone, or fast-forward when that is safe ---------------------
 
-def clone_or_update(remote: str, target: Path, branch: str = "", extra_remotes=None, env=None) -> str:
-    """'cloned', 'updated', 'current' or 'skipped: <reason>'. Raises on a wrong origin."""
+def clone_or_update(remote: str, target: Path, branch: str = "", extra_remotes=None, env=None, dry_run=False) -> str:
+    """'cloned', 'updated', 'current' or 'skipped: <reason>' ('would ...' in a dry run). Raises on a wrong origin."""
     if (target / ".git").exists():
         origin = _git(["config", "--get", "remote.origin.url"], target, env).stdout.strip()
         if normalize(origin) != normalize(remote):
             raise setup.SetupError(f"{target}: origin is {origin or 'missing'}, not {remote}; "
                                    "refusing to repoint it (move it aside or fix its origin, then rerun)")
-        if _git(["status", "--porcelain"], target, env).stdout.strip():
-            return "skipped: uncommitted changes"
+        if _git(["--no-optional-locks", "status", "--porcelain"], target, env).stdout.strip():  # no index refresh
+            return ("would skip" if dry_run else "skipped") + ": uncommitted changes"
+        if dry_run:  # fetches and writes nothing: judged against the upstream as last fetched
+            ahead = _git(["rev-list", "--count", "@{upstream}..HEAD"], target, env)
+            return ("would skip: no upstream branch" if ahead.returncode else "would skip: has unpushed commits"
+                    if ahead.stdout.strip() != "0" else "would fetch, then fast-forward if behind")
         if _git(["fetch", "--quiet", "origin"], target, env).returncode:
             return "skipped: fetch failed"
         counts = _git(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], target, env).stdout.split()
@@ -76,6 +80,8 @@ def clone_or_update(remote: str, target: Path, branch: str = "", extra_remotes=N
         return "updated" if merged.returncode == 0 else f"skipped: {setup._tail(merged)}"
     if os.path.lexists(target):
         raise setup.SetupError(f"{target} exists and is not a git checkout; refusing to overwrite it")
+    if dry_run:
+        return "would clone"
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.with_name(f"{target.name}.partial-{os.getpid()}")
     for leftover in target.parent.glob(f"{target.name}.partial-*"):  # an interrupted earlier clone
@@ -90,13 +96,13 @@ def clone_or_update(remote: str, target: Path, branch: str = "", extra_remotes=N
     return "cloned"
 
 
-def clone_all(entries: list, progress, env=None, auth_help: str = "") -> list:
+def clone_all(entries: list, progress, env=None, auth_help: str = "", dry_run: bool = False) -> list:
     """entries: (remote, target, branch, extra remotes). One line per repository, as it lands."""
     lines = []
     for i, (remote, target, branch, extra) in enumerate(entries, 1):
         progress(f"[{i}/{len(entries)}] {target.name} ...")
         try:
-            status = clone_or_update(remote, target, branch, extra, env)
+            status = clone_or_update(remote, target, branch, extra, env, dry_run)
         except setup.SetupError as exc:
             status = f"needs action: {exc}" + (f"\n{auth_help.strip()}" if auth_help and "clone failed" in str(exc) else "")
         lines.append(f"{target.name}: {status}")
@@ -106,10 +112,10 @@ def clone_all(entries: list, progress, env=None, auth_help: str = "") -> list:
 
 # ---- a workspace from its knowledge repository's repos.yaml ------------------------
 
-def discover_kb(interactive: bool) -> str:
-    """The knowledge repository: found through `gh` (signing in when needed), else asked once."""
+def discover_kb(interactive: bool, sign_in: bool = True) -> str:
+    """The knowledge repository: found through `gh` (signing in when needed, never in a dry run), else asked once."""
     found = setup.run(["gh", "repo", "list", "--json", "url", "--limit", "200"], 60)
-    if found.returncode and interactive and found.returncode != 127:  # 127: no gh at all
+    if found.returncode and interactive and sign_in and found.returncode != 127:  # 127: no gh at all
         print("GitHub sign-in is needed to find your knowledge repository; starting it now", flush=True)
         stream, opened = setup._terminal()
         try:
@@ -152,14 +158,16 @@ def workspace_entries(kb_dir: Path, ws_root: Path) -> tuple:
     return entries, notes
 
 
-def bring_workspace(kb: str, workspace: str, progress, adopt: bool = False, interactive: bool = False) -> list:
-    kb = kb or discover_kb(interactive)
+def bring_workspace(kb: str, workspace: str, progress, adopt: bool = False, interactive: bool = False,
+                    scratch: Path = None) -> list:
+    """A dry run passes `scratch`, its temporary folder: repos.yaml is read from a clone there, nothing else is written."""
+    kb, dry = kb or discover_kb(interactive, sign_in=scratch is None), scratch is not None
     local = Path(os.path.expanduser(kb))
     is_remote = "://" in kb or kb.startswith("git@") or kb.rstrip("/").endswith(".git")
     if not is_remote:
         if not (local / ".git").exists():
             raise setup.SetupError(f"{kb} is neither a git checkout nor a repository URL")
-        kb_dir = local.resolve()
+        kb_dir = read = local.resolve()
         workspace = workspace or kb_dir.parent.name
         lines = [f"{kb_dir.name}: using this checkout"]
     else:
@@ -168,14 +176,17 @@ def bring_workspace(kb: str, workspace: str, progress, adopt: bool = False, inte
             raise setup.SetupError("cannot derive a safe workspace name from the repository; pass --workspace NAME")
         kb_dir = Path.home() / "workspaces" / workspace / normalize(kb).rsplit("/", 1)[-1]
         progress(f"{kb_dir.name} ...")  # a wrong origin or a failed clone stops here: nothing else to read
-        lines = [f"{kb_dir.name}: {clone_or_update(kb, kb_dir)}"]
+        lines = [f"{kb_dir.name}: {clone_or_update(kb, kb_dir, dry_run=dry)}"]
+        read = scratch / kb_dir.name if dry else kb_dir
+        if dry:
+            clone_or_update(kb, read)
     ws_root = kb_dir.parent
-    entries, notes = workspace_entries(kb_dir, ws_root)
-    lines += notes + clone_all([e for e in entries if e[1] != kb_dir], progress)
-    return lines + link_workspace(ws_root, kb_dir, adopt)
+    entries, notes = workspace_entries(read, ws_root)
+    lines += notes + clone_all([e for e in entries if e[1] != kb_dir], progress, dry_run=dry)
+    return lines + link_workspace(ws_root, read, adopt, dry)
 
 
-def new_workspace(name: str, remote: str = "") -> list:
+def new_workspace(name: str, remote: str = "", dry_run: bool = False) -> list:
     """Start ~/workspaces/<name>/ai-knowledge-<name>, the knowledge repository a person's project
     records live in, from assets/workspace/. A seed that exists is the person's and is never
     rewritten. Git identity is checked before anything is created, because the seeds are committed."""
@@ -189,6 +200,10 @@ def new_workspace(name: str, remote: str = "") -> list:
     seeds = {(".agents/" + r[7:] if r.startswith("agents/") else r): src.read_text(encoding="utf-8")
              for src in assets.rglob("*") if src.is_file() for r in [src.relative_to(assets).as_posix()]}
     seeds.update({"CLAUDE.md": "@AGENTS.md\n", ".gitignore": ".DS_Store\n"})
+    if dry_run:  # counts the seeds it would write, and writes nothing
+        missing, origin = sum(not (repo / rel).exists() for rel in seeds), _git(["remote", "get-url", "origin"], repo)
+        return [f"{repo.name}: would {f'write and commit {missing} files' if missing else 'leave its files as they are'}"
+                + (f", add origin {remote}" if remote and not origin.stdout.strip() else "") + f", and link {repo.parent} to it"]
     for rel, text in sorted(seeds.items()):
         if not (repo / rel).exists():
             (repo / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -215,38 +230,44 @@ def _archive(paths: list) -> Path:
     return folder
 
 
-def _place_instructions(ws_root: Path, write_agents, adopt: bool, generated_only: bool) -> list:
-    """Write AGENTS.md (via write_agents) and a CLAUDE.md that imports it, preserving files
-    someone else wrote unless `adopt`, which archives the old pair first."""
+def _place_instructions(ws_root: Path, content, adopt: bool, generated_only: bool, dry_run: bool = False) -> list:
+    """Write AGENTS.md (this text, or a link to this Path) and a CLAUDE.md that imports it, preserving
+    files someone else wrote unless `adopt`, which archives the old pair first. A dry run says which."""
     agents, claude = ws_root / "AGENTS.md", ws_root / "CLAUDE.md"
     ours = not os.path.lexists(agents) or (generated_only and agents.is_file() and not agents.is_symlink()
                                             and agents.read_text(encoding="utf-8").startswith(ARCHIVE_NOTE))
     if not ours and not adopt:
         return [f"{agents}: kept as it is (not written by setup); pass --adopt-workspace-instructions to replace it"]
+    imports = os.path.lexists(claude) and claude.read_text(encoding="utf-8", errors="replace").strip() == "@AGENTS.md"
+    keep = ours and not adopt and os.path.lexists(claude) and not imports
+    tail = f"; {claude} kept (not `@AGENTS.md`)" if keep else ", with CLAUDE.md importing it"
+    if dry_run:
+        same = ours and agents.is_file() and agents.read_text(encoding="utf-8") == content
+        return [f"{agents}: would " + ("stay as it is (the generated text is unchanged)" if same else "write it" if ours
+                                       else "archive the previous AGENTS.md and CLAUDE.md, then write it") + tail]
     lines = [] if ours else [f"archived the previous AGENTS.md and CLAUDE.md to {_archive([agents, claude])}"]
-    write_agents(agents)
-    if not os.path.lexists(claude) or claude.read_text(encoding="utf-8", errors="replace").strip() != "@AGENTS.md":
-        if os.path.lexists(claude) and not adopt:
-            return lines + [f"{agents}: written; {claude} kept (not `@AGENTS.md`)"]
+    agents.symlink_to(content) if isinstance(content, Path) else agents.write_text(content, encoding="utf-8")
+    if not keep and not (ours and imports):  # absent, archived above, or replaced on adoption
         if os.path.lexists(claude):
             claude.unlink()
         claude.write_text("@AGENTS.md\n", encoding="utf-8")
-    return lines + [f"{agents}: written, with CLAUDE.md importing it"]
+    return lines + [f"{agents}: written{tail}"]
 
 
-def link_workspace(ws_root: Path, kb_dir: Path, adopt: bool) -> list:
+def link_workspace(ws_root: Path, kb_dir: Path, adopt: bool, dry_run: bool = False) -> list:
     """The workspace's instructions and repos.yaml are links into its knowledge repository."""
     lines, source = [], kb_dir / ".agents" / "workspace-AGENTS.md"
     repos_link = ws_root / ".agents" / "repos.yaml"
     if (kb_dir / ".agents" / "repos.yaml").is_file() and not os.path.lexists(repos_link):
-        repos_link.parent.mkdir(exist_ok=True)
-        repos_link.symlink_to(Path("..") / kb_dir.name / ".agents" / "repos.yaml")
-        lines.append(f"linked {repos_link}")
+        if not dry_run:
+            repos_link.parent.mkdir(exist_ok=True)
+            repos_link.symlink_to(Path("..") / kb_dir.name / ".agents" / "repos.yaml")
+        lines.append(f"{'would link' if dry_run else 'linked'} {repos_link}")
     if source.is_file():
         relative = Path(kb_dir.name) / ".agents" / "workspace-AGENTS.md"
         if (ws_root / "AGENTS.md").is_symlink() and os.readlink(ws_root / "AGENTS.md") == str(relative):
             return lines + [f"{ws_root / 'AGENTS.md'}: already links to {relative}"]
-        lines += _place_instructions(ws_root, lambda path: path.symlink_to(relative), adopt, generated_only=False)
+        lines += _place_instructions(ws_root, relative, adopt, False, dry_run)
     return lines
 
 
@@ -366,10 +387,10 @@ def org_root(url: str) -> Path:
     return data / f"{_safe_id(name, 'repository name')}-{hashlib.sha256(normalize(url).encode()).hexdigest()}"
 
 
-def acquire_org(url: str) -> tuple:
-    """Clone, or refresh a clean clone of, the organization repository. Returns (folder, commit)."""
+def acquire_org(url: str, root: Path = None) -> tuple:
+    """Clone, or refresh a clean clone of, the organization repository: (folder, commit). A dry run's root is in scratch."""
     validate_repository_url(url)
-    root, env, git = org_root(url), org_git_env(), ORG_GIT
+    root, env, git = root or org_root(url), org_git_env(), ORG_GIT
     if root.exists():
         if root.is_symlink() or not (root / ".git").is_dir():
             raise setup.SetupError(f"{root} is not a real git clone")
@@ -399,9 +420,9 @@ def acquire_org(url: str) -> tuple:
     return root, _git(git + ["rev-parse", "HEAD"], root, env).stdout.strip()
 
 
-def install_org_skills(repo: Path) -> list:
+def install_org_skills(repo: Path, dry_run: bool = False) -> list:
     """Copy the repository's skills into Claude Code's and the Agent Skills folders (never
-    ~/.codex/skills, which Codex owns). A copy someone edited since setup wrote it is kept."""
+    ~/.codex/skills, which Codex owns). A copy someone edited since setup wrote it is kept. A dry run writes nothing."""
     nested, flat = sorted(repo.glob("skills/*/SKILL.md")), sorted(repo.glob("*/SKILL.md"))
     if nested and flat:
         raise setup.SetupError(f"{repo.name} has skills both under skills/ and at its root; use one layout")
@@ -412,16 +433,21 @@ def install_org_skills(repo: Path) -> list:
         ledger = {}
     lines = []
     for skill in [p.parent for p in nested or flat]:
-        for root in (Path.home() / ".claude" / "skills", Path.home() / ".agents" / "skills"):
+        done = []
+        for root, harness in ((Path.home() / ".claude" / "skills", "Claude Code"), (Path.home() / ".agents" / "skills", "Codex")):
             dest = root / skill.name
             if dest.exists() and ledger.get(str(dest)) != _digest(dest) and not _from_4x(dest, repo, skill):
-                lines.append(f"{dest}: kept (changed since setup wrote it, or not written by setup)")
+                lines.append(f"{dest}: {'would keep' if dry_run else 'kept'} (changed since setup wrote it, or not written by setup)")
                 continue
-            setup.export_tree(skill, dest)  # staging, then an atomic rename
-            ledger[str(dest)] = _digest(dest)
-        lines.append(f"skill {skill.name}: installed for Claude Code and Codex")
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+            if not dry_run:
+                setup.export_tree(skill, dest)  # staging, then an atomic rename
+                ledger[str(dest)] = _digest(dest)
+            done.append(harness)
+        if done:
+            lines.append(f"skill {skill.name}: {'would install' if dry_run else 'installed'} for {' and '.join(done)}")
+    if not dry_run:
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return lines
 
 
@@ -451,30 +477,34 @@ def render_instructions(org_text: str, personal_text: str = "") -> str:
     return "\n\n".join(parts + (["## Personal", personal_text.strip()] if personal_text.strip() else [])) + "\n"
 
 
-def org_preferences(url: str) -> tuple:
-    """(clients, marketplace ref) the organization's manifest asks for."""
-    root, _ = acquire_org(url)
+def org_preferences(url: str, scratch: Path = None) -> tuple:
+    """(clients, marketplace ref) the organization's manifest asks for. A dry run reads it through a clone in scratch."""
+    root, _ = acquire_org(url, scratch and scratch / org_root(url).name)
     eco = validate_org_manifest(yamlish.load_mapping((root / ".agents" / "onboarding.yaml").read_text(
         encoding="utf-8"), ".agents/onboarding.yaml")).get("ecosystem") or {}
     ref = f"v{eco['version_pin']}" if eco.get("version_pin") else ("main" if eco.get("channel") == "edge" else "stable")
     return list(eco.get("clients") or ["claude", "codex"]), ref
 
 
-def enroll(url: str, progress, personal_source: str = "", adopt: bool = False) -> list:
-    root, commit = acquire_org(url)
+def enroll(url: str, progress, personal_source: str = "", adopt: bool = False, scratch: Path = None) -> list:
+    """A dry run passes `scratch`, its temporary folder: configuration and skills are read through clones there."""
+    dry, env = scratch is not None, org_git_env()
+    root, commit = acquire_org(url, scratch and scratch / org_root(url).name)
     manifest = validate_org_manifest(yamlish.load_mapping((root / ".agents" / "onboarding.yaml").read_text(
         encoding="utf-8"), ".agents/onboarding.yaml"))
     org, help_text = manifest["org"], manifest.get("auth_help") or ""
     ws_root = Path.home() / "workspaces" / org["workspace"]
     lines = [f"organization {org.get('name') or org['id']}: configuration at commit {commit[:12]}"]
     lines += clone_all([(kb["repository"], ws_root / kb["name"], kb.get("default_branch", ""), {})
-                        for kb in manifest.get("knowledge_bases") or []], progress, org_git_env(), help_text)
+                        for kb in manifest.get("knowledge_bases") or []], progress, env, help_text, dry)
     for entry in manifest.get("skills_repos") or []:
-        target = root.parent / "skills" / org_root(entry["repository"]).name
-        status = clone_all([(entry["repository"], target, "", {})], progress, org_git_env(), help_text)
-        lines += status
+        kept = org_root(url).parent / "skills" / org_root(entry["repository"]).name
+        target = scratch / "skills" / kept.name if dry else kept  # a dry run reads a fresh clone; the kept one is previewed
+        status = clone_all([(entry["repository"], target, "", {})], (lambda _: None) if dry else progress, env, help_text)
+        lines += clone_all([(entry["repository"], kept, "", {})], progress, env, help_text, True) \
+            if dry and "needs action" not in status[0] else status
         if (target / ".git").exists():
-            lines += install_org_skills(target)
+            lines += install_org_skills(target, dry)
     source = root / manifest["instruction_sources"][0]["path"]
     tracked = _git(["ls-files", "--error-unmatch", "--", manifest["instruction_sources"][0]["path"]], root)
     if source.is_symlink() or not source.is_file() or tracked.returncode:
@@ -491,13 +521,20 @@ def enroll(url: str, progress, personal_source: str = "", adopt: bool = False) -
     if personal and (personal.is_symlink() or not personal.is_file()):
         raise setup.SetupError(f"{personal_source} is not a regular file")
     records[normalize(url)] = {"workspace": org["workspace"], "commit": commit, "personal_source": personal_source}
-    records_path.parent.mkdir(parents=True, exist_ok=True)
-    records_path.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    text = render_instructions(source.read_text(encoding="utf-8"), personal.read_text(encoding="utf-8") if personal else "")
-    ws_root.mkdir(parents=True, exist_ok=True)
-    lines += _place_instructions(ws_root, lambda path: path.write_text(text, encoding="utf-8"), adopt, True)
+    layers = source.read_text(encoding="utf-8"), personal.read_text(encoding="utf-8") if personal else ""
+    if not dry:
+        records_path.parent.mkdir(parents=True, exist_ok=True)
+        records_path.write_text(json.dumps(records, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        ws_root.mkdir(parents=True, exist_ok=True)
+    lines += _place_instructions(ws_root, render_instructions(*layers), adopt, True, dry)
+    from synthesis import cli
+    known = cli.parser()._subparsers._group_actions[0].choices  # the commands v5 has, from its own parser
+    unknown = sorted(set(re.findall(r"`synthesis ([a-z][\w-]*)", "\n".join(layers))) - set(known))
+    if unknown:  # an organization's text written for 4.x: the public baseline above it says what to run
+        lines.append("note: the organization or personal instructions name " + ", ".join(f"`synthesis {c}`" for c in unknown)
+                     + ", which synthesis v5 does not have; the Public section of AGENTS.md gives the commands to use")
     welcome = manifest.get("welcome") or {}
-    if welcome:
+    if welcome and not dry:
         lines += [welcome.get("title", "Your workspace is ready")] + [f"  try: {q}" for q in welcome.get("try_asking", [])]
     return lines
 

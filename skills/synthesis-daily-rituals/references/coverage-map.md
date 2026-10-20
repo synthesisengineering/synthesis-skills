@@ -71,7 +71,7 @@ publishes with `synthesis handoff`; version 3.0.0; `format: v5`.
 | Step 1 closing (L1/L2/L3) | [day-start.md](day-start.md) Step 1 | Verbatim |
 | Step 2 Context Optimization | [day-start.md](day-start.md) Step 2 | Verbatim |
 | Step 3 Sync intro; 3a Source-Code Sync (all bullets, four states, remote layout paragraph) | [day-start.md](day-start.md) 3a | Verbatim rules; `repo_state.py` states extend the four (DIRTY, BEHIND, EXCLUDED added) |
-| 3b Channel Sync (Slack, Google Chat, email, document comments, name surfaces not swept, watermark gate, project steps) | [day-start.md](day-start.md) 3b; [sync-watermarks.md](sync-watermarks.md) | Verbatim with v5 commands; connector reads advance (2026-10-01) |
+| 3b Channel Sync (Slack, Google Chat, email, document comments, name surfaces not swept, watermark gate, project steps) | [day-start.md](day-start.md) 3b; [sync-watermarks.md](sync-watermarks.md) | Verbatim with v5 commands; connector reads advance (2026-10-01); local messages advance only to the reader's `coverage.through` and a stale store is deferred (2026-10-20, appended to the local-messages line) |
 | 3c Meeting Transcripts (acquisition bullet; automated and manual paths) | [day-start.md](day-start.md) 3c | Paths verbatim; acquisition bullet retired |
 | 3d Inbox Hygiene | [day-start.md](day-start.md) 3d | Verbatim |
 | 4 Catch-Up Read (cross-check, ownership routing, time-block layer) | [day-start.md](day-start.md) Step 4 | Verbatim; the publish-and-overlap bullet becomes "read every owned calendar; an unread window is not free" (overlap service retired) |

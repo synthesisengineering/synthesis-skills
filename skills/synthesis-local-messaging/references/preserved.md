@@ -9,6 +9,7 @@ Contents:
 - SKILL.md 1.0.0 (verbatim)
 - references/messages-boundary.md at 0.1.0 (verbatim)
 - references/adapter-contract.md at 0.1.0 (verbatim)
+- Replaced on 2026-10-20 (verbatim)
 
 ## Why these passages were retired
 
@@ -447,4 +448,119 @@ decoder, physical-path checks, source-generation checks, OS sandbox and process
 owners. It retains only outbound row pointers/status and the exact approved
 request in private attempt state. It does not expand the triage reader's windows
 or establish missing historical coverage.
+````
+
+## Replaced on 2026-10-20 (verbatim)
+
+The 1.1.1 passages below were replaced when two field reports' causes were found: rows with
+no chat link were messages the principal had deleted (Messages keeps their chat in Recently
+Deleted), and a store its app had stopped writing was read as complete. See
+[coverage-map.md](coverage-map.md#fixes-of-2026-10-20).
+
+SKILL.md: binding rules 3 and 9, three Contents bullets, Read and interpret steps 3 and 4, the
+skip-rule paragraph, the send paragraph and the Daily rituals paragraph.
+
+````markdown
+3. **A completed page is not complete history.** Never delete saved pages or reset a cursor to hide a gap; a gap holds the window until it is resolved: its chat excluded, or its exact rows closed by a by-hand review the principal approves.
+
+9. **For daily rituals, the reader is one declared surface of the sweep.** Report its coverage, gaps and note pointers in the sync report; add no scheduler and activate no ritual.
+
+- [references/adapter-contract.md](references/adapter-contract.md): the request, supported schema shapes, chat attribution, decoding limits and markers, closing a gap by hand, the sandbox and SQLite behavior, state and output. Read it before invoking the reader, and before closing any gap.
+
+- [references/coverage-map.md](references/coverage-map.md): where each part of the 0.1.0 and 1.0.0 text lives, and the script changes of milestone M3 and of 2026-10-13.
+
+- Read and interpret, Sending one approved iMessage, Daily rituals: below.
+
+3. From this skill's folder, run
+   `python3 scripts/local_messaging.py --request REQUEST.json --state STATE_DIR`.
+   It reads one page inside the OS sandbox (macOS `sandbox-exec`, Linux `bwrap`)
+   and prints it as JSON: candidate notes with pointers, and coverage (rows
+   examined, skips by reason, gaps, `complete`). Exit 2 prints
+   `{"status": "REFUSED", "reason": ...}`: no sandbox, an unknown schema,
+   malformed data or a replaced database is a refusal, never an empty result.
+4. Run the same command again until `coverage.complete` is true. A completed
+   page is not complete history. The reader saves each page in the state
+   directory before advancing its cursor. Do not delete saved pages or reset a
+   cursor to hide a gap: a page with a gap does not advance, and the gap stays
+   in the report until someone resolves it (for example by excluding that chat).
+   After reading its rows in the app, close a page's gaps by adding
+   `--review REVIEW.json` naming exactly those rows and reasons. It refuses with
+   a code; show the principal the rows, and once they type `approve <code>` the
+   identical command records the rows under `coverage.reviewed` and moves on.
+   An agent never closes a gap on its own.
+
+The reader skips configured chats, short-code senders, reactions, status and
+broadcast material, likely verification codes, delivery notices, and marketing.
+These are conservative triage rules, not exhaustive semantic classifiers. Group
+selection requires an exact configured self name. Generic “you” is insufficient;
+structured mention/reply metadata is currently unsupported. Media is only a
+presence flag. Unsupported attributed bodies remain explicit gaps, except on a
+link or attachment row: it is listed under `coverage.marked` as `[link]` or
+`[attachment: image/jpeg]`, and any caption with it is unread. An outgoing row
+with no chat join takes its recipient handle's one one-to-one chat
+(`coverage.by_handle`); with none or several it stays a gap.
+
+Read [sending](references/sending.md) first. In short: write the exact approved
+text to a file, then from this skill's folder run
+`python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt`.
+The first run prints `needs-approval` with a code; show the principal the exact
+recipient and text, and after they type `approve <code>`, run the identical
+command again. It prints one JSON object: `dispatched` (exit 0), `not-sent` or
+`uncertain` (exit 3), `refused` or `needs-approval` (exit 2). After `uncertain`,
+tell the principal and let them check Messages; the tool refuses a second try.
+
+In a day-start or day-end sweep, run the reader for the day's explicit window as
+one declared surface, and carry its coverage, gaps and note pointers into the
+sync report. Do not add a scheduler or activate a ritual from this skill.
+````
+
+references/adapter-contract.md: the request paragraph, the `imessage-v1` bullet, the chat
+attribution paragraph, the completeness paragraph, the snapshot paragraph, the output paragraph
+and the limits paragraph.
+
+````markdown
+The example dates and identity are synthetic. The operator supplies actual
+scope; no default personal path exists. Windows are half-open, timezone-aware,
+and at most 366 days. Pages contain at most 100 examined message rows.
+The reader starts at zero and keeps its cursor in the state directory; the
+request carries no cursor. A different request, or a replaced database file,
+needs its own state directory.
+
+- `imessage-v1`: `message`, `handle`, `chat`, `chat_message_join`,
+  `chat_handle_join`, `attachment`, and `message_attachment_join`; message
+  dates are nanoseconds since 2001-01-01 UTC.
+  Required columns are listed in `SCHEMAS` in the reader. Ambiguous chat joins
+  refuse attribution. Message GUID plus database, row, and chat identify a
+  pointer; an app URL is not invented.
+
+An iMessage row names its chat through one `chat_message_join` row. An outgoing
+row (`is_from_me` 1) that has a handle but no join is attributed to that
+handle's one-to-one chat, the chat whose only `chat_handle_join` member is that
+handle, when exactly one exists: an outgoing row's handle is its recipient.
+Excluded chats, the window and every skip rule then apply to it as to any
+message in that chat, and `coverage.by_handle` lists its row. With no such chat
+or several, the row stays a gap whose reason gives the count. An incoming row's
+handle is its sender, who may write in any chat, so an unjoined incoming row
+stays a gap, as does a row with several joins.
+
+Completeness keeps its meaning: every examined row is a note, a skip by a stated
+rule, a marked row, or a row the principal closed by name, recorded in the page
+the cursor passed.
+
+Each page has one SQLite read transaction and finite query/process limits.
+The first page fixes the upper row bound of the window's snapshot; later pages
+read up to that bound, so messages arriving during a long read do not move the
+target. A database whose highest row falls below that bound refuses as
+truncated. No database-wide hashing or copying is performed.
+
+Output is a bounded page of candidate notes and pointers plus examined range,
+skip counts, gaps and the sandbox used, with the rows that are `marked`,
+attributed `by_handle` or `reviewed`. Candidate categories
+are heuristic. No raw message body or media bytes enter the result. Exclusion
+and window tests precede logical body fetch/decoding; SQLite may read storage
+pages containing neighboring data internally.
+
+This scan cannot reconstruct deletions, edits between historical generations,
+unsynced messages, unsupported schemas, structured group mentions, or a whole
+conversation's meaning. Those limits remain visible in review coverage.
 ````

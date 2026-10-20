@@ -84,7 +84,7 @@ organizations); version 3.0.0; `format: v5`.
 | Old file | v5 home | How |
 |---|---|---|
 | `org-manifest.md` | [org-manifest.md](org-manifest.md); old in [preserved-org-manifest.md](preserved-org-manifest.md) | Example and migration table verbatim; commands, check command and repository rules updated |
-| `kernel.example.md` | [kernel.example.md](kernel.example.md); old in [preserved-kernel.md](preserved-kernel.md) | Enforcement declarations name v5's guards |
+| `kernel.example.md` | [kernel.example.md](kernel.example.md); old in [preserved-kernel.md](preserved-kernel.md) | Enforcement declarations name v5's guards; "Setup, updates and health" added 2026-10-20 |
 | `first-run-journeys.md` | [first-useful-task.md](first-useful-task.md); [preserved-first-run-journeys.md](preserved-first-run-journeys.md) | Table verbatim |
 | `declared-maintenance.md`, `message-guard-onboarding.md`, `modular-lifecycle.md`, `platform-ownership.md`, `web-distribution-contract.md` | `preserved-*.md` | Retired with their scripts and catalogs |
 | `release-capabilities.json`, `components.json`, `layers.json`, `platform-ownership-v1.json`, five `*.schema.json` | Deleted | CUT: catalogs the old engine checked itself against |
@@ -137,7 +137,8 @@ unless named):
 | 31: Muse grammar, absolute bundle path, update after install | `test_muse_first_install_stages_a_bundle_and_later_runs_update`, `test_muse_without_plugin_commands_is_refused_before_staging`, `test_muse_record_from_a_foreign_or_relative_path_is_refused`, `test_an_unreadable_muse_inventory_is_not_taken_for_absence` |
 | 38: no downgrade of an install ahead of the channel | `test_without_an_explicit_ref_an_install_on_another_channel_is_never_moved`; `tests/test_doctor.py::test_latest_release_compares_semantically_and_never_asks_for_a_downgrade` |
 | 39, 40: CA fallback; semantic versions | `tests/test_doctor.py::test_fetch_retries_with_the_system_ca_bundle_only_on_certificate_failures`, `test_latest_release_compares_semantically_and_never_asks_for_a_downgrade` |
-| 41: rerun changes nothing; dry run touches nothing | `tests/test_install.py::test_install_rerun_changes_nothing`, `test_overlay_sets_only_the_owned_keys` (rerun), `test_dry_run_runs_no_harness_command` |
+| 41: rerun changes nothing; dry run touches nothing | `tests/test_install.py::test_install_rerun_changes_nothing`, `test_overlay_sets_only_the_owned_keys` (rerun), `test_dry_run_runs_no_harness_command`; since 2026-10-20 every command: `test_org_dry_run_writes_nothing_and_says_what_it_would_do`, `test_a_first_org_dry_run_leaves_the_home_folder_as_it_was`, `test_workspace_dry_runs_write_nothing`, `test_dry_runs_say_what_they_would_do_and_change_nothing`, `test_onboard_sh_dry_run_runs_from_a_temporary_clone_and_leaves_the_source_alone` |
+| Generated instructions name only commands v5 has; an organization text naming another gets a note | `test_generated_instructions_say_how_to_update_and_check_health_with_real_commands`, `test_enrollment_notes_commands_the_organizations_text_names_that_v5_lacks` |
 | 42: prompts read the terminal under a pipe; without one, name the flag | `test_questions_read_the_terminal_when_stdin_is_a_pipe`, `test_questions_without_a_terminal_name_the_flag`, `test_discovery_without_a_terminal_names_the_flag` |
 | 43: progress per repository; Ctrl-C resume line; rerun skips finished | `test_new_mac_clones_every_listed_repository_with_progress`, `test_interrupt_prints_a_resume_line`, `test_an_interrupted_clone_leaves_nothing_at_the_target_and_a_rerun_finishes` |
 | 44: discovery through `gh`, clone `repos.yaml`, fast-forward, skip dirty or diverged by name | `test_discovery_uses_the_one_knowledge_repo_gh_lists`, `test_clone_then_fast_forward_then_skip_by_name`, `test_new_mac_clones_every_listed_repository_with_progress` |
@@ -158,3 +159,18 @@ unless named):
 
 The 3.0.0 text is verbatim in [preserved.md](preserved.md#replaced-in-301-2026-10-05). Version 3.0.0 became 3.0.1.
 
+
+## Changed on 2026-10-20
+
+| Where | Old | Now | Why |
+|---|---|---|---|
+| `setup.py` and `workspace.py`, every command with `--dry-run` | Only the plugin step honored it; `org`, `workspace` and `--org-repo` cloned, fetched, copied skills, wrote `org-skills.json`, `organizations.json` and `AGENTS.md`, and reported each in the past tense | Each step says what it would do and writes nothing in the person's folders or synthesis state; repositories it must read are cloned into a temporary folder it removes; uninstall's lines read "would keep"; it ends "Dry run: nothing was changed." | A field report: `setup.py org ... --no-input --dry-run` reinstalled three organization skills and rewrote a workspace's `AGENTS.md` |
+| `onboard.sh` | Fetched the release into `~/.synthesis/v5/source` before setup saw `--dry-run` | With `--dry-run`, runs setup from a temporary clone and leaves the source checkout alone | The same preview would otherwise move the source checkout |
+| `install_org_skills` | "installed for Claude Code and Codex" even when one or both copies were kept | Names only the harnesses whose copy it wrote | The line claimed writes that did not happen |
+| [kernel.example.md](kernel.example.md) | No update or health guidance | "Setup, updates and health": rerun the organization install with an HTTPS or SSH URL (a local path is refused), `--dry-run`, `synthesis doctor` | An organization's own instructions told agents to run `synthesis update`, which v5 does not have; that text lives in the organization's repository, so the public baseline written above it now gives the real commands, and enrollment prints a `note:` naming any `synthesis` command the organization or personal text uses that v5 lacks |
+| SKILL.md, Organization member; new "Previewing any command" | Two sentences on an existing install and the personal layer | Adds the URL rule, that rerunning `org` is the update, and the dry-run preview | Same report |
+| [harness-install.md](harness-install.md), [new-mac.md](new-mac.md), [org-manifest.md](org-manifest.md) | "`--dry-run` prints what each harness command would be and changes nothing" | The dry-run contract for every command; enrollment's URL rule, update and the retired-command note | Same report |
+
+The replaced harness-install.md sentence is verbatim in
+[preserved.md](preserved.md#replaced-on-2026-10-20). The skill's version is unchanged until
+the next release.

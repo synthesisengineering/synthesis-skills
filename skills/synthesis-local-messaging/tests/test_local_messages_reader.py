@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The local message reader (E81 to E83, and the reported gaps of 2026-10-08 and 2026-10-13). Synthetic
-SQLite only; no native app or personal path."""
+"""The local message reader (E81 to E83, and the reported gaps of 2026-10-08, 2026-10-13 and 2026-10-19).
+Synthetic SQLite only; no native app or personal path."""
 
 from __future__ import annotations
 
@@ -17,16 +17,18 @@ import sys
 import pytest
 
 import local_messaging as lm
-from local_messaging_fixtures import TYPEDSTREAM, add, approve, imessage, request
+from local_messaging_fixtures import TYPEDSTREAM, add, add_whatsapp, approve, imessage, request, whatsapp
 
 LINK = "com.apple.messages.URLBalloonProvider"  # the iMessage schema's balloon_bundle_id for a rich link
 UNDECODED = "unsupported attributedBody encoding; typedstream is not unarchived"
+APPLE_EPOCH = 978307200  # 2001-01-01T00:00:00Z, where both stores count from
 
 
 def run(path, tmp_path, **kw):
     page = request(path, **kw)
     page.setdefault("after", 0)
     page.setdefault("upper", None)
+    page.setdefault("stale_after_hours", lm.STALE_AFTER_HOURS[page["adapter"]])
     return lm.run_page(page)
 
 
@@ -57,7 +59,7 @@ def test_e81_unconfined_worker_refuses_before_sqlite_opens(tmp_path):
     add(db)
     db.close()
     before = hashes(path.parent)
-    page = {**request(path), "after": 0, "upper": None}
+    page = {**request(path), "after": 0, "upper": None, "stale_after_hours": lm.STALE_AFTER_HOURS["imessage-v1"]}
     with pytest.raises(lm.Refused, match="confinement"):
         lm.read_page(page)
     assert hashes(path.parent) == before
@@ -241,44 +243,52 @@ def test_state_is_one_reader_at_a_time_and_never_adopts_foreign_files(tmp_path, 
             lm.scan(request(path), state)
 
 
-# --- an unjoined outgoing row belongs to its recipient's one-to-one chat ----------------------
+# --- a row Messages moved to Recently Deleted takes the chat that record names -----------------
 
 
-def test_unjoined_outgoing_row_takes_its_handles_one_to_one_chat(tmp_path, need_sandbox):
+def test_recently_deleted_rows_take_their_recorded_chat_and_are_skipped(tmp_path, need_sandbox):
+    """The rows of both field reports had no chat_message_join row because Messages had moved them to Recently
+    Deleted, whose chat_recoverable_message_join row names the chat. On 2026-10-19 all five were incoming,
+    each from a handle whose one chat is one-to-one (two iMessage, three SMS); on 2026-10-08 all seven were outgoing."""
     path, db = imessage(tmp_path / "source")
-    row = add(db, "I will send the plan tomorrow.", mine=1, join=False)
-    add(db, "I will send it later.", mine=1, join=False, day=-3)  # outside the window, as for any message
+    for _ in range(5):
+        add(db, "Can you call me back?", deleted=True)  # the 10-19 shape
+    add(db, "I will send the plan tomorrow.", mine=1, deleted=True)  # the 10-08 shape
+    kept = add(db, "Can you review the plan?")
     db.close()
-    result = run(path, tmp_path)
-    coverage = result["coverage"]
-    assert coverage["gaps"] == [] and coverage["complete"] and coverage["by_handle"] == [row]
-    assert coverage["examined"] == 1
-    assert result["notes"][0]["pointer"]["chat"] == "synthetic-chat"
-    assert result["notes"][0]["class"] == "promise-candidate"
-    excluded = run(path, tmp_path, excluded_chats=["synthetic-chat"])["coverage"]
-    assert excluded["skipped"] == {"excluded-chat": 1} and excluded["gaps"] == [] and excluded["complete"]
+    page = lm.scan(request(path, page_size=10), tmp_path / "state")
+    coverage = page["coverage"]
+    assert coverage["gaps"] == [] and coverage["skipped"] == {"deleted": 6} and coverage["complete"]
+    assert [note["pointer"]["row"] for note in page["notes"]] == [kept]  # a deleted message is never a candidate
+    excluded = lm.scan(request(path, page_size=10, excluded_chats=["synthetic-chat"]), tmp_path / "excluded")
+    assert excluded["coverage"]["skipped"] == {"excluded-chat": 7}  # its chat is known, so exclusion reaches it
 
 
-@pytest.mark.parametrize("setup,count", [("no chat", 0), ("group only", 0), ("two direct chats", 2)])
-def test_unjoined_outgoing_row_without_exactly_one_direct_chat_stays_a_gap(tmp_path, need_sandbox, setup, count):
-    path, db = imessage(tmp_path / "source")
-    if setup == "no chat":
-        db.execute("delete from chat_handle_join")
-    elif setup == "group only":  # the handle's only chat has another member
-        db.execute("insert into handle values('+15559876543')")
-        db.execute("insert into chat_handle_join values(1, 2)")
-    else:
-        db.execute("insert into chat values('synthetic-chat-2')")
-        db.execute("insert into chat_handle_join values(2, 1)")
+@pytest.mark.parametrize("shape, reason", [
+    ("no record", "no chat link and no Recently Deleted records"),
+    ("two records", "no chat link and 2 Recently Deleted records"),
+    ("older store", "no chat link"),
+    ("two chat links", "2 chat links"),
+    ("chat without members", "chat membership unknown"),
+])
+def test_a_row_with_no_single_chat_stays_a_gap_that_says_why(tmp_path, need_sandbox, shape, reason):
+    """No chat is inferred from a handle (removed 2026-10-20): an outgoing row's handle names its recipient, but a
+    store can file a message to that handle in another one-to-one chat than the one the handle belongs to."""
+    path, db = imessage(tmp_path / "source", recently_deleted=shape != "older store")
+    db.execute("insert into chat values('synthetic-chat-2')")  # chat 2, which lists no members
+    if shape in ("two chat links", "chat without members"):
+        row = add(db, "Can you call me back?", chat=2 if shape == "chat without members" else 1)
+        if shape == "two chat links":
+            db.execute("insert into chat_message_join values(2, ?)", (row,))
+    else:  # an outgoing row whose handle is the one member of exactly one chat
+        row = add(db, "I will send the plan tomorrow.", mine=1, join=False)
+        if shape == "two records":
+            db.executemany("insert into chat_recoverable_message_join values(?, ?, 1)", [(1, row), (2, row)])
     db.commit()
-    outgoing = add(db, "I will send the plan tomorrow.", mine=1, join=False)
-    incoming = add(db, "Can you send the plan?", join=False)  # a sender's handle does not name the chat
     db.close()
-    coverage = run(path, tmp_path)["coverage"]
-    assert coverage["gaps"] == [
-        {"row": outgoing, "reason": f"ambiguous chat attribution: unjoined outgoing row; {count} one-to-one chats with its handle"},
-        {"row": incoming, "reason": "ambiguous chat attribution"}]
-    assert not coverage["complete"] and coverage["by_handle"] == []
+    coverage = lm.scan(request(path), tmp_path / "state")["coverage"]
+    assert coverage["gaps"] == [{"row": row, "reason": "ambiguous chat attribution: " + reason}]
+    assert not coverage["complete"] and not (tmp_path / "state" / "cursor.json").exists()
 
 
 # --- a link or attachment row the decoder cannot read carries a marker ------------------------
@@ -369,16 +379,75 @@ def test_a_review_names_exactly_the_pages_gaps_and_a_grant_alone_closes_nothing(
 
 
 def test_whatsapp_reads_its_own_explicit_schema(tmp_path, need_sandbox):
-    import sqlite3
-    path = tmp_path / "wa.sqlite"
-    db = sqlite3.connect(path)
-    db.executescript("""create table ZWACHATSESSION(Z_PK integer primary key, ZCONTACTJID text, ZSESSIONTYPE integer);
-    create table ZWAMESSAGE(Z_PK integer primary key, ZSTANZAID text, ZTEXT text, ZMESSAGEDATE real, ZISFROMME integer,
-      ZFROMJID text, ZCHATSESSION integer, ZMESSAGETYPE integer);
-    insert into ZWACHATSESSION values(1, 'synthetic@s.whatsapp.net', 0);
-    insert into ZWAMESSAGE values(1, 'msg-1', 'Can you review?', 86400, 0, 'synthetic@s.whatsapp.net', 1, 0);""")
+    path, db = whatsapp(tmp_path / "source")
+    add_whatsapp(db, "Can you review?", 86400)
     db.close()
     assert len(run(path, tmp_path, adapter="whatsapp-v1")["notes"]) == 1
+
+
+# --- a store whose app stopped syncing is stale, not complete (reported 2026-10-19) ----------------
+
+
+def stamp(day, hour, minute=0):
+    """Seconds since the stores' epoch for 2001-01-<day> at hour:minute UTC."""
+    return (day - 1) * 86400 + hour * 3600 + minute * 60
+
+
+def test_a_store_that_stopped_syncing_is_stale_and_its_window_stays_open(tmp_path, need_sandbox):
+    """On 2026-10-17 a WhatsApp store stopped syncing minutes after its newest message. Two days later the reader called
+    the window complete over it, the watermark moved, and the messages that synced once the app opened were never read."""
+    path, db = whatsapp(tmp_path / "source")
+    add_whatsapp(db, "Can you call me?", stamp(3, 8))
+    add_whatsapp(db, "Are you around?", stamp(3, 8, 10))
+    os.utime(path, (APPLE_EPOCH + stamp(3, 8, 22),) * 2)  # the store's last write
+    window = request(path, adapter="whatsapp-v1", start="2001-01-02T00:00:00Z", end="2001-01-04T10:41:00Z", page_size=10)
+    state = tmp_path / "state"
+    page = lm.scan(window, state)
+    assert not page["coverage"]["complete"] and len(page["notes"]) == 2
+    coverage = page["coverage"]
+    assert coverage["through"] == "2001-01-03T08:10:00+00:00"  # a watermark moves no further than the newest message
+    assert coverage["store"] == {"newest_message": "2001-01-03T08:10:00+00:00", "database_modified": "2001-01-03T08:22:00+00:00",
+                                 "wal_modified": None, "stale_after_hours": 12, "reach": "2001-01-03T08:10:00+00:00"}
+    for fact in ("26.3 hours before 2001-01-04T10:41:00+00:00", "newest message 2001-01-03T08:10:00+00:00",
+                 "database modified 2001-01-03T08:22:00+00:00", "WAL modified never"):
+        assert fact in coverage["stale"]
+    cursor = json.loads((state / "cursor.json").read_text())
+    assert cursor["after"] == 2 and cursor["upper"] is None and not cursor["complete"]
+    assert not lm.scan(window, state)["coverage"]["complete"]  # still stale: still open, nothing re-noted
+    for minute in (20, 40, 50):  # the app opens and syncs what arrived while it was stopped
+        add_whatsapp(db, "Did you see this?", stamp(3, 9, minute))
+    db.close()
+    page = lm.scan(window, state)
+    assert [note["pointer"]["row"] for note in page["notes"]] == [3, 4, 5]
+    assert page["coverage"]["complete"] and page["coverage"]["stale"] is None
+    assert page["coverage"]["through"] == "2001-01-04T10:41:00+00:00" and lm.scan(window, state) == page
+    os.utime(path, (APPLE_EPOCH + stamp(3, 8, 22),) * 2)  # the newest message, 09:50, is 24.9 hours before the end
+    assert not lm.scan(window, tmp_path / "default")["coverage"]["complete"]
+    assert lm.scan(window, tmp_path / "patient", stale_after_hours=30)["coverage"]["complete"]
+
+
+def test_the_wal_file_time_counts_as_a_write(tmp_path, need_sandbox):
+    path, writer = imessage(tmp_path / "source", wal=True)
+    add(writer)
+    wal = Path(str(path) + "-wal")
+    for item in (path, wal):
+        os.utime(item, (APPLE_EPOCH + stamp(2, 0),) * 2)
+    coverage = run(path, tmp_path)["coverage"]
+    assert coverage["stale"] and "WAL modified 2001-01-02T00:00:00+00:00" in coverage["stale"] and not coverage["complete"]
+    os.utime(wal, (APPLE_EPOCH + stamp(31, 20),) * 2)  # four hours before the window ends
+    coverage = run(path, tmp_path)["coverage"]
+    assert coverage["stale"] is None and coverage["complete"] and coverage["through"] == "2001-02-01T00:00:00+00:00"
+    assert coverage["store"]["wal_modified"] == "2001-01-31T20:00:00+00:00"
+    writer.close()
+
+
+@pytest.mark.parametrize("hours", [0, -1, float("nan"), float("inf"), 8785, True, "12"])
+def test_the_stale_threshold_is_a_bounded_number_of_hours(tmp_path, hours):
+    path, db = imessage(tmp_path / "source")
+    db.close()
+    with pytest.raises(lm.Refused, match="stale_after_hours"):
+        lm.scan(request(path), tmp_path / "state", stale_after_hours=hours)
+    assert not (tmp_path / "state").exists()
 
 
 def test_window_selection_does_not_page_through_unrelated_history(tmp_path, need_sandbox):
@@ -458,3 +527,15 @@ def test_command_line_reads_and_saves_a_page(tmp_path, need_sandbox, python):
     refused = subprocess.run([python, "-B", str(Path(lm.__file__)), "--request", str(req)],
                              capture_output=True, text=True, timeout=60)
     assert refused.returncode == 2 and json.loads(refused.stdout)["status"] == "REFUSED"
+
+
+def test_each_store_has_its_own_quiet_hours(tmp_path, need_sandbox):
+    """A quiet iMessage night is not a stopped store: in 90 days the principal's iMessage went over 12 hours
+    without a message 27 times and never 24, while WhatsApp never went 12 (2026-10-20)."""
+    path, db = imessage(tmp_path / "source")
+    add(db)
+    db.close()
+    os.utime(path, (APPLE_EPOCH + stamp(1, 0),) * 2)
+    window = request(path, start="2000-12-31T00:00:00Z", end="2001-01-01T15:00:00Z", page_size=50)
+    assert lm.scan(window, tmp_path / "imessage")["coverage"]["store"]["stale_after_hours"] == 24
+    assert lm.STALE_AFTER_HOURS == {"whatsapp-v1": 12, "imessage-v1": 24}

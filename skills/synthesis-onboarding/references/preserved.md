@@ -499,3 +499,15 @@ rerunning `onboard.sh` with `plugin`. The 3.0.0 text, verbatim:
 following a channel keeps it; `--ref vX.Y.Z` pins one. `synthesis doctor --latest` says
 whether a newer release exists.
 ```
+
+## Replaced on 2026-10-20
+
+The 3.0.1 sentence on `--dry-run` in harness-install.md described the plugin step only; the
+`org` and `workspace` commands ignored the flag and wrote everything a run writes. The
+3.0.1 text, verbatim:
+
+```text
+own command (`plugin`, `workspace`, `org`, `uninstall`). Every run prints one line per
+step and ends with the restart sentence. `--dry-run` prints what each harness command
+would be and changes nothing; `--no-input` never asks and names the flag it needed.
+```

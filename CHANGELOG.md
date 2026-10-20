@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.1] - 2026-10-20
+
+Defects other sessions reported on 10-19 and 10-20:
+- **Onboarding dry runs write nothing** (onboarding 3.0.2). `setup.py org ... --dry-run` passed the flag only to
+  the plugin step, so it cloned the organization's skills repository, reinstalled its skills and rewrote the
+  workspace's instruction files while reporting in the past tense. Every org and workspace step now reads into a
+  temporary folder and says what it would do, ending "Dry run: nothing was changed."; `onboard.sh --dry-run` runs
+  setup from a temporary clone; abbreviated options are refused, so `--dry` cannot slip past it.
+- **Instructions name only real commands.** The public section written into every organization workspace says
+  v5 has no update command and gives the rerun and health commands; enrollment notes any `synthesis` command an
+  organization's own text names that v5 lacks.
+- **A store that stopped syncing is stale, not complete** (local messaging 1.2.0). A WhatsApp store stopped on
+  10-17 and the next read called the window complete, so the watermark moved past messages that synced later. A
+  store with no write and no message past its threshold (12 hours for WhatsApp, 24 for iMessage, from 90 days of
+  the principal's stores) reports `coverage.stale`, stops `coverage.through` at its newest message and stays open;
+  the day-start moves the messages watermark only to `coverage.through` (daily rituals 3.1.1).
+- **Messages deleted on the Mac are attributed from Recently Deleted,** not guessed from a handle's one-to-one
+  chat, which in one store was the wrong chat. A row with exactly one Recently Deleted record takes that chat and
+  is skipped as deleted; any other row without one chat is a gap that says why.
+- **The packet's Markdown view keeps a wrapped list item whole** (decision packet 2.1.2): an indented second line
+  rendered as a new paragraph.
+
 ## [5.1.0] - 2026-10-20
 
 **New skill: synthesis-action-sheet 1.0.0,** the decision packet's companion. After agents carry out the

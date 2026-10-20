@@ -133,6 +133,15 @@ Add the organization to an existing installation without touching the plugin:
 python3 <checkout>/skills/synthesis-onboarding/scripts/setup.py org --org-repo ssh://git@example.test/example/onboarding-config.git
 ```
 
+`--org-repo` takes the organization repository's HTTPS or SSH URL; a local path, a
+`file:` URL and Git's unauthenticated protocol are refused, as for every manifest URL.
+Rerunning the same command is the update: it refreshes the configuration clone,
+fast-forwards clean knowledge repositories, copies the skills again (keeping edited
+copies) and regenerates the workspace's `AGENTS.md`. Synthesis v5 has no
+`synthesis update` command. Add `--dry-run` to see what a run would change: it reads the
+configuration and the skills through clones in a temporary folder it removes, says
+whether `AGENTS.md` would change, and writes nothing else.
+
 A user may add a private personal instruction layer without putting its path or
 repository in this shareable manifest: `--personal-source /path/to/my-instructions.md`.
 Setup records it locally (`~/.synthesis/v5/organizations.json`), and a rerun keeps it;
@@ -177,3 +186,10 @@ the optional personal source, under a generated marker, and `CLAUDE.md` as the l
 marker. Existing workspace-root instruction files remain untouched unless the user
 passes `--adopt-workspace-instructions`, which moves both to
 `~/.synthesis/v5/archive/<timestamp>/` first.
+
+The public baseline tells agents how to update and check the installation with commands
+v5 has: rerunning the organization install with the repository's HTTPS or SSH URL, and
+`synthesis doctor`. An organization source written for 4.x may still say `synthesis update`
+(2026-10-20); when the organization or personal text names a `synthesis` command the v5
+command line lacks, setup prints a `note:` line naming it, so the source's maintainers can
+correct it. The baseline above it already tells agents to ignore such a command.
