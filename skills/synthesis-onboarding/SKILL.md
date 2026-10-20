@@ -74,7 +74,15 @@ command after any interruption.
 `python3 "$S" --org-repo URL` for a new install (clients and release come from the
 manifest), or `python3 "$S" org --org-repo URL` on an existing one. Add
 `--personal-source PATH` for a private instruction layer. A repository line marked
-`needs action` shows the organization's sign-in help; fix access and rerun.
+`needs action` shows the organization's sign-in help; fix access and rerun. `URL` is the
+repository's HTTPS or SSH URL; a local path is refused. Rerunning `org` is the update and
+regenerates the workspace's `AGENTS.md`; v5 has no `synthesis update`.
+
+### Previewing any command
+
+Add `--dry-run` to any command: each line says what it would do (`would clone`, `would
+install`, `would write it`) and nothing is written. Repositories it must read are cloned
+into a temporary folder it removes. The last line is "Dry run: nothing was changed."
 
 ### Update
 

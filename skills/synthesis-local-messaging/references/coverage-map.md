@@ -60,7 +60,8 @@ Line counts are `wc -l`. Verdicts from the v5 code evaluation (tool scripts, loc
 | R3.1 exact-text approval, one send per approval | `test_send_waits_for_exact_approval_then_sends_once`, `test_approval_covers_only_the_exact_text_and_recipient`, `test_forbidden_phrases_block_before_approval_and_bad_config_blocks_everything` |
 | Sandbox behaviour (moved with the code) | `test_local_messages_sandbox.py` (through the reader's own sandbox command: private reads, writes to the database folder and outside, and network denied; no fork or spawn on macOS; no sandbox means the reader runs nothing; the Linux loader paths) |
 | Apple's Python 3.9 runs the reader | `test_local_messages_reader.py::test_command_line_reads_and_saves_a_page[/usr/bin/python3]` |
-| An unjoined outgoing row takes its handle's one one-to-one chat; none or several is a gap with the count | `test_local_messages_reader.py::test_unjoined_outgoing_row_takes_its_handles_one_to_one_chat`, `test_unjoined_outgoing_row_without_exactly_one_direct_chat_stays_a_gap` |
+| A message in Recently Deleted takes the chat that record names and is skipped as `deleted` (the rows of 2026-10-08 and 2026-10-19); every other row without one chat is a gap saying why, and no chat is inferred from a handle | `test_local_messages_reader.py::test_recently_deleted_rows_take_their_recorded_chat_and_are_skipped`, `test_a_row_with_no_single_chat_stays_a_gap_that_says_why` |
+| A store whose app stopped writing is stale: never complete, its cursor open for what syncs later, `through` at its newest message, the threshold a bounded option | `test_a_store_that_stopped_syncing_is_stale_and_its_window_stays_open`, `test_the_wal_file_time_counts_as_a_write`, `test_the_stale_threshold_is_a_bounded_number_of_hours` |
 | An undecodable link or attachment row is marked, not held; unreadable text still holds | `test_undecodable_link_and_attachment_rows_carry_a_marker_and_do_not_hold_the_window`, `test_a_row_whose_text_is_genuinely_unreadable_still_holds_the_window` |
 | A by-hand review closes a page's gaps only with the principal's approval of exactly those rows | `test_a_principal_approved_review_closes_the_gaps_it_names_and_is_recorded`, `test_a_review_names_exactly_the_pages_gaps_and_a_grant_alone_closes_nothing` |
 
@@ -80,6 +81,39 @@ The `imessage-v1` contract gained `message.balloon_bundle_id`, `attachment` and
 skip-rule paragraph in SKILL.md (the 1.0.0 lines are in preserved.md), and the
 chat attribution, marker and "Closing a gap by hand" text in
 [adapter-contract.md](adapter-contract.md).
+
+## Fixes of 2026-10-20
+
+Two field reports of 2026-10-19. First, the iMessage reader held its window on five
+"ambiguous chat attribution" rows again. Read from the store's metadata only (never a body):
+all five were incoming, each with a handle, no `chat_message_join` row, and exactly one
+`chat_recoverable_message_join` row naming the one chat their handle belongs to, a one-to-one
+chat; two were iMessage and three SMS. That table is Messages' Recently Deleted. The seven
+outgoing rows of 2026-10-08, which the handle inference of 2026-10-13 attributed, had the same
+record. So the reader now attributes a row with one Recently Deleted record to that chat and
+skips it as `deleted` (excluded chats still apply first), retires the handle inference (in the
+same store, two messages to a handle sat in another one-to-one chat than the handle's own, so
+the inference was a guess) and with it `coverage.by_handle`, and gives every remaining gap a
+reason that says why. `chat_recoverable_message_join` is an optional table of `imessage-v1`
+(`OPTIONAL` in the reader); a store without it keeps the plain "no chat link" gap.
+
+Second, a WhatsApp store stopped syncing on 2026-10-17 and two days later the reader called the
+window complete over it, so the watermark moved past messages that arrived once the app opened.
+Each page now compares the store's newest message and its database and `-wal` modification
+times with the window's reach; a store silent for `--stale-after-hours` (12 by default) while
+the window runs past it reports `coverage.stale`, is never complete, keeps its cursor open
+without a snapshot bound, and sets `coverage.through` to its newest message. `coverage.store`
+holds the facts and `coverage.through` how far a watermark may move. The iMessage store gets
+the same check, through the same worker.
+
+Where the text lives: binding rules 3 and 9, steps 3 and 4, the skip-rule paragraph and the
+Daily rituals paragraph in SKILL.md; the `imessage-v1` bullet, the chat attribution paragraphs,
+"Stale stores" and "State and output" in [adapter-contract.md](adapter-contract.md); the daily
+rituals' day-start step 3b names the watermark rule. To keep SKILL.md under 8,000 bytes, the
+send paragraph's list of outcomes now lives only in [sending.md](sending.md), and the Contents
+line pointing at the sections below it was dropped. Every replaced 1.1.1 passage is verbatim in
+[preserved.md](preserved.md#replaced-on-2026-10-20-verbatim). `scripts/local_messaging.py` is
+523 lines (476 before).
 
 ## Frontmatter before v5 (verbatim)
 

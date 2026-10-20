@@ -46,6 +46,13 @@ Mac?").
 Ctrl-C prints "run the same command again to resume; finished steps are kept", and a
 rerun skips what is done (finished repositories report `current`).
 
+`--dry-run` previews all of it and writes nothing: it reads `repos.yaml` from a clone of
+the knowledge repository in a temporary folder it removes, never signs in to `gh`, and
+prints `would clone`, `would skip: <reason>` or `would fetch, then fast-forward if behind`
+for each repository (an existing checkout is judged against its upstream as last fetched),
+then the links and instruction files it would write. `workspace --new NAME --dry-run`
+counts the seed files it would write.
+
 ## What it never does
 
 - Repoint a checkout whose `origin` differs from the manifest: it stops and says so.

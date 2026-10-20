@@ -18,8 +18,20 @@ everything, asking only what it cannot detect: the plugin in every harness it fi
 Codex's settings, the stable runtime, the commit check (asked), a first config (fresh
 installs only), then optionally a workspace or an organization. Each part is also its
 own command (`plugin`, `workspace`, `org`, `uninstall`). Every run prints one line per
-step and ends with the restart sentence. `--dry-run` prints what each harness command
-would be and changes nothing; `--no-input` never asks and names the flag it needed.
+step and ends with the restart sentence. `--no-input` never asks and names the flag it
+needed.
+
+`--dry-run`, with any command, says what each step would do, in conditional wording
+(`would clone`, `would install`, `would write it`), and writes nothing in the person's
+folders or synthesis state: no harness command beyond reading its plugin list, no fetch
+into an existing checkout, no sign-in, and no skill copy, ledger, record, archive,
+runtime file or instruction file. What it must read to say that, an organization's
+configuration and skills or a knowledge repository's `repos.yaml`, it clones into a
+temporary folder that it removes; an existing checkout is judged against its upstream as
+last fetched. `onboard.sh` with `--dry-run` runs setup from a temporary clone too and
+leaves `~/.synthesis/v5/source` as it is. A dry run ends with "Dry run: nothing was
+changed." instead of the restart sentence. (2026-10-20: `setup.py org --dry-run` had
+cloned, copied the organization's skills and rewritten `AGENTS.md`.)
 
 A harness that is not on the Mac is skipped with a line saying so; it never fails the
 run. The Codex CLI ships inside the ChatGPT desktop app and is on PATH only in Codex's

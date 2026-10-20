@@ -21,31 +21,45 @@ scope; no default personal path exists. Windows are half-open, timezone-aware,
 and at most 366 days. Pages contain at most 100 examined message rows.
 The reader starts at zero and keeps its cursor in the state directory; the
 request carries no cursor. A different request, or a replaced database file,
-needs its own state directory.
+needs its own state directory. The stale threshold is a command-line option,
+`--stale-after-hours` (see [Stale stores](#stale-stores)), so it can change
+between runs of one window.
 
 Supported shapes are explicit schema contracts, not universal app-version
 claims:
 
 - `imessage-v1`: `message`, `handle`, `chat`, `chat_message_join`,
   `chat_handle_join`, `attachment`, and `message_attachment_join`; message
-  dates are nanoseconds since 2001-01-01 UTC.
-  Required columns are listed in `SCHEMAS` in the reader. Ambiguous chat joins
-  refuse attribution. Message GUID plus database, row, and chat identify a
-  pointer; an app URL is not invented.
+  dates are nanoseconds since 2001-01-01 UTC. `chat_recoverable_message_join`,
+  where Messages' Recently Deleted (macOS 13 and later) keeps a deleted
+  message's chat, is read when present and needs `chat_id` and `message_id`.
+  Required columns are listed in `SCHEMAS` and `OPTIONAL` in the reader.
+  Ambiguous chat joins refuse attribution. Message GUID plus database, row, and
+  chat identify a pointer; an app URL is not invented.
 - `whatsapp-v1`: `ZWAMESSAGE` and `ZWACHATSESSION`, with the exact required
   columns in `SCHEMAS`; dates are seconds since the same epoch. Session type
   zero means direct and one means group in this named contract. Other shapes
   and enum values are unavailable until independently qualified.
 
-An iMessage row names its chat through one `chat_message_join` row. An outgoing
-row (`is_from_me` 1) that has a handle but no join is attributed to that
-handle's one-to-one chat, the chat whose only `chat_handle_join` member is that
-handle, when exactly one exists: an outgoing row's handle is its recipient.
-Excluded chats, the window and every skip rule then apply to it as to any
-message in that chat, and `coverage.by_handle` lists its row. With no such chat
-or several, the row stays a gap whose reason gives the count. An incoming row's
-handle is its sender, who may write in any chat, so an unjoined incoming row
-stays a gap, as does a row with several joins.
+An iMessage row names its chat through one `chat_message_join` row. When the
+principal deletes a message, Messages moves that link to
+`chat_recoverable_message_join` (Recently Deleted, kept about 30 days), so the
+row has no `chat_message_join` row. A row with exactly one such record takes
+the chat it names: an excluded chat skips it as `excluded-chat`, and otherwise
+it is skipped as `deleted`, its body never read, because a message the principal
+deleted is not a candidate. Both field reports of unjoined rows were this shape:
+on 2026-10-08 seven outgoing rows, on 2026-10-19 five incoming rows, each from a
+handle that belongs to exactly one chat, a one-to-one chat (two iMessage, three
+SMS), and that chat was the one each record named.
+
+No chat is inferred from a handle. Until 2026-10-20 an unjoined outgoing row
+took its recipient handle's one one-to-one chat; a store can file a message to a
+handle in another one-to-one chat than the one that handle belongs to, so that
+was a guess. Every other row without a single chat stays a gap whose reason says
+why: `N chat links`, `no chat link and no (or N) Recently Deleted records`,
+`no chat link` (a store without that table, or a WhatsApp row without a chat
+session), `its chat has no identifier`, or `chat membership unknown` (a chat
+listing no members, or a WhatsApp session type other than 0 or 1).
 
 Plain text is bounded at 256 KiB. A restricted binary NSKeyedArchiver plist
 can supply `NSString` or `NS.string` through bounded UID references. The reader
@@ -92,7 +106,50 @@ without gaps the review is not used.
 
 Completeness keeps its meaning: every examined row is a note, a skip by a stated
 rule, a marked row, or a row the principal closed by name, recorded in the page
-the cursor passed.
+the cursor passed. A page read from a stale store is never complete.
+
+## Stale stores
+
+A reader that checks only what is on disk cannot tell "no new messages" from
+"the app stopped syncing". On 2026-10-17 a WhatsApp desktop store stopped
+being written, minutes after its newest message; two days later the reader
+called the window complete over it, the messages watermark moved past the
+stall, and messages that arrived once the app was opened were never read.
+
+So each page also reads, inside the same snapshot, the store's newest message
+before the window's reach (its end, or the read time for a window that ends
+later) and the modification times of the database file and its `-wal` file. A
+store with no write and no message for longer than the threshold before that
+reach is stale. The threshold is `--stale-after-hours`, 12 by default: longer
+than most quiet nights, so a store that stopped syncing is caught by the next
+day's first read. Raise it for an account that often stays silent longer; lower
+it for a busy one. A store last written after the window ends is never stale.
+
+A stale page:
+
+- reports `coverage.stale`, a sentence giving the hours, the newest message and
+  both file times, and is never `complete`;
+- sets `coverage.through` to the store's newest message (the window start when
+  that message is older), the furthest a sync watermark may move, never the
+  window end;
+- is saved with its notes, but its cursor stays open and drops the snapshot
+  bound, so the next run takes a new snapshot and reads the rows the app syncs
+  later (their row ids are higher; their dates may fall anywhere in the window).
+
+Ask the principal to open the app and let it sync, then run the same command
+again; once the store has been written within the threshold the window can
+complete. When the principal confirms a store is current and simply quiet, a
+larger `--stale-after-hours` on the same state directory completes it. A
+daily ritual moves the app's watermark to `coverage.through` and defers the
+target with the `coverage.stale` reason while the store is stale. If
+`coverage.through` is earlier than the watermark already recorded, an earlier
+read moved past messages the store did not yet hold: once the app has synced,
+read again from `coverage.through` in a new window.
+
+`coverage.store` carries the facts behind the decision: `newest_message`,
+`database_modified`, `wal_modified` (null without a `-wal` file),
+`stale_after_hours` and `reach`, the moment `through` takes once the window is
+read with no gap. `through` is null while a gap holds the page or pages remain.
 
 ## The sandbox and SQLite
 
@@ -118,13 +175,14 @@ Each page has one SQLite read transaction and finite query/process limits.
 The first page fixes the upper row bound of the window's snapshot; later pages
 read up to that bound, so messages arriving during a long read do not move the
 target. A database whose highest row falls below that bound refuses as
-truncated. No database-wide hashing or copying is performed.
+truncated. A page read from a stale store does not keep the bound: the next run
+takes a new snapshot. No database-wide hashing or copying is performed.
 
 ## State and output
 
 Output is a bounded page of candidate notes and pointers plus examined range,
-skip counts, gaps and the sandbox used, with the rows that are `marked`,
-attributed `by_handle` or `reviewed`. Candidate categories
+skip counts, gaps and the sandbox used, with the rows that are `marked` or
+`reviewed`, the store's freshness (`stale`, `store`) and `through`. Candidate categories
 are heuristic. No raw message body or media bytes enter the result. Exclusion
 and window tests precede logical body fetch/decoding; SQLite may read storage
 pages containing neighboring data internally.
@@ -138,5 +196,6 @@ last page without another read. The reader refuses a state directory holding
 files it did not write, and never adopts or cleans one.
 
 This scan cannot reconstruct deletions, edits between historical generations,
-unsynced messages, unsupported schemas, structured group mentions, or a whole
-conversation's meaning. Those limits remain visible in review coverage.
+unsynced messages (a stale store is reported, never filled in), unsupported
+schemas, structured group mentions, or a whole conversation's meaning. Those
+limits remain visible in review coverage.
