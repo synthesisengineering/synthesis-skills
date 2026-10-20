@@ -15,6 +15,10 @@
         "path": "skills/synthesis-absence-coordination/SKILL.md"
       },
       {
+        "id": "synthesis-action-sheet",
+        "path": "skills/synthesis-action-sheet/SKILL.md"
+      },
+      {
         "id": "synthesis-adversarial-review",
         "path": "skills/synthesis-adversarial-review/SKILL.md"
       },
