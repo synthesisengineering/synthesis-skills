@@ -167,6 +167,10 @@ def test_retire_refuses_ignored_files_removal_would_destroy_except_pycache(repo)
     with pytest.raises(worktree.Refused, match="build/"):
         worktree.retire(repo.wt, session_id="S1")
     subprocess.run(["rm", "-r", f"{repo.wt}/build"], check=True)
+    os.makedirs(f"{repo.wt}/.pytest_cache/v/cache")  # as pytest leaves it, with its own .gitignore (2026-10-20)
+    with open(f"{repo.wt}/.pytest_cache/.gitignore", "w") as handle:
+        handle.write("*\n")
+    open(f"{repo.wt}/.pytest_cache/v/cache/lastfailed", "w").close()
     worktree.retire(repo.wt, session_id="S1")
     assert not os.path.exists(repo.wt)
 

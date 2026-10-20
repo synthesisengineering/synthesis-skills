@@ -120,7 +120,8 @@ def _merged(repo: str, head: str, base: str) -> str:
 
 
 def _status(path: str) -> list[str]:
-    """Every entry removal would lose: modified, untracked and ignored, except ignored `__pycache__`."""
+    """Every entry removal would lose: modified, untracked and ignored, except the ignored caches
+    `__pycache__` and `.pytest_cache` (pytest writes its own `.gitignore` there)."""
     status = _git(path, "status", "--porcelain", "-z", "--ignored=matching", "--untracked-files=all")
     if status.returncode != 0:
         raise Refused(f"git status failed in {path}: {status.stderr.strip()}")
@@ -130,7 +131,7 @@ def _status(path: str) -> list[str]:
             skip = False
             continue
         skip = "R" in entry[:2] or "C" in entry[:2]  # a rename or copy is followed by its source path
-        if entry.startswith("!! ") and "__pycache__" in entry[3:].rstrip("/").split("/"):
+        if entry.startswith("!! ") and {"__pycache__", ".pytest_cache"} & set(entry[3:].rstrip("/").split("/")):
             continue
         lost.append(entry)
     return lost

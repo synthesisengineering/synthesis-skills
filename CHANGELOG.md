@@ -26,7 +26,8 @@ Also:
   `ritual_state.py query summary` lists them. A workspace whose rituals stopped had left its account ten days
   unread, visible only to its own ritual.
 - **`synthesis worktree retire`** accepts a squash merge the team has since edited: each file the branch changed
-  reached the default branch in the branch's exact version at some commit.
+  reached the default branch in the branch's exact version at some commit. It also treats pytest's cache as
+  disposable, as it does `__pycache__`.
 - **mac-sync 3.1.0:** per-workspace `repos.yaml` manifests and `machines.yaml` are the only repo inventory; the
   central roster's retirement is documented, and a finished engagement's repositories stay listed as dormant.
 - **The doctor** checks filed action sheets for their generator's marker, as it checks packets.

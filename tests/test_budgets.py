@@ -48,15 +48,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.15 adds 331 to the core (338 to the plugin) after a project session's data-loss incident on 2026-10-20: the
 # shared-checkout journal and claims log (synthesis/checkout.py, about 230), release and claim checks, journal and
 # index commands in the CLI (about 60), claims checked when a file is written (about 40), and wiring.
-# 5.1.0 adds 44 to the core and 959 to the plugin. The plugin's share is the action sheet Rajiv asked for on
+# 5.1.0 adds 45 to the core and 960 to the plugin. The plugin's share is the action sheet Rajiv asked for on
 # 2026-10-19 (build_sheet.py 510 and record_actions.py 401, importing the packet's engine rather than copying
 # it). The core's: declared mailboxes left unread past their cadence counted at every session start (31; an
 # audit found one workspace's account ten days unread with nothing reporting it), worktree retirement after a
-# squash merge the team edited further (9), approval codes read only in the issued shape and never inside a
+# squash merge the team edited further and past pytest's cache (10), approval codes read only in the issued shape and never inside a
 # harness block (3), and the doctor checking action sheets (1).
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 6235
-PLUGIN_BUDGET = 22505
+CORE_BUDGET = 6236
+PLUGIN_BUDGET = 22506
 
 
 def _lines(files):
