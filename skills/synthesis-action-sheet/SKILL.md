@@ -24,7 +24,7 @@ so the two are separate pages.
 ## Binding rules
 
 1. **One page per sitting.** Everything the principal must act on goes on one sheet: done for you (folded), approve, do. Two pages split the attention the sheet exists to hold.
-2. **Approval codes never go on the page or in a file.** The generator refuses any value matching `approve` plus six letters or digits and any field named for a code, since a pasted summary holding one would grant a send nobody chose. Codes go in chat, on one line.
+2. **Approval codes never go on the page or in a file.** The generator refuses any value holding `approve` and a code of the guard's shape (a digit, then five hex characters) and any field named for a code, since a pasted summary holding one would grant a send nobody chose. Codes go in chat, on one line.
 3. **The chat after a packet or sheet is exactly three lines:** what was done (count and link), the page to open, and the codes line. No lists of items in chat; the sheet holds them.
 4. **Generate from a spec; never hand-author or hand-edit the page.** Links are built and tested in the generator, and the page carries the packet's integrity marker.
 5. **Open every generated sheet before handing it over.** The packet's permanent defects were found by loading the page, not by reading its source.

@@ -218,6 +218,8 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
       <button id="bulk" type="button" class="secondary" hidden>Take all remaining</button>
       <button id="toggle" type="button" class="secondary" aria-expanded="false" aria-controls="summarywrap">Show text</button>
       <button id="reset" type="button" class="secondary">Clear</button>
+      <span id="confirmbulk" hidden><span id="bulkquestion"></span> <button id="bulkyes" type="button" class="secondary">Accept them in bulk</button> <button id="bulkno" type="button" class="secondary">Not now</button></span>
+      <span id="confirmreset" hidden>Clear every saved answer in this packet? <button id="resetyes" type="button" class="secondary">Clear them</button> <button id="resetno" type="button" class="secondary">Keep them</button></span>
       <span id="copystatus" role="status" aria-live="polite"></span>
     </div>
   </div>
@@ -701,7 +703,7 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
       return r.recommendation && assetsReady(r) && decisionOf(r) === null;
     }).length;
     var bulkBtn = document.getElementById("bulk");
-    bulkBtn.hidden = remaining === 0;
+    bulkBtn.hidden = remaining === 0 || !document.getElementById("confirmbulk").hidden;
     bulkBtn.textContent = "Take all remaining (" + remaining + ")";
   }
 
@@ -759,16 +761,30 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
   }
 
   document.getElementById("copy").addEventListener("click", copySummary);
-  document.getElementById("bulk").addEventListener("click", function () {
-    var pending = SPEC.rows.filter(function (r) {
+  // The claude.ai viewer answers the browser's confirm dialog with false, so both confirmations
+  // live on the page (2026-10-20).
+  function remainingRows() {
+    return SPEC.rows.filter(function (r) {
       return r.recommendation && assetsReady(r) && decisionOf(r) === null;
     });
+  }
+  document.getElementById("bulk").addEventListener("click", function () {
+    var pending = remainingRows();
     if (!pending.length) return;
-    if (!window.confirm(
+    document.getElementById("bulkquestion").textContent =
       "Accept the recommendation on " + pending.length + " remaining item" +
-      (pending.length === 1 ? "" : "s") + " without deciding them individually?\n\n" +
-      "They will be marked as accepted in bulk in the summary, so the difference stays visible."
-    )) return;
+      (pending.length === 1 ? "" : "s") + " without deciding them individually? " +
+      "The summary marks them as accepted in bulk, so the difference stays visible.";
+    document.getElementById("confirmbulk").hidden = false;
+    this.hidden = true;
+  });
+  document.getElementById("bulkno").addEventListener("click", function () {
+    document.getElementById("confirmbulk").hidden = true;
+    render();
+  });
+  document.getElementById("bulkyes").addEventListener("click", function () {
+    var pending = remainingRows();
+    document.getElementById("confirmbulk").hidden = true;
     pending.forEach(function (r) {
       state[r.id] = Object.assign({}, get(r.id), { choice: r.recommendation, bulk: true });
     });
@@ -785,7 +801,16 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
     this.textContent = "Show text";
   });
   document.getElementById("reset").addEventListener("click", function () {
-    if (!window.confirm("Clear every saved answer in this packet?")) return;
+    document.getElementById("confirmreset").hidden = false;
+    this.hidden = true;
+  });
+  document.getElementById("resetno").addEventListener("click", function () {
+    document.getElementById("confirmreset").hidden = true;
+    document.getElementById("reset").hidden = false;
+  });
+  document.getElementById("resetyes").addEventListener("click", function () {
+    document.getElementById("confirmreset").hidden = true;
+    document.getElementById("reset").hidden = false;
     state = Object.create(null);
     try { localStorage.removeItem(KEY); } catch (e) {}
     rowsEl.innerHTML = "";

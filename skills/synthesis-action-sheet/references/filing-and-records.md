@@ -40,9 +40,9 @@ reason per line where there are several, and exits 2. No refusal repeats a note 
 `--file-into DIR` files `<date>-<slug>-spec.json` (the canonical spec bytes) and
 `<date>-<slug>.html` with the decision packet's filing code: DIR must already exist, a filed file
 is never replaced, filing the same bytes again is a no-op, and a revised spec on the same date
-gets a digest suffix. `--date` sets the date in the names (default: today). The generator refuses
-to file a sheet whose name would contain "packet", because `synthesis doctor` reads every filed
-`*packet*.html` as a decision packet; title a sheet by its day or subject. `-o` writes a working
+gets a digest suffix. `--date` sets the date in the names (default: today). `synthesis doctor`
+checks every filed `*packet*.html` and `*sheet*.html` page for its generator's marker, so a sheet
+edited after generation is flagged; title a sheet by its day or subject. `-o` writes a working
 copy and overwrites it.
 
 The page carries the packet's integrity marker in the same form,

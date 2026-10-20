@@ -3,9 +3,7 @@ Action-sheet spec (JSON)
 
 {
   "title":    "Your actions, Monday October 19",   REQUIRED, one line, at most 200 bytes.
-                                                 Title it by the day or subject: a filed name
-                                                 holding "packet" is refused, because the doctor
-                                                 reads every filed *packet*.html as a packet.
+                                                 Title it by the day or subject.
   "date":     "2026-10-19",                      optional; shown under the title
   "intro":    "Plain text under the title.",     optional
   "audience": "Who reads this.",                 optional
@@ -72,7 +70,7 @@ Action-sheet spec (JSON)
 
 At least one approve or do row. Unknown fields are refused. Any field named for a code
 ("code", "approval_code") and any value shaped like an approval code (approve followed by
-six letters or digits) is refused anywhere in the spec: codes go in chat, on one line.
+a digit and five hex characters, the shape the guard issues) is refused anywhere in the spec: codes go in chat, on one line.
 
 Links the generator builds (only https, sms, mailto and tel are ever emitted):
   whatsapp  https://wa.me/<digits>?text=<percent-encoded text>

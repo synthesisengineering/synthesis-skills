@@ -135,6 +135,13 @@ def test_spec_text_stays_text():
 CODE = "approve 3a7f2c"
 
 
+def test_prose_after_approve_is_not_a_code():
+    """Only the guard's shape is a code: "approve budget" in a message is ordinary words (2026-10-20)."""
+    current = spec()
+    row(current, "D-1").update(text="Sam, please approve budget items before Friday")
+    assert not [p for p in bs.validate(current) if "approval code" in p]
+
+
 @pytest.mark.parametrize("change", [
     lambda s: row(s, "D-1").update(text=f"Sam, {CODE} please"),
     lambda s: row(s, "A-1").update(why=f"Type {CODE.upper()} in chat"),
@@ -355,14 +362,18 @@ def test_filing_uses_the_packets_dated_names_and_never_replaces(tmp_path):
     assert len(list(artifacts.glob("2026-10-19-synthetic-actions-*-spec.json"))) == 1
 
 
-def test_a_filed_name_never_says_packet(tmp_path):
-    artifacts = tmp_path / "artifacts"
-    artifacts.mkdir()
+def test_the_doctor_accepts_a_filed_sheet_and_flags_an_edited_one(tmp_path):
+    """synthesis doctor checks filed packet and sheet pages for their generator's marker (2026-10-20)."""
+    from synthesis import doctor
+    artifacts = tmp_path / "projects" / "p" / "resources" / "artifacts"
+    artifacts.mkdir(parents=True)
     current = spec()
     current["title"] = "After the catch-up packet"
-    result = cli(write(tmp_path, current), "--file-into", artifacts)
-    assert result.returncode == 2 and "synthesis doctor" in result.stderr and not list(artifacts.iterdir())
-    assert cli(write(tmp_path, current), "--stdout").returncode == 0  # a working copy is not filed
+    assert cli(write(tmp_path, current), "--file-into", artifacts, "--date", "2026-10-20").returncode == 0
+    page = next(artifacts.glob("*.html"))
+    assert doctor.check_packets([tmp_path]).status == "ok"
+    page.write_text(page.read_text(encoding="utf-8").replace('"title":', '"title" :', 1), encoding="utf-8")
+    assert "edited after generation" in doctor.check_packets([tmp_path]).detail
 
 
 def test_the_command_line(tmp_path):

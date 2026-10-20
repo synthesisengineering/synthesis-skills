@@ -189,8 +189,8 @@ def _parse(text: str, spec: dict) -> tuple:
                                f"{'the end of the paste' if got is None else repr(got)}")
     for rid, saved in state.items():
         if bs.APPROVAL_CODE.search(saved["note"]):
-            raise SummaryError(f"row {rid}: the note holds text shaped like an approval code (approve and six letters "
-                               "or digits). Codes go in chat and are never filed: ask the principal to take it out of "
+            raise SummaryError(f"row {rid}: the note holds text shaped like an approval code (approve, then a code "
+                               "of the guard's shape). Codes go in chat and are never filed: ask the principal to take it out of "
                                "the note and copy the summary again")
     return state, binding
 

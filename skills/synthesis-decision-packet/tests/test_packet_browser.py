@@ -65,8 +65,10 @@ DRIVER = """<script>
   var note = rows()[0].querySelector('.note textarea');
   note.value = 'Synthetic browser note';
   note.dispatchEvent(new Event('input', {bubbles: true}));
-  window.confirm = function () { return true; };
+  window.confirm = function () { return false; };  // as the claude.ai viewer answers it
   document.getElementById('bulk').click();
+  out.asked = !document.getElementById('confirmbulk').hidden;
+  document.getElementById('bulkyes').click();
   out.summary = document.getElementById('summary').value;
   var pre = document.createElement('pre');
   pre.id = 'packet-browser-result';
@@ -129,6 +131,8 @@ def test_e42_e45_e47_e48_the_real_page(block_storage, change):
     assert all(row["recommended"] == [True, False] for row in seen["fresh"])
     # E47: the copy control reports at once, whichever copy path the browser allows.
     assert seen["copyStatus"].strip()
+    # Bulk acceptance asks on the page: the claude.ai viewer answers the browser dialog with false (2026-10-20).
+    assert seen["asked"] is True
     # E45 and E46: the paste alone records every decision, says so when storage was blocked,
     # and labels the bulk acceptances.
     parsed = rr.parse_summary(seen["summary"], current)

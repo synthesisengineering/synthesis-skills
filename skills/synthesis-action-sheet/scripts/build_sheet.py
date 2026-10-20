@@ -45,7 +45,7 @@ MAX_SPEC_BYTES = MAX_HTML_BYTES = 8_388_608
 MAX_TEXT_BYTES = 32_768
 # Approval codes stay in chat. The prompt hook grants every pending code a prompt carries, so a
 # page or summary holding one would approve a send when the principal pastes the summary back.
-APPROVAL_CODE = re.compile(r"(?i)\bapprove\s+[0-9a-z]{6}\b")
+APPROVAL_CODE = re.compile(r"(?i)\bapprove\s+\d[0-9a-f]{5}\b")  # the shape the guard issues; "approve budget" is prose
 CODE_FIELD = re.compile(r"(?i)codes?$")
 E164 = re.compile(r"\+[1-9][0-9]{6,14}")
 EMAIL = re.compile(r"[^@\s,;:<>()\[\]\"]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
@@ -105,7 +105,7 @@ def _code_problems(value, where="spec") -> list:
         for index, item in enumerate(value):
             found += _code_problems(item, f"{where}[{index}]")
     elif isinstance(value, str) and APPROVAL_CODE.search(value):
-        found.append(f"{where} holds text shaped like an approval code (approve and six letters or digits)")
+        found.append(f"{where} holds text shaped like an approval code (approve, then a digit and five hex characters)")
     return found
 
 
@@ -437,9 +437,6 @@ def build(spec: dict) -> str:
 
 def file_sheet(spec: dict, page: str, directory: pathlib.Path, date: str) -> tuple:
     """File <date>-<slug>-spec.json and <date>-<slug>.html as the packet files its pages."""
-    if "packet" in slugify(spec["title"]):
-        raise ValueError("the filed name would contain 'packet', and synthesis doctor checks every filed "
-                         "*packet*.html as a decision packet: title the sheet by its day or subject instead")
     return file_packet(spec, page, directory, date)
 
 
