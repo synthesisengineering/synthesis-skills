@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Read one explicitly selected iMessage or WhatsApp window into pointer-only notes.
 
-Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR [--stale-after-hours 12]
+Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR [--stale-after-hours HOURS]
 
 The database is opened read-only inside the OS sandbox (os_sandbox.py); a reader that can
 open the database for writing refuses before SQLite runs. Each run reads one page of the
@@ -39,7 +39,8 @@ MAX_BODY = 256 * 1024
 MAX_PAGE = 100
 MAX_SECONDS = 5
 APPLE_EPOCH = 978307200
-STALE_AFTER_HOURS = 12  # longer than most quiet nights; a store that stopped syncing is caught by the next day's read
+STALE_AFTER_HOURS = {"whatsapp-v1": 12, "imessage-v1": 24}  # 90 days of the principal's stores: WhatsApp never went
+# 12 hours without a message; iMessage did 27 times but never 24, so a quiet night is not a stopped store
 REQUEST_KEYS = {"schema", "adapter", "database", "start", "end", "page_size", "excluded_chats", "self_names"}
 LINK = "com.apple.messages.URLBalloonProvider"  # balloon_bundle_id of a rich link preview
 MIME = re.compile(r"[a-z0-9][a-z0-9.+-]{0,126}/[a-z0-9][a-z0-9.+-]{0,126}", re.I)
@@ -453,10 +454,11 @@ def _close(coverage, review, subject) -> None:
     coverage["reviewed"], coverage["gaps"] = coverage["gaps"], []
 
 
-def scan(request, state, review=None, stale_after_hours=STALE_AFTER_HOURS) -> dict:
+def scan(request, state, review=None, stale_after_hours=None) -> dict:
     """Read the next page of the window; save it, then move the cursor. A gap leaves the cursor until a
     by-hand review the principal approves names exactly the page's gaps. A stale store leaves the window open."""
     validate(request)
+    stale_after_hours = STALE_AFTER_HOURS[request["adapter"]] if stale_after_hours is None else stale_after_hours
     validate({**request, "after": 0, "upper": None, "stale_after_hours": stale_after_hours}, page_keys=True)  # before any state
     state = Path(state)
     if state.is_symlink():
@@ -499,8 +501,8 @@ def main(argv=None) -> int:
     parser.add_argument("--request", help="explicit read-only request JSON")
     parser.add_argument("--state", help="this window's own state directory")
     parser.add_argument("--review", help="a by-hand review naming exactly this page's gaps, for the principal to approve")
-    parser.add_argument("--stale-after-hours", type=float, default=STALE_AFTER_HOURS, help="a store silent this "
-                        f"long while the window runs past it is stale, never complete (default {STALE_AFTER_HOURS})")
+    parser.add_argument("--stale-after-hours", type=float, help="a store silent this long while the window runs "
+                        "past it is stale, never complete (default 12 for WhatsApp, 24 for iMessage)")
     parser.add_argument("--worker", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:

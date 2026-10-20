@@ -73,7 +73,7 @@ def test_missing_sandbox_means_the_reader_runs_nothing(tmp_path, monkeypatch):
     started = []
     monkeypatch.setattr(lm.subprocess, "run", lambda *a, **kw: started.append(a))
     with pytest.raises(ValueError, match="sandbox is unavailable"):
-        lm.run_page({**request(path), "after": 0, "upper": None, "stale_after_hours": lm.STALE_AFTER_HOURS})
+        lm.run_page({**request(path), "after": 0, "upper": None, "stale_after_hours": lm.STALE_AFTER_HOURS["imessage-v1"]})
     assert started == []
 
 

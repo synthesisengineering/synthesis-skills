@@ -377,7 +377,8 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
       else if (/^[-*] /.test(line)) {
         if (!list) { flush(); list = element('ul'); target.appendChild(list); }
         list.appendChild(element('li', line.slice(2)));
-      } else { if (list) flush(); paragraph.push(line); }
+      } else if (list && /^\s/.test(line)) list.lastChild.textContent += ' ' + line.trim();  // a wrapped item
+      else { if (list) flush(); paragraph.push(line); }
     });
     flush();
     if (code !== null) target.appendChild(element('pre', code.join('\n'), 'review-code'));

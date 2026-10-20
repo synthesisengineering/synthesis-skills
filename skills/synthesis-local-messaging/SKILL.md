@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.1.1"
+  version: "1.2.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -63,14 +63,14 @@ installation uses that schema.
    page is not complete history. The reader saves each page in the state
    directory before advancing its cursor. Do not delete saved pages or reset a
    cursor to hide a gap: a page with a gap does not advance, and the gap stays
-   in the report until someone resolves it (for example by excluding that chat).
+   reported until resolved (for example by excluding that chat).
    After reading its rows in the app, add `--review REVIEW.json` naming exactly
    those rows and reasons; once the principal types the `approve <code>` it asks
    for, the identical command closes them. An agent never closes a gap on its
-   own. A stale store (silent 12 hours, `--stale-after-hours`, while the window
-   runs past it) reports `coverage.stale`, stays open and stops
-   `coverage.through` at its newest message: ask the principal to open the app,
-   then run again.
+   own. A stale store (silent past `--stale-after-hours`, 12 for WhatsApp and
+   24 for iMessage, as the window runs on) reports `coverage.stale`, stays open
+   and stops `coverage.through` at its newest message: have the principal open
+   the app, then rerun.
 5. Review each candidate in context before recording a useful note. The
    deterministic categories do not establish urgency, an unanswered request,
    a broken promise, a missing calendar event, or a completed task. Notes should

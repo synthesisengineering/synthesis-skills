@@ -54,9 +54,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # audit found one workspace's account ten days unread with nothing reporting it), worktree retirement after a
 # squash merge the team edited further and past pytest's cache (10), approval codes read only in the issued shape and never inside a
 # harness block (3), and the doctor checking action sheets (1).
+# 5.1.1 adds 95 to the plugin (the core is unchanged): dry runs that write nothing in onboarding (workspace.py 37,
+# setup.py 9), the message reader's stale-store check and Recently Deleted attribution (47), and wrapped list items
+# in the packet's Markdown view (2). A search for unreferenced definitions and repeated bodies found nothing.
 # Code may not grow past these without removing as many lines elsewhere.
 CORE_BUDGET = 6236
-PLUGIN_BUDGET = 22506
+PLUGIN_BUDGET = 22601
 
 
 def _lines(files):

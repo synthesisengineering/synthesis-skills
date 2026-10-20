@@ -28,7 +28,7 @@ def run(path, tmp_path, **kw):
     page = request(path, **kw)
     page.setdefault("after", 0)
     page.setdefault("upper", None)
-    page.setdefault("stale_after_hours", lm.STALE_AFTER_HOURS)
+    page.setdefault("stale_after_hours", lm.STALE_AFTER_HOURS[page["adapter"]])
     return lm.run_page(page)
 
 
@@ -59,7 +59,7 @@ def test_e81_unconfined_worker_refuses_before_sqlite_opens(tmp_path):
     add(db)
     db.close()
     before = hashes(path.parent)
-    page = {**request(path), "after": 0, "upper": None, "stale_after_hours": lm.STALE_AFTER_HOURS}
+    page = {**request(path), "after": 0, "upper": None, "stale_after_hours": lm.STALE_AFTER_HOURS["imessage-v1"]}
     with pytest.raises(lm.Refused, match="confinement"):
         lm.read_page(page)
     assert hashes(path.parent) == before
@@ -527,3 +527,15 @@ def test_command_line_reads_and_saves_a_page(tmp_path, need_sandbox, python):
     refused = subprocess.run([python, "-B", str(Path(lm.__file__)), "--request", str(req)],
                              capture_output=True, text=True, timeout=60)
     assert refused.returncode == 2 and json.loads(refused.stdout)["status"] == "REFUSED"
+
+
+def test_each_store_has_its_own_quiet_hours(tmp_path, need_sandbox):
+    """A quiet iMessage night is not a stopped store: in 90 days the principal's iMessage went over 12 hours
+    without a message 27 times and never 24, while WhatsApp never went 12 (2026-10-20)."""
+    path, db = imessage(tmp_path / "source")
+    add(db)
+    db.close()
+    os.utime(path, (APPLE_EPOCH + stamp(1, 0),) * 2)
+    window = request(path, start="2000-12-31T00:00:00Z", end="2001-01-01T15:00:00Z", page_size=50)
+    assert lm.scan(window, tmp_path / "imessage")["coverage"]["store"]["stale_after_hours"] == 24
+    assert lm.STALE_AFTER_HOURS == {"whatsapp-v1": 12, "imessage-v1": 24}

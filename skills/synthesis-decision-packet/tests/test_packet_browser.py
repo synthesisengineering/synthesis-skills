@@ -193,3 +193,21 @@ def test_dp_ux_the_reading_path_in_a_real_page():
     assert source["reference"] is True and source["referenceOpen"] is False
     parsed = rr.parse_summary(seen["summary"], current)
     assert parsed["decided"] == 5 and parsed["rulings"][0]["note"] == "Synthetic browser note"
+
+
+LIST_ITEMS = """<script>
+window.reading = Array.from(document.querySelectorAll('li')).map(function (li) { return li.textContent; })
+  .filter(function (text) { return text.indexOf('fixture item') >= 0; });
+</script>"""
+
+
+def test_a_wrapped_markdown_list_item_stays_one_item():
+    """2026-10-20: a list item wrapped onto an indented second line rendered that line as a new paragraph."""
+    text = "Intro.\n\n- First fixture item, which wraps\n  onto a second line.\n- Second fixture item.\n\nAfter."
+    current = spec()
+    current["rows"][0].update({"revision": "r1", "delivery": {"format": "Article", "destinations": ["Fixture site"],
+                                                            "attachments": []}},
+                              review_assets=[_text("md", "markdown", text)])
+    seen = drive(current, False, LIST_ITEMS)
+    assert seen["errors"] == []
+    assert seen["reading"] == ["First fixture item, which wraps onto a second line.", "Second fixture item."]

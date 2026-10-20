@@ -120,10 +120,12 @@ So each page also reads, inside the same snapshot, the store's newest message
 before the window's reach (its end, or the read time for a window that ends
 later) and the modification times of the database file and its `-wal` file. A
 store with no write and no message for longer than the threshold before that
-reach is stale. The threshold is `--stale-after-hours`, 12 by default: longer
-than most quiet nights, so a store that stopped syncing is caught by the next
-day's first read. Raise it for an account that often stays silent longer; lower
-it for a busy one. A store last written after the window ends is never stale.
+reach is stale. The threshold is `--stale-after-hours`, by default 12 for
+WhatsApp and 24 for iMessage: in 90 days of the principal's stores, WhatsApp never
+went 12 hours without a message, while iMessage did 27 times but never 24. So a
+quiet night is not a stopped store, and a store that stopped syncing is caught by
+the next day's first read. Raise it for an account that often stays silent
+longer; lower it for a busy one. A store last written after the window ends is never stale.
 
 A stale page:
 
