@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Action Sheet"
+  short_description: "One page of what is left to approve, send and do, with a paste-back"
+  default_prompt: "Use $synthesis-action-sheet to turn what I still have to approve, send and do into one page I can work through and paste back in one message."
+
+policy:
+  allow_implicit_invocation: false

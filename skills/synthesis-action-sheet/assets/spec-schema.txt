@@ -1,0 +1,84 @@
+Action-sheet spec (JSON)
+========================
+
+{
+  "title":    "Your actions, Monday October 19",   REQUIRED, one line, at most 200 bytes.
+                                                 Title it by the day or subject: a filed name
+                                                 holding "packet" is refused, because the doctor
+                                                 reads every filed *packet*.html as a packet.
+  "date":     "2026-10-19",                      optional; shown under the title
+  "intro":    "Plain text under the title.",     optional
+  "audience": "Who reads this.",                 optional
+  "summary_intro": "Paste this back to me.",     optional; the line above the summary text
+  "storage_key": "actions-2026-10-19",           optional; defaults to a slug of the title.
+                                                 Saved marks also bind the whole spec's digest,
+                                                 so any change to the spec starts fresh.
+  "carried_from": "2026-10-18-...-spec.json",    optional; written by record_actions.py
+                                                 --successor: the sheet these rows came from.
+
+  "done": [                                      optional, at most 200: what was done for the
+    {"kind":  "emails sent",                     principal. Shown folded, counted by kind
+     "label": "Confirmed the venue for Friday",  ("3 emails sent"), so write kind as a short
+     "href":  "https://mail.example.test/x"}     lowercase plural. href: https or a relative
+  ],                                             path; optional.
+
+  "approve": [                                   staged sends that wait for the principal's
+    {                                            approval code. The page shows the exact text
+      "id":      "A-1",                          and never a code.
+      "channel": "email",                        email, slack, teams, imessage, sms, whatsapp,
+                                                 linkedin, github or calendar
+      "who":     "Jordan Example",               REQUIRED: the recipient, one line
+      "address": "jordan@example.test",          REQUIRED for email (one address, or several
+                                                 separated by commas) and for imessage, sms
+                                                 and whatsapp (E.164, such as +15555550123);
+                                                 optional one line otherwise (#channel, repo)
+      "subject": "Friday",                       optional, one line
+      "label":   "Confirm Friday with Jordan",   optional; the summary names the row
+                                                 "<Channel> to <who>" without it
+      "why":     "She holds the room until noon.",  REQUIRED
+      "text":    "The exact words that go out."  REQUIRED
+    }
+  ],
+
+  "do": [                                        the principal's own actions
+    {
+      "id":      "D-1",                          REQUIRED, unique across the whole sheet
+      "channel": "whatsapp",                     whatsapp, imessage, sms, linkedin, email
+                                                 (messages: "text" REQUIRED), call, web, task
+      "who":     "Sam Placeholder",              REQUIRED for messages and calls
+      "label":   "Pay the venue deposit",        REQUIRED for web and task rows
+      "address": "+15555550123",                 REQUIRED for whatsapp, imessage, sms and call
+                                                 (E.164) and for email; refused elsewhere
+      "subject": "...",                          optional, email only in practice
+      "why":     "He leaves Wednesday.",          REQUIRED
+      "text":    "Exact words to send.",         REQUIRED for message channels; optional on
+                                                 call, web and task rows (shown with Copy)
+      "href":    "https://www.linkedin.com/messaging/thread/...",
+                                                 linkedin: optional, on linkedin.com (else the
+                                                 inbox opens); web: REQUIRED https; task:
+                                                 optional https. Refused on whatsapp, imessage,
+                                                 sms, email and call: those links are built.
+      "agent":   "can",                          REQUIRED: "can" offers Who does it: Me / Agent;
+                                                 "never" for money, security, credentials and
+                                                 identity tasks, calls, email, and anything
+                                                 without exact text. "can" is refused on those.
+      "risk":    "money"                         optional: money, security, credentials or
+                                                 identity. Such a row is never prefilled: its
+                                                 link carries no text, and its href no query
+                                                 or fragment.
+    }
+  ]
+}
+
+At least one approve or do row. Unknown fields are refused. Any field named for a code
+("code", "approval_code") and any value shaped like an approval code (approve followed by
+six letters or digits) is refused anywhere in the spec: codes go in chat, on one line.
+
+Links the generator builds (only https, sms, mailto and tel are ever emitted):
+  whatsapp  https://wa.me/<digits>?text=<percent-encoded text>
+  imessage, sms  sms:<E.164>&body=<percent-encoded text>   (custom scheme: may do nothing
+                                                            in the claude.ai viewer)
+  linkedin  the thread href, else https://www.linkedin.com/messaging/  (no prefill exists)
+  email     mailto:<address>?subject=...&body=...  (fallback; CRLF line breaks)
+  call      tel:<E.164>
+  web, task the href as given, nothing filled in

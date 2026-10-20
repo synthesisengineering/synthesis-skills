@@ -96,5 +96,8 @@ the burden of structuring the response falls on the person, every time, for ever
 - `synthesis-reader-briefing` — the four questions every packet is authored
   against; the reader contract above is that skill applied to this medium.
 - `synthesis-thinking-framework` — for deciding *what* to recommend before you build the packet.
+- `synthesis-action-sheet` — the companion page for what the rulings leave to the principal:
+  sends awaiting their approval code, messages to send, tasks only they can do. It shares this
+  skill's page engine, and its three-line chat contract also applies after a packet.
 - `synthesis-anti-shortcuts` — a packet whose rows hedge instead of recommending is the
   asking-as-shortcut costume in a new medium.

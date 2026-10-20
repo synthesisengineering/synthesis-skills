@@ -1,6 +1,6 @@
 # Synthesis Skills
 
-Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 69 skills
+Synthesis Skills is one plugin for Claude Code, Codex and Muse. It carries 70 skills
 for software engineering, writing, project management, correspondence and daily
 operations, plus a small runtime: a `synthesis` command and four lifecycle hooks. The
 skills follow the [Agent Skills](https://agentskills.io) standard. The runtime keeps
@@ -279,6 +279,7 @@ keeps Codex's skill catalog within its budget.
 | [synthesis-meeting-transcripts](skills/synthesis-meeting-transcripts/SKILL.md) | Fetch meeting notes and full transcripts into markdown, and verify a record is primary before it supports attribution. |
 | [synthesis-absence-coordination](skills/synthesis-absence-coordination/SKILL.md) | Coordinate an absence: notification order, coverage, out-of-office, return sweep. |
 | [synthesis-decision-packet](skills/synthesis-decision-packet/SKILL.md) | Collect five or more parallel decisions in one sitting through a self-contained HTML packet. |
+| [synthesis-action-sheet](skills/synthesis-action-sheet/SKILL.md) | One page of what is left for you after agents act: sends awaiting your code, messages to send with Copy and open-in-app links, marks, and a paste-back. |
 | [synthesis-quick-answers](skills/synthesis-quick-answers/SKILL.md) | A read-mostly companion session for quick lookups, each answer naming its source and confidence tier. |
 
 ### Reasoning and agent discipline
@@ -410,7 +411,7 @@ Each skill declares its license as an SPDX identifier in the `license` field of 
 
 - **[CC0 1.0](LICENSE-CC0)** (public domain dedication, no attribution required): 45
   skills, mostly methodology and writing.
-- **[Apache 2.0](LICENSE-APACHE)**: 24 skills, mostly those built around executable
+- **[Apache 2.0](LICENSE-APACHE)**: 25 skills, mostly those built around executable
   code.
 
 The core outside `skills/` (the `synthesis/` runtime, `hooks/`, `install.sh`, `onboard.sh`
