@@ -22,7 +22,7 @@ from pathlib import Path
 from synthesis import paths
 
 TTL_SECONDS = 15 * 60
-CODE = re.compile(r"\bapprove\s+([a-z0-9]{6})\b", re.IGNORECASE)
+CODE = re.compile(r"\bapprove\s+(\d[0-9a-f]{5})\b", re.IGNORECASE)  # the shape request() issues: no English word fits
 INSERTED = r"(?s)<([A-Za-z][\w-]*)\b[^>]*>.*?</\1\s*>"  # blocks a harness wraps into a prompt; compiled on use
 NOT_TYPED = ("isMeta", "isSidechain", "isCompactSummary", "isVisibleInTranscriptOnly", "isSynthetic", "toolUseResult")
 
@@ -75,10 +75,16 @@ def _expire() -> None:
             pass
 
 
+def typed_codes(prompt: str) -> list[str]:
+    """The codes the principal typed: never one inside a block the harness wrapped into the prompt, such as
+    a background task's report (2026-10-20: a helper's report quoting the guard reached this hook as a prompt)."""
+    return list(dict.fromkeys(m.lower() for m in CODE.findall(re.sub(INSERTED, " ", prompt or ""))))
+
+
 def grant_from_prompt(prompt: str) -> list[str]:
     """Grant every pending request whose code the prompt carries. Returns the summaries granted."""
     granted = []
-    for code in {m.lower() for m in CODE.findall(prompt or "")}:
+    for code in typed_codes(prompt):
         pending_file = _dir("approval-requests") / f"{code}.json"
         data = paths.read_json(pending_file)
         if not data.get("digest"):
@@ -144,7 +150,7 @@ def typed(transcript_path: str, code: str, since: float, session_id: str = "") -
                 when, text = _prompt(json.loads(line), session_id)
             except (ValueError, TypeError, AttributeError):
                 continue
-            if when > since and code in {m.lower() for m in CODE.findall(re.sub(INSERTED, " ", text))}:
+            if when > since and code in typed_codes(text):
                 return True
     return False
 

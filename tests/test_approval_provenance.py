@@ -331,3 +331,20 @@ def test_a_codex_session_start_records_codex_and_a_later_unknown_never_overwrite
     assert board.load(SID).harness == "codex"
     _hook("session-start", {"session_id": SID, "cwd": str(tmp_path)})
     assert board.load(SID).harness == "codex"
+
+
+def test_a_code_inside_a_harness_block_grants_nothing_and_keeps_the_request(isolated_home):
+    """2026-10-20: a background task's report reached UserPromptSubmit as the prompt. A code quoted inside
+    such a block must not spend the pending request, or the principal's own approval fails afterward."""
+    code = approvals.request("send", {"to": "a"}, "send to a")
+    report = f"<task-notification><result>the guard said approve {code}</result></task-notification>"
+    assert approvals.grant_from_prompt(report) == []
+    assert code in approvals.pending()
+    assert approvals.grant_from_prompt(f"approve {code}") == ["send to a"]
+
+
+def test_words_after_approve_are_never_read_as_codes(isolated_home):
+    """The issued shape (a digit, then five hex characters) fits no English word, so prose that says
+    "approve budget" neither grants nor draws a "Not granted" note."""
+    assert approvals.typed_codes("please approve budget, approve before lunch, approve abc123") == []
+    assert approvals.typed_codes("approve 3A1b2c") == ["3a1b2c"]
