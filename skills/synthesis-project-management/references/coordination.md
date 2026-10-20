@@ -176,6 +176,32 @@ synthesis release "$KB/projects/index.yaml"
 A second session that needs the index waits for the release or messages the
 holder; no entry is lost to a concurrent overwrite.
 
+For one field of one entry (status, last_session, wake_when, completed_date and the other scalar fields), use
+the command instead. It refuses while another session claims the index, snapshots the checkout, commits only its
+own change against HEAD through the commit hooks, and writes the working tree atomically, so another session's
+uncommitted edit in the file is kept and never committed under this change:
+
+```bash
+synthesis index set <project> last_session 2026-10-20
+```
+
+## Uncommitted work in a shared checkout (2026-10-20)
+
+On 2026-10-20 a session's script emptied the index by opening it for writing before reading it. Another session's
+uncommitted edit in that file, covered by no claim, was lost. Four protections now hold:
+
+- **Claims hold when a file is written.** The guard refuses a write (file tools, shell redirects, copiers,
+  `sed -i`, `apply_patch`) into a path another live session has claimed, not first at commit.
+- **Release leaves nothing unowned.** `synthesis release` refuses while the released paths hold uncommitted
+  changes. Commit them, or `synthesis release --hand-to <session|project:id>`, which tells the receiver.
+- **Claim names what is already there.** A claim over files with uncommitted changes lists them, with the
+  session that last claimed them from the claims log.
+- **A journal keeps it recoverable.** At every claim, release, session start and commit, synthesis snapshots the
+  checkout's uncommitted tracked changes with `git stash create`. The files, index and stash list are untouched,
+  and the snapshot is kept under `refs/synthesis/journal/` for 14 days. `synthesis journal <path>` lists the
+  snapshots holding a file, and `synthesis journal --show <sha> <path>` prints it as kept. Untracked files are
+  not kept.
+
 ## Priority, stale claims and takeover
 
 - **Autonomous claims keep priority.** When an autonomous session (an autopilot

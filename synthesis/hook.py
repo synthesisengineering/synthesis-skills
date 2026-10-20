@@ -88,6 +88,11 @@ def session_start(payload):
     except Exception:
         line = ""  # a ritual line must never cost a session its start
     notes += [n for n in (run, line) if n]
+    try:  # uncommitted work in this checkout stays recoverable from the start of the session (2026-10-20)
+        from synthesis import checkout
+        checkout.snapshot(checkout.repo_of(str(payload.get("cwd") or os.getcwd())), "session start", session_id)
+    except Exception:
+        pass  # a snapshot must never cost a session its start
     unread = board.inbox(session_id, session.project)
     notes += [f"{len(unread)} unread board message(s): run `synthesis inbox`."] if unread else []
     notes += [n for n in [_window_note()] if n]

@@ -128,6 +128,15 @@ def test_a_persona_signature_is_a_link_on_channels_that_render_links(text, block
     assert "approval" in guards.check(SLACK, {"channel_id": "C1", "message": text}, exempt)
 
 
+def test_an_imessage_signature_may_show_its_domain_since_imessage_cannot_carry_a_named_link():
+    """An operations session, 2026-10-14: a signed iMessage could pass in no form. With the domain as text the
+    link rule refused it; without the domain a branding rule refused it. iMessage never renders a named link."""
+    signed = "Running ten minutes late.\n\n🤖 Helperbot, for the principal (helperbot.example)"
+    assert not [p for p in guards.message_problems("imessage_send", {"to": "+15555550100", "text": signed}, CONFIG)
+                if "must be the link" in p]
+    assert any("must be the link" in p for p in guards.message_problems(SLACK, {"channel_id": "C1", "message": signed}, CONFIG))
+
+
 def test_session_to_session_messages_are_not_correspondence():
     assert guards.check("mcp__ccd_session_mgmt__send_message", {"session_id": "local_1", "message": "Line one\nline two"}, CONFIG) is None
 

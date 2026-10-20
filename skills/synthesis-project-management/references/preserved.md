@@ -117,7 +117,7 @@ These values are user-specific. Update them for your environment.
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| `ai_knowledge_workspace` | `ai-knowledge-{workspace}` | Root directory for your ai-knowledge repo (e.g., `ai-knowledge-rajiv`) |
+| `ai_knowledge_workspace` | `ai-knowledge-{workspace}` | Root directory for your ai-knowledge repo (e.g., `ai-knowledge-yourname`) |
 | `projects_path` | `projects/` | Directory within the workspace for all project folders |
 | `index_file` | `projects/index.yaml` | Single index file for all projects |
 | `lessons_path` | `lessons/` | Cross-project lessons and patterns directory |

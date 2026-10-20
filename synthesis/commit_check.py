@@ -521,6 +521,11 @@ def main(argv=None):
         print(f"synthesis commit check: cannot locate the repository ({where.stderr.strip()}); commit blocked", file=sys.stderr)
         return 1
     repo_root, git_dir, common_dir, running = lines[0], lines[1], os.path.abspath(lines[2]), os.path.abspath(lines[3])
+    try:  # every commit first keeps the checkout's uncommitted changes recoverable (2026-10-20)
+        from synthesis import checkout
+        checkout.snapshot(repo_root, "commit", paths.session_id())
+    except Exception:
+        pass
     if os.environ.get(CHAINED) == git_dir + HOOK:  # a repository hook called the check again: already done
         return 0
     try:

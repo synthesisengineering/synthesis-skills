@@ -23,21 +23,72 @@ def _session(args) -> str:
 
 
 def cmd_claim(args) -> int:
+    from synthesis import checkout
+    sid = _session(args)
     try:
-        session = board.claim(_session(args), args.paths, take_stale=args.take,
+        session = board.claim(sid, args.paths, take_stale=args.take,
                               project=args.project, goal=args.goal, harness=paths.harness())
     except board.ClaimConflict as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     print("claimed:\n  " + "\n  ".join(session.claims))
+    claimed = [board.normalize(p) for p in args.paths]
+    found = checkout.dirty_under(claimed)  # someone's uncommitted work already here (2026-10-20)
+    checkout.snapshot_paths(claimed, "claim", sid)
+    for f in found[:10]:
+        last = checkout.last_claimant(f, exclude=sid)
+        print(f"note: {f} already has uncommitted changes" + (f", last claimed by {last['session']} (project "
+              f"{last.get('project') or '-'})" if last else ", under no recorded claim")
+              + "; keep them: edit around them, commit them with yours, or ask their owner on the board")
     return 0
 
 
 def cmd_release(args) -> int:
-    before = len(getattr(board.load(_session(args)), "claims", []))
-    left = len(getattr(board.release(_session(args), args.paths or None), "claims", []))
+    """Releasing leaves no uncommitted work behind unowned (IR-07; 2026-10-20): commit it first, or hand it to
+    a named session or project, which is told what it now holds."""
+    from synthesis import checkout
+    sid = _session(args)
+    me = board.load(sid)
+    held = getattr(me, "claims", [])
+    wanted = {board.normalize(p) for p in args.paths}
+    going = [c for c in held if not args.paths or c in wanted or c.removesuffix("/**") in wanted]
+    left_dirty = checkout.dirty_under(going)
+    shots = checkout.snapshot_paths(going, "release", sid)
+    if left_dirty and not args.hand_to:
+        print("refused: these files under the claims you are releasing have uncommitted changes:\n  "
+              + "\n  ".join(left_dirty[:10]) + "\nCommit them first, or hand them on with "
+              "`synthesis release --hand-to <session|project:id> ...`; nothing was released.", file=sys.stderr)
+        return 1
+    if left_dirty:
+        board.message(args.hand_to, sid, "Handing you uncommitted changes I leave in: " + ", ".join(left_dirty[:10])
+                      + (f" (snapshot {shots[0][:10]}; `synthesis journal <path>` restores them)" if shots else "")
+                      + ". They are yours to commit or carry on.")
+    before = len(held)
+    left = len(getattr(board.release(sid, args.paths or None), "claims", []))
     print(f"released {before - left} claim(s)" if before > left or not args.paths else "no claim matched: nothing released")
     return 0 if before > left or not args.paths else 1
+
+
+def cmd_journal(args) -> int:
+    from synthesis import checkout
+    if args.show:
+        sys.stdout.write(checkout.show(args.show, args.path))
+        return 0
+    for row in checkout.journal(args.path)[:args.limit]:
+        print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(row['at']))}  {row['sha'][:10]}  {row['reason']:<14} "
+              f"{row.get('session', '')[:8]:<8}  {row['repo']}: {', '.join(row['files'][:4])}"
+              + (f" and {len(row['files']) - 4} more" if len(row["files"]) > 4 else ""))
+    return 0
+
+
+def cmd_index(args) -> int:
+    from synthesis import checkout
+    try:
+        print(checkout.index_set(args.project, args.field, args.value, paths.session_id()))
+    except ValueError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def cmd_who(args) -> int:
@@ -58,11 +109,12 @@ def cmd_who(args) -> int:
 
 def cmd_msg(args) -> int:
     try:
-        board.message(args.to, _session(args), args.text, durable=args.durable)
+        sent = board.message(args.to, _session(args), args.text, durable=args.durable)
     except board.AddressError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
-    print(f"sent to {args.to}")
+    fallback = not args.durable and sent.parent == board._box(args.to.strip())
+    print(f"sent to {args.to}" + (" (no live session on it: kept for its next session)" if fallback else ""))
     return 0
 
 
@@ -196,7 +248,19 @@ def parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_claim)
     s = sub.add_parser("release", help="release some or all claims")
     s.add_argument("paths", nargs="*")
+    s.add_argument("--hand-to", default="", help="session or project:<id> that takes over uncommitted changes left")
     s.set_defaults(fn=cmd_release)
+    s = sub.add_parser("journal", help="snapshots of uncommitted changes; --show SHA PATH prints a file from one")
+    s.add_argument("path", nargs="?", default="")
+    s.add_argument("--show", default="", metavar="SHA")
+    s.add_argument("--limit", type=int, default=20)
+    s.set_defaults(fn=cmd_journal)
+    s = sub.add_parser("index", help="set one field of one project in the shared project index, committed alone")
+    s.add_argument("action", choices=["set"])
+    s.add_argument("project")
+    s.add_argument("field")
+    s.add_argument("value")
+    s.set_defaults(fn=cmd_index)
     s = sub.add_parser("who", help="list live sessions and claims")
     s.add_argument("--all", action="store_true")
     s.set_defaults(fn=cmd_who)

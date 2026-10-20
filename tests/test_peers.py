@@ -66,8 +66,19 @@ def test_a_stale_session_is_named_but_not_addressed(isolated_home):
     board.touch("S1", project="alpha")
     _make_stale("S1")
     with pytest.raises(board.AddressError, match=r"(?s)only stale sessions.*S1.*stale"):
-        board.message("project:alpha", "S2", "are you there?")
+        board.message("S1", "S2", "are you there?")
     assert _sent(isolated_home) == []
+
+
+def test_a_project_with_no_live_session_gets_a_durable_message_its_next_session_reads(isolated_home):
+    """A project session, 2026-10-20: a report to a project whose sessions were all stale was refused and nearly
+    lost. With nobody live on the project, the message waits for its next session instead."""
+    board.touch("S1", project="alpha")
+    _make_stale("S1")
+    sent = board.message("project:alpha", "S2", "the incident report")
+    assert sent.parent == board._box("project:alpha")
+    board.touch("S3", project="alpha")
+    assert [m["text"] for m in board.inbox("S3", "alpha")] == ["the incident report"]
 
 
 def test_a_message_carries_its_senders_id(isolated_home):

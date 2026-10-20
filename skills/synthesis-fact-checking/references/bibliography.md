@@ -196,7 +196,7 @@ All entries in this section anchor to `production-incident-archive.md` by defaul
 Paths below are relative to the author's workspace root: the directory
 that holds these project checkouts.
 
-Bucket paths share the prefix `ai-knowledge-rajiv/projects/synthesis-quality-skills-upgrade/resources/artifacts/`. Abbreviated as `<bucket>/` below.
+Bucket paths share the prefix `<knowledge-repo>/projects/synthesis-quality-skills-upgrade/resources/artifacts/`. Abbreviated as `<bucket>/` below.
 
 75. **synthesis-content-quality v4.0** (companion skill). `synthesis-skills/skills/synthesis-content-quality/SKILL.md`. **V.** v2.0 depends on v4.0 for the slop-vs-fact distinction, A1 per-family fingerprinting catalog, and ESL safe-harbor methodology. [SKILL.md `depends_on`, C1-TOOLHALL, C1-TRANS, per-family signatures]
 

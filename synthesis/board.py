@@ -195,6 +195,8 @@ def _claim(session_id: str, claims: list[str], *, take_stale: bool = False, **up
     session = touch(session_id, **updates)
     session.claims = sorted(set(session.claims) | set(normalized))
     save(session)
+    from synthesis import checkout  # the claims log names the last claimant of a path later (2026-10-20)
+    checkout.log_claims(session_id, session.project, "claim", normalized)
     return session
 
 
@@ -203,7 +205,10 @@ def release(session_id: str, claims: list[str] | None = None) -> Session | None:
     if session is None:
         return None
     gone = None if claims is None else {normalize(c) for c in claims}
-    session.claims = [] if gone is None else [c for c in session.claims if c not in gone and c.removesuffix("/**") not in gone]
+    kept = [] if gone is None else [c for c in session.claims if c not in gone and c.removesuffix("/**") not in gone]
+    from synthesis import checkout
+    checkout.log_claims(session_id, session.project, "release", [c for c in session.claims if c not in kept])
+    session.claims = kept
     save(session)
     return session
 
@@ -274,6 +279,9 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
         if project.find(name) is None and not any(s.project == name for s in sessions()):
             raise AddressError(f"no project named {name!r} is on the board or in the knowledge roots; nothing was sent")
         return _post(to, {"to": to, "from": sender, "text": text, "durable": True})
+    name = to.strip()[len("project:"):] if to.strip().startswith("project:") else ""
+    if name and not any(s.project == name and not s.stale for s in sessions() if s.session != sender):
+        return message(to.strip(), sender, text, durable=True)  # nobody is on it now: its next session reads it (2026-10-20)
     target = resolve(to, exclude=sender)
     digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
     mark = paths.state() / "sent" / _session_file(sender).stem / digest
