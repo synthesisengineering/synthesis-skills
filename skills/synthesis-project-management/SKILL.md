@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -24,7 +24,8 @@ board (one small file per session).
 1. **Records live in one place.** Write project records only in the canonical knowledge checkout, never a worktree copy; `synthesis resume` names any newer or diverged copy. Chat, native memory and compaction summaries are not records.
 2. **Read the board, then claim before writing.** `synthesis who`, then `synthesis claim` on the smallest coherent area. A refused claim stops that write and everything depending on it.
 3. **One context owner per project.** Only one live session writes CONTEXT.md, REFERENCE.md, sessions/, the plan and the index entry; others write `resources/artifacts/contributions/<short id>.md` for the owner to reconcile.
-4. **`projects/index.yaml` has many writers.** Claim the file and re-read it before editing, commit only it, then release it; a lock cannot fix a single-slot file, a claim serializes it.
+4. **`projects/index.yaml` has many writers.** Set a field with `synthesis index set <project> <field> <value>`, which edits atomically and commits only that change; other edits claim the file, re-read it, commit only it, then release.
+13. **Leave no uncommitted work unowned.** `synthesis release` refuses while released paths hold uncommitted changes: commit them, or `--hand-to` a session or project. A claim names who left changes there; `synthesis journal <path>` restores an overwritten edit from snapshots.
 5. **Autonomous claims keep priority** over interactive ones unless the principal reorders them.
 6. **Stale claims are advisory, never deleted by hand.** After 8 quiet hours a claim stops blocking commits; take over only with `synthesis claim --take`, which tells the holder. Never release or edit another session's claims.
 7. **Address peers by board id only:** session id, short name or `project:<id>`. Ambiguous addresses are refused, never guessed; display names are not addresses (seven misdeliveries, 2026-08-19 to 09-02).

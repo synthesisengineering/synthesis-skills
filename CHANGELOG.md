@@ -4,6 +4,25 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.0.15] - 2026-10-20
+
+After a project session's script emptied the shared project index on 2026-10-20, losing another session's
+uncommitted edit in it (synthesis-project-management 3.1.0):
+- **Uncommitted work is journaled.** At every claim, release, session start and commit, synthesis snapshots the
+  checkout's uncommitted tracked changes with `git stash create`, which touches no file, index or stash list, and
+  keeps each snapshot for 14 days. `synthesis journal <path>` lists the snapshots holding a file; `--show` prints it.
+- **Release leaves nothing unowned.** `synthesis release` refuses while released paths hold uncommitted changes;
+  commit them, or `--hand-to` a session or project, which is told what it now holds.
+- **Claim names what is already there,** with the session that last claimed it, from a new claims log.
+- **Claims hold when a file is written,** not first at commit: the guard refuses a write into a path another live
+  session has claimed (file tools, redirects, copiers, `sed -i`, `apply_patch`).
+- **`synthesis index set <project> <field> <value>`** sets one field of one project atomically and commits only that
+  change, so other sessions' uncommitted edits in the index are kept and never committed under it.
+- **The context doctor** names who last claimed an uncommitted index and calls it a defect after a day.
+- **A project message with no live session on the project** is kept for its next session instead of refused.
+- **A signed iMessage can pass the guard** (message guard 2.2.1): iMessage cannot carry a named link, so its
+  signature may show the domain as text, as Chat's already could.
+
 ## [5.0.14] - 2026-10-14
 
 Defects other sessions reported on 5.0.12, and two found while answering them (synthesis-message-guard 2.2.0):
@@ -5234,7 +5253,7 @@ The v0.3.0 verifier was strict and produced two classes of false positives in pr
 
 ### Rationale
 
-Skills with multi-component output mandates (notes + transcript, channels + DMs + group DMs, all 10 audit dimensions, etc.) silently fail when an agent stops at the first component because no mechanical check confirms the rest landed. This release embeds the check in the protocol the agent reads and provides the deterministic script the check calls — so future sessions can't substitute partial output for the protocol's full output without the verifier flagging it. Surfaced 2026-06-03 from a real session where multiple weeks of transcripts were saved as summary-only because the skill's mandate was not mechanically verified. Generalized lesson at `ai-knowledge-rajiv/lessons/2026-06-03-skill-output-verification.md`. The same architecture (skill mandate + deterministic verifier) is the recommended pattern for other multi-component skills in this suite.
+Skills with multi-component output mandates (notes + transcript, channels + DMs + group DMs, all 10 audit dimensions, etc.) silently fail when an agent stops at the first component because no mechanical check confirms the rest landed. This release embeds the check in the protocol the agent reads and provides the deterministic script the check calls — so future sessions can't substitute partial output for the protocol's full output without the verifier flagging it. Surfaced 2026-06-03 from a real session where multiple weeks of transcripts were saved as summary-only because the skill's mandate was not mechanically verified. Generalized as a lesson in the principal's knowledge base (2026-06-03). The same architecture (skill mandate + deterministic verifier) is the recommended pattern for other multi-component skills in this suite.
 
 ## [3.3.2] - 2026-06-05
 

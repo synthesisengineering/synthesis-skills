@@ -288,6 +288,24 @@ def test_projects_without_an_index_and_index_entries_without_a_folder_are_defect
     assert ("(ai-knowledge-test)", "status-agreement", "defect") in findings(kb, capsys)[1]
 
 
+def test_an_uncommitted_index_names_its_last_claimant_and_is_a_defect_after_a_day(kb, capsys):
+    """A project session, 2026-10-20: the index sat uncommitted for days as an unnamed warning until another
+    session's script emptied it."""
+    import os
+    import time
+    from synthesis import board
+    index = kb / "projects" / "index.yaml"
+    board.claim("S-left-it", [str(index)], project="alpha")
+    board.release("S-left-it")
+    index.write_text(index.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    _, found, data = findings(kb, capsys)
+    assert ("(ai-knowledge-test)", "uncommitted-context", "warning") in found
+    assert any("last claimed by S-left-it (project alpha)" in f["message"] for f in data["findings"])
+    old = time.time() - 30 * 3600
+    os.utime(index, (old, old))
+    assert ("(ai-knowledge-test)", "uncommitted-context", "defect") in findings(kb, capsys)[1]
+
+
 def test_a_gitignored_context_is_a_defect_and_an_uncommitted_one_a_warning(kb, capsys):
     add_project(kb, "secret", context())
     (kb / ".gitignore").write_text("projects/secret/CONTEXT.md\n", encoding="utf-8")

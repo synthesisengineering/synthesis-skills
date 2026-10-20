@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -391,9 +392,15 @@ def repo_state(repo: Path, projects: Path) -> tuple[dict, list]:
         raise CannotTell(f"git could not read {repo}")
     state = {"dirty": {r[3:] for r in out.split("\0") if len(r) > 3}, "tracked": set(tracked.split("\0"))}
     findings = []
-    if f"{rel}/index.yaml" in state["dirty"]:
-        findings.append(("uncommitted-context", "warning", "projects/index.yaml has uncommitted changes",
-                         "commit it under a claim on the index"))
+    if f"{rel}/index.yaml" in state["dirty"]:  # named and escalated: it once sat uncommitted for days (2026-10-20)
+        from synthesis import checkout
+        index = projects / "index.yaml"
+        hours = (time.time() - index.stat().st_mtime) / 3600 if index.exists() else 0
+        last = checkout.last_claimant(os.path.realpath(index))
+        who = f"; last claimed by {last['session']} (project {last.get('project') or '-'})" if last else "; no claim recorded"
+        findings.append(("uncommitted-context", "defect" if hours > 24 else "warning",
+                         f"projects/index.yaml has uncommitted changes, last written {hours:.0f} h ago{who}",
+                         "commit it under a claim on the index, or set fields with `synthesis index set`"))
     remotes = git(repo, "remote")[1]
     branch = git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")[1]
     upstream = git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")[1] if branch else ""

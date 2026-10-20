@@ -45,9 +45,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.14 adds 144 for defects reported 10-13 and 10-14: a Python script judged by what it writes, not what it
 # quotes (about 50); file-edit tools kept out of approvals and windows; heredoc, JSON and rewritten bodies read
 # right; global options and help in posting commands.
+# 5.0.15 adds 331 to the core (338 to the plugin) after a project session's data-loss incident on 2026-10-20: the
+# shared-checkout journal and claims log (synthesis/checkout.py, about 230), release and claim checks, journal and
+# index commands in the CLI (about 60), claims checked when a file is written (about 40), and wiring.
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 5860
-PLUGIN_BUDGET = 21208
+CORE_BUDGET = 6191
+PLUGIN_BUDGET = 21546
 
 
 def _lines(files):

@@ -178,8 +178,8 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
-    if any(m and m in raw for m in signature.get("markers", [])) and not any(
-            fnmatch.fnmatchcase(tool, p) for p in signature.get("plain_url_tools", [])):
+    if any(m and m in raw for m in signature.get("markers", [])) and not any(  # iMessage cannot carry a named link
+            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send"] + signature.get("plain_url_tools", [])):
         shown = LINKED.sub(" ", raw)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:
@@ -897,12 +897,47 @@ def _protected_roots(config: dict | None) -> list[str]:
     return [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
 
 
+def _file_targets(tool: str, tool_input: dict) -> list[str]:
+    text = str(tool_input.get("input") or tool_input.get("patch") or "") if tool == "apply_patch" else ""
+    return [a or b for a, b in PATCH_PATHS.findall(text)] or [str(tool_input.get(k)) for k in (
+        "file_path", "path", "notebook_path") if tool_input.get(k)]
+
+
+def _shell_writes(command: str, cwd: str) -> list[str]:
+    """The files a shell line writes or removes: redirects, copiers and writers, `sed -i`, `apply_patch`."""
+    writes = []
+    try:
+        found = _commands(command, cwd, writes=writes)
+    except (Unreadable, StopIteration, IndexError):
+        return []
+    targets = [os.path.join(w, t) for t, w in writes]
+    for words, where in found:
+        head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
+        if head in WRITERS or (head in ("sed", "perl") and "-i" in words):
+            targets += [os.path.join(where, w) for w in (rest[-1:] if head in COPIERS else rest)]
+        if head == "apply_patch":
+            targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(command)]
+    return targets
+
+
+def check_claimed(targets: list[str], cwd: str, session: dict | None) -> str | None:
+    """A write into a path another live session has claimed is refused when it is written, not first at commit
+    (2026-10-20: a claimed file was emptied, and claims were checked only at commit)."""
+    from synthesis import board
+    me = paths.session_id(session)
+    for target in targets:
+        real = os.path.realpath(os.path.join(cwd, os.path.expanduser(os.path.expandvars(target))))
+        held = board.holders(real, exclude=me)
+        if held:
+            return (f"Refused: {real} is claimed by session {held[0].session} (project {held[0].project or '-'}: "
+                    f"{held[0].goal or 'no goal'}). Ask it on the board (`synthesis msg`) or wait for its release.")
+    return None
+
+
 def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str | None:
     """An agent's own file tools (Write, Edit, apply_patch) may not write where approvals and send windows live
     (2026-10-14: those tools never reached the guard, so a window could be written by hand)."""
-    text = str(tool_input.get("input") or tool_input.get("patch") or "") if tool == "apply_patch" else ""
-    targets = [a or b for a, b in PATCH_PATHS.findall(text)] or [str(tool_input.get(k)) for k in (
-        "file_path", "path", "notebook_path") if tool_input.get(k)]
+    targets = _file_targets(tool, tool_input)
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
     hits = [t for t in targets if any(paths.inside(os.path.realpath(os.path.join(cwd, os.path.expanduser(t))), r)
                                       for r in roots)]
@@ -1109,9 +1144,10 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if tool in SHELL_TOOLS:
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
-                or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session))
+                or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
+                or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config)
+        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)
