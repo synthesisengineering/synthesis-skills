@@ -11,7 +11,7 @@ import json
 import subprocess
 import sys
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from synthesis import rituals
@@ -153,3 +153,46 @@ def test_session_start_carries_the_ritual_line(isolated_home, tmp_path, monkeypa
     hook.session_start({"session_id": "s-1", "cwd": here(tmp_path, monkeypatch)})
     context = json.loads(out.getvalue())["hookSpecificOutput"]["additionalContext"]
     assert "Rituals (today" in context and "alpha" not in context
+
+
+def declare(tmp_path: Path, home: Path, workspace: str, accounts: list[str], read_through: dict) -> None:
+    folder = tmp_path / "workspaces" / workspace / ".agents"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "mailboxes.yaml").write_text(f"workspace: {workspace}\naccounts:\n" + "".join(accounts), encoding="utf-8")
+    (home / "sync-watermarks").mkdir(parents=True, exist_ok=True)
+    targets = {a: {"through": t, "updated_at": t} for a, t in read_through.items()}
+    (home / "sync-watermarks" / f"{workspace}.json").write_text(
+        json.dumps({"surfaces": {"email": {"targets": targets}}}), encoding="utf-8")
+
+
+def account(address: str, sweep: str = "every-ritual") -> str:
+    return f"  - address: {address}\n    transport: apple-mail\n    role: work\n    sweep: {sweep}\n"
+
+
+def test_a_declared_mailbox_left_unread_is_counted_in_every_session_line(isolated_home, tmp_path, monkeypatch):
+    """2026-10-20: a workspace's rituals stopped and its declared mailbox went ten days unread, visible only to
+    that workspace's own report. Every session start now counts such accounts, naming none."""
+    log(isolated_home, rec("day-end", "alpha", MONDAY - timedelta(days=1)))
+    cwd = here(tmp_path, monkeypatch)
+    declare(tmp_path, isolated_home, "client-secret-name",
+            [account("old@client.example"), account("fresh@client.example"), account("weekly@client.example", "weekly"),
+             account("asked@client.example", "on-request"), account("never@client.example")],
+            {"old@client.example": "2026-09-10T09:00:00-04:00", "fresh@client.example": "2026-09-13T18:00:00-04:00",
+             "weekly@client.example": "2026-09-08T09:00:00-04:00"})
+
+    line = rituals.session_line(cwd, MONDAY)
+
+    assert "2 declared mailbox(es) unread past their sweep cadence" in line
+    assert "client" not in line
+    stale = rituals.stale_mailboxes(datetime(2026, 9, 14, 16, tzinfo=timezone.utc))
+    assert [(w, a) for w, a, _ in stale] == [("client-secret-name", "old@client.example"),
+                                             ("client-secret-name", "never@client.example")]
+
+
+def test_a_mailbox_manifest_that_cannot_be_read_counts_as_unread(isolated_home, tmp_path, monkeypatch):
+    folder = tmp_path / "workspaces" / "beta" / ".agents"
+    folder.mkdir(parents=True)
+    (folder / "mailboxes.yaml").write_text("accounts: []\n", encoding="utf-8")  # names no workspace
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert rituals.stale_mailboxes(datetime(2026, 9, 14, 16, tzinfo=timezone.utc)) == [
+        ("beta", "(manifest or watermark store unreadable)", "")]

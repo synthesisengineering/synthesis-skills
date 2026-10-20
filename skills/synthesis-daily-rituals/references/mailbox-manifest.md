@@ -56,3 +56,14 @@ done":
 
 A coverage claim names its denominator: "2 of 3 swept (mac.com
 UNREACHABLE: auth expired)" carries information; "email done" does not.
+
+## Between rituals (2026-10-20)
+
+The report above runs only inside a workspace's own ritual, so a workspace whose rituals stop leaves
+its accounts unread with nothing to say so: one declared account went ten days unread that way.
+Every session start, in any workspace, now counts each declared account whose mail was last read
+(`through`) longer ago than its sweep allows: 3 days for `every-ritual`, 8 for `weekly`, never for
+`on-request` or `forwards-to`. An unreadable manifest or watermark store counts too. The line names
+no workspace or address; `ritual_state.py query summary` lists each as `MAIL <workspace> <address>`.
+The fix is that workspace's ritual: its window opens at the stored watermark, so one sweep covers
+the whole gap.

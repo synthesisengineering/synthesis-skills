@@ -20,6 +20,7 @@ never read as omitted. Every run uses a scratch state directory.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -170,6 +171,25 @@ def test_summary_without_workspace_reports_the_weekly_review_per_workspace(tmp_p
     assert "weekly 2026-09-12" in human.stdout
     assert "weekly —" in human.stdout
 
+
+
+def test_summary_lists_each_declared_mailbox_left_unread(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    agents = home / "workspaces" / "alpha" / ".agents"
+    agents.mkdir(parents=True)
+    (agents / "mailboxes.yaml").write_text("workspace: alpha\naccounts:\n  - address: a@example.com\n"
+                                           "    transport: gmail\n    role: work\n    sweep: every-ritual\n",
+                                           encoding="utf-8")
+    record(tmp_path, "day-end", "alpha", "2026-09-11")
+    env = {**os.environ, "HOME": str(home), "SYNTHESIS_HOME": str(tmp_path / "synthesis")}
+    args = [sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "query", "summary", "--today", "2026-09-14"]
+
+    out = subprocess.run([*args, "--json"], env=env, capture_output=True, text=True, check=True)
+    human = subprocess.run(args, env=env, capture_output=True, text=True, check=True)
+
+    assert json.loads(out.stdout)["stale_mailboxes"] == [
+        {"workspace": "alpha", "address": "a@example.com", "read_through": None}]
+    assert "MAIL  alpha" in human.stdout and "a@example.com read through never" in human.stdout
 
 # --- last ------------------------------------------------------------------------------------
 

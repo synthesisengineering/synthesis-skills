@@ -48,9 +48,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.0.15 adds 331 to the core (338 to the plugin) after a project session's data-loss incident on 2026-10-20: the
 # shared-checkout journal and claims log (synthesis/checkout.py, about 230), release and claim checks, journal and
 # index commands in the CLI (about 60), claims checked when a file is written (about 40), and wiring.
+# 5.0.16 adds 31 to the core (38 to the plugin): every session start counts declared mailboxes left unread past
+# their sweep cadence in any workspace, and the ritual summary lists them (an audit on 2026-10-20 found one
+# workspace's account ten days unread with nothing reporting it).
 # Code may not grow past these without removing as many lines elsewhere.
-CORE_BUDGET = 6191
-PLUGIN_BUDGET = 21546
+CORE_BUDGET = 6222
+PLUGIN_BUDGET = 21584
 
 
 def _lines(files):
