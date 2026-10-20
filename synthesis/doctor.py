@@ -549,7 +549,7 @@ def check_versions(versions: dict, sessions: list) -> Check:
     return Check("warn", "versions", f"{shown}: run the onboarding setup again, or release.py --install-only")
 
 
-PACKET_MARKER = re.compile(r"<!-- synthesis-decision-packet spec-sha256:([0-9a-f]{64}) -->")
+PACKET_MARKER = re.compile(r"<!-- synthesis-(?:decision-packet|action-sheet) spec-sha256:([0-9a-f]{64}) -->")
 PACKET_SPEC = re.compile(r'<script type="application/json" id="spec">(.*?)</script>', re.S)
 
 
@@ -561,19 +561,20 @@ def packet_problem(page: Path) -> str:
     if "synthesis-packet-retired" in text:
         return ""
     if not marker:
-        return "no generator marker: rebuild it with build_packet.py"
+        return "no generator marker: rebuild it with its generator (build_packet.py or build_sheet.py)"
     if not spec or hashlib.sha256(spec.group(1).encode("utf-8")).hexdigest() != marker.group(1):
         return "edited after generation (its spec does not match the marker): rebuild it"
     return ""
 
 
 def check_packets(roots: list) -> Check:
-    pages = [p for r in roots for p in sorted(Path(r).glob("projects/*/resources/artifacts/*packet*.html"))]
+    pages = sorted({p for r in roots for pattern in ("*packet*.html", "*sheet*.html")  # action sheets share the engine
+                    for p in Path(r).glob(f"projects/*/resources/artifacts/{pattern}")})
     problems = [f"{_short(p)}: {m}" for p in pages for m in [packet_problem(p)] if m]
     if problems:
         return Check("warn", "decision packets", f"{len(problems)} of {len(pages)} not generator output: "
                      + "; ".join(problems[:3]))
-    return Check("ok", "decision packets", f"{len(pages)} packet pages carry the generator's marker")
+    return Check("ok", "decision packets", f"{len(pages)} packet and sheet pages carry their generator's marker")
 
 
 # ---- am I behind the latest release? (on demand: it is the only network call) ------

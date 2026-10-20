@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -16,6 +16,7 @@ if __package__ in (None, ""):
 from synthesis import paths  # noqa: E402
 
 DEFAULTS = {"streak": "none", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": []}
+MAILBOX_DAYS = {"every-ritual": 3, "weekly": 8}  # a declared account's mail is read within this, weekends included
 POINTER = "details: python3 <synthesis-daily-rituals>/scripts/ritual_state.py query summary"
 UNNAMED = (None, "", "unknown")
 
@@ -90,8 +91,36 @@ def weekly_owed(records: list[dict], workspace: str, today: date) -> bool:
     return review is None or review["date"] < friday(today).isoformat()
 
 
+def stale_mailboxes(now: datetime) -> list[tuple[str, str, str]]:
+    """(workspace, address, read through) for every declared account read longer ago than its sweep allows.
+    2026-10-20: a workspace whose rituals stopped left its mailbox unread ten days, and only that workspace's
+    own ritual could have reported it; every session start now counts it."""
+    from synthesis.yamlish import load
+    found = []
+    for manifest in sorted((Path.home() / "workspaces").glob("*/.agents/mailboxes.yaml")):
+        try:
+            data = load(manifest.read_text(encoding="utf-8"))
+            name = "".join(c for c in data["workspace"] if c.isalnum() or c in "-_")
+            store = paths.home() / "sync-watermarks" / f"{name}.json"
+            targets = (json.loads(store.read_text(encoding="utf-8")) if store.is_file() else {}).get(
+                "surfaces", {}).get("email", {}).get("targets") or {}
+            accounts = [(a["address"], MAILBOX_DAYS.get(a.get("sweep"))) for a in data["accounts"]]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            found.append((manifest.parent.parent.name, "(manifest or watermark store unreadable)", ""))
+            continue
+        for address, days in accounts:
+            through = str((targets.get(address) or {}).get("through") or "")
+            try:
+                fresh = days is None or now - datetime.fromisoformat(through) <= timedelta(days=days)
+            except (TypeError, ValueError):  # never read, or a time without its offset
+                fresh = False
+            found += [] if fresh else [(data["workspace"], address, through)]
+    return found
+
+
 def session_line(cwd: str, today: date | None = None) -> str:  # empty until a ritual is recorded
-    today, (records, bad) = today or date.today(), read()
+    now = datetime.now().astimezone() if today is None else datetime.combine(today, time(12)).astimezone()
+    today, (records, bad) = today or now.date(), read()
     try:
         cfg = config()
     except ValueError as exc:
@@ -120,6 +149,8 @@ def session_line(cwd: str, today: date | None = None) -> str:  # empty until a r
         unclosed = {w for w, d in open_days(records, today) if w in others and d != day}
         parts.append(f"{len(others)} other workspace(s): {len(unclosed)} with workdays never closed, "
                      f"{sum(weekly_owed(records, w, today) for w in others)} owing a weekly review")
+    stale = stale_mailboxes(now)
+    parts += [f"{len(stale)} declared mailbox(es) unread past their sweep cadence"] if stale else []
     parts += [f"{bad} malformed log line(s)"] if bad else []
     return f"Rituals (today {today:%a %Y-%m-%d}): " + ". ".join(parts) + f". {POINTER}."
 

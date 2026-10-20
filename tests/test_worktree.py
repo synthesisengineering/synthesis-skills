@@ -167,6 +167,10 @@ def test_retire_refuses_ignored_files_removal_would_destroy_except_pycache(repo)
     with pytest.raises(worktree.Refused, match="build/"):
         worktree.retire(repo.wt, session_id="S1")
     subprocess.run(["rm", "-r", f"{repo.wt}/build"], check=True)
+    os.makedirs(f"{repo.wt}/.pytest_cache/v/cache")  # as pytest leaves it, with its own .gitignore (2026-10-20)
+    with open(f"{repo.wt}/.pytest_cache/.gitignore", "w") as handle:
+        handle.write("*\n")
+    open(f"{repo.wt}/.pytest_cache/v/cache/lastfailed", "w").close()
     worktree.retire(repo.wt, session_id="S1")
     assert not os.path.exists(repo.wt)
 
@@ -220,6 +224,21 @@ def test_retire_accepts_a_squash_merge_after_the_default_branch_moved_on(repo):
     commit(repo.elsewhere, "other.txt", "another session's work\n")
     git(repo.elsewhere, "push", "-q", "origin", "main")
     assert "content already in the default branch" in worktree.retire(repo.wt, session_id="S1")
+
+
+def test_retire_accepts_a_squash_merge_whose_files_were_edited_since(repo):
+    """2026-10-20: two merged pull requests' worktrees were refused because the team had since edited the
+    same files on the default branch, so neither the tree nor a merge matched."""
+    worktree.create(repo.main, repo.wt, "feature", session_id="S1")
+    commit(repo.wt, "a.txt", "a\n")
+    commit(repo.wt, "b.txt", "b\n")
+    git(repo.wt, "rm", "-q", "README.md")
+    git(repo.wt, "commit", "-q", "-m", "remove the readme")
+    git(repo.wt, "push", "-q", "origin", "feature")
+    squash_merge_elsewhere(repo)
+    commit(repo.elsewhere, "a.txt", "a, edited after the merge\n")
+    git(repo.elsewhere, "push", "-q", "origin", "main")
+    assert "every changed file reached the default branch" in worktree.retire(repo.wt, session_id="S1")
 
 
 def test_retire_refuses_a_squash_merge_that_left_part_of_the_work_out(repo):

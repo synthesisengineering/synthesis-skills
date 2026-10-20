@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-daily-rituals"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5

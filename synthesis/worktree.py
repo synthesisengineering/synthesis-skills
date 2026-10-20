@@ -109,11 +109,19 @@ def _merged(repo: str, head: str, base: str) -> str:
     merge = _git(repo, "merge-tree", "--write-tree", base, head)
     if merge.returncode == 0 and merge.stdout.split()[:1] == [_out(repo, "rev-parse", f"{base}^{{tree}}")]:
         return "content already in the default branch (squash merge)"
-    return ""
+    # A squash merge the team edited further: each file head changed reached base in head's exact version (or
+    # its deletion) at some commit since they diverged (two merged pull requests' worktrees, 2026-10-20).
+    fork = _out(repo, "merge-base", head, base)
+    changed = [row.split("\t") for row in _out(repo, "diff", "--name-status", "--no-renames", fork, head).splitlines()]
+    landed = [_out(repo, "log", "--format=%H", f"{fork}..{base}", *(["--diff-filter=D"] if status == "D" else
+                   [f"--find-object={_out(repo, 'rev-parse', f'{head}:{name}')}"]), "--", name) for status, name in changed]
+    return "every changed file reached the default branch as written here (squash merge, edited since)" \
+        if changed and all(landed) else ""
 
 
 def _status(path: str) -> list[str]:
-    """Every entry removal would lose: modified, untracked and ignored, except ignored `__pycache__`."""
+    """Every entry removal would lose: modified, untracked and ignored, except the ignored caches
+    `__pycache__` and `.pytest_cache` (pytest writes its own `.gitignore` there)."""
     status = _git(path, "status", "--porcelain", "-z", "--ignored=matching", "--untracked-files=all")
     if status.returncode != 0:
         raise Refused(f"git status failed in {path}: {status.stderr.strip()}")
@@ -123,7 +131,7 @@ def _status(path: str) -> list[str]:
             skip = False
             continue
         skip = "R" in entry[:2] or "C" in entry[:2]  # a rename or copy is followed by its source path
-        if entry.startswith("!! ") and "__pycache__" in entry[3:].rstrip("/").split("/"):
+        if entry.startswith("!! ") and {"__pycache__", ".pytest_cache"} & set(entry[3:].rstrip("/").split("/")):
             continue
         lost.append(entry)
     return lost

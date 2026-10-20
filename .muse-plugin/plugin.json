@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "synthesis-skills",
   "displayName": "Synthesis Skills",
-  "version": "5.0.15",
+  "version": "5.1.0",
   "description": "Synthesis engineering workflows for durable human-agent work across Muse, Claude Code, Codex, and other Agent Skills runtimes.",
   "compat": {
     "source": "native",
@@ -13,6 +13,10 @@
       {
         "id": "synthesis-absence-coordination",
         "path": "skills/synthesis-absence-coordination/SKILL.md"
+      },
+      {
+        "id": "synthesis-action-sheet",
+        "path": "skills/synthesis-action-sheet/SKILL.md"
       },
       {
         "id": "synthesis-adversarial-review",

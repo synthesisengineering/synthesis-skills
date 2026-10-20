@@ -73,9 +73,9 @@ As of v1.6.0 (2026-07-08), the repo inventory is decentralized: each workspace o
 - New-machine bootstrap (an explicit "set this machine up" act): read `machines.yaml` for the machine's subscribed workspaces, clone each workspace's context repo, read its `repos.yaml`, clone the curated list (minus any `exclude:` entries).
 - Ongoing: a repo listed in a workspace manifest but missing locally is surfaced as a decision; a machine subscription may set `auto_clone: true` to mirror automatically (default: false).
 
-**Router file — `machines.yaml`** (same folder as the legacy central yaml): machine inventory, per-machine `workspaces:` subscriptions (`all` or an explicit list — supports restricted machines such as client-issued hardware that must never hold other clients' names), optional `auto_clone` and `exclude:`, and the workspace → context-repo bootstrap map. This is the only repo-related state that stays centralized.
+**Router file — `machines.yaml`** (in the iCloud sync folder): machine inventory, per-machine `workspaces:` subscriptions (`all` or an explicit list — supports restricted machines such as client-issued hardware that must never hold other clients' names), optional `auto_clone` and `exclude:`, and the workspace → context-repo bootstrap map. This is the only repo-related state that stays centralized.
 
-**Transition:** while the legacy `repositories:` section of `git-repos.yaml` still exists, each sync cross-checks it against the per-workspace manifests and REPORTS any drift — no silent divergence. After a drift-free window (at least two clean daily-ritual code-syncs plus one clean mac-sync), archive that section to a dated file; the Manifest Merge Protocol below then applies only to `machines.yaml` and any remaining central state.
+**No central repo list.** The per-workspace manifests and `machines.yaml` are the only sources. A setup that still carries a central roster (`git-repos.yaml` with a `repositories:` section, from before v1.6.0) retires it once a three-way comparison of roster, manifests and disk shows every roster entry in a manifest: move the file to a dated name, verify its hash, and point every reader at the manifests (2026-10-20: 69 roster entries, all in manifests, which also held five newer repos and the current remotes). Every repo on disk belongs in some workspace's manifest, a finished engagement's under `status: dormant`, so a scan never proposes it again and a new Mac's bootstrap can restore it.
 
 **Consumers:** synthesis-daily-rituals enumerates day-start/day-end source-code sync from `ritual_sync: yes` entries (`repo_state.py --workspace-root`); this skill reads the same files for repo and remote reconciliation; the strand scan (`repo_state.py --discover`) scans disk independently of any manifest.
 
@@ -91,9 +91,7 @@ Scan a configured directory (e.g., `~/workspaces/`) recursively:
 find ~/workspaces -maxdepth 3 -name ".git" -type d 2>/dev/null
 ```
 
-Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos, their categories, and their remote configurations for quick status checks and cross-machine remote sync. **Update using the merge protocol** on each sync — never overwrite the yaml from scratch. See **Git Remote Sync Protocol** and **Manifest Merge Protocol**.
-
-**v1.6.0:** repo entries now live per workspace in `<workspace>/.agents/repos.yaml` (see Per-Workspace Repo Manifests above); the central `repositories:` section is transitional and the scan's write target is the workspace manifest's fact fields.
+The scan's write target is each workspace manifest's fact fields (see Per-Workspace Repo Manifests above), refreshed in place, never regenerated. See **Git Remote Sync Protocol** and **Manifest Merge Protocol**.
 
 ### Per-Repo Sync Procedure
 
@@ -130,18 +128,18 @@ Maintain a **manifest file** (`git-repos.yaml`) that caches discovered repos, th
 
 Remote configurations (name + URL pairs) are per-machine state stored in each repo's `.git/config`. Without explicit sync, a remote added on one Mac won't exist on the other.
 
-**v1.6.0:** the reconciliation source for a repo's remotes is its workspace `repos.yaml` `remotes:` map (fact fields), not the central yaml.
+The reconciliation source for a repo's remotes is its workspace `repos.yaml` `remotes:` map (fact fields).
 
 ### Capture (during scan/refresh)
 
-When refreshing `git-repos.yaml`, capture all remotes per repo:
+When refreshing a workspace manifest's fact fields, capture all remotes per repo:
 
 ```bash
 # For each discovered repo:
 git -C "$repo_path" remote -v | grep '(fetch)' | awk '{print $1, $2}'
 ```
 
-**CRITICAL: Use the Manifest Merge Protocol (below) to update git-repos.yaml. NEVER generate a fresh yaml from scratch and overwrite the existing file.** The existing yaml may contain repos, remotes, categories, notes, and metadata contributed by other machines that this machine doesn't have locally. A destructive overwrite causes data loss.
+**CRITICAL: refresh fact fields in place. NEVER regenerate a manifest from one machine's scan.** It may hold repos, remotes and policy contributed from other machines that this one doesn't have locally; a destructive overwrite loses them.
 
 This runs as part of the single batched scan script — not as separate tool calls.
 
@@ -150,7 +148,7 @@ This runs as part of the single batched scan script — not as separate tool cal
 When syncing to a Mac, reconcile local remotes against the manifest:
 
 ```bash
-# For each repo in git-repos.yaml, for each remote in the manifest:
+# For each repo in a workspace manifest, for each remote it lists:
 existing_url=$(git -C "$repo_path" remote get-url "$remote_name" 2>/dev/null)
 if [ -z "$existing_url" ]; then
   git -C "$repo_path" remote add "$remote_name" "$manifest_url"
@@ -172,19 +170,19 @@ Execute this as a SINGLE batched script across all repos — not individual tool
 
 ### Relationship to setup-git-remotes.sh
 
-If you maintain a `setup-git-remotes.sh` bootstrap script, it serves as a fallback for initial machine setup (before repos are cloned and before the first mac-sync). Once `git-repos.yaml` captures remotes, the yaml is the authoritative source of truth. Keep the bootstrap script consistent with the yaml, or auto-generate it from the yaml during push.
+If you maintain a `setup-git-remotes.sh` bootstrap script, it serves as a fallback for initial machine setup (before repos are cloned and before the first mac-sync). Once the workspace manifests capture remotes, they are the authoritative source of truth. Keep the bootstrap script consistent with them, or generate it from them.
 
 ---
 
 ## Manifest Merge Protocol
 
-**v1.6.0 scope note:** with per-workspace `repos.yaml` files live, this protocol applies to `machines.yaml` and the transitional central yaml only — per-workspace manifests merge via git in their context repos.
+**Scope:** this protocol applies to `machines.yaml`, the one central file left; per-workspace manifests merge through git in their context repos, and their scans follow the same additive rules.
 
-**CRITICAL SAFETY RULE: git-repos.yaml must NEVER be generated from scratch and overwritten.** The yaml is a shared manifest across multiple machines. Each machine may have repos, remotes, or metadata that other machines don't. A destructive overwrite from one machine's scan silently destroys data contributed by other machines.
+**CRITICAL SAFETY RULE: a shared manifest must NEVER be generated from scratch and overwritten.** It is shared across multiple machines. Each machine may have repos, remotes, or metadata that other machines don't. A destructive overwrite from one machine's scan silently destroys data contributed by other machines.
 
 ### The merge procedure
 
-When refreshing git-repos.yaml on any machine:
+When refreshing a shared manifest on any machine:
 
 1. **Read the existing yaml first.** Parse all entries, their paths, categories, notes, remotes, and any other fields.
 
@@ -226,7 +224,7 @@ Mac-sync is designed to run fully automated. The assistant should complete the e
 - Git push when ahead, clean working tree → always do
 - Clean repos → skip silently
 - Repos with no remote → skip, note in summary
-- Manifest update → always refresh
+- Workspace manifest fact refresh → always
 - One-time actions for a different machine → skip silently
 
 ### Must prompt (show details + ask for action)
@@ -273,29 +271,21 @@ Present a summary after sync completes:
 Only prompt for items in "Needs Attention." Everything else is informational.
 
 
-### Git Repository Manifest (git-repos.yaml)
+### Workspace repo manifest (`<workspace>/.agents/repos.yaml`)
 
 ```yaml
-scan_root: ~/workspaces
-max_depth: 3
-total_repos: 12
-
-repositories:
-  - path: ~/workspaces/personal/my-app
-    category: personal
-    remotes:
-      origin: https://github.com/user/my-app.git
-
-  - path: ~/workspaces/work/app
-    category: work
-    push_policy: pr-required
-    remotes:
+workspace: work
+status: active            # active | dormant (retained, sync paused; never deleted)
+repos:
+  - name: app
+    path: app/                       # fact
+    remotes:                         # facts, refreshed by scan and reconciled on other Macs
       origin: https://github.com/org/app.git
       mirror: https://github.com/other-org/app.git
-
-excluded:
-  # - ~/workspaces/personal/some-fork  # Reason: upstream only
+    default_branches: [main]
+    ritual_sync: yes                 # policy: the daily ritual syncs every `yes` on every run
+    push_policy: pr-required         # policy: default | owner-only | pr-required
+    category: work
 ```
 
-The `remotes` field captures all configured git remotes per repo. This is the source of truth for remote topology across machines — when mac-sync runs on a second Mac, it reconciles local remotes against this manifest. See **Git Remote Sync Protocol** below.
-
+The `remotes` map is the source of truth for remote topology across machines: when mac-sync runs on a second Mac, it reconciles local remotes against it. See **Git Remote Sync Protocol** above.

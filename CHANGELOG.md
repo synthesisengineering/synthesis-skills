@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.0] - 2026-10-20
+
+**New skill: synthesis-action-sheet 1.0.0,** the decision packet's companion. After agents carry out the
+principal's rulings, one self-contained page holds what is left: done for you (folded), staged sends to approve,
+and the principal's own actions with the exact text, Copy, open-in-app links (WhatsApp prefilled; LinkedIn,
+Messages, mail and phone as each channel allows), marks, a note box and a paste-back summary. Each row can go to
+the principal or to an agent, which then may send exactly that text to that recipient once; money, security,
+credentials and identity rows never go to an agent. Approval codes never go on the page; a tap is confirmed from
+the source before anything is logged as done; the chat after a page is three lines. It shares the packet's page
+engine and filing.
+
+Also:
+- **Decision packet 2.1.1:** "Take all remaining" and "Clear" confirm on the page. Inside a claude.ai Artifact
+  the browser's confirm dialog always answers no, so both buttons did nothing there.
+- **Approval codes** are read only in the shape the guard issues (a digit, then five hex characters) and never
+  inside a block the harness wraps into a prompt. A background task's report reached the prompt hook as a prompt:
+  a code quoted there could have spent the pending request, and English after "approve" drew "Not granted" notes.
+- **Unread mailboxes between rituals** (daily rituals 3.1.0): every session start counts declared accounts whose
+  mail was last read past their sweep cadence, in any workspace (3 days for every-ritual, 8 for weekly), and
+  `ritual_state.py query summary` lists them. A workspace whose rituals stopped had left its account ten days
+  unread, visible only to its own ritual.
+- **`synthesis worktree retire`** accepts a squash merge the team has since edited: each file the branch changed
+  reached the default branch in the branch's exact version at some commit. It also treats pytest's cache as
+  disposable, as it does `__pycache__`.
+- **mac-sync 3.1.0:** per-workspace `repos.yaml` manifests and `machines.yaml` are the only repo inventory; the
+  central roster's retirement is documented, and a finished engagement's repositories stay listed as dormant.
+- **The doctor** checks filed action sheets for their generator's marker, as it checks packets.
+
 ## [5.0.15] - 2026-10-20
 
 After a project session's script emptied the shared project index on 2026-10-20, losing another session's

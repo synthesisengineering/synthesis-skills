@@ -16,7 +16,7 @@ These values are user-specific. Update them for your environment.
 | `icloud_sync_folder` | `~/Library/Mobile Documents/com~apple~CloudDocs/workspaces/[username]/mac-sync/` | iCloud Drive folder for synced config files |
 | `git_scan_root` | `~/workspaces/` | Root directory for git repository discovery |
 | `git_scan_max_depth` | `3` | Maximum depth for recursive `.git` directory search |
-| `git_repos_manifest` | `git-repos.yaml` | Legacy central manifest (transitional; see v1.6.0 section) |
+| `machines_router` | `machines.yaml` | Machine subscriptions and the workspace bootstrap map, in the iCloud sync folder |
 | `workspace_repo_manifest` | `<workspace>/.agents/repos.yaml` | Per-workspace repo manifest (v1.6.0; canonical for repo entries) |
 
 ---

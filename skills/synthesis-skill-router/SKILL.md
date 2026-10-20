@@ -86,6 +86,7 @@ Pick the synthesis skill that owns a request and load it. Most synthesis skills 
 - Run day-start, day-end, or gap recovery: `../synthesis-daily-rituals/SKILL.md`, `../synthesis-catchup-ledger/SKILL.md`
 - Coordinate an absence: `../synthesis-absence-coordination/SKILL.md`
 - Act as chief of staff: `../synthesis-chief-of-staff/SKILL.md`
+- Hand the principal what is left to approve, send and do after agents act: `../synthesis-action-sheet/SKILL.md`
 - Review an explicitly authorized local Messages or WhatsApp window: `../synthesis-local-messaging/SKILL.md`. Loading this route grants no discovery, collection, or send authority.
 - Compose or send agent correspondence: `../synthesis-agent-correspondence/SKILL.md`
 - Enforce outbound-message safety: `../synthesis-message-guard/SKILL.md`

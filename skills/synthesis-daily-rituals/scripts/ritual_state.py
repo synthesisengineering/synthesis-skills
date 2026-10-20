@@ -27,7 +27,7 @@ import fcntl
 import json
 import os
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 
 _PLUGIN = Path(__file__).resolve().parents[3]
@@ -142,6 +142,10 @@ def cmd_query(args) -> int:
         if args.view in ("summary", "open"):
             out["open_workdays"] = [{"workspace": w, "date": d}
                                     for w, d in rituals.open_days(records, today, workspace)]
+        if args.view == "summary":
+            moment = datetime.now().astimezone() if not args.today else datetime.combine(today, time(12)).astimezone()
+            out["stale_mailboxes"] = [{"workspace": w, "address": a, "read_through": t or None}
+                                      for w, a, t in rituals.stale_mailboxes(moment) if workspace in (None, w)]
     unnamed = sum(1 for r in records if r.get("workspace") in (None, "", "unknown"))
     out.update({k: v for k, v in (("records_without_workspace", unnamed), ("malformed_lines", bad)) if v})
     if args.json:
@@ -154,6 +158,9 @@ def cmd_query(args) -> int:
               f"{view['last_weekly_review'] or '—'}{'  OWED' if view['weekly_review_owed'] else ''}")
     for item in out.get("open_workdays", []):
         print(f"  OPEN  {item['workspace']:14} {item['date']} (started, never closed)")
+    for item in out.get("stale_mailboxes", []):
+        print(f"  MAIL  {item['workspace']:14} {item['address']} read through {item['read_through'] or 'never'}"
+              " (past its sweep cadence; run that workspace's ritual)")
     if "last_weekly_review" in out:
         print(f"  last weekly review ({workspace}): {out['last_weekly_review'] or '—'}"
               f"{'  OWED' if out['owed'] else ''}{'  (the only workspace in the log)' if inferred else ''}")

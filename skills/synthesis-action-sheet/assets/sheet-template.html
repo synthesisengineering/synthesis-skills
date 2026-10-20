@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__TITLE__</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* One phone-first column: the counts, what was done (folded), what waits for a code, then
+   what is the principal's to do. The exact text is the hero of each card. The tokens and
+   both themes are the decision packet's. */
+:root {
+  --bg: #ffffff; --panel: #f7f8fa; --panel-2: #eef1f5; --ink: #14181f; --ink-2: #4a5568;
+  --ink-3: #6b7688; --line: #d8dee7; --line-2: #c3ccd8; --accent: #12395f;
+  --danger: #b3261e; --warn: #9a6400; --ok: #1c6b3f; --info: #1c4f8f; --muted: #5b6472;
+  --sel-fg: #ffffff; --chip: #e6ebf2; --focus: #2d6cdf;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10131a; --panel: #171b24; --panel-2: #1e2430; --ink: #e8ecf2; --ink-2: #b3bccb;
+    --ink-3: #8b95a6; --line: #2a3140; --line-2: #3a4356; --accent: #7fb0e8;
+    --danger: #ff8a80; --warn: #e8b04b; --ok: #6fcf97; --info: #7fb0e8; --muted: #9aa4b4;
+    --sel-fg: #10131a; --chip: #232a37; --focus: #7fb0e8; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10131a; --panel: #171b24; --panel-2: #1e2430; --ink: #e8ecf2; --ink-2: #b3bccb;
+  --ink-3: #8b95a6; --line: #2a3140; --line-2: #3a4356; --accent: #7fb0e8;
+  --danger: #ff8a80; --warn: #e8b04b; --ok: #6fcf97; --info: #7fb0e8; --muted: #9aa4b4;
+  --sel-fg: #10131a; --chip: #232a37; --focus: #7fb0e8; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+  font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 760px; margin: 0 auto; padding-block: 28px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+header h1 { font-size: 25px; line-height: 1.2; margin: 0 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+header .date { color: var(--ink-2); margin: 0 0 12px; }
+header .intro { color: var(--ink-2); max-width: 68ch; margin: 0 0 14px; white-space: pre-wrap; }
+header .aud { color: var(--ink-3); font-size: 13px; margin: 0 0 16px; }
+.counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.count { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; flex: 1 1 104px; }
+.count b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.count span { font-size: 12px; color: var(--ink-3); }
+.n { font-variant-numeric: tabular-nums; color: var(--ink-3); font-weight: 500; }
+details.done { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin: 0 0 24px; }
+details.done > summary { cursor: pointer; padding: 10px 14px; }
+details.done .kinds { display: block; color: var(--ink-2); font-size: 13.5px; }
+.done-body { padding: 0 14px 12px; }
+.done-body h3 { font-size: 13.5px; margin: 10px 0 4px; color: var(--ink-2); }
+.done-body ul { margin: 0; padding-left: 18px; }
+.done-body li { margin: 2px 0; overflow-wrap: anywhere; }
+.done-body a { color: var(--info); }
+.group { margin: 0 0 26px; }
+.group h2 { font-size: 19px; margin: 0 0 2px; }
+.group .lede { color: var(--ink-2); margin: 0 0 12px; font-size: 14px; max-width: 68ch; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin: 0 0 12px; display: grid; gap: 10px; min-width: 0;
+}
+.card[data-status="done"] { background: color-mix(in srgb, var(--ok) 8%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.card[data-status="agent"] { border-color: color-mix(in srgb, var(--info) 55%, var(--line)); }
+.card[data-status="skipped"] .text, .card[data-status="not-now"] .text { opacity: .7; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.head h3 { font-size: 16.5px; line-height: 1.3; margin: 0; overflow-wrap: anywhere; }
+.chip {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600;
+  padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2);
+}
+.pill { font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 999px; color: var(--sel-fg); background: var(--muted); }
+.pill:empty { display: none; }
+.card[data-status="done"] .pill { background: var(--ok); }
+.card[data-status="agent"] .pill { background: var(--info); }
+.card[data-status="not-now"] .pill { background: var(--warn); }
+.card[data-section="approve"][data-status="skipped"] .pill { background: var(--danger); }
+.rid { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-left: auto; }
+.meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 0; font-size: 14px; }
+.meta dt { color: var(--ink-3); }
+.meta dd { margin: 0; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.why { color: var(--ink-2); margin: 0; max-width: 68ch; }
+.text {
+  margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line);
+  border-left: 3px solid var(--line-2); border-radius: 6px; font-size: 15.5px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.tools, .marks, .who { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn, .marks button, .who button {
+  font: inherit; font-size: 14px; font-weight: 500; min-height: 40px; padding: 8px 14px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  display: inline-flex; align-items: center;
+}
+.btn.primary { background: var(--accent); color: var(--sel-fg); border-color: var(--accent); }
+.who .lab { font-size: 13px; color: var(--ink-3); }
+.who button { flex-direction: column; align-items: flex-start; text-align: left; }
+.who .conseq { font-size: 12px; font-weight: 400; color: var(--ink-3); max-width: 36ch; }
+.marks button[aria-pressed="true"], .who button[aria-pressed="true"] {
+  background: var(--accent); color: var(--sel-fg); border-color: transparent; font-weight: 600;
+}
+.marks button[data-mark="done"][aria-pressed="true"] { background: var(--ok); }
+.marks button[data-mark="skipped"][aria-pressed="true"] { background: var(--muted); }
+.card[data-section="approve"] .marks button[data-mark="skipped"][aria-pressed="true"] { background: var(--danger); }
+.marks button[data-mark="not-now"][aria-pressed="true"] { background: var(--warn); }
+.who button[data-who="agent"][aria-pressed="true"] { background: var(--info); }
+.who button[aria-pressed="true"] .conseq { color: var(--sel-fg); opacity: .9; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hint { font-size: 13px; color: var(--ink-3); margin: 0; }
+.waits { font-size: 13.5px; color: var(--warn); font-weight: 600; margin: 0; }
+.note {
+  width: 100%; min-height: 38px; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 7px;
+  border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); resize: vertical;
+}
+.note::placeholder { color: var(--ink-3); }
+.notewarn { margin: 0; font-size: 13px; color: var(--danger); font-weight: 600; }
+.rowstatus { margin: 0; font-size: 13px; color: var(--ink-2); }
+.rowstatus:empty { display: none; }
+.bar {
+  position: sticky; bottom: 0; margin-top: 26px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.barhead { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.barhead > b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.bar .actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.bar .hint { margin: 12px 0 8px; font-size: 14px; color: var(--ink-2); }
+.bar textarea {
+  width: 100%; min-height: 130px; font-family: var(--mono); font-size: 12.5px; padding: 10px;
+  border-radius: 7px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink);
+}
+.bar button {
+  font: inherit; font-size: 14px; font-weight: 600; padding: 9px 16px; border-radius: 7px;
+  cursor: pointer; background: var(--accent); color: var(--sel-fg); border: none;
+}
+.bar button.secondary { background: var(--chip); color: var(--ink-2); font-weight: 500; }
+#copystatus, #confirmreset { font-size: 13px; color: var(--ink-2); }
+@media (max-width: 620px) {
+  .wrap { padding-block: 18px 24px; }
+  header h1 { font-size: 21px; }
+  .card { padding: 12px 13px; }
+  .count { padding: 7px 9px; }
+  .count b { font-size: 17px; }
+  .bar { padding: 9px 11px calc(9px + env(safe-area-inset-bottom, 0px)); max-height: 45vh; overflow: auto; }
+  .barhead > b { font-size: 13px; }
+  .bar .actions { gap: 6px; }
+  .bar button { padding: 7px 10px; font-size: 13px; }
+  #copystatus { flex-basis: 100%; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>__TITLE__</h1>
+  __DATELINE__
+  __INTRO__
+  __AUDIENCE__
+</header>
+<noscript><p class="hint">Marks, notes and the summary need JavaScript; the texts and links work without it.</p></noscript>
+<div class="counts">__COUNTS__</div>
+__DONE__
+__APPROVE__
+__DO__
+<section class="bar" aria-label="Tell the agent what happened">
+  <div class="barhead">
+    <b id="progress">Nothing marked yet</b>
+    <div class="actions">
+      <button id="copy" type="button">Copy summary</button>
+      <button id="toggle" type="button" class="secondary" aria-expanded="false" aria-controls="summarywrap">Show text</button>
+      <button id="reset" type="button" class="secondary">Clear marks</button>
+      <span id="confirmreset" hidden>Clear every mark and note? <button id="resetyes" type="button" class="secondary">Clear them</button> <button id="resetno" type="button" class="secondary">Keep them</button></span>
+      <span id="copystatus" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+  <div id="summarywrap" hidden>
+    <p class="hint">__SUMMARY_INTRO__</p>
+    <textarea id="summary" readonly aria-label="Summary to paste back"></textarea>
+  </div>
+</section>
+</div>
+
+<script type="application/json" id="spec">__SPEC_JSON__</script>
+<script>
+(function () {
+  "use strict";
+  var SPEC = JSON.parse(document.getElementById("spec").textContent);
+  var SPEC_DIGEST = "__CANONICAL_SPEC_SHA256__";
+  var KEY = "action-sheet:" + SPEC.storage_key + ":" + SPEC_DIGEST;
+  var F = SPEC.format;  // every word of the summary, from the generator
+  var CODE = /\bapprove\s+[0-9a-z]{6}\b/i;  // the generator's pattern: codes stay in chat
+  var MARKS = {approve: [null, "skipped", "not-now"], "do": [null, "done", "skipped", "not-now"]};
+  var ROWS = SPEC.approve.map(function (r) { return {row: r, section: "approve"}; })
+    .concat(SPEC["do"].map(function (r) { return {row: r, section: "do"}; }));
+  var cards = [];
+  Array.prototype.forEach.call(document.querySelectorAll("article[data-row]"), function (card) {
+    cards[Number(card.dataset.row)] = card;
+  });
+  var summary = document.getElementById("summary"), progress = document.getElementById("progress");
+  var copystatus = document.getElementById("copystatus"), wrap = document.getElementById("summarywrap");
+  var toggle = document.getElementById("toggle"), reset = document.getElementById("reset");
+  var confirmBox = document.getElementById("confirmreset");
+
+  // ---- state: one {mark, who, note} per row id, saved per exact spec ------------------
+  // localStorage can throw outright (private mode, blocked site data), so every access is
+  // guarded and the sheet stays fully usable with no persistence; the summary says so.
+  function blank() { return {mark: null, who: null, note: ""}; }
+  function valid(it, s) {
+    if (MARKS[it.section].indexOf(s.mark) < 0) return false;
+    if (s.who === null) return true;
+    if (it.section !== "do" || it.row.agent !== "can") return false;
+    if (s.who === "agent") return s.mark === null;  // handed over: open until the agent reports
+    return s.who === "me" && (s.mark === null || s.mark === "done");
+  }
+  var state = Object.create(null), persists = true;
+  try {
+    var stored = JSON.parse(localStorage.getItem(KEY) || "{}");
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+      ROWS.forEach(function (it) {
+        if (!Object.prototype.hasOwnProperty.call(stored, it.row.id)) return;
+        var s = stored[it.row.id];
+        if (!s || typeof s !== "object" || Array.isArray(s)) return;
+        var clean = {mark: s.mark === undefined ? null : s.mark, who: s.who === undefined ? null : s.who,
+                     note: typeof s.note === "string" ? s.note : ""};
+        if (!valid(it, clean)) { clean.mark = null; clean.who = null; }
+        state[it.row.id] = clean;
+      });
+    }
+  } catch (e) { state = Object.create(null); persists = false; }
+  function save() {
+    if (!persists) return;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { persists = false; }
+  }
+  function get(id) { return state[id] || blank(); }
+  function put(id, patch) { state[id] = Object.assign(blank(), get(id), patch); save(); render(); }
+  function statusKey(it, s) { return s.mark || (it.section === "do" && s.who) || "open"; }
+
+  // ---- copy ------------------------------------------------------------------------------
+  // The packet's order, which is load-bearing: select first, so a manual copy always works;
+  // say something at once; then execCommand, which works in sandboxed frames; then the async
+  // API, bounded by a timer. A copy control that fails silently is a bug.
+  function selectNode(node) {
+    var range = document.createRange(), selection = window.getSelection();
+    range.selectNodeContents(node); selection.removeAllRanges(); selection.addRange(range);
+  }
+  function copy(text, select, status, done) {
+    select();
+    status.textContent = "Selected; copying…";
+    var fired = false, ok = false;
+    function exact(event) {
+      if (!event.clipboardData) return;
+      event.clipboardData.setData("text/plain", text); event.preventDefault(); fired = true;
+    }
+    document.addEventListener("copy", exact);
+    try { ok = document.execCommand("copy") === true && fired; } catch (e) { ok = false; }
+    document.removeEventListener("copy", exact);
+    if (ok) { status.textContent = done; return; }
+    var settled = false;
+    function manual() {
+      if (settled) return;
+      settled = true;
+      status.textContent = "Copy not confirmed. The text is selected: press Cmd+C or Ctrl+C, or use your phone’s Copy.";
+    }
+    var timer = setTimeout(manual, 2000);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        Promise.resolve(navigator.clipboard.writeText(text)).then(function () {
+          if (!settled) { settled = true; clearTimeout(timer); status.textContent = done; }
+        }, function () { clearTimeout(timer); manual(); });
+        return;
+      }
+    } catch (e) {}
+    clearTimeout(timer); manual();
+  }
+
+  // ---- rows --------------------------------------------------------------------------------
+  function warn(card, text) { card.querySelector(".notewarn").hidden = !CODE.test(text); }
+  cards.forEach(function (card, index) {
+    var it = ROWS[index];
+    card.addEventListener("click", function (event) {
+      var b = event.target && event.target.closest ? event.target.closest("button") : null;
+      if (!b || b.disabled) return;
+      var s = get(it.row.id);
+      if (b.dataset.mark) {
+        var mark = s.mark === b.dataset.mark ? null : b.dataset.mark;
+        put(it.row.id, {mark: mark, who: mark === "skipped" || mark === "not-now" ? null : s.who});
+      } else if (b.dataset.who) {
+        var who = s.who === b.dataset.who ? null : b.dataset.who;
+        put(it.row.id, {who: who, mark: who === "agent" || (who === "me" && s.mark !== "done") ? null : s.mark});
+      } else if (b.dataset.copy) {
+        copy(it.row.text, function () { selectNode(card.querySelector(".text")); },
+             card.querySelector(".rowstatus"), "Copied. Paste it into the conversation.");
+      }
+    });
+    var note = card.querySelector("textarea.note");
+    note.value = get(it.row.id).note;
+    note.addEventListener("input", function () {
+      state[it.row.id] = Object.assign(blank(), get(it.row.id), {note: note.value});
+      save(); warn(card, note.value); renderSummary();
+    });
+    warn(card, note.value);
+  });
+
+  function render() {
+    cards.forEach(function (card, index) {
+      var it = ROWS[index], s = get(it.row.id), key = statusKey(it, s);
+      card.dataset.status = key;
+      card.querySelector(".pill").textContent = key === "open" || key === "me" ? "" : F[it.section][key];
+      Array.prototype.forEach.call(card.querySelectorAll("button[data-mark]"), function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.mark === s.mark));
+        if (b.dataset.mark === "done") {
+          b.disabled = s.who === "agent";
+          b.title = b.disabled ? "The agent does this one; choose Me to do it yourself" : "";
+        }
+      });
+      Array.prototype.forEach.call(card.querySelectorAll("button[data-who]"), function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.who === s.who));
+      });
+    });
+    renderSummary();
+  }
+
+  // ---- summary -------------------------------------------------------------------------------
+  // Notes travel with LF line endings and no trailing whitespace, as in the packet.
+  function normalizeNote(note) {
+    return note.replace(/\r\n?/g, "\n").split("\n").map(function (line) { return line.trimEnd(); }).join("\n").trim();
+  }
+  function renderSummary() {
+    var lines = [SPEC.title, "=".repeat(SPEC.title.length), ""], tally = {approve: {}, "do": {}}, marked = 0;
+    ["approve", "do"].forEach(function (section) {
+      var items = ROWS.filter(function (it) { return it.section === section; });
+      if (!items.length) return;
+      lines.push(F.headings[section]);
+      items.forEach(function (it) {
+        var s = get(it.row.id), key = statusKey(it, s), note = normalizeNote(s.note);
+        tally[section][key] = (tally[section][key] || 0) + 1;
+        if (key !== "open" && key !== "me") marked++;
+        lines.push(it.row.id + "  " + it.row.name, F.status_prefix + F[section][key]);
+        if (note) lines.push(F.note_prefix + note);
+        lines.push("");
+      });
+    });
+    ["approve", "do"].forEach(function (section) {
+      if (!ROWS.some(function (it) { return it.section === section; })) return;
+      lines.push(F.headings[section] + ": " + F.counts[section].map(function (c) {
+        return c[0].reduce(function (n, k) { return n + (tally[section][k] || 0); }, 0) + " " + c[1];
+      }).join(", ") + ".");
+    });
+    if (!persists) lines.push(F.storage);
+    lines.push(F.binding + JSON.stringify({schema_version: 1, spec_sha256: SPEC_DIGEST, rows: ROWS.map(function (it) {
+      var s = get(it.row.id);
+      return {id: it.row.id, mark: s.mark, who: s.who, note: normalizeNote(s.note)};
+    }), storage_blocked: !persists}));
+    summary.value = lines.join("\n");
+    progress.textContent = marked ? marked + " of " + ROWS.length + " marked" : "Nothing marked yet";
+  }
+
+  function revealSummary() {
+    wrap.hidden = false; toggle.setAttribute("aria-expanded", "true"); toggle.textContent = "Hide text";
+  }
+  document.getElementById("copy").addEventListener("click", function () {
+    renderSummary();
+    copy(summary.value, function () {
+      // A hidden textarea cannot be selected, and selection is the fallback that always works.
+      revealSummary();
+      summary.removeAttribute("readonly"); summary.focus(); summary.select();
+      try { summary.setSelectionRange(0, summary.value.length); } catch (e) {}
+      summary.setAttribute("readonly", "");
+    }, copystatus, "Copied. Paste it back in one message.");
+  });
+  toggle.addEventListener("click", function () {
+    if (wrap.hidden) { revealSummary(); return; }
+    wrap.hidden = true; toggle.setAttribute("aria-expanded", "false"); toggle.textContent = "Show text";
+  });
+  // The claude.ai viewer answers confirm() with false, so the confirmation lives on the page.
+  reset.addEventListener("click", function () { confirmBox.hidden = false; reset.hidden = true; });
+  document.getElementById("resetno").addEventListener("click", function () { confirmBox.hidden = true; reset.hidden = false; });
+  document.getElementById("resetyes").addEventListener("click", function () {
+    state = Object.create(null);
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    cards.forEach(function (card) { card.querySelector("textarea.note").value = ""; warn(card, ""); });
+    confirmBox.hidden = true; reset.hidden = false;
+    copystatus.textContent = "Cleared every mark and note.";
+    render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
