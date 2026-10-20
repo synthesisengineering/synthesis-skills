@@ -295,6 +295,49 @@ def test_uninstall_removes_the_plugin_with_each_harness_command(tmp_path, monkey
     assert "claude: removed" in out and "codex: synthesis-skills not installed" in out and "kept" in out
 
 
+def test_dry_runs_say_what_they_would_do_and_change_nothing(tmp_path, monkeypatch, capsys):
+    """A dry run reports in conditional wording (2026-10-20): uninstall's lines said "kept", and the plugin
+    command said nothing of the runtime it would install."""
+    claude, log = fake_cli(tmp_path, "claude", {"plugin list": (0, [{"id": PLUGIN_ID, "version": "5"}]), "plugin": (0, "")})
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: claude if name == "claude" else None)
+    setup.install.install(setup.REPO)
+    before = {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")}
+    assert setup.main(["uninstall", "--dry-run", "--clients", "claude"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "claude: would remove synthesis-skills" in out and any(line.startswith("would keep ") for line in out)
+    assert not [line for line in out if line.startswith(("kept ", "removed ", "restored "))]
+    monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
+    assert setup.main(["plugin", "--no-input", "--dry-run", "--clients", "claude", "--day-end"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[-2].startswith("runtime: would install it from ") and "would link day-end (auto)" in out[-2]
+    assert out[-1] == "Dry run: nothing was changed." and setup.RESTART not in out
+    assert calls(log) == ["plugin list --json"] * 2  # no removal, install or update ran
+    assert {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")} == before
+
+
+def test_onboard_sh_dry_run_runs_from_a_temporary_clone_and_leaves_the_source_alone(tmp_path):
+    """onboard.sh fetched the release into ~/.synthesis/v5/source before setup.py ever saw --dry-run."""
+    bin_dir, log, temp = tmp_path / "bin", tmp_path / "calls.log", tmp_path / "temp"
+    bin_dir.mkdir()
+    temp.mkdir()
+    for name in ("git", "python3"):  # stand-ins that log their arguments
+        (bin_dir / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "{log}"\n')
+        (bin_dir / name).chmod(0o755)
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path / "home"), "TMPDIR": str(temp),
+           "SYNTHESIS_SOURCE": str(tmp_path / "source")}
+    script = str(setup.REPO / "onboard.sh")
+    done = subprocess.run(["sh", script, "org", "--org-repo", "ssh://git@example.test/o/config.git", "--dry-run"],
+                          env=env, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    clone, run = log.read_text().splitlines()
+    assert clone.startswith(f"git clone --quiet --depth 1 --branch stable https://github.com/") and str(temp) in clone
+    assert run.startswith(f"python3 {clone.split()[-1]}/skills/synthesis-onboarding/scripts/setup.py org --org-repo ")
+    assert run.endswith(" --dry-run") and list(temp.iterdir()) == [] and not (tmp_path / "source").exists()
+    log.unlink()
+    subprocess.run(["sh", script, "plugin"], env=env, capture_output=True, text=True, timeout=60, check=True)
+    assert log.read_text().splitlines()[0].endswith(f" {tmp_path / 'source'}")  # without it, the durable checkout
+
+
 # ---- the day-end launcher and nudge ---------------------------------------------
 
 @pytest.fixture

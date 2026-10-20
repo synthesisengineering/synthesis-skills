@@ -206,12 +206,12 @@ def _owned_files(home: Path) -> list:
 
 def uninstall(home: Path = None, dry_run: bool = False) -> list:
     """Remove what install created; restore core.hooksPath; keep anything the user changed."""
-    home, report, verb = home or _home(), [], "would remove" if dry_run else "removed"
+    home, report, (verb, kept) = home or _home(), [], ("would remove", "would keep") if dry_run else ("removed", "kept")
     registered = _registrations(home).get("git_hooks_path")
     if registered:
         now = hooks_path_values()
         if now != [registered["installed"]]:
-            report.append(f"kept core.hooksPath {now or 'unset'}: it changed since install")
+            report.append(f"{kept} core.hooksPath {now or 'unset'}: it changed since install")
         else:
             if not dry_run:
                 _set_hooks_path(registered["before"])
@@ -219,7 +219,7 @@ def uninstall(home: Path = None, dry_run: bool = False) -> list:
                           f"{', '.join(registered['before']) or 'unset'}")
     for path, sha in _owned_files(home):
         if path.is_file() and _sha(path.read_text(encoding="utf-8")) != sha:
-            report.append(f"kept {path}: edited since install")
+            report.append(f"{kept} {path}: edited since install")
         elif path.is_file():
             if not dry_run:
                 path.unlink()
@@ -228,14 +228,14 @@ def uninstall(home: Path = None, dry_run: bool = False) -> list:
         (home / "current").unlink()
     for release in sorted((home / "releases").glob("*")) if (home / "releases").is_dir() else []:
         if release.name.startswith(".") or package_hash(release) != release.name:
-            report.append(f"kept {release}: its files changed since install")
+            report.append(f"{kept} {release}: its files changed since install")
             continue
         if not dry_run:
             shutil.rmtree(release)
         report.append(f"{verb} {release}")
     if (home / "registrations.json").exists() and not dry_run:
         (home / "registrations.json").unlink()
-    report.append(f"kept {home / 'config.json'} and {home / 'state'} (your settings, board and approvals)")
+    report.append(f"{kept} {home / 'config.json'} and {home / 'state'} (your settings, board and approvals)")
     return report
 
 

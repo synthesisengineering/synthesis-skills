@@ -13,7 +13,9 @@ import sqlite3
 TYPEDSTREAM = b"\x04\x0bstreamtyped\x81\xe8\x03\x84\x01@\x84\x84\x84"  # a header the reader does not unarchive
 
 
-def imessage(root: Path, wal: bool = False):
+def imessage(root: Path, wal: bool = False, recently_deleted: bool = True):
+    """A Messages-shaped store: one handle in one one-to-one chat. Stores from macOS 13 on also keep the chat of
+    each message in Recently Deleted (chat_recoverable_message_join); recently_deleted=False is an older one."""
     root.mkdir()
     path = root / "messages.sqlite"
     db = sqlite3.connect(path)
@@ -31,24 +33,48 @@ def imessage(root: Path, wal: bool = False):
       insert into handle values('+15551234567');
       insert into chat values('synthetic-chat');
       insert into chat_handle_join values(1, 1);
-    """)
+    """ + ("create table chat_recoverable_message_join(chat_id integer, message_id integer, delete_date integer);"
+           if recently_deleted else ""))
     db.commit()
     return path, db
 
 
 def add(db, text="Can you review the plan?", body=None, day=1, **kw):
-    """One message row, joined to chat 1 unless join=False; attachments=[mime, ...] adds attachment rows."""
+    """One message row, joined to chat 1 unless join=False; deleted=True moves that link to Recently Deleted,
+    as Messages does; attachments=[mime, ...] adds attachment rows."""
     row = ("fixture-" + str(db.execute("select count(*) from message").fetchone()[0]), text, body,
            day * 86400 * 10**9, kw.get("mine", 0), kw.get("handle", 1), kw.get("reaction", 0),
            kw.get("media", 1 if kw.get("attachments") else 0), kw.get("balloon"))
     rowid = db.execute("insert into message values(?,?,?,?,?,?,?,?,?)", row).lastrowid
-    if kw.get("join", True):
+    if kw.get("deleted"):
+        db.execute("insert into chat_recoverable_message_join values(?, ?, 1)", (kw.get("chat", 1), rowid))
+    elif kw.get("join", True):
         db.execute("insert into chat_message_join values(?, ?)", (kw.get("chat", 1), rowid))
     for mime in kw.get("attachments", ()):
         attachment = db.execute("insert into attachment values(?)", (mime,)).lastrowid
         db.execute("insert into message_attachment_join values(?, ?)", (rowid, attachment))
     db.commit()
     return rowid
+
+
+def whatsapp(root: Path):
+    """A WhatsApp-shaped store with one direct chat."""
+    root.mkdir()
+    path = root / "ChatStorage.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript("""create table ZWACHATSESSION(Z_PK integer primary key, ZCONTACTJID text, ZSESSIONTYPE integer);
+      create table ZWAMESSAGE(Z_PK integer primary key, ZSTANZAID text, ZTEXT text, ZMESSAGEDATE real, ZISFROMME integer,
+        ZFROMJID text, ZCHATSESSION integer, ZMESSAGETYPE integer);
+      insert into ZWACHATSESSION values(1, 'synthetic@s.whatsapp.net', 0);""")
+    db.commit()
+    return path, db
+
+
+def add_whatsapp(db, text, at):
+    """One incoming message `at` seconds after 2001-01-01T00:00:00Z, the stores' epoch."""
+    count = db.execute("select count(*) from ZWAMESSAGE").fetchone()[0]
+    db.execute("insert into ZWAMESSAGE values(null, ?, ?, ?, 0, 'synthetic@s.whatsapp.net', 1, 0)", (f"msg-{count}", text, at))
+    db.commit()
 
 
 def request(path, **kw):

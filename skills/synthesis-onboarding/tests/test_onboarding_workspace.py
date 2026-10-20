@@ -1,8 +1,12 @@
 """workspace.py: a new Mac's workspace from repos.yaml, and an organization's data-only configuration."""
 
+import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -195,12 +199,12 @@ def local_git(monkeypatch):
     monkeypatch.setattr(workspace, "org_git_env", lambda: dict(os.environ))
 
 
-def org_repo(tmp_path, manifest=None):
+def org_repo(tmp_path, manifest=None, instructions="Team rules.\n"):
     skills, _ = remote(tmp_path, "team-skills", {"skills/team-review/SKILL.md": "---\nname: team-review\n---\n"})
     kb, _ = remote(tmp_path, "ai-knowledge-example-team")
     text = manifest or MANIFEST.format(skills=skills, kb=kb)
     org, _ = remote(tmp_path, "team-config", {".agents/onboarding.yaml": text,
-                                              ".agents/workspace-instructions.md": "Team rules.\n"})
+                                              ".agents/workspace-instructions.md": instructions})
     return org
 
 
@@ -386,3 +390,130 @@ def test_setup_refreshes_an_unedited_4x_skill_copy_and_keeps_an_edited_one(tmp_p
     assert (Path.home() / ".agents" / "skills" / "beta" / "SKILL.md").read_text() == "new beta\n"
     assert (Path.home() / ".claude" / "skills" / "beta" / "SKILL.md").read_text() == "old beta, edited by hand\n"
     assert any("beta: kept" in line for line in lines) and not any("alpha: kept" in line for line in lines)
+    assert "skill beta: installed for Codex" in lines  # only the copy it wrote, never both by default
+
+
+# ---- a dry run writes nothing (reported 2026-10-20) -----------------------------
+
+PAST = re.compile(r"\b(installed|written|cloned|updated|archived|linked|kept)\b")
+
+
+def snapshot(root: Path) -> dict:
+    """Every path under root: a folder, a link's target or a file's bytes, each with its modification time."""
+    found = {}
+    for path in sorted(root.rglob("*")):
+        kind = (os.readlink(path) if path.is_symlink() else
+                hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "folder")
+        found[str(path.relative_to(root))] = (kind, path.lstat().st_mtime_ns)
+    return found
+
+
+@pytest.fixture
+def temp_root(tmp_path, monkeypatch):
+    """Temporary folders land here, so a test sees that a dry run removed its own."""
+    root = tmp_path / "temp"
+    root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(root))
+    return root
+
+
+def dry_run(argv, capsys) -> list:
+    assert setup.main(argv + ["--no-input", "--dry-run"]) == 0
+    return capsys.readouterr().out.splitlines()
+
+
+def conditional(lines) -> list:
+    """A dry run's report: every outcome in conditional wording, then the line saying nothing changed."""
+    assert [line for line in lines if PAST.search(line) and "would" not in line] == []
+    assert lines[-1] == "Dry run: nothing was changed."
+    return lines
+
+
+def push_file(tmp_path, name, rel, text):
+    work, bare = tmp_path / "src" / name, tmp_path / "remotes" / f"{name}.git"
+    (work / rel).write_text(text)
+    git("-C", str(work), "commit", "-qam", "change")
+    git("-C", str(work), "push", "-q", str(bare), "HEAD:main")
+
+
+def test_org_dry_run_writes_nothing_and_says_what_it_would_do(tmp_path, local_git, temp_root, capsys):
+    """2026-10-20: `setup.py org ... --no-input --dry-run` cloned the skills repository, reinstalled the
+    organization's skills, wrote org-skills.json and rewrote AGENTS.md, and reported it in the past tense."""
+    org = org_repo(tmp_path)
+    personal = tmp_path / "mine.md"
+    personal.write_text("My own rules.\n")
+    workspace.enroll(org, lambda line: None, personal_source=str(personal))  # a member enrolled earlier
+    ws, before = Path.home() / "workspaces" / "example-team", snapshot(Path.home())
+    lines = dry_run(["org", "--org-repo", org], capsys)
+    assert snapshot(Path.home()) == before and list(temp_root.iterdir()) == []
+    same = f"{ws / 'AGENTS.md'}: would stay as it is (the generated text is unchanged), with CLAUDE.md importing it"
+    assert same in conditional(lines)
+    push_file(tmp_path, "team-config", ".agents/workspace-instructions.md", "Team rules, revised.\n")
+    push_file(tmp_path, "team-skills", "skills/team-review/SKILL.md", "---\nname: team-review\nrevised: true\n---\n")
+    before = snapshot(Path.home())  # a push touches objects that local clones share with their remote by hard link
+    lines = dry_run(["org", "--org-repo", org], capsys)
+    assert snapshot(Path.home()) == before and list(temp_root.iterdir()) == []
+    assert "ai-knowledge-example-team: would fetch, then fast-forward if behind" in conditional(lines)
+    assert "skill team-review: would install for Claude Code and Codex" in lines
+    assert f"{ws / 'AGENTS.md'}: would write it, with CLAUDE.md importing it" in lines
+    assert "Your workspace is ready" not in lines
+    workspace.enroll(org, lambda line: None)  # the run itself then does what the dry run described
+    assert "Team rules, revised." in (ws / "AGENTS.md").read_text() and "My own rules." in (ws / "AGENTS.md").read_text()
+    assert "revised: true" in (Path.home() / ".claude" / "skills" / "team-review" / "SKILL.md").read_text()
+
+
+def test_a_first_org_dry_run_leaves_the_home_folder_as_it_was(tmp_path, local_git, temp_root, capsys, monkeypatch):
+    org = org_repo(tmp_path)
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
+    before = snapshot(Path.home())
+    lines = dry_run(["org", "--org-repo", org], capsys)
+    lines += dry_run(["--org-repo", org, "--clients", "claude"], capsys)  # the whole install, clients from the manifest
+    assert snapshot(Path.home()) == before and list(temp_root.iterdir()) == []
+    skills = workspace.org_root(str(tmp_path / "remotes" / "team-skills.git")).name
+    assert conditional(lines).count("ai-knowledge-example-team: would clone") == 2 and f"{skills}: would clone" in lines
+    assert any(line.startswith("runtime: would install it from ") for line in lines)
+
+
+def test_workspace_dry_runs_write_nothing(tmp_path, temp_root, capsys):
+    tool, _ = remote(tmp_path, "tool")
+    kb, _ = knowledge_repo(tmp_path, f"repos:\n  - name: tool\n    path: tool/\n    remotes:\n      origin: {tool}\n")
+    ws, before = Path.home() / "workspaces" / "demo", snapshot(Path.home())
+    lines = dry_run(["workspace", "--kb", kb, "--workspace", "demo"], capsys)
+    lines += dry_run(["workspace", "--new", "fresh", "--kb", "https://example.test/me/ai-knowledge-fresh.git"], capsys)
+    assert snapshot(Path.home()) == before and list(temp_root.iterdir()) == []
+    assert "ai-knowledge-demo: would clone" in conditional(lines) and "tool: would clone" in lines
+    assert f"would link {ws / '.agents' / 'repos.yaml'}" in lines
+    assert f"{ws / 'AGENTS.md'}: would write it, with CLAUDE.md importing it" in lines
+    assert any(re.fullmatch(r"ai-knowledge-fresh: would write and commit \d+ files, add origin \S+, and link .+ to it", line)
+               for line in lines)
+    workspace.bring_workspace(kb, "demo", lambda line: None)
+    (ws / "tool" / "README.md").write_text("local edit")
+    before = snapshot(Path.home())
+    lines = dry_run(["workspace", "--kb", kb, "--workspace", "demo"], capsys)
+    assert snapshot(Path.home()) == before
+    assert "tool: would skip: uncommitted changes" in conditional(lines)
+    assert "ai-knowledge-demo: would fetch, then fast-forward if behind" in lines
+
+
+# ---- what the generated instructions tell agents to run (reported 2026-10-20) ---------
+
+def test_generated_instructions_say_how_to_update_and_check_health_with_real_commands():
+    """An organization's instructions told agents to run `synthesis update`, which v5 does not have. The
+    public baseline written first into every organization workspace now names the commands that exist."""
+    from synthesis import cli
+    commands = set(next(a for a in cli.parser()._actions if isinstance(a, argparse._SubParsersAction)).choices)
+    public = workspace.render_instructions("Team rules.\n").split("## Organization")[0]
+    named = set(re.findall(r"`synthesis ([a-z][\w-]*)", public))
+    assert {"doctor", "claim", "who", "msg"} <= named <= commands
+    assert "update" not in commands and "has no update command" in public
+    for phrase in ("onboard.sh | sh -s -- --org-repo URL", "setup.py org --org-repo URL", "HTTPS or SSH URL",
+                   "a local path is refused", "--dry-run", "`synthesis doctor --latest`"):
+        assert phrase in public
+
+
+def test_enrollment_notes_commands_the_organizations_text_names_that_v5_lacks(tmp_path, local_git):
+    text = "Run `synthesis update` after it merges; `synthesis doctor` checks health.\n"
+    lines = workspace.enroll(org_repo(tmp_path, instructions=text), lambda line: None)
+    notes = [line for line in lines if line.startswith("note:")]
+    assert len(notes) == 1 and "`synthesis update`" in notes[0] and "doctor" not in notes[0]
+    assert not [line for line in workspace.enroll(org_repo(tmp_path / "plain"), lambda line: None) if line.startswith("note:")]

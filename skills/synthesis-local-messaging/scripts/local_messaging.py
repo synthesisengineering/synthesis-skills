@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Read one explicitly selected iMessage or WhatsApp window into pointer-only notes.
 
-Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR
+Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR [--stale-after-hours 12]
 
 The database is opened read-only inside the OS sandbox (os_sandbox.py); a reader that can
 open the database for writing refuses before SQLite runs. Each run reads one page of the
 window and prints it as JSON: candidate notes that point at a message (app, database,
 message id, row, chat) without copying its text, plus coverage (rows examined, skips by
-reason, gaps). Pages are saved in STATE_DIR before the cursor moves; a page with a gap does
-not move it until a by-hand review the principal approves (--review REVIEW.json) names exactly
-its gaps. Exit 0 with the page, or 2 with {"status": "REFUSED", "reason": ...}.
+reason, gaps, how far the store reaches). Pages are saved in STATE_DIR before the cursor moves;
+a page with a gap does not move it until a by-hand review the principal approves (--review
+REVIEW.json) names exactly its gaps, and a stale store's page never completes the window.
+Exit 0 with the page, or 2 with {"status": "REFUSED", "reason": ...}.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ MAX_BODY = 256 * 1024
 MAX_PAGE = 100
 MAX_SECONDS = 5
 APPLE_EPOCH = 978307200
+STALE_AFTER_HOURS = 12  # longer than most quiet nights; a store that stopped syncing is caught by the next day's read
 REQUEST_KEYS = {"schema", "adapter", "database", "start", "end", "page_size", "excluded_chats", "self_names"}
 LINK = "com.apple.messages.URLBalloonProvider"  # balloon_bundle_id of a rich link preview
 MIME = re.compile(r"[a-z0-9][a-z0-9.+-]{0,126}/[a-z0-9][a-z0-9.+-]{0,126}", re.I)
@@ -82,7 +84,7 @@ def instant(value) -> float:
 
 
 def validate(request, page_keys=False):
-    keys = REQUEST_KEYS | ({"after", "upper"} if page_keys else set())
+    keys = REQUEST_KEYS | ({"after", "upper", "stale_after_hours"} if page_keys else set())
     if not isinstance(request, dict) or set(request) != keys or type(request["schema"]) is not int or request["schema"] != 1:
         raise Refused("unknown request schema")
     if request["adapter"] not in ("imessage-v1", "whatsapp-v1"):
@@ -95,6 +97,8 @@ def validate(request, page_keys=False):
             raise Refused("integer page bound required")
         if upper is not None and (type(upper) is not int or not after <= upper < 2**63):
             raise Refused("invalid snapshot upper bound")
+        if type(request["stale_after_hours"]) not in (int, float) or not 0 < request["stale_after_hours"] <= 366 * 24:
+            raise Refused("stale_after_hours must be a number of hours above 0 and at most 8784")
     start, end = instant(request["start"]), instant(request["end"])
     if not 0 < end - start <= 366 * 86400:
         raise Refused("window must be positive and at most 366 days")
@@ -189,21 +193,23 @@ SCHEMAS = {
                        "ZCHATSESSION", "ZMESSAGETYPE"},
         "ZWACHATSESSION": {"Z_PK", "ZCONTACTJID", "ZSESSIONTYPE"}},
 }
+# Messages' Recently Deleted (macOS 13 on) moves a message's chat link here; older stores lack the table.
+OPTIONAL = {"imessage-v1": {"chat_recoverable_message_join": {"chat_id", "message_id"}}}
 QUERIES = {
     "imessage-v1": """select m.ROWID,m.guid,m.date,m.is_from_me,h.id,m.associated_message_type,m.cache_has_attachments,
         (select count(*) from chat_message_join j where j.message_id=m.ROWID),
         (select c.chat_identifier from chat_message_join j join chat c on c.ROWID=j.chat_id where j.message_id=m.ROWID limit 1),
         (select count(*) from chat_handle_join cj where cj.chat_id=(select j.chat_id from chat_message_join j where j.message_id=m.ROWID limit 1)),
-        length(cast(m.text as blob)),length(m.attributedBody),h.ROWID
+        length(cast(m.text as blob)),length(m.attributedBody)
         from message m left join handle h on h.ROWID=m.handle_id
         where m.ROWID>? and m.ROWID<=? and m.date>=? and m.date<? order by m.ROWID limit ?""",
     "whatsapp-v1": """select m.Z_PK,m.ZSTANZAID,m.ZMESSAGEDATE,m.ZISFROMME,m.ZFROMJID,0,m.ZMESSAGETYPE,
         (select count(*) from ZWACHATSESSION c where c.Z_PK=m.ZCHATSESSION),c.ZCONTACTJID,
-        case when c.ZSESSIONTYPE=1 then 2 when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0,null
+        case when c.ZSESSIONTYPE=1 then 2 when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0
         from ZWAMESSAGE m left join ZWACHATSESSION c on c.Z_PK=m.ZCHATSESSION
         where m.Z_PK>? and m.Z_PK<=? and m.ZMESSAGEDATE>=? and m.ZMESSAGEDATE<? order by m.Z_PK limit ?""",
-    "direct": """select c.chat_identifier from chat_handle_join cj join chat c on c.ROWID=cj.chat_id
-        where cj.handle_id=? and (select count(*) from chat_handle_join x where x.chat_id=cj.chat_id)=1""",
+    "deleted": """select c.chat_identifier,(select count(*) from chat_handle_join cj where cj.chat_id=r.chat_id)
+        from chat_recoverable_message_join r left join chat c on c.ROWID=r.chat_id where r.message_id=?""",
     "attached": """select a.mime_type from message_attachment_join j join attachment a on a.ROWID=j.attachment_id
         where j.message_id=? order by a.ROWID limit 8""",
 }
@@ -236,6 +242,40 @@ def _classify(text, mine):
     return None, "no-deterministic-candidate"
 
 
+def _unattributed(joins, chat, members, deleted):
+    """Why a row names no single chat (`deleted`: its Recently Deleted records, None without that table)."""
+    if joins != 1:  # a chat is never inferred from a handle
+        return (f"{joins} chat links" if joins else "no chat link" if deleted is None
+                else f"no chat link and {len(deleted) or 'no'} Recently Deleted records")
+    return "its chat has no identifier" if not isinstance(chat, str) else "chat membership unknown" if members < 1 else None
+
+
+def _iso(moment):
+    return None if moment is None else datetime.fromtimestamp(moment, timezone.utc).isoformat(timespec="seconds")
+
+
+def _freshness(db, path, table, column, scale, start, end, hours):
+    """(stale reason or None, store facts). A store neither written nor given a message for `hours` while the
+    window runs past it is stale: its app may have stopped syncing (2026-10-17), so it reaches only its newest message."""
+    reach = min(end, time.time())
+    newest = db.execute(f"select max({column}) from {table} where {column}<?", ((reach - APPLE_EPOCH) * scale,)).fetchone()[0]
+    newest = None if newest is None else APPLE_EPOCH + newest / scale
+    wal = Path(str(path) + "-wal")
+    written = [path.stat().st_mtime, wal.stat().st_mtime if wal.exists() else None]
+    quiet = (reach - max(t for t in [newest, *written] if t is not None)) / 3600
+    store = {"newest_message": _iso(newest), "database_modified": _iso(written[0]), "wal_modified": _iso(written[1]),
+             "stale_after_hours": hours, "reach": _iso(max(start, newest or start) if quiet > hours else reach)}
+    return (f"no write and no message for {quiet:.1f} hours before {_iso(reach)} (newest message {_iso(newest) or 'none'}, "
+            f"database modified {store['database_modified']}, WAL modified {store['wal_modified'] or 'never: no WAL file'}): "
+            "its app may have stopped syncing; open it, let it sync, then run again" if quiet > hours else None), store
+
+
+def _settle(coverage, page_size) -> None:
+    """Complete, and `through` (how far a watermark may move), once the window is read with no gap and a fresh store."""
+    read = not coverage["gaps"] and (coverage["after"] == coverage["upper"] or coverage["examined"] < page_size)
+    coverage["complete"], coverage["through"] = read and not coverage["stale"], coverage["store"]["reach"] if read else None
+
+
 def read_page(page) -> dict:
     """The worker: runs inside the sandbox and reads one page of the window."""
     start, end = validate(page, page_keys=True)
@@ -256,7 +296,9 @@ def read_page(page) -> dict:
         for pragma in ("query_only=on", "trusted_schema=off", "temp_store=memory"):
             db.execute("pragma " + pragma)
         db.execute("begin")
-        for table, columns in SCHEMAS[adapter].items():
+        present = {name for (name,) in db.execute("select name from sqlite_master where type='table'")}
+        optional = {table: columns for table, columns in OPTIONAL.get(adapter, {}).items() if table in present}
+        for table, columns in {**SCHEMAS[adapter], **optional}.items():
             if db.execute("select type from sqlite_master where name=?", (table,)).fetchall() != [("table",)]:
                 raise Refused("missing/ambiguous table schema")
             if not columns <= {r[1] for r in db.execute('pragma table_info("' + table + '")')}:
@@ -271,23 +313,22 @@ def read_page(page) -> dict:
             raise Refused("snapshot truncated")
         raw = db.execute(QUERIES[adapter], (page["after"], upper, (start - APPLE_EPOCH) * scale,
                                             (end - APPLE_EPOCH) * scale, page["page_size"])).fetchall()
-        notes, skips, gaps, marked, by_handle, after = [], Counter(), [], [], [], page["after"]
-        for rowid, guid, date, mine, sender, reaction, media, joins, chat, members, ntext, nbody, handle in raw:
-            after = rowid
-            reason = None
-            if joins == 0 and mine == 1 and handle is not None:  # an outgoing row's handle is its one recipient
-                direct = db.execute(QUERIES["direct"], (handle,)).fetchall()
-                if len(direct) != 1:
-                    gaps.append({"row": rowid, "reason": "ambiguous chat attribution: unjoined outgoing row; "
-                                 f"{len(direct)} one-to-one chats with its handle"})
-                    continue
-                (chat,), joins, members = direct[0], 1, 1
-                by_handle.append(rowid)
-            if not isinstance(chat, str) or joins != 1 or members < 1:
-                gaps.append({"row": rowid, "reason": "ambiguous chat attribution"})
+        notes, skips, gaps, marked, after = [], Counter(), [], [], page["after"]
+        recoverable = "chat_recoverable_message_join" in optional
+        for rowid, guid, date, mine, sender, reaction, media, joins, chat, members, ntext, nbody in raw:
+            after, reason, deleted = rowid, None, None
+            if joins == 0 and recoverable:  # a deleted message's chat is the one its Recently Deleted record names
+                deleted = db.execute(QUERIES["deleted"], (rowid,)).fetchall()
+                if len(deleted) == 1:
+                    (chat, members), joins = deleted[0], 1
+            unclear = _unattributed(joins, chat, members, deleted)
+            if unclear:
+                gaps.append({"row": rowid, "reason": "ambiguous chat attribution: " + unclear})
                 continue
             if chat in page["excluded_chats"]:
                 reason = "excluded-chat"  # never decoded
+            elif deleted:
+                reason = "deleted"  # the principal deleted it in the app; never decoded
             elif "@broadcast" in chat:
                 reason = "status-broadcast"
             elif reaction:
@@ -344,11 +385,12 @@ def read_page(page) -> dict:
                 "note": "Review the source for this " + classification.replace("-candidate", "") + ".",
                 "media_present": bool(media), "untrusted_source": True,
                 "meaning": "candidate only; no unanswered/completion/calendar claim"})
-        return {"schema": 1, "notes": notes, "coverage": {
-            "window": [page["start"], page["end"]], "after": after, "upper": upper, "examined": len(raw),
-            "skipped": dict(skips), "gaps": gaps, "marked": marked, "by_handle": by_handle, "reviewed": [],
-            "complete": not gaps and (after == upper or len(raw) < page["page_size"]),
-            "scope": "one SQLite snapshot page; ROWID range, not history of edits/deletions or unseen schemas"}}
+        stale, store = _freshness(db, path, table, date_column, scale, start, end, page["stale_after_hours"])
+        coverage = {"window": [page["start"], page["end"]], "after": after, "upper": upper, "examined": len(raw),
+                    "skipped": dict(skips), "gaps": gaps, "marked": marked, "reviewed": [], "stale": stale, "store": store,
+                    "scope": "one SQLite snapshot page; ROWID range, not history of edits/deletions or unseen schemas"}
+        _settle(coverage, page["page_size"])
+        return {"schema": 1, "notes": notes, "coverage": coverage}
     except sqlite3.Error as exc:
         raise Refused("SQLite snapshot unavailable: " + str(exc)) from exc
     finally:
@@ -411,10 +453,11 @@ def _close(coverage, review, subject) -> None:
     coverage["reviewed"], coverage["gaps"] = coverage["gaps"], []
 
 
-def scan(request, state, review=None) -> dict:
+def scan(request, state, review=None, stale_after_hours=STALE_AFTER_HOURS) -> dict:
     """Read the next page of the window; save it, then move the cursor. A gap leaves the cursor until a
-    by-hand review the principal approves names exactly the page's gaps."""
+    by-hand review the principal approves names exactly the page's gaps. A stale store leaves the window open."""
     validate(request)
+    validate({**request, "after": 0, "upper": None, "stale_after_hours": stale_after_hours}, page_keys=True)  # before any state
     state = Path(state)
     if state.is_symlink():
         raise Refused("symlink path refused")
@@ -436,17 +479,18 @@ def scan(request, state, review=None) -> dict:
         if cursor is not None and cursor["complete"]:
             return json.loads((state / cursor["last"]).read_text(encoding="utf-8"))
         after = cursor["after"] if cursor else 0
-        page = run_page({**request, "after": after, "upper": cursor["upper"] if cursor else None})
+        page = run_page({**request, "after": after, "upper": cursor["upper"] if cursor else None,
+                         "stale_after_hours": stale_after_hours})
         coverage = page["coverage"]
         if coverage["gaps"] and review is not None:
             _close(coverage, review, {**binding, "gaps": coverage["gaps"]})
-            coverage["complete"] = coverage["after"] == coverage["upper"] or coverage["examined"] < request["page_size"]
+            _settle(coverage, request["page_size"])
         if coverage["gaps"]:
             return page  # reported, and the window does not advance past it
         name = f"page-{after:012d}-{coverage['after']:012d}.json"
         _write(state / name, page)  # notes are saved before the cursor moves
-        _write(cursor_file, {"binding": binding, "after": coverage["after"], "upper": coverage["upper"],
-                             "complete": coverage["complete"], "last": name})
+        _write(cursor_file, {"binding": binding, "after": coverage["after"], "complete": coverage["complete"],
+                             "upper": None if coverage["stale"] else coverage["upper"], "last": name})  # stale: re-snapshot
         return page
 
 
@@ -455,6 +499,8 @@ def main(argv=None) -> int:
     parser.add_argument("--request", help="explicit read-only request JSON")
     parser.add_argument("--state", help="this window's own state directory")
     parser.add_argument("--review", help="a by-hand review naming exactly this page's gaps, for the principal to approve")
+    parser.add_argument("--stale-after-hours", type=float, default=STALE_AFTER_HOURS, help="a store silent this "
+                        f"long while the window runs past it is stale, never complete (default {STALE_AFTER_HOURS})")
     parser.add_argument("--worker", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
@@ -462,7 +508,8 @@ def main(argv=None) -> int:
             result = read_page(json.loads(Path(args.worker).read_text(encoding="utf-8")))
         elif args.request and args.state:
             review = args.review and json.loads(physical(Path(args.review).absolute()).read_text(encoding="utf-8"))
-            result = scan(json.loads(physical(Path(args.request).absolute()).read_text(encoding="utf-8")), args.state, review)
+            result = scan(json.loads(physical(Path(args.request).absolute()).read_text(encoding="utf-8")), args.state, review,
+                          args.stale_after_hours)
         else:
             raise Refused("explicit request and state directory required")
     except (Refused, OSError, ValueError, ImportError) as exc:
