@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.2] - 2026-10-20
+
+- **Executive communication 2.1.0: writing upward.** A new binding rule and reference for writing to a reader
+  with more power than you: answer the question first, in the reader's terms and as a success; never imply
+  their premise was wrong; argue as a seller, with customer value, alternatives and upside; leave their
+  choices, their meeting and their reserved questions to them; brief your own manager first and address
+  every reader equally; check a product's real status before framing a milestone. With a pre-send check.
+- The budget test's wording now matches the ruling on ceilings: they rise only with an itemized reason.
+
 ## [5.1.1] - 2026-10-20
 
 Defects other sessions reported on 10-19 and 10-20:

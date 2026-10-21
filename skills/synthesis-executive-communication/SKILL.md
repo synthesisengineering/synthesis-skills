@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -25,10 +25,12 @@ Make technical work readable to the business executives a technology leader repo
 6. **Honest flags stay.** Change the vocabulary and the selection, never the truth; state what slipped or is unproven in one plain clause.
 7. **Write for forwarding:** no confidences, no criticism of named people, no claim a colleague would dispute, and a five-minute read (about 1,200 words).
 8. **Review in persona before sending.** An engineering-literate reviewer, human or AI, cannot catch this by feel, so brief one as the non-technical reader.
+9. **When the reader holds more power, answer first and never correct.** Open with what they asked for, in their terms and as a success; recast any line implying their premise was wrong; argue as a seller (customer value, alternatives, upside), not a debater; leave their choices, their meeting and their reserved questions to them; brief your own manager first. Method and pre-send check: [references/writing-upward.md](references/writing-upward.md).
 
 ## Contents
 
 - [references/kill-list.md](references/kill-list.md): the six kill-list categories in full, and the translation table with invented examples. Read for step 3 of the review protocol, and whenever you translate a sentence.
+- [references/writing-upward.md](references/writing-upward.md): writing to a reader with more power than you: the edits that make a sound case acceptable, what drafts get wrong, and the pre-send check. Read it before any note to a senior reader.
 - [references/background.md](references/background.md): the problem this skill solves, where it came from, and related skills. Read once, or when choosing between this and a sibling writing skill.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.0.0 text now lives (ruling D8).
 - The bar: below. The every-noun test.
