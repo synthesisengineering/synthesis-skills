@@ -16,6 +16,13 @@ file holds exactly these fields:
 }
 ```
 
+One optional field, `"watched_chats": ["<chat identifier>", ...]`, names chats
+to read whole: a group the principal asked to monitor (2026-10-20, a trip's SMS
+group) keeps every message as a note of class `watched`, where an unwatched group
+keeps only messages naming a self name. Likely verification codes are still
+skipped, and a chat cannot be both watched and excluded. A request with the field
+is a different request, so it needs its own state directory.
+
 The example dates and identity are synthetic. The operator supplies actual
 scope; no default personal path exists. Windows are half-open, timezone-aware,
 and at most 366 days. Pages contain at most 100 examined message rows.

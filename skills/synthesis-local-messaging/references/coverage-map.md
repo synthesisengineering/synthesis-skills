@@ -100,7 +100,7 @@ reason that says why. `chat_recoverable_message_join` is an optional table of `i
 Second, a WhatsApp store stopped syncing on 2026-10-17 and two days later the reader called the
 window complete over it, so the watermark moved past messages that arrived once the app opened.
 Each page now compares the store's newest message and its database and `-wal` modification
-times with the window's reach; a store silent for `--stale-after-hours` (12 by default) while
+times with the window's reach; a store silent for `--stale-after-hours` (12 hours for WhatsApp, 24 for iMessage, by default) while
 the window runs past it reports `coverage.stale`, is never complete, keeps its cursor open
 without a snapshot bound, and sets `coverage.through` to its newest message. `coverage.store`
 holds the facts and `coverage.through` how far a watermark may move. The iMessage store gets
@@ -114,6 +114,18 @@ send paragraph's list of outcomes now lives only in [sending.md](sending.md), an
 line pointing at the sections below it was dropped. Every replaced 1.1.1 passage is verbatim in
 [preserved.md](preserved.md#replaced-on-2026-10-20-verbatim). `scripts/local_messaging.py` is
 523 lines (476 before).
+
+## Group and SMS sends, watched chats (2026-10-20, later)
+
+A request from the principal's operations session: an SMS group with two friends for a trip, where an agent
+should post logistics and help watch for emergencies. `messages_send.py --members` sends to the one existing
+iMessage or SMS chat, group or one-to-one, whose members are exactly the handles given, under the same
+approval, which binds every member, the service, the text and the chat; the transport re-checks members and
+service before its single call. The reader's optional `watched_chats` keeps every message in a named chat as
+a note. Text: binding rule 7, the skip-rule paragraph and the send section in SKILL.md; "A group or an SMS
+chat, by its members" and "What the send never does" in [sending.md](sending.md); the request section of
+[adapter-contract.md](adapter-contract.md). Replaced passages:
+[preserved.md](preserved.md#replaced-later-on-2026-10-20-for-group-and-sms-sends-verbatim).
 
 ## Frontmatter before v5 (verbatim)
 

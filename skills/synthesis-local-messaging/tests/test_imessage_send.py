@@ -47,6 +47,15 @@ if (mode === 'two-accounts') {
   b.list.push(chat('chat-b', b, [person('participant-b', dest, b)]));
   accounts.push(b);
 }
+if (mode === 'both-services') {  // the same two people in an iMessage group and an SMS group
+  const b = account('account-b', 'SMS', true);
+  b.list.push(chat('chat-sms-group', b, [person('p-6', dest, b), person('p-7', '+15550000003', b)]));
+  accounts.push(b);
+}
+if (mode === 'group-changed') {  // someone joined the group after the approval
+  a.list[a.list.findIndex(c => c.id() === 'chat-group')] = chat('chat-group', a,
+    [person('p-2', dest, a), person('p-3', '+15550000003', a), person('p-5', '+15550000005', a)]);
+}
 const context = {ObjC: {import: () => {}, unwrap: x => x}, $: {NSUTF8StringEncoding: 4,
   NSFileHandle: {alloc: {initWithFileDescriptor: fd => ({get readDataToEndOfFile() { return fs.readFileSync(fd, 'utf8'); }})}},
   NSString: {alloc: {initWithDataEncoding: x => x}}},
@@ -225,6 +234,77 @@ def test_malformed_recipient_or_text_refuses(messages, to, text):
     with pytest.raises(ms.Refused):
         ms.send(to, text)
     assert messages.invocations == []
+
+
+# --- members: an existing group or SMS chat, named by exactly its members (2026-10-20) --------------------------
+
+P3 = "+15550000003"
+
+
+def test_members_reach_the_existing_group_once_and_the_approval_names_everyone(messages):
+    first = ms.send_members([P3, DEST], TEXT)
+    assert messages.sends == [] and first["status"] == "needs-approval"
+    summary = json.loads(pending_requests()[0].read_text())["summary"]
+    assert DEST in summary and P3 in summary and "iMessage" in summary
+    approve(first)
+    assert ms.send_members([DEST, P3], TEXT)["status"] == "dispatched"  # the order of members never matters
+    assert messages.sends == [{"text": TEXT, "chat": "chat-group"}]
+    with pytest.raises(ms.Refused, match="Never resend"):
+        ms.send_members([DEST, P3], TEXT)
+
+
+def test_members_reach_an_sms_chat_and_never_an_imessage_one(messages):
+    messages.route = messages.transport = "sms"
+    approve(ms.send_members([DEST], TEXT))
+    assert ms.send_members([DEST], TEXT)["status"] == "dispatched"
+    assert messages.sends == [{"text": TEXT, "chat": "chat-1"}]
+    assert json.loads(messages.packets[-1])["payload"]["tool_input"]["route"]["service"] == "SMS"
+
+
+def test_an_approval_for_one_set_of_members_covers_no_other(messages):
+    approve(ms.send_members([DEST, P3], TEXT))
+    assert ms.send_members([DEST], TEXT)["status"] == "needs-approval"
+    assert messages.sends == []
+
+
+def test_a_member_change_after_the_approval_stops_the_send(messages):
+    approve(ms.send_members([DEST, P3], TEXT))
+    messages.transport = "group-changed"
+    result = ms.send_members([DEST, P3], TEXT)
+    assert result["status"] == "not-sent" and "participants changed" in result["reason"]
+    assert messages.sends == []
+
+
+def test_no_chat_with_exactly_these_members_refuses_before_any_approval(messages):
+    with pytest.raises(ms.Refused, match="no existing chat whose members are exactly"):
+        ms.send_members([DEST, "+15550000009"], TEXT)
+    assert pending_requests() == [] and messages.sends == []
+
+
+def test_chats_on_both_services_need_a_choice(messages):
+    messages.route = messages.transport = "both-services"
+    with pytest.raises(ms.Refused, match="--service"):
+        ms.send_members([DEST, P3], TEXT)
+    approve(ms.send_members([DEST, P3], TEXT, service="SMS"))
+    assert ms.send_members([DEST, P3], TEXT, service="SMS")["status"] == "dispatched"
+    assert messages.sends == [{"text": TEXT, "chat": "chat-sms-group"}]
+
+
+@pytest.mark.parametrize("members,service", [([], None), (["5551234567"], None), ([DEST], "RCS")])
+def test_malformed_members_or_service_refuse_before_messages_is_read(messages, members, service):
+    with pytest.raises(ms.Refused):
+        ms.send_members(members, TEXT, service=service)
+    assert messages.invocations == []
+
+
+def test_members_command_line(messages, tmp_path, capsys):
+    text_file = tmp_path / "text.txt"
+    text_file.write_text(TEXT, encoding="utf-8")
+    assert ms.main(["--members", f"{DEST},{P3}", "--text-file", str(text_file)]) == 2
+    approve(json.loads(capsys.readouterr().out))
+    assert ms.main(["--members", f"{P3}, {DEST}", "--text-file", str(text_file)]) == 0
+    assert ms.main(["--to", DEST, "--service", "SMS", "--text-file", str(text_file)]) == 2
+    assert "--service goes with --members" in json.loads(capsys.readouterr().out.splitlines()[-1])["reason"]
 
 
 def test_command_line_exit_codes(messages, tmp_path, capsys):

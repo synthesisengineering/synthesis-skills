@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Send one approved iMessage to one person through the v5 send guard, at most once.
+"""Send one approved message to an existing Messages chat through the v5 send guard, at most once.
 
 Run: python3 messages_send.py --to HANDLE --text-file FILE [--account ACCOUNT_ID]
+     python3 messages_send.py --members HANDLE[,HANDLE...] --text-file FILE [--service iMessage|SMS] [--account ID]
+
+--to reaches the one-to-one iMessage chat with HANDLE. --members reaches the one existing chat, iMessage or SMS,
+group or one-to-one, whose members are exactly those handles (2026-10-20: a trip's SMS group); the approval names
+every member, and the send stops if the chat's members or service changed since.
 
 1. An earlier attempt with this recipient and text refuses the send, unless that attempt is
    known not to have reached the send call: never resend after an uncertain outcome.
-2. The one existing one-to-one iMessage chat with HANDLE is found read-only (messages_route.js).
-   No chat is created; there is no SMS or RCS fallback and no group send.
+2. The one existing chat is found read-only (messages_route.js). No chat is created, a chat's service is never
+   changed (no fallback between iMessage and SMS), and RCS is never used.
 3. The v5 send guard decides: the principal's forbidden phrases, then their single-use approval
    of this exact recipient and text. Without one it files a request and prints the code the
    principal types ("approve <code>"); after they do, run the identical command again.
@@ -35,13 +40,14 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 
 HERE = Path(__file__).resolve().parent
 HANDLE = re.compile(r"^(\+[1-9][0-9]{6,14}|[^\s@]+@[^\s@]+\.[^\s@]+)$")
-TOOL = "imessage_send"
+TOOL, MEMBERS_TOOL = "imessage_send", "messages_send"
 KEEP_SECONDS = 30 * 86400
 # Errors messages_transport.js throws before its one send call, so nothing can have been sent.
 PRE_SEND = ("descriptor required", "descriptor bound", "packet contract", "payload contract",
             "explicit route required", "text bound", "route bound", "recipient contract",
             "approval expired or unbounded", "selection bound", "ambiguous route", "account unavailable",
-            "chat account changed", "one recipient required", "participant route changed")
+            "chat account changed", "one recipient required", "participant route changed", "members contract",
+            "participants changed")
 
 
 class Refused(Exception):
@@ -88,7 +94,26 @@ def resolve_route(to: str, account: str | None) -> dict:
             "participant_id": chosen["participant_id"]}
 
 
-def transport(to: str, text: str, route: dict, key: str) -> dict:
+def resolve_members(members: list, service: str | None, account: str | None) -> dict:
+    try:
+        done = osascript(HERE / "messages_route.js", ["members", json.dumps(members)])
+    except OSError as exc:
+        raise Refused(f"cannot run osascript: {exc}") from exc
+    if done is None or done.returncode:
+        raise Refused("could not read the Messages accounts and chats: " + ("timed out" if done is None else done.stderr.strip()[-500:]))
+    usable = [r for r in json.loads(done.stdout)["routes"] if r["usable"] and (not account or r["account_id"] == account)
+              and (not service or r["service"] == service)]
+    if not usable:
+        raise Refused(f"no existing chat whose members are exactly {', '.join(members)} on a connected iMessage or SMS "
+                      "account. Start it in Messages first; this tool never creates a chat or changes its service.")
+    if len(usable) > 1:
+        raise Refused("several chats have exactly these members; pass --service and --account to choose one of: "
+                      + "; ".join(sorted(f"{r['service']} on {r['account_id']}" for r in usable)))
+    chosen = usable[0]
+    return {k: chosen[k] for k in ("account_id", "service", "chat_id", "participants")}
+
+
+def transport(to, text: str, route: dict, key: str) -> dict:
     payload = {"tool_name": "synthesis.messages.send",
                "tool_input": {"request_id": key, "destination": to, "text": text, "route": route}}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -129,9 +154,8 @@ def _save(path: Path, record: dict) -> None:
     tmp.replace(path)
 
 
-def send(to: str, text: str, account: str | None = None) -> dict:
-    if not HANDLE.match(to):
-        raise Refused("the recipient must be +<country code><number> or an email address")
+def _send(to, text: str, key: str, resolve, tool: str, subject) -> dict:
+    """The shared path: refuse a repeat, find the chat, ask the guard, record, then exactly one send call."""
     if not text.strip() or len(text) > 65536 or "\0" in text:
         raise Refused("the text must be non-empty, at most 65,536 characters, with no NUL")
     guards, paths = core()
@@ -139,16 +163,16 @@ def send(to: str, text: str, account: str | None = None) -> dict:
         config = paths.config()
     except (OSError, ValueError) as exc:
         raise Refused(f"the synthesis config is unreadable ({exc}); sending is blocked until it is fixed")
-    key = hashlib.sha256(f"{to}\0{text}".encode("utf-8")).hexdigest()[:32]
     record_path = paths.state() / "imessage-sends" / f"{key}.json"
     if record_path.exists():
         earlier = json.loads(record_path.read_text(encoding="utf-8"))
         if earlier.get("status") != "not-sent":
-            raise Refused(f"an attempt to send this text to {to} at {earlier.get('at')} ended {earlier.get('status')}. "
+            shown = to if isinstance(to, str) else ", ".join(to)
+            raise Refused(f"an attempt to send this text to {shown} at {earlier.get('at')} ended {earlier.get('status')}. "
                           "Never resend: check the conversation in Messages. If the principal wants these words sent "
                           "again, they send them by hand.")
-    route = resolve_route(to, account)
-    reason = guards.check_send(TOOL, {"to": to, "text": text}, config)
+    route = resolve()
+    reason = guards.check_send(tool, subject(route), config)
     if reason:
         return {"status": "needs-approval" if "approve " in reason else "refused", "reason": reason}
     record = {"to": to, "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
@@ -159,14 +183,42 @@ def send(to: str, text: str, account: str | None = None) -> dict:
     return result
 
 
+def send(to: str, text: str, account: str | None = None) -> dict:
+    if not HANDLE.match(to):
+        raise Refused("the recipient must be +<country code><number> or an email address")
+    key = hashlib.sha256(f"{to}\0{text}".encode("utf-8")).hexdigest()[:32]
+    return _send(to, text, key, lambda: resolve_route(to, account), TOOL, lambda route: {"to": to, "text": text})
+
+
+def send_members(members: list, text: str, service: str | None = None, account: str | None = None) -> dict:
+    """The approval binds every member, the chat's service and the chat itself, so it covers exactly this send."""
+    members = sorted(set(members))
+    if not 1 <= len(members) <= 32 or not all(HANDLE.match(m) for m in members):
+        raise Refused("members must be 1 to 32 handles, each +<country code><number> or an email address")
+    if service not in (None, "iMessage", "SMS"):
+        raise Refused("the service must be iMessage or SMS")
+    key = hashlib.sha256(("members\0" + ",".join(members) + f"\0{text}").encode("utf-8")).hexdigest()[:32]
+    return _send(members, text, key, lambda: resolve_members(members, service, account), MEMBERS_TOOL,
+                 lambda route: {"to": members, "service": route["service"], "text": text, "chat": route["chat_id"]})
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], allow_abbrev=False)
-    parser.add_argument("--to", required=True, help="the recipient's handle: +<country code><number> or an email address")
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--to", help="the recipient's handle: +<country code><number> or an email address")
+    target.add_argument("--members", help="comma-separated handles: exactly the members of an existing chat")
     parser.add_argument("--text-file", required=True, help="UTF-8 file holding the exact approved text")
-    parser.add_argument("--account", help="the iMessage account id, when more than one has a chat with the recipient")
+    parser.add_argument("--service", choices=("iMessage", "SMS"), help="with --members, when chats on both match")
+    parser.add_argument("--account", help="the Messages account id, when more than one has a matching chat")
     args = parser.parse_args(argv)
     try:
-        result = send(args.to, Path(args.text_file).read_text(encoding="utf-8"), args.account)
+        text = Path(args.text_file).read_text(encoding="utf-8")
+        if args.members:
+            result = send_members([m.strip() for m in args.members.split(",") if m.strip()], text, args.service, args.account)
+        elif args.service:
+            raise Refused("--service goes with --members; --to reaches a one-to-one iMessage chat")
+        else:
+            result = send(args.to, text, args.account)
     except (Refused, OSError, ValueError) as exc:
         result = {"status": "refused", "reason": str(exc)}
     print(json.dumps(result, ensure_ascii=False))

@@ -44,6 +44,37 @@ python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt [--acco
 An unreadable config, or a runtime that cannot be found, refuses: the send guard
 fails closed.
 
+## A group or an SMS chat, by its members (2026-10-20)
+
+```bash
+python3 scripts/messages_send.py --members +15551234567,+15557654321 --text-file post.txt [--service iMessage|SMS] [--account ACCOUNT_ID]
+```
+
+`--members` names an existing chat by exactly its members: the one iMessage or
+SMS chat, group or one-to-one, whose people are those handles and nobody else.
+It was built for a trip's SMS group the principal set up with two friends, so an
+agent could post logistics there under the same approval as any other send.
+
+- The route script reads every connected iMessage and SMS account and keeps
+  only chats whose member handles equal the set given, in any order. None
+  refuses; two (say an iMessage group and an SMS group with the same people)
+  refuse until `--service` or `--account` picks one. It never creates a chat,
+  never moves a chat to another service, and never uses RCS.
+- The approval binds every member, the chat's service, the text and the chat
+  itself, and the code request names all of them: show the principal the
+  members, the service and the exact text. Approving one set of members covers
+  no other set.
+- Right before its single send call, the transport script checks the account
+  and its service again and requires the chat's members to equal the approved
+  ones, each by identity and handle. Anyone added or removed since then stops
+  the send as `not-sent` with `participants changed`, and a new approval is
+  needed.
+- Outcomes, the record and the never-resend rule are the same as above.
+
+For monitoring the same group, see `watched_chats` in
+[adapter-contract.md](adapter-contract.md): the reader then keeps every message
+in that chat as a note, not only the ones that name the principal.
+
 ## Outcomes
 
 | status | exit | means | next |
@@ -62,9 +93,10 @@ the text, and is dropped after 30 days.
 
 ## What the send never does
 
-No WhatsApp sending, SMS or RCS fallback, chat creation, group send, recipient
-alias lookup, retry, account discovery beyond the one handle, permission change,
-or injected bridge. Required Apple Events permission and database access come
+No WhatsApp sending, fallback between iMessage and SMS, RCS, chat creation, a
+group reached by anything but exactly its members, recipient alias lookup, retry,
+account discovery beyond the chats with the handles given, permission change, or
+injected bridge. Required Apple Events permission and database access come
 from ordinary platform controls. The synthetic tests run both fixed scripts
 under a Node double of the scripting bridge; they do not exercise the real
 Messages app, its permissions, a real account, delivery or read receipts.

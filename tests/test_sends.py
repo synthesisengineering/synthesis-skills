@@ -261,3 +261,10 @@ def test_a_python_script_that_only_cites_a_protected_path_may_write_a_project_re
                    "open(p, 'w').write('{}')\nEOF",
                    f"python3 -c \"from pathlib import Path; Path('{state}/sends/window.json').write_text('x')\""):
         assert "runs a script that writes" in guards.check("Bash", {"command": writes}, CONFIG, cwd=str(tmp_path)), writes
+
+
+def test_messages_sends_are_their_own_channel_not_email():
+    """2026-10-20: the iMessage tools carry a `to` field, so they fell through to the email channel, and an email
+    send window would have covered them."""
+    for tool in ("imessage_send", "messages_send"):
+        assert sends.channel(tool, {"to": "+15551234567", "text": "On my way."}) == "messages"

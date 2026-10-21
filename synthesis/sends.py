@@ -26,7 +26,7 @@ SAID = {"comment", "message", "issue", "page", "post", "reply", "review", "draft
 PREPOSITIONS = {"to", "on", "in", "for", "from", "with", "by", "of", "into", "as", "at"}
 NOT_PEOPLE = ["mcp__ccd_*", "mcp__*__*session*"]  # agents talking to agents
 ALSO_SENDS = ["mcp__*execute_zapier_write_action*", "mcp__*manage_out_of_office*"]
-CHANNELS = [("slack", "slack"), ("jira", "jira"), ("confluence", "confluence"), ("github", "github"),
+CHANNELS = [("imessage", "messages"), ("messages_send", "messages"), ("slack", "slack"), ("jira", "jira"), ("confluence", "confluence"), ("github", "github"),
             ("bitbucket", "bitbucket"), ("notion", "notion"), ("gmail", "email"), ("mail", "email"),
             ("event", "calendar"), ("calendar", "calendar"), ("document_comment", "docs"),
             ("spreadsheet_comment", "docs"), ("presentation_comment", "docs"), ("drive", "docs")]

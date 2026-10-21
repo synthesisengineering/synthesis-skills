@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.3] - 2026-10-20
+
+At the principal's request (relayed by his operations session): an SMS group with two friends for a trip, where an
+agent should post logistics and help watch for emergencies. Local messaging 1.3.0:
+- **Sends to an existing group or SMS chat.** `messages_send.py --members HANDLE,HANDLE` reaches the one existing
+  iMessage or SMS chat, group or one-to-one, whose members are exactly those handles. The approval binds every
+  member, the chat's service, the text and the chat, and its code request names them all; just before the single
+  send call the transport re-checks the account, its service and every member, so anyone added or removed since the
+  approval stops the send. Never a new chat, a move between iMessage and SMS, or RCS. `--to` is unchanged.
+- **Watched chats.** The reader's optional `watched_chats` keeps every message in a named chat as a note of class
+  `watched` (likely verification codes still skipped), where a group otherwise keeps only messages naming the
+  principal.
+- **Messages sends are their own send-window channel.** Both iMessage tools carry a `to` field, so they fell
+  through to the email channel, and an email send window would have covered them.
+
 ## [5.1.2] - 2026-10-20
 
 - **Executive communication 2.1.0: writing upward.** A new binding rule and reference for writing to a reader
