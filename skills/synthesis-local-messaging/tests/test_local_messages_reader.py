@@ -154,6 +154,31 @@ def test_e82_group_needs_the_exact_self_name_not_a_generic_you(tmp_path, need_sa
     assert result["coverage"]["skipped"]["group-not-addressed"] == 1
 
 
+
+def test_a_watched_group_is_read_whole_except_security_codes(tmp_path, need_sandbox):
+    """2026-10-20: the principal asked agents to monitor a trip group for emergencies, and group messages that do
+    not name him were skipped as not addressed. In a watched chat every message is a note; codes stay skipped."""
+    path, db = imessage(tmp_path / "source")
+    db.execute("insert into handle values('+15559876543')")
+    db.execute("insert into chat_handle_join values(1, 2)")
+    db.commit()
+    add(db, "Landing at six, see you at the hotel")
+    add(db, "Your verification code is 482913")
+    db.close()
+    plain = run(path, tmp_path)
+    assert plain["notes"] == [] and plain["coverage"]["skipped"] == {"group-not-addressed": 2}
+    watched = run(path, tmp_path, watched_chats=["synthetic-chat"])
+    assert [n["class"] for n in watched["notes"]] == ["watched"]
+    assert watched["notes"][0]["note"] == "Review this message in its watched chat."
+    assert watched["coverage"]["skipped"] == {"security-code": 1}
+
+
+def test_a_chat_cannot_be_both_watched_and_excluded(tmp_path, need_sandbox):
+    path, db = imessage(tmp_path / "source")
+    db.close()
+    with pytest.raises(lm.Refused, match="both watched and excluded"):
+        run(path, tmp_path, watched_chats=["synthetic-chat"], excluded_chats=["synthetic-chat"])
+
 # --- E83: gaps are reported and hold the window -----------------------------------------------
 
 

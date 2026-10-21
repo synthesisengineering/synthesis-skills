@@ -42,6 +42,7 @@ APPLE_EPOCH = 978307200
 STALE_AFTER_HOURS = {"whatsapp-v1": 12, "imessage-v1": 24}  # 90 days of the principal's stores: WhatsApp never went
 # 12 hours without a message; iMessage did 27 times but never 24, so a quiet night is not a stopped store
 REQUEST_KEYS = {"schema", "adapter", "database", "start", "end", "page_size", "excluded_chats", "self_names"}
+OPTIONAL_KEYS = {"watched_chats"}  # chats read whole, every message a note: a group the principal asked to monitor
 LINK = "com.apple.messages.URLBalloonProvider"  # balloon_bundle_id of a rich link preview
 MIME = re.compile(r"[a-z0-9][a-z0-9.+-]{0,126}/[a-z0-9][a-z0-9.+-]{0,126}", re.I)
 
@@ -86,7 +87,7 @@ def instant(value) -> float:
 
 def validate(request, page_keys=False):
     keys = REQUEST_KEYS | ({"after", "upper", "stale_after_hours"} if page_keys else set())
-    if not isinstance(request, dict) or set(request) != keys or type(request["schema"]) is not int or request["schema"] != 1:
+    if not isinstance(request, dict) or set(request) - OPTIONAL_KEYS != keys or type(request["schema"]) is not int or request["schema"] != 1:
         raise Refused("unknown request schema")
     if request["adapter"] not in ("imessage-v1", "whatsapp-v1"):
         raise Refused("unsupported adapter")
@@ -103,11 +104,13 @@ def validate(request, page_keys=False):
     start, end = instant(request["start"]), instant(request["end"])
     if not 0 < end - start <= 366 * 86400:
         raise Refused("window must be positive and at most 366 days")
-    for key in ("excluded_chats", "self_names"):
-        value = request[key]
+    for key in ("excluded_chats", "self_names", "watched_chats"):
+        value = request.get(key, [])
         if (not isinstance(value, list) or len(value) > 1000 or len(value) != len(set(value))
                 or any(not isinstance(v, str) or not v.strip() or len(v) > 200 for v in value)):
             raise Refused("invalid bounded selection")
+    if set(request.get("watched_chats", [])) & set(request["excluded_chats"]):
+        raise Refused("a chat cannot be both watched and excluded")
     if not isinstance(request["database"], str):
         raise Refused("explicit database path required")
     physical(request["database"])
@@ -371,11 +374,14 @@ def read_page(page) -> dict:
                     gaps.append({"row": rowid, "reason": str(exc)})
                     continue
                 marked.append({"row": rowid, "marker": content})  # stands in for any text the reader did not read
-            if members > 1 and not any(re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", content, re.I)
-                                       for n in page["self_names"]):
+            watched = chat in page.get("watched_chats", [])
+            if members > 1 and not watched and not any(re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", content, re.I)
+                                                       for n in page["self_names"]):
                 skips["group-not-addressed"] += 1
                 continue
             classification, reason = _classify(content, bool(mine))
+            if reason and watched and reason != "security-code":  # every message in a watched chat is reviewed
+                classification, reason = "watched", None
             if reason:
                 skips[reason] += 1
                 continue
@@ -383,7 +389,8 @@ def read_page(page) -> dict:
             notes.append({
                 "id": digest(pointer), "pointer": pointer, "sender": "self" if mine else sender,
                 "at": datetime.fromtimestamp(stamp, timezone.utc).isoformat(), "class": classification,
-                "note": "Review the source for this " + classification.replace("-candidate", "") + ".",
+                "note": "Review this message in its watched chat." if classification == "watched" else
+                        "Review the source for this " + classification.replace("-candidate", "") + ".",
                 "media_present": bool(media), "untrusted_source": True,
                 "meaning": "candidate only; no unanswered/completion/calendar claim"})
         stale, store = _freshness(db, path, table, date_column, scale, start, end, page["stale_after_hours"])

@@ -179,7 +179,7 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
     if any(m and m in raw for m in signature.get("markers", [])) and not any(  # iMessage cannot carry a named link
-            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send"] + signature.get("plain_url_tools", [])):
+            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send"] + signature.get("plain_url_tools", [])):
         shown = LINKED.sub(" ", raw)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:

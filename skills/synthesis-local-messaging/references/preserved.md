@@ -564,3 +564,31 @@ This scan cannot reconstruct deletions, edits between historical generations,
 unsynced messages, unsupported schemas, structured group mentions, or a whole
 conversation's meaning. Those limits remain visible in review coverage.
 ````
+
+
+## Replaced later on 2026-10-20, for group and SMS sends (verbatim)
+
+The SKILL.md passages below gave way to the members send and `watched_chats`; the opening paragraph and the
+untrusted-data paragraph were shortened to rules 1, 2, 5 and 6, which say the same, to stay under 8,000 bytes.
+
+````markdown
+description: "Read an explicitly authorized local iMessage or WhatsApp database window into pointer-only notes, and send one principal-approved iMessage through the send guard. Use for local message triage, daily or 30-day review, or an approved iMessage reply. No account discovery or transcript export."
+
+Read the requested window from an explicitly authorized database. Keep the
+original conversation in its app. Save selected notes and stable source
+pointers in the appropriate private project; do not create transcript or media
+archives. Database access, interpretation, drafting, sending, and recipient
+acknowledgement are separate decisions.
+
+7. **Send only the exact text the principal approved, only through `messages_send.py`.** The v5 send guard asks them for "approve <code>", and one approval sends once. One existing one-to-one iMessage chat; no WhatsApp sending, SMS or RCS fallback, chat creation or group send.
+
+These are conservative triage rules, not exhaustive semantic classifiers. Group
+selection requires an exact configured self name. Generic “you” is insufficient;
+structured mention/reply metadata is currently unsupported.
+
+
+
+## Sending one approved iMessage
+
+`python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt`.
+````
