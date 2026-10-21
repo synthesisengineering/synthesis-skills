@@ -57,7 +57,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.1.1 adds 95 to the plugin (the core is unchanged): dry runs that write nothing in onboarding (workspace.py 37,
 # setup.py 9), the message reader's stale-store check and Recently Deleted attribution (47), and wrapped list items
 # in the packet's Markdown view (2). A search for unreferenced definitions and repeated bodies found nothing.
-# Code may not grow past these without removing as many lines elsewhere.
+# Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
+# consolidate first).
 CORE_BUDGET = 6236
 PLUGIN_BUDGET = 22601
 
