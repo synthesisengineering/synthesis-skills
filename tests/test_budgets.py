@@ -96,11 +96,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # session found on 2026-10-22 that Return in a Google Chat compose box went out with no code. The transcript's tail
 # read once and shared with the browser guard (18, less 5 in `_last_selection`); the sites with their line-break
 # keys, and the tab-list pattern, 15; a page's site 14; the newest tab list in the transcript 14; the pages a call
-# acts on, navigate steps included, 17; their use in the send check 1.
+# acts on, navigate steps included, 17; their use in the send check 1. The plugin's 2 more: the sheet host's gate
+# probe names its user agent (the constant and why), since Cloudflare answered 403 to urllib's on the first upload.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 6608
-PLUGIN_BUDGET = 23415
+PLUGIN_BUDGET = 23417
 
 
 def _lines(files):

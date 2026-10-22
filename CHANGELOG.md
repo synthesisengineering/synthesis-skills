@@ -13,6 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   Gmail and Outlook on the web count as email (cmd or ctrl with Return sends). Words typed there pass the register
   scan. The page comes from the tab list Claude in Chrome prints after each call, or from a navigate step earlier in
   the same batch; a page whose address the guard cannot read is judged as before.
+- **The sheet host's gate check names itself** (action sheet 1.1.1). On the first real upload, Cloudflare answered
+  403 to urllib's default user agent before Access saw the request, so `publish_sheet.py` refused a host that was
+  correctly behind the sign-in (safely: nothing was uploaded). The probe now sends its own user agent.
 
 ## [5.1.8] - 2026-10-22
 
