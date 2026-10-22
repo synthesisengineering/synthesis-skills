@@ -84,7 +84,7 @@ def test_another_sessions_selection_rearms_the_guard(setup, tmp_path):
     assert _call("select_browser", {"deviceId": PERSONAL}, config, dirs["personal"], mine) is None
     assert _call("navigate", {}, config, dirs["personal"], mine) is None
     assert _call("select_browser", {"deviceId": CLIENT}, config, dirs["clientco"], theirs) is None
-    assert "Session S2 selected a browser at" in _call("navigate", {}, config, dirs["personal"], mine)
+    assert "made by session S2, at" in _call("navigate", {}, config, dirs["personal"], mine)
     assert _call("select_browser", {"deviceId": PERSONAL}, config, dirs["personal"], mine) is None
     assert _call("navigate", {}, config, dirs["personal"], mine) is None
 
