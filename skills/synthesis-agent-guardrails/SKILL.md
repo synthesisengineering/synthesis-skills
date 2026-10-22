@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.1"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -44,7 +44,7 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 
 ## Procedure
 
-1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md): `account_routing`, `browser_routing`, `push_deploys`, `deploy_patterns`, `deploy_content`, `protected_roots`, `shortcut_phrases`, `reply_file_links`. Every guard runs with safe defaults when its key is absent: no routing, the built-in deploy commands, home and workspace roots protected.
+1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md): `account_routing`, `browser_routing`, `push_deploys`, `deploy_patterns`, `deploy_content`, `sheet_hosts`, `protected_roots`, `shortcut_phrases`, `reply_file_links`. Every guard runs with safe defaults when its key is absent: no routing, the built-in deploy commands, home and workspace roots protected.
 2. **A deploy is blocked for approval:** show the principal the exact command and what it publishes (a preview, the diff, or the built output), and the code. When they type `approve <code>`, run the identical command once. A changed command or a moved HEAD needs a new approval. A date-rule refusal is never approvable: fix the date or hold the deploy.
 3. **A rapid redeploy is blocked:** stop and put the options to the principal (wait, revert, or deploy now); ask for the rapid code only if they want it now.
 4. **A calendar or mail call is blocked for its account:** use the tool that takes the workspace's account and pass it (for example `user_google_email`); afterwards, check the organizer or sender.
