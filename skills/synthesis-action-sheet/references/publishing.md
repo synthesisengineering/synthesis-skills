@@ -108,6 +108,8 @@ bookmark on the phone. What it does, in order:
   address. Anything else (the page itself, an error such as 403 or 404, a redirect elsewhere)
   prints `will not publish:` and exits 2 with nothing uploaded. The script names itself in its
   user agent, since Cloudflare answers 403 to Python's default one before Access sees the request.
+  The check proves that a sign-in stands in front of the host, not whom the policy admits: keeping
+  the policy to the principal's address is part of the setup above, and the principal's to keep.
 - **Uploads with wrangler**, which uses its own sign-in; the script reads no credential. The
   upload carries headers for no indexing, no caching and no referrer, so links on the sheet do
   not pass its address on.
