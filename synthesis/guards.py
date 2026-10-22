@@ -43,6 +43,9 @@ HTML_FIELDS = frozenset({"htmlBody", "html_body", "bodyHtml", "body_html", "html
 BODY_FIELDS = frozenset({"body", "message", "text", "content", "forwardText", "textBody", "text_body",
                          "bodyText", "plain_text", "plainText", "message_text"})
 THREAD_HEADERS = ("in_reply_to", "references", "inReplyTo", "in_reply_to_id")
+# Fields that never render a link: an RSVP's comment reaches the organizer as plain text, so a signature there
+# names its domain in words (2026-10-22: a declined invitation could not carry its signed note).
+PLAIN_FIELDS = frozenset({"rsvp_comment", "responseComment"})
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
 LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
@@ -179,10 +182,11 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
-    if any(m and m in raw for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
+    rendered = "\n".join(t for k, t in strings if k not in PLAIN_FIELDS)
+    if any(m and m in rendered for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
             fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
             + signature.get("plain_url_tools", [])):
-        shown = LINKED.sub(" ", raw)
+        shown = LINKED.sub(" ", rendered)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:
             problems.append(f"the signature shows {', '.join(exposed)} as text; on a channel that renders links the "
@@ -356,8 +360,8 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
         return None
     current = paths.read_json(paths.state() / "browser.json")
     if current.get("session") != me or current.get("device") != device or not me:
-        since = (f"Session {current.get('session')} selected a browser at "
-                 f"{time.strftime('%H:%M', time.localtime(float(current.get('at') or 0)))} since then"
+        since = (f"The latest browser selection was made by session {current.get('session')}, at "
+                 f"{time.strftime('%H:%M', time.localtime(float(current.get('at') or 0)))}, not by this one"
                  if current.get("session") and current.get("session") != me else "No browser is selected for this session")
         return (f"{since}; the extension is shared, so its browser or tab group may have changed. Call "
                 f"list_connected_browsers, then select_browser with deviceId {device} ({label}), before any other browser call.")

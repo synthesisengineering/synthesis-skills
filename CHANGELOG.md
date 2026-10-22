@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.7] - 2026-10-22
+
+- **A signed note in an RSVP** (message guard 2.3.1). The signature-link check refused a persona's note in a
+  calendar RSVP comment for showing its domain as text, but an RSVP comment reaches the organizer as plain text,
+  where no named link can render; a declined invitation could carry its note only by a separate email.
+  `rsvp_comment` and `responseComment` are left out of that check in any tool; an event's description is not.
+- **The browser refusal reads right** (agent guardrails 2.1.1). After another session's selection it said that
+  session "selected a browser at 11:27 since then", even to a session that had never selected one. It now names
+  the session that made the latest selection, and when.
+
 ## [5.1.6] - 2026-10-22
 
 Local messaging 1.4.0, from the principal's ruling on an operations session's request (a WhatsApp-only friend

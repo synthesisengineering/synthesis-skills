@@ -17,7 +17,7 @@ no `~/.synthesis`.
 | `message_format.plain_email_tools` | Tool-name globs of transports that can only send plain text (for example `mcp__apple-mail__*`). |
 | `signature.markers` | Strings that mark a persona signature (for example the persona's emoji). |
 | `signature.domains` | Persona domains that must appear only inside a link on a link-capable channel. |
-| `signature.plain_url_tools` | Tool globs whose channel cannot render links, where the visible domain is the right form. |
+| `signature.plain_url_tools` | Tool globs whose channel cannot render links, where the visible domain is the right form. Fields that never render a link are left out of the check in any tool: an RSVP's comment (`rsvp_comment`, `responseComment`), which reaches the organizer as plain text (2026-10-22). |
 | `own_repos` | Repository globs (`owner/*`, `owner/name`) whose PRs, issues and comments are the principal's own work, not sends: GitHub connector tools naming that `owner`/`repo`, and `gh` commands whose `-R`, API path or `origin` remote names it. |
 | `not_send_tools` | Tool globs never treated as sends, for a tool whose name reads like one but reaches no person. |
 | `send_commands` | Extra `[channel, regex]` pairs for shell programs that post, matched from the start of a command's words (built in: `gh`, `bkt`, `glab`, `jira`/`acli`, `osascript` Messages or Mail, and `curl`, `wget`, HTTPie writes to another host). |

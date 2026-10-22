@@ -137,6 +137,17 @@ def test_an_imessage_signature_may_show_its_domain_since_imessage_cannot_carry_a
     assert any("must be the link" in p for p in guards.message_problems(SLACK, {"channel_id": "C1", "message": signed}, CONFIG))
 
 
+def test_an_rsvp_comment_may_show_the_domain_since_it_is_plain_text():
+    """An operations session, 2026-10-22: a declined invitation could not carry its signed note. The RSVP comment
+    reaches the organizer as plain text, so no named link can render there; the event's description still can."""
+    signed = "Rajiv can't make this one; he'll follow up by email.\n\n🤖 Helperbot (helperbot.example)"
+    for tool, field in (("mcp__workspace-mcp__manage_event", "rsvp_comment"), ("mcp__gcal__respond_to_event", "responseComment")):
+        call = {"action": "rsvp", "response": "declined", "user_google_email": "me@personal.example", field: signed}
+        assert not [p for p in guards.message_problems(tool, call, CONFIG) if "must be the link" in p], tool
+    described = {"action": "update", "user_google_email": "me@personal.example", "description": signed}
+    assert any("must be the link" in p for p in guards.message_problems("mcp__workspace-mcp__manage_event", described, CONFIG))
+
+
 def test_session_to_session_messages_are_not_correspondence():
     assert guards.check("mcp__ccd_session_mgmt__send_message", {"session_id": "local_1", "message": "Line one\nline two"}, CONFIG) is None
 

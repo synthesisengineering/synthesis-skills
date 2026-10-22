@@ -81,10 +81,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # photos sent under the same approval, bound to the photo's hash, with the transport's size and change-time check
 # and a caption that fails after its photo reported as uncertain (messages_send.py 51), and the WhatsApp prefill that
 # opens an existing chat with the approved text for the principal to send, found by number or linked id (102).
+# 5.1.7 adds 4 to both: an RSVP's comment fields left out of the signature-link check, since they render as plain
+# text (the field set and its comment 3, the joined text it reads 1); the browser refusal's wording changes no count.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6511
-PLUGIN_BUDGET = 23148
+CORE_BUDGET = 6515
+PLUGIN_BUDGET = 23152
 
 
 def _lines(files):
