@@ -174,14 +174,21 @@ def test_words_a_browser_send_carries_pass_the_register_scan_first():
     assert "delay-apology" in check(CHROME, call)
 
 
-def _on(tmp_path, front, **tabs):
-    """A session whose transcript's newest browser result lists these tabs, the call having run on front."""
+def _result(ident, tool, front, tabs):
+    """A tool call and its result listing these tabs, the call having run on front."""
     listing = "\n".join(f'  \u2022 tabId {t[3:]}: "Inbox \u2013 \"Team\" (3)" ("{u}")' for t, u in tabs.items())
     text = f"Clicked\n\nTab Context:\n- Executed on tabId: {front}\n- Available tabs:\n{listing}"
-    line = {"type": "user", "message": {"role": "user", "content": [
-        {"type": "tool_result", "tool_use_id": "toolu_1", "content": [{"type": "text", "text": text}]}]}}
+    call = {"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": ident, "name": tool, "input": {}}]}}
+    result = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": ident, "content": [{"type": "text", "text": text}]}]}}
+    return json.dumps(call) + "\n" + json.dumps(result) + "\n"
+
+
+def _on(tmp_path, front, **tabs):
+    """A session whose transcript's newest browser result lists these tabs."""
     path = tmp_path / "transcript.jsonl"
-    path.write_text(json.dumps(line) + "\n", encoding="utf-8")
+    path.write_text(_result("toolu_1", CHROME, front, tabs), encoding="utf-8")
     return {**SESSION, "transcript_path": str(path)}
 
 
@@ -226,6 +233,15 @@ def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(t
     assert "approve" in guards.check("mcp__claude-in-chrome__computer", {**RETURN[1], "tabId": 8}, CONFIG, session=session)
     opened = ("navigate", {"url": "app.slack.com/client/T1/C2", "tabId": 7})
     assert "approve" in guards.check(CHROME, _steps(opened, RETURN), CONFIG, session=session)
+
+
+def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
+    """A shell that prints a transcript (or anything shaped like a tab list) does not move the browser's page."""
+    session = _on(tmp_path, 7, tab7="https://chat.google.com/room/AAA")
+    with open(session["transcript_path"], "a", encoding="utf-8") as transcript:
+        transcript.write(_result("toolu_2", "Bash", 7, {"tab7": "https://docs.google.com/document/d/x"}))
+    assert "approve" in guards.check(CHROME, _steps(RETURN), CONFIG, session=session)
+    assert guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")}) is None
 
 
 def test_words_typed_on_a_messaging_site_pass_the_register_scan(tmp_path):

@@ -311,14 +311,15 @@ def _tail(transcript: str) -> list:
     """The lines of a Claude Code transcript's last 8 MB, read once per version of the file; [] if unreadable."""
     try:
         state = os.stat(transcript)
+        key = (transcript, state.st_size, state.st_mtime_ns)
+        if key not in _TAILS:
+            with open(transcript, "rb") as handle:
+                handle.seek(max(0, state.st_size - TRANSCRIPT_TAIL))
+                lines = handle.read().decode("utf-8", "replace").splitlines()
+            _TAILS.clear()
+            _TAILS[key] = lines
     except OSError:
         return []
-    key = (transcript, state.st_size, state.st_mtime_ns)
-    if key not in _TAILS:
-        with open(transcript, "rb") as handle:
-            handle.seek(max(0, state.st_size - TRANSCRIPT_TAIL))
-            _TAILS.clear()
-            _TAILS[key] = handle.read().decode("utf-8", "replace").splitlines()
     return _TAILS[key]
 
 
@@ -1288,14 +1289,24 @@ def _web_app(url: str):
     return None
 
 
+def _browser_call(lines: list, i: int, ident: str) -> bool:
+    """Whether the call whose result is on line i went to a browser server (a shell printing a tab list did not)."""
+    for line in reversed(lines[max(0, i - 200):i] if ident else []):
+        for call in (_blocks(line) if ident in line else []):
+            if call.get("type") == "tool_use" and call.get("id") == ident:
+                return bool(re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I))
+    return False
+
+
 def _tabs(transcript: str) -> tuple:
-    """({tab id: address}, the tab the newest call ran on), from the newest tab list in the transcript's tail."""
-    for line in reversed(_tail(transcript)):
-        for block in reversed(_blocks(line) if "Tab Context" in line else []):
+    """({tab id: address}, the tab the newest call ran on), from the newest browser result's tab list."""
+    lines = _tail(transcript)
+    for i in range(len(lines) - 1, -1, -1):
+        for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] else []):
             content = block.get("content") if block.get("type") == "tool_result" else ""
             text = ("\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
                     if isinstance(content, list) else str(content or ""))
-            if "Tab Context" in text:
+            if "Tab Context" in text and _browser_call(lines, i, str(block.get("tool_use_id") or "")):
                 context = text[text.rindex("Tab Context"):]
                 front = re.search(r"Executed on tabId: (\d+)", context)
                 return dict(TAB_LINE.findall(context)), front.group(1) if front else ""
