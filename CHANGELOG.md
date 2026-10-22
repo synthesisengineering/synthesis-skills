@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.9] - 2026-10-22
+
+- **Sends on messaging sites in the browser wait for the code** (message guard 2.4.0). Return in a Google Chat
+  compose box went out with no code: a browser page counted as no app, so only an action whose summary said it sent
+  was held. A page on Google Chat (and Gmail's `/chat`), Slack, WhatsApp Web, LinkedIn's messages, Teams, Discord,
+  Telegram Web, Messenger or X's messages now counts as that app (Return sends, shift with Return writes a line), and
+  Gmail and Outlook on the web count as email (cmd or ctrl with Return sends). Words typed there pass the register
+  scan. The page comes from the tab list Claude in Chrome prints after each call, or from a navigate step earlier in
+  the same batch; a page whose address the guard cannot read is judged as before.
+
 ## [5.1.8] - 2026-10-22
 
 **The action sheet on the principal's phone through a private host, and never dependent on one** (action sheet

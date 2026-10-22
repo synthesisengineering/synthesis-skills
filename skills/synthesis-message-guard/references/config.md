@@ -130,6 +130,15 @@ Discord (`com.hnc.Discord`), Zoom (`us.zoom.xos`), Mail (`com.apple.mail`) and O
 - typed text holding a line break, where a bare Return sends;
 - a menu item that starts with Send (Mail's Message > Send).
 
+**Messaging sites in the browser** (5.1.9). A browser page on a messaging site counts as that app, under the same
+rules: Google Chat (`chat.google.com`, and `/chat` in Gmail), Slack (any `*.slack.com`), WhatsApp Web, LinkedIn's
+messages (`www.linkedin.com/messaging`), Teams, Discord, Telegram Web, Messenger and X's messages, where Return
+sends and shift with Return writes a line; Gmail and Outlook on the web count as email. The page is the tab a step
+names, else the one the last browser call ran on, read from the tab list Claude in Chrome prints after every call,
+or the page a `navigate` step earlier in the same batch opened. A page whose address the guard cannot read (a
+browser that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return
+in a Google Chat compose box went out with no code, because a browser page had counted as no app.
+
 In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
 publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
 emails, texts), clicks or presses Send, or does something "to send" waits too. On the 45 days of summaries this

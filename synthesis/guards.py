@@ -304,15 +304,28 @@ def _blocks(line: str) -> list:
     return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
 
 
+_TAILS: dict = {}
+
+
+def _tail(transcript: str) -> list:
+    """The lines of a Claude Code transcript's last 8 MB, read once per version of the file; [] if unreadable."""
+    try:
+        state = os.stat(transcript)
+    except OSError:
+        return []
+    key = (transcript, state.st_size, state.st_mtime_ns)
+    if key not in _TAILS:
+        with open(transcript, "rb") as handle:
+            handle.seek(max(0, state.st_size - TRANSCRIPT_TAIL))
+            _TAILS.clear()
+            _TAILS[key] = handle.read().decode("utf-8", "replace").splitlines()
+    return _TAILS[key]
+
+
 def _last_selection(transcript: str) -> tuple[str, bool] | None:
     """(device, succeeded) for the newest select_browser call in a Claude Code transcript's last 8 MB; a call
     with no result yet has not succeeded. None when there is none there or the file cannot be read."""
-    try:
-        with open(transcript, "rb") as handle:
-            handle.seek(max(0, os.path.getsize(transcript) - TRANSCRIPT_TAIL))
-            lines = handle.read().decode("utf-8", "replace").splitlines()
-    except OSError:
-        return None
+    lines = _tail(transcript)
     for i in range(len(lines) - 1, -1, -1):
         if "select_browser" not in lines[i]:
             continue
@@ -1246,6 +1259,66 @@ def _messaging(config: dict) -> dict:
     return {**MESSAGING_APPS, **{b: (b.rsplit(".", 1)[-1].lower(), "shift") for b in extra}}
 
 
+# A browser page on a messaging site counts as that messaging app (2026-10-22: Return in a Google Chat compose box
+# went out with no code, since a page was no app). Its address comes from the tab list Claude in Chrome prints after
+# each call, or from a navigate step earlier in the same batch; a page whose address is unknown is judged as before.
+WEB_MESSAGING = (  # (host, or .suffix for every host under it; path prefix; channel; line-break modifier, as above)
+    ("mail.google.com", "/chat", "google chat", "shift"), ("chat.google.com", "", "google chat", "shift"),
+    ("mail.google.com", "", "email", ""), ("outlook.office.com", "", "email", ""),
+    ("outlook.office365.com", "", "email", ""), ("outlook.live.com", "", "email", ""), (".slack.com", "", "slack", "shift"),
+    ("web.whatsapp.com", "", "whatsapp", "shift"), ("www.linkedin.com", "/messaging", "linkedin", "shift"),
+    ("teams.microsoft.com", "", "teams", "shift"), ("teams.live.com", "", "teams", "shift"),
+    ("discord.com", "", "discord", "shift"), ("web.telegram.org", "", "telegram", "shift"),
+    ("www.messenger.com", "", "messenger", "shift"), ("x.com", "/messages", "x", "shift"),
+)
+TAB_LINE = re.compile(r'tabId (\d+): .*\("([^"\s]+)"\)\s*$', re.M)
+
+
+def _web_app(url: str):
+    """(page, (channel, line-break modifier)) when url is a messaging site's page, else None."""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(url if "://" in url else "https://" + url)
+    except ValueError:
+        return None
+    host, path = (parts.hostname or "").lower(), parts.path or "/"
+    for site, prefix, chan, brk in WEB_MESSAGING:
+        if (host == site or site[0] == "." and host.endswith(site)) and path.startswith(prefix):
+            return host + prefix, (chan, brk)
+    return None
+
+
+def _tabs(transcript: str) -> tuple:
+    """({tab id: address}, the tab the newest call ran on), from the newest tab list in the transcript's tail."""
+    for line in reversed(_tail(transcript)):
+        for block in reversed(_blocks(line) if "Tab Context" in line else []):
+            content = block.get("content") if block.get("type") == "tool_result" else ""
+            text = ("\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
+                    if isinstance(content, list) else str(content or ""))
+            if "Tab Context" in text:
+                context = text[text.rindex("Tab Context"):]
+                front = re.search(r"Executed on tabId: (\d+)", context)
+                return dict(TAB_LINE.findall(context)), front.group(1) if front else ""
+    return {}, ""
+
+
+def _pages(name: str, tool_input: dict, session: dict | None) -> dict:
+    """page: (channel, line-break modifier) for each messaging site this browser call acts on."""
+    tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
+    steps = [("computer", tool_input)] if name == "browser" else [
+        (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
+        if isinstance(s, dict) and isinstance(s.get("input"), dict)]
+    reached = {}
+    for step, given in steps:
+        tab = str(given.get("tabId") or front)
+        if step.endswith("navigate"):  # the steps after it act on the new page
+            tabs[tab] = str(given.get("url") or "")
+        page = _web_app(tabs.get(tab, ""))
+        if page:
+            reached[page[0]] = page[1]
+    return reached
+
+
 def _bundle(app, apps: dict) -> str:
     text = str(app or "").strip().lower()
     return APP_NAMES.get(text) or next((b for b in apps if b.lower() == text), "")
@@ -1282,7 +1355,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
-               else {} if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
+               else _pages(name, tool_input, session) if name.startswith("browser")
+               else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed = [v for kind, v, _ in actions if kind == "type" and v.strip()]
     sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or reached and (
         kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
@@ -1295,8 +1369,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return None
     chans = sorted({c for c, _ in reached.values()})
     chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
-    where = ("the browser" if name.startswith("browser") else "any messaging app" if unseen
-             else ", ".join(sorted(reached)) or "an app")
+    where = ((f"the browser ({', '.join(sorted(reached))})" if reached else "the browser") if name.startswith("browser")
+             else "any messaging app" if unseen else ", ".join(sorted(reached)) or "an app")
     what, subject = "; ".join(sending)[:200], {"tool": tool, "input": tool_input}
     summary = f"{tool} in {where}: {what}" + (f"; words: {' / '.join(typed)}" if typed else "")
     if sends.covered(chan, typed, _project(session), config):
