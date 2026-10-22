@@ -77,10 +77,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # key 9; app names and each session's recorded grants 10; Return and send shortcuts per app 12; the check itself
 # (register scan, window, approval and the hold's instructions) 47; wiring in check(), guarded() and the signature
 # rule 4. The click names were listed once instead of twice.
+# 5.1.6 adds 153 to the plugin (the core is unchanged), from the principal's ruling of 2026-10-22: iMessage and SMS
+# photos sent under the same approval, bound to the photo's hash, with the transport's size and change-time check
+# and a caption that fails after its photo reported as uncertain (messages_send.py 51), and the WhatsApp prefill that
+# opens an existing chat with the approved text for the principal to send, found by number or linked id (102).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 6511
-PLUGIN_BUDGET = 22995
+PLUGIN_BUDGET = 23148
 
 
 def _lines(files):

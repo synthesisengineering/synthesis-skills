@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Send one approved message to an existing Messages chat through the v5 send guard, at most once.
 
-Run: python3 messages_send.py --to HANDLE --text-file FILE [--account ACCOUNT_ID]
-     python3 messages_send.py --members HANDLE[,HANDLE...] --text-file FILE [--service iMessage|SMS] [--account ID]
+Run: python3 messages_send.py --to HANDLE --text-file FILE [--photo PATH] [--account ACCOUNT_ID]
+     python3 messages_send.py --members HANDLE[,HANDLE...] --text-file FILE [--photo PATH] [--service iMessage|SMS]
+                              [--account ID]
+
+--photo adds one photo (2026-10-22, the principal's ruling: iMessage and SMS photos send directly). The approval
+names it by SHA-256 along with the text, the photo goes first and the text after it as its caption, and the text
+may be left out for a photo alone.
 
 --to reaches the one-to-one iMessage chat with HANDLE. --members reaches the one existing chat, iMessage or SMS,
 group or one-to-one, whose members are exactly those handles (2026-10-20: a trip's SMS group); the approval names
@@ -15,8 +20,9 @@ every member, and the send stops if the chat's members or service changed since.
 3. The v5 send guard decides: the principal's forbidden phrases, then their single-use approval
    of this exact recipient and text. Without one it files a request and prints the code the
    principal types ("approve <code>"); after they do, run the identical command again.
-4. The attempt is recorded, then exactly one send call runs through messages_transport.js. The
-   text travels through a private file descriptor, never through argv or script source.
+4. The attempt is recorded, then one send call per part (the photo, then the text) runs through
+   messages_transport.js. The text travels through a private file descriptor, never through argv or script
+   source; the transport sends the photo only if its size and change time still match the approved one.
 
 Prints one JSON object. status: dispatched (the send call returned: delivery and
 acknowledgement stay unknown), not-sent (stopped before the send call), uncertain (anything
@@ -47,7 +53,10 @@ PRE_SEND = ("descriptor required", "descriptor bound", "packet contract", "paylo
             "explicit route required", "text bound", "route bound", "recipient contract",
             "approval expired or unbounded", "selection bound", "ambiguous route", "account unavailable",
             "chat account changed", "one recipient required", "participant route changed", "members contract",
-            "participants changed")
+            "participants changed", "attachment bound", "attachment changed")
+# A photo is approved by its content: SHA-256, name and size go into the approval along with the text.
+PHOTO_TYPES = (".jpg", ".jpeg", ".png", ".heic", ".heif", ".gif", ".webp")
+PHOTO_MAX = 100 * 1024 * 1024
 
 
 class Refused(Exception):
@@ -113,9 +122,30 @@ def resolve_members(members: list, service: str | None, account: str | None) -> 
     return {k: chosen[k] for k in ("account_id", "service", "chat_id", "participants")}
 
 
-def transport(to, text: str, route: dict, key: str) -> dict:
+def photo(path: str | None) -> dict | None:
+    """The photo as approved: its real path, name, size, change time and SHA-256, read once."""
+    if path is None:
+        return None
+    real = Path(path).expanduser().resolve()
+    if real.suffix.lower() not in PHOTO_TYPES:
+        raise Refused(f"a photo must be one of {', '.join(PHOTO_TYPES)}; got {real.name}")
+    try:
+        info, digest = real.stat(), hashlib.sha256()
+        if not real.is_file() or not 0 < info.st_size <= PHOTO_MAX:
+            raise Refused(f"the photo must be a file of at most {PHOTO_MAX >> 20} MB")
+        with open(real, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError as exc:
+        raise Refused(f"cannot read the photo: {exc}") from exc
+    return {"path": str(real), "name": real.name, "bytes": info.st_size, "mtime": info.st_mtime_ns / 1e9,
+            "sha256": digest.hexdigest()}
+
+
+def transport(to, text: str, route: dict, key: str, attachment: dict | None = None) -> dict:
+    sent = {k: attachment[k] for k in ("path", "bytes", "mtime")} if attachment else None
     payload = {"tool_name": "synthesis.messages.send",
-               "tool_input": {"request_id": key, "destination": to, "text": text, "route": route}}
+               "tool_input": {"request_id": key, "destination": to, "text": text, "route": route, "attachment": sent}}
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     packet = {"protocol": 1, "payload": payload, "digest": hashlib.sha256(canonical.encode()).hexdigest(),
               "expires_ms": int(time.time() * 1000) + 120000}
@@ -134,8 +164,10 @@ def transport(to, text: str, route: dict, key: str) -> dict:
             reply = json.loads(done.stdout)
         except ValueError:
             reply = {}
-        if reply.get("phase") == "dispatched" and reply.get("request_digest") == packet["digest"]:
-            return {"status": "dispatched", "delivery": "unknown", "acknowledgement": "unknown"}
+        if reply.get("request_digest") == packet["digest"] and reply.get("phase") == "dispatched":
+            return {"status": "dispatched", "parts": reply.get("parts"), "delivery": "unknown", "acknowledgement": "unknown"}
+        if reply.get("request_digest") == packet["digest"] and reply.get("phase") == "partial":
+            return {"status": "uncertain", "reason": f"the photo's send call returned, then the text's failed: {reply.get('error')}"}
         return {"status": "uncertain", "reason": "the send call returned without its dispatch report"}
     error = done.stderr.strip()[-500:]
     if any("Error: " + known in error for known in PRE_SEND):
@@ -154,10 +186,10 @@ def _save(path: Path, record: dict) -> None:
     tmp.replace(path)
 
 
-def _send(to, text: str, key: str, resolve, tool: str, subject) -> dict:
-    """The shared path: refuse a repeat, find the chat, ask the guard, record, then exactly one send call."""
-    if not text.strip() or len(text) > 65536 or "\0" in text:
-        raise Refused("the text must be non-empty, at most 65,536 characters, with no NUL")
+def _send(to, text: str, key: str, resolve, tool: str, subject, attachment: dict | None = None) -> dict:
+    """The shared path: refuse a repeat, find the chat, ask the guard, record, then one send call per part."""
+    if (not text.strip() and attachment is None) or len(text) > 65536 or "\0" in text:
+        raise Refused("the text must be non-empty unless a photo goes alone, at most 65,536 characters, with no NUL")
     guards, paths = core()
     try:
         config = paths.config()
@@ -177,29 +209,43 @@ def _send(to, text: str, key: str, resolve, tool: str, subject) -> dict:
         return {"status": "needs-approval" if "approve " in reason else "refused", "reason": reason}
     record = {"to": to, "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
               "at": datetime.now().astimezone().isoformat(timespec="seconds")}
+    if attachment:
+        record["photo_sha256"] = attachment["sha256"]
     _save(record_path, {**record, "status": "uncertain", "reason": "the send call started; its outcome was not recorded"})
-    result = transport(to, text, route, key)
+    result = transport(to, text, route, key, attachment)
     _save(record_path, {**record, **result})
     return result
 
 
-def send(to: str, text: str, account: str | None = None) -> dict:
+def _named(attachment: dict | None) -> dict:
+    """What the approval names about a photo: the principal sees its name and size, and the hash binds its bytes."""
+    return {"photo": {k: attachment[k] for k in ("name", "bytes", "sha256")}} if attachment else {}
+
+
+def _key(*parts: str, attachment: dict | None = None) -> str:
+    """A text-only send keeps the key it had before photos, so its earlier attempts still refuse a repeat."""
+    return hashlib.sha256("\0".join(parts + ((attachment["sha256"],) if attachment else ())).encode("utf-8")).hexdigest()[:32]
+
+
+def send(to: str, text: str, account: str | None = None, attachment: dict | None = None) -> dict:
     if not HANDLE.match(to):
         raise Refused("the recipient must be +<country code><number> or an email address")
-    key = hashlib.sha256(f"{to}\0{text}".encode("utf-8")).hexdigest()[:32]
-    return _send(to, text, key, lambda: resolve_route(to, account), TOOL, lambda route: {"to": to, "text": text})
+    return _send(to, text, _key(to, text, attachment=attachment), lambda: resolve_route(to, account), TOOL,
+                 lambda route: {"to": to, "text": text, **_named(attachment)}, attachment)
 
 
-def send_members(members: list, text: str, service: str | None = None, account: str | None = None) -> dict:
+def send_members(members: list, text: str, service: str | None = None, account: str | None = None,
+                 attachment: dict | None = None) -> dict:
     """The approval binds every member, the chat's service and the chat itself, so it covers exactly this send."""
     members = sorted(set(members))
     if not 1 <= len(members) <= 32 or not all(HANDLE.match(m) for m in members):
         raise Refused("members must be 1 to 32 handles, each +<country code><number> or an email address")
     if service not in (None, "iMessage", "SMS"):
         raise Refused("the service must be iMessage or SMS")
-    key = hashlib.sha256(("members\0" + ",".join(members) + f"\0{text}").encode("utf-8")).hexdigest()[:32]
+    key = _key("members", ",".join(members), text, attachment=attachment)
     return _send(members, text, key, lambda: resolve_members(members, service, account), MEMBERS_TOOL,
-                 lambda route: {"to": members, "service": route["service"], "text": text, "chat": route["chat_id"]})
+                 lambda route: {"to": members, "service": route["service"], "text": text, "chat": route["chat_id"],
+                                **_named(attachment)}, attachment)
 
 
 def main(argv=None) -> int:
@@ -207,18 +253,23 @@ def main(argv=None) -> int:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--to", help="the recipient's handle: +<country code><number> or an email address")
     target.add_argument("--members", help="comma-separated handles: exactly the members of an existing chat")
-    parser.add_argument("--text-file", required=True, help="UTF-8 file holding the exact approved text")
+    parser.add_argument("--text-file", help="UTF-8 file holding the exact approved text (with --photo, its caption)")
+    parser.add_argument("--photo", help="one photo to send first, approved by its SHA-256 with the text")
     parser.add_argument("--service", choices=("iMessage", "SMS"), help="with --members, when chats on both match")
     parser.add_argument("--account", help="the Messages account id, when more than one has a matching chat")
     args = parser.parse_args(argv)
     try:
-        text = Path(args.text_file).read_text(encoding="utf-8")
+        if not args.text_file and not args.photo:
+            raise Refused("pass --text-file, --photo, or both")
+        text = Path(args.text_file).read_text(encoding="utf-8") if args.text_file else ""
+        picture = photo(args.photo)
         if args.members:
-            result = send_members([m.strip() for m in args.members.split(",") if m.strip()], text, args.service, args.account)
+            result = send_members([m.strip() for m in args.members.split(",") if m.strip()], text, args.service,
+                                  args.account, picture)
         elif args.service:
             raise Refused("--service goes with --members; --to reaches a one-to-one iMessage chat")
         else:
-            result = send(args.to, text, args.account)
+            result = send(args.to, text, args.account, picture)
     except (Refused, OSError, ValueError) as exc:
         result = {"status": "refused", "reason": str(exc)}
     print(json.dumps(result, ensure_ascii=False))

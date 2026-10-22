@@ -15,12 +15,15 @@ function run(argv) {
         return value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join("|") === expected.sort().join("|");
     }
     if (!keys(packet, ["protocol", "payload", "digest", "expires_ms"]) || packet.protocol !== 1 || !/^[a-f0-9]{64}$/.test(packet.digest) || !Number.isSafeInteger(packet.expires_ms)) throw Error("packet contract");
-    if (!keys(packet.payload, ["tool_name", "tool_input"]) || packet.payload.tool_name !== "synthesis.messages.send" || !keys(body, ["request_id", "destination", "text", "route"])) throw Error("payload contract");
+    if (!keys(packet.payload, ["tool_name", "tool_input"]) || packet.payload.tool_name !== "synthesis.messages.send" || !keys(body, ["request_id", "destination", "text", "route", "attachment"])) throw Error("payload contract");
     const HANDLE = /^(\+[1-9][0-9]{6,14}|[^\s@]+@[^\s@]+\.[^\s@]+)$/;
     const group = keys(route, ["account_id", "service", "chat_id", "participants"]); // a chat named by its exact members
     if (group ? route.service !== "iMessage" && route.service !== "SMS"
               : !keys(route, ["account_id", "service", "chat_id", "participant_id"]) || route.service !== "iMessage") throw Error("explicit route required");
-    if (typeof body.text !== "string" || !body.text.trim() || body.text.length > 65536 || body.text.indexOf("\u0000") !== -1) throw Error("text bound");
+    const photo = body.attachment; // one photo, sent before the text, which is then its caption
+    if (photo !== null && (!keys(photo, ["path", "bytes", "mtime"]) || typeof photo.path !== "string" || photo.path[0] !== "/"
+        || photo.path.length > 4096 || !Number.isSafeInteger(photo.bytes) || photo.bytes < 1 || typeof photo.mtime !== "number")) throw Error("attachment bound");
+    if (typeof body.text !== "string" || (!body.text.trim() && photo === null) || body.text.length > 65536 || body.text.indexOf("\u0000") !== -1) throw Error("text bound");
     for (const key of Object.keys(route)) if (key !== "participants" && (typeof route[key] !== "string" || !route[key] || route[key].length > 4096)) throw Error("route bound");
     if (group) {
         const members = route.participants;
@@ -57,6 +60,23 @@ function run(argv) {
         if (participant.account().id() !== route.account_id || participant.handle() !== body.destination) throw Error("participant route changed");
     }
     current(); // Final check after potentially slow account and recipient resolution.
-    messages.send(body.text, {to: chat}); // Exactly one call; no fallback or retry.
-    return JSON.stringify({protocol: 1, request_digest: packet.digest, phase: "dispatched"});
+    const parts = []; // one call per part, the photo first; no fallback or retry
+    if (photo !== null) {
+        const found = $.NSFileManager.defaultManager.attributesOfItemAtPathError(photo.path, null);
+        const changed = found && !(found.isNil && found.isNil()) ? found.objectForKey("NSFileModificationDate") : null;
+        if (!changed || ObjC.unwrap(found.objectForKey("NSFileSize")) !== photo.bytes
+            || Math.abs(changed.timeIntervalSince1970 - photo.mtime) > 0.001) throw Error("attachment changed");
+        messages.send(Path(photo.path), {to: chat});
+        parts.push("photo");
+    }
+    if (body.text.trim()) {
+        try {
+            messages.send(body.text, {to: chat});
+        } catch (error) {
+            if (!parts.length) throw error;
+            return JSON.stringify({protocol: 1, request_digest: packet.digest, phase: "partial", parts, error: String(error.message || error)});
+        }
+        parts.push("text");
+    }
+    return JSON.stringify({protocol: 1, request_digest: packet.digest, phase: "dispatched", parts});
 }
