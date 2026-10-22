@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.6] - 2026-10-22
+
+Local messaging 1.4.0, from the principal's ruling on an operations session's request (a WhatsApp-only friend
+asked for a dinner photo, and no supported path could send it):
+- **Photos on iMessage and SMS.** `messages_send.py --photo PATH` sends one photo first and the text after it as
+  its caption (or the photo alone), to `--to` or `--members`, under the same single-use approval. The approval
+  names the photo by name, size and SHA-256, so another photo or an edited one needs its own. The packet carries
+  the path, never the bytes; the transport re-checks size and change time just before sending and stops with
+  `attachment changed` otherwise. A caption that fails after its photo is `uncertain`, never resent.
+- **WhatsApp, prefilled for the principal to send.** WhatsApp's Mac app has no scripting interface, and the
+  principal ruled that they press Send. `whatsapp_prefill.py` opens an existing one-to-one chat (found by number,
+  or by the linked id WhatsApp may keep instead) with the exact approved text, and with `--photo` shows the photo
+  in Finder to drag in. It never starts a chat, never reaches a group, reads chat sessions only, and stops at the
+  prefill: 5.1.5 holds a Send pressed by computer use.
+
 ## [5.1.5] - 2026-10-22
 
 **Sends made by computer use or in a browser wait for the principal's code** (message guard 2.3.0, action sheet

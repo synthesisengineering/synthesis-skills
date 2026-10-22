@@ -56,14 +56,20 @@ if (mode === 'group-changed') {  // someone joined the group after the approval
   a.list[a.list.findIndex(c => c.id() === 'chat-group')] = chat('chat-group', a,
     [person('p-2', dest, a), person('p-3', '+15550000003', a), person('p-5', '+15550000005', a)]);
 }
+const stat = p => { try { return fs.statSync(p, {bigint: true}); } catch (e) { return null; } };
 const context = {ObjC: {import: () => {}, unwrap: x => x}, $: {NSUTF8StringEncoding: 4,
   NSFileHandle: {alloc: {initWithFileDescriptor: fd => ({get readDataToEndOfFile() { return fs.readFileSync(fd, 'utf8'); }})}},
-  NSString: {alloc: {initWithDataEncoding: x => x}}},
+  NSString: {alloc: {initWithDataEncoding: x => x}},
+  NSFileManager: {defaultManager: {attributesOfItemAtPathError: p => { const st = stat(p); return st && {objectForKey: k =>
+    k === 'NSFileSize' ? Number(st.size) : {timeIntervalSince1970: Number(st.mtimeNs) / 1e9}}; }}}},
+  Path: p => ({path: p}),
   Application: name => { if (name !== 'com.apple.MobileSMS') throw Error('unexpected app'); return {accounts: () => accounts,
-    send: (text, options) => {
-      fs.appendFileSync(world.calls, JSON.stringify({text, chat: options.to.id()}) + '\n');
+    send: (item, options) => {
+      const part = typeof item === 'string' ? {text: item} : {photo: item.path};
+      fs.appendFileSync(world.calls, JSON.stringify({...part, chat: options.to.id()}) + '\n');
       if (mode === 'lost') throw Error('lost after effect');
       if (mode === 'process-loss') process.exit(23);
+      if (mode === 'caption-fails' && typeof item === 'string') throw Error('caption lost');
     }}; }};
 try {
   vm.createContext(context);
@@ -132,7 +138,7 @@ def test_send_waits_for_exact_approval_then_sends_once(messages):
     assert messages.sends == [] and "approve" in first["reason"]
     approve(first)
     result = ms.send(DEST, TEXT)
-    assert result == {"status": "dispatched", "delivery": "unknown", "acknowledgement": "unknown"}
+    assert result == {"status": "dispatched", "parts": ["text"], "delivery": "unknown", "acknowledgement": "unknown"}
     assert messages.sends == [{"text": TEXT, "chat": "chat-1"}]
     with pytest.raises(ms.Refused, match="Never resend"):
         ms.send(DEST, TEXT)
@@ -315,3 +321,77 @@ def test_command_line_exit_codes(messages, tmp_path, capsys):
     assert ms.main(["--to", DEST, "--text-file", str(text_file)]) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "dispatched"
     assert ms.main(["--to", DEST, "--text-file", str(text_file)]) == 2
+
+
+# --- photos (2026-10-22, the principal's ruling: iMessage and SMS photos send directly) ----------------------------
+
+@pytest.fixture
+def picture(tmp_path):
+    path = tmp_path / "dinner.jpg"
+    path.write_bytes(b"\xff\xd8\xff\xe0 synthetic jpeg bytes \xff\xd9")
+    return path
+
+
+def test_a_photo_and_its_caption_go_after_one_approval_photo_first(messages, picture):
+    shot = ms.photo(str(picture))
+    approve(ms.send(DEST, TEXT, attachment=shot))
+    result = ms.send(DEST, TEXT, attachment=shot)
+    assert result["status"] == "dispatched" and result["parts"] == ["photo", "text"]
+    assert messages.sends == [{"photo": str(picture.resolve()), "chat": "chat-1"}, {"text": TEXT, "chat": "chat-1"}]
+    assert picture.read_bytes() not in messages.packets[-1].encode("utf-8", "surrogateescape")  # the path, never the bytes
+    with pytest.raises(ms.Refused, match="Never resend"):
+        ms.send(DEST, TEXT, attachment=shot)
+
+
+def test_a_photo_alone_needs_no_text_and_text_alone_keeps_its_old_key(messages, picture):
+    shot = ms.photo(str(picture))
+    approve(ms.send(DEST, "", attachment=shot))
+    assert ms.send(DEST, "", attachment=shot)["parts"] == ["photo"]
+    assert messages.sends == [{"photo": str(picture.resolve()), "chat": "chat-1"}]
+    assert ms._key(DEST, TEXT) == __import__("hashlib").sha256(f"{DEST}\0{TEXT}".encode()).hexdigest()[:32]
+
+
+def test_the_approval_binds_the_photo_by_its_bytes(messages, picture, tmp_path):
+    approve(ms.send(DEST, TEXT, attachment=ms.photo(str(picture))))
+    other = tmp_path / "other.jpg"
+    other.write_bytes(b"\xff\xd8 a different photo \xff\xd9")
+    assert ms.send(DEST, TEXT, attachment=ms.photo(str(other)))["status"] == "needs-approval"
+    assert messages.sends == []
+
+
+def test_a_photo_changed_after_it_was_read_is_not_sent(messages, picture):
+    shot = ms.photo(str(picture))
+    approve(ms.send(DEST, TEXT, attachment=shot))
+    picture.write_bytes(b"\xff\xd8 edited after the approval, so a new size \xff\xd9")
+    result = ms.send(DEST, TEXT, attachment=shot)
+    assert result["status"] == "not-sent" and "attachment changed" in result["reason"]
+    assert messages.sends == []
+
+
+def test_a_caption_that_fails_after_its_photo_is_uncertain_and_never_resent(messages, picture):
+    messages.transport = "caption-fails"
+    shot = ms.photo(str(picture))
+    approve(ms.send(DEST, TEXT, attachment=shot))
+    result = ms.send(DEST, TEXT, attachment=shot)
+    assert result["status"] == "uncertain" and "the text's failed" in result["reason"]
+    assert [list(s) for s in messages.sends] == [["photo", "chat"], ["text", "chat"]]
+    with pytest.raises(ms.Refused, match="Never resend"):
+        ms.send(DEST, TEXT, attachment=shot)
+
+
+def test_a_group_gets_the_photo_under_the_same_member_bound_approval(messages, picture):
+    shot = ms.photo(str(picture))
+    members = [DEST, "+15550000003"]
+    approve(ms.send_members(members, TEXT, attachment=shot))
+    assert ms.send_members(members, TEXT, attachment=shot)["parts"] == ["photo", "text"]
+    assert {s["chat"] for s in messages.sends} == {"chat-group"}
+
+
+def test_photos_that_are_not_images_missing_or_absent_refuse(messages, tmp_path, capsys):
+    note = tmp_path / "note.txt"
+    note.write_text("not a photo", encoding="utf-8")
+    for path in (note, tmp_path / "missing.jpg"):
+        with pytest.raises(ms.Refused):
+            ms.photo(str(path))
+    assert ms.main(["--to", DEST]) == 2 and "--text-file, --photo, or both" in capsys.readouterr().out
+
