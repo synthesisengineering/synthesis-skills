@@ -174,6 +174,83 @@ def test_words_a_browser_send_carries_pass_the_register_scan_first():
     assert "delay-apology" in check(CHROME, call)
 
 
+def _result(ident, tool, front, tabs):
+    """A tool call and its result listing these tabs, the call having run on front."""
+    listing = "\n".join(f'  \u2022 tabId {t[3:]}: "Inbox \u2013 \"Team\" (3)" ("{u}")' for t, u in tabs.items())
+    text = f"Clicked\n\nTab Context:\n- Executed on tabId: {front}\n- Available tabs:\n{listing}"
+    call = {"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": ident, "name": tool, "input": {}}]}}
+    result = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": ident, "content": [{"type": "text", "text": text}]}]}}
+    return json.dumps(call) + "\n" + json.dumps(result) + "\n"
+
+
+def _on(tmp_path, front, **tabs):
+    """A session whose transcript's newest browser result lists these tabs."""
+    path = tmp_path / "transcript.jsonl"
+    path.write_text(_result("toolu_1", CHROME, front, tabs), encoding="utf-8")
+    return {**SESSION, "transcript_path": str(path)}
+
+
+RETURN = ("computer", {"action": "key", "text": "Return", "action_summary": "Presses Return in the compose box"})
+
+
+@pytest.mark.parametrize("url", ["https://chat.google.com/room/AAA", "https://mail.google.com/chat/u/0/#chat/dm/x",
+                                 "https://app.slack.com/client/T1/C2", "https://example.slack.com/archives/C2",
+                                 "https://web.whatsapp.com/", "https://www.linkedin.com/messaging/thread/2-x/",
+                                 "https://teams.microsoft.com/v2/"])
+def test_return_on_a_messaging_site_waits_for_the_code(tmp_path, url):
+    """2026-10-22: Return in a Google Chat compose box went out with no code, since a page counted as no app."""
+    reason = guards.check(CHROME, _steps(RETURN), CONFIG, session=_on(tmp_path, 7, tab7=url))
+    assert "approve" in reason and "sends in the browser (" in reason
+
+
+@pytest.mark.parametrize("url, step", [
+    ("https://docs.google.com/document/d/x", RETURN),                         # not a messaging site
+    ("https://mail.google.com/mail/u/0/#inbox", RETURN),                      # Return writes a line in an email
+    ("https://www.linkedin.com/feed/", RETURN),                               # outside LinkedIn's messages
+    ("https://chat.google.com/room/AAA", ("computer", {"action": "key", "text": "shift+Return",
+                                                       "action_summary": "Starts a new line"})),
+])
+def test_return_that_writes_a_line_or_is_elsewhere_needs_no_code(tmp_path, url, step):
+    assert guards.check(CHROME, _steps(step), CONFIG, session=_on(tmp_path, 7, tab7=url)) is None
+
+
+def test_an_email_sites_send_shortcut_and_a_typed_line_break_in_chat_wait(tmp_path):
+    send = ("computer", {"action": "key", "text": "cmd+Return", "action_summary": "Presses the shortcut"})
+    assert "approve" in guards.check(CHROME, _steps(send), CONFIG,
+                                     session=_on(tmp_path, 7, tab7="https://mail.google.com/mail/u/0/#inbox"))
+    typed = ("computer", {"action": "type", "text": "On my way\n", "action_summary": "Types the reply"})
+    assert "approve" in guards.check(CHROME, _steps(typed), CONFIG,
+                                     session=_on(tmp_path, 7, tab7="https://chat.google.com/room/AAA"))
+
+
+def test_the_page_is_the_tab_each_step_names_or_the_one_a_navigate_step_opened(tmp_path):
+    session = _on(tmp_path, 7, tab7="https://docs.google.com/document/d/x", tab8="https://chat.google.com/room/AAA")
+    assert guards.check(CHROME, _steps(RETURN), CONFIG, session=session) is None
+    named = ("computer", {**RETURN[1], "tabId": 8})
+    assert "approve" in guards.check(CHROME, _steps(named), CONFIG, session=session)
+    assert "approve" in guards.check("mcp__claude-in-chrome__computer", {**RETURN[1], "tabId": 8}, CONFIG, session=session)
+    opened = ("navigate", {"url": "app.slack.com/client/T1/C2", "tabId": 7})
+    assert "approve" in guards.check(CHROME, _steps(opened, RETURN), CONFIG, session=session)
+
+
+def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
+    """A shell that prints a transcript (or anything shaped like a tab list) does not move the browser's page."""
+    session = _on(tmp_path, 7, tab7="https://chat.google.com/room/AAA")
+    with open(session["transcript_path"], "a", encoding="utf-8") as transcript:
+        transcript.write(_result("toolu_2", "Bash", 7, {"tab7": "https://docs.google.com/document/d/x"}))
+    assert "approve" in guards.check(CHROME, _steps(RETURN), CONFIG, session=session)
+    assert guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")}) is None
+
+
+def test_words_typed_on_a_messaging_site_pass_the_register_scan(tmp_path):
+    fill = ("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the reply"})
+    session = _on(tmp_path, 7, tab7="https://chat.google.com/room/AAA")
+    assert "delay-apology" in guards.check(CHROME, _steps(fill), CONFIG, session=session)
+    assert guards.check(CHROME, _steps(fill), CONFIG, session=_on(tmp_path, 7, tab7="https://example.com/")) is None
+
+
 def test_the_config_can_name_more_messaging_apps_and_a_malformed_list_fails_closed():
     call = {"app": "im.example.Chat", "combo": "return", "action_summary": "Presses Return"}
     assert check(KEY, call) is None

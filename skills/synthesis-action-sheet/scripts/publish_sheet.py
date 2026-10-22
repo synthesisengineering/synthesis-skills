@@ -37,6 +37,8 @@ import build_sheet as bs  # noqa: E402
 
 PROJECT = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?")
 REDIRECTS = {301, 302, 303, 307, 308}
+# Cloudflare answers 403 to urllib's own user agent before Access sees the request (2026-10-22, the first upload).
+AGENT = "synthesis-action-sheet (+https://github.com/synthesisengineering/synthesis-skills)"
 SYSTEM_CA_FILES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
 # Sheets name people and carry message text: no index, no cache, and no address passed on to the
 # sites the sheet links to.
@@ -68,7 +70,7 @@ def probe(url: str) -> tuple:
         context = ssl.create_default_context(cafile=cafile)
         opener = urllib.request.build_opener(_Stay, urllib.request.HTTPSHandler(context=context))
         try:
-            with opener.open(url, timeout=20) as answer:
+            with opener.open(urllib.request.Request(url, headers={"User-Agent": AGENT}), timeout=20) as answer:
                 return answer.status, answer.headers.get("Location", "")
         except urllib.error.HTTPError as answer:
             return answer.code, answer.headers.get("Location", "")

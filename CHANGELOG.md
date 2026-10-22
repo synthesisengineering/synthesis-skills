@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.9] - 2026-10-22
+
+- **Sends on messaging sites in the browser wait for the code** (message guard 2.4.0). Return in a Google Chat
+  compose box went out with no code: a browser page counted as no app, so only an action whose summary said it sent
+  was held. A page on Google Chat (and Gmail's `/chat`), Slack, WhatsApp Web, LinkedIn's messages, Teams, Discord,
+  Telegram Web, Messenger or X's messages now counts as that app (Return sends, shift with Return writes a line), and
+  Gmail and Outlook on the web count as email (cmd or ctrl with Return sends). Words typed there pass the register
+  scan. The page comes from the tab list Claude in Chrome prints after each call, or from a navigate step earlier in
+  the same batch; a page whose address the guard cannot read is judged as before.
+- **The sheet host's gate check names itself** (action sheet 1.1.1). On the first real upload, Cloudflare answered
+  403 to urllib's default user agent before Access saw the request, so `publish_sheet.py` refused a host that was
+  correctly behind the sign-in (safely: nothing was uploaded). The probe now sends its own user agent.
+- **The doctor checks every filed action sheet.** It found filed pages by name (`*packet*`, `*sheet*`), but sheets
+  are named from their titles ("your-actions-..."), so none had been checked. Pages carrying a generator's marker
+  are now checked too: on the principal's machine, 76 pages instead of 16, all intact.
+
 ## [5.1.8] - 2026-10-22
 
 **The action sheet on the principal's phone through a private host, and never dependent on one** (action sheet

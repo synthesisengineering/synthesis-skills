@@ -802,6 +802,23 @@ def test_hand_made_or_edited_packets_are_flagged(tmp_path):
     assert "edited after generation" in check.detail and "no generator marker" in check.detail
 
 
+def test_sheets_named_from_their_titles_are_checked_by_their_marker(tmp_path):
+    """2026-10-22: action sheets are filed as <date>-<title slug>.html ("your-actions-..."), which the name
+    patterns missed, so no filed sheet had ever been checked."""
+    import hashlib
+    artifacts = tmp_path / "projects" / "p" / "resources" / "artifacts"
+    artifacts.mkdir(parents=True)
+    spec = '{"do": []}'
+    marker = f"<!-- synthesis-action-sheet spec-sha256:{hashlib.sha256(spec.encode()).hexdigest()} -->"
+    page = f'<title>Your actions</title>\n{marker}\n<script type="application/json" id="spec">{spec}</script>'
+    (artifacts / "2026-10-22-your-actions-thursday.html").write_text(page)
+    (artifacts / "2026-10-22-notes.html").write_text("<html>an ordinary page</html>")  # neither named nor marked
+    assert doctor.check_packets([tmp_path]).detail.startswith("1 packet and sheet pages")
+    (artifacts / "2026-10-22-your-actions-thursday.html").write_text(page.replace('"do": []', '"do": [1]'))
+    check = doctor.check_packets([tmp_path])
+    assert check.status == "warn" and "1 of 1" in check.detail and "edited after generation" in check.detail
+
+
 def test_a_harness_cli_leaves_no_helper_running_after_the_doctor(tmp_path):
     """2026-10-06: Codex's app-server runs `git ls-remote` when it starts; killing only the app-server left
     git running in the doctor's process group, and the Console reported processes left behind."""

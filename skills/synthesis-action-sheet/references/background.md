@@ -62,6 +62,9 @@ clearing that lives on the page, because the claude.ai viewer answers `confirm()
 
 ## Changelog
 
+- **1.1.1 (2026-10-22)**: the gate probe names itself. On the first real upload Cloudflare answered 403
+  to urllib's default user agent before Access saw the request, so the script refused a host that was
+  correctly behind the sign-in; it refused safely, uploading nothing.
 - **1.1.0 (2026-10-22)**: the optional private host. `publish_sheet.py` uploads the generator's page,
   rebuilt from the filed spec, to a Cloudflare Pages project behind Access, only after checking the
   sign-in on the host and a fresh subdomain, and checks the new deployment's address after; the deploy

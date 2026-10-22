@@ -140,6 +140,21 @@ def test_only_a_redirect_to_an_access_sign_in_counts_as_the_gate(answer):
     assert ps.gated("https://sheets-example.pages.dev/", lambda url: answer)
 
 
+def test_the_probe_names_itself_and_never_follows_the_redirect(monkeypatch):
+    """Cloudflare answered 403 to urllib's default user agent on the first real upload, before Access saw it."""
+    import urllib.error
+    seen = []
+
+    class Opener:
+        def open(self, request, timeout):
+            seen.append((request.full_url, request.get_header("User-agent"), timeout))
+            raise urllib.error.HTTPError(request.full_url, 302, "Found", {"Location": SIGN_IN.format(host="h")}, None)
+
+    monkeypatch.setattr(ps.urllib.request, "build_opener", lambda *handlers: Opener())
+    assert ps.probe("https://sheets-example.pages.dev/") == (302, SIGN_IN.format(host="h"))
+    assert seen == [("https://sheets-example.pages.dev/", ps.AGENT, 20)] and "Python-urllib" not in ps.AGENT
+
+
 def test_a_deployment_that_does_not_ask_for_a_sign_in_is_reported_loudly(filed):
     with pytest.raises(ps.Exposed, match="UPLOADED, BUT NOT BEHIND THE SIGN-IN"):
         ps.publish(filed, "sheets-example", probe=gate([DEPLOYED.split("/")[2]]), run=Wrangler())

@@ -567,9 +567,18 @@ def packet_problem(page: Path) -> str:
     return ""
 
 
+def _marked(page: Path) -> bool:
+    try:
+        with page.open(encoding="utf-8", errors="replace") as text:
+            return bool(PACKET_MARKER.search(text.read(4096)))  # the marker follows the title
+    except OSError:
+        return False
+
+
 def check_packets(roots: list) -> Check:
-    pages = sorted({p for r in roots for pattern in ("*packet*.html", "*sheet*.html")  # action sheets share the engine
-                    for p in Path(r).glob(f"projects/*/resources/artifacts/{pattern}")})
+    # By name, to catch hand-made lookalikes; by marker, since sheets are named from their titles (2026-10-22).
+    pages = sorted({p for r in roots for p in Path(r).glob("projects/*/resources/artifacts/*.html")
+                    if re.search(r"packet|sheet", p.name) or _marked(p)})
     problems = [f"{_short(p)}: {m}" for p in pages for m in [packet_problem(p)] if m]
     if problems:
         return Check("warn", "decision packets", f"{len(problems)} of {len(pages)} not generator output: "
