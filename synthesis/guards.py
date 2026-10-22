@@ -179,8 +179,9 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
-    if any(m and m in raw for m in signature.get("markers", [])) and not any(  # iMessage cannot carry a named link
-            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send"] + signature.get("plain_url_tools", [])):
+    if any(m and m in raw for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
+            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
+            + signature.get("plain_url_tools", [])):
         shown = LINKED.sub(" ", raw)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:
@@ -1138,6 +1139,159 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
             "what needs approving and ask them to answer in their own message.") if why else None
 
 
+# --- sends by computer use (R3.1) ---------------------------------------------------------------
+# Computer use sends with no send-named tool: a click on Send, Return in a compose field, a typed line break or the
+# app's Send menu item (2026-10-22: an approved WhatsApp photo went out through computer_batch and no code was asked
+# for). In a messaging app those wait for the principal's code, a click must say what it does, and words typed there
+# pass the register scan as they are typed. In any app, and in a browser page, an action whose summary says it sends
+# waits too (45 days of transcripts held 11 such browser sends to LinkedIn, X and a support chat, none guarded).
+# computer_batch and the teach tools name no app, so they count as acting in every messaging app the session asked to
+# control, and in all of them while its grants are unseen (asked for before this guard ran, or no session id).
+
+# bundle id: (channel, the modifier that makes Return a line break; "" for email, where Return writes a line and
+# cmd or ctrl with Return sends, as does Mail's cmd+shift+d)
+MESSAGING_APPS = {
+    "net.whatsapp.WhatsApp": ("whatsapp", "shift"), "desktop.WhatsApp": ("whatsapp", "shift"),
+    "com.apple.MobileSMS": ("messages", "option"), "com.tinyspeck.slackmacgap": ("slack", "shift"),
+    "org.whispersystems.signal-desktop": ("signal", "shift"), "ru.keepcoder.Telegram": ("telegram", "shift"),
+    "org.telegram.desktop": ("telegram", "shift"), "com.microsoft.teams2": ("teams", "shift"),
+    "com.microsoft.teams": ("teams", "shift"), "com.hnc.Discord": ("discord", "shift"), "us.zoom.xos": ("zoom", "shift"),
+    "com.apple.mail": ("email", ""), "com.microsoft.Outlook": ("email", ""),
+}
+APP_NAMES = {"whatsapp": "net.whatsapp.WhatsApp", "messages": "com.apple.MobileSMS", "slack": "com.tinyspeck.slackmacgap",
+             "signal": "org.whispersystems.signal-desktop", "telegram": "ru.keepcoder.Telegram",
+             "microsoft teams": "com.microsoft.teams2", "teams": "com.microsoft.teams2", "discord": "com.hnc.Discord",
+             "zoom.us": "us.zoom.xos", "zoom": "us.zoom.xos", "mail": "com.apple.mail",
+             "microsoft outlook": "com.microsoft.Outlook", "outlook": "com.microsoft.Outlook"}
+CLICKS = {"click", "left_click", "double_click", "triple_click", "right_click", "middle_click", "left_mouse_down", "left_mouse_up"}
+DESKTOP_TOOLS = CLICKS | {"batch", "teach_step", "teach_batch", "app_batch", "app_click", "app_key", "app_type", "app_menu",
+                          "key", "hold_key", "type", "request_access", "request_teach_access"}
+RETURNS = {"return", "enter", "kp_enter", "kp_return"}
+MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl"}
+SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
+                       r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
+                       r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:the\s+)?send\b)|\bto send\b", re.I)
+
+
+def desktop_tool(tool: str) -> str:
+    """The computer-use action a tool performs ("batch", "app_click"...), or "" for any other tool: the desktop
+    app's computer-use server by any id, a linked device's computer_* tools, or a browser's computer and
+    browser_batch tools ("browser", "browser_batch")."""
+    server, _, name = tool.rpartition("__")
+    if tool.startswith("mcp__") and name in ("computer", "browser_batch") and re.search(r"browser|chrome", server, re.I):
+        return "browser" if name == "computer" else name
+    bare = name[len("computer_"):] if name.startswith("computer_") else name
+    linked = "computer" in server.lower() or name.startswith("computer_")
+    return bare if tool.startswith("mcp__") and linked and bare in DESKTOP_TOOLS else ""
+
+
+def _desktop_actions(name: str, tool_input: dict) -> list:
+    """(kind, value, summary) for each click, key chord, typed text or menu path a computer-use call performs.
+    Screenshots, scrolls, waits and menu listings do nothing to anyone and are left out."""
+    if name == "teach_batch":
+        items = [a for s in tool_input.get("steps") or [] if isinstance(s, dict) for a in s.get("actions") or []]
+    elif name in ("batch", "app_batch", "teach_step"):
+        items = list(tool_input.get("actions") or [])
+    elif name == "browser_batch":  # {name, input} steps; a form_input value is text typed into the page
+        steps = [(str(s.get("name", "")), s.get("input") if isinstance(s.get("input"), dict) else {})
+                 if isinstance(s, dict) else ("", s) for s in tool_input.get("actions") or []]
+        items = [{**i, "action": "type", "text": str(i.get("value", ""))} if n.endswith("form_input") and isinstance(i, dict)
+                 else i for n, i in steps]
+    elif name == "browser":
+        items = [tool_input]
+    else:
+        items = [{**tool_input, "action": name[4:] if name.startswith("app_") else name}]
+    found = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError(f"a computer-use action is not an object ({str(item)[:40]})")
+        act = str(item.get("action") or "")
+        kind = "click" if act in CLICKS else "key" if act in ("key", "hold_key") else act if act in ("type", "menu") else ""
+        value = (" > ".join(str(p) for p in item.get("path") or []) if kind == "menu" else
+                 str(item.get("combo") or item.get("text") or "") if kind in ("key", "type") else "")
+        if kind and (value or kind == "click"):
+            found.append((kind, value, str(item.get("action_summary") or "")))
+    return found
+
+
+def _messaging(config: dict) -> dict:
+    """bundle id: (channel, line-break modifier) for every messaging app, with the config's `messaging_apps` (chat
+    apps where shift with Return writes a line)."""
+    extra = config.get("messaging_apps", [])
+    if not isinstance(extra, list) or not all(isinstance(b, str) and b for b in extra):
+        raise ValueError("messaging_apps in the synthesis config must be a list of bundle ids")
+    return {**MESSAGING_APPS, **{b: (b.rsplit(".", 1)[-1].lower(), "shift") for b in extra}}
+
+
+def _bundle(app, apps: dict) -> str:
+    text = str(app or "").strip().lower()
+    return APP_NAMES.get(text) or next((b for b in apps if b.lower() == text), "")
+
+
+def _grants(session: dict | None):
+    me = "".join(c if c.isalnum() or c in "-_." else "_" for c in paths.session_id(session))
+    return paths.state() / "desktop" / f"{me}.json" if me else None
+
+
+def _sends_key(chords: str, apps: dict) -> bool:
+    """A Return or Enter that sends in one of these apps (or Mail's cmd+shift+d in an email app)."""
+    for chord in chords.split():
+        *mods, key = chord.lower().split("+")
+        held = {MODIFIERS.get(m, m) for m in mods}
+        for _, brk in apps.values():
+            if key in RETURNS and (held != {brk} if brk else bool(held & {"cmd", "ctrl"})) or (
+                    not brk and key == "d" and held == {"cmd", "shift"}):
+                return True
+    return False
+
+
+def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
+    from synthesis import sends
+    apps, record = _messaging(config), _grants(session)
+    if name.startswith("request_"):  # every grant starts here, so the session's messaging apps are known
+        if record and isinstance(tool_input.get("apps"), list):  # one the server would refuse leaves it unseen
+            asked = {_bundle(a, apps) for a in tool_input["apps"]} - {""}
+            paths.write_json(record, {"apps": sorted(set(paths.read_json(record).get("apps", [])) | asked), "at": time.time()})
+        return None
+    actions = _desktop_actions(name, tool_input)
+    if not actions:
+        return None
+    seen = paths.read_json(record) if record else {}
+    unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
+    reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
+               else {} if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
+    typed = [v for kind, v, _ in actions if kind == "type" and v.strip()]
+    sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or reached and (
+        kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
+        or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
+    problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config) if typed and (
+        reached or sending) else []
+    if problems:
+        return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
+    if not sending:
+        return None
+    chans = sorted({c for c, _ in reached.values()})
+    chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
+    where = ("the browser" if name.startswith("browser") else "any messaging app" if unseen
+             else ", ".join(sorted(reached)) or "an app")
+    what, subject = "; ".join(sending)[:200], {"tool": tool, "input": tool_input}
+    summary = f"{tool} in {where}: {what}" + (f"; words: {' / '.join(typed)}" if typed else "")
+    if sends.covered(chan, typed, _project(session), config):
+        sends.log(chan, tool, summary, "window", session)
+        return None
+    if approvals.consume("send", subject, session):
+        sends.log(chan, tool, summary, "approval", session)
+        return None
+    code = approvals.request("send", subject, summary[:300])
+    return (f"This call sends in {where} ({what}). Sending needs the principal's approval of this exact call: show them "
+            "the exact words and recipient as they will go out (a screenshot of the compose area) and ask them to type "
+            f"{approvals.how(code)}. Then make this identical call again. Typing the words and sending in one call binds "
+            "both to the approval. A Return or click here that does not send (a file picker, a search field): click the "
+            "control it confirms instead, with a summary that says what it does."
+            + (" This session's computer-use grants were asked for before the guard could see them; request_access "
+               "naming the apps again tells it which apps this session controls." if unseen else ""))
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
 SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "local_shell", "run_shell_command"}  # "bash": Muse
@@ -1223,7 +1377,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (tool in SHELL_TOOLS or tool.startswith(BROWSER) or _sends(tool, tool_input or {}, {})
+    return (tool in SHELL_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or _sends(tool, tool_input or {}, {})
             or routed(tool, tool_input or {}))
 
 
@@ -1243,7 +1397,10 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
     if tool.startswith(BROWSER):
-        return check_browser(tool, tool_input, config, cwd, session)
+        return check_browser(tool, tool_input, config, cwd, session) or (
+            check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
+    if desktop_tool(tool):
+        return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)

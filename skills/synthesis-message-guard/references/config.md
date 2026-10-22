@@ -22,6 +22,7 @@ no `~/.synthesis`.
 | `not_send_tools` | Tool globs never treated as sends, for a tool whose name reads like one but reaches no person. |
 | `send_commands` | Extra `[channel, regex]` pairs for shell programs that post, matched from the start of a command's words (built in: `gh`, `bkt`, `glab`, `jira`/`acli`, `osascript` Messages or Mail, and `curl`, `wget`, HTTPie writes to another host). |
 | `send_window_signatures` | Regexes; inside an open send window, a send goes without a per-message code only if one matches its text. List the signatures of the lanes the principal lets a window cover. Empty means a window covers nothing. |
+| `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
@@ -89,8 +90,8 @@ guard decides. Until 2026-10-14 the matcher listed send-shaped names, so a conne
 does (`createJiraIssue`) never reached the guard. File-edit tools may not write into the synthesis state, a
 harness's transcripts or the approved commit lines, where approvals and send windows live.
 
-Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized, and
-computer use (an agent clicking Send in an app's window) is outside the guard; the binding rule covers both.
+Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized; the
+binding rule covers it. Computer use and browser actions are covered below.
 
 **Windows.** Only the principal opens one. The command itself checks: run by an agent (a harness's
 environment, or no terminal), `synthesis sends open` opens only on the principal's granted code for exactly
@@ -103,6 +104,55 @@ send it covers still passes the register scan and format rules, must carry a `se
 signature, and is written to the day's ledger with the sends approved by code; `synthesis sends log
 [--date]` prints it for the daily plan's "On your behalf". Exact-text sends (the principal's own words) are
 outside every window: list only the signatures of lanes the principal allows.
+
+## Computer use and the browser (2026-10-22)
+
+On 2026-10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
+button, and no code was asked for: the guard recognized sends by tool name, and computer use has none. A scan of
+45 days of transcripts then found 11 browser sends (LinkedIn messages, posts on X and LinkedIn, a support chat)
+made through Claude in Chrome's `browser_batch`, none guarded either. Both now wait for the principal's code.
+
+**Which tools.** The computer-use server's action tools under any server id (`computer_batch`, `app_batch`,
+`app_click`, `app_key`, `app_type`, `app_menu`, `teach_step`, `teach_batch` and the single-action tools), a linked
+device's `computer_*` tools, and a browser server's `computer` and `browser_batch` (Claude in Chrome, the built-in
+browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once.
+
+**Messaging apps.** Built in: WhatsApp (`net.whatsapp.WhatsApp`, `desktop.WhatsApp`), Messages
+(`com.apple.MobileSMS`), Slack (`com.tinyspeck.slackmacgap`), Signal (`org.whispersystems.signal-desktop`),
+Telegram (`ru.keepcoder.Telegram`, `org.telegram.desktop`), Teams (`com.microsoft.teams2`, `com.microsoft.teams`),
+Discord (`com.hnc.Discord`), Zoom (`us.zoom.xos`), Mail (`com.apple.mail`) and Outlook (`com.microsoft.Outlook`);
+`messaging_apps` adds more. In a messaging app these wait for the code:
+
+- a click with no `action_summary` (the tools require one that states the effect; without it the guard cannot
+  tell Send from navigation);
+- Return or Enter, unless held with the app's line-break modifier alone: shift in chat apps, option in Messages.
+  In Mail and Outlook, Return writes a line, and cmd or ctrl with Return, or Mail's cmd+shift+d, sends;
+- typed text holding a line break, where a bare Return sends;
+- a menu item that starts with Send (Mail's Message > Send).
+
+In any app or browser page, an action whose summary starts with a sending verb (sends, replies, forwards, posts,
+publishes, shares, invites, responds, comments, mentions, announces, notifies, reminds, schedules, delivers,
+emails, texts), clicks or presses Send, or does something "to send" waits too. On the 45 days of summaries this
+held all 13 real sends and nothing else. Words typed in a messaging app, or in a call that sends, pass the
+register scan as they are typed; typed text cannot carry a named link, so the signature-link rule does not apply
+to it.
+
+**Which app.** An `app_*` call names its app. `computer_batch` and the teach tools act on whatever is in front, so
+the guard counts them as acting in every messaging app the session asked to control: it records the apps each
+`request_access` or `request_teach_access` call names, per session, in the synthesis state. A session whose grants
+it never saw (asked for before 5.1.5, or with no session id) is treated as controlling every messaging app until
+it calls `request_access` again.
+
+**Binding.** The approval binds the exact call, every action and summary in it, and any words it types. Text
+typed in an earlier call was scanned then but is not bound, so type the words and send in one call where you can,
+and show the principal a screenshot of the compose area with the code. A Return or click that does not send (a
+file picker, a search field) is still held in a messaging app: click the control it confirms instead, with a
+summary that says what it does. A send window covers a computer-use send in its channel (`whatsapp`, `slack`,
+`email`, `browser`...) only when the call itself types the signed words.
+
+**Limits.** The click rule reads the summary the agent wrote: a summary that hides a send ("Clicks the green
+button") passes outside the Return and line-break rules, and so does a page script (`javascript_tool`) that
+submits a form. Pasted text (cmd+v) is not scanned. These are why the binding rule still governs every send.
 
 ## Calibration
 

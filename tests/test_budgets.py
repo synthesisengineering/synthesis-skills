@@ -69,10 +69,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # image key's second host in the commit check (1). The plugin's beyond that: the Slack thread checker reading the
 # listed transcript layout and refusing one it cannot read (46), a watermark target checked as one id (11), and the
 # second image host in the meeting verifier (3).
+# 5.1.5 adds 157 to both (guards.py only) so a send made by computer use or in a browser waits for the code, after a
+# WhatsApp photo went out on 10-22 with none asked for and 45 days of transcripts showed 11 unguarded browser sends:
+# the section's comment and tables (messaging apps by bundle id with their line-break key, app names, tool and key
+# sets, the sending-summary pattern) 34; recognizing the tools on any server, browsers included, 12; reading each
+# call's clicks, keys, typed text and menu paths, browser steps and form values included, 29; the `messaging_apps`
+# key 9; app names and each session's recorded grants 10; Return and send shortcuts per app 12; the check itself
+# (register scan, window, approval and the hold's instructions) 47; wiring in check(), guarded() and the signature
+# rule 4. The click names were listed once instead of twice.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6354
-PLUGIN_BUDGET = 22838
+CORE_BUDGET = 6511
+PLUGIN_BUDGET = 22995
 
 
 def _lines(files):
