@@ -32,6 +32,11 @@ TS_IN_PARENS = re.compile(r"\(TS:\s*([\d.]+)\)")
 # TS embedded in Slack permalink path: /p1775064672791199 — v3.1.0+ format.
 # Captures the 16-digit suffix; the dot is re-inserted to normalize.
 TS_IN_PERMALINK = re.compile(r"/p(\d{10})(\d{6})\b")
+# The same permalink with its channel: /archives/C0123ABC/p1775064672791199. The link's channel
+# id wins over the heading's, so a digest or cross-channel link keeps its own channel.
+PERMALINK = re.compile(r"/archives/([A-Z][A-Z0-9]+)/p(\d{10})(\d{6})\b")
+# Any H1-H3 heading: a section or channel heading ends the previous channel's listing.
+SECTION = re.compile(r"^#{1,3}\s")
 REPLY_COUNT = re.compile(r"(\d+)\s*repl(?:y|ies)")
 THREAD_LABEL = re.compile(r"\*\*Thread\s*\((\d+)\s*repl")
 
@@ -56,8 +61,23 @@ def structural_lines(content: str) -> list[str]:
     return lines
 
 
+def stamps_in(line: str) -> list[tuple[str | None, str]]:
+    """(channel id or None, TS) for every message link or legacy `(TS: ...)` on a line."""
+    found = [(m.group(1), f"{m.group(2)}.{m.group(3)}") for m in PERMALINK.finditer(line)]
+    linked = {ts for _, ts in found}
+    found += [(None, f"{a}.{b}") for a, b in TS_IN_PERMALINK.findall(line) if f"{a}.{b}" not in linked]
+    return found + [(None, ts) for ts in TS_IN_PARENS.findall(line)]
+
+
 def extract_threads(transcript_path: str | None, *, content: str | None = None) -> list[dict]:
-    """Extract parent thread TSes and metadata from a transcript file."""
+    """Extract parent thread TSes and metadata from a transcript file.
+
+    Two layouts are read. Per message: a parent is a line or heading carrying a TS, and the
+    bullets under it are its replies. Listed (2026-10): a channel heading is followed by one
+    bullet per top-level message, and a thread is a channel heading that carries its parent's TS,
+    with the replies as bullets under it. An indented bullet is never a parent, and a bullet
+    outside a channel listing (a digest such as "Touches the principal") only points at a message
+    recorded elsewhere."""
     if content is None:
         content = Path(transcript_path).read_text()
     lines = structural_lines(content)
@@ -67,33 +87,51 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
         found = CHANNEL_WITH_ID.match(line.strip())
         if found:
             channel_ids[found.group(1)] = found.group(2)
+    names = {cid: name for name, cid in channel_ids.items()}
 
-    threads, seen = [], set()
+    threads, seen = [], {}
     channel = channel_id = None
+    listing = parent_open = False  # under a channel heading; a parent recorded since that heading
     for i, line in enumerate(lines):
-        found = CHANNEL_WITH_ID.match(line.strip())
-        if found:
-            channel, channel_id = found.group(1), found.group(2)
-            continue
-        found = CHANNEL_NO_ID.match(line.strip())
-        if found:
-            channel = found.group(1)
-            channel_id = channel_ids.get(channel)  # never inherit the previous channel's ID
-            continue
-        # TSes come from message-header-like lines: legacy `(TS: ...)` text or a v3.1.0+ permalink.
-        stamps = TS_IN_PARENS.findall(line) + [f"{a}.{b}" for a, b in TS_IN_PERMALINK.findall(line)]
         stripped = line.strip()
-        if not stamps or stripped.startswith(("- ", "> ")):  # list items are replies, not parents
+        found = CHANNEL_WITH_ID.match(stripped)
+        bare = None if found else CHANNEL_NO_ID.match(stripped)
+        if found or bare:
+            channel = (found or bare).group(1)
+            # never inherit the previous channel's ID
+            channel_id = found.group(2) if found else channel_ids.get(channel)
+            listing, parent_open = True, False
+        elif SECTION.match(stripped):
+            listing = parent_open = False
+        # TSes come from message-header-like lines: legacy `(TS: ...)` text or a v3.1.0+ permalink.
+        stamps = stamps_in(line)
+        if not stamps:
             continue
-        for ts in stamps:
-            if (channel_id, ts) in seen:
+        if stripped.startswith("- "):
+            if parent_open or not listing or line[:1].isspace():  # a reply, a detail, a digest pointer
                 continue
+            context = stripped  # the next bullet is another message, not this one's thread label
+        else:
+            parent_open = True
             context = "\n".join(lines[i:i + 5])
-            count = THREAD_LABEL.search(context) or REPLY_COUNT.search(context)
-            seen.add((channel_id, ts))
-            threads.append({"ts": ts, "channel": channel or "unknown", "channel_id": channel_id or "?",
-                            "reply_count": int(count.group(1)) if count else 0, "context": stripped[:100]})
+        count = THREAD_LABEL.search(context) or REPLY_COUNT.search(context)
+        replies = int(count.group(1)) if count else 0
+        for link_channel, ts in stamps:
+            cid = link_channel or channel_id
+            if (cid, ts) in seen:  # listed twice, say as a top-level message and as a thread
+                seen[(cid, ts)]["reply_count"] = max(seen[(cid, ts)]["reply_count"], replies)
+                continue
+            name = names.get(cid) or (channel if cid == channel_id else None)
+            seen[(cid, ts)] = {"ts": ts, "channel": name or "unknown", "channel_id": cid or "?",
+                               "reply_count": replies, "context": stripped[:100]}
+            threads.append(seen[(cid, ts)])
     return threads
+
+
+def message_links(content: str) -> int:
+    """Message links and legacy TSes outside quoted and fenced text: when there are some but no
+    parent was recognized, the layout is one this checker cannot read."""
+    return sum(len(stamps_in(line)) for line in structural_lines(content))
 
 
 def extract_unsent_drafts(action_plan_path: str) -> list[dict]:
@@ -148,6 +186,14 @@ def main() -> None:
         sys.exit(1)
 
     threads = extract_threads(transcript_path)
+    links = message_links(Path(transcript_path).read_text())
+    if links and not threads:
+        # An empty checklist reads as "nothing to re-read" (2026-10-22: every channel transcript
+        # of a new layout printed zero threads for two days).
+        print(f"UNPARSED: {Path(transcript_path).name} has {links} message link(s) but no thread "
+              "parent this checker recognizes. Re-read every thread the transcript names; do not "
+              "treat this as an empty checklist.")
+        sys.exit(2)
     print("=" * 70)
     print("THREAD CHECKER — Pre-Sync Checklist")
     print("=" * 70)
