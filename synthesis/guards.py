@@ -8,6 +8,7 @@ These fail closed when their config can't be read or is malformed (R3.5).
 from __future__ import annotations
 
 import fnmatch
+import json
 import os
 import re
 import shlex
@@ -249,16 +250,10 @@ def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | 
     workspaces = routing.get("workspaces", {}) if isinstance(routing, dict) else None
     if not isinstance(workspaces, dict):
         return "account_routing in the synthesis config needs a \"workspaces\" map; calendar and mail calls are blocked until it is fixed"
-    if not workspaces:
-        return None
-    here, best = os.path.realpath(cwd), None
-    for root, meta in workspaces.items():
-        real = os.path.realpath(os.path.expanduser(root))
-        if paths.inside(here, real) and (best is None or len(real) > len(best[0])):
-            best = (real, meta)
+    best = _workspace_of(workspaces, cwd)
     if best is None:
         return None
-    root, meta = best[0], best[1] if isinstance(best[1], dict) else {}
+    root, meta = best
     expected = str(meta.get("account") or "").strip()
     if not expected:
         return f"account_routing names no account for {root}; calendar and mail calls there are blocked until it does"
@@ -273,6 +268,104 @@ def check_account(tool: str, tool_input: dict, config: dict, cwd: str) -> str | 
     return (f"{tool} names no account, so it acts as its connector's own account{f' ({acting})' if acting else ''}, "
             f"but {where}. Use a tool that takes the account and pass {expected} (for example as user_google_email). "
             "Check the organizer or sender afterwards: an invitation cannot be unsent.")
+
+
+def _workspace_of(workspaces: dict, cwd: str) -> tuple[str, dict] | None:
+    """(root, settings) of the deepest configured workspace root holding cwd; `~` and symlinks resolve."""
+    here, best = os.path.realpath(cwd), None
+    for root, meta in workspaces.items():
+        real = os.path.realpath(os.path.expanduser(root))
+        if paths.inside(here, real) and (best is None or len(real) > len(best[0])):
+            best = (real, meta if isinstance(meta, dict) else {})
+    return best
+
+
+# --- browser profiles ---------------------------------------------------------------------------
+# One Chrome extension serves every session on the Mac and acts in whichever browser was selected last
+# (2026-10-21: a session worked 15 minutes in another workspace's profile, a public post included, after
+# another session's selection). A browser call passes only when this session made the latest selection,
+# to its workspace's browser, and its transcript shows that selection succeeded.
+BROWSER = "mcp__claude-in-chrome__"
+TRANSCRIPT_TAIL = 8 << 20
+
+
+def _blocks(line: str) -> list:
+    try:
+        content = (json.loads(line).get("message") or {}).get("content")
+    except (ValueError, AttributeError):
+        return []
+    return [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+
+
+def _last_selection(transcript: str) -> tuple[str, bool] | None:
+    """(device, succeeded) for the newest select_browser call in a Claude Code transcript's last 8 MB; a call
+    with no result yet has not succeeded. None when there is none there or the file cannot be read."""
+    try:
+        with open(transcript, "rb") as handle:
+            handle.seek(max(0, os.path.getsize(transcript) - TRANSCRIPT_TAIL))
+            lines = handle.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    for i in range(len(lines) - 1, -1, -1):
+        if "select_browser" not in lines[i]:
+            continue
+        call = next((b for b in _blocks(lines[i]) if b.get("type") == "tool_use" and b.get("name") == BROWSER + "select_browser"), None)
+        if call is None:
+            continue
+        device, ident = str((call.get("input") or {}).get("deviceId") or ""), str(call.get("id") or "-")
+        for later in lines[i + 1:]:
+            for result in (_blocks(later) if ident in later else []):
+                if result.get("type") == "tool_result" and result.get("tool_use_id") == ident:
+                    text = result.get("content")
+                    text = " ".join(str(p.get("text", "")) for p in text if isinstance(p, dict)) if isinstance(text, list) else str(text or "")
+                    return device, not result.get("is_error") and text.strip().startswith('Selected browser "')
+        return device, False
+    return None
+
+
+def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """Config: {"browser_routing": {"workspaces": {"<root>": {"device": "<deviceId>", "label": "<name>"}}}}. The
+    workspace is the one the session started in, so changing directory never changes its browser."""
+    from synthesis import board
+    routing = config.get("browser_routing")
+    if routing is None:
+        return None
+    workspaces = routing.get("workspaces") if isinstance(routing, dict) else None
+    if not isinstance(workspaces, dict):
+        return "browser_routing in the synthesis config needs a \"workspaces\" map; browser calls are blocked until it is fixed"
+    me = paths.session_id(session)
+    record = board.load(me) if me else None
+    found = _workspace_of(workspaces, (record.cwd if record and record.cwd else "") or cwd)
+    if found is None:
+        return None
+    root, meta = found
+    device, label, name = str(meta.get("device") or "").strip(), meta.get("label") or root, tool[len(BROWSER):]
+    if not device:
+        return f"browser_routing names no browser for {root}; browser calls there are blocked until it does"
+    if name == "list_connected_browsers":
+        return None
+    if name == "switch_browser":
+        return f"switch_browser lets any browser connect; this session's is the {label} browser: select_browser with deviceId {device}."
+    if name == "select_browser":
+        wanted = str(tool_input.get("deviceId") or "")
+        if wanted != device:
+            return (f"This session is in the {label} workspace, whose browser is {device}; selecting {wanted or 'nothing'} "
+                    "would act as another profile. Select that device instead.")
+        paths.write_json(paths.state() / "browser.json", {"device": device, "session": me, "at": time.time(), "confirmed": False})
+        return None
+    current = paths.read_json(paths.state() / "browser.json")
+    if current.get("session") != me or current.get("device") != device or not me:
+        since = (f"Session {current.get('session')} selected a browser at "
+                 f"{time.strftime('%H:%M', time.localtime(float(current.get('at') or 0)))} since then"
+                 if current.get("session") and current.get("session") != me else "No browser is selected for this session")
+        return (f"{since}; the extension is shared, so its browser or tab group may have changed. Call "
+                f"list_connected_browsers, then select_browser with deviceId {device} ({label}), before any other browser call.")
+    if not current.get("confirmed"):
+        if _last_selection(str((session or {}).get("transcript_path") or "")) != (device, True):
+            return (f"This session's last select_browser for {device} has not reported success ('Selected browser ...'), "
+                    "so actions could reach another profile. Call select_browser again and wait for its result.")
+        paths.write_json(paths.state() / "browser.json", {**current, "confirmed": True})
+    return None
 
 
 # --- shell reading ------------------------------------------------------------------------------
@@ -1130,7 +1223,8 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return tool in SHELL_TOOLS or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {})
+    return (tool in SHELL_TOOLS or tool.startswith(BROWSER) or _sends(tool, tool_input or {}, {})
+            or routed(tool, tool_input or {}))
 
 
 def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
@@ -1148,6 +1242,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+    if tool.startswith(BROWSER):
+        return check_browser(tool, tool_input, config, cwd, session)
     # The account is checked before the send approval, so no approval is spent on the wrong account.
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or (check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else None)

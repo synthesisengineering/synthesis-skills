@@ -11,6 +11,7 @@ is ever spent on a call from the wrong account.
 - [Why the boundary is narrow](#why-the-boundary-is-narrow)
 - [Design](#design)
 - [Tests](#tests)
+- [Browser profiles](#browser-profiles)
 
 ## The incident
 
@@ -84,3 +85,35 @@ display addresses, Apple Calendar by calendar name, the deepest workspace winnin
 and symlinked roots, reads, Slack and session messages left alone, an addressed
 `send_message` on any server, a wrong-account send refused before any approval is filed,
 and malformed or unreadable config failing closed.
+
+## Browser profiles
+
+`guards.check_browser`, for every `mcp__claude-in-chrome__*` call (2026-10-21; the principal's workspace rule had
+been on disk since 2026-10-01).
+
+THE INCIDENT. One Chrome extension serves every session on the Mac, and it acts in whichever browser any session
+selected last. The extension reconnected with a new tab group on the profile another workspace's session had
+picked, and a session kept working there for about 15 minutes, a public post included. The rule naming each
+workspace's profile was already written; as with the calendar incident, a rule on disk was not read at the
+moment of acting.
+
+What it does, when `browser_routing.workspaces` maps the workspace the session started in to a device:
+
+- `list_connected_browsers` always passes: it only lists.
+- `select_browser` passes only for that workspace's device, and records the session and device as the
+  extension's latest selection. Any other device, and `switch_browser` (which lets whatever browser the
+  principal clicks connect), are refused.
+- Every other browser call passes only when this session made the latest selection, to its device, and its
+  transcript shows that call returned `Selected browser "..."` without an error. A selection by any other
+  session, to any device, re-arms the check, because the shared extension's browser or tab group may have
+  changed. The transcript is read once per selection, from its last 8 MB.
+
+The workspace is the one recorded when the session started, so a session that changes directory keeps its
+browser. Outside every mapped root, and with no `browser_routing`, nothing is checked. A malformed map or a
+mapped root without a device blocks; so does an unreadable config.
+
+What it cannot see: a change made in Chrome itself (the principal switching the extension's browser by hand),
+and browsers driven by other harnesses' own browser tools. The selection is read from Claude Code's transcript;
+elsewhere it never confirms, so the calls stay blocked.
+
+Tests: `tests/test_browser_guard.py`.
