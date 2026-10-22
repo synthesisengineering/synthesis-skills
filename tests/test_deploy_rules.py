@@ -244,3 +244,28 @@ def test_a_site_that_renders_another_repository_checks_that_repository_s_dates(s
     reason = _push(site, config)
     assert "never go live before its stated date" in reason
     assert "approve" in _push(site, {"push_deploys": [str(site)]})  # without the mapping, an ordinary deploy
+
+
+# --- an action sheet's upload to a private host the principal listed (2026-10-22) --------------
+
+SHEET_SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "synthesis-action-sheet" / "scripts" / "publish_sheet.py"
+
+
+@pytest.mark.parametrize("command, held", [
+    ("python3 {script} sheet.html --project sheets-example", False),
+    ("python3 -I {script} sheet.html --project=sheets-example", False),
+    ("cd {scripts} && python3.12 publish_sheet.py sheet.html --project sheets-example", False),
+    ("python3 {script} sheet.html --project other-host", True),                # not listed
+    ("python3 {script} sheet.html --project sheets-example --project other-host", True),
+    ("python3 {elsewhere}/publish_sheet.py sheet.html --project sheets-example", True),   # not the plugin's script
+    ("npx wrangler pages deploy site --project-name sheets-example", True),  # straight to the host
+    ("python3.12 {script} sheet.html", True),                                  # no project named
+])
+def test_a_sheet_upload_is_free_only_by_the_plugin_script_to_a_listed_host(site, command, held):
+    elsewhere = site.parent / "elsewhere"
+    command = command.format(script=SHEET_SCRIPT, scripts=SHEET_SCRIPT.parent, elsewhere=elsewhere)
+    (elsewhere / "publish_sheet.py").write_text("", encoding="utf-8")
+    reason = guards.check("Bash", {"command": command}, {"sheet_hosts": ["sheets-example"]}, cwd=str(elsewhere))
+    assert (reason is not None and "approve" in reason) == held, command
+    if not held:  # without the principal's listing, the same upload waits for a code like any deploy
+        assert "approve" in guards.check("Bash", {"command": command}, {}, cwd=str(elsewhere))

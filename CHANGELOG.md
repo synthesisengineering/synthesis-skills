@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.8] - 2026-10-22
+
+**The action sheet on the principal's phone through a private host, and never dependent on one** (action sheet
+1.1.0, agent guardrails 2.2.0).
+- **No hosting account needed.** The sheet stays one filed page that builds, files and records with no network
+  call; a new test runs all three with the network refused, an empty home folder and nothing on the path. In
+  Claude Code the private Artifact still puts it on a phone; elsewhere it opens on the computer it was filed on.
+- **An optional private host.** `publish_sheet.py` uploads a filed sheet to a Cloudflare Pages project behind
+  Cloudflare Access. It rebuilds the page from the filed spec, so a page edited by hand never uploads; it uploads
+  only while a request with no sign-in to the host and to a fresh subdomain is redirected to an Access sign-in;
+  and it checks the new deployment's own address the same way, exiting 3 with a loud message if that address is
+  open. It reads no credential: wrangler uses its own sign-in. Setup and the checks are in the skill's
+  `references/publishing.md`.
+- **`sheet_hosts` in the deploy guard.** An upload by the plugin's own publish script to a project the principal
+  lists there needs no approval code; a direct `wrangler pages deploy` to it, or the script's upload to an unlisted
+  project, still waits for one. A versioned interpreter such as `python3.12` now counts as its interpreter when the
+  guard reads a deploy.
+
 ## [5.1.7] - 2026-10-22
 
 - **A signed note in an RSVP** (message guard 2.3.1). The signature-link check refused a persona's note in a

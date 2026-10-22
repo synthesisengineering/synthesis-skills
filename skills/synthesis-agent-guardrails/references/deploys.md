@@ -20,11 +20,17 @@ loaded. This guard gates the act.
 
 - A build deploy: a command that starts with a deploy pattern (config.md), after
   wrappers, or the script an interpreter runs (`npx wrangler pages deploy`,
-  `python3 -m twine upload`, `node release.mjs deploy` with a matching pattern).
+  `python3 -m twine upload`, `node release.mjs deploy` with a matching pattern). A versioned
+  interpreter (`python3.12`) counts as its interpreter.
 - A push into a repository listed in `push_deploys`, judged by the directory the push
   acts on: `git -C <site> push` from anywhere (2026-08-30, the bypass), `cd <site> &&
   git push`, a subshell, a linked worktree of the site. A plain `git push` to main of
   such a repository is a deploy exactly like `wrangler pages deploy`.
+- An action sheet's upload by `publish_sheet.py`, unless it is the plugin's own script naming
+  exactly one `--project` listed in `sheet_hosts` (config.md; 2026-10-22). That script uploads only
+  the generator's page and only behind a verified Cloudflare Access sign-in, so the principal's
+  listing stands in for a code. A script of that name anywhere else, or an upload to an unlisted
+  project, is a deploy like any other.
 - A push whose repository is named by a variable (`git -C $r push` in a loop,
   `cd $DIR && git push`) while any push-deploy repository is configured: the guard can't
   tell which repository it is, so it asks.
@@ -117,5 +123,5 @@ The Bash hook stays under 50 ms (about 31 ms median measured on the principal's 
 `tests/test_shell_classification.py` (every wrapper, substitution, heredoc and data case,
 the unreadable cases, nesting depth, speed), `tests/test_deploy_rules.py` (incident shapes
 of a site push, attribution by directory, worktrees, both date rules in both layouts,
-approval bound to HEAD, the rapid brake), `tests/test_guards.py` (approvals, protected
+approval bound to HEAD, the rapid brake, a sheet upload free only to a listed host), `tests/test_guards.py` (approvals, protected
 roots, force pushes, every harness's shell tool, fail-closed config).

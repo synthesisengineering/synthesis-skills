@@ -173,8 +173,13 @@ COPY_STATES = ("Selected; copying…", "Copied. Paste it into the conversation."
                "Copy not confirmed. The text is selected: press Cmd+C or Ctrl+C, or use your phone’s Copy.")
 
 
-@pytest.mark.parametrize("block_storage, change", [(False, None), (True, None), (False, awkward)],
-                         ids=["storage", "storage-blocked", "awkward-ids-and-script-text"])
+def as_filed(current):
+    """The spec as filed (sorted keys), which publish_sheet.py rebuilds the uploaded page from."""
+    return json.loads(bs.canonical_spec_bytes(current))
+
+
+@pytest.mark.parametrize("block_storage, change", [(False, None), (True, None), (False, awkward), (False, as_filed)],
+                         ids=["storage", "storage-blocked", "awkward-ids-and-script-text", "rebuilt-from-the-filed-spec"])
 def test_a_sitting_in_the_real_page(block_storage, change):
     current = change(spec()) if change else spec()
     seen = drive(current, BLOCK_STORAGE if block_storage else "")

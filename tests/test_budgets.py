@@ -83,10 +83,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # opens an existing chat with the approved text for the principal to send, found by number or linked id (102).
 # 5.1.7 adds 4 to both: an RSVP's comment fields left out of the signature-link check, since they render as plain
 # text (the field set and its comment 3, the joined text it reads 1); the browser refusal's wording changes no count.
+# 5.1.8 adds 19 to the core and 189 to the plugin, from the principal's rulings of 2026-10-22: a private host for
+# action sheets on Cloudflare Pages behind Access, whose uploads by the sheet's own script need no code, and a sheet
+# that keeps working with no hosting account at all. The core's: the publish script recognized as a deploy, and its
+# path (2); the `sheet_hosts` check that frees only that script's upload to a listed project (16) and its use among
+# the deploy targets (1); a versioned interpreter such as python3.12 counting as its interpreter changes no count.
+# The plugin's beyond that, publish_sheet.py 170: usage 18, imports and the engine's path 18, constants and the
+# no-index, no-cache, no-referrer headers 9, its three outcomes 12, the gate probe that never follows a redirect,
+# with the system CA retry, 24, the gate test 11, the page rebuilt from the filed spec 12, the upload 23, the order
+# of the checks 19, the command line 24.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6515
-PLUGIN_BUDGET = 23152
+CORE_BUDGET = 6534
+PLUGIN_BUDGET = 23341
 
 
 def _lines(files):

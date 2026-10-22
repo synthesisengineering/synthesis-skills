@@ -25,7 +25,9 @@ DEFAULT_SEND_TOOLS = [
 DEFAULT_DEPLOY_PATTERNS = [
     r"\bwrangler\s+(pages\s+)?deploy\b", r"\bvercel\b.*--prod\b", r"\bnetlify\s+deploy\b.*--prod\b",
     r"\bfirebase\s+deploy\b", r"\bnpm\s+publish\b", r"\btwine\s+upload\b", r"\bgh\s+release\s+create\b",
+    r"\S*publish_sheet\.py\b",  # the action sheet's upload; free only to a host in sheet_hosts (_sheet_host)
 ]
+SHEET_SCRIPT = os.path.join("skills", "synthesis-action-sheet", "scripts", "publish_sheet.py")
 SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
 GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"}
 
@@ -393,7 +395,7 @@ REDIRECTS = frozenset({"<<<", "<&", "<", "&>", ">>", ">&", ">|", ">"})
 PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
-INTERPRETERS = frozenset({"node", "bun", "deno", "python", "python3"})
+INTERPRETER = re.compile(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
 KEYWORDS = frozenset({"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "time", "fi", "done"})
 # Commands that run the command after their own options; the set holds options that take a value.
 WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "command": set(), "exec": {"-a"},
@@ -838,7 +840,7 @@ def _deploys(words: list[str], patterns: list[str]) -> bool:
     """A deploy pattern matches from the start of the command, or of the script an interpreter runs
     (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match."""
     forms = [[os.path.basename(words[0])] + words[1:]]
-    if forms[0][0] in INTERPRETERS:
+    if INTERPRETER.match(forms[0][0]):
         rest = words[1:]
         while rest and rest[0].startswith("-") and rest[0] != "-m":
             rest = rest[1:]
@@ -846,11 +848,28 @@ def _deploys(words: list[str], patterns: list[str]) -> bool:
     return any(form and re.match(p, " ".join(form)) for form in forms for p in patterns)
 
 
+def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
+    """An action sheet's upload, by the plugin's own script, to a Pages project the principal listed in
+    sheet_hosts. The script uploads only the generator's page, and only while the host and a fresh
+    subdomain ask for a sign-in; any other upload to that project still waits for approval (2026-10-22)."""
+    hosts = config.get("sheet_hosts")
+    rest = words[1:] if INTERPRETER.match(os.path.basename(words[0])) else words
+    while rest and rest[0].startswith("-") and rest[0] != "-m":
+        rest = rest[1:]
+    if not isinstance(hosts, list) or not rest or rest[0] == "-m":
+        return False
+    script = os.path.realpath(os.path.join(cwd, os.path.expanduser(rest[0])))
+    projects = [b for a, b in zip(rest[1:], rest[2:]) if a == "--project"]
+    projects += [a.split("=", 1)[1] for a in rest[1:] if a.startswith("--project=")]
+    return script.endswith(os.sep + SHEET_SCRIPT) and len(projects) == 1 and projects[0] in hosts
+
+
 def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None]]:
     """(directory, rev) for each deploy in the command. A push deploys HEAD; a build deploys the tree."""
     patterns = DEFAULT_DEPLOY_PATTERNS + list(config.get("deploy_patterns", []))
     commands, readable = _parse(command, cwd)
-    targets: list[tuple[str, str | None]] = [(d, None) for words, d in commands if _deploys(words, patterns)]
+    targets: list[tuple[str, str | None]] = [(d, None) for words, d in commands
+                                             if _deploys(words, patterns) and not _sheet_host(words, d, config)]
     if not readable and not targets and any(re.search(p, command) for p in patterns):
         targets = [(cwd, None)]  # unreadable text with a deploy word in it: judged on the raw words
     repos = None

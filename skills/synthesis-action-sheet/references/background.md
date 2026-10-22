@@ -62,6 +62,14 @@ clearing that lives on the page, because the claude.ai viewer answers `confirm()
 
 ## Changelog
 
+- **1.1.0 (2026-10-22)**: the optional private host. `publish_sheet.py` uploads the generator's page,
+  rebuilt from the filed spec, to a Cloudflare Pages project behind Access, only after checking the
+  sign-in on the host and a fresh subdomain, and checks the new deployment's address after; the deploy
+  guard's `sheet_hosts` lets those uploads through without a code to a host the principal lists. A
+  test runs building, filing and recording with the network refused, an empty home and nothing on the
+  path: the sheet never needs a hosting account.
+- **1.0.1 (2026-10-22)**: binding rule 7 says the send guard holds an Agent row's send made by computer
+  use or in the browser, and asks the principal for its code.
 - **1.0.0 (2026-10-20)**: first release. The generator with built WhatsApp, Messages, LinkedIn,
   mail, phone and web links; refusal of approval codes, bad links, missing exact text, numbers
   not in E.164 and duplicate ids; Done for you, Approve and Do sections; Me or Agent on rows an
