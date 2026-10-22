@@ -51,8 +51,9 @@ Its own checks run first; the repository's hooks run only after they pass
 
 Built in: AWS access keys, GitHub tokens (classic and fine-grained), GitLab tokens, Slack
 tokens, Anthropic and OpenAI keys, Google API keys, and the access key on a Docs image link
-(`googleusercontent.com/...?key=`, 16 or more characters; `key=REDACTED` passes), which opens the
-image to anyone holding the URL. The policy's `tier_0_always` adds to them. Every added line in every path is scanned, before path exclusions and allowlist
+(`googleusercontent.com/...?key=` or `docs.google.com/docs-images-rt/...?key=`, 16 or more characters;
+`key=REDACTED` passes), which opens the image to anyone holding the URL. The second host was added after
+14 such keys were committed past the first pattern (2026-10-20). The policy's `tier_0_always` adds to them. Every added line in every path is scanned, before path exclusions and allowlist
 lines, in every repository class (`test_without_a_policy_credentials_still_block_and_nothing_else_does`).
 No credential is ever approvable. The one exception is a vendor's published example key,
 passed by its exact value, whole: AWS's documented access key ID and secret access key from

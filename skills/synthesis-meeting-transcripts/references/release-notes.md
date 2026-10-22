@@ -12,6 +12,13 @@ Contents:
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
 
+## 1.1.1 — the second image host
+
+Gemini meeting notes also link screenshots on `docs.google.com/docs-images-rt/…?key=…`, with the same kind of
+access key. Redaction, the audit and the commit check knew only `googleusercontent.com`, so 14 live keys were
+committed in five records before a day-end sweep found them (2026-10-20). All three now cover both hosts, and
+a hand redaction written `key=[REDACTED]` counts as redacted.
+
 ## 1.1.0 — the window never suggests passing a meeting still under way
 
 `fetch-meeting.py --window` suggested the end of the day as the new watermark even while meetings were in

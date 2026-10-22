@@ -72,12 +72,15 @@ from pathlib import Path
 # own output could reveal that the copy being run was stale. This constant plus the banner
 # line below close that gap — if the printed version doesn't match SKILL.md's frontmatter
 # version, the copy being run is not the one you think it is.
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.1.1"
 
 # A Docs image exported to markdown links googleusercontent.com with an access key that opens the image to
 # anyone holding the URL; 94 such keys sat in saved transcripts by 2026-10-13. Saving redacts them, and the
-# audit fails a file that still carries one.
-KEYED_IMAGE = re.compile(r"(https://[A-Za-z0-9.-]*googleusercontent\.com/[^\s)\"'<>]*?[?&]key=)(?!REDACTED\b)[^&\s)\"'<>]+")
+# audit fails a file that still carries one. Gemini meeting notes also link docs.google.com/docs-images-rt/
+# with the same kind of key (2026-10-20: 14 of them were committed past a check that knew only the first host).
+# `[REDACTED]` counts as redacted too.
+KEYED_IMAGE = re.compile(r"((?:https?://)?(?:[A-Za-z0-9.-]*googleusercontent\.com|docs\.google\.com/docs-images-rt)"
+                         r"/[^\s)\"'<>]*?[?&]key=)(?!\[?REDACTED\b)[^&\s)\"'<>]+")
 
 
 def redact_image_keys(text: str) -> str:
