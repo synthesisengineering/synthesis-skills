@@ -139,6 +139,41 @@ def test_the_cli_handoff_command_reports_through_the_same_function(kb, monkeypat
     assert os.path.exists(kb / "mine" / "CONTEXT.md")
 
 
+def test_a_folder_claimed_without_a_pattern_covers_its_files(kb, tmp_path):
+    """2026-10-22: two folders claimed by name alone covered none of their files, so handoff committed the
+    rest, left nine files staged and still printed READY."""
+    (kb / "ritual").mkdir()
+    board.claim("S1", [str(kb / "ritual")])
+    assert f"{os.path.realpath(kb)}/ritual/**" in board.load("S1").claims
+    (kb / "ritual" / "day-end.md").write_text("closed\n", encoding="utf-8")
+    _git(kb, "add", "ritual/day-end.md")  # staged, as a failed `git commit -o` leaves it
+    (kb / "mine" / "CONTEXT.md").write_text("mine, updated\n", encoding="utf-8")
+    report = project.handoff("S1", "Close")
+    assert report[-1].startswith("READY")
+    assert sorted(_remote_files(tmp_path).split()) == ["mine/CONTEXT.md", "ritual/day-end.md"]
+
+
+def test_a_folder_claim_stored_by_name_alone_is_read_as_everything_under_it(kb):
+    (kb / "ritual").mkdir()
+    session = board.load("S1")
+    session.claims.append(str(kb / "ritual"))  # the bare form claims were stored in before 5.1.4
+    board.save(session)
+    assert f"{os.path.realpath(kb)}/ritual/**" in board.load("S1").claims
+    with pytest.raises(board.ClaimConflict):
+        board.claim("S2", [f"{kb}/ritual/day-end.md"])
+    assert board.release("S1", [str(kb / "ritual")]).claims == [f"{os.path.realpath(kb)}/mine/**"]
+
+
+def test_ready_is_refused_while_a_claimed_file_still_differs_after_the_commit(kb):
+    hook = kb / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\necho late > mine/late.md\n", encoding="utf-8")  # writes inside the claim
+    hook.chmod(0o755)
+    (kb / "mine" / "CONTEXT.md").write_text("mine, updated\n", encoding="utf-8")
+    report = project.handoff("S1")
+    assert any("1 file(s) in this session's claims still differ" in line and "mine/late.md" in line for line in report)
+    assert report[-1].startswith("NOT READY")
+
+
 def test_a_claim_with_a_wildcard_in_a_name_is_committed_too(kb, tmp_path):
     """2026-10-06: claims like transcripts/email/2026-10-06-* were accepted, listed, and then skipped by handoff,
     which printed READY over 11 uncommitted files: git read the pattern as a literal path."""

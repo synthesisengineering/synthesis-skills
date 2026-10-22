@@ -351,6 +351,12 @@ def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str])
         lines.append(f"{repo}: nothing changed in this session's claims; already on {remote}/{target}")
     if behind:
         lines.append(f"{repo}: this checkout is {behind} commit(s) behind {remote}/{target}; pull --ff-only before working here again")
+    # The receipt reads every file in the claims again, staged or not, never only the ones committed above
+    # (2026-10-22: READY was printed over nine staged files in two claimed folders).
+    left = [p for _, p in _changed(repo, specs) if any(board.overlaps(cl, str(repo / p)) for cl in claims)]
+    if left:
+        return False, lines + [f"{repo}: {len(left)} file(s) in this session's claims still differ from {branch}'s "
+                               "last commit: " + ", ".join(left[:10])]
     return True, lines
 
 

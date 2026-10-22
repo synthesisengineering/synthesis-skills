@@ -74,9 +74,15 @@ def _session_file(session_id: str) -> Path:
     return paths.state() / "sessions" / f"{safe}.json"
 
 
+def _session(data: dict) -> Session:
+    session = Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__})
+    session.claims = [as_claim(c) for c in session.claims]  # a claim stored as a bare folder covers its files
+    return session
+
+
 def load(session_id: str) -> Session | None:
     data = paths.read_json(_session_file(session_id))
-    return Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__}) if data else None
+    return _session(data) if data else None
 
 
 def save(session: Session) -> None:
@@ -91,7 +97,7 @@ def sessions() -> list[Session]:
             data = json.loads(file.read_text(encoding="utf-8"))
             if int(data.get("schema", 1)) > SCHEMA and file.name not in NEWER:
                 NEWER.append(file.name)
-            found.append(Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__}))
+            found.append(_session(data))
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
     return found
@@ -117,6 +123,15 @@ def normalize(claim: str) -> str:
     i = next((k for k, part in enumerate(parts) if GLOB & set(part)), len(parts))
     prefix = os.path.realpath(os.path.join(*parts[:i]) if i else ".")
     return os.path.join(prefix, *parts[i:]) + ("/**" if subtree else "")
+
+
+def as_claim(claim: str) -> str:
+    """A claim as held: normalized, and an existing folder named without a pattern covers everything under
+    it (2026-10-22: two folders claimed that way covered none of their files, so handoff left nine of them
+    uncommitted and still printed READY). Paths being checked keep `normalize`: writing into a folder is
+    not writing every file in it."""
+    norm = normalize(claim)
+    return norm + "/**" if not GLOB & set(norm) and os.path.isdir(norm) else norm
 
 
 def _parts(claim: str) -> tuple[tuple[str, ...], bool]:
@@ -171,7 +186,7 @@ def claim(session_id: str, claims: list[str], *, take_stale: bool = False, **upd
 
 
 def _claim(session_id: str, claims: list[str], *, take_stale: bool = False, **updates) -> Session:
-    normalized = [normalize(c) for c in claims]
+    normalized = [as_claim(c) for c in claims]
     ceding = []
     for other in sessions():  # decide everything before changing anything
         if other.session == session_id:
