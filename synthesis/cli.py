@@ -32,7 +32,7 @@ def cmd_claim(args) -> int:
         print(f"refused: {exc}", file=sys.stderr)
         return 1
     print("claimed:\n  " + "\n  ".join(session.claims))
-    claimed = [board.normalize(p) for p in args.paths]
+    claimed = [board.as_claim(p) for p in args.paths]
     found = checkout.dirty_under(claimed)  # someone's uncommitted work already here (2026-10-20)
     checkout.snapshot_paths(claimed, "claim", sid)
     for f in found[:10]:

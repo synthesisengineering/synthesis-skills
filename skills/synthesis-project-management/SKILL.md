@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.0"
+  version: "3.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -52,7 +52,7 @@ board (one small file per session).
 1. Run `date`, `synthesis who` and `synthesis inbox`.
 2. `synthesis resume <id>` prints the directive, current state, phase, next actions, plan, and warnings (newer copies, upstream changes, other sessions here). If it asks a question (another project, unknown id), ask the principal; after a yes to a switch, `synthesis resume <id> --switch`.
 3. Run the context-lifecycle Session Start Protocol and search `lessons/`.
-4. `synthesis claim <absolute paths> --project <id> --goal "<goal>"`; a trailing `/**` claims a subtree. It prints `claimed:` and the paths, or `refused:` with the holder's id, harness, project and goal.
+4. `synthesis claim <absolute paths> --project <id> --goal "<goal>"`; a trailing `/**`, or an existing folder named alone, claims a subtree. It prints `claimed:` and the paths, or `refused:` with the holder's id, harness, project and goal.
 
 **Work.**
 

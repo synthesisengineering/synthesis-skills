@@ -50,6 +50,14 @@ def test_a_docs_image_link_key_is_a_credential_and_its_redacted_form_passes(repo
     assert _commit(repo, "meetings/standup.md", f"Notes\n{redacted}\n").returncode == 0
 
 
+def test_a_docs_images_rt_link_key_is_refused_too(repo):
+    """2026-10-20: Gemini notes link docs.google.com/docs-images-rt/ with the same kind of key, and 14 were
+    committed past a pattern that knew only googleusercontent.com. The approved fixture's key, another host."""
+    rt = DOCS_IMAGE.replace("lh7-rt.googleusercontent.com/docsz/AD_4nXfixture", "docs.google.com/docs-images-rt/AD_4nXfixture=s2048")
+    result = _commit(repo, "meetings/review.md", f"Notes\n{rt}\n")
+    assert result.returncode != 0 and "Docs image link key" in result.stderr
+
+
 def test_ordinary_commit_passes(repo):
     assert _commit(repo, "notes.md", "nothing secret here\n").returncode == 0
 

@@ -53,6 +53,11 @@ The order of operations for every root session, in any harness:
 - A claim is an absolute path; a trailing `/**` claims the whole subtree.
   Relative, `~` and symlinked spellings are resolved to one real path, so two
   spellings of one file conflict.
+- An existing folder named without a pattern is held as its subtree, `folder/**`,
+  and so is one stored in that bare form before 5.1.4. Until then such a claim
+  covered the folder's path alone: none of its files, so handoff skipped them and
+  printed READY over nine staged files (2026-10-22). A folder that does not exist
+  yet stays an exact path; claim it with `/**`.
 - A claim may name a path that does not exist yet, such as a new worktree or
   file, and still conflicts with overlapping claims. Claim first, then create
   (lesson 2026-09-17, "create then claim for greenfield seats").

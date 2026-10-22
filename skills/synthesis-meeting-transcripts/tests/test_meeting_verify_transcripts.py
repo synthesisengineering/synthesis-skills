@@ -419,3 +419,17 @@ def test_a_docs_image_key_is_redacted_and_a_saved_one_fails_the_audit(tmp_path, 
     saved.write_text(v.redact_image_keys(saved.read_text(encoding="utf-8")), encoding="utf-8")
     assert v.main([str(tmp_path), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["keyed_image_files"] == []
+
+
+def test_a_docs_images_rt_key_is_redacted_and_audited_like_the_first_host(tmp_path):
+    """An operations session, 2026-10-20: Gemini notes also link docs.google.com/docs-images-rt/ with an
+    access key, and 14 were committed because this check knew only googleusercontent.com."""
+    keyed = "![image](https://docs.google.com/docs-images-rt/AD_4nXfixture=s2048?key=k3yV4lue)"
+    redacted = "![image](https://docs.google.com/docs-images-rt/AD_4nXfixture=s2048?key=REDACTED)"
+    assert v.redact_image_keys(keyed) == redacted and v.redact_image_keys(redacted) == redacted
+    bracketed = redacted.replace("REDACTED", "[REDACTED]")  # a hand redaction is not a live key
+    assert v.redact_image_keys(bracketed) == bracketed
+    saved = _write(tmp_path, "review-2026-10-20.md", "## Verbatim transcript\n\n" + DIALOGUE + "\n" + keyed + "\n")
+    assert v.audit_files([saved])[0]["keyed_image_links"] == 1
+    saved.write_text(bracketed + "\n" + DIALOGUE, encoding="utf-8")
+    assert v.audit_files([saved])[0].get("keyed_image_links", 0) == 0

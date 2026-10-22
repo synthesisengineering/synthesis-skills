@@ -28,6 +28,8 @@ python3 <synthesis-slack-sync-root>/scripts/thread_checker.py {transcripts_repo}
 
 Skip any file that does not yet exist (e.g., no DMs synced today). Combine the output from all runs into a single checklist. You MUST re-read every thread listed during Step 2. The script exists because manually deciding which threads to re-read has repeatedly failed — threads get skipped and messages get missed.
 
+It reads both transcript layouts: one line or heading per message with its replies as bullets, and the listed layout, with one bullet per top-level message under a `### #channel (ID)` heading and each thread as such a heading carrying its parent's TS. Exit 2 with `UNPARSED` means the file has message links but no parent the script recognizes: re-read every thread the transcript names, and never read that as an empty checklist. (On 2026-10-21 and 10-22 the listed layout printed "Parent threads found: 0" for every channel transcript, and workers rebuilt thread lists from earlier records.)
+
 ### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
 
 Before any read, build the resolved-target list for this sweep. For every surface the config declares — channels, 1:1 DMs, group DMs — record the one id a conversation-read call accepts: the channel id for channels and group DMs, the **conversation id (`D…`), never the user id (`U…`)**, for DMs. A surface whose read id cannot be established is recorded as **unresolved** and reported that way — never as unreadable, never as a config defect, because the sweep has evidence for neither. An empty resolved-target list refuses the sweep rather than reporting a quiet day.

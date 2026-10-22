@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.1"
+  version: "3.1.2"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5

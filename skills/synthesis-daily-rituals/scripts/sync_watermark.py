@@ -145,6 +145,14 @@ def _key(surface: str, target: str | None = None) -> str:
     return surface if target is None else f"{surface}:{target}"
 
 
+def _checked(target: str | None) -> str | None:
+    """One target is one id. Whitespace or a comma means several ids joined into one string (2026-10-21:
+    six Slack channel ids joined by spaces were stored as one target, with exit 0 and no warning)."""
+    if target is not None and (not target.strip() or re.search(r"[\s,]", target)):
+        raise ValueError(f"a target is one id with no spaces or commas, got {target!r}; pass --target once per id")
+    return target
+
+
 def begin(workspace: str, label: str = "", now: datetime | None = None, home: Path | None = None) -> dict:
     moment = now or now_local()
     data = load(workspace, home)
@@ -157,7 +165,7 @@ def window(workspace: str, surface: str, target: str | None = None, now: datetim
            home: Path | None = None) -> dict:
     moment = now or now_local()
     data = load(workspace, home)
-    through, source = _stored(_entry(data, surface, target).get("through")), "own watermark"
+    through, source = _stored(_entry(data, surface, _checked(target)).get("through")), "own watermark"
     if target is not None and through is None and _stored(_entry(data, surface).get("through")):
         through, source = _stored(_entry(data, surface).get("through")), "surface watermark (target never read alone)"
     label = surface if target is None else f"{surface} (target {target})"
@@ -174,6 +182,7 @@ def advance(workspace: str, surface: str, through: str, targets=(), now: datetim
             home: Path | None = None, surface_level: bool = False) -> dict:
     """Record a successful write; never backwards, never into the future."""
     moment = now or now_local()
+    targets = [_checked(t) for t in targets]  # every id before anything is written
     new = parse_moment(through, moment)
     if new > moment:
         hint = (" (a bare date means complete through the END of that day; pass the moment you read)"
@@ -205,6 +214,7 @@ def defer(workspace: str, surface: str, reason: str, target: str | None = None,
           now: datetime | None = None, home: Path | None = None) -> dict:
     if not reason.strip():
         raise ValueError("a deferral requires a reason")
+    _checked(target)
     moment = now or now_local()
     data = load(workspace, home)
     data["deferrals"][_key(surface, target)] = {"reason": reason.strip(), "deferred_at": stamp(moment)}
@@ -270,6 +280,7 @@ def parse_targets(entries, path: str | None) -> dict:
     for surface, target in pairs:
         if not surface.strip() or not target.strip():
             raise ValueError(f"a target needs the form surface:id, got {surface}:{target}")
+        _checked(target.strip())
         declared.setdefault(surface.strip(), [])
         if target.strip() not in declared[surface.strip()]:
             declared[surface.strip()].append(target.strip())

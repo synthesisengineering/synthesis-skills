@@ -69,6 +69,10 @@ What PreToolUse holds:
 - **Account routing.** Calendar, mail and sharing calls are checked against the account
   you configure for the workspace a session runs in, since an invitation sent from the
   wrong account cannot be unsent. Nothing is routed until you set `account_routing`.
+- **Browser profiles.** With Claude in Chrome, one extension serves every session and acts in
+  whichever browser was selected last. Map each workspace to its browser in `browser_routing`,
+  and a session's browser calls wait until it has selected that browser itself and the
+  selection succeeded, again after any other session selects. Nothing is checked until you set it.
 
 The configuration lives in `~/.synthesis/v5/config.json`. A missing file means the
 defaults above. The keys are documented in the
@@ -181,7 +185,7 @@ from the plugin folder the first time it runs; the command is then at
    waiting for approval.
 
 Without any config, sends, drafts and deploys wait for your approval, the deploy date
-rules and destructive-command rules apply, and account routing is off.
+rules and destructive-command rules apply, and account routing and browser profiles are off.
 
 ### Update and uninstall
 
@@ -295,7 +299,7 @@ keeps Codex's skill catalog within its budget.
 
 | Skill | What it does |
 |---|---|
-| [synthesis-agent-guardrails](skills/synthesis-agent-guardrails/SKILL.md) | Configure the guards beyond sends: account routing, deploys and their date rules, destructive commands, the reply check, the provenance scan. |
+| [synthesis-agent-guardrails](skills/synthesis-agent-guardrails/SKILL.md) | Configure the guards beyond sends: account routing, browser profiles, deploys and their date rules, destructive commands, the reply check, the provenance scan. |
 | [synthesis-message-guard](skills/synthesis-message-guard/SKILL.md) | The send guard: no send or draft goes out until you approve that exact call and its text passes the scan and format rules. |
 | [synthesis-git-hooks](skills/synthesis-git-hooks/SKILL.md) | The commit check: credentials everywhere, unapproved disclosures where outsiders read. |
 | [synthesis-disclosure-policy](skills/synthesis-disclosure-policy/SKILL.md) | Decide whether a real organization or person may be named outward-facing, with a precedent ledger and five tests. |

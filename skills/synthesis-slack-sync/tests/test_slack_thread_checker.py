@@ -38,6 +38,33 @@ Legacy-format parent, 1 reply
 #### Bot (TS: 1790000000.000400)
 """
 
+# The listed layout (2026-10): one bullet per top-level message under a channel heading, and a
+# thread as a channel heading carrying its parent's TS, with the replies as bullets under it.
+LISTED = """# Mid-day sync — Mon 2026-10-05
+
+## Touches the principal
+- #general, 9:20, [1790000000.000700](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000700), a reply
+
+## Top-level messages (2)
+
+### #general (C0EXAMPLE02) — 2
+- Jane Doe, 9:15, [1790000000.000500](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000500): deploy check
+  - detail [1790000000.000900](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000900)
+- Sam Lee, 9:40, [1790000000.000600](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000600), sharing [a post](https://example.slack.com/archives/C0OTHER0003/p1790000000000800)
+
+## Thread replies in the windows (2, in 1 thread)
+
+### #general (C0EXAMPLE02) — Jane Doe, 9:15, TS [1790000000.000500](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000500) — 2 replies
+- Sam Lee, 9:20, [1790000000.000700](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000700): looking now
+- Jane Doe, 9:31, [1790000000.001000](https://example.slack.com/archives/C0EXAMPLE02/p1790000000001000): thanks
+"""
+
+DIGEST_ONLY = """# Digest
+
+## Touches the principal
+- #general, 9:20, [1790000000.000700](https://example.slack.com/archives/C0EXAMPLE02/p1790000000000700)
+"""
+
 PLAN = """# Daily plan
 
 ### Draft 1: Reply to Jane about the deploy
@@ -74,6 +101,20 @@ def test_a_channel_header_without_an_id_never_inherits_the_previous_id():
     assert bot["channel"] == "eng-pull-requests" and bot["channel_id"] == "?"
 
 
+def test_the_listed_layout_yields_top_level_messages_and_thread_headings():
+    threads = M.extract_threads(None, content=LISTED)
+    assert [(t["channel_id"], t["ts"]) for t in threads] == [
+        ("C0EXAMPLE02", "1790000000.000500"), ("C0EXAMPLE02", "1790000000.000600"),
+        ("C0OTHER0003", "1790000000.000800")]
+    assert threads[0]["reply_count"] == 2 and threads[0]["channel"] == "general"
+    assert threads[2]["channel"] == "unknown"  # the link's own channel, never the heading's
+
+
+def test_listed_replies_details_and_digest_pointers_are_not_parents():
+    stamps = {t["ts"] for t in M.extract_threads(None, content=LISTED)}
+    assert not stamps & {"1790000000.000700", "1790000000.000900", "1790000000.001000"}
+
+
 def test_e10_an_unsent_draft_puts_its_target_thread_on_the_reread_list(tmp_path):
     plan = tmp_path / "plan.md"
     plan.write_text(PLAN, encoding="utf-8")
@@ -98,3 +139,17 @@ def test_command_line_prints_the_checklist(tmp_path, python):
     assert "NO TS FOUND — search manually" in done.stdout
     missing = subprocess.run([python, str(SCRIPT), str(tmp_path / "absent.md")], capture_output=True, text=True)
     assert missing.returncode == 1
+
+
+@pytest.mark.parametrize("python", [sys.executable, "/usr/bin/python3"])
+def test_links_with_no_recognized_parent_refuse_instead_of_an_empty_checklist(tmp_path, python):
+    if not Path(python).exists():
+        pytest.skip(f"{python} is not on this host")
+    digest, empty = tmp_path / "digest.md", tmp_path / "quiet.md"
+    digest.write_text(DIGEST_ONLY, encoding="utf-8")
+    empty.write_text("# #general — 2026-10-05\n\nNo messages in the window.\n", encoding="utf-8")
+    done = subprocess.run([python, str(SCRIPT), str(digest)], capture_output=True, text=True)
+    assert done.returncode == 2 and "UNPARSED: digest.md has 1 message link(s)" in done.stdout
+    assert "THREADS TO RE-READ" not in done.stdout
+    quiet = subprocess.run([python, str(SCRIPT), str(empty)], capture_output=True, text=True)
+    assert quiet.returncode == 0 and "Parent threads found: 0" in quiet.stdout
