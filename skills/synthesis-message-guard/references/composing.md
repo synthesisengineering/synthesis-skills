@@ -153,6 +153,11 @@ why the code changed.
   scan removes the *enumerable* failure modes; approval puts the principal's eyes
   on the exact text; neither replaces review.
 - **Execution tools can invoke other transports.** The guard does not parse arbitrary shell programs or prove absence of network effects. Sending through an unapproved transport is prohibited; retain native sandbox/network controls and explicit communication authorization. Never classify a general execution tool as read-only from its name.
+- **Computer use is judged by what each action shows.** In a messaging app a Return, a typed line
+  break and a click with no summary are held mechanically; beyond those, a click counts as a send
+  by its `action_summary`, so a summary that hides a send, a page script that submits a form, and
+  pasted text go unseen (config.md, "Computer use and the browser"). Write summaries as what the
+  action does; the binding rule covers the rest.
 - **Hook config loads at session start.** A newly wired hook protects new
   sessions; the wiring session itself must self-enforce.
 - **A same-user agent can still forge on purpose.** An agent that deliberately writes a

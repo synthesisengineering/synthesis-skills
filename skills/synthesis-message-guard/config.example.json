@@ -33,6 +33,7 @@
     "domains": ["helperbot.example"],
     "plain_url_tools": []
   },
+  "messaging_apps": [],
   "preferred_names": [
     {
       "official": "Robert",

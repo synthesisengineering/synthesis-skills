@@ -109,9 +109,11 @@ A row with `who: agent` is the principal's permission for exactly what `permitte
 2. Use a guarded send tool where one exists for the channel (an approved iMessage goes through
    the local-messaging sender, and the guard still asks the principal for its code). Otherwise
    use computer use or the browser: open the conversation for exactly that recipient, check the
-   name and number or handle the app shows, paste exactly the text, check the composed message,
-   and send once.
-3. The send guard cannot see computer use, so the checks are yours: stop and ask on any
+   name and number or handle the app shows, type exactly the text and send in one call, with a
+   summary that says it sends. The send guard holds that call (synthesis-message-guard, binding
+   rule 12): show the principal a screenshot of the conversation with the code, and on their code
+   make the identical call once.
+3. The guard binds the call, not what the app shows, so the checks are yours: stop and ask on any
    difference from the row (another contact with the same name, a different number, a draft
    already in the box, a changed text, a group instead of one person). Never edit the text.
 4. Confirm it from the source as above, log it under "On your behalf", and on the next sheet pass

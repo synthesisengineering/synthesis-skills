@@ -32,7 +32,10 @@ def test_only_the_four_needed_events_are_registered():
                                                                  "mcp__atlassian__addCommentToJiraIssue",
                                                                  "mcp__github__create_pull_request",
                                                                  "mcp__c3621cad__notion-create-comment",
-                                                                 "mcp__workspace-mcp__manage_document_comment"]
+                                                                 "mcp__workspace-mcp__manage_document_comment",
+                                                                 "mcp__computer-use__computer_batch",
+                                                                 "mcp__computer-use__app_click",
+                                                                 "mcp__claude-in-chrome__browser_batch"]
                          + sorted(guards.FILE_TOOLS))
 def test_guarded_tools_reach_the_hook(tool):
     assert re.fullmatch(HOOKS["PreToolUse"][0]["matcher"], tool)

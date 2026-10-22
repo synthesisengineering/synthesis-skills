@@ -4,6 +4,28 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.5] - 2026-10-22
+
+**Sends made by computer use or in a browser wait for the principal's code** (message guard 2.3.0, action sheet
+1.0.1). On 10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
+button, and no code was asked for: the guard recognized sends by tool name, and computer use has none. A scan of 45
+days of transcripts found 11 more such sends through Claude in Chrome's `browser_batch` (LinkedIn messages, posts on
+X and LinkedIn, a support chat), none guarded.
+- **In a messaging app** (WhatsApp, Messages, Slack, Signal, Telegram, Teams, Discord, Zoom, Mail, Outlook, and any
+  bundle id in the new `messaging_apps` key), a click with no `action_summary`, Return or Enter in a chat app
+  unless held with its line-break key (shift; option in Messages), cmd or ctrl with Return or Mail's cmd+shift+d in
+  an email app, typed text holding a line break where Return sends, and a Send menu item wait for the code.
+  Reading, screenshots, scrolling, opening chats and attach menus do not. Words typed there pass the register scan
+  as they are typed; the signature-link rule does not apply to typed text, which cannot carry a link.
+- **In any app or browser page**, an action whose summary says it sends (sends, replies, posts, publishes, shares,
+  "clicks Send", "to send"...) waits too. On the 488 summaries in those 45 days, the rule held all 13 real sends and
+  nothing else.
+- **`computer_batch` and the teach tools name no app**, so they count as acting in every messaging app the session
+  named in `request_access` or `request_teach_access`, which the guard now records per session; a session whose
+  grants it never saw is treated as controlling all of them until it asks again.
+- The approval binds the exact call and any words it types; type the words and send in one call where you can. An
+  unreadable config, a malformed `messaging_apps` or an action that is not an object blocks the call.
+
 ## [5.1.4] - 2026-10-22
 
 Five defects other sessions reported from 10-20 to 10-22:

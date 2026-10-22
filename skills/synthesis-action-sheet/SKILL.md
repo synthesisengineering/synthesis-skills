@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-decision-packet"]
 metadata:
   author: "Rajiv Pant"
-  version: "1.0.0"
+  version: "1.0.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -29,7 +29,7 @@ so the two are separate pages.
 4. **Generate from a spec; never hand-author or hand-edit the page.** Links are built and tested in the generator, and the page carries the packet's integrity marker.
 5. **Open every generated sheet before handing it over.** The packet's permanent defects were found by loading the page, not by reading its source.
 6. **A click is a claim, not proof.** After the principal marks a message done, confirm it from the source (Messages `chat.db`, WhatsApp `ChatStorage.sqlite`, LinkedIn in the browser, sent mail) before logging it under the daily plan's "On your behalf". Log a row with no readable trace as "principal reports done".
-7. **Choosing Agent permits exactly that text to exactly that recipient on that channel, once.** Use a guarded send tool where one exists, else computer use. The send guard cannot see computer use, so stop on any difference from the row, and verify afterward from the source.
+7. **Choosing Agent permits exactly that text to exactly that recipient on that channel, once.** Use a guarded send tool where one exists, else computer use or the browser. The send guard holds those sends too and asks the principal for their code; the sheet's choice does not replace it. Stop on any difference from the row, and verify afterward from the source.
 8. **Money, security, credentials and identity rows, and rows without exact text, are `agent: never`,** and their links are never prefilled. The generator refuses a spec that says otherwise.
 9. **The paste-back returns marks, Me or Agent and notes; `record_actions.py` files them.** "Not now" and unmarked rows carry forward by exact id (`--successor`). A row handed to the agent closes only on the agent's confirmation from the source.
 10. **File in the owning project's `resources/artifacts/`,** never only as a chat artifact. Publishing is an adapter per harness, never the foundation.
