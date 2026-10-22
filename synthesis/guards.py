@@ -1249,8 +1249,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     from synthesis import sends
     apps, record = _messaging(config), _grants(session)
     if name.startswith("request_"):  # every grant starts here, so the session's messaging apps are known
-        if record:
-            asked = {_bundle(a, apps) for a in tool_input.get("apps") or []} - {""}
+        if record and isinstance(tool_input.get("apps"), list):  # one the server would refuse leaves it unseen
+            asked = {_bundle(a, apps) for a in tool_input["apps"]} - {""}
             paths.write_json(record, {"apps": sorted(set(paths.read_json(record).get("apps", [])) | asked), "at": time.time()})
         return None
     actions = _desktop_actions(name, tool_input)

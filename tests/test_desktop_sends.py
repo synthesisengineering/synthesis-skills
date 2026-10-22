@@ -113,6 +113,8 @@ def test_words_typed_in_a_messaging_app_pass_the_register_scan_as_they_are_typed
 def test_a_session_whose_grants_are_unseen_is_held_as_if_in_every_messaging_app():
     enter = {"actions": [{"action": "key", "text": "Return", "action_summary": "Selects the file in the picker"}]}
     assert "request_access" in check(BATCH, enter)
+    assert check("mcp__computer-use__request_access", {"apps": "Notes"}) is None
+    assert "request_access" in check(BATCH, enter)  # a malformed request records nothing
     grant("Notes", "Finder")
     assert check(BATCH, enter) is None
     grant("Messages")
