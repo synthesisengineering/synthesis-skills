@@ -16,6 +16,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **The sheet host's gate check names itself** (action sheet 1.1.1). On the first real upload, Cloudflare answered
   403 to urllib's default user agent before Access saw the request, so `publish_sheet.py` refused a host that was
   correctly behind the sign-in (safely: nothing was uploaded). The probe now sends its own user agent.
+- **The doctor checks every filed action sheet.** It found filed pages by name (`*packet*`, `*sheet*`), but sheets
+  are named from their titles ("your-actions-..."), so none had been checked. Pages carrying a generator's marker
+  are now checked too: on the principal's machine, 76 pages instead of 16, all intact.
 
 ## [5.1.8] - 2026-10-22
 

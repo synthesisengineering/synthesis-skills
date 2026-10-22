@@ -92,18 +92,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # no-index, no-cache, no-referrer headers 9, its three outcomes 12, the gate probe that never follows a redirect,
 # with the system CA retry, 24, the gate test 11, the page rebuilt from the filed spec 12, the upload 23, the order
 # of the checks 19, the command line 24.
-# 5.1.9 adds 85 to the core and 87 to the plugin. The core's (guards.py): a browser page on a messaging site counts as
+# 5.1.9 adds 94 to the core and 96 to the plugin. The core's (guards.py): a browser page on a messaging site counts as
 # that messaging app, after a session found on 2026-10-22 that Return in a Google Chat compose box went out with no
 # code. The transcript's tail read once and shared with the browser guard, a file gone mid-read counting as
 # unreadable (19, less 5 in `_last_selection`); the sites with their line-break keys, and the tab-list pattern, 15; a
 # page's site 14; the newest tab list a browser call printed, its call found by id so a shell printing a transcript
-# cannot move the page, 24; the pages a call acts on, navigate steps included, 17; their use in the send check 1. The
-# plugin's 2 more: the sheet host's gate probe names its user agent (the constant and why), since Cloudflare answered
+# cannot move the page, 24; the pages a call acts on, navigate steps included, 17; their use in the send check 1. And
+# doctor.py 9: filed pages found by their generator's marker as well as by name, since sheets are named from their
+# titles and no filed sheet had been checked. The plugin's 2 more: the sheet host's gate probe names its user agent (the constant and why), since Cloudflare answered
 # 403 to urllib's on the first upload.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6619
-PLUGIN_BUDGET = 23428
+CORE_BUDGET = 6628
+PLUGIN_BUDGET = 23437
 
 
 def _lines(files):
