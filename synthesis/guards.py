@@ -345,12 +345,12 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
     if name == "list_connected_browsers":
         return None
     if name == "switch_browser":
-        return f"switch_browser lets any browser connect; this session's is the {label} browser: select_browser with deviceId {device}."
+        return f"switch_browser lets any browser connect; this session's browser is {label}: select_browser with deviceId {device}."
     if name == "select_browser":
         wanted = str(tool_input.get("deviceId") or "")
         if wanted != device:
-            return (f"This session is in the {label} workspace, whose browser is {device}; selecting {wanted or 'nothing'} "
-                    "would act as another profile. Select that device instead.")
+            return (f"This session's browser is {label} ({device}), set for the workspace it started in; selecting "
+                    f"{wanted or 'nothing'} would act as another profile. Select {device} instead.")
         paths.write_json(paths.state() / "browser.json", {"device": device, "session": me, "at": time.time(), "confirmed": False})
         return None
     current = paths.read_json(paths.state() / "browser.json")

@@ -56,7 +56,7 @@ def test_a_browser_call_waits_for_this_sessions_own_selection(setup, tmp_path):
 def test_another_workspaces_browser_and_switch_browser_are_refused(setup, tmp_path):
     dirs, config = setup
     me = {"session_id": "S1"}
-    assert f"whose browser is {PERSONAL}" in _call("select_browser", {"deviceId": CLIENT}, config, dirs["personal"], me)
+    assert f"This session's browser is personal ({PERSONAL})" in _call("select_browser", {"deviceId": CLIENT}, config, dirs["personal"], me)
     assert f"deviceId {PERSONAL}" in _call("switch_browser", {}, config, dirs["personal"], me)
 
 
@@ -93,7 +93,7 @@ def test_the_workspace_is_the_one_the_session_started_in(setup, tmp_path):
     dirs, config = setup
     me = {"session_id": "S1"}  # started in personal, now working in a client folder
     assert _call("select_browser", {"deviceId": PERSONAL}, config, dirs["clientco"], me) is None
-    assert "whose browser is" in _call("select_browser", {"deviceId": CLIENT}, config, dirs["clientco"], me)
+    assert f"Select {PERSONAL} instead" in _call("select_browser", {"deviceId": CLIENT}, config, dirs["clientco"], me)
     assert _call("navigate", {}, config, dirs["elsewhere"], {"session_id": "S3"}) is None  # in no workspace
 
 
