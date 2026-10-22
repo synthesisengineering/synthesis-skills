@@ -739,3 +739,21 @@ def test_an_empty_workspace_is_refused(tmp_path: Path) -> None:
         MODULE.advance("", "slack", "now", now=NOW, home=tmp_path)
     done = run_cli(tmp_path, "begin", "--workspace", "")
     assert done.returncode == 2 and "empty" in done.stderr
+
+
+def test_a_target_is_one_id_never_several_joined(tmp_path: Path) -> None:
+    """2026-10-21: six Slack channel ids joined by spaces were stored as one target, with exit 0."""
+    for joined in ("C01 C02 C03", "C01,C02", " C01", ""):
+        with pytest.raises(ValueError, match="one id"):
+            MODULE.advance(WS, "slack", IN_RUN, ("C09", joined), now=NOW, home=tmp_path)
+    assert "C09" not in json.dumps(MODULE.load(WS, tmp_path))  # refused before anything was written
+    with pytest.raises(ValueError, match="one id"):
+        MODULE.defer(WS, "slack", "offline", "C01 C02", now=NOW, home=tmp_path)
+    with pytest.raises(ValueError, match="one id"):
+        MODULE.window(WS, "slack", "C01 C02", now=NOW, home=tmp_path)
+    with pytest.raises(ValueError, match="one id"):
+        MODULE.parse_targets(["slack:C01 C02"], None)
+    MODULE.advance(WS, "gchat", IN_RUN, ("spaces/AAAA-bb_C1",), now=NOW, home=tmp_path)  # real id shapes pass
+    done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack", "--through", "now",
+                   "--target", "C01 C02 C03")
+    assert done.returncode == 2 and "pass --target once per id" in done.stderr

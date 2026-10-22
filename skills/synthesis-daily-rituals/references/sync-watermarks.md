@@ -71,7 +71,10 @@ python3 <rituals>/scripts/sync_watermark.py status  --workspace <W> --surface <s
   once a surface carries per-target entries, a surface-level advance is
   refused unless `--surface-level` asserts whole-surface coverage
   explicitly (2026-09-01: a wholesale advance on the Chat surface recorded
-  coverage no per-space read backed).
+  coverage no per-space read backed). A target is one id: `window`, `advance`,
+  `defer` and `status` refuse one with whitespace or a comma, exit 2, before
+  anything is written; pass `--target` once per id (2026-10-21: six channel
+  ids joined by spaces were stored as one target, with exit 0).
 - **`defer`** records a gap that genuinely cannot close this run, with a
   reason, for one day. A stale deferral is re-surfaced as blocking.
 - **`status`** takes the declared set — every surface with `--surface`, every
