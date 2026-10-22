@@ -4,6 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.4] - 2026-10-22
+
+Five defects other sessions reported from 10-20 to 10-22:
+- **Browser profiles** (agent guardrails 2.1.0). One Chrome extension serves every session and acts in whichever
+  browser any session selected last; a session worked about 15 minutes in another workspace's profile, a public
+  post included. With `browser_routing` mapping each workspace to its browser, a session's Claude in Chrome calls
+  wait until it has selected that browser itself and its transcript shows the selection succeeded, and again after
+  any other session selects. Selecting another workspace's browser and `switch_browser` are refused; listing
+  browsers always passes. The workspace is the one the session started in. Nothing is checked until the key is set.
+- **Folder claims and handoff's receipt** (project management 3.1.1). An existing folder claimed without `/**`
+  covered the folder's path alone, none of its files, so `synthesis handoff` committed the rest, left nine staged
+  files behind and printed READY. Such a claim now covers everything under the folder, including claims stored
+  that way before, and READY reads every claimed file again, staged or not, rather than only those it committed.
+- **The Slack thread checker reads the listed layout** (Slack sync 4.0.1). Transcripts that list one bullet per
+  top-level message, with each thread as a channel heading carrying its parent's TS, printed "Parent threads found:
+  0" for every channel. Both layouts are read now, a permalink's own channel id wins, and a file with message
+  links but no parent it recognizes exits 2 as UNPARSED instead of printing an empty checklist.
+- **A watermark target is one id** (daily rituals 3.1.2). Six channel ids joined by spaces were stored as one
+  target with exit 0. `window`, `advance`, `defer` and `status` refuse whitespace or a comma in an id, before
+  anything is written.
+- **Docs image keys on the second host** (meeting transcripts 1.1.1, git hooks 3.1.1). Gemini notes also link
+  `docs.google.com/docs-images-rt/…?key=…`; redaction, the audit and the commit check knew only
+  `googleusercontent.com`, and 14 live keys were committed. All three cover both hosts, and `key=[REDACTED]` counts
+  as redacted.
+
 ## [5.1.3] - 2026-10-20
 
 At the principal's request (relayed by his operations session): an SMS group with two friends for a trip, where an

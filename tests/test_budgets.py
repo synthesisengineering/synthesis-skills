@@ -61,10 +61,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # group included, named by exactly its members, under the same approval (messages_send.py 47, members resolution
 # and the shared send path), and watched chats in the reader (12), for a trip group the principal asked agents to
 # post logistics to and monitor.
+# 5.1.4 adds 118 to the core and 178 to the plugin for five defects other sessions reported from 10-20 to 10-22.
+# The core's: browser calls held to the Chrome profile of the session's workspace, after that session's own
+# confirmed selection (guards.py 96 net, after account routing's workspace lookup became shared; a public post had
+# gone out from the wrong profile); a folder claimed by name alone covering its files, and handoff's READY reading
+# every claimed file again (board.py 15, project.py 6; READY had been printed over nine staged files); and the Docs
+# image key's second host in the commit check (1). The plugin's beyond that: the Slack thread checker reading the
+# listed transcript layout and refusing one it cannot read (46), a watermark target checked as one id (11), and the
+# second image host in the meeting verifier (3).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6236
-PLUGIN_BUDGET = 22660
+CORE_BUDGET = 6354
+PLUGIN_BUDGET = 22838
 
 
 def _lines(files):
