@@ -105,8 +105,9 @@ bookmark on the phone. What it does, in order:
   paste-back records against the filed spec as usual.
 - **Checks the gate before uploading.** A request with no sign-in to `https://<name>.pages.dev/`
   and to a fresh random subdomain must be redirected to a sign-in on a `*.cloudflareaccess.com`
-  address. Anything else (an answer, a 404, a redirect elsewhere) prints `will not publish:` and
-  exits 2 with nothing uploaded.
+  address. Anything else (the page itself, an error such as 403 or 404, a redirect elsewhere)
+  prints `will not publish:` and exits 2 with nothing uploaded. The script names itself in its
+  user agent, since Cloudflare answers 403 to Python's default one before Access sees the request.
 - **Uploads with wrangler**, which uses its own sign-in; the script reads no credential. The
   upload carries headers for no indexing, no caching and no referrer, so links on the sheet do
   not pass its address on.
