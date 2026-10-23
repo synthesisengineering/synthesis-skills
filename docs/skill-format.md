@@ -30,6 +30,11 @@ enforces the checkable parts on every skill marked `format: v5`.
 3. **Size:** SKILL.md at most 8,000 bytes (Codex truncates beyond that), so
    the purpose, binding rules and contents always arrive whole. Each linked file at most 1,500
    lines; a linked file over 150 lines opens with its own short contents list.
+   **Never trim to fit.** A SKILL.md over the limit is reorganized, not shortened: move whole
+   passages, word for word, into `references/` files and leave a one-line pointer; keep the
+   binding rules in SKILL.md, where they always load; and show the principal the move before
+   committing. Shortening, condensing or rewording a skill's text to meet the limit or pass a
+   test loses what its author wrote (the principal's ruling, 2026-10-22).
 4. **Split by when it's needed.** Material needed only for one step, one
    situation or one reader goes in `references/<topic>.md`, linked from
    Contents with a "read when" line. Nothing is linked from nowhere: every file
