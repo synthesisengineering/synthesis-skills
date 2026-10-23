@@ -31,7 +31,8 @@ def _check(skill_md: Path) -> list[str]:
     lines = text.splitlines()
     size = len(text.encode("utf-8"))
     if size > 8000:
-        problems.append(f"SKILL.md is {size} bytes (Codex truncates past 8,000)")
+        problems.append(f"SKILL.md is {size} bytes (Codex truncates past 8,000): reorganize it, moving whole passages "
+                        "word for word into references/; never trim it (docs/skill-format.md, rule 3)")
     headings = [line for line in lines if line.startswith("## ")]
     if headings[:2] != ["## Binding rules", "## Contents"]:
         problems.append(f"first sections must be Binding rules then Contents, found {headings[:2]}")

@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.10] - 2026-10-22
+
+- **Never trim a skill to fit** (skills manager 3.1.0). The principal ruled that a SKILL.md over the 8,000-byte limit
+  is reorganized, never shortened: whole passages move word for word into `references/` with a one-line pointer, the
+  binding rules stay in SKILL.md, and the principal sees the move before it is committed. The rule is in
+  `docs/skill-format.md` (rule 3) and in the skills manager's binding rules, and the format test's size failure now
+  says to reorganize. It followed a skill trimmed to fit the limit, which dropped wording its author and its tests
+  relied on.
+
 ## [5.1.9] - 2026-10-22
 
 - **Sends on messaging sites in the browser wait for the code** (message guard 2.4.0). Return in a Google Chat

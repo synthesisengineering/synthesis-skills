@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-onboarding"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.0"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -27,6 +27,7 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 6. **Reference stable paths, never a version folder.** Pinned version paths go stale on the next release.
 7. **Resolve drift in source with a synthesis merge.** Keep both sides' legitimate changes; ask the user only when both changed the same instruction differently.
 8. **Hook trust is the person's decision.** Report Codex `/hooks` and Muse approvals that a release needs; never approve them.
+9. **Never trim a skill to fit.** Over 8,000 bytes, reorganize: move whole passages word for word into `references/`, leave a one-line pointer, keep binding rules in SKILL.md, and show the principal the move before committing (`docs/skill-format.md`, rule 3; 2026-10-22).
 
 ## Contents
 
