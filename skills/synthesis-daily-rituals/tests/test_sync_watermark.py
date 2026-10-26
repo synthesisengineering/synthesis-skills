@@ -757,3 +757,44 @@ def test_a_target_is_one_id_never_several_joined(tmp_path: Path) -> None:
     done = run_cli(tmp_path, "advance", "--workspace", WS, "--surface", "slack", "--through", "now",
                    "--target", "C01 C02 C03")
     assert done.returncode == 2 and "pass --target once per id" in done.stderr
+
+
+# --- a local message store moves only as far as its reader read (2026-10-26) ---------------------------------
+
+
+def test_a_local_message_store_needs_its_readers_coverage(tmp_path: Path) -> None:
+    """A quit WhatsApp's store held messages only to 07:26, and its watermark was advanced by hand to the window's
+    end, 20:45; nothing in between was ever read."""
+    with pytest.raises(ValueError, match="local message store"):
+        MODULE.advance(WS, "messages", IN_RUN, ("whatsapp",), now=NOW, home=tmp_path)
+    reader = {"coverage": {"complete": False, "through": "2026-08-28T13:26:00+00:00", "stale": "app not running"}}
+    got = MODULE.advance(WS, "messages", IN_RUN, ("whatsapp",), now=NOW, home=tmp_path, coverage=reader)
+    assert got["through"] == "2026-08-28T09:26:00-04:00" and "store's reach" in got["entries"][0]["detail"]
+    later = {"coverage": {"complete": True, "through": "2026-08-28T15:50:00+00:00"}}
+    got = MODULE.advance(WS, "messages", IN_RUN, ("whatsapp",), now=NOW, home=tmp_path, coverage=later)
+    assert got["through"] == IN_RUN and got["entries"][0]["detail"] == "advanced"  # the read reached past it
+
+
+@pytest.mark.parametrize("coverage, targets, expected", [
+    ({"coverage": {"complete": False, "through": None, "gaps": [1]}}, ("whatsapp",), "no `through`"),
+    ({"coverage": {"complete": True, "through": IN_RUN}}, ("imessage", "whatsapp"), "one coverage covers one store"),
+])
+def test_a_local_store_advance_refuses_an_unsettled_or_shared_coverage(tmp_path: Path, coverage, targets, expected) -> None:
+    with pytest.raises(ValueError, match=expected):
+        MODULE.advance(WS, "messages", IN_RUN, targets, now=NOW, home=tmp_path, coverage=coverage)
+    assert MODULE.load(WS, tmp_path)["surfaces"] == {}  # nothing written
+
+
+def test_other_surfaces_advance_without_coverage_and_the_command_line_reads_it(tmp_path: Path) -> None:
+    assert MODULE.advance(WS, "email", IN_RUN, now=NOW, home=tmp_path)["moved"]
+    out = tmp_path / "reader.json"
+    out.write_text(json.dumps({"coverage": {"complete": True, "through": MORNING}}), encoding="utf-8")
+    env = {"SYNTHESIS_HOME": str(tmp_path / "home"), "PATH": "/usr/bin:/bin"}
+    done = subprocess.run([sys.executable, str(SCRIPT), "advance", "--workspace", WS, "--surface", "messages",
+                           "--target", "whatsapp", "--through", "2026-08-28T09:00:00-04:00", "--coverage", str(out)],
+                          capture_output=True, text=True, env=env)
+    assert done.returncode == 0, done.stderr
+    refused = subprocess.run([sys.executable, str(SCRIPT), "advance", "--workspace", WS, "--surface", "messages",
+                              "--target", "imessage", "--through", "2026-08-28T09:00:00-04:00"],
+                             capture_output=True, text=True, env=env)
+    assert refused.returncode == 2 and "local message store" in refused.stderr

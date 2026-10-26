@@ -104,10 +104,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.1.11 adds 3 to both (guards.py): every RSVP waits for the code again, after an accepted RSVP with notifications
 # off went out unasked on 2026-10-23 through the quiet-calendar exemption (the RSVP test 1, the joined condition 1,
 # the docstring's reason 1).
+# 5.1.12 adds 77 to the plugin (the core is unchanged), for three gaps other sessions reported on 2026-10-26:
+# thread_checker.py 24, listing every message in a section of threads read, at any indent, linked or bare, and never
+# a table row; sync_watermark.py 33, a local message store's watermark needing its reader's coverage and stopping at
+# its through; local_messaging.py 20, a quit WhatsApp counting as stale at once.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 6631
-PLUGIN_BUDGET = 23440
+PLUGIN_BUDGET = 23517
 
 
 def _lines(files):

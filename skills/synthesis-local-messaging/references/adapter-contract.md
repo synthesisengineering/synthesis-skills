@@ -134,6 +134,14 @@ quiet night is not a stopped store, and a store that stopped syncing is caught b
 the next day's first read. Raise it for an account that often stays silent
 longer; lower it for a busy one. A store last written after the window ends is never stale.
 
+WhatsApp syncs only while it runs, and quitting it can write the store hours after
+its newest message, so the file times alone can make a quit app look current. When
+the WhatsApp app is not running (the coordinator asks `pgrep`, outside the sandbox,
+and a failed check counts as not running), its page is stale whatever the
+threshold says (2026-10-24: quit with its newest message at 07:26, and a close
+moved the watermark to the window's end at 20:45, so the day's messages were read
+two days late). iMessage syncs in the background whether Messages is open or not.
+
 A stale page:
 
 - reports `coverage.stale`, a sentence giving the hours, the newest message and

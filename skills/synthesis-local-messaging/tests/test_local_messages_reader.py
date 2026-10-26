@@ -564,3 +564,18 @@ def test_each_store_has_its_own_quiet_hours(tmp_path, need_sandbox):
     window = request(path, start="2000-12-31T00:00:00Z", end="2001-01-01T15:00:00Z", page_size=50)
     assert lm.scan(window, tmp_path / "imessage")["coverage"]["store"]["stale_after_hours"] == 24
     assert lm.STALE_AFTER_HOURS == {"whatsapp-v1": 12, "imessage-v1": 24}
+
+
+def test_a_quit_whatsapp_is_stale_however_recently_its_store_was_written(tmp_path, need_sandbox, monkeypatch):
+    """2026-10-24: WhatsApp was quit, its newest message was 07:26, and a close moved the watermark to the window's
+    end at 20:45. A quit app's store can be written after its newest message, so the 12-hour test alone missed it."""
+    path, db = whatsapp(tmp_path / "source")
+    add_whatsapp(db, "Can I stay over on the 30th?", stamp(3, 7, 26))
+    db.close()
+    os.utime(path, (APPLE_EPOCH + stamp(3, 19),) * 2)  # written at quit, hours after its newest message
+    window = request(path, adapter="whatsapp-v1", start="2001-01-03T00:00:00Z", end="2001-01-03T20:45:00Z", page_size=10)
+    assert lm.scan(window, tmp_path / "running")["coverage"]["through"] == "2001-01-03T20:45:00+00:00"
+    monkeypatch.setattr(lm, "_running", lambda app: False)
+    coverage = lm.scan(window, tmp_path / "quit")["coverage"]
+    assert not coverage["complete"] and coverage["through"] == "2001-01-03T07:26:00+00:00"
+    assert coverage["stale"].startswith("WhatsApp is not running") and "07:26" in coverage["stale"]

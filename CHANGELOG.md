@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.12] - 2026-10-26
+
+Three gaps other sessions reported, each with a test that fails on 5.1.11:
+- **The thread checker reads a DM-half transcript** (slack sync 4.0.2). It listed the 53 rows of a per-target
+  coverage table as thread parents and missed all five threads with replies, which sat as indented bullets under
+  "threads re-read". In a section of threads read it now lists every message, at any indent, linked or bare (in the
+  link's channel or the backticked id on the line), and a table row is never a parent. On twelve real transcripts
+  the channel halves list exactly what they did.
+- **A local message store's watermark stops where its reader stopped** (daily rituals 3.2.0). A close advanced a quit
+  WhatsApp's watermark to the window's end by hand, and a day of messages was read two days late.
+  `sync_watermark.py advance` now refuses `imessage`, `whatsapp` and the `messages` surface without `--coverage`
+  (the reader's output), caps the watermark at its `coverage.through`, and takes one store per call.
+- **A quit WhatsApp is stale at once** (local messaging 1.5.0). Quitting the app can write its store hours after its
+  newest message, which hid the stop from the 12-hour test. When WhatsApp is not running, its page is stale and
+  reaches only its newest message.
+
 ## [5.1.11] - 2026-10-26
 
 - **Every RSVP waits for the code again** (message guard 2.4.1). On 2026-10-23 an accepted RSVP made through
