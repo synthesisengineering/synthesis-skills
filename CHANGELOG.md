@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.11] - 2026-10-26
+
+- **Every RSVP waits for the code again** (message guard 2.4.1). On 2026-10-23 an accepted RSVP made through
+  `manage_event` with `action=rsvp` and notifications set to `none` went out without one: the exemption for calendar
+  writes that email no one (no attendees named, notifications off) matched it too, though 5.0.3 kept every RSVP
+  gated. The organizer sees the answer whatever the notifications, so an RSVP, by action or by a `response` field, is
+  never exempt.
+
 ## [5.1.10] - 2026-10-22
 
 - **Never trim a skill to fit** (skills manager 3.1.0). The principal ruled that a SKILL.md over the 8,000-byte limit

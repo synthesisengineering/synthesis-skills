@@ -101,10 +101,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # doctor.py 9: filed pages found by their generator's marker as well as by name, since sheets are named from their
 # titles and no filed sheet had been checked. The plugin's 2 more: the sheet host's gate probe names its user agent (the constant and why), since Cloudflare answered
 # 403 to urllib's on the first upload.
+# 5.1.11 adds 3 to both (guards.py): every RSVP waits for the code again, after an accepted RSVP with notifications
+# off went out unasked on 2026-10-23 through the quiet-calendar exemption (the RSVP test 1, the joined condition 1,
+# the docstring's reason 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6628
-PLUGIN_BUDGET = 23437
+CORE_BUDGET = 6631
+PLUGIN_BUDGET = 23440
 
 
 def _lines(files):
