@@ -24,6 +24,7 @@ or receipt is required (2026-10-01: requiring them stopped every bookmark).
     sync_watermark.py begin   --workspace W [--label L]
     sync_watermark.py window  --workspace W --surface S [--target T]
     sync_watermark.py advance --workspace W --surface S --through TS [--target T ...] [--surface-level]
+                              [--coverage FILE]   (required for a local message store: imessage, whatsapp)
     sync_watermark.py defer   --workspace W --surface S [--target T] --reason TEXT
     sync_watermark.py status  --workspace W --surface S ... [--target S:T ...] [--targets-from FILE]
                               [--since run|TS] [--max-age 4h]
@@ -46,6 +47,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 DEFERRAL_MAX_AGE = timedelta(days=1)  # an indefinite silence is how a gap becomes furniture
+# Stores read on this Mac hold only what their app last synced, so their watermark moves no further than the reader
+# read (its coverage.through). 2026-10-26: a quit WhatsApp's store held messages only to Sat 07:26, its watermark was
+# advanced by hand to the window's end, 20:45, and nothing in between was ever read.
+LOCAL_STORES = frozenset({"messages", "imessage", "whatsapp", "sms"})
 _EPOCH = re.compile(r"\A([1-9]\d{9})(?:\.\d+)?\Z")  # ten digits, no leading zero
 _EPOCH_MS = re.compile(r"\A[1-9]\d{12}\Z")
 ACCEPTED = ("ISO-8601 such as 2026-09-14T09:15:00-04:00, YYYY-MM-DD for complete through the END of "
@@ -178,12 +183,35 @@ def window(workspace: str, surface: str, target: str | None = None, now: datetim
                       f"{label}: no watermark yet → read to the workspace's backfill bound and state that bound")}
 
 
+def _store_reach(surface: str, targets: list, coverage, moment: datetime) -> datetime | None:
+    """How far a local message store's watermark may move: its reader's coverage.through. None for other surfaces
+    advanced without coverage."""
+    local = surface in LOCAL_STORES or any(t in LOCAL_STORES for t in targets)
+    if coverage is None:
+        if local:
+            raise ValueError(f"{_key(surface, ','.join(targets) or None)} is a local message store: it moves only as far "
+                             "as its reader read. Pass --coverage with the reader's output (its coverage.through caps "
+                             "the watermark)")
+        return None
+    if local and len(targets) > 1:
+        raise ValueError("one coverage covers one store: advance each local message store with its own reader's coverage")
+    found = coverage.get("coverage", coverage) if isinstance(coverage, dict) else None
+    reach = found.get("through") if isinstance(found, dict) else None
+    if not reach:
+        raise ValueError("the reader's coverage has no `through`: gaps or pages remain, so finish the window first")
+    return parse_moment(str(reach), moment).astimezone(moment.tzinfo)  # stored in local time, like the rest
+
+
 def advance(workspace: str, surface: str, through: str, targets=(), now: datetime | None = None,
-            home: Path | None = None, surface_level: bool = False) -> dict:
-    """Record a successful write; never backwards, never into the future."""
+            home: Path | None = None, surface_level: bool = False, coverage=None) -> dict:
+    """Record a successful write; never backwards, never into the future, and a local message store never past
+    what its reader read."""
     moment = now or now_local()
     targets = [_checked(t) for t in targets]  # every id before anything is written
     new = parse_moment(through, moment)
+    reach = _store_reach(surface, targets, coverage, moment)
+    capped = reach is not None and new > reach
+    new = min(new, reach) if reach is not None else new
     if new > moment:
         hint = (" (a bare date means complete through the END of that day; pass the moment you read)"
                 if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(through).strip()) else "")
@@ -205,7 +233,9 @@ def advance(workspace: str, surface: str, through: str, targets=(), now: datetim
             continue
         slot.update(through=stamp(new), updated_at=stamp(moment))
         data["deferrals"].pop(_key(surface, target), None)  # a write spends the deferral
-        rows.append({"key": _key(surface, target), "moved": True, "through": stamp(new), "detail": "advanced"})
+        rows.append({"key": _key(surface, target), "moved": True, "through": stamp(new),
+                     "detail": f"advanced to the store's reach, not {through}: the reader read no further" if capped
+                     else "advanced"})
     save(workspace, data, home)
     return {"surface": surface, "through": stamp(new), "entries": rows, "moved": all(r["moved"] for r in rows)}
 
@@ -305,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--through", required=True, help=moment_help)
             p.add_argument("--target", action="append", default=[])
             p.add_argument("--surface-level", action="store_true")
+            p.add_argument("--coverage", help="the local message reader's output (JSON); required for imessage and "
+                           "whatsapp, whose watermark stops at its coverage.through")
         if name == "defer":
             p.add_argument("--reason", required=True)
         if name == "status":
@@ -320,8 +352,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "window":
             result = window(args.workspace, args.surface, args.target)
         elif args.command == "advance":
+            coverage = json.loads(Path(args.coverage).read_text(encoding="utf-8")) if args.coverage else None
             result = advance(args.workspace, args.surface, args.through, tuple(args.target),
-                             surface_level=args.surface_level)
+                             surface_level=args.surface_level, coverage=coverage)
         elif args.command == "defer":
             result = defer(args.workspace, args.surface, args.reason, args.target)
         else:

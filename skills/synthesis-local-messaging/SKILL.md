@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.4.0"
+  version: "1.5.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"

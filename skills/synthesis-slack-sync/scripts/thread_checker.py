@@ -39,6 +39,13 @@ PERMALINK = re.compile(r"/archives/([A-Z][A-Z0-9]+)/p(\d{10})(\d{6})\b")
 SECTION = re.compile(r"^#{1,3}\s")
 REPLY_COUNT = re.compile(r"(\d+)\s*repl(?:y|ies)")
 THREAD_LABEL = re.compile(r"\*\*Thread\s*\((\d+)\s*repl")
+# A section listing the threads a sync read ("## Part C — threads re-read"): every message there is a thread
+# parent, at any indent, linked or bare, in the link's channel or the backticked id on its line (2026-10-26: a
+# DM-half transcript's five threads with replies sat there, as indented bullets, and none was listed).
+READ_THREADS = re.compile(r"^#{1,3}\s.*\bthreads?\b.*\b(?:re-?read|read)\b", re.I)
+BARE_TS = re.compile(r"(?<![\d.])(\d{10})\.(\d{6})(?!\d)")
+CHANNEL_CODE = re.compile(r"`([CDG][A-Z0-9]{8,})`")
+NAMED_MESSAGE = re.compile(r"\(ts \d{10}\.\d{6}\)")  # "(ts …)" names one message, such as a reply
 
 
 def structural_lines(content: str) -> list[str]:
@@ -90,8 +97,21 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
     names = {cid: name for name, cid in channel_ids.items()}
 
     threads, seen = [], {}
+
+    def record(stamps, replies, context):
+        for link_channel, ts in stamps:
+            cid = link_channel or channel_id
+            if (cid, ts) in seen:  # listed twice, say as a top-level message and as a thread
+                seen[(cid, ts)]["reply_count"] = max(seen[(cid, ts)]["reply_count"], replies)
+                continue
+            name = names.get(cid) or (channel if cid == channel_id else None)
+            seen[(cid, ts)] = {"ts": ts, "channel": name or "unknown", "channel_id": cid or "?",
+                               "reply_count": replies, "context": context[:100]}
+            threads.append(seen[(cid, ts)])
+
     channel = channel_id = None
     listing = parent_open = False  # under a channel heading; a parent recorded since that heading
+    read_section = with_replies = False  # in a section of threads read; under its "with replies" bullet
     for i, line in enumerate(lines):
         stripped = line.strip()
         found = CHANNEL_WITH_ID.match(stripped)
@@ -100,9 +120,22 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
             channel = (found or bare).group(1)
             # never inherit the previous channel's ID
             channel_id = found.group(2) if found else channel_ids.get(channel)
-            listing, parent_open = True, False
+            listing, parent_open, read_section = True, False, False
         elif SECTION.match(stripped):
-            listing = parent_open = False
+            listing = parent_open = with_replies = False
+            read_section = bool(READ_THREADS.match(stripped))
+        if read_section:
+            if stripped.startswith("- ") and not line[:1].isspace():
+                with_replies = bool(re.search(r"\b(?:with|gained) repl", stripped, re.I))
+            stamps = stamps_in(line)
+            code = CHANNEL_CODE.search(line)
+            stamps += [(code.group(1) if code else None, f"{a}.{b}") for a, b in
+                       BARE_TS.findall(NAMED_MESSAGE.sub("", line)) if f"{a}.{b}" not in {ts for _, ts in stamps}]
+            count = REPLY_COUNT.search(stripped)
+            record(stamps, int(count.group(1)) if count else int(with_replies and line[:1].isspace()), stripped)
+            continue
+        if stripped.startswith("|"):  # a coverage or watermark table points at messages recorded elsewhere
+            continue
         # TSes come from message-header-like lines: legacy `(TS: ...)` text or a v3.1.0+ permalink.
         stamps = stamps_in(line)
         if not stamps:
@@ -115,16 +148,7 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
             parent_open = True
             context = "\n".join(lines[i:i + 5])
         count = THREAD_LABEL.search(context) or REPLY_COUNT.search(context)
-        replies = int(count.group(1)) if count else 0
-        for link_channel, ts in stamps:
-            cid = link_channel or channel_id
-            if (cid, ts) in seen:  # listed twice, say as a top-level message and as a thread
-                seen[(cid, ts)]["reply_count"] = max(seen[(cid, ts)]["reply_count"], replies)
-                continue
-            name = names.get(cid) or (channel if cid == channel_id else None)
-            seen[(cid, ts)] = {"ts": ts, "channel": name or "unknown", "channel_id": cid or "?",
-                               "reply_count": replies, "context": stripped[:100]}
-            threads.append(seen[(cid, ts)])
+        record(stamps, int(count.group(1)) if count else 0, stripped)
     return threads
 
 

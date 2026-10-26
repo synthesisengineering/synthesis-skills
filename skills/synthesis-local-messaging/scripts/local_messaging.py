@@ -274,6 +274,23 @@ def _freshness(db, path, table, column, scale, start, end, hours):
             "its app may have stopped syncing; open it, let it sync, then run again" if quiet > hours else None), store
 
 
+def _running(app: str) -> bool:
+    """Whether the app runs now. A failed check counts as not running, so the window stays open."""
+    try:
+        return subprocess.run(["pgrep", "-x", app], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _quit(coverage, start) -> None:
+    """WhatsApp syncs only while it runs, and a quit app's store can look freshly written: it holds messages only
+    to its last sync (2026-10-24: quit, newest message 07:26, and a close moved the watermark to 20:45)."""
+    newest = coverage["store"]["newest_message"]
+    coverage["store"]["reach"] = _iso(max(start, datetime.fromisoformat(newest).timestamp()) if newest else start)
+    coverage["stale"] = (f"WhatsApp is not running, so its store holds messages only to its last sync (newest message "
+                         f"{newest or 'none'}): open it, let it sync, then run again")
+
+
 def _settle(coverage, page_size) -> None:
     """Complete, and `through` (how far a watermark may move), once the window is read with no gap and a fresh store."""
     read = not coverage["gaps"] and (coverage["after"] == coverage["upper"] or coverage["examined"] < page_size)
@@ -464,7 +481,7 @@ def _close(coverage, review, subject) -> None:
 def scan(request, state, review=None, stale_after_hours=None) -> dict:
     """Read the next page of the window; save it, then move the cursor. A gap leaves the cursor until a
     by-hand review the principal approves names exactly the page's gaps. A stale store leaves the window open."""
-    validate(request)
+    start, _ = validate(request)
     stale_after_hours = STALE_AFTER_HOURS[request["adapter"]] if stale_after_hours is None else stale_after_hours
     validate({**request, "after": 0, "upper": None, "stale_after_hours": stale_after_hours}, page_keys=True)  # before any state
     state = Path(state)
@@ -491,6 +508,9 @@ def scan(request, state, review=None, stale_after_hours=None) -> dict:
         page = run_page({**request, "after": after, "upper": cursor["upper"] if cursor else None,
                          "stale_after_hours": stale_after_hours})
         coverage = page["coverage"]
+        if request["adapter"] == "whatsapp-v1" and not coverage["stale"] and not _running("WhatsApp"):
+            _quit(coverage, start)
+            _settle(coverage, request["page_size"])
         if coverage["gaps"] and review is not None:
             _close(coverage, review, {**binding, "gaps": coverage["gaps"]})
             _settle(coverage, request["page_size"])

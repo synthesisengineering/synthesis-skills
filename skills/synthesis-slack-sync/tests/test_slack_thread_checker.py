@@ -153,3 +153,46 @@ def test_links_with_no_recognized_parent_refuse_instead_of_an_empty_checklist(tm
     assert "THREADS TO RE-READ" not in done.stdout
     quiet = subprocess.run([python, str(SCRIPT), str(empty)], capture_output=True, text=True)
     assert quiet.returncode == 0 and "Parent threads found: 0" in quiet.stdout
+
+
+DM_HALF = """# Slack sync, DMs and group DMs — 2026-10-25
+
+## Part A — every message in the window, verbatim
+
+### Group DM · Jane Doe + Sam Lee + Principal (`C0EXAMPLE09`)
+
+**2026-10-23 11:38:18 EDT · Jane Doe (U0EXAMPLE1) · [ts 1790000001.000100](https://example.slack.com/archives/C0EXAMPLE09/p1790000001000100)**
+
+> Here's the plan.
+
+## Part B — per-target coverage
+
+| Target | Conversation | Window | Messages | Status |
+|---|---|---|---|---|
+| `D0EXAMPLE01` | DM · Jane Doe | newest [ts 1790000002.000200](https://example.slack.com/archives/D0EXAMPLE01/p1790000002000200) | 0 | quiet |
+
+## Part C — threads re-read (no `oldest` or `latest`)
+
+- **Threads that gained replies since the last close: none.**
+- **Threads with replies, unchanged:**
+  - Jane Doe DM `D0EXAMPLE01` [1790000003.000300](https://example.slack.com/archives/D0EXAMPLE01/p1790000003000300) (3 replies)
+  - Sam Lee DM `D0EXAMPLE02` 1790000004.000400 (locator only): still 1 reply, the principal's (ts 1790000004.000500).
+  - A channel post `C0EXAMPLE03` [1790000006.000700](https://example.slack.com/archives/C0EXAMPLE03/p1790000006000700)
+- **Every other read returned "No thread messages":**
+  - `C0EXAMPLE09` (2): 1790000001.000100, 1790000001.000600
+
+## Part F — watermarks
+
+| Target | Watermark |
+|---|---|
+| `D0EXAMPLE01` | [1790000002.000200](https://example.slack.com/archives/D0EXAMPLE01/p1790000002000200) |
+"""
+
+
+def test_a_dm_half_lists_every_thread_it_read_and_no_table_row():
+    """2026-10-26: on a DM-half transcript the checker listed the coverage table's rows as parents and missed all
+    five threads with replies, which sat as indented bullets under "threads re-read"."""
+    found = {(t["channel_id"], t["ts"]): t["reply_count"] for t in M.extract_threads(None, content=DM_HALF)}
+    assert found == {("C0EXAMPLE09", "1790000001.000100"): 0, ("D0EXAMPLE01", "1790000003.000300"): 3,
+                     ("D0EXAMPLE02", "1790000004.000400"): 1, ("C0EXAMPLE03", "1790000006.000700"): 1,
+                     ("C0EXAMPLE09", "1790000001.000600"): 0}

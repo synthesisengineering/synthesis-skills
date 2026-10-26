@@ -27,5 +27,12 @@ def need_sandbox():
 
 
 @pytest.fixture(autouse=True)
+def apps_running(monkeypatch):
+    """The reader asks whether WhatsApp runs; tests answer yes unless they say otherwise."""
+    import local_messaging
+    monkeypatch.setattr(local_messaging, "_running", lambda app: True)
+
+
+@pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "synthesis-home"))

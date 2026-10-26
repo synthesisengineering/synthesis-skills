@@ -143,4 +143,4 @@ If the per-project config does not set `slack_workspace_domain`, the skill MUST 
 
 ### Older daily plans
 
-Files written before v3.1.0 keep the bare `(TS: 1234567890.123456)` form. They stay as they are: `thread_checker.py` reads both forms. The one-time retrofit script that linkified them was retired in v4.0.0 once no current plan used the old form; its text is in [preserved.md](preserved.md).
+Files written before v3.1.0 keep the bare `(TS: 1234567890.123456)` form. They stay as they are: `thread_checker.py` reads both forms. In a section of threads read (a heading such as "threads re-read"), it lists every message, at any indent, linked or bare, in the link's channel or the backticked id on its line; a table row (coverage, watermarks, controls) is never a parent (4.0.2). The one-time retrofit script that linkified them was retired in v4.0.0 once no current plan used the old form; its text is in [preserved.md](preserved.md).
