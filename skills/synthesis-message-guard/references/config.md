@@ -10,7 +10,7 @@ no `~/.synthesis`.
 
 | Key | Meaning |
 |---|---|
-| `send_tools` | Extra tool-name globs to guard, beside the built-in Slack, Gmail, email, chat and draft patterns (`mcp__*slack*send_message*`, `mcp__*send_gmail_message*`, `mcp__*create_draft*`, `mcp__*__reply`, ...). |
+| `send_tools` | Extra tool-name globs to guard, beside the built-in Slack, Gmail, email, chat and draft patterns (`mcp__*slack*send_message*`, `mcp__*send_gmail_message*`, `mcp__*create_draft*`, `mcp__*__reply`, ...). A calendar create, update or delete listed here that names no attendees and sets notifications to `none` emails no one and goes without a code; every RSVP waits, whatever its notifications (2026-10-23). |
 | `forbidden_phrases` | The register scan: `[{"name", "pattern", "why", "case_sensitive"}]`. Patterns are Python regexes, matched case-insensitively unless `case_sensitive` is true. |
 | `message_format.allow_line_breaks_in_paragraphs` | Default false. True only for content whose line structure matters (an address block, poetry). Changes formatting only. |
 | `message_format.default_email_format` | Default `html`. `plain` lets every transport send plain text (still with whole paragraphs). |

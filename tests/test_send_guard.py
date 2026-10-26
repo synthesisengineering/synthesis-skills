@@ -164,6 +164,9 @@ def test_the_example_config_is_valid():
     ({"summary": "Sync", "attendees": ["a@example.com"], "send_updates": "none"}, False),
     ({"action": "update", "event_id": "e1", "send_updates": "all"}, False),
     ({"action": "update", "event_id": "e1"}, False),
+    # 2026-10-23: an accepted RSVP with notifications off went out with no code; every RSVP waits (5.0.3).
+    ({"action": "rsvp", "event_id": "e1", "response": "accepted", "send_updates": "none"}, False),
+    ({"action": "RSVP", "event_id": "e1", "response": "declined", "send_updates": "none"}, False),
 ])
 def test_a_calendar_write_that_emails_no_one_needs_no_approval(tool_input, quiet):
     """Rajiv's ruling, 2026-10-06: calendar writes wait for approval because invitations email people in his

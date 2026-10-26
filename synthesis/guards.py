@@ -1413,9 +1413,12 @@ def shell_command(tool_input: dict) -> str:
 
 def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
     """A calendar write that names no attendees and turns notifications off emails no one, so it needs no
-    approval (Rajiv's ruling, 2026-10-06: the gate exists because invitations email people in his name)."""
+    approval (Rajiv's ruling, 2026-10-06: the gate exists because invitations email people in his name). An RSVP
+    always waits: the organizer sees the answer (2026-10-23, an accepted RSVP with notifications off went unasked)."""
     notify = str(tool_input.get("send_updates", tool_input.get("sendUpdates", ""))).strip().lower()
-    return bool(re.search(r"(?:create|update|manage)_event$", tool)) and notify == "none" and not tool_input.get("attendees")
+    rsvp = str(tool_input.get("action", "")).strip().lower() == "rsvp" or bool(tool_input.get("response"))
+    return (bool(re.search(r"(?:create|update|manage)_event$", tool)) and notify == "none"
+            and not tool_input.get("attendees") and not rsvp)
 
 
 def _sends(tool: str, tool_input: dict, config: dict) -> bool:
