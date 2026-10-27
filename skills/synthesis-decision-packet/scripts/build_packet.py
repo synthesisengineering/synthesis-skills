@@ -76,7 +76,9 @@ FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 # The reader's path: what an asset shows before anything is opened. DP-UX, 2026-10-08: three decisions
 # carried eleven assets each, six of them email HTML shown as code, 90,012 characters in all; the principal
 # found the packet overwhelming. Wire markup, repeated bytes and unchanged text belong behind a click.
-MARKUP = re.compile(r"<(?:p|div|span|br|a|b|i|em|strong|ul|ol|li|html|body|table|h[1-6])\b[^>]*>", re.I)
+# raw HTML: a closing tag, a tag with an attribute value, or a bare tag; a placeholder such as `<a key you know>` is prose
+TAGS = r"(?:p|div|span|br|a|b|i|em|strong|ul|ol|li|html|body|table|h[1-6])"
+MARKUP = re.compile(rf"</{TAGS}\s*>|<{TAGS}(?:\s+[^<>]*=[^<>]*)?\s*/?>", re.I)
 READING_CHARS_PER_DECISION = 6000
 
 

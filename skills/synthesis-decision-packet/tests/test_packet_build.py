@@ -435,6 +435,11 @@ def test_an_html_message_is_read_as_its_words_and_raw_markup_in_the_reading_path
     for field, value, kind in (("format", "html", "code"), ("format", "markdown", "correspondence"),
                                ("reference", False, "plain_text"), ("markup_review", True, "correspondence")):
         assert any(field in p for p in hard(bp.validate(packet({**text_asset("x", kind, "text"), field: value})))), field
+    # 2026-10-27: a model's answer holding a shell placeholder was refused as raw HTML, so a packet could not be built
+    prose = "Run `git show <repo>:<commit>` and grep for <a key you know is in config/> in <deploy-repo>."
+    assert not [p for p in bp.validate(packet(text_asset("answer", "plain_text", prose))) if "raw HTML" in p]
+    for html in ("<p>", "<br/>", "</li>", '<span class="x">', "<B>bold</B>"):
+        assert any("raw HTML" in p for p in bp.validate(packet(text_asset("answer", "plain_text", f"a {html} b")))), html
 
 
 def test_a_long_reading_path_is_a_reader_finding_and_showing_changes_clears_it():

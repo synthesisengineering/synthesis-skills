@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   never owes one; once it has gone that many days without a ritual record, the session line counts it as quiet too
   long and `ritual_state.py query summary` shows `QUIET <days> days`. A value that is not a whole number of days
   makes the ritual state unreadable, as any malformed config does. Declared mailboxes keep their own sweep cadence.
+- **A shell placeholder is not raw HTML** (decision packet 2.1.3). A model's answer holding
+  `<a key you know is in config/>` was refused under `--strict-reader` as raw HTML in the reading path, so a
+  calibration packet could not be built. Raw HTML now means a closing tag, a tag with an attribute value, or a
+  bare tag such as `<p>` or `<br/>`; words between angle brackets are prose.
 
 ## [5.1.13] - 2026-10-27
 
