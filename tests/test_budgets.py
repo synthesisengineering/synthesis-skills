@@ -123,10 +123,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # artifact: build_packet.py 4, a blind row refused with a recommendation 3 and an all-blind packet built
 # without one 1; publish_sheet.py 4, the packet engine imported 1, a packet rebuilt by it 1, and the
 # docstring's reason 2.
+# 5.1.15 adds 43 to both, for three board reports of 2026-10-27. sends.py 30: a window's planned sends (the limit and
+# its reason 2, read from the command 1, kept in the request 1, required 2, spent and settled, the last closing it, 13,
+# a window without them covering none 1, the count left in its description 2); shared-document edits held for the
+# code, after an agenda line went out with none (the reason 2, the tools 5, their channel 1). guards.py 12: a register
+# rule scoped to channels, after a line fit only for scheduling went out on Jira answers (the scope 2, the channels
+# passed in 3), a document's own line breaks 0 (in the same line); each window send settles the window 3; a window the
+# command would refuse is refused before the principal is asked for a code 4. cli.py 1: `--sends`.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6648
-PLUGIN_BUDGET = 23549
+CORE_BUDGET = 6691
+PLUGIN_BUDGET = 23592
 
 
 def _lines(files):

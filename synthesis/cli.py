@@ -136,9 +136,9 @@ def cmd_sends(args) -> int:
     when an agent runs it; run in their own terminal, it opens directly."""
     from synthesis import approvals, sends
     if args.action == "open":
-        window = sends.asked(args.hours, args.channels, args.project)
+        window = sends.asked(args.hours, args.channels, args.project, args.sends)
         try:
-            sends.check_window(window["hours"], window["channels"])
+            sends.check_window(window["hours"], window["channels"], window["sends"])
         except ValueError as exc:
             print(exc, file=sys.stderr)
             return 2
@@ -154,7 +154,7 @@ def cmd_sends(args) -> int:
             if not granted:
                 print(sends.window_refusal(window), file=sys.stderr)
                 return 2
-        print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"])))
+        print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"], window["sends"])))
     elif args.action == "close":
         print("send window closed" if sends.close_window() else "no send window was open")
     elif args.action == "status":
@@ -281,6 +281,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
                    "bitbucket,github,docs,notion,web, or all")
     s.add_argument("--project", default="", help="cover only sends from sessions on this project")
+    s.add_argument("--sends", type=int, default=0, help="the planned sends, at most 50: the last one closes the window")
     s.add_argument("--date", default="", help="the ledger's day, YYYY-MM-DD (default today)")
     s.set_defaults(fn=cmd_sends)
     s = sub.add_parser("use", help="set this session's active project")

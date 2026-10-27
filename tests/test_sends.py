@@ -73,7 +73,7 @@ def test_a_posted_body_file_is_scanned_and_one_the_guard_cannot_read_is_refused(
 
 def test_a_window_lets_signed_sends_in_its_channels_go_and_logs_each(tmp_path):
     jira = ("mcp__85ff__addCommentToJiraIssue", {"issueIdOrKey": "AB-1", "commentBody": SIGNED})
-    sends.open_window(2, ["jira", "bitbucket"])
+    sends.open_window(2, ["jira", "bitbucket"], count=5)
     assert guards.check(*jira, CONFIG) is None
     assert guards.check("Bash", {"command": f'bkt pr comment 5 -m "{SIGNED}"'}, CONFIG, cwd=str(tmp_path)) is None
     assert "approval" in guards.check(jira[0], {"issueIdOrKey": "AB-1", "commentBody": "Unsigned."}, CONFIG)
@@ -85,26 +85,45 @@ def test_a_window_lets_signed_sends_in_its_channels_go_and_logs_each(tmp_path):
 
 def test_a_window_is_capped_ends_by_itself_and_can_be_scoped_to_a_project():
     with pytest.raises(ValueError, match="at most 12 hours"):
-        sends.open_window(13, ["jira"])
+        sends.open_window(13, ["jira"], count=1)
     with pytest.raises(ValueError, match="name the channels"):
-        sends.open_window(2, [])
-    data = sends.open_window(1, ["all"], project="alpha")
+        sends.open_window(2, [], count=1)
+    for count in (0, 51):
+        with pytest.raises(ValueError, match="name the sends"):
+            sends.open_window(2, ["jira"], count=count)
+    data = sends.open_window(1, ["all"], project="alpha", count=3)
     assert sends.covered("jira", [SIGNED], "alpha", CONFIG) and not sends.covered("jira", [SIGNED], "beta", CONFIG)
     (sends._window_file()).write_text(json.dumps({**data, "until": time.time() - 1}), encoding="utf-8")
     assert sends.window() == {} and not sends.covered("jira", [SIGNED], "alpha", CONFIG)
 
 
+def test_a_window_closes_after_its_planned_sends_and_one_without_them_covers_none(tmp_path):
+    """2026-10-27: a window stayed open for hours after its planned sends, and later sends went out under it."""
+    jira = ("mcp__85ff__addCommentToJiraIssue", {"issueIdOrKey": "AB-1", "commentBody": SIGNED})
+    sends.open_window(2, ["jira"], count=2)
+    assert "2 of 2 sends left" in sends.describe(sends.window())
+    assert guards.check(*jira, CONFIG) is None and "1 of 2 sends left" in sends.describe(sends.window())
+    assert guards.check(*jira, CONFIG) is None and sends.window() == {}  # the last planned send closed it
+    assert "approval" in guards.check(*jira, CONFIG)
+    data = sends.open_window(2, ["jira"], count=1)
+    sends._window_file().write_text(json.dumps({k: v for k, v in data.items() if k != "sends"}), encoding="utf-8")
+    assert sends.window() and "approval" in guards.check(*jira, CONFIG)  # opened before planned sends existed
+    sends.close_window()
+    assert "can't open" in guards.check("Bash", {"command": "synthesis sends open --hours 2 --channels jira"},
+                                        CONFIG, cwd=str(tmp_path))
+
+
 def test_only_the_principal_opens_a_window(tmp_path, principal):
-    for command in ("synthesis sends open --hours 6 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --channels jira",
+    for command in ("synthesis sends open --hours 6 --sends 4 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --sends 4 --channels jira",
                     # A project session, 2026-10-13: a global option before `sends` opened a window with no code
-                    "synthesis --session S-principal sends open --hours 6 --channels jira",
-                    "synthesis sends open --hours=6 --channels=jira"):
+                    "synthesis --session S-principal sends open --hours 6 --sends 4 --channels jira",
+                    "synthesis sends open --hours=6 --sends=4 --channels=jira"):
         assert "type approve" in guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)), command
     for command in ("synthesis sends --help", "synthesis sends open --help", "synthesis --session S1 sends open -h"):
         assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)) is None, command
-    reason = guards.check("Bash", {"command": "synthesis sends open --hours 6 --channels jira"}, CONFIG, cwd=str(tmp_path))
+    reason = guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path))
     principal(reason)
-    assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
+    assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
     sneaky = "python3 -c 'from synthesis import sends; sends.open_window(12, [\"all\"])'"
     assert "send-window code" in guards.check("Bash", {"command": sneaky}, CONFIG, cwd=str(tmp_path))
     grant = "python3 -c 'from synthesis import approvals; approvals.grant_from_prompt(\"approve abc123\")'"
@@ -123,11 +142,11 @@ def _cli(*args):
 
 def test_the_command_refuses_to_open_a_window_from_an_agent_without_the_principals_code(principal):
     """The gate rests on the command, not on the guard matching its spelling (a project session, 2026-10-13)."""
-    ask = ("--session", "S-principal", "sends", "open", "--hours", "3", "--channels", "jira,bitbucket")
+    ask = ("--session", "S-principal", "sends", "open", "--hours", "3", "--sends", "4", "--channels", "jira,bitbucket")
     refused = _cli(*ask)
     assert refused.returncode == 2 and "type approve" in refused.stderr and sends.window() == {}
     principal(refused.stderr)
-    assert _cli("sends", "open", "--hours", "3", "--channels", "jira").returncode == 2  # another scope: no grant
+    assert _cli("sends", "open", "--hours", "3", "--sends", "4", "--channels", "jira").returncode == 2  # another scope: no grant
     opened = _cli(*ask)
     assert opened.returncode == 0 and "(bitbucket, jira)" in opened.stdout and sends.window()
     assert _cli(*ask).returncode == 2  # the grant was spent
@@ -136,7 +155,7 @@ def test_the_command_refuses_to_open_a_window_from_an_agent_without_the_principa
 
 def test_the_command_line_and_the_prompt_hook_show_an_open_window():
     assert _cli("sends", "open", "--hours", "13", "--channels", "jira").returncode == 2
-    sends.open_window(3, ["jira", "bitbucket"])
+    sends.open_window(3, ["jira", "bitbucket"], count=2)
     assert "(bitbucket, jira)" in _cli("sends", "status").stdout
     hook = subprocess.run([sys.executable, "-m", "synthesis.hook", "user-prompt-submit"], input=json.dumps(
         {"session_id": "S1", "prompt": "carry on"}), capture_output=True, text=True, cwd=ROOT).stdout
@@ -229,7 +248,7 @@ def test_an_escaped_emoji_in_json_is_the_emoji_and_a_body_rewritten_in_the_same_
     body = tmp_path / "comment.json"
     body.write_text(json.dumps({"content": {"raw": SIGNED}}, ensure_ascii=True), encoding="utf-8")
     assert "\\ud83e" in body.read_text(encoding="utf-8")
-    sends.open_window(1, ["bitbucket"])
+    sends.open_window(1, ["bitbucket"], count=2)
     post = f"bkt api /repositories/team/app/pullrequests/5/comments -X POST -d @{body}"
     assert guards.check("Bash", {"command": post}, CONFIG, cwd=str(tmp_path)) is None  # the window sees the signature
     rewrite = f"python3 make_body.py > {body} && {post}"
@@ -268,3 +287,30 @@ def test_messages_sends_are_their_own_channel_not_email():
     send window would have covered them."""
     for tool in ("imessage_send", "messages_send"):
         assert sends.channel(tool, {"to": "+15551234567", "text": "On my way."}) == "messages"
+
+
+# --- a shared document and a line that fits only some channels (reported 2026-10-27) ----------------------------
+
+@pytest.mark.parametrize("tool", ["mcp__ws__modify_doc_text", "mcp__ws__batch_update_doc", "mcp__ws__insert_doc_elements",
+                                  "mcp__ws__find_and_replace_doc", "mcp__ws__modify_sheet_values",
+                                  "mcp__ws__batch_update_presentation", "mcp__ws__update_drive_file"])
+def test_an_edit_to_a_document_others_read_waits_for_the_code(tool):
+    """An agent added a line to an agenda seven colleagues read, with no code: an edit there is published in the
+    principal's name. Its line breaks are the document's own, so the paragraph rule does not apply."""
+    call = {"document_id": "doc-1", "text": "Agenda\nItem one\nItem two"}
+    assert sends.says(tool, {}) and sends.channel(tool, call) == "docs"
+    assert "approval" in guards.check(tool, call, CONFIG)
+    assert not sends.says("mcp__ws__get_doc_content", {}) and not sends.says("mcp__ws__create_doc", {})
+
+
+def test_a_register_rule_can_hold_on_some_channels_only(tmp_path):
+    """The principal, 2026-10-27: the line saying he has not reviewed the details only makes sense for low-stakes
+    things like scheduling; it had gone out on three Jira answers."""
+    rule = {"name": "not-reviewed-on-work-items", "pattern": "hasn't reviewed the details yet",
+            "channels": ["jira", "bitbucket"], "why": "that line is for low-stakes logistics such as scheduling"}
+    config = {**CONFIG, "forbidden_phrases": [rule]}
+    refused = guards.check("mcp__85ff__addCommentToJiraIssue", {"issueIdOrKey": "AB-1", "commentBody": SIGNED}, config)
+    assert "low-stakes logistics" in refused
+    assert "low-stakes" in guards.check("Bash", {"command": f'bkt pr comment 5 -m "{SIGNED}"'}, config, cwd=str(tmp_path))
+    slack = guards.check("mcp__13d2__slack_send_message", {"channel_id": "C1", "message": SIGNED}, config)
+    assert "low-stakes" not in slack and "approval" in slack

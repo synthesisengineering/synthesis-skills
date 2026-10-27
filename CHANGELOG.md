@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.15] - 2026-10-27
+
+Three reports from other sessions, each with tests that fail on 5.1.14 (message guard 2.5.0):
+- **A send window holds its planned sends and closes after the last.** One stayed open for hours after its
+  planned sends, and later replies went out under it unreviewed. `synthesis sends open` now takes `--sends`
+  (1 to 50) beside `--hours`; the window shows how many are left, the last one closes it, and a window opened
+  without a count covers nothing. The guard refuses to ask the principal for a code to open a window the
+  command would refuse.
+- **An edit to a document others read waits for the code.** An agent added a line to an agenda seven colleagues
+  read with no code, though the principal had approved the line in chat. Edits to Google Docs, Sheets and
+  Slides, and to a Drive file's contents, are now sends (channel `docs`); a document's own line breaks are not
+  held to the paragraph rule, and creating a document is not an edit.
+- **A register rule can hold on some channels only.** A line saying the principal had not reviewed the details,
+  which fits scheduling, went out on three Jira answers. A `forbidden_phrases` rule may now name `channels`, for
+  connector and shell sends alike.
+
 ## [5.1.14] - 2026-10-27
 
 - **A workspace worked occasionally owes no weekly review** (daily rituals 3.2.1). The ritual config can mark such a
