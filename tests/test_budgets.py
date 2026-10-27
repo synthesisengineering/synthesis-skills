@@ -108,10 +108,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # thread_checker.py 24, listing every message in a section of threads read, at any indent, linked or bare, and never
 # a table row; sync_watermark.py 33, a local message store's watermark needing its reader's coverage and stopping at
 # its through; local_messaging.py 20, a quit WhatsApp counting as stale at once.
+# 5.1.13 adds 3 to the plugin (local_messaging.py), after a session found on 2026-10-27 that a followed WhatsApp
+# Channel's posts held every window as gaps: a community read as a group 1; a row's chat known before attribution, so
+# exclusion runs first 0 (the old exclusion moved up); the Channel rule and its reason 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 6631
-PLUGIN_BUDGET = 23517
+PLUGIN_BUDGET = 23520
 
 
 def _lines(files):

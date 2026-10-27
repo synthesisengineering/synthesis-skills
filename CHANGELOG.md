@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.13] - 2026-10-27
+
+- **WhatsApp Channel posts and community rows no longer hold the window** (local messaging 1.5.1). Every post of a
+  followed Channel (session type 5, an `@newsletter` identifier) was a gap, `chat membership unknown`, so any day with
+  a post kept WhatsApp's watermark from moving without a by-hand review; community rows (type 4, a group identifier)
+  were gaps the same way. Channel posts are now skipped as `channel`, and a community is read as a group. Both types
+  were qualified against the store that reported it: types 0, 1, 4 and 5 held every message with a chat session for
+  90 days. Other session types stay gaps.
+- **Excluding a chat works whatever its membership.** Exclusion ran after attribution, so an excluded Channel still
+  held the window. A row that names exactly one chat is now skipped as `excluded-chat` before its membership is
+  checked.
+
 ## [5.1.12] - 2026-10-26
 
 Three gaps other sessions reported, each with a test that fails on 5.1.11:
