@@ -1378,8 +1378,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     sending = [s or f"{kind} {v}".strip() for kind, v, s in actions if SAYS_SENT.search(s) or reached and (
         kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
         or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
-    problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config) if typed and (
-        reached or sending) else []
+    problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config,
+                                {c for c, _ in reached.values()}) if typed and (reached or sending) else []
     if problems:
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
