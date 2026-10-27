@@ -11,6 +11,7 @@ that fails closed loops forever.
 
 from __future__ import annotations
 
+import json
 import mmap
 import re
 
@@ -63,6 +64,41 @@ def unsourced_quotes(reply: str, transcript_path: str | None) -> list[str]:
         return [quote[:80] for quote, probe in probes if len(probe) >= 12 and record.find(probe) == -1]
 
 
+CALENDAR_WRITE = re.compile(r"(?:create|update|manage|delete|move|respond_to)_event$")
+CALENDAR_READ = re.compile(r"(?:get|list|search|list_all)_events?$|query_freebusy$")
+
+
+def unread_calendar_writes(transcript_path: str | None, tail: int = 2_000_000) -> list[str]:
+    """Calendar writes this turn that no calendar read followed (2026-10-27: moving a series revived a meeting
+    canceled at its old hour, and nobody looked). Reads the tail of a Claude Code transcript; other shapes find none."""
+    if not transcript_path:
+        return []
+    with open(transcript_path, "rb") as handle:
+        handle.seek(max(0, handle.seek(0, 2) - tail))
+        chunk = handle.read()
+    if b"_event" not in chunk:
+        return []
+    calls, failed = [], set()
+    for line in chunk.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("message"), dict):
+            continue
+        content = entry["message"].get("content")
+        parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
+        if entry.get("type") == "user" and (isinstance(content, str) or any(p.get("type") == "text" for p in parts)):
+            calls, failed = [], set()  # the principal's prompt starts a new turn
+        calls += [(p.get("id"), str(p.get("name", ""))) for p in parts if p.get("type") == "tool_use"]
+        failed |= {p.get("tool_use_id") for p in parts if p.get("type") == "tool_result" and p.get("is_error")}
+    pending = []
+    for ident, name in calls:
+        pending = [] if CALENDAR_READ.search(name) else pending + (
+            [name.rsplit("__", 1)[-1]] if CALENDAR_WRITE.search(name) and ident not in failed else [])
+    return pending
+
+
 def check(payload: dict, config: dict) -> str | None:
     reply = str(payload.get("last_assistant_message") or "")
     if payload.get("stop_hook_active") or not reply:
@@ -76,6 +112,10 @@ def check(payload: dict, config: dict) -> str | None:
     if files:
         problems.append("files named without a clickable link: " + ", ".join(files[:6])
                         + ". Write each as [name](/absolute/path/to/file); a bare name or relative path does not open.")
+    writes = unread_calendar_writes(payload.get("transcript_path"))
+    if writes:
+        problems.append(f"the calendar changed this turn ({', '.join(sorted(set(writes)))}) and nothing read it back. "
+                        "Read the principal's calendar for today and every date the change touched before reporting.")
     missing = unsourced_quotes(reply, payload.get("transcript_path"))
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)

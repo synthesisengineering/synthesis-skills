@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.16] - 2026-10-27
+
+- **A recurring-series change is previewed occurrence by occurrence, and every calendar write is read back**
+  (chief of staff 2.1.0, message guard 2.5.1, agent guardrails 2.2.1). An agent moved a biweekly series to a new
+  hour; the occurrence it had canceled that day was keyed to the old hour, so it came back, double-booked on an
+  accepted meeting, and only the principal noticed. Binding rule 10: preview today through the next three
+  occurrences, exceptions included, against accepted meetings; prefer this-and-following over moving the series;
+  read back every affected day. The send guard's approval text for a delete or a time or recurrence change asks
+  for that preview, and the turn-end check sends the reply back once when a calendar write this turn was not
+  followed by a calendar read.
+
 ## [5.1.15] - 2026-10-27
 
 Three reports from other sessions, each with tests that fail on 5.1.14 (message guard 2.5.0):

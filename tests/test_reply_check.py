@@ -94,3 +94,41 @@ def test_absolute_links_code_urls_and_framework_names_are_not_flagged():
 
 def test_a_filename_ending_a_sentence_is_still_caught():
     assert reply_check.unlinked_files("The fix lives in dupes.json.") == ["dupes.json"]
+
+
+def _turn(path, *entries):
+    with open(path, "a", encoding="utf-8") as handle:
+        for entry in entries:
+            handle.write(json.dumps(entry) + "\n")
+
+
+def _prompt(text):
+    return {"type": "user", "message": {"role": "user", "content": text}}
+
+
+def _call(ident, name, **extra):
+    return {"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "tool_use", "id": ident, "name": name, "input": extra}]}}
+
+
+def _result(ident, error=False):
+    return {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": ident, "is_error": error, "content": "done"}]}}
+
+
+def test_a_calendar_write_with_no_read_after_it_sends_the_reply_back(tmp_path):
+    """2026-10-27: a series moved to a new hour revived a meeting canceled at the old hour, double-booked on an
+    accepted one, and nobody read the day back; the principal found it himself."""
+    record = tmp_path / "t.jsonl"
+    write = "mcp__ws__manage_event"
+    _turn(record, _prompt("Move the series to 2pm."), _call("w1", write, action="update"), _result("w1"))
+    payload = {"last_assistant_message": "Moved.", "transcript_path": str(record)}
+    assert "manage_event" in reply_check.check(payload, {}) and "read" in reply_check.check(payload, {})
+    _turn(record, _call("r1", "mcp__ws__get_events"), _result("r1"))
+    assert reply_check.check(payload, {}) is None  # read back after the write
+    _turn(record, _prompt("Cancel today's."), _call("w2", "mcp__ws__delete_event"), _result("w2", error=True))
+    assert reply_check.check(payload, {}) is None  # refused by the guard: nothing changed
+    _turn(record, _call("w3", "mcp__ws__delete_event"), _result("w3"))
+    assert "delete_event" in reply_check.check(payload, {})
+    _turn(record, _prompt("Thanks."))
+    assert reply_check.check(payload, {}) is None  # a new turn starts clean
