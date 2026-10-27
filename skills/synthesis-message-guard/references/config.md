@@ -22,6 +22,7 @@ no `~/.synthesis`.
 | `not_send_tools` | Tool globs never treated as sends, for a tool whose name reads like one but reaches no person. |
 | `send_commands` | Extra `[channel, regex]` pairs for shell programs that post, matched from the start of a command's words (built in: `gh`, `bkt`, `glab`, `jira`/`acli`, `osascript` Messages or Mail, and `curl`, `wget`, HTTPie writes to another host). |
 | `send_window_signatures` | Regexes; inside an open send window, a send goes without a per-message code only if one matches its text. List the signatures of the lanes the principal lets a window cover. Empty means a window covers nothing. |
+| `forbidden_phrases[].channels` | Optional on a register rule: the channels (`jira`, `bitbucket`, `slack`, `docs`...) where it holds; elsewhere the rule is skipped. For a line that fits some channels only: on 2026-10-27 a line saying the principal had not reviewed the details, which fits scheduling, went out on Jira answers. |
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
@@ -90,10 +91,20 @@ guard decides. Until 2026-10-14 the matcher listed send-shaped names, so a conne
 does (`createJiraIssue`) never reached the guard. File-edit tools may not write into the synthesis state, a
 harness's transcripts or the approved commit lines, where approvals and send windows live.
 
+**Documents others read (2026-10-27).** An edit to a Google Doc, Sheet or Slides deck, or to a Drive file's
+contents, is published in the principal's name, so it waits for their code like a send (channel `docs`): an
+agent had added a line to an agenda seven colleagues read with no code, though the principal had approved it
+in chat. The tools are listed in `sends.DOCUMENT_EDITS`; creating a new document is not an edit others read.
+The paragraph rule does not apply to a document's own line breaks, and a window never covers an edit, since
+an edit carries no signature.
+
 Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized; the
 binding rule covers it. Computer use and browser actions are covered below.
 
-**Windows.** Only the principal opens one. The command itself checks: run by an agent (a harness's
+**Windows.** Only the principal opens one, for a planned number of sends (`--sends`, 1 to 50) within at most 12
+hours: the last planned send closes it (2026-10-27: a window stayed open for hours after its planned sends, and
+later sends went out under it). A window without a planned count covers nothing, and the guard refuses to ask
+for a code to open a window the command would refuse. The command itself checks: run by an agent (a harness's
 environment, or no terminal), `synthesis sends open` opens only on the principal's granted code for exactly
 that window, read from the session's own transcript, and otherwise refuses with a code to show them; the guard
 also asks for the code before the command runs, wherever its options sit, and `--help` never needs one. Run in

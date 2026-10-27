@@ -262,7 +262,7 @@ def test_the_config_can_name_more_messaging_apps_and_a_malformed_list_fails_clos
 
 
 def test_a_signed_send_in_an_open_window_goes_when_typed_in_the_same_call():
-    sends.open_window(1, ["slack"])
+    sends.open_window(1, ["slack"], count=2)
     config = {**CONFIG, "send_window_signatures": [r"helperbot\.example"]}
     call = {"app": "com.tinyspeck.slackmacgap", "actions": [
         {"action": "type", "text": "Deploy is done. 🤖 Helperbot (helperbot.example)", "action_summary": "Types the update"},

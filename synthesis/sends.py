@@ -16,6 +16,8 @@ import urllib.parse
 from synthesis import paths
 
 MAX_HOURS = 12  # Rajiv's ruling, 2026-10-13
+# A window holds its planned sends and closes after the last (2026-10-27: one ran on for hours past them).
+MAX_SENDS = 50
 READS = {"get", "list", "read", "search", "fetch", "query", "find", "lookup", "inspect", "describe", "view", "show",
          "download", "export", "check", "count", "preview", "resolve", "debug"}
 SAYS = {"send", "reply", "forward", "comment", "post", "publish", "share", "invite", "respond", "mention", "schedule",
@@ -26,10 +28,18 @@ SAID = {"comment", "message", "issue", "page", "post", "reply", "review", "draft
 PREPOSITIONS = {"to", "on", "in", "for", "from", "with", "by", "of", "into", "as", "at"}
 NOT_PEOPLE = ["mcp__ccd_*", "mcp__*__*session*"]  # agents talking to agents
 ALSO_SENDS = ["mcp__*execute_zapier_write_action*", "mcp__*manage_out_of_office*"]
+# An edit to a document, sheet or deck others read is published in the principal's name: on 2026-10-27 an agent
+# added a line to an agenda seven colleagues read, with no code (the principal had approved it in chat).
+DOCUMENT_EDITS = ["mcp__*__modify_doc_text", "mcp__*__batch_update_doc", "mcp__*__insert_doc_elements",
+                  "mcp__*__insert_doc_image", "mcp__*__find_and_replace_doc", "mcp__*__update_doc_headers_footers",
+                  "mcp__*__update_paragraph_style", "mcp__*__create_table_with_data", "mcp__*__manage_doc_tab",
+                  "mcp__*__modify_sheet_values", "mcp__*__append_table_rows", "mcp__*__format_sheet_range",
+                  "mcp__*__manage_sheet_tab", "mcp__*__batch_update_presentation", "mcp__*__update_drive_file"]
 CHANNELS = [("imessage", "messages"), ("messages_send", "messages"), ("slack", "slack"), ("jira", "jira"), ("confluence", "confluence"), ("github", "github"),
             ("bitbucket", "bitbucket"), ("notion", "notion"), ("gmail", "email"), ("mail", "email"),
             ("event", "calendar"), ("calendar", "calendar"), ("document_comment", "docs"),
-            ("spreadsheet_comment", "docs"), ("presentation_comment", "docs"), ("drive", "docs")]
+            ("spreadsheet_comment", "docs"), ("presentation_comment", "docs"), ("drive", "docs"), ("_doc", "docs"),
+            ("paragraph", "docs"), ("table", "docs"), ("sheet", "docs"), ("presentation", "docs")]
 # (channel, pattern over the command's words) for programs that post; `curl` and its kin are judged by method and host
 # Global options may sit between a program and its subcommand: `bkt -c work pr edit` posted unseen (2026-10-14).
 OPTS = r"(?:\s+-\S+(?:\s+(?!-)\S+)?)*"
@@ -54,7 +64,7 @@ def says(tool: str, config: dict) -> bool:
     writing verb whose object is something people read (create an issue, update a page)."""
     if any(fnmatch.fnmatchcase(tool, p) for p in NOT_PEOPLE + list(config.get("not_send_tools", []))):
         return False
-    if any(fnmatch.fnmatchcase(tool, p) for p in ALSO_SENDS):
+    if any(fnmatch.fnmatchcase(tool, p) for p in ALSO_SENDS + DOCUMENT_EDITS):
         return True
     words = _words(tool.rsplit("__", 1)[-1])
     verbs = [i for i, w in enumerate(words) if w in READS | SAYS | WRITES]
@@ -145,29 +155,31 @@ def window_asked(words: list) -> dict | None:
                 given = {}
                 for j, token in enumerate(rest):
                     key, eq, value = token.partition("=")
-                    if key in ("--hours", "--channels", "--project"):
+                    if key in ("--hours", "--channels", "--project", "--sends"):
                         given[key[2:]] = value if eq else (rest[j + 1] if j + 1 < len(rest) else "")
-                return asked(given.get("hours", 0), given.get("channels", ""), given.get("project", ""))
+                return asked(given.get("hours", 0), given.get("channels", ""), given.get("project", ""),
+                             given.get("sends", 0))
     return None
 
 
 def window_refusal(window: dict) -> str:
     from synthesis import approvals
-    scope = f"{window['hours']:g} h, {', '.join(window['channels']) or 'no channels'}" + (
+    scope = f"{window['sends']} sends in {window['hours']:g} h, {', '.join(window['channels']) or 'no channels'}" + (
         f", project {window['project']}" if window["project"] else "")
     code = approvals.request("send-window", window, f"open a send window: {scope}")
     return (f"Opening a send window ({scope}) lets signed Ragbot sends go without a per-message code until it ends. "
             f"Show the principal that scope and ask them to type {approvals.how(code)}. Then run the identical command again.")
 
 
-def asked(hours, channels: str, project: str) -> dict:
+def asked(hours, channels: str, project: str, count=0) -> dict:
     """A window request in one form, so the guard and the command bind the same approval."""
     try:
         hours = float(hours)
     except ValueError:
         hours = 0.0
+    count = int(count) if str(count).isdigit() else 0
     return {"hours": hours, "channels": sorted({c.strip() for c in str(channels).split(",") if c.strip()}),
-            "project": str(project)}
+            "project": str(project), "sends": count}
 
 
 CAT = re.compile(r"\s*cat\s+(['\"]?)([^'\"\s]+)\1\s*")
@@ -263,17 +275,19 @@ def window() -> dict:
     return data if data and float(data.get("until", 0)) > time.time() else {}
 
 
-def check_window(hours: float, channels: list) -> None:
+def check_window(hours: float, channels: list, count: int) -> None:
     if not 0 < hours <= MAX_HOURS:
         raise ValueError(f"a send window lasts more than 0 and at most {MAX_HOURS} hours")
+    if not 0 < count <= MAX_SENDS:
+        raise ValueError(f"name the sends it is for (--sends, 1 to {MAX_SENDS}): it closes after the last")
     if not channels:
         raise ValueError("name the channels it covers (for example slack,jira,bitbucket), or all")
 
 
-def open_window(hours: float, channels: list, project: str = "") -> dict:
-    check_window(hours, channels)
+def open_window(hours: float, channels: list, project: str = "", count: int = 0) -> dict:
+    check_window(hours, channels, count)
     data = {"opened": time.time(), "until": time.time() + hours * 3600, "channels": sorted(set(channels)),
-            "project": project}
+            "project": project, "sends": count}
     paths.write_json(_window_file(), data)
     return data
 
@@ -286,9 +300,23 @@ def close_window() -> bool:
         return False
 
 
-def covered(chan: str, texts: list, project: str, config: dict) -> str:
-    """Why the open window covers this send, or "" when it does not."""
+def spent(w: dict) -> int:
+    """Sends the window has let through since it opened (it may span midnight)."""
+    days = {time.strftime("%Y-%m-%d", time.localtime(w["opened"])), time.strftime("%Y-%m-%d")}
+    return sum(1 for d in days for e in ledger(d) if e.get("how") == "window" and e.get("at", 0) >= w["opened"])
+
+
+def settle() -> None:
+    """After a send the window let through: its last planned send closes it."""
     w = window()
+    if w and spent(w) >= w.get("sends", 0):
+        close_window()
+
+
+def covered(chan: str, texts: list, project: str, config: dict) -> str:
+    """Why the open window covers this send, or "" when it does not (a window with no planned sends covers none)."""
+    w = window()
+    w = w if w and spent(w) < w.get("sends", 0) else {}
     marks = [m for m in config.get("send_window_signatures", []) if any(re.search(m, t) for t in texts)]
     if w and ("all" in w["channels"] or chan in w["channels"]) and (not w.get("project") or w["project"] == project) and marks:
         return f"the send window open until {time.strftime('%H:%M', time.localtime(w['until']))}"
@@ -297,8 +325,10 @@ def covered(chan: str, texts: list, project: str, config: dict) -> str:
 
 def describe(w: dict) -> str:
     scope = ", ".join(w["channels"]) + (f"; project {w['project']}" if w.get("project") else "")
-    return (f"Send window open until {time.strftime('%H:%M', time.localtime(w['until']))} ({scope}): signed Ragbot sends "
-            "go without a per-message code and are logged. `synthesis sends close` ends it.")
+    left = max(w.get("sends", 0) - spent(w), 0)
+    return (f"Send window open until {time.strftime('%H:%M', time.localtime(w['until']))} ({scope}), {left} of "
+            f"{w.get('sends', 0)} sends left: signed Ragbot sends go without a per-message code and are logged; the "
+            "last planned send closes it, and `synthesis sends close` ends it sooner.")
 
 
 # --- the ledger ---------------------------------------------------------------------------------

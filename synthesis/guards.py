@@ -138,10 +138,13 @@ def _is_email(tool: str, tool_input: dict) -> bool:
         k in tool_input for k in ("to", "cc", "bcc", "subject", "htmlBody", "body_format")))
 
 
-def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
-    """Why this outgoing message can't go as written, before anyone is asked to approve it."""
-    fmt = config.get("message_format") or {}
-    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs"))
+def message_problems(tool: str, tool_input: dict, config: dict, chans: set | None = None) -> list[str]:
+    """Why this outgoing message can't go as written, before anyone is asked to approve it. A register rule naming
+    channels holds only there (2026-10-27: a line that fits scheduling went out on Jira answers)."""
+    from synthesis import sends
+    fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
+    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or any(  # a document's lines are its own
+        fnmatch.fnmatchcase(tool, p) for p in sends.DOCUMENT_EDITS)
     strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
@@ -154,6 +157,8 @@ def message_problems(tool: str, tool_input: dict, config: dict) -> list[str]:
         # Case-insensitive unless the rule says otherwise: a rule against a miscased brand
         # must not block the correctly cased one (2026-08-03).
         flags = 0 if rule.get("case_sensitive") else re.IGNORECASE
+        if rule.get("channels") and not chans & set(rule["channels"]):
+            continue
         if any(re.search(rule["pattern"], t, flags) for t in texts):
             return [f"message breaks the rule '{rule.get('name', rule['pattern'])}': {rule.get('why', 'see your voice rules')}"]
     for key in THREAD_HEADERS:
@@ -211,6 +216,7 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     if sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         sends.log(chan, tool, summary, "window", session)
+        sends.settle()
         return None
     if approvals.consume("send", subject, session):
         sends.log(chan, tool, summary, "approval", session)
@@ -1386,6 +1392,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
     summary = f"{tool} in {where}: {what}" + (f"; words: {' / '.join(typed)}" if typed else "")
     if sends.covered(chan, typed, _project(session), config):
         sends.log(chan, tool, summary, "window", session)
+        sends.settle()
         return None
     if approvals.consume("send", subject, session):
         sends.log(chan, tool, summary, "approval", session)
@@ -1462,11 +1469,15 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
     if window:  # the command spends the grant itself (`synthesis sends open` refuses without one)
+        try:  # never ask the principal to approve a window the command would refuse
+            sends.check_window(window["hours"], window["channels"], window["sends"])
+        except ValueError as exc:
+            return f"This send window can't open: {exc}."
         return None if approvals.held("send-window", window) else sends.window_refusal(window)
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
-    problems = message_problems("Bash", {"message_text": text}, config)
+    problems = message_problems("Bash", {"message_text": text}, config, set(chans))
     if problems:
         return "This command posts a message that can't go out as written: " + "; ".join(problems[:6]) + "."
     dirs = sorted({w for _, _, w in posts})  # where it runs, after its own cd: a re-run elsewhere is the same send
@@ -1474,6 +1485,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     if all(sends.covered(c, [text], _project(session), config) for c in chans):
         for c in chans:
             sends.log(c, "shell", summary, "window", session)
+        sends.settle()
         return None
     subject = {"command": command, "runs_in": dirs, "message": hashlib.sha256(text.encode("utf-8")).hexdigest()}
     if approvals.consume("send", subject, session):
