@@ -410,6 +410,53 @@ def test_whatsapp_reads_its_own_explicit_schema(tmp_path, need_sandbox):
     assert len(run(path, tmp_path, adapter="whatsapp-v1")["notes"]) == 1
 
 
+# --- WhatsApp Channels and communities (reported 2026-10-27) ----------------------------------
+
+
+def test_channel_posts_are_skipped_and_community_rows_read_as_group_rows(tmp_path, need_sandbox):
+    """Every post of a followed Channel (session type 5, an @newsletter identifier) held the window as a gap, and so
+    did community rows (type 4, a group identifier); in the principal's store, types 0, 1, 4 and 5 held every
+    message with a chat session for 90 days to 2026-10-27."""
+    path, db = whatsapp(tmp_path / "source")
+    db.executescript("""insert into ZWACHATSESSION values(2, '100000000000000001@newsletter', 5);
+      insert into ZWACHATSESSION values(3, '100000000000000002@g.us', 4);""")
+    for text, kind in (("Today's update", 0), (None, 2)):
+        add_whatsapp(db, text, 86400, session=2, sender="100000000000000001@newsletter", kind=kind)
+    add_whatsapp(db, "A group joined the community", 86400, session=3, sender="100000000000000002@g.us", kind=6)
+    asked = add_whatsapp(db, "Sample User, can you host the next meeting?", 86400, session=3, sender="synthetic@lid")
+    db.close()
+    page = lm.scan(request(path, adapter="whatsapp-v1", page_size=10), tmp_path / "state")
+    coverage = page["coverage"]
+    assert coverage["gaps"] == [] and coverage["complete"]
+    assert coverage["skipped"] == {"channel": 2, "group-not-addressed": 1}
+    assert [note["pointer"]["row"] for note in page["notes"]] == [asked]
+
+
+def test_an_unqualified_session_holds_the_window_unless_its_chat_is_excluded(tmp_path, need_sandbox):
+    """A status session (type 3) and a type-5 session off the Channel server are not qualified, so their rows are
+    gaps. Exclusion needs only the chat, so it now runs first (2026-10-27: an excluded Channel still held the window)."""
+    path, db = whatsapp(tmp_path / "source")
+    db.executescript("""insert into ZWACHATSESSION values(2, '100000000000000003@lid.status', 3);
+      insert into ZWACHATSESSION values(3, '100000000000000004@s.whatsapp.net', 5);""")
+    rows = [add_whatsapp(db, "Can you call me?", 86400, session=session, sender="synthetic@lid") for session in (2, 3)]
+    db.close()
+    coverage = lm.scan(request(path, adapter="whatsapp-v1", page_size=10), tmp_path / "state")["coverage"]
+    assert coverage["gaps"] == [{"row": row, "reason": "ambiguous chat attribution: chat membership unknown"} for row in rows]
+    excluded = request(path, adapter="whatsapp-v1", page_size=10,
+                       excluded_chats=["100000000000000003@lid.status", "100000000000000004@s.whatsapp.net"])
+    coverage = lm.scan(excluded, tmp_path / "excluded")["coverage"]
+    assert coverage["gaps"] == [] and coverage["skipped"] == {"excluded-chat": 2} and coverage["complete"]
+
+
+def test_exclusion_reaches_a_chat_that_lists_no_members(tmp_path, need_sandbox):
+    path, db = imessage(tmp_path / "source")
+    db.execute("insert into chat values('synthetic-chat-2')")  # chat 2, which lists no members
+    add(db, "Can you call me back?", chat=2)
+    db.close()
+    coverage = lm.scan(request(path, excluded_chats=["synthetic-chat-2"]), tmp_path / "state")["coverage"]
+    assert coverage["gaps"] == [] and coverage["skipped"] == {"excluded-chat": 1} and coverage["complete"]
+
+
 # --- a store whose app stopped syncing is stale, not complete (reported 2026-10-19) ----------------
 
 

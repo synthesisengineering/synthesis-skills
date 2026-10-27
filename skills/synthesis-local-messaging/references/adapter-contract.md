@@ -45,8 +45,12 @@ claims:
   chat identify a pointer; an app URL is not invented.
 - `whatsapp-v1`: `ZWAMESSAGE` and `ZWACHATSESSION`, with the exact required
   columns in `SCHEMAS`; dates are seconds since the same epoch. Session type
-  zero means direct and one means group in this named contract. Other shapes
-  and enum values are unavailable until independently qualified.
+  zero means direct and one means group in this named contract; four with a
+  group identifier (`@g.us`) is a community, read as a group. A chat whose
+  identifier is on the Channel server (`@newsletter`, session type five) is a
+  WhatsApp Channel the principal follows: its posts go to followers and are
+  never a conversation, so they are skipped as `channel`. Other shapes and enum
+  values are unavailable until independently qualified.
 
 An iMessage row names its chat through one `chat_message_join` row. When the
 principal deletes a message, Messages moves that link to
@@ -66,7 +70,19 @@ was a guess. Every other row without a single chat stays a gap whose reason says
 why: `N chat links`, `no chat link and no (or N) Recently Deleted records`,
 `no chat link` (a store without that table, or a WhatsApp row without a chat
 session), `its chat has no identifier`, or `chat membership unknown` (a chat
-listing no members, or a WhatsApp session type other than 0 or 1).
+listing no members, or a WhatsApp session of a type or shape not qualified
+above).
+
+Types four and five were qualified on 2026-10-27, when a followed Channel's
+posts held the window as gaps, and excluding that Channel did not help, because
+exclusion ran after attribution. In the principal's store, types 0, 1, 4 and 5
+held every message with a chat session for the 90 days to that date: all six
+type-four sessions had group identifiers and group information (ten of their
+rows would have held windows the same way), and the one type-five session was
+the Channel. Types two and three (broadcast and status identifiers) held no
+message in that time, so they stay unqualified. An excluded chat is now skipped
+as `excluded-chat` whenever the row names exactly one chat, before its
+membership is checked.
 
 Plain text is bounded at 256 KiB. A restricted binary NSKeyedArchiver plist
 can supply `NSString` or `NS.string` through bounded UID references. The reader

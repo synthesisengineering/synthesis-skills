@@ -70,11 +70,14 @@ def whatsapp(root: Path):
     return path, db
 
 
-def add_whatsapp(db, text, at):
-    """One incoming message `at` seconds after 2001-01-01T00:00:00Z, the stores' epoch."""
+def add_whatsapp(db, text, at, session=1, sender="synthetic@s.whatsapp.net", kind=0):
+    """One incoming message `at` seconds after 2001-01-01T00:00:00Z, the stores' epoch, in chat session `session`;
+    `kind` is its ZMESSAGETYPE (0 text, 2 a voice note, 6 a group event). Returns its row."""
     count = db.execute("select count(*) from ZWAMESSAGE").fetchone()[0]
-    db.execute("insert into ZWAMESSAGE values(null, ?, ?, ?, 0, 'synthetic@s.whatsapp.net', 1, 0)", (f"msg-{count}", text, at))
+    row = db.execute("insert into ZWAMESSAGE values(null, ?, ?, ?, 0, ?, ?, ?)",
+                     (f"msg-{count}", text, at, sender, session, kind)).lastrowid
     db.commit()
+    return row
 
 
 def request(path, **kw):

@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.5.0"
+  version: "1.5.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -74,8 +74,8 @@ installation uses that schema.
    a broken promise, a missing calendar event, or a completed task. Notes should
    explain why the item matters and cite its pointer without copying the thread.
 
-The reader skips configured chats, short-code senders, reactions, status and
-broadcast material, likely verification codes, delivery notices, and marketing.
+The reader skips configured chats, short-code senders, reactions, status,
+broadcast and Channel material, likely verification codes, delivery notices, and marketing.
 These are conservative triage rules. A group message needs an exact configured
 self name (generic “you” is insufficient), unless the chat is in `watched_chats`,
 which keeps every message but codes. Media is only a

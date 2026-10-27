@@ -209,7 +209,8 @@ QUERIES = {
         where m.ROWID>? and m.ROWID<=? and m.date>=? and m.date<? order by m.ROWID limit ?""",
     "whatsapp-v1": """select m.Z_PK,m.ZSTANZAID,m.ZMESSAGEDATE,m.ZISFROMME,m.ZFROMJID,0,m.ZMESSAGETYPE,
         (select count(*) from ZWACHATSESSION c where c.Z_PK=m.ZCHATSESSION),c.ZCONTACTJID,
-        case when c.ZSESSIONTYPE=1 then 2 when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0
+        case when c.ZSESSIONTYPE=1 or (c.ZSESSIONTYPE=4 and c.ZCONTACTJID like '%@g.us') then 2
+        when c.ZSESSIONTYPE=0 then 1 else -1 end,length(cast(m.ZTEXT as blob)),0
         from ZWAMESSAGE m left join ZWACHATSESSION c on c.Z_PK=m.ZCHATSESSION
         where m.Z_PK>? and m.Z_PK<=? and m.ZMESSAGEDATE>=? and m.ZMESSAGEDATE<? order by m.Z_PK limit ?""",
     "deleted": """select c.chat_identifier,(select count(*) from chat_handle_join cj where cj.chat_id=r.chat_id)
@@ -342,12 +343,14 @@ def read_page(page) -> dict:
                 deleted = db.execute(QUERIES["deleted"], (rowid,)).fetchall()
                 if len(deleted) == 1:
                     (chat, members), joins = deleted[0], 1
-            unclear = _unattributed(joins, chat, members, deleted)
-            if unclear:
+            unclear, known = _unattributed(joins, chat, members, deleted), joins == 1 and isinstance(chat, str)
+            if known and chat in page["excluded_chats"]:
+                reason = "excluded-chat"  # never decoded, and needs only the chat, not its members (2026-10-27)
+            elif known and not imessage and chat.endswith("@newsletter"):
+                reason = "channel"  # a WhatsApp Channel the principal follows: posts to followers, never a conversation
+            elif unclear:
                 gaps.append({"row": rowid, "reason": "ambiguous chat attribution: " + unclear})
                 continue
-            if chat in page["excluded_chats"]:
-                reason = "excluded-chat"  # never decoded
             elif deleted:
                 reason = "deleted"  # the principal deleted it in the app; never decoded
             elif "@broadcast" in chat:
