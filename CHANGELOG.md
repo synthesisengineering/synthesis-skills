@@ -4,6 +4,13 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.17] - 2026-10-27
+
+- **`synthesis index set` commits with a generic message.** Its one-field commit was titled with the project and
+  the field, which the principal's commit-message rule forbids in every repository; a session reported it and
+  had to commit by hand. The commit is now "Update docs", still holding only that one field's line, which the
+  test checks.
+
 ## [5.1.16] - 2026-10-27
 
 - **A recurring-series change is previewed occurrence by occurrence, and every calendar write is read back**

@@ -197,7 +197,8 @@ def index_set(project: str, field: str, value: str, session: str = "") -> str:
             env = {"GIT_INDEX_FILE": os.path.join(folder, "index")}
             _git(repo, "read-tree", "HEAD", env=env)
             _git(repo, "update-index", "--cacheinfo", f"100644,{blob.strip()},{rel}", env=env)
-            done = subprocess.run(["git", "-C", repo, "commit", "-q", "-m", f"index: {project} {field}"],
+            # a commit message names neither the project nor the field: the principal's commit-message rule (2026-10-27)
+            done = subprocess.run(["git", "-C", repo, "commit", "-q", "-m", "Update docs"],
                                   capture_output=True, text=True, env={**os.environ, **env})
         if done.returncode:
             raise ValueError("the commit was refused: " + (done.stderr or done.stdout).strip()[-400:])
