@@ -34,6 +34,7 @@ import urllib.request
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import build_sheet as bs  # noqa: E402
+import build_packet as bp  # noqa: E402  (build_sheet put the packet engine on the path)
 
 PROJECT = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?")
 REDIRECTS = {301, 302, 303, 307, 308}
@@ -93,13 +94,16 @@ def gated(url: str, probe=probe) -> str:
 
 
 def sheet_page(path: pathlib.Path) -> str:
-    """The generator's page for the filed spec beside path (a filed .html or its -spec.json)."""
+    """The generator's page for the filed spec beside path (a filed .html or its -spec.json). A decision
+    packet's spec has rows and is rebuilt by the packet engine: the principal chose this private host over
+    artifacts because Codex and Muse have none (2026-10-20), and a packet went out as one on 2026-10-27."""
     spec_path = path if path.name.endswith("-spec.json") else path.with_name(path.stem + "-spec.json")
     if path.suffix not in (".html", ".json") or not spec_path.is_file():
-        raise Refused(f"{path} is not a filed sheet: file it with build_sheet.py --file-into, then publish "
-                      "the filed page (its -spec.json must be beside it)")
+        raise Refused(f"{path} is not a filed sheet or packet: file it with build_sheet.py or build_packet.py "
+                      "--file-into, then publish the filed page (its -spec.json must be beside it)")
     try:
-        return bs.build(bs.read_spec(str(spec_path)))
+        spec = bs.read_spec(str(spec_path))
+        return (bp.build if isinstance(spec, dict) and "rows" in spec else bs.build)(spec)
     except ValueError as exc:
         raise Refused(f"{spec_path.name}: {exc}") from exc
 

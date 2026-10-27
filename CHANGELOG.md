@@ -13,10 +13,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   never owes one; once it has gone that many days without a ritual record, the session line counts it as quiet too
   long and `ritual_state.py query summary` shows `QUIET <days> days`. A value that is not a whole number of days
   makes the ritual state unreadable, as any malformed config does. Declared mailboxes keep their own sweep cadence.
-- **A shell placeholder is not raw HTML** (decision packet 2.1.3). A model's answer holding
-  `<a key you know is in config/>` was refused under `--strict-reader` as raw HTML in the reading path, so a
-  calibration packet could not be built. Raw HTML now means a closing tag, a tag with an attribute value, or a
-  bare tag such as `<p>` or `<br/>`; words between angle brackets are prose.
+- **A decision packet reads cleanly** (decision packet 2.2.0). The principal, on a calibration packet: formatting
+  codes showed literally, text ran on without line breaks, and its title said 19 items over 20. Now a `markdown`
+  asset renders bold, italic, code, block quotes and numbered lists; a row's context keeps its line breaks;
+  material read only in the packet carries no delivery block, and copy and download sit with the exact source.
+  A row marked `"blind": true` collects the principal's own judgment (scoring an answer to check a grader): it
+  carries no recommendation and needs no impact block, and a packet whose rows are all blind builds without
+  a padding row and shows no recommendation counts.
+- **A shell placeholder is not raw HTML.** A model's answer holding `<a key you know is in config/>` was
+  refused under `--strict-reader` as raw HTML in the reading path. Raw HTML now means a closing tag, a tag with
+  an attribute value, or a bare tag such as `<p>` or `<br/>`; words between angle brackets are prose.
+- **The private sheet host serves decision packets too** (action sheet 1.2.0). The principal chose that host
+  over claude.ai artifacts on 2026-10-20, because Codex and Muse have no artifact host, yet a packet went out
+  as an artifact on 2026-10-27. `publish_sheet.py` now rebuilds a filed packet with the packet engine, behind
+  the same sign-in checks, and the packet's filing guide says to publish there, not as an artifact.
 
 ## [5.1.13] - 2026-10-27
 

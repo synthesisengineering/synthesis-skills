@@ -211,3 +211,42 @@ def test_a_wrapped_markdown_list_item_stays_one_item():
     seen = drive(current, False, LIST_ITEMS)
     assert seen["errors"] == []
     assert seen["reading"] == ["First fixture item, which wraps onto a second line.", "Second fixture item."]
+
+
+BLIND = """<script>
+window.reading = (function () {
+  var row = document.querySelector('.row'), content = row.querySelector('.review-content');
+  var exact = row.querySelector('details.review-exact');
+  function texts(selector) { return Array.from(content.querySelectorAll(selector)).map(function (n) { return n.textContent; }); }
+  return {cards: Array.from(document.querySelectorAll('#counts .count span')).map(function (s) { return s.textContent; }),
+          impact: !!row.querySelector('.impact'), heading: !!row.querySelector('.review-material h3'),
+          delivery: !!row.querySelector('.review-delivery'), actionsFolded: !!(exact && exact.querySelector('.review-actions')),
+          strong: texts('strong'), code: texts('code'), quote: texts('blockquote'), ordered: texts('ol li'),
+          literal: /\\*\\*|^>/m.test(content.textContent), context: getComputedStyle(row.querySelector('.rtext')).whiteSpace};
+})();
+</script>"""
+
+
+def test_a_blind_scoring_packet_reads_cleanly_in_a_real_page():
+    """2026-10-27, the principal: formatting codes showed literally, text ran on without line breaks, and every
+    answer sat under four lines of delivery detail it never had. Now Markdown renders, context keeps its breaks,
+    material read only here carries no delivery block, and a blind packet shows no recommendation counts."""
+    answer = ("> The service was down for **47 minutes**.\n\n**What changed:**\n1. `config` became *configuration*.\n"
+              "2. The note now says **was down**.")
+    current = {"title": "Synthetic blind scores", "audience": "Fixture principal",
+               "options": [{"value": "pass", "label": "Yes, the answer does this", "tone": "ok"},
+                           {"value": "fail", "label": "No, the answer falls short of it", "tone": "danger"}],
+               "rows": [{"id": f"S{i}", "label": f"Does answer {i} keep every fact?", "blind": True,
+                         "context": "What the AI was asked:\nPolish this.\n\nThe test: it keeps every fact.",
+                         "revision": "pilot-1", "delivery": {"format": "Reviewed here only", "destinations": [],
+                                                             "attachments": []},
+                         "review_assets": [_text("answer", "markdown", answer)]} for i in range(5)]}
+    seen = drive(current, False, BLIND)
+    assert seen["errors"] == []
+    r = seen["reading"]
+    assert "Took the recommendation" not in r["cards"] and "Overrode it" not in r["cards"]
+    assert not r["impact"] and not r["heading"] and not r["delivery"] and r["actionsFolded"]
+    assert r["strong"] == ["47 minutes", "What changed:", "was down"] and r["code"] == ["config"]
+    assert r["quote"] == ["The service was down for 47 minutes."] and len(r["ordered"]) == 2
+    assert not r["literal"] and r["context"] == "pre-line"
+    assert rr.parse_summary(seen["summary"], current)["decided"] == 1

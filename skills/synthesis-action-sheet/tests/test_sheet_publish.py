@@ -122,6 +122,22 @@ def test_the_filed_spec_works_as_the_argument_too(filed):
     assert wrangler.files["index.html"] == rebuilt(filed)
 
 
+def test_a_filed_decision_packet_goes_to_the_same_host(tmp_path):
+    """2026-10-27: a packet went out as a claude.ai artifact, which Codex and Muse cannot open, though the
+    principal had chosen this host over artifacts on 2026-10-20. The packet engine rebuilds it here."""
+    packet = {"title": "Synthetic scores", "audience": "A fixture reader.",
+              "options": [{"value": "pass", "label": "Yes, the answer does this", "tone": "ok"},
+                          {"value": "fail", "label": "No, the answer falls short of it", "tone": "danger"}],
+              "rows": [{"id": f"S{n}", "label": f"Does answer {n} name the cause?", "blind": True} for n in range(5)]}
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    _, page = ps.bp.file_packet(packet, ps.bp.build(packet), artifacts, "2026-10-27")
+    wrangler = Wrangler()
+    ps.publish(page, "sheets-example", probe=gate(), run=wrangler)
+    assert wrangler.files["index.html"] == ps.bp.build(ps.bs.read_spec(str(page.with_name(page.stem + "-spec.json"))))
+    assert "synthesis-decision-packet" in wrangler.files["index.html"]
+
+
 @pytest.mark.parametrize("open_host", ["sheets-example.pages.dev", "subdomain"])
 def test_an_open_host_or_subdomain_uploads_nothing(filed, open_host):
     wrangler = Wrangler()

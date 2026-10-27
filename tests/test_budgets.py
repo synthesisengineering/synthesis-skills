@@ -119,10 +119,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # how many are quiet too long, 3. ritual_state.py 2: the summary's quiet days, in its record and its text.
 # And 2 more to the plugin (build_packet.py): raw HTML told from a shell placeholder, the tag names on their own
 # line 1 and the comment saying what counts 1, after a calibration packet could not be built on 2026-10-27.
+# And 8 more, after the principal found that packet's page confusing and asked why it went out as a claude.ai
+# artifact: build_packet.py 4, a blind row refused with a recommendation 3 and an all-blind packet built
+# without one 1; publish_sheet.py 4, the packet engine imported 1, a packet rebuilt by it 1, and the
+# docstring's reason 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 6648
-PLUGIN_BUDGET = 23541
+PLUGIN_BUDGET = 23549
 
 
 def _lines(files):

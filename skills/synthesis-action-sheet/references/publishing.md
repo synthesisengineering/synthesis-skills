@@ -95,7 +95,8 @@ sign-in. It is the principal's to set up; the skill works the same without it.
    any deploy, and a second one within 45 minutes is a rapid redeploy.
 
 **Publishing:** `python3 scripts/publish_sheet.py <filed page> --project <name>` (or the filed
-`-spec.json`). It prints `published <deployment address>`, which goes on line 2 of the chat
+`-spec.json`). A filed decision packet publishes the same way: the script rebuilds it with the
+packet engine, so one host serves both, in every harness (2026-10-27). It prints `published <deployment address>`, which goes on line 2 of the chat
 contract, and `latest <host address>`, which always shows the newest sheet and is worth a
 bookmark on the phone. What it does, in order:
 

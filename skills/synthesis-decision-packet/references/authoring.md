@@ -137,6 +137,20 @@ for every packet handed to a principal.** The warnings print either way;
 strictness is the difference between a warning you read and a packet they
 cannot.
 
+## Blind rows: the principal's own judgment (2026-10-27)
+
+Some rows collect a judgment rather than ask for a decision: the principal scores a
+model's answer so a grader can be checked against them. A recommendation there would
+sway the very judgment being measured, so mark such a row `"blind": true`. A blind row
+carries no recommendation and needs no impact block; a packet whose rows are all blind
+builds with no recommendation at all, and its page shows no recommendation counts. On
+2026-10-27 a calibration packet without this carried a padding row so that one row
+recommended something, and its title then miscounted the items. A decision the
+constraints settle (what to do if the grader disagrees too often) goes in `intro` as
+what will happen, not as a row. Give the material read with each blind row as
+`markdown` or `plain_text`, and put the task and the exact test in `context`, which
+keeps its line breaks.
+
 ## A comfortable reading path (2026-10-08)
 
 Mechanics and plain labels are not enough when the material is heavy. Measured on
