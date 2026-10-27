@@ -10,6 +10,8 @@ Why the weekly review exists.
 
 ## When the weekly review is owed
 
+**A workspace worked occasionally owes none.** One whose ritual config sets `quiet_after_days` (an advisory seat, say) is flagged instead when it has gone that many days without a ritual record ([scripts.md](scripts.md)). On 2026-09-02 the principal ruled a daily streak meaningless for such a seat, yet the line counted its weekly review as owed until 2026-10-27, when an action sheet asked the principal to run that seat's rituals and the answer was that the seat need not be worked on most days.
+
 **Owed-weekly gating (replaces the v2.8.0 Friday-only rule).** The review is owed once per week per workspace, anchored to Friday, and tracked as `weekly-review` records in the append-only ritual log. Run `python3 <rituals>/scripts/ritual_state.py query weekly-review --workspace <W>`: it answers `owed: false` when the latest review is dated on/after the most recent Friday, and then skip this step silently. When it answers `owed: true`, run the scan below — in whichever ritual notices first (Day-Start Step 1 checks the same condition), in any day-end mode including Quick Close — then record it:
 `python3 <rituals>/scripts/ritual_state.py record --direction weekly-review --workspace <W> --date <the Friday this review satisfies>`.
 

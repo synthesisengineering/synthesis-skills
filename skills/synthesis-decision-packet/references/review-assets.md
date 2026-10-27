@@ -65,12 +65,18 @@ other than tab, CR and LF are refused. Unicode and original line endings remain
 bound. No filename is accepted for text assets; downloads use `<id>.txt`.
 
 Correspondence and plain text preserve paragraphs and line breaks. Code uses a
-monospaced view. Markdown supports paragraphs, ATX headings, unordered lists and
-triple-backtick code blocks. Soft line breaks within a paragraph render as
-spaces. Headings use one visual level inside the asset's accessible section.
-Inline markup, links, images, tables and raw HTML are displayed as text. They do
-not run, fetch resources or become clickable markup. Exact source text remains
-available beside the rendered view.
+monospaced view. Markdown supports paragraphs, ATX headings, unordered and
+ordered lists, block quotes, horizontal rules, triple-backtick code blocks, and
+inline bold, italic and code: give a model's answer as `markdown`, since its
+markup shown literally made a packet hard to read (2026-10-27). Soft line breaks
+within a paragraph render as spaces. Headings use one visual level inside the
+asset's accessible section. Links, images, tables and raw HTML are displayed as
+text. They do not run, fetch resources or become clickable markup. Exact source
+text remains available beside the rendered view, with Copy and Download.
+
+The delivery block (revision, how it goes out, recipients, attachments) is shown
+for correspondence and for material with recipients or attachments. Material
+read only in the packet, a model's answer being scored for example, shows none.
 
 Copy selects the source first, then tries the browser's copy mechanisms. Denied,
 throwing or unresolved clipboard requests receive a manual-copy message within

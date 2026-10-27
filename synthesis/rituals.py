@@ -41,6 +41,8 @@ def config() -> dict:  # an unreadable file raises: refuse rather than guess
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
     if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
         raise ValueError("ritual config.json has no 'workspaces' mapping")
+    if any(type(v) is not int or v < 1 for v in (settings(data, w).get("quiet_after_days", 1) for w in data["workspaces"])):
+        raise ValueError("ritual config.json: quiet_after_days must be a whole number of days")
     return data
 
 
@@ -85,10 +87,22 @@ def friday(today: date) -> date:
     return today - timedelta(days=(today.weekday() - 4) % 7)
 
 
-def weekly_owed(records: list[dict], workspace: str, today: date) -> bool:
-    # owed when the latest review predates the most recent Friday (an early one is dated that Friday)
+def weekly_owed(records: list[dict], cfg: dict, workspace: str, today: date) -> bool:
+    # owed when the latest review predates the most recent Friday (an early one is dated that Friday); a workspace
+    # worked occasionally owes none, its signal being elapsed quiet (Rajiv, 2026-09-02; asked again 2026-10-27)
+    if settings(cfg, workspace).get("quiet_after_days"):
+        return False
     review = last(records, workspace, "weekly-review")
     return review is None or review["date"] < friday(today).isoformat()
+
+
+def quiet(records: list[dict], cfg: dict, workspace: str, today: date) -> int | None:
+    # days since an occasional workspace's newest ritual record, once that reaches its quiet_after_days
+    limit = settings(cfg, workspace).get("quiet_after_days")
+    newest = max((r["date"] for r in records if r.get("workspace") == workspace), default=None)
+    if not limit or newest is None or newest > (today - timedelta(days=limit)).isoformat():
+        return None
+    return (today - date.fromisoformat(newest[:10])).days
 
 
 def stale_mailboxes(now: datetime) -> list[tuple[str, str, str]]:
@@ -140,15 +154,18 @@ def session_line(cwd: str, today: date | None = None) -> str:  # empty until a r
                 + ([] if any(r.get("workspace") == here and r["direction"] == "day-start" and r["date"] == day
                              for r in records) else ["no day-start recorded today"])
                 + ([f"{len(opened)} workday(s) started and never closed ({', '.join(opened)})"] if opened else [])
-                + ([f"weekly review owed (Friday {friday(today)})"] if weekly_owed(records, here, today) else []))
+                + ([f"weekly review owed (Friday {friday(today)})"] if weekly_owed(records, cfg, here, today) else []))
         parts.append("this workspace: " + "; ".join(bits))
     floor = str(today - timedelta(days=30))
     others = sorted(({r["workspace"] for r in records if r["date"] >= floor and r.get("workspace") not in UNNAMED}
-                     | {w for w in cfg["workspaces"] if settings(cfg, w)["streak"] == "expected-days"}) - {here})
+                     | {w for w in cfg["workspaces"] if settings(cfg, w)["streak"] == "expected-days"
+                        or settings(cfg, w).get("quiet_after_days")}) - {here})
     if others:
         unclosed = {w for w, d in open_days(records, today) if w in others and d != day}
+        still = sum(quiet(records, cfg, w, today) is not None for w in others)
         parts.append(f"{len(others)} other workspace(s): {len(unclosed)} with workdays never closed, "
-                     f"{sum(weekly_owed(records, w, today) for w in others)} owing a weekly review")
+                     f"{sum(weekly_owed(records, cfg, w, today) for w in others)} owing a weekly review"
+                     + (f", {still} worked occasionally and quiet too long" if still else ""))
     stale = stale_mailboxes(now)
     parts += [f"{len(stale)} declared mailbox(es) unread past their sweep cadence"] if stale else []
     parts += [f"{bad} malformed log line(s)"] if bad else []

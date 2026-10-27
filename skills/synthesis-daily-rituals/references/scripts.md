@@ -32,7 +32,11 @@ than half-reading it.
   "non_working_dates": ["YYYY-MM-DD"]}}}`). `streak: expected-days` counts an unbroken run over
   days the workspace is expected to close; working on a day that is not expected credits the
   streak and never debits it; `none` (the default) is right for seats worked occasionally. A date
-  in `non_working_dates` (holidays, time off) is never expected. The synthesis home is
+  in `non_working_dates` (holidays, time off) is never expected. `quiet_after_days` (a whole
+  number of days) marks a workspace worked occasionally, such as an advisory seat: it owes no
+  weekly review, and once it has gone that many days without a ritual record, the session line
+  counts it as quiet too long and the summary shows `QUIET <days> days`. Its declared mailboxes
+  keep their own `sweep` cadence. The synthesis home is
   `~/.synthesis/v5` unless `SYNTHESIS_HOME` says otherwise; `RITUAL_STATE_DIR` or `--state-dir`
   points the tool at a copy to exercise.
 - The watermark store, `<synthesis home>/sync-watermarks/<W>.json` ([sync-watermarks.md](sync-watermarks.md)).

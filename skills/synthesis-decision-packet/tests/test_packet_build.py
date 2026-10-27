@@ -435,6 +435,11 @@ def test_an_html_message_is_read_as_its_words_and_raw_markup_in_the_reading_path
     for field, value, kind in (("format", "html", "code"), ("format", "markdown", "correspondence"),
                                ("reference", False, "plain_text"), ("markup_review", True, "correspondence")):
         assert any(field in p for p in hard(bp.validate(packet({**text_asset("x", kind, "text"), field: value})))), field
+    # 2026-10-27: a model's answer holding a shell placeholder was refused as raw HTML, so a packet could not be built
+    prose = "Run `git show <repo>:<commit>` and grep for <a key you know is in config/> in <deploy-repo>."
+    assert not [p for p in bp.validate(packet(text_asset("answer", "plain_text", prose))) if "raw HTML" in p]
+    for html in ("<p>", "<br/>", "</li>", '<span class="x">', "<B>bold</B>"):
+        assert any("raw HTML" in p for p in bp.validate(packet(text_asset("answer", "plain_text", f"a {html} b")))), html
 
 
 def test_a_long_reading_path_is_a_reader_finding_and_showing_changes_clears_it():
@@ -465,3 +470,20 @@ def test_syn04_omitted_header_parts_leave_no_blank_line():
     header = page[page.index("<header>"):page.index("</header>")]
     assert not [line for line in header.splitlines() if not line.strip()]
     assert "<h1>" in header and "Written for:" in header
+
+
+def test_a_blind_row_carries_no_recommendation_and_a_blind_packet_needs_none():
+    """2026-10-27: a calibration packet had to carry a padding row only so that one row recommended something,
+    and its title then miscounted its items. A blind row collects the principal's own judgment instead."""
+    options = [{"value": "pass", "label": "Yes, the answer does this", "tone": "ok"},
+               {"value": "fail", "label": "No, the answer falls short of it", "tone": "danger"}]
+    blind = {"title": "Synthetic blind scores", "audience": "A fixture reader.", "options": options,
+             "rows": [{"id": f"S{i}", "label": f"Does answer {i} keep every fact?", "blind": True} for i in range(5)]}
+    assert not hard(bp.validate(blind)) and not [p for p in bp.validate(blind) if "impact" in p]
+    for change in ({"recommendation": "pass"}, {"blind": False}):
+        swayed = json.loads(json.dumps(blind))
+        swayed["rows"][0].update(change)
+        assert any("blind is only true" in p for p in hard(bp.validate(swayed))), change
+    mixed = json.loads(json.dumps(blind))
+    del mixed["rows"][0]["blind"]  # one ordinary row, and nothing recommended anywhere
+    assert any("no row carries a recommendation" in p for p in hard(bp.validate(mixed)))

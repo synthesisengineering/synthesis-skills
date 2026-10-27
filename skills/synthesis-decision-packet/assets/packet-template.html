@@ -76,7 +76,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 .row[hidden] { display: none; }
 .rid { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
 .rlabel { font-weight: 650; margin: 2px 0 7px; font-size: 16.5px; line-height: 1.35; }
-.rtext { color: var(--ink-2); margin: 0 0 9px; max-width: 82ch; }
+.rtext { color: var(--ink-2); margin: 0 0 9px; max-width: 82ch; white-space: pre-line; }
 .rtext.reason::before {
   content: "Recommendation "; font-weight: 650; color: var(--ink); letter-spacing: .01em;
 }
@@ -172,6 +172,7 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 .review-material { border: 2px solid var(--line); border-radius: 10px; padding: 18px; margin: 16px 0; min-width: 0; }
 .review-material h3 { margin: 0 0 12px; }
 .review-asset { border-top: 1px solid var(--line); padding: 12px 0; min-width: 0; }
+.review-material > .review-asset:first-child { border-top: 0; padding-top: 0; }
 .review-delivery { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 6px 14px; }
 .review-delivery dt { font-weight: 600; } .review-delivery dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-content { font-size: 1rem; line-height: 1.65; overflow-wrap: anywhere; }
@@ -181,6 +182,11 @@ details.gloss dd { margin: 0; color: var(--ink-2); }
 .review-changes del, .review-changes p.del { background: color-mix(in srgb, var(--danger) 14%, transparent); text-decoration: line-through; }
 details.review-more > summary, details.review-reference > summary { cursor: pointer; color: var(--ink-2); padding: 4px 0; }
 .review-plain { white-space: pre-wrap; } .review-code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: monospace; }
+.review-content p { margin: 0 0 10px; } .review-content ul, .review-content ol { margin: 0 0 10px; padding-left: 1.4em; }
+.review-content blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.review-content code { font-family: var(--mono); font-size: 0.9em; background: var(--panel-2); padding: 0 4px; border-radius: 4px; }
+.review-content pre.review-code { background: var(--panel-2); padding: 8px 10px; border-radius: 6px; }
+.review-content hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .review-exact textarea { width: 100%; box-sizing: border-box; resize: vertical; font: 0.9rem/1.5 monospace; }
 .review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; }
 .review-hint, .review-digest { font-size: 0.82rem; overflow-wrap: anywhere; } .review-status { width:100%; }
@@ -340,11 +346,9 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
     var cards = [
       ["Items", SPEC.rows.length],
       ["Decided", decided],
-      ["Remaining", SPEC.rows.length - decided],
-      ["Took the recommendation", agreed],
-      ["Overrode it", overridden],
-      ["With a note", noted]
-    ];
+      ["Remaining", SPEC.rows.length - decided]
+    ].concat(SPEC.rows.some(function (r) { return r.recommendation; }) ?  // a blind packet recommends nothing
+      [["Took the recommendation", agreed], ["Overrode it", overridden]] : []).concat([["With a note", noted]]);
     if (SPEC.rows.some(function (r) { return r.disagreement; })) {
       cards.push(["Disputed", SPEC.rows.filter(function (r) { return r.disagreement; }).length]);
     }
@@ -359,25 +363,45 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
     if (cls) node.className = cls;
     return node;
   }
+  function inline(text, target) {
+    // **bold**, *italic* and `code` become elements; everything else stays text. A model's
+    // answer is Markdown, and its markup shown literally made a packet hard to read (2026-10-27).
+    var token = /\*\*([^*\n]+?)\*\*|`([^`\n]+)`|\*([^*\s](?:[^*\n]*[^*\s])?)\*/g, at = 0, m;
+    while ((m = token.exec(text))) {
+      if (m.index > at) target.appendChild(document.createTextNode(text.slice(at, m.index)));
+      target.appendChild(element(m[1] !== undefined ? 'strong' : m[2] !== undefined ? 'code' : 'em',
+                                 m[1] !== undefined ? m[1] : m[2] !== undefined ? m[2] : m[3]));
+      at = token.lastIndex;
+    }
+    if (at < text.length) target.appendChild(document.createTextNode(text.slice(at)));
+    return target;
+  }
   function limitedMarkdown(text, target) {
-    // Deliberately small block grammar. No raw HTML, images, link expansion,
-    // extensions or network access; all content enters through textContent.
-    var lines = text.split(/\r\n|\r|\n/), paragraph = [], code = null, list = null;
+    // Deliberately small grammar: paragraphs, headings, lists, quotes, rules, fenced code and
+    // inline bold, italic and code. No raw HTML, images, link expansion, extensions or network
+    // access; all content enters through text nodes.
+    var lines = text.split(/\r\n|\r|\n/), paragraph = [], code = null, list = null, quote = null;
     function flush() {
-      if (paragraph.length) target.appendChild(element('p', paragraph.join('\n')));
-      paragraph = []; list = null;
+      if (paragraph.length) target.appendChild(inline(paragraph.join(' '), element('p')));
+      if (quote) target.appendChild(inline(quote.join(' '), element('blockquote')));
+      paragraph = []; list = null; quote = null;
     }
     lines.forEach(function (line) {
+      var item = /^\s{0,3}([-*]|\d{1,3}[.)]) (.*)$/.exec(line);
       if (/^```/.test(line)) {
         if (code === null) { flush(); code = []; }
         else { target.appendChild(element('pre', code.join('\n'), 'review-code')); code = null; }
       } else if (code !== null) code.push(line);
       else if (!line.trim()) flush();
-      else if (/^#{1,6} /.test(line)) { flush(); target.appendChild(element('h4', line.replace(/^#{1,6} /, ''))); }
-      else if (/^[-*] /.test(line)) {
-        if (!list) { flush(); list = element('ul'); target.appendChild(list); }
-        list.appendChild(element('li', line.slice(2)));
-      } else if (list && /^\s/.test(line)) list.lastChild.textContent += ' ' + line.trim();  // a wrapped item
+      else if (/^(?:-{3,}|\*{3,})\s*$/.test(line)) { flush(); target.appendChild(element('hr')); }
+      else if (/^#{1,6} /.test(line)) { flush(); target.appendChild(inline(line.replace(/^#{1,6} /, ''), element('h4'))); }
+      else if (/^>/.test(line)) { if (!quote) { flush(); quote = []; } quote.push(line.replace(/^>\s?/, '')); }
+      else if (item) {
+        var kind = /\d/.test(item[1]) ? 'ol' : 'ul';
+        if (!list || list.tagName.toLowerCase() !== kind) { flush(); list = element(kind); target.appendChild(list); }
+        list.appendChild(inline(item[2], element('li')));
+      } else if (list && /^\s/.test(line)) inline(' ' + line.trim(), list.lastChild);  // a wrapped item
+      else if (quote) quote.push(line.trim());  // a lazy continuation of the quote
       else { if (list) flush(); paragraph.push(line); }
     });
     flush();
@@ -407,14 +431,19 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
   function renderReview(row) {
     var section = element('section', undefined, 'review-material');
     section.setAttribute('aria-label', 'Material for review: ' + row.label);
-    section.appendChild(element('h3', 'Material for review'));
-    var meta = element('dl', undefined, 'review-delivery');
-    [['Revision', row.revision], ['Goes out as', row.delivery.format],
-      ['Recipients', row.delivery.destinations.join('\n') || 'None declared'],
-      ['Attachments', row.delivery.attachments.join(', ') || 'None']].forEach(function (entry) {
-      meta.appendChild(element('dt', entry[0])); meta.appendChild(element('dd', entry[1]));
-    });
-    section.appendChild(meta);
+    // Where material goes matters for a message, or for anything that goes somewhere; for material only
+    // read here (a model's answer being scored, say) four lines of "None" were clutter (2026-10-27).
+    if (row.delivery.destinations.length || row.delivery.attachments.length ||
+        row.review_assets.some(function (a) { return a.kind === 'correspondence'; })) {
+      section.appendChild(element('h3', 'Material for review'));
+      var meta = element('dl', undefined, 'review-delivery');
+      [['Revision', row.revision], ['Goes out as', row.delivery.format],
+        ['Recipients', row.delivery.destinations.join('\n') || 'None declared'],
+        ['Attachments', row.delivery.attachments.join(', ') || 'None']].forEach(function (entry) {
+        meta.appendChild(element('dt', entry[0])); meta.appendChild(element('dd', entry[1]));
+      });
+      section.appendChild(meta);
+    }
     var rowIndex = SPEC.rows.indexOf(row);
     row.review_assets.forEach(function (asset, assetIndex) {
       var box = element('section', undefined, 'review-asset');
@@ -491,7 +520,8 @@ details.review-more > summary, details.review-reference > summary { cursor: poin
           }
           window.addEventListener('pagehide', function () { URL.revokeObjectURL(url); }, {once: true});
         } catch (e) { status.textContent = 'This browser cannot create a download; exact text remains readable where supplied.'; }
-        actions.appendChild(status); box.appendChild(actions);
+        actions.appendChild(status);
+        ('text' in content ? details : box).appendChild(actions);  // text: copy and download sit with the exact source
       }
       if (asset.reference) {  // optional material stays out of the reading path until opened
         var ref = element('details', undefined, 'review-reference');

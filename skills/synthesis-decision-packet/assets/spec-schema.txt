@@ -93,6 +93,13 @@ Decision-packet spec (JSON)
                                           judgment). No recommendation on any row
                                           means the packet is a questionnaire; see the
                                           anti-trigger in SKILL.md.
+      "blind": true,                      optional, only true, and never with a
+                                          recommendation: the row collects the
+                                          principal's own judgment (scoring an answer
+                                          to calibrate a grader), which a
+                                          recommendation would sway. It needs no impact
+                                          block. A packet whose rows are all blind
+                                          builds with no recommendation at all.
       "severity": "high",                 optional ∈ {high, medium, low, none}
                                           — drives the coloured rail
       "tags":  ["correctness", "worker"], optional — drive filters and read as chips

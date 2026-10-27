@@ -231,6 +231,18 @@ def test_streak_refuses_without_workspace_and_honors_it(tmp_path: Path) -> None:
     assert query_json(tmp_path, "streak", "--workspace", "alpha", "--today", "2026-09-15")["streak"] == 0
 
 
+def test_a_workspace_worked_occasionally_shows_quiet_days_and_owes_no_review(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(json.dumps({
+        "workspaces": {"advisory": {"streak": "none", "quiet_after_days": 21}},
+    }), encoding="utf-8")
+    record(tmp_path, "day-end", "advisory", "2026-09-01")
+    view = query_json(tmp_path, "summary", "--today", "2026-09-25")["workspaces"]["advisory"]
+    assert view["weekly_review_owed"] is False and view["quiet_days"] == 24
+    assert query_json(tmp_path, "weekly-review", "--workspace", "advisory", "--today", "2026-09-25")["owed"] is False
+    text = run(tmp_path, "query", "summary", "--today", "2026-09-25").stdout
+    assert "QUIET 24 days (worked occasionally)" in text and "OWED" not in text
+
+
 # --- an empty --workspace is refused, never read as omitted ----------------------------------
 
 VIEWS = ("last", "open", "streak", "weekly-review", "summary")

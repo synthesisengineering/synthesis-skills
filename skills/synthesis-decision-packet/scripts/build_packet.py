@@ -76,7 +76,9 @@ FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 # The reader's path: what an asset shows before anything is opened. DP-UX, 2026-10-08: three decisions
 # carried eleven assets each, six of them email HTML shown as code, 90,012 characters in all; the principal
 # found the packet overwhelming. Wire markup, repeated bytes and unchanged text belong behind a click.
-MARKUP = re.compile(r"<(?:p|div|span|br|a|b|i|em|strong|ul|ol|li|html|body|table|h[1-6])\b[^>]*>", re.I)
+# raw HTML: a closing tag, a tag with an attribute value, or a bare tag; a placeholder such as `<a key you know>` is prose
+TAGS = r"(?:p|div|span|br|a|b|i|em|strong|ul|ol|li|html|body|table|h[1-6])"
+MARKUP = re.compile(rf"</{TAGS}\s*>|<{TAGS}(?:\s+[^<>]*=[^<>]*)?\s*/?>", re.I)
 READING_CHARS_PER_DECISION = 6000
 
 
@@ -478,6 +480,9 @@ def _row_problems(r: dict, i: int, opts: list) -> list:
     values = sorted(o["value"] for o in row_opts if isinstance(o, dict) and isinstance(o.get("value"), str))
     if r.get("recommendation") is not None and r["recommendation"] not in values:
         problems.append(f"rows[{i}] ({rid}) recommendation {r['recommendation']!r} is not one of its options {values}")
+    if "blind" in r and (r["blind"] is not True or r.get("recommendation") is not None):
+        problems.append(f"rows[{i}] ({rid}) blind is only true, on a row with no recommendation: a blind row collects "
+                        "a judgment that a recommendation would sway")
     if "prior_position" in r:
         p = r["prior_position"]
         sourced = lambda e: isinstance(e, dict) and set(e) == {"statement", "source_ref"} and all(  # noqa: E731
@@ -580,13 +585,14 @@ def validate(spec: dict) -> list:
     if not spec.get("audience"):
         problems.append("READER: no 'audience' - name who reads this and what they already know, "
                         "then write every row for that reader")
-    missing = [str(r.get("id")) for r in rows if isinstance(r, dict) and not r.get("impact")]
+    missing = [str(r.get("id")) for r in rows if isinstance(r, dict) and not r.get("impact") and r.get("blind") is not True]
     if missing:
         problems.append("READER: rows without an 'impact' block (what happens if they accept / decline, "
                         "in the principal's terms): " + ", ".join(missing))
     if assets_ok and all(isinstance(r, dict) for r in rows):  # the reading path is measurable only on valid assets
         problems += _reading_problems(rows)
-    if not any(isinstance(r, dict) and r.get("recommendation") for r in rows):
+    if not any(isinstance(r, dict) and r.get("recommendation") for r in rows) and not all(
+            isinstance(r, dict) and r.get("blind") is True for r in rows):  # a blind packet recommends nothing, by design
         problems.append("no row carries a recommendation. A packet without recommendations is a "
                         "questionnaire, which means the analysis is not finished - see SKILL.md.")
     return problems

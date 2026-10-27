@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.2"
+  version: "2.2.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -77,7 +77,7 @@ to build now, later, or never · candidates to advance on a defined rubric.
   is worse than a conversation.
 - **You have no recommendation per item.** Then the packet is a questionnaire and *your analysis
   is not finished*. Do the analysis. The generator refuses a packet where no row carries a
-  recommendation.
+  recommendation, unless every row is blind.
 
 The failure mode of a good pattern is over-application. These three limits are the skill.
 

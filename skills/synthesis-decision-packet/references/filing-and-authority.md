@@ -39,9 +39,13 @@ artifact, in light or dark, on a phone or a laptop.
 **File it, then hand it over.** `--file-into DIR` writes a dated copy of the spec and of the page
 into DIR after a successful build. DIR is the owning project's `resources/artifacts/` and must
 already exist: the generator refuses a missing directory rather than creating one where you did
-not mean. `--date YYYY-MM-DD` sets the date in the names (default: today). Publish the page as
-an artifact too if that is how the principal will open it; the filed copy is the one other
-agents read.
+not mean. `--date YYYY-MM-DD` sets the date in the names (default: today). To open it on a
+phone or from any harness, publish the filed page through the principal's private host with
+`publish_sheet.py` (synthesis-action-sheet), which rebuilds a filed packet from its spec as it
+rebuilds a sheet. Without a host, hand over the filed page's path. A claude.ai artifact opens
+only in Claude Code, so it is no substitute for the host: on 2026-10-27 a packet went out as one
+although the principal had chosen the host over artifacts on 2026-10-20, for that reason. The
+filed copy is the one other agents read.
 
 **Record what came back.** Save the complete returned summary, including its final
 binding line. Run `record_rulings.py paste.txt --spec CURRENT-SPEC --file-into DIR`.

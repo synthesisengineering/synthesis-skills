@@ -111,10 +111,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.1.13 adds 3 to the plugin (local_messaging.py), after a session found on 2026-10-27 that a followed WhatsApp
 # Channel's posts held every window as gaps: a community read as a group 1; a row's chat known before attribution, so
 # exclusion runs first 0 (the old exclusion moved up); the Channel rule and its reason 2.
+# 5.1.14 adds 17 to the core and 19 to the plugin, after an action sheet on 2026-10-27 asked the principal to run the
+# rituals of a workspace the ritual config already marked as worked occasionally (`quiet_after_days`, his 09-02
+# ruling), because the session line counted it as owing a weekly review and nothing read that setting. rituals.py:
+# the setting checked as a whole number of days 2; such a workspace owes no weekly review 3; `quiet`, its days
+# without a ritual record once past the limit, 9; the session line counting it among the other workspaces, with
+# how many are quiet too long, 3. ritual_state.py 2: the summary's quiet days, in its record and its text.
+# And 2 more to the plugin (build_packet.py): raw HTML told from a shell placeholder, the tag names on their own
+# line 1 and the comment saying what counts 1, after a calibration packet could not be built on 2026-10-27.
+# And 8 more, after the principal found that packet's page confusing and asked why it went out as a claude.ai
+# artifact: build_packet.py 4, a blind row refused with a recommendation 3 and an all-blind packet built
+# without one 1; publish_sheet.py 4, the packet engine imported 1, a packet rebuilt by it 1, and the
+# docstring's reason 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6631
-PLUGIN_BUDGET = 23520
+CORE_BUDGET = 6648
+PLUGIN_BUDGET = 23549
 
 
 def _lines(files):
