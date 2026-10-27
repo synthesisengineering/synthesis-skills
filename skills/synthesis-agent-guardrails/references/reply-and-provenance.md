@@ -30,7 +30,12 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
   so naming a rule does not trip it;
 - quotes someone (said, wrote, replied, ...: "twelve or more characters") with words that
   appear nowhere in this session's transcript: quote only what a tool surfaced;
-- names a file without a clickable absolute-path link, when `reply_file_links` is true.
+- names a file without a clickable absolute-path link, when `reply_file_links` is true;
+- follows a calendar write this turn (create, update, manage, move or delete an event, or an RSVP) that no
+  calendar read came after: read back the principal's calendar for today and every date the change touched
+  before reporting. A write the guard refused does not count. On 2026-10-27 a series moved to a new hour
+  brought back a meeting canceled at the old hour, and only the principal looked. It reads the tail of a Claude
+  Code transcript; other harnesses' records are not read for it.
 
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise

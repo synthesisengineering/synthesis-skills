@@ -127,6 +127,27 @@ makes the policy mechanical:
   holds. They are real commitments and are never released for anything below
   the config's override tiers. The difference is exactly why holds carry ids.
 
+### Changing a recurring series (2026-10-27)
+
+An agent canceled one occurrence of a biweekly 1:1 with a senior peer, at 13:00. Later, with approval, it moved the
+whole series to 14:00 by updating the recurring master. The calendar keys a canceled occurrence to its original
+start time, so the moved series brought that day's meeting back at 14:00, on top of a meeting the principal had
+accepted. The approval request had listed the next occurrences and warned only that past ones would show the new
+hour. The principal found the double booking; undoing it cost a second cancellation, and the peer received five
+notices about one meeting in a day.
+
+- **Preview before asking.** For a change to a series' time or recurrence, or a delete, list every occurrence
+  from today through the next three, canceled and moved exceptions included, each with what it becomes and any
+  conflict with an accepted meeting. Put that list in the approval request itself.
+- **Split rather than move.** Change this and following occurrences, starting after the last exception that
+  matters, rather than the master; then no cancellation is re-keyed.
+- **Read back after every write.** Read the principal's calendar for today and every date the change touched,
+  not only the event: an exception that came back shows up only there.
+
+The send guard puts the preview request into the approval text of any call that deletes an event or sets its
+time or recurrence, and the turn-end check sends a reply back once when a calendar write this turn was not
+followed by a calendar read.
+
 ### Config keys
 
 Under `calendar_guardian` in the private preferences file:

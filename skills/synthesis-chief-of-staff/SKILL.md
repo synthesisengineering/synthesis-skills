@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -28,6 +28,7 @@ skill derives from that single fact.
 7. **An overcommitment warning names the candidates to move,** ranked by triage tier, each with a drafted reschedule note; a warning alone hands the thinking back to the principal.
 8. **Protected personal blocks are not holds.** They are never released for anything below the config's override tiers.
 9. **Write warmly, directly and unhurriedly.** Never manufacture or absorb urgency, and load this skill and the calendar before drafting any message that touches the calendar.
+10. **Preview a series change occurrence by occurrence, and read back every calendar write.** Before asking, list today through the next three occurrences, canceled and moved ones included, each checked against accepted meetings; prefer changing this and following occurrences over the whole series, because cancellations stay keyed to the old start time and moving the series brings them back. After any write, read back the principal's calendar for today and every date it touched (2026-10-27; references/calendar-guardian.md).
 
 ## Contents
 

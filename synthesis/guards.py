@@ -224,7 +224,21 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     text = " ".join(t for _, t in _strings(tool_input))
     code = approvals.request("send", subject, f"{tool}: {text[:120]}")
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again.")
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again."
+            + (RESHAPE if _reshapes_calendar(tool, tool_input) else ""))
+
+
+# 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
+RESHAPE = (" This deletes an event or sets its time or recurrence: in the same message, list its occurrences from today"
+           " through the next three, canceled and moved ones included, each checked against accepted meetings (a series'"
+           " cancellations stay keyed to the old start time, so moving the series brings them back); prefer changing this"
+           " and following occurrences over the whole series; after the write, read back today and every date it touched.")
+
+
+def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
+    deletes = tool.endswith("delete_event") or str(tool_input.get("action", "")).lower() == "delete"
+    timed = {"start", "end", "start_time", "end_time", "startTime", "endTime", "recurrence", "rrule"} & set(tool_input)
+    return bool(re.search(r"(?:create|update|manage|delete|move)_event$", tool)) and (deletes or bool(timed))
 
 
 # --- account routing (R3.6) ---------------------------------------------------------------------

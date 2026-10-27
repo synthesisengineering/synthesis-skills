@@ -130,10 +130,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # rule scoped to channels, after a line fit only for scheduling went out on Jira answers (the scope 2, the channels
 # passed in 3), a document's own line breaks 0 (in the same line); each window send settles the window 3; a window the
 # command would refuse is refused before the principal is asked for a code 4. cli.py 1: `--sends`.
+# 5.1.16 adds 54 to both, after a series moved to a new hour on 2026-10-27 revived a meeting canceled at the old
+# hour, double-booked on an accepted one, and nobody read the day back. guards.py 14: a call that deletes an event or
+# sets its time or recurrence asks, in its approval text, for the occurrences from today through the next three (the
+# text 4 and its reason 1, the test 4, its use 1, spacing 4). reply_check.py 40: a calendar write this turn that no
+# calendar read followed sends the reply back once (the write and read patterns 2, the turn read from the
+# transcript's tail with what each call did 33, the reply naming the writes 4, json imported 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6691
-PLUGIN_BUDGET = 23592
+CORE_BUDGET = 6745
+PLUGIN_BUDGET = 23646
 
 
 def _lines(files):

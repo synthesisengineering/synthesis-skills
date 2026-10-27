@@ -91,6 +91,11 @@ guard decides. Until 2026-10-14 the matcher listed send-shaped names, so a conne
 does (`createJiraIssue`) never reached the guard. File-edit tools may not write into the synthesis state, a
 harness's transcripts or the approved commit lines, where approvals and send windows live.
 
+**Calendar changes that reshape a series (2026-10-27).** A call that deletes an event or sets its time or
+recurrence asks, in its approval text, for the occurrences from today through the next three, canceled and
+moved ones included, each checked against accepted meetings, and for a read-back afterward: a series moved
+to a new hour had brought back a meeting canceled at the old hour (synthesis-chief-of-staff rule 10).
+
 **Documents others read (2026-10-27).** An edit to a Google Doc, Sheet or Slides deck, or to a Drive file's
 contents, is published in the principal's name, so it waits for their code like a send (channel `docs`): an
 agent had added a line to an agenda seven colleagues read with no code, though the principal had approved it

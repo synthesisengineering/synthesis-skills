@@ -314,3 +314,15 @@ def test_a_register_rule_can_hold_on_some_channels_only(tmp_path):
     assert "low-stakes" in guards.check("Bash", {"command": f'bkt pr comment 5 -m "{SIGNED}"'}, config, cwd=str(tmp_path))
     slack = guards.check("mcp__13d2__slack_send_message", {"channel_id": "C1", "message": SIGNED}, config)
     assert "low-stakes" not in slack and "approval" in slack
+
+
+def test_a_change_to_an_events_time_or_a_delete_asks_for_the_occurrence_preview():
+    """2026-10-27: a series moved to a new hour revived a meeting canceled at the old hour; the approval request had
+    listed only the next occurrences. Now it asks for every occurrence from today, canceled and moved ones included."""
+    config = {**CONFIG, "send_tools": ["mcp__*__delete_event"]}
+    peer = {"event_id": "e1", "attendees": ["peer@example.test"], "send_updates": "all"}
+    move = guards.check("mcp__ws__manage_event", {**peer, "action": "update", "start_time": "2026-10-27T14:00:00-04:00"}, config)
+    assert "occurrences from today through the next three" in move and "this and following" in move
+    note = guards.check("mcp__ws__manage_event", {**peer, "action": "update", "description": "Agenda attached"}, config)
+    assert "approval" in note and "occurrences" not in note
+    assert "occurrences from today" in guards.check("mcp__ws__delete_event", {"event_id": "e1"}, config)
