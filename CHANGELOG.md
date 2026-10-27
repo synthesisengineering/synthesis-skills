@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.14] - 2026-10-27
+
+- **A workspace worked occasionally owes no weekly review** (daily rituals 3.2.1). The ritual config can mark such a
+  workspace, an advisory seat for example, with `quiet_after_days`, and the principal had ruled on 2026-09-02 that a
+  daily streak means nothing there. No code read the setting: every session start counted the seat as owing a
+  weekly review, and on 2026-10-27 an action sheet asked the principal to run its rituals. Now such a workspace
+  never owes one; once it has gone that many days without a ritual record, the session line counts it as quiet too
+  long and `ritual_state.py query summary` shows `QUIET <days> days`. A value that is not a whole number of days
+  makes the ritual state unreadable, as any malformed config does. Declared mailboxes keep their own sweep cadence.
+
 ## [5.1.13] - 2026-10-27
 
 - **WhatsApp Channel posts and community rows no longer hold the window** (local messaging 1.5.1). Every post of a

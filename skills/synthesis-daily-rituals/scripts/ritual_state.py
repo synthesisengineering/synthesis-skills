@@ -109,7 +109,8 @@ def row(records: list[dict], cfg: dict, workspace: str, today: date) -> dict:
             "last_day_start": {k: start[k] for k in ("date", "mode") if k in start} if start else None,
             "streak": rituals.streak(records, cfg, workspace, today),
             "last_weekly_review": review["date"] if review else None,
-            "weekly_review_owed": rituals.weekly_owed(records, workspace, today)}
+            "weekly_review_owed": rituals.weekly_owed(records, cfg, workspace, today),
+            "quiet_days": rituals.quiet(records, cfg, workspace, today)}
 
 
 def cmd_query(args) -> int:
@@ -133,7 +134,7 @@ def cmd_query(args) -> int:
     elif args.view == "weekly-review":
         review = rituals.last(records, workspace, "weekly-review")
         out = {"workspace": workspace, "last_weekly_review": review["date"] if review else None,
-               "owed": rituals.weekly_owed(records, workspace, today)}
+               "owed": rituals.weekly_owed(records, cfg, workspace, today)}
         out.update({"workspace_inferred": True} if inferred else {})
     else:
         out = {}
@@ -152,10 +153,11 @@ def cmd_query(args) -> int:
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
     for name, view in (out.get("workspaces") or {}).items():
-        end = view["last_day_end"]
+        end, still = view["last_day_end"], view["quiet_days"]
         print(f"  {name:14} close {end['date'] if end else '—':10}  streak "
               f"{'n/a' if view['streak'] is None else view['streak']:<4}  weekly "
-              f"{view['last_weekly_review'] or '—'}{'  OWED' if view['weekly_review_owed'] else ''}")
+              f"{view['last_weekly_review'] or '—'}{'  OWED' if view['weekly_review_owed'] else ''}"
+              f"{'' if still is None else f'  QUIET {still} days (worked occasionally)'}")
     for item in out.get("open_workdays", []):
         print(f"  OPEN  {item['workspace']:14} {item['date']} (started, never closed)")
     for item in out.get("stale_mailboxes", []):

@@ -102,12 +102,45 @@ def test_a_malformed_line_costs_only_that_line(isolated_home):
 
 
 def test_weekly_review_is_anchored_to_the_most_recent_friday(isolated_home):
-    friday = date(2026, 9, 11)
+    friday, cfg = date(2026, 9, 11), {"workspaces": {}}
     assert rituals.friday(friday) == friday and rituals.friday(MONDAY) == friday
-    assert rituals.weekly_owed([], "alpha", MONDAY)
+    assert rituals.weekly_owed([], cfg, "alpha", MONDAY)
     review = [rec("weekly-review", "alpha", friday)]  # done Thursday, recorded for the Friday it satisfies
-    assert not rituals.weekly_owed(review, "alpha", friday) and rituals.weekly_owed(review, "alpha", friday + timedelta(7))
-    assert rituals.weekly_owed([rec("weekly-review", "beta", friday)], "alpha", friday)  # one seat never answers for another
+    assert not rituals.weekly_owed(review, cfg, "alpha", friday)
+    assert rituals.weekly_owed(review, cfg, "alpha", friday + timedelta(7))
+    assert rituals.weekly_owed([rec("weekly-review", "beta", friday)], cfg, "alpha", friday)  # one seat never answers for another
+
+
+def test_a_workspace_worked_occasionally_owes_no_weekly_review_and_is_flagged_once_quiet_too_long(
+        isolated_home, tmp_path, monkeypatch):
+    """The config marked an advisory workspace 'worked occasionally' on 2026-09-02, with quiet_after_days, but the
+    line still counted it as owing a weekly review, and an action sheet asked the principal to run its rituals.
+    The principal, 2026-10-27: he advises there and need not work in that workspace on most days."""
+    cfg = {"workspaces": {"alpha": {"streak": "expected-days"}, "advisory": {"streak": "none", "quiet_after_days": 21}}}
+    log(isolated_home, rec("day-end", "alpha", MONDAY - timedelta(days=1)),
+        rec("weekly-review", "alpha", MONDAY - timedelta(days=3)),
+        rec("day-start", "advisory", MONDAY - timedelta(days=20)), rec("day-end", "advisory", MONDAY - timedelta(days=20)),
+        config=cfg)
+    records, _ = rituals.read()
+    assert not rituals.weekly_owed(records, cfg, "advisory", MONDAY)  # never reviewed, and owes none
+    assert rituals.quiet(records, cfg, "advisory", MONDAY) is None  # 20 quiet days, 21 allowed
+    assert rituals.quiet(records, cfg, "advisory", MONDAY + timedelta(days=1)) == 21
+    assert rituals.quiet(records, cfg, "alpha", MONDAY + timedelta(days=60)) is None  # a cadence workspace is never "quiet"
+    cwd = here(tmp_path, monkeypatch)
+    assert rituals.session_line(cwd, MONDAY).count("1 other workspace(s): 0 with workdays never closed, "
+                                                    "0 owing a weekly review.") == 1
+    line = rituals.session_line(cwd, MONDAY + timedelta(days=45))  # its records are past the 30-day window now
+    assert ("1 other workspace(s): 0 with workdays never closed, 0 owing a weekly review, "
+            "1 worked occasionally and quiet too long.") in line and "advisory" not in line
+
+
+def test_a_quiet_limit_that_is_not_a_whole_number_of_days_is_refused(isolated_home, tmp_path, monkeypatch):
+    log(isolated_home, rec("day-end", "alpha", MONDAY))
+    cwd = here(tmp_path, monkeypatch)
+    for limit in ("21", 0, 2.5, True):
+        (isolated_home / "rituals" / "config.json").write_text(
+            json.dumps({"workspaces": {"advisory": {"quiet_after_days": limit}}}), encoding="utf-8")
+        assert "state unreadable" in rituals.session_line(cwd, MONDAY)
 
 
 def test_owed_today_needs_every_expected_workspace_closed(isolated_home):
