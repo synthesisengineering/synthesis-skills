@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the field, which the principal's commit-message rule forbids in every repository; a session reported it and
   had to commit by hand. The commit is now "Update docs", still holding only that one field's line, which the
   test checks.
+- **A deploy-rules test no longer reads the clock twice.** Its fixture dated the live post a week back while
+  setting up the site, and the test recomputed that moment seconds later; on a slow runner the two fell in
+  different minutes, so CI failed this release's first run. Both now use one moment.
 
 ## [5.1.16] - 2026-10-27
 
