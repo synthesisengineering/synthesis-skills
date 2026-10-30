@@ -6,8 +6,11 @@ log, so the only full record of what was asked, decided and done can disappear o
 session, incrementally, into <home>/sessions/<workspace>/<YYYY-MM>/<harness>-<session>/ as one JSON record per event:
 the principal's prompts, replies, reasoning, tool calls and results, compactions, the models that answered. Secrets are
 masked with the commit check's credential patterns, images are kept once as files named by their hash, and text a
-harness repeats every turn is kept once. A native file is read only past the offset already exported. Nothing here
-runs in a hook (R8.3): resume, handoff, checkpoints and the rituals call it.
+harness repeats every turn is kept once. A native file is read only past the offset already exported. Only the
+principal's own words are `user` records: a prompt one agent writes to another is a `brief`, and an approval reviewer's
+copy of the conversation is counted, not kept (R10.1). `sync` copies each workspace's conversation and tool calls into
+that workspace's own sessions repo (R10.2, R10.3). Nothing here runs in a hook (R8.3): resume, handoff, checkpoints
+and the rituals call it.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,10 +34,17 @@ SEGMENT_BYTES = 8_000_000  # a closed segment never changes, so a repository hol
 # blobs/<sha256>.txt. Measured over 14 days of this Mac's sessions (2026-10-30): injected text 38% and tool output 38%
 # of the export, the conversation 5%, much of it repeated across sessions.
 BLOB_CHARS, HEAD_CHARS = 2000, 1000
-BLOB_KINDS = ("tool_result", "tool_call", "system")
+BLOB_KINDS = ("tool_result", "tool_call", "system", "brief")
+# What leaves the Mac (R10.3, ruled 2026-10-30): the conversation and each tool call. Tool output, injected text, long
+# text and images stay in the local archive.
+SYNC_KINDS = ("session", "meta", "user", "brief", "assistant", "reasoning", "compaction", "tool_call")
 GLOB = set("*?[")
 INJECTED = ("<system-reminder>", "<command-", "<local-command-", "<task-notification>", "<ci-monitor-event>",
-            "<environment_context>", "<user_instructions>", "# AGENTS.md instructions", "<permissions instructions>")
+            "<environment_context>", "<user_instructions>", "# AGENTS.md instructions", "<permissions instructions>",
+            # measured 2026-10-30 among records filed as prompts: automations, harness context and UI events
+            "<heartbeat>", "<recommended_plugins>", "<external_codex_apps", "<in-app-browser-context", "<hook_prompt",
+            "<user_action>", "<scheduled-task", "<skill>", "<create-pr-command>", "[Request interrupted by user")
+AGENT_WRITTEN = ("<cross-session-message",)  # another session's message arrives as a prompt
 MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf"}
 # Claude Code rows that only repeat or instrument what other rows hold: request copies, file backups, sync markers.
 CLAUDE_SKIP = {"api-request", "api-request-blob", "api-request-shape", "file-history-snapshot", "file-history-delta",
@@ -76,15 +87,39 @@ def _injected(text: str) -> bool:
     return text.lstrip().startswith(INJECTED)
 
 
-def workspace_of(cwd: str) -> str:
-    """The name of the workspace folder (config `workspace_roots`, default ~/workspaces/*) that holds cwd."""
-    here = os.path.realpath(os.path.expanduser(cwd or "~"))
+def _prompt(s: "_Session", at, body: dict, sidechain: bool = False):
+    """A prompt as the record it really is: the principal's words, an agent's brief, or a reviewer's copy."""
+    if s.meta.get("role") == "reviewer":  # Codex's approval reviewer is handed the whole conversation to judge
+        s.skipped["reviewer's copy of the conversation"] += 1
+        return None
+    agent = sidechain or s.meta.get("role") == "subagent" or body.get("text", "").lstrip().startswith(AGENT_WRITTEN)
+    return {"at": at, "kind": "brief" if agent else "user", **body}
+
+
+def _workspaces() -> list:
+    """Every workspace folder (config `workspace_roots`, default ~/workspaces/*)."""
+    found = []
     for pattern in paths.config().get("workspace_roots") or ["~/workspaces/*"]:
         base = Path(os.path.expanduser(pattern))
-        for folder in base.parent.glob(base.name) if GLOB & set(base.name) else [base]:
-            if folder.is_dir() and paths.inside(here, os.path.realpath(folder)):
-                return folder.name
-    return "other"
+        found += [f for f in (base.parent.glob(base.name) if GLOB & set(base.name) else [base]) if f.is_dir()]
+    return found
+
+
+def workspace_of(cwd: str) -> str:
+    """The name of the workspace folder that holds cwd, or "other"."""
+    here = os.path.realpath(os.path.expanduser(cwd or "~"))
+    return next((f.name for f in _workspaces() if paths.inside(here, os.path.realpath(f))), "other")
+
+
+def workspace_named(encoded: str) -> str:
+    """The workspace of a Claude Code project folder, whose name is the start folder with every character other
+    than a letter or digit turned into '-'; matched against each workspace, longest first, never decoded."""
+    best = ("", "other")
+    for f in _workspaces():
+        enc = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(f))
+        if (encoded == enc or encoded.startswith(enc + "-")) and len(enc) > len(best[0]):
+            best = (enc, f.name)
+    return best[1]
 
 
 def _iso(value) -> str:
@@ -168,7 +203,7 @@ class _Session:
     def emit(self, rec: dict | None) -> None:
         if rec is None:
             return
-        if rec.get("kind") == "user":
+        if rec.get("kind") in ("user", "brief"):
             self.last_user = rec.get("text", "")
         if rec.get("kind") in ("system", "user"):  # the session-start hook names the project the session works on
             for found in ACTIVE_PROJECT.findall(str(rec.get("text") or "")):
@@ -245,10 +280,12 @@ def _claude(row: dict, s: _Session):
                        **s.content(b.get("content"))}
             elif kind in ("text", "image", "document"):
                 text = b.get("text") or ""
-                who = ("compaction" if row.get("isCompactSummary") else
-                       "system" if row.get("isMeta") or _injected(text) else "user")
-                rec = {"at": at, "kind": who, **s.content([b])}
-                yield s.once(rec) if who == "system" else rec
+                if row.get("isCompactSummary") or row.get("isMeta") or _injected(text):
+                    who = "compaction" if row.get("isCompactSummary") else "system"
+                    rec = {"at": at, "kind": who, **s.content([b])}
+                    yield s.once(rec) if who == "system" else rec
+                else:  # a sub-agent's prompts (isSidechain) are written by the agent that started it
+                    yield _prompt(s, at, s.content([b]), bool(row.get("isSidechain")))
     elif t == "system":
         sub = row.get("subtype")
         if sub == "compact_boundary":
@@ -272,8 +309,12 @@ def _codex(row: dict, s: _Session):
     t, at, p = row.get("type"), row.get("timestamp"), row.get("payload") if isinstance(row.get("payload"), dict) else {}
     kind = p.get("type")
     if t == "session_meta":
+        sub = p.get("source", {}).get("subagent") if isinstance(p.get("source"), dict) else None
+        if isinstance(sub, dict):  # a child thread: Codex's approval reviewer ("guardian") or a spawned agent
+            s.meta["role"] = "reviewer" if sub.get("other") == "guardian" else "subagent"
+            s.meta["parent"] = p.get("parent_thread_id") or (sub.get("thread_spawn") or {}).get("parent_thread_id")
         yield {"at": at, "kind": "session", "data": {k: p[k] for k in ("id", "cwd", "originator", "cli_version", "source",
-                                                                       "model_provider", "git") if k in p}}
+                                                                       "parent_thread_id", "model_provider", "git") if k in p}}
         if p.get("instructions"):
             yield s.once({"at": at, "kind": "system", "source": "instructions", "text": p["instructions"]})
     elif t == "turn_context":
@@ -286,7 +327,7 @@ def _codex(row: dict, s: _Session):
         if p.get("role") == "assistant":
             yield {"at": at, "kind": "assistant", **body, "model": s.model}
         elif p.get("role") == "user" and not _injected(text):
-            yield None if text == s.last_user else {"at": at, "kind": "user", **body}
+            yield None if text == s.last_user else _prompt(s, at, body)
         else:
             yield s.once({"at": at, "kind": "system", "source": p.get("role"), **body})
     elif t == "response_item" and kind == "reasoning":
@@ -303,7 +344,7 @@ def _codex(row: dict, s: _Session):
                "input": p.get("arguments") or p.get("input") or p.get("action")}
     elif t == "event_msg" and kind == "user_message":
         text = str(p.get("message") or "")
-        yield None if not text or text == s.last_user else {"at": at, "kind": "user", "text": text}
+        yield None if not text or text == s.last_user or _injected(text) else _prompt(s, at, {"text": text})
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
         yield {"at": at, "kind": "compaction", "text": p.get("message")}
@@ -322,7 +363,7 @@ def _muse(row: dict, s: _Session):
         elif kind == "runtime.user_intent.accepted":  # every prompt (113 in one session); only 13 were also displayed
             text = "\n".join(str(c.get("text") or "") for m in pl.get("model_messages") or [] if isinstance(m, dict)
                              for c in m.get("content") or [] if isinstance(c, dict) and c.get("kind") == "text")
-            yield {"at": at, "kind": "user", "text": text} if text else None
+            yield _prompt(s, at, {"text": text}) if text and not _injected(text) else None
         elif kind == "runtime.session" and what == "assistant_message_committed":
             yield {"at": at, "kind": "assistant", "text": ev.get("text"), "model": s.model}
         elif kind == "runtime.session" and what == "reasoning_committed":
@@ -354,9 +395,10 @@ def _identity(harness: str, native: Path) -> str:
     return f"{parts[parts.index('subagents') - 1]}-{native.stem}" if "subagents" in parts else native.stem
 
 
-def _place(harness: str, native: Path, session: str) -> Path:
-    """The session's folder, from where and when it began: the first rows that name a folder and a time."""
-    cwd, when = "", ""
+def _place(harness: str, native: Path, session: str) -> tuple:
+    """The session's folder and working folder, from where and when it began: the first rows that name a folder and
+    a time. A sub-agent belongs to the workspace its parent ran in, wherever it then worked."""
+    cwd, when, parent = "", "", ""
     with native.open("rb") as f:
         for raw in f.readlines(2_000_000)[:400]:
             try:
@@ -369,10 +411,17 @@ def _place(harness: str, native: Path, session: str) -> Path:
                 rec = pl.get("record") if isinstance(pl.get("record"), dict) else {}
                 cwd = cwd or fr.get("cwd") or pl.get("cwd") or rec.get("cwd") or rec.get("workspace_root") or ""
                 when = when or _iso(fr.get("timestamp") or fr.get("recorded_at") or pl.get("timestamp"))
+                parent = parent or pl.get("parent_thread_id") or ""
             if cwd and when:
                 break
-    month = (when or _iso(native.stat().st_mtime))[:7]
-    return root() / workspace_of(cwd) / month / f"{harness}-{session}"
+    month, workspace = (when or _iso(native.stat().st_mtime))[:7], workspace_of(cwd) if cwd else "other"
+    if harness == "claude-code" and "projects" in native.parts:  # filed under the folder the session started in
+        named = workspace_named(native.parts[native.parts.index("projects") + 1])
+        workspace = named if named != "other" and ("subagents" in native.parts or workspace == "other") else workspace
+    elif harness == "codex" and workspace == "other" and parent:
+        folder = paths.read_json(root() / ".state" / f"codex-{parent}.json").get("folder")
+        workspace = Path(folder).parts[-3] if folder else workspace
+    return root() / workspace / month / f"{harness}-{session}", cwd
 
 
 def export_file(harness: str, native: Path, project: str = "") -> int:
@@ -385,7 +434,8 @@ def export_file(harness: str, native: Path, project: str = "") -> int:
         s.skipped["rewritten"] += 1
     if size == s.offset and not project:
         return 0
-    s.folder = s.folder or _place(harness, native, s.session)
+    if not s.folder:
+        s.folder, s.meta["cwd"] = _place(harness, native, s.session)
     if project and project not in s.meta.setdefault("projects", []):
         s.meta["projects"].append(project)
     adapter, end = ADAPTERS[harness], s.offset
@@ -411,8 +461,20 @@ def natives(days: float = 0) -> list:
     since, found = time.time() - days * 86400 if days else 0, []
     for harness, base in paths.transcript_roots().items():
         pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*/session.jsonl"}[harness]
-        found += [(harness, p) for p in base.glob(pattern) if p.is_file() and p.stat().st_mtime >= since]
+        bases = [base, base.parent / "archived_sessions"] if harness == "codex" else [base]  # Codex moves archived ones
+        found += [(harness, p) for b in bases for p in b.glob(pattern) if p.is_file() and p.stat().st_mtime >= since
+                  and p.name != "journal.jsonl"]  # a Claude Code workflow's run journal, not a conversation
     return found
+
+
+def rebuild() -> str:
+    """Move the whole archive aside, never deleting it, so the next export reads every transcript again with the
+    current adapters. Returns where the old archive went."""
+    target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if root().exists():
+        os.replace(root(), target)
+    return str(target)
 
 
 def export(days: float = 0, only: str = "") -> list:
@@ -437,10 +499,17 @@ def export(days: float = 0, only: str = "") -> list:
 # --- reading what was kept ------------------------------------------------------------------------------------
 
 
-def catalog(workspace: str = "", project: str = "") -> list:
-    """Every exported session's meta, newest first."""
+def catalog(workspace: str = "", project: str = "", local_only: bool = False) -> list:
+    """Every session's meta, newest first: this Mac's archive, then sessions other Macs synced into the workspace
+    sessions repos that this Mac has cloned."""
     pattern = f"{workspace or '*'}/*/*/meta.json"
     found = [dict(paths.read_json(m), folder=str(m.parent)) for m in root().glob(pattern)]
+    if not local_only:
+        have = {(m.get("harness"), m.get("session")) for m in found}
+        for ws, repo in repos().items():
+            for m in repo.glob("*/*/meta.json") if not workspace or ws == workspace else ():
+                meta = dict(paths.read_json(m), folder=str(m.parent), synced=ws)
+                found += [meta] if (meta.get("harness"), meta.get("session")) not in have else []
     found = [m for m in found if not project or project in m.get("projects", [])]
     return sorted(found, key=lambda m: m.get("last", ""), reverse=True)
 
@@ -457,6 +526,11 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
             if not kinds or rec.get("kind") in kinds:
                 rows.append(_whole(rec, Path(folder)) if whole else rec)
     return rows
+
+
+def around(folder: str, seq: int, span: int = 3) -> list:
+    """The record a citation names (`<harness> <session> #<seq>`, R10.5) with `span` records either side."""
+    return [r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
 
 
 def _whole(rec: dict, folder: Path) -> dict:
@@ -499,3 +573,92 @@ def render(rec: dict, width: int = 0) -> str:
     body = body if not width or len(body) <= width else body[:width] + f" ... [{len(body) - width} more characters]"
     who = rec.get("kind", "?") + (f" ({rec['model']})" if rec.get("model") else "")
     return f"#{rec.get('seq', '?')} {rec.get('at', '')[:19]} {who}: {body}"
+
+
+# --- copying each workspace's conversation off the Mac (R10.2 to R10.4) ---------------------------------------
+
+
+def repos() -> dict:
+    """Workspace -> its sessions repo checkout (config `sessions_repos`). A session with no workspace is never
+    synced (R10.4)."""
+    found = paths.config().get("sessions_repos") or {}
+    return {ws: Path(os.path.expanduser(p)) for ws, p in found.items() if ws != "other" and isinstance(p, str)}
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=900)
+
+
+def sync(workspace: str = "", push: bool = True) -> list:
+    """Export what is new, then copy each workspace's conversation and tool calls into its sessions repo, one
+    commit per month touched, and push. A line starting FAILED means that workspace's copy is not on its upstream."""
+    targets = {ws: repo for ws, repo in repos().items() if not workspace or ws == workspace}
+    if not targets:
+        return []
+    export(2)
+    return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
+
+
+def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
+    if not (repo / ".git").exists():
+        return [f"FAILED {ws}: {repo} is not a git checkout; clone the workspace's sessions repo there"]
+    state_file = root() / ".state" / f"sync-{ws}.json"
+    state = paths.read_json(state_file)
+    done, months, lines = dict(state.get("sessions", {})), collections.Counter(), []
+    for meta in catalog(ws, local_only=True):
+        rel = Path(meta["folder"]).relative_to(root() / ws).as_posix()
+        if done.get(rel) != meta.get("records"):
+            months[rel.split("/")[0]] += _write_synced(Path(meta["folder"]), repo / rel, meta)
+            done[rel] = meta.get("records")
+    for month, count in sorted(months.items()):
+        added = _git(repo, "add", "-A", "--", month)
+        if added.returncode:
+            return lines + [f"FAILED {ws}: git add {month}: {added.stderr.strip()[-300:]}"]
+        if _git(repo, "diff", "--cached", "--quiet").returncode == 0:
+            continue
+        made = _git(repo, "commit", "-q", "-m", f"Sessions: {month} ({count} changed)")
+        if made.returncode:  # the commit check refused, or git failed: nothing is recorded as synced
+            return lines + [f"FAILED {ws}: commit for {month} refused: {(made.stdout + made.stderr).strip()[-600:]}"]
+        lines.append(f"{ws}: {month}: {count} session(s) committed")
+    if push:
+        if _git(repo, "rev-parse", "--abbrev-ref", "@{u}").returncode:
+            pushed = _git(repo, "push", "-q", "-u", "origin", "HEAD")
+        else:
+            pulled = _git(repo, "pull", "-q", "--rebase")
+            if pulled.returncode:
+                return lines + [f"FAILED {ws}: pull --rebase: {pulled.stderr.strip()[-300:]}"]
+            pushed = _git(repo, "push", "-q")
+        if pushed.returncode:
+            return lines + [f"FAILED {ws}: push: {pushed.stderr.strip()[-300:]}"]
+    paths.write_json(state_file, {"sessions": done, "synced": _iso(time.time()), "pushed": push})
+    return lines + [f"{ws}: {repo.name} up to date" + ("" if push else " (not pushed)")]
+
+
+def _write_synced(src: Path, dst: Path, meta: dict) -> int:
+    """Write a session's synced copy from the archive, whole and in order, so the same records always give the same
+    files: closed segments never change and a rebuilt archive simply rewrites them. Returns 1 if anything changed."""
+    segments, size = [[]], 0
+    for rec in records(str(src), SYNC_KINDS):
+        line = json.dumps(_clean(rec), ensure_ascii=False) + "\n"
+        if segments[-1] and size + len(line.encode("utf-8")) > SEGMENT_BYTES:
+            segments.append([])
+            size = 0
+        segments[-1].append(line)
+        size += len(line.encode("utf-8"))
+    dst.mkdir(parents=True, exist_ok=True)
+    changed, wanted = 0, set()
+    for number, lines in enumerate(segments, 1):
+        target = dst / f"transcript-{number:04d}.jsonl"
+        wanted.add(target.name)
+        body = "".join(lines)
+        if not target.exists() or target.read_text(encoding="utf-8") != body:
+            target.write_text(body, encoding="utf-8")
+            changed = 1
+    for old in dst.glob("transcript-*.jsonl"):
+        if old.name not in wanted:  # fewer records after a rebuild; git history keeps the old file
+            old.unlink()
+            changed = 1
+    kept = {k: v for k, v in meta.items() if k not in ("folder", "native", "updated")}
+    if changed or not (dst / "meta.json").exists():
+        paths.write_json(dst / "meta.json", {**kept, "synced_kinds": list(SYNC_KINDS)})
+    return changed

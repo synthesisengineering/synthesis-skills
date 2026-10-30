@@ -20,6 +20,7 @@ import statistics
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -281,6 +282,32 @@ def check_claude_retention(settings: Path) -> Check:
         return Check("warn", "claude transcripts", f"cleanupPeriodDays = {days}: run `synthesis sessions export` at "
                      "least that often, or Claude Code deletes transcripts first")
     return Check("ok", "claude transcripts", f"kept {days:,} days")
+
+
+def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
+    """Each workspace's sessions repo (R10.2): cloned where config `sessions_repos` says, synced within two days,
+    and small enough to clone (GitHub advises under 5 GB; this warns at 3 GB)."""
+    found = []
+    for ws, repo in sorted(repos.items()):
+        if not (repo / ".git").is_dir():
+            found.append(Check("warn", f"sessions repo {ws}", f"{_short(repo)} is not cloned; clone it there, then run "
+                               "`synthesis sessions sync`"))
+            continue
+        synced = paths.read_json(state / f"sync-{ws}.json").get("synced", "")
+        size = sum(f.stat().st_size for f in (repo / ".git").rglob("*") if f.is_file())
+        try:
+            age = ((now or time.time()) - datetime.fromisoformat(synced.replace("Z", "+00:00")).timestamp()) / 86400
+        except ValueError:
+            age = None
+        if size >= 3e9:
+            found.append(Check("warn", f"sessions repo {ws}", f"{size / 1e9:.1f} GB: start a new repo for this "
+                               "workspace before it passes GitHub's 5 GB advice"))
+        elif age is None or age > 2:
+            found.append(Check("warn", f"sessions repo {ws}", "never synced" if age is None else
+                               f"last synced {synced[:10]}: run `synthesis sessions sync`"))
+        else:
+            found.append(Check("ok", f"sessions repo {ws}", f"synced {synced[:16]}, {size / 1e6:,.0f} MB"))
+    return found
 
 
 def check_board(home: Path) -> Check:
@@ -983,6 +1010,8 @@ def _background(fn, *args):
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
     home, cwd = home or paths.home(), cwd or Path.cwd()
     checks = [check_runtime(home), check_config(home), check_board(home)]
+    from synthesis import sessions
+    checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing

@@ -400,6 +400,13 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
         except (RuntimeError, subprocess.TimeoutExpired) as exc:
             done, lines = False, [f"{repo}: {exc}"]
         ok, report = ok and done, report + lines
-    report.append("READY: every record this session changed is committed and on its upstream." if ok else
+    from synthesis import sessions  # the conversations leave the Mac with the records (R10.2)
+    try:
+        synced = sessions.sync()
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        synced = [f"FAILED sessions sync: {exc}"]
+    ok, report = ok and not any(line.startswith("FAILED") for line in synced), report + synced
+    report.append(("READY: every record this session changed" + (", and each workspace's conversations," if synced else "") +
+                   " is committed and on its upstream.") if ok else
                   "NOT READY: the problems above stop another machine from resuming these records; nothing was forced.")
     return report

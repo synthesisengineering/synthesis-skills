@@ -205,3 +205,14 @@ def test_a_wildcard_claim_covers_files_inside_the_folders_it_matches(kb, tmp_pat
     assert report[-1].startswith("READY")
     assert sorted(_remote_files(tmp_path).split()) == ["preps/2026-11-02-demo/prep.md", "preps/2026-11-02-weekly/prep.md"]
     assert _git(kb, "status", "--porcelain") == "?? preps/2026-11-09-weekly/"
+
+
+def test_handoff_carries_each_workspaces_conversations_and_is_not_ready_when_they_stay_behind(kb, monkeypatch):
+    from synthesis import sessions
+    (kb / "mine" / "CONTEXT.md").write_text("mine, updated\n", encoding="utf-8")
+    monkeypatch.setattr(sessions, "sync", lambda *a, **k: ["acme: ai-sessions-acme up to date"])
+    report = project.handoff("S1")
+    assert "acme: ai-sessions-acme up to date" in report and report[-1].startswith("READY") and "conversations" in report[-1]
+    (kb / "mine" / "CONTEXT.md").write_text("mine, again\n", encoding="utf-8")
+    monkeypatch.setattr(sessions, "sync", lambda *a, **k: ["FAILED acme: push: rejected"])
+    assert project.handoff("S1")[-1].startswith("NOT READY")

@@ -78,3 +78,11 @@ If the workspace already has an `AGENTS.md` or `CLAUDE.md` that setup did not cr
 it is kept and named. `--adopt-workspace-instructions` replaces them, after moving both
 to `~/.synthesis/v5/archive/<timestamp>/`. Edit the tracked source in the knowledge
 repository, never the workspace entry points.
+
+## Agent conversations on a new Mac
+
+A workspace that keeps its agent conversations in a sessions repo (config `sessions_repos`; synthesis-context-lifecycle,
+references/session-transcripts.md) lists that repo in its `repos.yaml` like any other, so the new Mac clones it, at
+the path `sessions_repos` names. The new Mac then reads the other Macs' sessions with `synthesis sessions list`,
+`recent`, `show` and `search` at once; its own sessions join the repo at its first handoff or day-end.
+`synthesis doctor` names any configured sessions repo that is not cloned.

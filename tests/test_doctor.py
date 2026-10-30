@@ -893,3 +893,17 @@ done
         for _ in range(50):
             os.kill(int(marker.read_text()), 0)
             time.sleep(0.02)
+
+
+def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    cloned = tmp_path / "ai-sessions-a"
+    (cloned / ".git").mkdir(parents=True)
+    (state / "sync-a.json").write_text(json.dumps({"synced": "2026-10-30T20:00:00Z"}), encoding="utf-8")
+    (state / "sync-c.json").write_text(json.dumps({"synced": "2026-10-20T20:00:00Z"}), encoding="utf-8")
+    now = time.mktime(time.strptime("2026-10-31", "%Y-%m-%d"))
+    found = {c.name: c for c in doctor.check_sessions_repos({"a": cloned, "b": tmp_path / "missing", "c": cloned}, state, now)}
+    assert found["sessions repo a"].status == "ok"
+    assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
+    assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
