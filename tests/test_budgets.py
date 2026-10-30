@@ -136,10 +136,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # text 4 and its reason 1, the test 4, its use 1, spacing 4). reply_check.py 40: a calendar write this turn that no
 # calendar read followed sends the reply back once (the write and read patterns 2, the turn read from the
 # transcript's tail with what each call did 33, the reply naming the writes 4, json imported 1).
+# 5.1.17 adds 1 to both (checkout.py): the reason `synthesis index set` commits as "Update docs", after a session
+# found on 2026-10-27 that its message named the project and field, against the principal's commit-message rule.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6745
-PLUGIN_BUDGET = 23646
+CORE_BUDGET = 6746
+PLUGIN_BUDGET = 23647
 
 
 def _lines(files):

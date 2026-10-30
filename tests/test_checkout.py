@@ -90,6 +90,11 @@ def test_index_set_commits_its_own_change_and_keeps_another_sessions_edit(tmp_pa
     assert "committed" in result
     committed = _git(root, "show", "HEAD", "--", "projects/index.yaml")
     assert '+  last_session: "2026-10-20"' in committed and "2026-10-15" not in committed
+    # 2026-10-27: the message named the project and field; a commit message stays generic in every repository
+    assert _git(root, "log", "-1", "--format=%s").strip() == "Update docs"
+    assert _git(root, "show", "--name-only", "--format=", "HEAD").split() == ["projects/index.yaml"]
+    changed = [l for l in _git(root, "show", "--format=", "HEAD").splitlines() if l[:1] in "+-" and l[:3] not in ("+++", "---")]
+    assert changed == ['-  last_session: "2026-10-01"', '+  last_session: "2026-10-20"']
     working = index.read_text(encoding="utf-8")
     assert '"2026-10-20"' in working and '"2026-10-15"' in working  # both edits in the working tree
     assert _git(root, "diff", "--cached") == ""  # nothing half-staged left behind

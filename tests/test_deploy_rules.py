@@ -11,6 +11,9 @@ from synthesis import approvals, guards
 
 FIX = json.loads((Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "incidents.json").read_text(encoding="utf-8"))
 HOUR, DAY = 3600, 86400
+# The live post's one moment: when the fixture and a test each read the clock, a slow runner can put them in
+# different minutes and the test expects a date the post never had (2026-10-27, CI on macOS).
+LIVE = time.time() - 7 * DAY
 
 
 def _git(repo, *args):
@@ -41,7 +44,7 @@ def site(tmp_path):
     """A site repository published to origin/main, with one live post from last week."""
     root = tmp_path / "site"
     subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
-    _post(root, "last-week", time.time() - 7 * DAY)
+    _post(root, "last-week", LIVE)
     _commit(root, "first post")
     subprocess.run(["git", "init", "-q", "--bare", str(tmp_path / "origin.git")], check=True)
     _git(root, "remote", "add", "origin", str(tmp_path / "origin.git"))
@@ -159,7 +162,7 @@ def test_a_date_only_post_for_tomorrow_is_refused(site):
 # --- a published date never changes ------------------------------------------------------------
 
 def test_redating_a_live_post_is_refused_naming_both_dates(site):
-    live = time.time() - 7 * DAY
+    live = LIVE
     _post(site, "last-week", live - DAY)
     _commit(site, "redate")
     reason = _push(site)
