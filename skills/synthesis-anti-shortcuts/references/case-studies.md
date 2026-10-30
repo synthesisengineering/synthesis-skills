@@ -264,6 +264,41 @@ Category 9, `effort_rationale`, in [`costume-vocabulary.md`](costume-vocabulary.
 
 ---
 
+## Case 8: Four Months of Corrections, Mined
+
+### Situation
+
+On 2026-10-30 the principal's agent sessions from three harnesses were kept in one archive, and every prompt he had
+typed since May was read for the places he corrected an agent: 3,712 prompts, 1,033 candidates by keyword, classified
+by five reviewing agents into 306 corrections.
+
+### What the agents had done
+
+The largest groups: doing less than asked or deferring (47), stating system state, dates or status without checking
+(44), repeating a mistake already corrected (42), and voice (30). Asking instead of acting came to 17, and in most of
+those the reply announced it in a phrase: a finished change parked behind "say the word", an overnight run "ready to
+resume whenever you give the word", "your call on which restart pattern" after the agent's own setting broke the
+job, decisions "left" to the user that the constraints had already made. Deferrals had their phrases too: "the first
+thing I'd do in the next session", "noted in the files themselves, not acted on", "standing down", "separate
+follow-on work I didn't touch", and a fix chosen as "the smallest change that closes the hole".
+
+### Why they count as costumes
+
+Each phrase read as courtesy or caution. In every case the principal had already given the direction, and his
+correction said so: the work was his to have done, not his to restart.
+
+### What should have happened
+
+Execute what the direction covers, report what was done and how it was checked, and bring only the choices that are
+his, with a recommendation. While one item waits on him, the rest keep moving.
+
+### Catalog entries this case produced
+
+`say the word`, `give the word`, `leave you the judgment calls` (asking_as_shortcut); `in the next session`,
+`not acted on`, `standing down` (deferral); `follow-on work` (scope_excuse); `smallest change` (minimal_diff).
+
+---
+
 ## Patterns Across the Cases
 
 Seven different domains. The same shape:

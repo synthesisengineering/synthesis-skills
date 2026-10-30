@@ -244,9 +244,22 @@ def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow
 def test_a_rebuild_moves_the_archive_aside_and_exports_everything_again(harness):
     native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
     first = sessions.export_file("claude-code", native)
-    moved = Path(sessions.rebuild())
-    assert (moved / "acme").is_dir() and not sessions.root().exists()
-    assert sessions.export(0) == [f"claude-code c1: {first} record(s)"]
+    report = sessions.export(rebuild=True)
+    moved = Path(report[0].split(" moved to ")[1])
+    assert (moved / "acme").is_dir() and report[1:] == [f"claude-code c1: {first} record(s)"]
+
+
+def test_one_export_at_a_time_and_a_resume_never_waits_for_it(harness):
+    import fcntl
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        assert sessions.export(0, wait=False) == ["not exported: another export is running, so the archive is read as it is"]
+        assert not sessions.root().exists()
+    report = sessions.export(0, wait=False)
+    assert len(report) == 1 and report[0].startswith("claude-code c1: ")
 
 
 def test_show_opens_a_cited_record_with_its_neighbors(harness, capsys):
@@ -321,3 +334,60 @@ def test_a_session_codex_archived_is_still_exported(harness):
                       {"type": "response_item", "timestamp": "2026-07-03T13:38:00Z", "payload": {
                           "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Archive me."}]}}])
     assert sessions.export(0) == ["codex 01a1arch-0000-7000-8000-000000000003: 2 record(s)"]
+
+
+def test_only_the_session_start_hooks_own_text_names_a_project(harness):
+    rows = _claude_rows(harness["work"])
+    rows.insert(3, {"cwd": harness["work"], "sessionId": "c1", "timestamp": "2026-10-30T10:00:00Z", "type": "attachment",
+                    "attachment": {"type": "edited_text_file", "content": "fixture: Active project: beta (/kb/projects/beta)"}})
+    native = _jsonl(harness["claude"], rows)
+    sessions.export_file("claude-code", native)
+    assert _meta(native)["projects"] == ["alpha"]
+
+
+def test_a_citation_of_a_parent_session_opens_it_not_its_sub_agents(harness, capsys):
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sub = harness["claude"].parent / "c1" / "subagents" / "agent-a1.jsonl"
+    _jsonl(sub, [{"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T10:00:00Z",
+                  "message": {"role": "user", "content": "Check the script."}}])
+    sessions.export(0)
+    agent = _meta(sub)
+    assert agent["role"] == "subagent" and agent["parent"] == "c1" and agent["session"] == "c1-agent-a1"
+    assert [m["session"] for m in sessions.find("c1")] == ["c1"]
+    assert cli.main(["sessions", "show", "c1", "--kinds", "user"]) == 0
+    assert "Please plan the release." in capsys.readouterr().out
+
+
+def test_a_session_that_cannot_export_still_sees_the_latest_turns(harness, tmp_path):
+    """Codex's sandbox may write only the board: resume reads the archive as it is, plus what each harness recorded
+    since, without writing anything."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sessions.export(0)
+    _jsonl(harness["claude"], [{"type": "user", "cwd": harness["work"], "timestamp": "2026-10-30T12:00:00Z",
+                                "message": {"role": "user", "content": "One more thing."}}])
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.chmod(0o444)  # as in the sandbox: the lock, and the archive with it, cannot be written
+    try:
+        assert sessions.export(2, wait=False)[0].startswith("not exported:")
+        before = sorted(p.stat().st_mtime for p in sessions.root().rglob("*") if p.is_file())
+        assert "One more thing." not in [r["text"] for r in sessions.recent("alpha")]
+        assert "One more thing." in [r["text"] for r in sessions.recent("alpha", live=True)]
+        assert sorted(p.stat().st_mtime for p in sessions.root().rglob("*") if p.is_file()) == before
+        kb = tmp_path / "kb"
+        (kb / "projects" / "alpha").mkdir(parents=True)
+        (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+        assert "One more thing." in project.resume(str(kb / "projects" / "alpha"), "S-new")
+    finally:
+        lock.chmod(0o644)
+
+
+def test_sync_takes_the_same_writer_lock_as_export(synced):
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    sessions.export(0)
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.chmod(0o444)
+    try:
+        assert sessions.sync() == [f"FAILED sessions sync: not exported: [Errno 13] Permission denied: '{lock}'"]
+    finally:
+        lock.chmod(0o644)
+    assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"

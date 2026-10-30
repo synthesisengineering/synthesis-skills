@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.1] - 2026-10-30
+
+- **A citation names the session it cites** (context lifecycle 2.2.1). A Claude Code sub-agent's id begins with its
+  parent's, so `synthesis sessions show d20ab7c4` matched 274 sessions and refused, and every citation of a session
+  that had started sub-agents was ambiguous. The exact id wins, then the one main session the prefix starts. A Claude
+  Code sub-agent's `meta.json` now names its `role` and `parent`, as Codex's child threads already did.
+- **Only the session-start hook names a session's project.** A test fixture's "Active project:" line, shown to a
+  session in a file-change notice, had added a project that session never worked on. The line now counts only in
+  Claude Code's hook attachments or a message that begins with the hook's first line.
+- **One writer at a time.** An export from one session and a rebuild ran into the archive at once on 2026-10-30;
+  two sessions resuming together could append the same records twice, and two handing off together would collide in
+  a sessions repo's index. Export and sync now share one lock. Exports now take a lock beside the archive
+  (so a rebuild's move never takes it along); `synthesis resume` does not wait for it and reads the archive as it
+  is, and `synthesis sessions export --rebuild` moves the archive aside inside the same lock.
+- **A sandboxed session sees the latest turns.** Codex's sandbox may write only the board, so `synthesis resume` there
+  could not export and showed the conversation only as far as another session had exported it. When the export
+  cannot run, resume now adds what each harness recorded since, read without writing anything.
+- **Eight shortcut phrases from four months of corrections** (anti-shortcuts 2.1.0). The principal's prompts since
+  May were read for the places he corrected an agent (3,712 prompts, 306 corrections) and the replies before them
+  for the phrase that announced the mistake. Case 8 records what they show; the catalog adds `say the word`,
+  `give the word`, `leave you the judgment calls`, `in the next session`, `not acted on`, `standing down`,
+  `follow-on work` and `smallest change`, each documented and tested.
+
 ## [5.3.0] - 2026-10-30
 
 - **Each workspace's conversations leave the Mac with its records** (context lifecycle 2.2.0, project management

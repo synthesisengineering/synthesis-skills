@@ -83,6 +83,13 @@ Why it is a shortcut: vocabulary that pre-licenses a partial pass.
 
 Replacement framing: state the job's actual size. If the job is "re-theme the chrome," do the chrome — all of it. If the job is one specific element, name that element explicitly.
 
+### `smallest change` / `smallest fix` (2026-10-30)
+
+Why it is a shortcut: the fix is chosen by its size when the user asked for the right fix ("smallest change that
+closes the hole", Case 8).
+
+Replacement framing: choose the fix that removes the cause; state its size as information, never as the reason.
+
 ### `low risk change` / `low-risk pass`
 
 Why it is a shortcut: optimizing for risk minimization when the user has stated completeness matters more than risk.
@@ -126,6 +133,16 @@ Replacement framing: scan constraints. If determined, execute. If not determined
 Why it is a shortcut: same offloading pattern in a softer register.
 
 Replacement framing: same — scan constraints, execute if determined.
+
+
+### `say the word` / `give the word` / `leave you the judgment calls` (2026-10-30)
+
+Why it is a shortcut: the work waits for a go-ahead the user's direction already gave. Found in replies the
+principal corrected when four months of sessions were mined (Case 8): a finished change parked behind "say the
+word", an overnight run "ready to resume whenever you give the word", decisions the constraints settled handed back.
+
+Replacement framing: do the work and report it. Bring the user only the choices that are theirs, with a
+recommendation.
 
 ---
 
@@ -188,6 +205,14 @@ Replacement framing: do the work. If a real blocker stops it, name the blocker, 
 Why it is a shortcut: future-tense vagueness covering present-tense avoidance.
 
 Replacement framing: present-tense action or concrete scheduling.
+
+
+### `in the next session` / `not acted on` / `standing down` (2026-10-30)
+
+Why it is a shortcut: the finding is recorded and the work stops: "the first thing I'd do in the next session",
+"noted in the files themselves, not acted on", "standing down" while independent work was ready (Case 8).
+
+Replacement framing: act now on what can move; for what cannot, name the external event and who clears it.
 
 ---
 
@@ -312,6 +337,14 @@ Replacement framing: same — fix while touching.
 Why it is a shortcut: invokes size to defer.
 
 Replacement framing: if it is genuinely larger, propose the split. If it is the same size, do it.
+
+
+### `follow-on work` (2026-10-30)
+
+Why it is a shortcut: part of the requested work is relabeled as someone's next task ("separate follow-on work I
+didn't touch", Case 8).
+
+Replacement framing: do it in this change, since it is part of what was asked.
 
 ### `YAGNI` (as dismissal)
 

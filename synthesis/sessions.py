@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import base64
 import collections
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -50,6 +52,9 @@ MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp
 CLAUDE_SKIP = {"api-request", "api-request-blob", "api-request-shape", "file-history-snapshot", "file-history-delta",
                "bridge-session", "atis-latch", "last-prompt", "artifact-comment-monitor", "artifact-autoreact-ledger"}
 ACTIVE_PROJECT = re.compile(r"Active project: ([A-Za-z0-9][A-Za-z0-9._-]*)")
+# Where the session-start hook's own text arrives: Claude Code's hook attachments, or a message that starts with the
+# hook's first line (Codex's developer message). Any other text that merely quotes the line names no project.
+HOOK_SOURCES = ("hook_additional_context", "hook_success")
 
 
 def root() -> Path:
@@ -135,8 +140,8 @@ def _iso(value) -> str:
 class _Session:
     """One native transcript's export state: where its records go, what was already read and kept."""
 
-    def __init__(self, harness: str, native: Path, session: str):
-        self.harness, self.native, self.session = harness, native, session
+    def __init__(self, harness: str, native: Path, session: str, dry: bool = False):
+        self.harness, self.native, self.session, self.dry = harness, native, session, dry  # dry: write nothing
         self.file = root() / ".state" / f"{harness}-{re.sub(r'[^A-Za-z0-9._-]', '_', session)}.json"
         s = paths.read_json(self.file)
         self.offset, self.seq, self.segment = s.get("offset", 0), s.get("seq", 0), s.get("segment", 1)
@@ -182,7 +187,7 @@ class _Session:
         digest = hashlib.sha256(raw).hexdigest()
         name = f"media/{digest}.{MIME.get(mime, 'bin')}"
         target = self.folder / name
-        if not target.exists():
+        if not self.dry and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.{os.getpid()}")
             tmp.write_bytes(raw)
@@ -193,7 +198,7 @@ class _Session:
         """The whole text, once per workspace, named by its hash; the record keeps the name."""
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         target = self.folder.parent.parent / "blobs" / digest[:2] / f"{digest}.txt"
-        if not target.exists():
+        if not self.dry and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.{os.getpid()}")
             tmp.write_text(body, encoding="utf-8")
@@ -205,8 +210,9 @@ class _Session:
             return
         if rec.get("kind") in ("user", "brief"):
             self.last_user = rec.get("text", "")
-        if rec.get("kind") in ("system", "user"):  # the session-start hook names the project the session works on
-            for found in ACTIVE_PROJECT.findall(str(rec.get("text") or "")):
+        text = str(rec.get("text") or "")
+        if rec.get("kind") == "system" and (rec.get("source") in HOOK_SOURCES or text.lstrip().startswith("Local time:")):
+            for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
                     self.meta["projects"].append(found)
         if rec.get("at"):
@@ -436,6 +442,8 @@ def export_file(harness: str, native: Path, project: str = "") -> int:
         return 0
     if not s.folder:
         s.folder, s.meta["cwd"] = _place(harness, native, s.session)
+        if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
+            s.meta.update(role="subagent", parent=native.parts[native.parts.index("subagents") - 1])
     if project and project not in s.meta.setdefault("projects", []):
         s.meta["projects"].append(project)
     adapter, end = ADAPTERS[harness], s.offset
@@ -467,9 +475,9 @@ def natives(days: float = 0) -> list:
     return found
 
 
-def rebuild() -> str:
-    """Move the whole archive aside, never deleting it, so the next export reads every transcript again with the
-    current adapters. Returns where the old archive went."""
+def _rebuild() -> str:
+    """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
+    adapters. Returns where the old archive went."""
     target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if root().exists():
@@ -477,8 +485,36 @@ def rebuild() -> str:
     return str(target)
 
 
-def export(days: float = 0, only: str = "") -> list:
-    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session."""
+@contextlib.contextmanager
+def _writer(wait: bool):
+    """One writer of the archive and the sessions repos at a time on a Mac: two sessions resuming or handing off
+    together would otherwise append the same records twice or collide in a repo's index. Yields None while held,
+    else why not."""
+    try:  # beside the archive, so a rebuild's move never takes it along
+        held = (paths.home() / "sessions.lock").open("a")
+    except OSError as exc:  # Codex's sandbox may write only the board: the archive is read as it is, plus peek()
+        yield f"not exported: {exc}"
+        return
+    with held:
+        try:
+            fcntl.flock(held, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield "not exported: another export is running, so the archive is read as it is"
+            return
+        yield None
+
+
+def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
+    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
+    Without `wait` a busy archive is read as it is."""
+    with _writer(wait) as busy:
+        if busy:
+            return [busy]
+        moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
+        return moved + _export(0 if rebuild else days, only)
+
+
+def _export(days: float, only: str) -> list:
     from synthesis import board
     report = []
     for harness, native in natives(days):
@@ -528,6 +564,16 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
     return rows
 
 
+def find(prefix: str) -> list:
+    """The sessions a citation's id names: the exact id, else the one main session it starts (a sub-agent's id
+    starts with its parent's, so `d20ab7c4` would otherwise match every agent that session started), else every
+    session it starts."""
+    found = [m for m in catalog() if prefix and str(m.get("session", "")).startswith(prefix)]
+    exact = [m for m in found if m.get("session") == prefix]
+    main = [m for m in found if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    return exact or (main if len(main) == 1 else found)
+
+
 def around(folder: str, seq: int, span: int = 3) -> list:
     """The record a citation names (`<harness> <session> #<seq>`, R10.5) with `span` records either side."""
     return [r for r in records(folder) if abs(int(r.get("seq", -1)) - seq) <= span]
@@ -542,9 +588,38 @@ def _whole(rec: dict, folder: Path) -> dict:
     return rec
 
 
-def recent(project: str = "", workspace: str = "", turns: int = 12) -> list:
+def peek(days: float = 2) -> list:
+    """What each harness recorded after the last export, read without writing anything, as (meta, records) pairs:
+    a session that cannot export (Codex's sandbox may write only the board) still sees the latest turns."""
+    found = []
+    for harness, native in natives(days):
+        s = _Session(harness, native, _identity(harness, native), dry=True)
+        try:
+            if native.stat().st_size <= s.offset:
+                continue
+            s.folder = s.folder or _place(harness, native, s.session)[0]
+            with native.open("rb") as f:
+                f.seek(s.offset)
+                for raw in f:
+                    if not raw.endswith(b"\n"):
+                        break  # a line still being written
+                    try:
+                        row = json.loads(raw)
+                    except ValueError:
+                        continue
+                    for rec in ADAPTERS[harness](row, s) if isinstance(row, dict) else ():
+                        s.emit(rec)
+        except OSError:  # the harness moved or removed the file meanwhile
+            continue
+        found.append(({**s.meta, "harness": harness, "session": s.session, "folder": str(s.folder)},
+                      [json.loads(line) for line in s.lines]))
+    return found
+
+
+def recent(project: str = "", workspace: str = "", turns: int = 12, live: bool = False) -> list:
     """The last `turns` prompts and replies in a project (any harness, any session), oldest first, each with its
-    session: what a session picking the work up in another harness needs before the full record."""
+    session: what a session picking the work up in another harness needs before the full record. `live` adds what
+    the harnesses recorded since the last export (peek)."""
     found = []
     for meta in catalog(workspace, project):
         for rec in reversed(records(meta["folder"], ("user", "assistant"))):
@@ -553,7 +628,11 @@ def recent(project: str = "", workspace: str = "", turns: int = 12) -> list:
                 break
         if len(found) >= turns:
             break
-    return sorted(found, key=lambda r: r.get("at", ""))
+    for meta, recs in peek(2) if live else ():
+        if (not project or project in meta.get("projects", [])) and (not workspace or Path(meta["folder"]).parts[-3] == workspace):
+            found += [{**r, "harness": meta["harness"], "session": meta["session"]} for r in recs
+                      if r.get("kind") in ("user", "assistant")]
+    return sorted(found, key=lambda r: r.get("at", ""))[-turns:]
 
 
 def search(pattern: str, workspace: str = "", project: str = "", kinds: tuple = ()) -> list:
@@ -595,8 +674,11 @@ def sync(workspace: str = "", push: bool = True) -> list:
     targets = {ws: repo for ws, repo in repos().items() if not workspace or ws == workspace}
     if not targets:
         return []
-    export(2)
-    return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
+    with _writer(True) as busy:
+        if busy:
+            return [f"FAILED sessions sync: {busy}"]
+        _export(2, "")
+        return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
 
 
 def _sync_workspace(ws: str, repo: Path, push: bool) -> list:

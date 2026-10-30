@@ -98,6 +98,7 @@ synthesis sessions search "<pattern>" --project <id>
 
 Cite the record behind a decision or quote as `<harness> <session8> #<seq>` (for example `codex 01a1b2c3 #4120`) in a
 session log or lesson, and open it with `synthesis sessions show <session8> --seq <n>`, which prints the record and
-three either side. A quote or attribution read from the archive in the current session has a tool output behind it,
+three either side. A session id's first eight characters name the main session, never the sub-agents it started,
+whose ids begin with the same characters; `meta.json` gives a sub-agent `role: subagent` and its `parent`. A quote or attribution read from the archive in the current session has a tool output behind it,
 as quote provenance requires. `--json` prints one object per line for tools such as the Console. Keep the conversation out
 of CONTEXT.md and project folders: it would break their size budgets (R1.5) and flood every search of the project.
