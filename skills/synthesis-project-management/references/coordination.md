@@ -3,9 +3,16 @@
 Many root sessions (Claude Code, Codex, Muse) share one Mac and often one
 repository. Durable project files solve handoff across time; they do not
 prevent two live sessions from writing the same files at once. The `synthesis`
-board does: each session is one small file under `~/.synthesis/v5/state/`,
+board does: each session is one small file under `~/.synthesis/v5/board/`,
 listing its harness, project, goal and claims, so no hook ever re-reads a large
 shared file.
+
+The board has its own folder (since 5.1.18) because Codex runs commands in a
+sandbox that writes only the workspace and the folders its config lists. The
+board is the one synthesis folder listed there, so a Codex session can claim and
+post; approvals and send windows stay in `~/.synthesis/v5/state/`, out of any
+sandboxed agent's reach. Write the board only through `synthesis claim`,
+`release` and `msg`: the guard refuses file tools and shell writes there.
 
 ## Contents
 
@@ -50,14 +57,16 @@ The order of operations for every root session, in any harness:
 
 ## How claims behave
 
-- A claim is an absolute path; a trailing `/**` claims the whole subtree.
+- A claim is an absolute path or pattern, and it covers everything beneath what
+  it names: it is held with a trailing `/**`, unless it names an existing file.
   Relative, `~` and symlinked spellings are resolved to one real path, so two
-  spellings of one file conflict.
-- An existing folder named without a pattern is held as its subtree, `folder/**`,
-  and so is one stored in that bare form before 5.1.4. Until then such a claim
-  covered the folder's path alone: none of its files, so handoff skipped them and
-  printed READY over nine staged files (2026-10-22). A folder that does not exist
-  yet stays an exact path; claim it with `/**`.
+  spellings of one file conflict. `*` matches within one segment, so
+  `notes/*.md` never reaches into `notes/sub/`.
+- That covers a folder named alone (until 5.1.4 such a claim covered none of its
+  files, so handoff skipped them and printed READY over nine staged files,
+  2026-10-22), the folders a pattern matches (until 5.1.18 `preps/2026-11-02-*`
+  covered none of the files inside them, and handoff printed READY over two,
+  2026-10-29), and a folder claimed before it is made.
 - A claim may name a path that does not exist yet, such as a new worktree or
   file, and still conflicts with overlapping claims. Claim first, then create
   (lesson 2026-09-17, "create then claim for greenfield seats").

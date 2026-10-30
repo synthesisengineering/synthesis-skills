@@ -188,7 +188,8 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["features"] == {"js_repl": True, "hooks": True}
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
-    assert setup.HOOKS_BEGIN in new and len(notes) == 3
+    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 4
+    assert setup.doctor.toml_strings(config["sandbox_workspace_write"]["writable_roots"]) == [str(setup.paths.board())]
     assert setup.codex_overlay(new) == (new, [])  # a rerun changes nothing
 
 
@@ -196,7 +197,8 @@ def test_overlay_keeps_an_explicit_hooks_false_and_says_guards_will_not_run():
     new, notes = setup.codex_overlay("project_doc_max_bytes = 120000\nproject_doc_fallback_filenames = [\"CLAUDE.md\"]\n"
                                      "[features]\nhooks = false\n")
     assert "hooks = false" in new and "hooks = true" not in new
-    assert notes == ["kept [features] hooks = false, so no synthesis guard runs in Codex"]
+    assert notes[0] == "kept [features] hooks = false, so no synthesis guard runs in Codex"
+    assert len(notes) == 2 and "synthesis board" in notes[1]
 
 
 def test_overlay_raises_a_low_instruction_limit_and_adds_a_features_table():
@@ -210,6 +212,25 @@ def test_overlay_reports_a_fallback_list_without_claude_md_but_leaves_it():
     assert '["README.md"]' in new and any("lacks CLAUDE.md" in n for n in notes)
 
 
+def test_overlay_adds_the_board_to_the_sandbox_roots_the_person_already_has():
+    """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Only the
+    board is added: the state folder holds approvals and send windows, which no sandboxed agent may write."""
+    board = str(setup.paths.board())
+    keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
+    for given in ('[sandbox_workspace_write]\nnetwork_access = true\n',
+                  '[sandbox_workspace_write]\nwritable_roots = ["/opt/cache"] # mine\n',
+                  '[sandbox_workspace_write]\nwritable_roots = [\n  "/opt/cache",\n]\n',
+                  'sandbox_workspace_write.writable_roots = []\n',
+                  'sandbox_workspace_write.network_access = true\n'):
+        new, notes = setup.codex_overlay(given + keep if given.startswith("sandbox") else keep + given)
+        roots = setup.doctor.toml_strings(setup.doctor.read_toml(new)["sandbox_workspace_write"]["writable_roots"])
+        assert board in roots and ("/opt/cache" in roots) == ("/opt/cache" in given), given
+        assert len(notes) == 1 and setup.codex_overlay(new) == (new, []), given
+    inline = 'sandbox_workspace_write = { network_access = true }\n' + keep
+    new, notes = setup.codex_overlay(inline)
+    assert new == inline and "form setup does not edit" in notes[0]
+
+
 def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     codex = tmp_path / "codex"
     codex.mkdir()
@@ -219,7 +240,7 @@ def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     backups = list((setup.install._home() / "backups").glob("codex-config.toml.*"))
     assert len(backups) == 1 and backups[0].read_text() == "[features]\nother = 1\n"
     assert any("backed up" in line for line in lines)
-    assert setup.configure_codex() == ["codex config: already set"]
+    assert setup.configure_codex() == ["codex config: already set"] and setup.paths.board().is_dir()
 
 
 # ---- runtime, prompts, interruption and the restart line -------------------------

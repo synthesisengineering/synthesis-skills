@@ -176,7 +176,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
 2. **The shell guard** refuses a command that carries a pending code (for example
    `codex queue <thread> "approve <code>"`, or `claude -p --resume <id>` with it), that
    runs the stable hook or `synthesis/hook.py` for any event, or that writes into the v5
-   state folder, a harness's transcript folder or the approved commit lines (by path, or
+   state folder, its board (which only the `synthesis` CLI writes, so that Codex's sandbox
+   may list it without reaching the state folder), a harness's transcript folder or the
+   approved commit lines (by path, or
    by the store's file name from inside its folder): redirects, the destination of `cp`,
    `mv`, `ln`, `install` and `rsync`, `tee`, `touch`, `truncate`, `mkdir`, `rm`,
    `unlink`, `chmod`, `sed -i` and `perl -i`, and interpreter scripts given inline or on

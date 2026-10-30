@@ -79,6 +79,12 @@ Setup changes only these keys in `~/.codex/config.toml`, after copying the file 
   default, 32 KiB, truncates the global rules plus a workspace's instructions.
 - `project_doc_fallback_filenames = ["CLAUDE.md"]` when the key is absent; an existing
   list without `CLAUDE.md` is reported and left as set.
+- The board folder, `~/.synthesis/v5/board`, added to `[sandbox_workspace_write]
+  writable_roots` (inside a marked block when setup writes the table; added to a list the
+  person already has). Codex's sandbox writes only the workspace and these roots, so
+  without it a Codex session can neither claim files nor post on the board. Only the
+  board is added: `~/.synthesis/v5/state` holds approvals and send windows, which no
+  sandboxed agent may write, and the doctor fails a root that covers it.
 
 Other keys, including feature keys the Codex app writes itself, are never touched. A
 rerun changes nothing.

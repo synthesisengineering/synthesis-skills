@@ -370,7 +370,8 @@ def handoff(session_id: str, message: str = "Update project records") -> list[st
     by_repo: dict[Path, list[str]] = {}
     report, ok = [], True
     for claim in session.claims:
-        base = os.path.realpath(claim[:-3] if claim.endswith("/**") else os.path.dirname(re.split(r"[*?[]", claim, 1)[0]) if board.GLOB & set(claim) else claim)
+        pattern = claim[:-3] if claim.endswith("/**") else claim  # git is asked about the folder above any glob
+        base = os.path.realpath(os.path.dirname(re.split(r"[*?[]", pattern, 1)[0]) if board.GLOB & set(pattern) else pattern)
         probe = base if os.path.isdir(base) else os.path.dirname(base)
         top = _out(Path(probe), "rev-parse", "--show-toplevel") if os.path.isdir(probe) else ""
         if top:

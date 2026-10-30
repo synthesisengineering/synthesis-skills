@@ -92,14 +92,14 @@ def snapshot_paths(targets: list[str], reason: str, session: str = "") -> list[s
 
 
 def _append(name: str, entry: dict) -> None:
-    log = paths.state() / name
+    log = paths.board() / name
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"at": time.time(), **entry}) + "\n")
 
 
 def _read(name: str) -> list[dict]:
-    log = paths.state() / name
+    log = paths.board() / name
     rows = []
     for line in log.read_text(encoding="utf-8").splitlines() if log.is_file() else []:
         try:

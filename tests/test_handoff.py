@@ -185,3 +185,23 @@ def test_a_claim_with_a_wildcard_in_a_name_is_committed_too(kb, tmp_path):
     assert report[-1].startswith("READY")
     assert _remote_files(tmp_path).split() == ["notes/2026-10-06-standup.md"]
     assert "?? notes/2026-10-05-standup.md" in _git(kb, "status", "--porcelain")
+
+
+def test_a_wildcard_claim_covers_files_inside_the_folders_it_matches(kb, tmp_path):
+    """2026-10-29 (reported twice): the claim meeting-preps/2026-11-02-* left two prep.md files inside folders it
+    matched uncommitted, and handoff printed READY. Repro: claim dir/prefix-*, edit dir/prefix-x/file.md."""
+    (kb / "preps" / "2026-11-02-weekly").mkdir(parents=True)
+    (kb / "preps" / "2026-11-02-weekly" / "prep.md").write_text("draft\n", encoding="utf-8")
+    _git(kb, "add", "-A")
+    _git(kb, "commit", "-qm", "earlier prep")
+    _git(kb, "push", "-q", "origin", "main")
+    board.claim("S1", [f"{kb}/preps/2026-11-02-*"])
+    (kb / "preps" / "2026-11-02-weekly" / "prep.md").write_text("final\n", encoding="utf-8")
+    (kb / "preps" / "2026-11-02-demo").mkdir()
+    (kb / "preps" / "2026-11-02-demo" / "prep.md").write_text("new\n", encoding="utf-8")
+    (kb / "preps" / "2026-11-09-weekly").mkdir()
+    (kb / "preps" / "2026-11-09-weekly" / "prep.md").write_text("not claimed\n", encoding="utf-8")
+    report = project.handoff("S1", "Update preps")
+    assert report[-1].startswith("READY")
+    assert sorted(_remote_files(tmp_path).split()) == ["preps/2026-11-02-demo/prep.md", "preps/2026-11-02-weekly/prep.md"]
+    assert _git(kb, "status", "--porcelain") == "?? preps/2026-11-09-weekly/"

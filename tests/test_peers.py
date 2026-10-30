@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _sent(isolated_home):
-    messages = isolated_home / "state" / "messages"
+    messages = isolated_home / "board" / "messages"
     return sorted(messages.rglob("*.json")) if messages.is_dir() else []
 
 
@@ -31,7 +31,7 @@ def test_each_session_gets_a_short_name_derived_from_its_id(isolated_home):
     b = board.touch("0199a213-81c0-7c41-9e02-04f1d7a3b6aa")
     assert a.short != b.short and len(a.short) == 6 and a.short.isalnum()
     assert a.short == board.short_name(a.session) == board.load(a.session).short
-    stored = json.loads((isolated_home / "state" / "sessions" / f"{a.session}.json").read_text())
+    stored = json.loads((isolated_home / "board" / "sessions" / f"{a.session}.json").read_text())
     assert stored["short"] == a.short
 
 

@@ -224,6 +224,40 @@ def check_codex_features(config: dict) -> Check:
                                                "but older builds do not: set hooks = true")
 
 
+def toml_strings(raw) -> list:
+    """The strings in a raw TOML array, as read_toml keeps arrays."""
+    found = re.findall(r'"((?:[^"\\]|\\.)*)"|\'([^\']*)\'', raw if isinstance(raw, str) else "")
+    return [json.loads(f'"{basic}"') if basic else literal for basic, literal in found]
+
+
+def check_codex_board(config: dict, board: Path, state: Path) -> Check:
+    """Codex's sandbox writes only the workspace and its writable roots: without the board among them, a Codex
+    session can neither claim files nor post (2026-10-30). A root over the state folder would let a sandboxed
+    agent write approvals and send windows."""
+    table = config.get("sandbox_workspace_write")
+    roots = [os.path.realpath(os.path.expanduser(r)) for r in toml_strings((table if isinstance(table, dict) else {})
+                                                                             .get("writable_roots"))]
+    exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
+    if exposed:
+        return Check("fail", "codex board access", f"writable root {_short(exposed[0])} lets a sandboxed Codex agent "
+                     f"write {_short(state)}, where approvals and send windows live; list only {_short(board)}")
+    if config.get("sandbox_mode") == "danger-full-access":
+        return Check("ok", "codex board access", "sandbox_mode = danger-full-access: Codex runs without a sandbox")
+    if any(paths.inside(os.path.realpath(board), r) for r in roots):
+        return Check("ok", "codex board access", f"[sandbox_workspace_write] writable_roots has {_short(board)}")
+    return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(board)}, so a Codex session can "
+                 "neither claim files nor post on the board: run the onboarding setup for codex again")
+
+
+def check_board(home: Path) -> Check:
+    """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
+    old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
+    if old:
+        return Check("warn", "board", f"{', '.join(old)} still in {_short(home / 'state')}, where no session reads them; "
+                     "the next hook or `synthesis install` merges them into board/ (install prints why it could not)")
+    return Check("ok", "board", f"{_short(home / 'board')}")
+
+
 def check_codex_doc_bytes(config: dict) -> Check:
     value = config.get("project_doc_max_bytes")
     if not isinstance(value, int) or isinstance(value, bool):
@@ -873,6 +907,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         except OSError:
             config = {}
         checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
+                   check_codex_board(config, home / "board", home / "state"),
                    check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
             versions["codex"] = entry.get("version", "")
@@ -912,7 +947,7 @@ def _background(fn, *args):
 
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
     home, cwd = home or paths.home(), cwd or Path.cwd()
-    checks = [check_runtime(home), check_config(home)]
+    checks = [check_runtime(home), check_config(home), check_board(home)]
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing

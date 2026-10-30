@@ -194,6 +194,13 @@ def main(argv):
             install.install(argv[2], forward_only=True)
         except Exception:
             pass  # a failed self-update must never block a session; doctor reports it
+    from synthesis import paths
+    if paths.old_board():  # seven lstat calls; true only after an older release wrote the board where it used to be
+        try:
+            from synthesis import install
+            install.move_board(paths.home())
+        except Exception:
+            pass  # never blocks a call; doctor names what is left
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
     return handler(payload) if handler else 0

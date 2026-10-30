@@ -1043,9 +1043,15 @@ FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_
 
 
 def _protected_roots(config: dict | None) -> list[str]:
-    """Where only the guard and the harness write: synthesis state, harness transcripts, approved commit lines."""
+    """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, harness
+    transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), *paths.transcript_roots().values(), *([store] if store else [])]]
+    return [str(r) for r in [paths.state(), paths.board(), *paths.transcript_roots().values(), *([store] if store else [])]]
+
+
+# The board grants nothing, but a session file edited by hand can drop another session's claims (5.1.18).
+BOARD_WAY = ("Claims and messages go through `synthesis claim`, `synthesis release` and `synthesis msg`, "
+             "which keep the board consistent for every session.")
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
@@ -1090,8 +1096,10 @@ def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str
     (2026-10-14: those tools never reached the guard, so a window could be written by hand)."""
     targets = _file_targets(tool, tool_input)
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
-    hits = [t for t in targets if any(paths.inside(os.path.realpath(os.path.join(cwd, os.path.expanduser(t))), r)
-                                      for r in roots)]
+    real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
+    hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots)]
+    if hits and paths.inside(real[hits[0]], os.path.realpath(paths.board())):
+        return f"Refused: {tool} would write {hits[0]}, inside the synthesis board. {BOARD_WAY}"
     return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
             "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
             "show them what needs approving.") if hits else None
@@ -1185,11 +1193,13 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
         judged = _python_writes(source, names) if source and not any(n in text.replace(source, "") for n in names) else None
         if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script) \
                 and judged is not False:
-            why = why or "runs a script that writes where the synthesis state or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
+            why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
+    if not why and any(paths.inside(t, os.path.realpath(paths.board())) for t in real):
+        return f"Refused: this command writes into the synthesis board. {BOARD_WAY}"
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "

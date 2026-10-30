@@ -31,11 +31,12 @@ REPO = Path(__file__).resolve().parents[3]
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
-from synthesis import doctor, install  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
+from synthesis import doctor, install, paths  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
 
 PLUGIN, MARKETPLACE, SOURCE = "synthesis-skills", "synthesis-engineering", "synthesisengineering/synthesis-skills"
 CODEX_DOC_BYTES = 98_304
 HOOKS_BEGIN, HOOKS_END = "# synthesis-setup:begin hooks-feature", "# synthesis-setup:end hooks-feature"
+BOARD_BEGIN, BOARD_END = "# synthesis-setup:begin board-writable", "# synthesis-setup:end board-writable"
 OWNED_BUNDLE_ROOTS = (Path.home() / ".cache" / "synthesis" / "muse-bundle",)
 RESTART = ("Now quit and reopen Claude Code, Codex and Muse (you can resume your conversation): "
            "a restart is what loads new skills and hooks.")
@@ -245,9 +246,23 @@ def _top_level_end(lines: list) -> int:
     return next((i for i, line in enumerate(lines) if re.match(r"^\s*\[", line)), len(lines))
 
 
+def _key_line(lines: list, table: str, key: str):
+    """The line setting `key` in [table], under its header or as a dotted key before any header, or None."""
+    current = ""
+    for i, line in enumerate(lines):
+        header = re.match(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?$", line)
+        if header:
+            current = header.group(1).strip()
+        elif (current == table and re.match(rf"^\s*{key}\s*=", line)) or (
+                not current and re.match(rf"^\s*{table}\.{key}\s*=", line)):
+            return i
+    return None
+
+
 def codex_overlay(text: str) -> tuple:
     """(new text, notes). Hooks on unless the person set them off; instruction bytes at least
-    98,304; CLAUDE.md as a fallback instruction name when the key is absent. Nothing else changes."""
+    98,304; CLAUDE.md as a fallback instruction name when the key is absent; the synthesis board,
+    and no other synthesis folder, among the sandbox's writable roots (5.1.18). Nothing else changes."""
     config, lines, notes, add_top = doctor.read_toml(text), text.splitlines(), [], []
     limit = config.get("project_doc_max_bytes")
     if isinstance(limit, int) and not isinstance(limit, bool) and limit < CODEX_DOC_BYTES:
@@ -278,6 +293,23 @@ def codex_overlay(text: str) -> tuple:
             end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\s*\[", lines[i])), len(lines))
             lines[end:end] = [HOOKS_BEGIN, "hooks = true", HOOKS_END]
         notes.append("enabled [features] hooks")
+    board, table = str(paths.board()), config.get("sandbox_workspace_write")
+    entry = json.dumps(board)  # a TOML basic string
+    if table is not None and not isinstance(table, dict):
+        notes.append(f"sandbox_workspace_write is written in a form setup does not edit: add {board} to its writable_roots")
+    elif board not in doctor.toml_strings((table or {}).get("writable_roots")):
+        at = _key_line(lines, "sandbox_workspace_write", "writable_roots")
+        header = next((i for i, line in enumerate(lines) if line.strip() == "[sandbox_workspace_write]"), None)
+        if at is not None:
+            lines[at] = re.sub(r"=\s*\[", f"= [{entry}, ", lines[at], count=1)
+        elif header is not None:
+            lines[header + 1:header + 1] = [BOARD_BEGIN, f"writable_roots = [{entry}]", BOARD_END]
+        elif table is not None:  # the table exists only as dotted keys at the top
+            top = _top_level_end(lines)
+            lines[top:top] = [f"sandbox_workspace_write.writable_roots = [{entry}]"]
+        else:
+            lines += ["", BOARD_BEGIN, "[sandbox_workspace_write]", f"writable_roots = [{entry}]", BOARD_END]
+        notes.append(f"let Codex's sandbox write the synthesis board ({board}), so its sessions can claim files and post")
     return "\n".join(lines).strip("\n") + "\n", notes
 
 
@@ -285,6 +317,8 @@ def configure_codex(dry_run: bool = False) -> list:
     path = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     new, notes = codex_overlay(text)
+    if not dry_run:
+        paths.board().mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
     if new == (text if text.endswith("\n") else text + "\n") or dry_run:
         return [f"codex config: {'would ' if dry_run else ''}{n}" for n in notes] or ["codex config: already set"]
     if path.exists():

@@ -15,6 +15,20 @@ def state() -> Path:
     return home() / "state"
 
 
+def board() -> Path:
+    """Sessions, claims, messages and the snapshot journal: the one v5 folder a sandboxed agent may write (Codex's
+    writable root), so nothing in it grants anything. Approvals and send windows stay in state()."""
+    return home() / "board"
+
+
+BOARD_FILES = ("sessions", "messages", "sent", "read", "claims.jsonl", "claims.lock", "journal.jsonl")
+
+
+def old_board() -> list[str]:
+    """Board entries left in state(), where releases before 5.1.18 kept them: install.move_board merges them."""
+    return [name for name in BOARD_FILES if os.path.lexists(state() / name)]
+
+
 def config_file() -> Path:
     return home() / "config.json"
 
