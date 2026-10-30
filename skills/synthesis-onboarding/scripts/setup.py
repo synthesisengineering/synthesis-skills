@@ -373,6 +373,28 @@ def configure_codex(dry_run: bool = False) -> list:
     return [f"codex config: {n}" for n in notes]
 
 
+def configure_claude(dry_run: bool = False) -> list:
+    """Claude Code deletes a transcript idle past `cleanupPeriodDays`, 30 when unset; unset becomes 3,650 so the
+    record outlives every export interval. A value the person set is theirs and stays."""
+    path = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "settings.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        return [f"claude settings: {path} does not parse, so it was left as it is"]
+    if "cleanupPeriodDays" in data or dry_run:
+        return [f"claude settings: transcripts kept {data['cleanupPeriodDays']} days, as set" if "cleanupPeriodDays" in data
+                else "claude settings: would keep transcripts 3,650 days instead of Claude Code's 30"]
+    if path.exists():
+        backup = install._home() / "backups" / f"claude-settings.json.{time.strftime('%Y%m%dT%H%M%S')}"
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}")
+    tmp.write_text(json.dumps({**data, "cleanupPeriodDays": 3650}, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+    return ["claude settings: transcripts kept 3,650 days instead of Claude Code's 30"]
+
+
 # ---- runtime, CLI and first config ----------------------------------------------
 
 def install_runtime(git_hooks: bool) -> list:
@@ -500,6 +522,8 @@ def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
             lines.append(install_plugin(client, binary, ref, dry_run=dry_run))
             if client == "codex":
                 lines += configure_codex(dry_run)
+            if client == "claude":
+                lines += configure_claude(dry_run)
         except SetupError as exc:
             lines.append(str(exc))
             failed = True

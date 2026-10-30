@@ -199,6 +199,33 @@ def cmd_handoff(args) -> int:
     return 0 if lines and lines[-1].startswith("READY") else 1
 
 
+def cmd_sessions(args) -> int:
+    """Export and read the agent session transcripts kept under the synthesis home (sessions.py)."""
+    from synthesis import sessions
+    kinds = tuple(k for k in (args.kinds or "").split(",") if k)
+    if args.action == "export":
+        report = sessions.export(0 if args.all else args.days, args.session or "")
+        print("\n".join(report) or "nothing new to export")
+    elif args.action == "list":
+        for m in sessions.catalog(args.workspace, args.project)[:args.limit]:
+            print(f"{m.get('last', '')[:16]}  {m.get('harness', '?'):11s} {m.get('session', '?')}  {m.get('records', 0)} records  "
+                  f"{','.join(m.get('projects', [])) or '-'}  {m.get('folder')}")
+    elif args.action == "show":
+        found = [m for m in sessions.catalog() if args.target and str(m.get("session", "")).startswith(args.target)]
+        if len(found) != 1:
+            print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
+            return 1
+        for rec in sessions.records(found[0]["folder"], kinds, whole=args.whole):
+            print(sessions.render(rec, 0 if args.whole else args.width))
+    elif args.action == "recent":
+        for rec in sessions.recent(args.project, args.workspace, args.limit):
+            print(f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+    else:
+        for rec in sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit]:
+            print(f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+    return 0
+
+
 def cmd_approvals(args) -> int:
     directory = paths.state() / "approval-requests"
     for f in sorted(directory.glob("*.json")) if directory.is_dir() else []:
@@ -297,6 +324,19 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("handoff", help="commit and push changes inside this session's claims")
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
+    s = sub.add_parser("sessions", help="export, list, show, search agent session transcripts from every harness")
+    s.add_argument("action", choices=("export", "list", "show", "recent", "search"))
+    s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
+    s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
+    s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
+    s.add_argument("--session", default="", help="export: only this session")
+    s.add_argument("--project", default="")
+    s.add_argument("--workspace", default="")
+    s.add_argument("--kinds", default="", help="user,assistant,reasoning,tool_call,tool_result,system,compaction,meta")
+    s.add_argument("--whole", action="store_true", help="show: full tool outputs and injected text from the blobs")
+    s.add_argument("--width", type=int, default=600, help="characters shown per record (0: all)")
+    s.add_argument("--limit", type=int, default=20)
+    s.set_defaults(fn=cmd_sessions)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")

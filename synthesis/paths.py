@@ -21,6 +21,11 @@ def board() -> Path:
     return home() / "board"
 
 
+def sessions() -> Path:
+    """Agent session transcripts from every harness, in one form (sessions.py); only the exporter writes here."""
+    return home() / "sessions"
+
+
 BOARD_FILES = ("sessions", "messages", "sent", "read", "claims.jsonl", "claims.lock", "journal.jsonl")
 
 

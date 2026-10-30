@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.2.0] - 2026-10-30
+
+- **Every agent session is kept, in one form, for every harness** (context lifecycle 2.1.0, daily rituals 3.3.0,
+  onboarding 3.2.0). The principal asked for full copies of each conversation, with the models that answered, so work
+  can move between harnesses and be reviewed later. `synthesis sessions export` reads Claude Code's, Codex's and
+  Muse's native transcripts past what it already copied and writes `~/.synthesis/v5/sessions/<workspace>/`: the
+  prompts, replies, reasoning, tool calls and results, compactions and models, one JSON record per event; secrets
+  masked with the commit check's patterns; images, and long tool output or injected text, kept once by hash; copies a
+  harness keeps of the same content left out and counted. Measured on this Mac: 3.19 GB of transcripts from 14 days
+  became 347 MB of records, 447 MB of long text and 229 MB of images; a 146 MB Claude Code session exported in 2
+  seconds. `list`, `show`, `recent` and `search` read it back.
+- **Resume carries the conversation.** `synthesis resume <project>` exports the last two days and shows the project's
+  latest prompts and replies from any harness, so a session picking the work up elsewhere sees what was said, not
+  only the records. Nothing runs in a hook (R8.3): each harness already writes its transcript as it goes, so the copy
+  is made where it is read, and at day-end.
+- **Claude Code stops deleting transcripts after 30 days.** Its default `cleanupPeriodDays` had left this Mac 9 main
+  sessions from August and 11 from September, against 97 from October. Setup sets 3,650 days when the key is absent
+  (a value the person set stays), and the doctor fails while it is unset. Only the exporter writes the archive; the
+  guard refuses file tools and shell writes there, as for the board.
+
 ## [5.1.19] - 2026-10-30
 
 - **Merging the board keeps every field either copy set.** When 5.1.18 moved the board on the release machine, the

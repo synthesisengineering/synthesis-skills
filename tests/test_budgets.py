@@ -163,10 +163,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.1.19 adds 2 to both (install.py), after the 5.1.18 move on 2026-10-30 blanked a session's project, folder and
 # briefing: the release script's own claim had written a fresh record first, and the newer copy won whole. The newer
 # copy now wins field by field, never with an empty value, 1; a session's start is the earlier of the two, 1.
+# 5.2.0 adds 592 to the core and 616 to the plugin, for the principal's request on 2026-10-30 to keep every agent
+# conversation, with its models, in synthesis, portable across harnesses: Claude Code had been deleting its transcripts
+# after 30 days, Codex keeps its own format and Muse an event log. sessions.py 501: its reason 11 and imports 11; the
+# limits, the injected-text prefixes, the rows to skip and the project line, with their reasons, 19; masking secrets
+# with the commit check's patterns 12, applied to every field 8, injected text told apart 2, the workspace from the
+# folder 9, times in one form 8, the archive's folder 2; a session's export state 117 (the class 2, its state read
+# 9, text kept once 9, text and media from a message 18, media once by hash 14, long text once per workspace 10, each
+# record with its project, times and blobs 22, segments and the offset saved 26, spacing 7); the three harnesses'
+# formats: Claude Code 47, Codex 41, Muse 29 (its prompts are accepted intents), the table 1; a session's identity 7
+# and folder 19; the export 29, the transcripts to read 7, every one 17; reading: the catalog 6, records with their
+# full text 19, the recent conversation 12, search 5, a readable line 10;
+# spacing 54. cli.py 40: `synthesis sessions` 25 and its arguments 13, spacing 2. project.py 16: resume shows the
+# project's latest prompts and replies from any harness, 13, its call 1, spacing 2. doctor.py 17: Claude Code
+# transcripts kept a year or more, 14, its use 1, spacing 2. guards.py 13: only the exporter writes the archive (the
+# root 2, the reason 2, the refusal shared with the board's 9). paths.py 5: the archive's folder. The plugin's 24 more
+# (setup.py): Claude Code keeps transcripts 3,650 days unless the person set a period, 20, its call 2, spacing 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6878
-PLUGIN_BUDGET = 23853
+CORE_BUDGET = 7470
+PLUGIN_BUDGET = 24469
 
 
 def _lines(files):

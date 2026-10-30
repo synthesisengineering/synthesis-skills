@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -30,10 +30,12 @@ AI collaborators start every session with zero context; their effectiveness depe
 11. **Capture material context** (facts, reasons, conditions, uncertainty, amendments) before dependent work, compaction or handoff; never turn a quoted command into authority.
 12. **Same Mac: the files are the handoff. Another Mac: `synthesis handoff`.** Never a workspace-wide commit; never bypass hooks.
 13. **A doctor that cannot tell exits 2, never 0.**
+14. **Transcripts are the evidence beneath the records.** `synthesis sessions export` keeps every harness's sessions in one form, outside project folders; cite a session id and record number for a quote or decision instead of pasting the conversation into a record. `synthesis resume` shows the project's latest prompts and replies from any harness.
 
 ## Contents
 
 - **Procedure** (below): session start, during work, close.
+- [references/session-transcripts.md](references/session-transcripts.md): what the transcript archive keeps and where, masking, commands, when it runs and why not in a hook, how records cite it. Read before reading, citing or exporting transcripts.
 - [references/tiers-and-templates.md](references/tiers-and-templates.md): the three tiers, templates, the current-state block, sharding REFERENCE, agent attribution, quality measures. Read when creating or restructuring a record.
 - [references/session-protocols.md](references/session-protocols.md): the Session Start and Mid-Session Refresh protocols in full, compaction signals, switching harness or Mac. Read at session start and on any trigger.
 - [references/editing-and-archival.md](references/editing-and-archival.md): safe edits, header and body currency, item stamps, archival, migration, status changes, spawning, executable state. Read before restructuring or closing a record.

@@ -34,6 +34,7 @@ The Weekly Loose-Ends Review (Step 10) attaches to whichever ritual runs first o
 - [ ] **Email + document-comment final capture (v2.19.0)** — when the workspace syncs those surfaces (per Day-Start 3b's declared-set rule): the day's inbound and sent mail, meeting transcripts for any meeting that ended since the last sync, and document comments/engagement for the day's window. Name any surface not swept.
 - [ ] **Watermark gate (v2.30.0):** the final capture recorded each saved read with `advance`; now run `python3 <rituals>/scripts/sync_watermark.py status --workspace <W> --surface <s> --since run` with every declared surface and read target passed explicitly (same rule and same reason as Day-Start Step 3b's gate). The day does not close over a surface or target this run did not re-read: read it or defer it with a reason now.
 - [ ] Update CONTEXT.md to mark any items resolved by day's conversations (so tomorrow's day-start does not re-propose them).
+- [ ] **Agent session transcripts (v3.3.0):** `synthesis sessions export --days 2` copies every harness's sessions from the last two days into the transcript archive (`synthesis-context-lifecycle`, references/session-transcripts.md). It prints one line per session that gained records; an error line names the transcript it could not read. Claude Code deletes its own copies 30 days after their last use unless `cleanupPeriodDays` is set, so a day-end that skips this for a month loses them.
 
 ## 2. Source-Code Sync
 

@@ -292,6 +292,17 @@ def test_codex_must_write_the_board_and_never_the_state_folder(tmp_path):
     assert doctor.toml_strings('[ "a\\"b", \'c\' ]') == ['a"b', "c"] and doctor.toml_strings(None) == []
 
 
+def test_claude_code_must_keep_transcripts_past_its_30_day_default(tmp_path):
+    settings = tmp_path / "settings.json"
+    assert doctor.check_claude_retention(settings).status == "fail"
+    settings.write_text('{"model": "x"}')
+    assert "deletes a transcript idle 30 days" in doctor.check_claude_retention(settings).detail
+    settings.write_text('{"cleanupPeriodDays": 30}')
+    assert doctor.check_claude_retention(settings).status == "warn"
+    settings.write_text('{"cleanupPeriodDays": 3650}')
+    assert doctor.check_claude_retention(settings).status == "ok"
+
+
 def test_board_entries_left_in_the_state_folder_are_named(tmp_path):
     assert doctor.check_board(tmp_path).status == "ok"
     (tmp_path / "state" / "sessions").mkdir(parents=True)
@@ -494,6 +505,9 @@ def machine(tmp_path, monkeypatch):
         f"project_doc_max_bytes = 98304\ndefault_permissions = \"synthesis\"\n\n[features]\nhooks = true\n\n"
         f"[permissions.synthesis]\nextends = \":workspace\"\n[permissions.synthesis.filesystem]\n"
         f"\"{synthesis_home / 'board'}\" = \"write\"\n\n{state}")
+    claude_settings = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "settings.json"
+    claude_settings.parent.mkdir(parents=True, exist_ok=True)
+    claude_settings.write_text('{"cleanupPeriodDays": 3650}')
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
     fake_cli(fakebin, "claude", [{"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(claude_dir)}])
