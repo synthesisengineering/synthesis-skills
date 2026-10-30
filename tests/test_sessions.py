@@ -391,3 +391,29 @@ def test_sync_takes_the_same_writer_lock_as_export(synced):
     finally:
         lock.chmod(0o644)
     assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"
+
+
+def test_masking_covers_the_principals_tier_0_list_as_the_commit_check_loads_it(harness, monkeypatch):
+    """2026-10-30: a quoted pattern matched only by the principal's tier-0 list stopped the first sync. The policy here
+    is made up, so this file holds nothing credential-shaped; the key header follows test_commit_policy's convention."""
+    from synthesis import commit_check
+    monkeypatch.setattr(commit_check, "load_policy", lambda config: {"tier_0_always": {"made_up": ["zz-test-secret-[0-9]+"]}})
+    monkeypatch.setattr(sessions, "_SECRETS", [])
+    header = "-----BEGIN " + "RSA PRIVATE KEY-----"
+    masked = sessions.mask("grep -rn ZZ-TEST-SECRET-42 .; key " + header + "\\n" + "A" * 64)
+    assert "ZZ-TEST-SECRET-42" not in masked and "[redacted credential pattern" in masked
+    assert "A" * 40 not in masked and "[redacted private key" in masked
+
+
+def test_a_refused_month_leaves_nothing_staged_for_the_next_commit(synced, monkeypatch):
+    rows = _claude_rows(synced["work"])
+    _jsonl(synced["claude"], rows)
+    _jsonl(synced["claude"].with_name("c3.jsonl"), [{**r, "timestamp": "2026-09-01T10:00:00Z"} for r in rows])
+    hooks = synced["repo"] / ".git" / "hooks"
+    (hooks / "pre-commit").write_text("#!/bin/sh\ngit diff --cached --name-only | grep -q '^2026-10/' && exit 1; exit 0\n")
+    os.chmod(hooks / "pre-commit", 0o755)
+    _git(synced["repo"], "config", "core.hooksPath", str(hooks))
+    report = sessions.sync()
+    assert "acme: 2026-09: 1 session(s) committed" in report and report[-1].startswith("FAILED acme: commit for 2026-10")
+    assert _git(synced["repo"], "diff", "--cached", "--name-only") == ""
+    assert _git(synced["repo"], "log", "-1", "--name-only", "--format=").split()[0].startswith("2026-09/")

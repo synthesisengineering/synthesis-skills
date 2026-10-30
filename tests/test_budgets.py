@@ -208,10 +208,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # the day together take turns instead of colliding in a sessions repo's index: one writer lock as its own context
 # 17 and its reason 3, sync holding it 3, the export's own copy of the lock removed -10, the contextlib import 1,
 # spacing 2.
+# 5.3.2 adds 13 to both (sessions.py), from the first sync of history on 2026-10-30, which the commit check refused
+# for two workspaces: masking with exactly what the check refuses, the principal's tier-0 list loaded as the check
+# loads it 5 and a private key's header with its body in JSON text 1, the reason 3; each month committed alone and a
+# refused month unstaged 2, after a refused month's files were swept into the next month's commit; the sessions in
+# a commit counted from what git staged 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7765
-PLUGIN_BUDGET = 24764
+CORE_BUDGET = 7778
+PLUGIN_BUDGET = 24777
 
 
 def _lines(files):
