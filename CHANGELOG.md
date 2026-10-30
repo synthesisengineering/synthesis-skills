@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.19] - 2026-10-30
+
+- **Merging the board keeps every field either copy set.** When 5.1.18 moved the board on the release machine, the
+  release script had already claimed through the new code, writing a fresh record for its own session; the merge
+  kept that newer copy whole, so the session's project, folder and briefing were blanked (its claims survived).
+  Now the newer copy wins field by field but never with an empty value, and the start time is the earlier one.
+  Checked the rest of 5.1.18 end to end: in Codex's sandbox with the setup's profile, `synthesis claim` and
+  `release` succeed; under bare `:workspace` the same claim fails with "Operation not permitted", as before.
+
 ## [5.1.18] - 2026-10-30
 
 - **Codex sessions can claim files and post on the board** (onboarding 3.1.0, project management 3.2.0, agent

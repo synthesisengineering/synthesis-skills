@@ -185,7 +185,9 @@ def _merge(old: Path, new: Path, archive: Path) -> None:
             log.write(old.read_text(encoding="utf-8"))
     elif old.suffix == ".json" and new.parent.name == "sessions":
         a, b = paths.read_json(old), paths.read_json(new)
-        merged = {**a, **b} if b.get("seen", 0) >= a.get("seen", 0) else {**b, **a}
+        newer, older = (b, a) if b.get("seen", 0) >= a.get("seen", 0) else (a, b)
+        merged = {**older, **{k: v for k, v in newer.items() if v}}  # a fresh copy's empty field never erases a set one
+        merged["started"] = min([s for s in (a.get("started"), b.get("started")) if s] or [0])
         for key in ("claims", "ceded"):  # a claim in either copy is kept: over-claiming blocks, under-claiming collides
             merged[key] = sorted(set(a.get(key) or []) | set(b.get(key) or []))
         paths.write_json(new, merged)
