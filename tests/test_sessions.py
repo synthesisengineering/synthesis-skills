@@ -356,3 +356,26 @@ def test_a_citation_of_a_parent_session_opens_it_not_its_sub_agents(harness, cap
     assert [m["session"] for m in sessions.find("c1")] == ["c1"]
     assert cli.main(["sessions", "show", "c1", "--kinds", "user"]) == 0
     assert "Please plan the release." in capsys.readouterr().out
+
+
+def test_a_session_that_cannot_export_still_sees_the_latest_turns(harness, tmp_path):
+    """Codex's sandbox may write only the board: resume reads the archive as it is, plus what each harness recorded
+    since, without writing anything."""
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sessions.export(0)
+    _jsonl(harness["claude"], [{"type": "user", "cwd": harness["work"], "timestamp": "2026-10-30T12:00:00Z",
+                                "message": {"role": "user", "content": "One more thing."}}])
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.chmod(0o444)  # as in the sandbox: the lock, and the archive with it, cannot be written
+    try:
+        assert sessions.export(2, wait=False)[0].startswith("not exported:")
+        before = sorted(p.stat().st_mtime for p in sessions.root().rglob("*") if p.is_file())
+        assert "One more thing." not in [r["text"] for r in sessions.recent("alpha")]
+        assert "One more thing." in [r["text"] for r in sessions.recent("alpha", live=True)]
+        assert sorted(p.stat().st_mtime for p in sessions.root().rglob("*") if p.is_file()) == before
+        kb = tmp_path / "kb"
+        (kb / "projects" / "alpha").mkdir(parents=True)
+        (kb / "projects" / "alpha" / "CONTEXT.md").write_text("**Phase:** build\n**Status:** active\n", encoding="utf-8")
+        assert "One more thing." in project.resume(str(kb / "projects" / "alpha"), "S-new")
+    finally:
+        lock.chmod(0o644)

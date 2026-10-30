@@ -139,8 +139,8 @@ def _iso(value) -> str:
 class _Session:
     """One native transcript's export state: where its records go, what was already read and kept."""
 
-    def __init__(self, harness: str, native: Path, session: str):
-        self.harness, self.native, self.session = harness, native, session
+    def __init__(self, harness: str, native: Path, session: str, dry: bool = False):
+        self.harness, self.native, self.session, self.dry = harness, native, session, dry  # dry: write nothing
         self.file = root() / ".state" / f"{harness}-{re.sub(r'[^A-Za-z0-9._-]', '_', session)}.json"
         s = paths.read_json(self.file)
         self.offset, self.seq, self.segment = s.get("offset", 0), s.get("seq", 0), s.get("segment", 1)
@@ -186,7 +186,7 @@ class _Session:
         digest = hashlib.sha256(raw).hexdigest()
         name = f"media/{digest}.{MIME.get(mime, 'bin')}"
         target = self.folder / name
-        if not target.exists():
+        if not self.dry and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.{os.getpid()}")
             tmp.write_bytes(raw)
@@ -197,7 +197,7 @@ class _Session:
         """The whole text, once per workspace, named by its hash; the record keeps the name."""
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         target = self.folder.parent.parent / "blobs" / digest[:2] / f"{digest}.txt"
-        if not target.exists():
+        if not self.dry and not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}.{os.getpid()}")
             tmp.write_text(body, encoding="utf-8")
@@ -488,9 +488,11 @@ def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = F
     """Export every native transcript changed in the last `days` days (all when 0); `only` names one session. One
     export runs at a time on a Mac: two sessions resuming together, or a resume during a rebuild, would otherwise
     append the same records twice. Without `wait` a busy archive is read as it is."""
-    lock = paths.home() / "sessions.lock"  # beside the archive, so a rebuild's move never takes it along
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    with lock.open("a") as held:
+    try:  # beside the archive, so a rebuild's move never takes it along
+        held = (paths.home() / "sessions.lock").open("a")
+    except OSError as exc:  # Codex's sandbox may write only the board: the archive is read as it is, plus peek()
+        return [f"not exported: {exc}"]
+    with held:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -573,9 +575,38 @@ def _whole(rec: dict, folder: Path) -> dict:
     return rec
 
 
-def recent(project: str = "", workspace: str = "", turns: int = 12) -> list:
+def peek(days: float = 2) -> list:
+    """What each harness recorded after the last export, read without writing anything, as (meta, records) pairs:
+    a session that cannot export (Codex's sandbox may write only the board) still sees the latest turns."""
+    found = []
+    for harness, native in natives(days):
+        s = _Session(harness, native, _identity(harness, native), dry=True)
+        try:
+            if native.stat().st_size <= s.offset:
+                continue
+            s.folder = s.folder or _place(harness, native, s.session)[0]
+            with native.open("rb") as f:
+                f.seek(s.offset)
+                for raw in f:
+                    if not raw.endswith(b"\n"):
+                        break  # a line still being written
+                    try:
+                        row = json.loads(raw)
+                    except ValueError:
+                        continue
+                    for rec in ADAPTERS[harness](row, s) if isinstance(row, dict) else ():
+                        s.emit(rec)
+        except OSError:  # the harness moved or removed the file meanwhile
+            continue
+        found.append(({**s.meta, "harness": harness, "session": s.session, "folder": str(s.folder)},
+                      [json.loads(line) for line in s.lines]))
+    return found
+
+
+def recent(project: str = "", workspace: str = "", turns: int = 12, live: bool = False) -> list:
     """The last `turns` prompts and replies in a project (any harness, any session), oldest first, each with its
-    session: what a session picking the work up in another harness needs before the full record."""
+    session: what a session picking the work up in another harness needs before the full record. `live` adds what
+    the harnesses recorded since the last export (peek)."""
     found = []
     for meta in catalog(workspace, project):
         for rec in reversed(records(meta["folder"], ("user", "assistant"))):
@@ -584,7 +615,11 @@ def recent(project: str = "", workspace: str = "", turns: int = 12) -> list:
                 break
         if len(found) >= turns:
             break
-    return sorted(found, key=lambda r: r.get("at", ""))
+    for meta, recs in peek(2) if live else ():
+        if (not project or project in meta.get("projects", [])) and (not workspace or Path(meta["folder"]).parts[-3] == workspace):
+            found += [{**r, "harness": meta["harness"], "session": meta["session"]} for r in recs
+                      if r.get("kind") in ("user", "assistant")]
+    return sorted(found, key=lambda r: r.get("at", ""))[-turns:]
 
 
 def search(pattern: str, workspace: str = "", project: str = "", kinds: tuple = ()) -> list:

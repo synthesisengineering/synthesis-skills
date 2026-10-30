@@ -301,9 +301,9 @@ def _recent_conversation(pid: str, session_id: str) -> list[str]:
     """The project's last prompts and replies in any harness on this Mac, so work moved between harnesses carries
     the conversation as well as the records (R1.3). Transcripts changed in the last two days are exported first."""
     from synthesis import sessions
-    try:
-        sessions.export(2, wait=False)  # a busy archive (another export, a rebuild) is read as it is
-        turns = [r for r in sessions.recent(pid, turns=8) if r.get("session") != session_id]
+    try:  # an archive this session cannot write (a sandbox) or that is busy (a rebuild) is read as it is, plus newer
+        behind = any("not exported" in line for line in sessions.export(2, wait=False))
+        turns = [r for r in sessions.recent(pid, turns=8, live=behind) if r.get("session") != session_id]
     except (OSError, ValueError) as exc:
         return ["", f"Recent conversation: not read ({exc})."]
     if not turns:
