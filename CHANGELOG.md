@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.0] - 2026-10-30
+
+- **Each workspace's conversations leave the Mac with its records** (context lifecycle 2.2.0, project management
+  3.3.0, daily rituals 3.4.0, onboarding 3.2.1; the principal's rulings of 2026-10-30). Config `sessions_repos` maps a
+  workspace to the checkout of its own private sessions repo, and `synthesis sessions sync` copies each session's
+  conversation (prompts, agent briefs, replies, reasoning, compaction summaries, models) and tool calls there, one
+  commit per month touched, then pulls and pushes. Tool output, long text and images stay in the local archive; a
+  session outside every workspace never leaves the Mac. Files are rewritten whole from the archive, so the same
+  records always give the same bytes. `synthesis handoff` syncs and is NOT READY while a workspace's copy is behind;
+  day-end runs the same command; a refused commit stops that workspace and records nothing as synced. Another Mac
+  reads synced sessions with the same `list`, `recent`, `show` and `search`, and the doctor reports each repo:
+  cloned, synced within two days, warned at 3 GB. No hook writes or pushes transcripts (R8.3).
+- **Only the principal's words are prompts.** Codex's approval reviewer runs as its own thread and is handed the whole
+  conversation: on this Mac 1,963 such copies, 701 MB, had been filed as the principal's prompts, against 27 MB of
+  his own. A reviewer's verdicts are now kept and its copy counted; a prompt one agent writes to another (a Claude
+  Code sub-agent, a spawned Codex thread, another session's message) is a `brief`; heartbeats, scheduled-task
+  prompts, recommended plugins and UI actions are `system`. A sub-agent belongs to the workspace its parent started
+  in, Claude Code workflow journals are no longer read as transcripts, and `meta.json` keeps each session's `cwd`.
+  `synthesis sessions export --rebuild` moves the archive aside and exports everything again.
+- **Records cite the conversation.** A session-log entry cites the record behind a decision or quote as
+  `<harness> <session8> #<seq>`, and `synthesis sessions show <session> --seq <n>` opens it with three records either
+  side. `--json` prints one object per line for tools such as the Console. Deleting a workspace's data now includes its
+  sessions repo and archive folder, after a sweep for the person's own records.
+
 ## [5.2.0] - 2026-10-30
 
 - **Every agent session is kept, in one form, for every harness** (context lifecycle 2.1.0, daily rituals 3.3.0,

@@ -4,6 +4,8 @@ keeps media and long text once by hash, and reads a native file only past what i
 import base64
 import json
 import os
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -180,3 +182,134 @@ def test_a_transcript_outside_every_workspace_is_kept_under_other(harness, tmp_p
     native = _jsonl(harness["claude"], _claude_rows(str(tmp_path)))
     sessions.export_file("claude-code", native)
     assert Path(_meta(native)["folder"]).parts[-3] == "other"
+
+
+# --- attribution (R10.1) --------------------------------------------------------------------------------------
+
+
+def _codex_child(harness, sid: str, source: dict, prompt: str, reply: str) -> Path:
+    return _jsonl(Path(os.environ["CODEX_HOME"]) / "sessions" / "2026" / "10" / "30" / f"rollout-2026-10-30T10-00-00-{sid}.jsonl", [
+        {"type": "session_meta", "timestamp": "2026-10-30T10:00:00Z", "payload": {
+            "id": sid, "cwd": harness["work"], "parent_thread_id": "01a1parent-0000", "source": {"subagent": source}}},
+        {"type": "turn_context", "timestamp": "2026-10-30T10:00:01Z", "payload": {"model": "codex-auto-review"}},
+        {"type": "response_item", "timestamp": "2026-10-30T10:00:02Z", "payload": {
+            "type": "message", "role": "user", "content": [{"type": "input_text", "text": prompt}]}},
+        {"type": "response_item", "timestamp": "2026-10-30T10:00:03Z", "payload": {
+            "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": reply}]}},
+    ])
+
+
+def test_a_codex_reviewer_keeps_its_verdict_and_only_counts_its_copy_of_the_conversation(harness):
+    native = _codex_child(harness, "01a1review-0000-7000-8000-000000000001", {"other": "guardian"},
+                          "The following is the Codex agent history whose request action you are reviewing ...",
+                          "Approve: the command only reads files.")
+    sessions.export_file("codex", native)
+    meta = _meta(native)
+    rows = sessions.records(meta["folder"])
+    assert meta["role"] == "reviewer" and meta["parent"] == "01a1parent-0000"
+    assert not [r for r in rows if r["kind"] in ("user", "brief")]
+    assert meta["skipped"]["reviewer's copy of the conversation"] == 1
+    assert [r["text"] for r in rows if r["kind"] == "assistant"] == ["Approve: the command only reads files."]
+
+
+def test_a_spawned_agent_and_a_claude_sub_agent_are_briefed_not_prompted_by_the_principal(harness):
+    native = _codex_child(harness, "01a1spawn-0000-7000-8000-000000000002",
+                          {"thread_spawn": {"parent_thread_id": "01a1parent-0000"}}, "Survey the test suite.", "Done.")
+    sessions.export_file("codex", native)
+    assert [r["kind"] for r in sessions.records(_meta(native)["folder"]) if r["kind"] in ("user", "brief")] == ["brief"]
+    base = {"cwd": harness["work"], "sessionId": "c9", "timestamp": "2026-10-30T10:00:00Z", "type": "user"}
+    claude = _jsonl(harness["claude"].with_name("c9.jsonl"), [
+        {**base, "isSidechain": True, "message": {"role": "user", "content": "Research the release notes."}},
+        {**base, "message": {"role": "user", "content": "<cross-session-message from=\"S2\">ready</cross-session-message>"}},
+        {**base, "message": {"role": "user", "content": "<heartbeat><automation_id>x</automation_id></heartbeat>"}},
+        {**base, "message": {"role": "user", "content": "Ship it."}},
+    ])
+    sessions.export_file("claude-code", claude)
+    kinds = [(r["kind"], r.get("text", "")[:12]) for r in sessions.records(_meta(claude)["folder"])]
+    assert kinds == [("brief", "Research the"), ("brief", "<cross-sessi"), ("system", "<heartbeat><"), ("user", "Ship it.")]
+
+
+def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow_journals_are_not_transcripts(harness, tmp_path):
+    folder = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(tmp_path / "workspaces" / "acme"))
+    sub = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / folder / "parent" / "subagents"
+    elsewhere = str(tmp_path / "plugin-cache" / "scripts")  # sub-agents often work outside the workspace
+    native = _jsonl(sub / "agent-a1.jsonl", [{"type": "user", "isSidechain": True, "cwd": elsewhere, "timestamp": "2026-10-30T10:00:00Z",
+                                              "message": {"role": "user", "content": "Check the script."}}])
+    _jsonl(sub / "workflows" / "wf_1" / "journal.jsonl", [{"type": "started", "agentId": "a2"}])
+    sessions.export(0)
+    assert Path(_meta(native)["folder"]).parts[-3] == "acme" and _meta(native)["cwd"] == elsewhere
+    assert not [m for m in sessions.catalog() if m["native"].endswith("journal.jsonl")]
+
+
+def test_a_rebuild_moves_the_archive_aside_and_exports_everything_again(harness):
+    native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    first = sessions.export_file("claude-code", native)
+    moved = Path(sessions.rebuild())
+    assert (moved / "acme").is_dir() and not sessions.root().exists()
+    assert sessions.export(0) == [f"claude-code c1: {first} record(s)"]
+
+
+def test_show_opens_a_cited_record_with_its_neighbors(harness, capsys):
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sessions.export(0)
+    assert cli.main(["sessions", "show", "c1", "--seq", "1"]) == 0
+    shown = [line.split()[0] for line in capsys.readouterr().out.splitlines()]
+    assert shown == ["#0", "#1", "#2", "#3", "#4"]
+
+
+# --- sync (R10.2 to R10.4) ------------------------------------------------------------------------------------
+
+
+def _git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
+
+
+@pytest.fixture
+def synced(harness, tmp_path, write_config):
+    remote = tmp_path / "sessions.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True)
+    repo = tmp_path / "ai-sessions-acme"
+    subprocess.run(["git", "clone", "-q", str(remote), str(repo)], check=True, capture_output=True)
+    write_config({"workspace_roots": [str(tmp_path / "workspaces" / "*")],
+                  "sessions_repos": {"acme": str(repo), "other": str(tmp_path / "never")}})
+    return {**harness, "repo": repo, "remote": remote}
+
+
+def test_sync_copies_the_conversation_and_tool_calls_and_never_an_unplaced_session(synced, tmp_path):
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    _jsonl(synced["claude"].with_name("c2.jsonl"), _claude_rows(str(tmp_path)))  # outside every workspace
+    report = sessions.sync()
+    assert report[-1] == "acme: ai-sessions-acme up to date" and not any(line.startswith("FAILED") for line in report)
+    assert _git(synced["remote"], "log", "--format=%s") == "Sessions: 2026-10 (1 changed)"
+    files = sorted(p.relative_to(synced["repo"]).as_posix() for p in synced["repo"].rglob("*") if p.is_file() and ".git" not in p.parts)
+    assert files == ["2026-10/claude-code-c1/meta.json", "2026-10/claude-code-c1/transcript-0001.jsonl"]
+    kinds = {json.loads(line)["kind"] for line in (synced["repo"] / files[1]).read_text(encoding="utf-8").splitlines()}
+    assert "tool_call" in kinds and "user" in kinds and kinds <= set(sessions.SYNC_KINDS)
+    assert "native" not in json.loads((synced["repo"] / files[0]).read_text(encoding="utf-8"))
+    assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"
+    assert _git(synced["remote"], "rev-list", "--count", "main") == "1"  # nothing new, nothing committed
+    _jsonl(synced["claude"], [{"type": "user", "cwd": synced["work"], "timestamp": "2026-10-30T12:00:00Z",
+                               "message": {"role": "user", "content": "One more thing."}}])
+    sessions.sync()
+    assert _git(synced["remote"], "rev-list", "--count", "main") == "2"
+
+
+def test_sessions_another_mac_synced_are_read_from_the_repo(synced):
+    folder = synced["repo"] / "2026-09" / "codex-elsewhere"
+    folder.mkdir(parents=True)
+    (folder / "meta.json").write_text(json.dumps({"harness": "codex", "session": "elsewhere", "last": "2026-09-01"}))
+    (folder / "transcript-0001.jsonl").write_text(json.dumps({"seq": 0, "kind": "user", "text": "hello from the other Mac"}) + "\n")
+    found = [m for m in sessions.catalog() if m.get("session") == "elsewhere"]
+    assert found and found[0]["synced"] == "acme"
+    assert [r["text"] for r in sessions.search("other Mac")] == ["hello from the other Mac"]
+
+
+def test_a_refused_commit_stops_that_workspace_and_records_nothing_as_synced(synced):
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    hooks = synced["repo"] / ".git" / "hooks"
+    (hooks / "pre-commit").write_text("#!/bin/sh\necho refused by the commit check\nexit 1\n")
+    os.chmod(hooks / "pre-commit", 0o755)
+    _git(synced["repo"], "config", "core.hooksPath", str(hooks))
+    report = sessions.sync()
+    assert report[-1].startswith("FAILED acme: commit for 2026-10 refused") and "refused by the commit check" in report[-1]
+    assert not (sessions.root() / ".state" / "sync-acme.json").exists()

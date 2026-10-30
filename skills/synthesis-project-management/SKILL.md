@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.2.0"
+  version: "3.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -64,5 +64,5 @@ board (one small file per session).
 **Pause or end.**
 
 9. Update CONTEXT.md, REFERENCE.md, `sessions/YYYY-MM.md` (with Attribution lines when several agents contributed) and plans under `resources/artifacts/`.
-10. Same Mac, another harness: nothing to commit. Another Mac: `synthesis handoff -m "<message>"`, which must end `READY`; `NOT READY` lists what blocks it and nothing is forced.
+10. Same Mac, another harness: nothing to commit. Another Mac: `synthesis handoff -m "<message>"`, which also syncs each workspace's conversations and must end `READY`; `NOT READY` lists what blocks it and nothing is forced.
 11. `synthesis release`.

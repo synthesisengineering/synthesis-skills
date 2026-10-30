@@ -203,26 +203,39 @@ def cmd_sessions(args) -> int:
     """Export and read the agent session transcripts kept under the synthesis home (sessions.py)."""
     from synthesis import sessions
     kinds = tuple(k for k in (args.kinds or "").split(",") if k)
+
+    def out(rec: dict, line: str) -> None:
+        print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
+
     if args.action == "export":
-        report = sessions.export(0 if args.all else args.days, args.session or "")
-        print("\n".join(report) or "nothing new to export")
+        moved = sessions.rebuild() if args.rebuild else ""
+        report = sessions.export(0 if args.all or args.rebuild else args.days, args.session or "")
+        if moved:
+            print(f"previous archive moved to {moved}")
+        print("\n".join(report[-50:] + [f"{len(report)} session(s) exported"]) if report else "nothing new to export")
+    elif args.action == "sync":
+        report = sessions.sync(args.workspace, push=not args.no_push)
+        print("\n".join(report) or "no sessions repo configured (config sessions_repos)")
+        return 1 if any(line.startswith("FAILED") for line in report) else 0
     elif args.action == "list":
         for m in sessions.catalog(args.workspace, args.project)[:args.limit]:
-            print(f"{m.get('last', '')[:16]}  {m.get('harness', '?'):11s} {m.get('session', '?')}  {m.get('records', 0)} records  "
-                  f"{','.join(m.get('projects', [])) or '-'}  {m.get('folder')}")
+            out(m, f"{m.get('last', '')[:16]}  {m.get('harness', '?'):11s} {m.get('session', '?')}  {m.get('records', 0)} records  "
+                   f"{','.join(m.get('projects', [])) or '-'}  {m.get('folder')}")
     elif args.action == "show":
         found = [m for m in sessions.catalog() if args.target and str(m.get("session", "")).startswith(args.target)]
         if len(found) != 1:
             print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
             return 1
-        for rec in sessions.records(found[0]["folder"], kinds, whole=args.whole):
-            print(sessions.render(rec, 0 if args.whole else args.width))
+        rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
+                sessions.records(found[0]["folder"], kinds, whole=args.whole))
+        for rec in rows:
+            out(rec, sessions.render(rec, 0 if args.whole else args.width))
     elif args.action == "recent":
         for rec in sessions.recent(args.project, args.workspace, args.limit):
-            print(f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
     else:
         for rec in sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit]:
-            print(f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
+            out(rec, f"[{rec.get('harness')} {str(rec.get('session'))[:8]}] {sessions.render(rec, args.width)}")
     return 0
 
 
@@ -324,15 +337,19 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("handoff", help="commit and push changes inside this session's claims")
     s.add_argument("-m", "--message", default="Update project records")
     s.set_defaults(fn=cmd_handoff)
-    s = sub.add_parser("sessions", help="export, list, show, search agent session transcripts from every harness")
-    s.add_argument("action", choices=("export", "list", "show", "recent", "search"))
+    s = sub.add_parser("sessions", help="export, sync, list, show, search agent session transcripts from every harness")
+    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search"))
     s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
     s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
     s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
     s.add_argument("--session", default="", help="export: only this session")
+    s.add_argument("--rebuild", action="store_true", help="export: move the archive aside and export everything again")
+    s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
+    s.add_argument("--seq", type=int, help="show: the cited record and three either side")
+    s.add_argument("--json", action="store_true", help="list, show, recent, search: one JSON object per line")
     s.add_argument("--project", default="")
     s.add_argument("--workspace", default="")
-    s.add_argument("--kinds", default="", help="user,assistant,reasoning,tool_call,tool_result,system,compaction,meta")
+    s.add_argument("--kinds", default="", help="user,brief,assistant,reasoning,tool_call,tool_result,system,compaction,meta")
     s.add_argument("--whole", action="store_true", help="show: full tool outputs and injected text from the blobs")
     s.add_argument("--width", type=int, default=600, help="characters shown per record (0: all)")
     s.add_argument("--limit", type=int, default=20)

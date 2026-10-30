@@ -43,3 +43,19 @@ When an inventory of one repository is produced for any audience beyond its owne
 ## Instance specifics live in private configuration
 
 This section is the mechanism. Which repositories are deletion units, which root is permanent, and any additions to the preserve class are facts about one person's setup — declared in that person's private agent instructions or configuration, never in this public skill. An agent applying the mechanism reads the instance declarations first, and asks rather than guesses when a repository's family is undeclared.
+
+## Agent conversations are part of the deletion unit
+
+Each workspace's agent conversations are kept in `<synthesis home>/sessions/<workspace>/` on every Mac and, when
+configured, in the workspace's own sessions repo (`sessions_repos`; [session-transcripts.md](session-transcripts.md)).
+Both belong to the workspace's deletion unit. To delete a workspace's data:
+
+1. Sweep its conversations for the person's own records first (the always-preserve class above: their contracts,
+   pay, reviews of them, disputes): `synthesis sessions search "<term>" --workspace <name> --kinds user,assistant`.
+   Move what belongs to the person to the permanent root as records, not as transcripts.
+2. Delete or return the sessions repo with the engagement repo, and remove the workspace's archive folder on every
+   Mac (move it to the Trash, then empty it once the sweep is checked).
+3. Remove the workspace from `sessions_repos` and from the workspace's repo list, so no Mac recreates either.
+
+Evaluation cases drawn from a client workspace's conversations live in that workspace's sessions repo (`evals/`), so
+they go with it.
