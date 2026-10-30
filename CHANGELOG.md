@@ -21,7 +21,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   his own. A reviewer's verdicts are now kept and its copy counted; a prompt one agent writes to another (a Claude
   Code sub-agent, a spawned Codex thread, another session's message) is a `brief`; heartbeats, scheduled-task
   prompts, recommended plugins and UI actions are `system`. A sub-agent belongs to the workspace its parent started
-  in, Claude Code workflow journals are no longer read as transcripts, and `meta.json` keeps each session's `cwd`.
+  in, Claude Code workflow journals are no longer read as transcripts, the sessions Codex moves to `archived_sessions` are
+  read too (139 had been missed), and `meta.json` keeps each session's `cwd`.
   `synthesis sessions export --rebuild` moves the archive aside and exports everything again.
 - **Records cite the conversation.** A session-log entry cites the record behind a decision or quote as
   `<harness> <session8> #<seq>`, and `synthesis sessions show <session> --seq <n>` opens it with three records either

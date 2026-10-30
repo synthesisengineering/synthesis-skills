@@ -179,13 +179,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # transcripts kept a year or more, 14, its use 1, spacing 2. guards.py 13: only the exporter writes the archive (the
 # root 2, the reason 2, the refusal shared with the board's 9). paths.py 5: the archive's folder. The plugin's 24 more
 # (setup.py): Claude Code keeps transcripts 3,650 days unless the person set a period, 20, its call 2, spacing 2.
-# 5.3.0 adds 215 to both, for the principal's ten rulings of 2026-10-30 on keeping agent conversations (R10.1 to
-# R10.5). sessions.py 162: the reason in the docstring 3 and the subprocess import 1; the kinds that leave the Mac,
+# 5.3.0 adds 216 to both, for the principal's ten rulings of 2026-10-30 on keeping agent conversations (R10.1 to
+# R10.5). sessions.py 163: the reason in the docstring 3 and the subprocess import 1; the kinds that leave the Mac,
 # with their reason, 3; the injected prefixes measured that day 3 and another session's message 1; a prompt told
 # apart from a brief or a reviewer's copy, 7; the Claude Code and Codex adapters using it 6 (Codex's child threads
 # named 4, the sub-agent flag 2); workspace folders listed once 7, so the folder lookup shrinks by 5, and a Claude
 # Code project folder matched to its workspace 9; placement following a sub-agent's parent 8, its working folder kept
-# 1; workflow journals skipped 1; the archive moved aside for a rebuild 8; the catalog reading other Macs' synced
+# 1; workflow journals skipped 1; Codex's archived sessions read too (139 had been missed) 1; the archive moved aside
+# for a rebuild 8; the catalog reading other Macs' synced
 # sessions 7; a cited record with its neighbors 3; the sync: the configured repos 5, git 2, sync 8, a workspace's
 # commits, pull and push 33, a session's synced files rewritten whole 28; the section heading 1; spacing 22. cli.py
 # 17: `sync`, `--rebuild`, `--seq` and `--json` 13, their arguments 4. doctor.py 29: each sessions repo cloned, synced
@@ -193,8 +194,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # conversations and is not ready while one is behind.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7685
-PLUGIN_BUDGET = 24684
+CORE_BUDGET = 7686
+PLUGIN_BUDGET = 24685
 
 
 def _lines(files):

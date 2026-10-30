@@ -313,3 +313,11 @@ def test_a_refused_commit_stops_that_workspace_and_records_nothing_as_synced(syn
     report = sessions.sync()
     assert report[-1].startswith("FAILED acme: commit for 2026-10 refused") and "refused by the commit check" in report[-1]
     assert not (sessions.root() / ".state" / "sync-acme.json").exists()
+
+
+def test_a_session_codex_archived_is_still_exported(harness):
+    archived = Path(os.environ["CODEX_HOME"]) / "archived_sessions" / "rollout-2026-07-03T13-37-49-01a1arch-0000-7000-8000-000000000003.jsonl"
+    _jsonl(archived, [{"type": "session_meta", "timestamp": "2026-07-03T13:37:49Z", "payload": {"id": "a", "cwd": harness["work"]}},
+                      {"type": "response_item", "timestamp": "2026-07-03T13:38:00Z", "payload": {
+                          "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Archive me."}]}}])
+    assert sessions.export(0) == ["codex 01a1arch-0000-7000-8000-000000000003: 2 record(s)"]

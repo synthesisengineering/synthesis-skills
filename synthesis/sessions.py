@@ -461,7 +461,8 @@ def natives(days: float = 0) -> list:
     since, found = time.time() - days * 86400 if days else 0, []
     for harness, base in paths.transcript_roots().items():
         pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*/session.jsonl"}[harness]
-        found += [(harness, p) for p in base.glob(pattern) if p.is_file() and p.stat().st_mtime >= since
+        bases = [base, base.parent / "archived_sessions"] if harness == "codex" else [base]  # Codex moves archived ones
+        found += [(harness, p) for b in bases for p in b.glob(pattern) if p.is_file() and p.stat().st_mtime >= since
                   and p.name != "journal.jsonl"]  # a Claude Code workflow's run journal, not a conversation
     return found
 
