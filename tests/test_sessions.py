@@ -379,3 +379,15 @@ def test_a_session_that_cannot_export_still_sees_the_latest_turns(harness, tmp_p
         assert "One more thing." in project.resume(str(kb / "projects" / "alpha"), "S-new")
     finally:
         lock.chmod(0o644)
+
+
+def test_sync_takes_the_same_writer_lock_as_export(synced):
+    _jsonl(synced["claude"], _claude_rows(synced["work"]))
+    sessions.export(0)
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.chmod(0o444)
+    try:
+        assert sessions.sync() == [f"FAILED sessions sync: not exported: [Errno 13] Permission denied: '{lock}'"]
+    finally:
+        lock.chmod(0o644)
+    assert sessions.sync()[-1] == "acme: ai-sessions-acme up to date"

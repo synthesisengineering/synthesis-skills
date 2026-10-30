@@ -192,7 +192,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # 17: `sync`, `--rebuild`, `--seq` and `--json` 13, their arguments 4. doctor.py 29: each sessions repo cloned, synced
 # within two days and under 3 GB, 24, its call 2, the datetime import 1, spacing 2. project.py 7: handoff syncs the
 # conversations and is not ready while one is behind.
-# 5.3.1 adds 63 to both, 16 of them (sessions.py) from reading 5.3.0's output on 2026-10-30: `show d20ab7c4` matched 274
+# 5.3.1 adds 79 to both, 16 of them (sessions.py) from reading 5.3.0's output on 2026-10-30: `show d20ab7c4` matched 274
 # sessions, because a sub-agent's id starts with its parent's, so every citation of a session with sub-agents was
 # ambiguous; the id resolved to the exact or main session 10 (its reason 3, the lookup 5, spacing 2); a Claude Code
 # sub-agent's role and parent 2; and a project read only from the session-start hook's own text, after a test
@@ -204,11 +204,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2026-10-30 showed only what other sessions had exported, and the new lock would have shown nothing: a read-only
 # view of what each harness recorded since the last export 27 (its reason 2, reading without writing 18, a line
 # still being written or unreadable 5, spacing 2), recent adding it when the export could not run 6, the lock that
-# cannot be opened reported instead of raised 2.
+# cannot be opened reported instead of raised 2. And 16 more (sessions.py) so two sessions handing off or closing
+# the day together take turns instead of colliding in a sessions repo's index: one writer lock as its own context
+# 17 and its reason 3, sync holding it 3, the export's own copy of the lock removed -10, the contextlib import 1,
+# spacing 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7749
-PLUGIN_BUDGET = 24748
+CORE_BUDGET = 7765
+PLUGIN_BUDGET = 24764
 
 
 def _lines(files):

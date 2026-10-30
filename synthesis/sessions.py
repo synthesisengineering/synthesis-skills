@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import collections
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -484,19 +485,31 @@ def _rebuild() -> str:
     return str(target)
 
 
-def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
-    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session. One
-    export runs at a time on a Mac: two sessions resuming together, or a resume during a rebuild, would otherwise
-    append the same records twice. Without `wait` a busy archive is read as it is."""
+@contextlib.contextmanager
+def _writer(wait: bool):
+    """One writer of the archive and the sessions repos at a time on a Mac: two sessions resuming or handing off
+    together would otherwise append the same records twice or collide in a repo's index. Yields None while held,
+    else why not."""
     try:  # beside the archive, so a rebuild's move never takes it along
         held = (paths.home() / "sessions.lock").open("a")
     except OSError as exc:  # Codex's sandbox may write only the board: the archive is read as it is, plus peek()
-        return [f"not exported: {exc}"]
+        yield f"not exported: {exc}"
+        return
     with held:
         try:
             fcntl.flock(held, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
         except BlockingIOError:
-            return ["not exported: another export is running, so the archive is read as it is"]
+            yield "not exported: another export is running, so the archive is read as it is"
+            return
+        yield None
+
+
+def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
+    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session.
+    Without `wait` a busy archive is read as it is."""
+    with _writer(wait) as busy:
+        if busy:
+            return [busy]
         moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
         return moved + _export(0 if rebuild else days, only)
 
@@ -661,8 +674,11 @@ def sync(workspace: str = "", push: bool = True) -> list:
     targets = {ws: repo for ws, repo in repos().items() if not workspace or ws == workspace}
     if not targets:
         return []
-    export(2)
-    return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
+    with _writer(True) as busy:
+        if busy:
+            return [f"FAILED sessions sync: {busy}"]
+        _export(2, "")
+        return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
 
 
 def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
