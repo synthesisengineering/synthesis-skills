@@ -65,13 +65,23 @@ _SECRETS: list = []
 
 
 def mask(text: str) -> str:
-    """Every credential the commit check knows, a private key block and a bearer token, replaced by its kind and
-    a hash prefix, so two copies of one secret can still be matched without either being readable."""
+    """Whatever the commit check refuses as a credential, replaced by its kind and a hash prefix, so two copies of
+    one secret can still be matched without either being readable: the check's own patterns, the principal's tier-0
+    list loaded as the check loads it, private keys (whole, or a header with its body, as in JSON text) and bearer
+    tokens. Masking with exactly what the check stops keeps a sessions repo's commits clean (2026-10-30: a quoted
+    `sk-ant-api` pattern, matched only by the tier-0 list, stopped the first sync)."""
     if not _SECRETS:
         from synthesis import commit_check
-        _SECRETS.extend((name, re.compile(rx)) for name, rx in commit_check.CREDENTIALS.items())
+        try:
+            policy = commit_check.load_policy(paths.config()) or {}
+        except (commit_check.Refused, OSError, ValueError):  # the check itself refuses without a readable policy
+            policy = {}
         _SECRETS.append(("private key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]{40,}?"
                                                    r"-----END [A-Z ]*PRIVATE KEY(?: BLOCK)?-----")))
+        _SECRETS.append(("private key", re.compile(r"(?<=PRIVATE KEY-----)(?:\\[nr]|\s)+[A-Za-z0-9+/]{40,}={0,2}")))
+        _SECRETS.extend((name, re.compile(rx)) for name, rx in commit_check.CREDENTIALS.items())
+        _SECRETS.extend(("credential pattern", commit_check.regex(rx))
+                        for rx in commit_check.leaves(policy.get("tier_0_always")))
         _SECRETS.append(("bearer token", re.compile(r"(?i)(?<=bearer )[A-Za-z0-9._~+/-]{20,}=*")))
     for name, rx in _SECRETS:
         text = rx.sub(lambda m: f"[redacted {name} {hashlib.sha256(m.group(0).encode('utf-8')).hexdigest()[:12]}]", text)
@@ -692,14 +702,17 @@ def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
         if done.get(rel) != meta.get("records"):
             months[rel.split("/")[0]] += _write_synced(Path(meta["folder"]), repo / rel, meta)
             done[rel] = meta.get("records")
-    for month, count in sorted(months.items()):
+    for month in sorted(months):
         added = _git(repo, "add", "-A", "--", month)
         if added.returncode:
             return lines + [f"FAILED {ws}: git add {month}: {added.stderr.strip()[-300:]}"]
-        if _git(repo, "diff", "--cached", "--quiet").returncode == 0:
+        staged = _git(repo, "diff", "--cached", "--name-only", "--", month).stdout.split()
+        count = len({"/".join(name.split("/")[:2]) for name in staged})  # sessions in this commit, retried ones too
+        if not count:
             continue
-        made = _git(repo, "commit", "-q", "-m", f"Sessions: {month} ({count} changed)")
-        if made.returncode:  # the commit check refused, or git failed: nothing is recorded as synced
+        made = _git(repo, "commit", "-q", "-m", f"Sessions: {month} ({count} changed)", "--", month)  # this month only
+        if made.returncode:  # the commit check refused, or git failed: nothing is recorded as synced, nothing left staged
+            _git(repo, "reset", "-q", "--", month)
             return lines + [f"FAILED {ws}: commit for {month} refused: {(made.stdout + made.stderr).strip()[-600:]}"]
         lines.append(f"{ws}: {month}: {count} session(s) committed")
     if push:

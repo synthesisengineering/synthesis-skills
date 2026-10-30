@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.2] - 2026-10-30
+
+- **What leaves the Mac is masked with exactly what the commit check refuses.** The first sync of history was refused
+  for two workspaces: the check also applies the principal's tier-0 list (a quoted `sk-ant-api` pattern, a short
+  Slack token shape), which the export's masking did not load. Masking now loads that list as the check loads it, and
+  masks a private key's header with its body as it appears in JSON text.
+- **A refused month never rides along.** A refused commit had left its files staged, and the next month's commit
+  swept them in. Each month now commits only its own files, a refused month is unstaged, and the report counts the
+  sessions in each commit from what git staged.
+
 ## [5.3.1] - 2026-10-30
 
 - **A citation names the session it cites** (context lifecycle 2.2.1). A Claude Code sub-agent's id begins with its
