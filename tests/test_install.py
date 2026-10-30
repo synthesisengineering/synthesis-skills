@@ -272,19 +272,21 @@ def test_the_board_moves_out_of_the_state_folder_and_approvals_stay(isolated_hom
 
 def test_board_entries_in_both_places_are_merged_and_nothing_is_lost(isolated_home):
     """An older release's session-start hook can switch to a newer one without moving the board, so a session may
-    write the new folder before the old one is merged: both copies' claims are kept, the rest is archived."""
+    write the new folder before the old one is merged: both copies' claims are kept, the rest is archived. The new
+    copy may be a fresh record (the release script's own claim, 2026-10-30): its empty fields never erase set ones."""
     from synthesis import board, paths
     old, new = isolated_home / "state", isolated_home / "board"
-    for root, claims, seen in ((old, ["/r/a/**"], 1.0), (new, ["/r/b/**"], 2.0)):
+    for root, claims, seen, project in ((old, ["/r/a/**"], 1.0, "alpha"), (new, ["/r/b/**"], 2.0, "")):
         (root / "sessions").mkdir(parents=True)
         (root / "sessions" / "S1.json").write_text(json.dumps({"session": "S1", "claims": claims, "seen": seen,
-                                                               "goal": str(seen)}))
+                                                               "started": seen, "goal": str(seen), "project": project}))
         (root / "claims.jsonl").write_text(f'{{"at": {seen}}}\n')
         (root / "claims.lock").write_text("")
     (old / "sessions" / "S2.json").write_text(json.dumps({"session": "S2", "claims": [], "seen": 1.0}))
     install.move_board(isolated_home)
     merged = board.load("S1")
     assert merged.claims == ["/r/a/**", "/r/b/**"] and merged.goal == "2.0" and board.load("S2") is not None
+    assert merged.project == "alpha" and merged.started == 1.0 and merged.seen == 2.0
     assert (new / "claims.jsonl").read_text() == '{"at": 2.0}\n{"at": 1.0}\n'
     kept = sorted(p.relative_to(isolated_home / "archive").parts[1:] for p in (isolated_home / "archive").rglob("*")
                   if p.is_file())

@@ -160,10 +160,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # through the permissions profile in use, which Codex 0.166 reads unless `sandbox_mode` is set, 28, and that
 # profile's name 1; through the older writable roots while it is set 17; the marker 1; the docstring 1; spacing 6),
 # and the board's folder made first, since the sandbox may write inside it but never create it, 2.
+# 5.1.19 adds 2 to both (install.py), after the 5.1.18 move on 2026-10-30 blanked a session's project, folder and
+# briefing: the release script's own claim had written a fresh record first, and the newer copy won whole. The newer
+# copy now wins field by field, never with an empty value, 1; a session's start is the earlier of the two, 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6876
-PLUGIN_BUDGET = 23851
+CORE_BUDGET = 6878
+PLUGIN_BUDGET = 23853
 
 
 def _lines(files):
