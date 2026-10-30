@@ -95,7 +95,7 @@ to get past the check. It then runs the repository's own hooks. Setup asks befor
 | `synthesis brief [project]` | Print the project's directive and current state, and any problems with its records. |
 | `synthesis resume <project>` | Pick up a project: directive, state, next actions, plan and warnings (a newer copy elsewhere, upstream changes, other sessions working there). If the project differs from the session's own, it asks first; `--switch` switches after you agree. |
 | `synthesis who` | List live sessions and their claims (`--all` includes stale ones). |
-| `synthesis claim <paths>` | Claim absolute paths before writing; a trailing `/**` claims a subtree. A refused claim names the holder. `--take` takes over a claim that has been quiet for 8 hours and tells its holder. |
+| `synthesis claim <paths>` | Claim absolute paths or patterns before writing; a claim covers everything beneath what it names, unless that is an existing file. A refused claim names the holder. `--take` takes over a claim that has been quiet for 8 hours and tells its holder. |
 | `synthesis release [paths]` | Release some or all of this session's claims. |
 | `synthesis msg <address> "<text>"` | Message a session by id, short name or `project:<id>`. An ambiguous address is refused, never guessed. `--durable` reaches every session that works on the project. |
 | `synthesis inbox` | Show and mark unread messages. |
@@ -153,8 +153,10 @@ python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py plug
 
 `--clients` takes `claude`, `codex`, `muse` or a comma-separated list. The step installs
 the plugin with that harness's own commands, installs the runtime, links the `synthesis`
-command, and for Codex sets `[features] hooks = true` and raises
-`project_doc_max_bytes` to at least 98,304 in `~/.codex/config.toml`, after a backup.
+command, and for Codex sets `[features] hooks = true`, raises
+`project_doc_max_bytes` to at least 98,304 and lets the sandbox write the synthesis board
+(`~/.synthesis/v5/board`, through a permissions profile) in `~/.codex/config.toml`, after a
+backup.
 
 These are the native commands it runs, if you would rather type them yourself:
 

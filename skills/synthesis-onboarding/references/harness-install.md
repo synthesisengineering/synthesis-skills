@@ -79,6 +79,16 @@ Setup changes only these keys in `~/.codex/config.toml`, after copying the file 
   default, 32 KiB, truncates the global rules plus a workspace's instructions.
 - `project_doc_fallback_filenames = ["CLAUDE.md"]` when the key is absent; an existing
   list without `CLAUDE.md` is reported and left as set.
+- The board folder, `~/.synthesis/v5/board`, made writable from Codex's sandbox, which
+  otherwise writes only the workspace and temp folders, so a Codex session can claim files
+  and post on the board. Codex reads permission profiles (0.166): setup adds the board as a
+  `write` rule to the person's own default profile; when the default is a built-in or unset,
+  it writes a `synthesis` profile that extends it (`:workspace` when unset) with that one
+  rule, inside a marked block, and names it in `default_permissions`. A config that still
+  sets `sandbox_mode` gets the board in `[sandbox_workspace_write] writable_roots` instead,
+  which is what Codex reads then. Only the board is granted: `~/.synthesis/v5/state` holds
+  approvals and send windows, which no sandboxed agent may write, and the doctor fails a
+  grant that covers it.
 
 Other keys, including feature keys the Codex app writes itself, are never touched. A
 rerun changes nothing.

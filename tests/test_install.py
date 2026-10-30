@@ -105,7 +105,7 @@ def test_first_session_start_bootstraps_from_the_exact_registered_command(tmp_pa
                          capture_output=True, text=True, env=env)
     assert out.returncode == 0, out.stderr
     assert (home / ".synthesis" / "v5" / "bin" / "synthesis-hook").is_file()
-    assert (home / ".synthesis" / "v5" / "state" / "sessions" / "fresh.json").is_file()
+    assert (home / ".synthesis" / "v5" / "board" / "sessions" / "fresh.json").is_file()
 
 
 def test_install_writes_global_git_hooks_that_run_the_commit_check(tmp_path, isolated_home):
@@ -252,3 +252,49 @@ def test_the_cli_installs_from_a_plugin_folder(tmp_path, isolated_home, capsys):
     assert cli.main(["install", str(_plugin_copy(tmp_path))]) == 0
     assert "synthesis runtime" in capsys.readouterr().out
     assert (isolated_home / "bin" / "synthesis-hook").is_file()
+
+
+def test_the_board_moves_out_of_the_state_folder_and_approvals_stay(isolated_home):
+    """5.1.18: the board has its own folder, the one Codex's sandbox may write; approvals stay where it cannot."""
+    from synthesis import board
+    old = isolated_home / "state"
+    (old / "sessions").mkdir(parents=True)
+    (old / "sessions" / "S1.json").write_text(json.dumps({"session": "S1", "claims": ["/r/a/**"], "seen": 1.0}))
+    (old / "messages" / "S1").mkdir(parents=True)
+    (old / "messages" / "S1" / "1-1.json").write_text(json.dumps({"from": "S2", "text": "hi", "at": 1.0}))
+    (old / "claims.jsonl").write_text('{"session": "S1"}\n')
+    (old / "approvals").mkdir()
+    assert install.move_board(isolated_home) == ["sessions", "messages", "claims.jsonl"]
+    assert board.load("S1").claims == ["/r/a/**"] and board.inbox("S1")[0]["text"] == "hi"
+    assert not any((old / n).exists() for n in ("sessions", "messages", "claims.jsonl")) and (old / "approvals").is_dir()
+    assert install.move_board(isolated_home) == []
+
+
+def test_board_entries_in_both_places_are_merged_and_nothing_is_lost(isolated_home):
+    """An older release's session-start hook can switch to a newer one without moving the board, so a session may
+    write the new folder before the old one is merged: both copies' claims are kept, the rest is archived."""
+    from synthesis import board, paths
+    old, new = isolated_home / "state", isolated_home / "board"
+    for root, claims, seen in ((old, ["/r/a/**"], 1.0), (new, ["/r/b/**"], 2.0)):
+        (root / "sessions").mkdir(parents=True)
+        (root / "sessions" / "S1.json").write_text(json.dumps({"session": "S1", "claims": claims, "seen": seen,
+                                                               "goal": str(seen)}))
+        (root / "claims.jsonl").write_text(f'{{"at": {seen}}}\n')
+        (root / "claims.lock").write_text("")
+    (old / "sessions" / "S2.json").write_text(json.dumps({"session": "S2", "claims": [], "seen": 1.0}))
+    install.move_board(isolated_home)
+    merged = board.load("S1")
+    assert merged.claims == ["/r/a/**", "/r/b/**"] and merged.goal == "2.0" and board.load("S2") is not None
+    assert (new / "claims.jsonl").read_text() == '{"at": 2.0}\n{"at": 1.0}\n'
+    kept = sorted(p.relative_to(isolated_home / "archive").parts[1:] for p in (isolated_home / "archive").rglob("*")
+                  if p.is_file())
+    assert kept == [("claims.jsonl",), ("claims.lock",), ("sessions", "S1.json")] and paths.old_board() == []
+
+
+def test_any_hook_merges_a_board_an_older_release_wrote_in_the_state_folder(tmp_path, isolated_home):
+    install.install(_plugin_copy(tmp_path))
+    (isolated_home / "state" / "sessions").mkdir(parents=True)
+    (isolated_home / "state" / "sessions" / "S9.json").write_text(json.dumps({"session": "S9", "claims": [], "seen": 1.0}))
+    out = _run_hook(isolated_home, "pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "ls"}})
+    assert out.returncode == 0 and (isolated_home / "board" / "sessions" / "S9.json").is_file()
+    assert not (isolated_home / "state" / "sessions").exists()

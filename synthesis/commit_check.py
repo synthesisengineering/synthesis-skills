@@ -416,7 +416,7 @@ def claims(repo_root: str, session_id: str, staged: list[str]) -> tuple[list[str
     """(problems, note): staged paths inside another live session's claim. No board advises;
     a board that exists but can't be read blocks (R2.6)."""
     from synthesis import board
-    directory = paths.state() / "sessions"
+    directory = paths.board() / "sessions"
     if not directory.is_dir():
         return [], "no coordination board on this machine, so claims were not checked"
     try:

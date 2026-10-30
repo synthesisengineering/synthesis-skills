@@ -268,6 +268,18 @@ def test_file_tools_cannot_write_approvals_or_a_send_window(tmp_path, isolated_h
     assert guards.check("Write", {"file_path": str(tmp_path / "notes.md"), "content": "x"}, CONFIG, cwd=str(tmp_path)) is None
 
 
+def test_the_board_is_written_only_through_the_synthesis_cli(tmp_path, isolated_home):
+    """5.1.18: the board left the state folder, and still grants nothing; a session file edited by hand can drop
+    another session's claims, so file tools and shell writers are refused there with the CLI named."""
+    from synthesis import paths
+    mine = paths.board() / "sessions" / "S1.json"
+    refused = guards.check("Write", {"file_path": str(mine), "content": "{}"}, CONFIG, cwd=str(tmp_path))
+    assert "inside the synthesis board" in refused and "synthesis claim" in refused
+    assert "writes into the synthesis board" in guards.check("Bash", {"command": f"rm {mine}"}, CONFIG, cwd=str(tmp_path))
+    assert guards.check("Bash", {"command": "synthesis claim notes.md"}, CONFIG, cwd=str(tmp_path)) is None
+    assert guards.check("Bash", {"command": f"cat {mine}"}, CONFIG, cwd=str(tmp_path)) is None
+
+
 def test_a_python_script_that_only_cites_a_protected_path_may_write_a_project_record(tmp_path, isolated_home):
     """An operations session, 2026-10-14: a stdin script writing project records was refused because the text it
     wrote cited a transcript path. Only a write's target counts; a path carried in by a variable still does."""

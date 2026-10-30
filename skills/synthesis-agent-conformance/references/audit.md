@@ -56,7 +56,9 @@ bounded `--version` probe. Checks:
   `rm -rf ~` within the latency budget;
 - per harness: the plugin installed and enabled, its code equal to the runtime (never a
   version label), all four events wired to the stable hook;
-- Codex: `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the
+- Codex: `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board
+  writable from the sandbox (by the permissions profile in use, or the older writable
+  roots while `sandbox_mode` is set) and nothing over the state folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted, and the skill catalog (asked of `codex app-server`) within budget with every
   shipped skill discoverable;

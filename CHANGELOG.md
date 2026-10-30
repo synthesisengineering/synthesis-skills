@@ -4,6 +4,33 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.1.18] - 2026-10-30
+
+- **Codex sessions can claim files and post on the board** (onboarding 3.1.0, project management 3.2.0, agent
+  conformance 2.0.1). Codex's sandbox writes only the workspace and the folders its config lists, and the board
+  lived in `~/.synthesis/v5/state/` beside approvals and send windows, so Codex sessions could do neither. The
+  principal chose to give the board its own folder, `~/.synthesis/v5/board/` (sessions, claims, messages and the
+  snapshot journal), and let the sandbox write only that. Codex 0.166 reads permission profiles, so setup grants
+  the board in `~/.codex/config.toml`, after a backup, through the default profile: the person's own gains one
+  `write` rule; a built-in or unset default becomes a `synthesis` profile that extends it with that rule (the older
+  `[sandbox_workspace_write] writable_roots` only while `sandbox_mode` is set, which is when Codex reads it). Checked
+  against Codex's own sandbox: the board writable, the state folder denied. The doctor fails a Codex config that
+  does not grant the board, and one that grants the state folder. The guard still refuses file tools and shell
+  writes into the board: only the `synthesis` CLI writes it, since a session file edited by hand can drop another
+  session's claims.
+- **The board moves by itself.** Every install, and the first hook that finds the board in the old place, merges it
+  into the new folder: free names move, a session in both places keeps both copies' claims, logs are appended, and
+  anything else is archived, never deleted. The older release's own session-start hook can switch to this one
+  without moving anything, which is why a hook checks too (seven lstat calls).
+- **A claim covers everything beneath what it names, unless that is an existing file.** A session reported twice
+  that its claim `meeting-preps/2026-11-02-*` covered none of the files inside the folders it matched: handoff left
+  two of them uncommitted and printed READY, and another session could have written them. Patterns, folders and
+  paths not made yet are now held with a trailing `/**`; `*` still matches within one segment.
+- **The runtime carries the release number again.** From 5.0.16 on, `synthesis/__init__.py` still said 5.0.15, so
+  running sessions were never told what a release changed, and a session start never moved the runtime forward
+  (both compare that number). It says 5.1.18, and the source lint now requires it to match the manifests. Running
+  sessions get one upgrade note listing what they missed.
+
 ## [5.1.17] - 2026-10-27
 
 - **`synthesis index set` commits with a generic message.** Its one-field commit was titled with the project and

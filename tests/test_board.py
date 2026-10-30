@@ -53,7 +53,7 @@ def test_who_reads_only_small_per_session_files(tmp_path, isolated_home):
     start = time.perf_counter()
     assert len(board.sessions()) == 50
     assert time.perf_counter() - start < 0.2
-    assert all(f.stat().st_size < 2000 for f in (isolated_home / "state" / "sessions").glob("*.json"))
+    assert all(f.stat().st_size < 2000 for f in (isolated_home / "board" / "sessions").glob("*.json"))
 
 
 def test_release_drops_claims():
@@ -70,7 +70,7 @@ def test_release_takes_a_subtree_claim_without_its_slash_stars_and_says_when_not
     board.claim("A", ["/tmp/area/**", "/tmp/other"])
     args = type("Args", (), {"session": "A", "paths": ["/tmp/area"]})()
     assert cli.cmd_release(args) == 0 and "released 1 claim(s)" in capsys.readouterr().out
-    assert board.load("A").claims == [board.normalize("/tmp/other")]
+    assert board.load("A").claims == [board.as_claim("/tmp/other")]
     args.paths = ["/tmp/nowhere"]
     assert cli.cmd_release(args) == 1 and "no claim matched" in capsys.readouterr().out
 
@@ -93,14 +93,31 @@ def test_tilde_relative_and_symlink_spellings_of_one_path_conflict(tmp_path, mon
             board.claim("B", [spelling])
 
 
-def test_a_star_stays_inside_its_segment_and_double_star_covers_the_subtree(tmp_path):
-    board.claim("A", [f"{tmp_path}/a/*"])
-    board.claim("B", [f"{tmp_path}/a/b/c"])  # `*` stops at "/"
+def test_a_star_stays_inside_its_segment_and_a_claim_covers_what_lies_beneath_its_matches(tmp_path):
+    """2026-10-29: the claim `meeting-preps/2026-11-02-*` covered none of the files inside the folders it
+    matched, so another session could write them and handoff left them uncommitted."""
+    board.claim("A", [f"{tmp_path}/a/*.md"])
+    board.claim("B", [f"{tmp_path}/a/b/c.md"])  # `*` stops at "/": a/*.md never reaches into a/b/
     with pytest.raises(board.ClaimConflict):
-        board.claim("C", [f"{tmp_path}/a/b"])
-    board.claim("D", [f"{tmp_path}/d/**"])
+        board.claim("C", [f"{tmp_path}/a/x.md"])
+    board.claim("D", [f"{tmp_path}/d/prefix-*"])
+    assert board.load("D").claims == [board.normalize(f"{tmp_path}/d/prefix-*") + "/**"]
     with pytest.raises(board.ClaimConflict):
-        board.claim("E", [f"{tmp_path}/d/b/c"])
+        board.claim("E", [f"{tmp_path}/d/prefix-x/notes/file.md"])
+    board.claim("F", [f"{tmp_path}/d/other/file.md"])
+    board.claim("G", [f"{tmp_path}/g/**"])
+    with pytest.raises(board.ClaimConflict):
+        board.claim("H", [f"{tmp_path}/g/b/c"])
+
+
+def test_a_claim_on_a_path_not_made_yet_covers_what_is_made_under_it_and_a_file_stays_exact(tmp_path):
+    """Claim first, then create: a folder made after its claim is covered without remembering `/**`."""
+    board.claim("A", [f"{tmp_path}/new-project"])
+    with pytest.raises(board.ClaimConflict):
+        board.claim("B", [f"{tmp_path}/new-project/CONTEXT.md"])
+    (tmp_path / "notes.md").write_text("x")
+    board.claim("C", [f"{tmp_path}/notes.md"])
+    assert board.load("C").claims == [board.normalize(f"{tmp_path}/notes.md")]
 
 
 def test_a_claim_may_name_a_path_that_does_not_exist_yet(tmp_path):
@@ -149,7 +166,7 @@ def test_a_fresh_machine_with_no_board_lists_no_sessions():
 def test_a_newer_schema_is_named_not_rewritten(isolated_home, capsys):
     import json
     from synthesis import cli
-    folder = isolated_home / "state" / "sessions"
+    folder = isolated_home / "board" / "sessions"
     folder.mkdir(parents=True)
     newer = {"session": "N", "schema": board.SCHEMA + 1, "seen": time.time(), "claims": [], "future_field": 1}
     (folder / "N.json").write_text(json.dumps(newer))

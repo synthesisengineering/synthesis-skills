@@ -138,10 +138,32 @@ ROOT = Path(__file__).resolve().parents[1]
 # transcript's tail with what each call did 33, the reply naming the writes 4, json imported 1).
 # 5.1.17 adds 1 to both (checkout.py): the reason `synthesis index set` commits as "Update docs", after a session
 # found on 2026-10-27 that its message named the project and field, against the principal's commit-message rule.
+# 5.1.18 adds 130 to the core and 204 to the plugin, for two board reports. Codex sessions could neither claim nor
+# post, because Codex's sandbox could not write the state folder, which also holds approvals and send windows; the
+# principal chose on 2026-10-30 to give the board its own folder and let the sandbox write only that. paths.py 14:
+# the board's folder and its reason 4, the names it took from state/ 1, those left behind found 3, spacing 6.
+# install.py 43: every install merges what an older release left in state/ (the call, and a failure printed rather
+# than blocking a session start, 4); the merge, because the older release's own session-start hook can switch to
+# this one without moving anything (its reason 6, the walk 9), free names moved 4, folders entry by entry 5, logs
+# appended 3, a session in both places keeping both copies' claims 6, the rest archived, never deleted, 2, spacing
+# 4. hook.py 7: the first hook that finds the board in the old place merges it (the check costs seven lstat calls).
+# doctor.py 53: a Codex config that does not grant the board fails, and so does a grant over the state folder (the
+# check 16; the folders the config grants, from the older writable roots while `sandbox_mode` is set, else from the
+# permissions profile in use through `extends`, 17; a TOML array's strings read 4); the board still in the old place
+# warns 7; the checks run 1; spacing 8. guards.py 10: the board is written only through the CLI, since a session file edited by
+# hand can drop another session's claims (the roots' docstring 1, the refusal naming the CLI 2 and its reason 1,
+# spacing 2, the file-tool and shell refusals 4). And a wildcard claim, after a session found twice (2026-10-28 and
+# 29) that `meeting-preps/2026-11-02-*` covered none of the files inside the folders it matched while handoff printed
+# READY: board.py 2, a claim covering everything beneath what it names unless that is an existing file (the docstrings
+# 2; the rule changed in its one line); project.py 1, git asked about the folder above a pattern held with "/**".
+# The plugin's 74 more (setup.py): Codex's config granting the board (the line finder 11; the overlay's step 7;
+# through the permissions profile in use, which Codex 0.166 reads unless `sandbox_mode` is set, 28, and that
+# profile's name 1; through the older writable roots while it is set 17; the marker 1; the docstring 1; spacing 6),
+# and the board's folder made first, since the sandbox may write inside it but never create it, 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 6746
-PLUGIN_BUDGET = 23647
+CORE_BUDGET = 6876
+PLUGIN_BUDGET = 23851
 
 
 def _lines(files):

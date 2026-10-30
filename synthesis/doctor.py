@@ -224,6 +224,58 @@ def check_codex_features(config: dict) -> Check:
                                                "but older builds do not: set hooks = true")
 
 
+def toml_strings(raw) -> list:
+    """The strings in a raw TOML array, as read_toml keeps arrays."""
+    found = re.findall(r'"((?:[^"\\]|\\.)*)"|\'([^\']*)\'', raw if isinstance(raw, str) else "")
+    return [json.loads(f'"{basic}"') if basic else literal for basic, literal in found]
+
+
+def codex_write_roots(config: dict) -> tuple:
+    """(the folders Codex's config lets its sandbox write beyond the workspace, whether it runs with no sandbox).
+    With `sandbox_mode` set Codex reads the older [sandbox_workspace_write]; otherwise the permissions profile
+    `default_permissions` names (the built-in :workspace when unset), through `extends` (Codex 0.166's docs)."""
+    mode = config.get("sandbox_mode")
+    if mode is not None:
+        table = config.get("sandbox_workspace_write")
+        return toml_strings((table if isinstance(table, dict) else {}).get("writable_roots")), mode == "danger-full-access"
+    name, found, seen = config.get("default_permissions") or ":workspace", [], set()
+    while isinstance(name, str) and not name.startswith(":") and name not in seen:
+        seen.add(name)
+        profile = (config.get("permissions") or {}).get(name)
+        profile = profile if isinstance(profile, dict) else {}
+        rules = profile.get("filesystem") if isinstance(profile.get("filesystem"), dict) else {}
+        found += [path for path, access in rules.items() if access == "write" and not path.startswith(":")]
+        name = profile.get("extends")
+    return found, name == ":danger-full-access"
+
+
+def check_codex_board(config: dict, board: Path, state: Path) -> Check:
+    """Codex's sandbox writes only the workspace and the folders its config grants: without the board among them, a
+    Codex session can neither claim files nor post (2026-10-30). A grant over the state folder would let a
+    sandboxed agent write approvals and send windows."""
+    found, unsandboxed = codex_write_roots(config)
+    roots = [os.path.realpath(os.path.expanduser(r)) for r in found]
+    exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
+    if exposed:
+        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which "
+                     f"holds {_short(state)}, where approvals and send windows live; grant only {_short(board)}")
+    if unsandboxed:
+        return Check("ok", "codex board access", "Codex runs without a sandbox (danger-full-access)")
+    if any(paths.inside(os.path.realpath(board), r) for r in roots):
+        return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)}")
+    return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(board)}, so a Codex session can "
+                 "neither claim files nor post on the board: run the onboarding setup for codex again")
+
+
+def check_board(home: Path) -> Check:
+    """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
+    old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
+    if old:
+        return Check("warn", "board", f"{', '.join(old)} still in {_short(home / 'state')}, where no session reads them; "
+                     "the next hook or `synthesis install` merges them into board/ (install prints why it could not)")
+    return Check("ok", "board", f"{_short(home / 'board')}")
+
+
 def check_codex_doc_bytes(config: dict) -> Check:
     value = config.get("project_doc_max_bytes")
     if not isinstance(value, int) or isinstance(value, bool):
@@ -873,6 +925,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         except OSError:
             config = {}
         checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
+                   check_codex_board(config, home / "board", home / "state"),
                    check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
             versions["codex"] = entry.get("version", "")
@@ -912,7 +965,7 @@ def _background(fn, *args):
 
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
     home, cwd = home or paths.home(), cwd or Path.cwd()
-    checks = [check_runtime(home), check_config(home)]
+    checks = [check_runtime(home), check_config(home), check_board(home)]
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
         checks += [check_hook_script(home), check_self_test(home)]  # before the CLIs start, so they don't skew timing

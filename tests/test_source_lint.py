@@ -56,6 +56,13 @@ def test_changelog_newest_entry_is_the_manifest_version():
         f"CHANGELOG's newest entry is {newest.group(1) if newest else 'missing'}; add one for {manifest_version()}")
 
 
+def test_the_runtime_carries_the_manifest_version():
+    """From 5.0.16 to 5.1.17 the runtime still said 5.0.15: running sessions were never told what a release
+    changed, and a session start never moved the runtime forward, since both compare this number."""
+    from synthesis import __version__
+    assert __version__ == manifest_version(), f"synthesis/__init__.py says {__version__}; set {manifest_version()}"
+
+
 def test_skill_names_are_unique_and_match_their_folders():
     assert {folder: f["name"] for folder, f in FRONT.items() if f["name"] != folder} == {}
     names = [f["name"] for f in FRONT.values()]

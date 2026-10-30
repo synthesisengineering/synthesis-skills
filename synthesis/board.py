@@ -1,8 +1,9 @@
 """Coordination board: who is working where, and messages between sessions (R2).
 
 Each session is one small JSON file, so no hook ever re-reads a large shared
-file. A claim is an absolute path; a trailing "/**" claims the whole subtree, and
-`*` inside a segment matches within that segment only (it never crosses "/").
+file. A claim is an absolute path or pattern covering everything beneath what it
+names (held with a trailing "/**"), except a claim on an existing file; `*` inside
+a segment matches within that segment only (it never crosses "/").
 A message goes to exactly one live session, named by its id, its short name or
 `project:<id>`; an address that names none or several is refused, never guessed.
 """
@@ -71,7 +72,7 @@ def _session_file(session_id: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
     if not safe:
         raise ValueError("session id is empty")
-    return paths.state() / "sessions" / f"{safe}.json"
+    return paths.board() / "sessions" / f"{safe}.json"
 
 
 def _session(data: dict) -> Session:
@@ -90,7 +91,7 @@ def save(session: Session) -> None:
 
 
 def sessions() -> list[Session]:
-    directory = paths.state() / "sessions"
+    directory = paths.board() / "sessions"
     found = []
     for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
         try:
@@ -126,12 +127,13 @@ def normalize(claim: str) -> str:
 
 
 def as_claim(claim: str) -> str:
-    """A claim as held: normalized, and an existing folder named without a pattern covers everything under
-    it (2026-10-22: two folders claimed that way covered none of their files, so handoff left nine of them
-    uncommitted and still printed READY). Paths being checked keep `normalize`: writing into a folder is
-    not writing every file in it."""
+    """A claim as held: normalized, and covering everything beneath what it names unless that is an existing
+    file. 2026-10-22: two folders claimed by name covered none of their files; 2026-10-29: the pattern
+    `meeting-preps/2026-11-02-*` covered none of the files inside the folders it matched. Each time handoff
+    left claimed files uncommitted and printed READY. Paths being checked keep `normalize`: writing into a
+    folder is not writing every file in it."""
     norm = normalize(claim)
-    return norm + "/**" if not GLOB & set(norm) and os.path.isdir(norm) else norm
+    return norm if norm.endswith("/**") or os.path.isfile(norm) else norm + "/**"
 
 
 def _parts(claim: str) -> tuple[tuple[str, ...], bool]:
@@ -170,7 +172,7 @@ def _claim_lock():
     """One claim decision at a time, so two sessions can't both win the same path."""
     import fcntl
 
-    path = paths.state() / "claims.lock"
+    path = paths.board() / "claims.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
@@ -260,7 +262,7 @@ def resolve(address: str, *, exclude: str = "") -> Session:
 
 def _box(address: str) -> Path:
     safe = "".join(c if c.isalnum() or c in "-_.:" else "_" for c in address).replace(":", "__")
-    return paths.state() / "messages" / safe
+    return paths.board() / "messages" / safe
 
 
 def _post(box: str, data: dict) -> Path:
@@ -299,7 +301,7 @@ def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
         return message(to.strip(), sender, text, durable=True)  # nobody is on it now: its next session reads it (2026-10-20)
     target = resolve(to, exclude=sender)
     digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
-    mark = paths.state() / "sent" / _session_file(sender).stem / digest
+    mark = paths.board() / "sent" / _session_file(sender).stem / digest
     earlier = paths.read_json(mark)
     if earlier.get("to", target.session) != target.session and time.time() - earlier.get("at", 0) < BROADCAST_SECONDS:
         raise AddressError(f"the same text already went to {earlier['to']}; sending it to {target.session} "
@@ -330,7 +332,7 @@ def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent
 
 
 def _read_marker(session_id: str, name: str) -> Path:
-    return paths.state() / "read" / _session_file(session_id).stem / name
+    return paths.board() / "read" / _session_file(session_id).stem / name
 
 
 def mark_read_messages(session_id: str, messages: list) -> None:

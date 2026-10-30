@@ -188,7 +188,9 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["features"] == {"js_repl": True, "hooks": True}
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
-    assert setup.HOOKS_BEGIN in new and len(notes) == 3
+    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 4
+    assert config["default_permissions"] == "synthesis" and config["permissions"]["synthesis"] == {
+        "extends": ":workspace", "filesystem": {str(setup.paths.board()): "write"}}
     assert setup.codex_overlay(new) == (new, [])  # a rerun changes nothing
 
 
@@ -196,7 +198,8 @@ def test_overlay_keeps_an_explicit_hooks_false_and_says_guards_will_not_run():
     new, notes = setup.codex_overlay("project_doc_max_bytes = 120000\nproject_doc_fallback_filenames = [\"CLAUDE.md\"]\n"
                                      "[features]\nhooks = false\n")
     assert "hooks = false" in new and "hooks = true" not in new
-    assert notes == ["kept [features] hooks = false, so no synthesis guard runs in Codex"]
+    assert notes[0] == "kept [features] hooks = false, so no synthesis guard runs in Codex"
+    assert len(notes) == 2 and "synthesis board" in notes[1]
 
 
 def test_overlay_raises_a_low_instruction_limit_and_adds_a_features_table():
@@ -210,6 +213,37 @@ def test_overlay_reports_a_fallback_list_without_claude_md_but_leaves_it():
     assert '["README.md"]' in new and any("lacks CLAUDE.md" in n for n in notes)
 
 
+def test_overlay_grants_the_board_through_the_settings_codex_reads():
+    """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Codex reads
+    permission profiles unless `sandbox_mode` is set, and then the older [sandbox_workspace_write]. Only the board
+    is granted either way: the state folder holds approvals and send windows, which no sandboxed agent may write."""
+    board, state = setup.paths.board(), setup.paths.state()
+    keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
+    mine = 'default_permissions = "mine"\n' + keep + '[permissions.mine]\nextends = ":workspace"\n'
+    legacy = 'sandbox_mode = "workspace-write"\n'
+    for given, profile, base in (("", "synthesis", ":workspace"),
+                                 ('default_permissions = ":read-only"\n', "synthesis", ":read-only"),
+                                 (mine, "mine", ":workspace"),
+                                 (mine + '[permissions.mine.filesystem]\n"~/cache" = "write"\n', "mine", ":workspace"),
+                                 (legacy + keep + '[sandbox_workspace_write]\nwritable_roots = ["/opt/cache"] # mine\n', "", ""),
+                                 (legacy + keep + '[sandbox_workspace_write]\nwritable_roots = [\n  "/opt/cache",\n]\n', "", ""),
+                                 (legacy + 'sandbox_workspace_write.network_access = true\n' + keep, "", ""),
+                                 (legacy + keep, "", "")):
+        new, notes = setup.codex_overlay(given if keep in given else given + keep)
+        config = setup.doctor.read_toml(new)
+        assert setup.doctor.check_codex_board(config, board, state).status == "ok", given
+        assert len(notes) == 1 and setup.codex_overlay(new) == (new, []), given
+        if profile:
+            assert config["default_permissions"] == profile and config["permissions"][profile]["extends"] == base, given
+        else:
+            assert "default_permissions" not in config and ("/opt/cache" in new) == ("/opt/cache" in given), given
+    for unsandboxed in ('sandbox_mode = "danger-full-access"\n' + keep, 'default_permissions = ":danger-full-access"\n' + keep):
+        assert setup.codex_overlay(unsandboxed) == (unsandboxed, []), unsandboxed
+    inline = mine + 'filesystem = { "~/x" = "read" }\n'
+    new, notes = setup.codex_overlay(inline)
+    assert new == inline and "form setup does not edit" in notes[0]
+
+
 def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     codex = tmp_path / "codex"
     codex.mkdir()
@@ -219,7 +253,7 @@ def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     backups = list((setup.install._home() / "backups").glob("codex-config.toml.*"))
     assert len(backups) == 1 and backups[0].read_text() == "[features]\nother = 1\n"
     assert any("backed up" in line for line in lines)
-    assert setup.configure_codex() == ["codex config: already set"]
+    assert setup.configure_codex() == ["codex config: already set"] and setup.paths.board().is_dir()
 
 
 # ---- runtime, prompts, interruption and the restart line -------------------------

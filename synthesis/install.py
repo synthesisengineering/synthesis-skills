@@ -110,6 +110,10 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
+    try:
+        move_board(home)  # before any switch, so the new release's first read finds the board in place
+    except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
+        print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
     if forward_only and current_hash() and version(plugin_root) <= version(home / "current"):
         return f"synthesis runtime kept at {current_hash()}: {plugin_root} is not newer"
     wanted = package_hash(plugin_root)
@@ -148,6 +152,45 @@ def install(plugin_root: Path, forward_only: bool = False) -> str:
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")
     return f"synthesis runtime {wanted} at {home / 'current'}"
+
+
+def move_board(home: Path) -> list:
+    """The board lives in board/ since 5.1.18: the one folder a sandboxed agent may write (Codex's writable root),
+    so approvals and send windows stay out of its reach. What a release before wrote into state/ (all of it the
+    first time; later, anything a process still on it wrote) is merged in by every install and by the first hook
+    that finds it, because the older release's own session-start hook can switch to this one without moving
+    anything. Free names move; a session in both places keeps both copies' claims; a log's lines are appended;
+    any other copy already in board/ wins and the old one goes to the archive. Nothing is deleted."""
+    stamp, moved = time.strftime("%Y%m%dT%H%M%S"), []
+    for name in paths.BOARD_FILES:
+        old = home / "state" / name
+        if os.path.lexists(old):
+            _merge(old, home / "board" / name, home / "archive" / f"board-{stamp}" / name)
+            moved.append(name)
+    return moved
+
+
+def _merge(old: Path, new: Path, archive: Path) -> None:
+    if not os.path.lexists(new):
+        new.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(old, new)
+        return
+    if old.is_dir() and not old.is_symlink():
+        for child in sorted(old.iterdir()):
+            _merge(child, new / child.name, archive / child.name)
+        old.rmdir()
+        return
+    if old.suffix == ".jsonl":
+        with new.open("a", encoding="utf-8") as log:
+            log.write(old.read_text(encoding="utf-8"))
+    elif old.suffix == ".json" and new.parent.name == "sessions":
+        a, b = paths.read_json(old), paths.read_json(new)
+        merged = {**a, **b} if b.get("seen", 0) >= a.get("seen", 0) else {**b, **a}
+        for key in ("claims", "ceded"):  # a claim in either copy is kept: over-claiming blocks, under-claiming collides
+            merged[key] = sorted(set(a.get(key) or []) | set(b.get(key) or []))
+        paths.write_json(new, merged)
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(old, archive)
 
 
 # ---- owned registrations: the global git hooks path, recorded so uninstall can restore it ----
@@ -235,7 +278,7 @@ def uninstall(home: Path = None, dry_run: bool = False) -> list:
         report.append(f"{verb} {release}")
     if (home / "registrations.json").exists() and not dry_run:
         (home / "registrations.json").unlink()
-    report.append(f"{kept} {home / 'config.json'} and {home / 'state'} (your settings, board and approvals)")
+    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board)")
     return report
 
 

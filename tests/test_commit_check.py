@@ -92,7 +92,7 @@ def test_disclosure_patterns_apply_only_where_outsiders_read(repo, tmp_path, wri
 def test_no_board_on_the_machine_advises_and_an_unreadable_board_blocks(repo, isolated_home):
     result = _commit(repo, "a.md", "x\n")
     assert result.returncode == 0 and "claims were not checked" in result.stderr
-    sessions = isolated_home / "state" / "sessions"
+    sessions = isolated_home / "board" / "sessions"
     sessions.mkdir(parents=True)
     (sessions / "broken.json").write_text("{not json", encoding="utf-8")
     result = _commit(repo, "b.md", "x\n")
