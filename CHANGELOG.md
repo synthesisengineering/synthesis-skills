@@ -10,10 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   conformance 2.0.1). Codex's sandbox writes only the workspace and the folders its config lists, and the board
   lived in `~/.synthesis/v5/state/` beside approvals and send windows, so Codex sessions could do neither. The
   principal chose to give the board its own folder, `~/.synthesis/v5/board/` (sessions, claims, messages and the
-  snapshot journal), and let the sandbox write only that. Setup adds it to `[sandbox_workspace_write]
-  writable_roots` in `~/.codex/config.toml` after a backup; the doctor fails a Codex config without it, and fails a
-  writable root over the state folder. The guard still refuses file tools and shell writes into the board: only
-  the `synthesis` CLI writes it, since a session file edited by hand can drop another session's claims.
+  snapshot journal), and let the sandbox write only that. Codex 0.166 reads permission profiles, so setup grants
+  the board in `~/.codex/config.toml`, after a backup, through the default profile: the person's own gains one
+  `write` rule; a built-in or unset default becomes a `synthesis` profile that extends it with that rule (the older
+  `[sandbox_workspace_write] writable_roots` only while `sandbox_mode` is set, which is when Codex reads it). Checked
+  against Codex's own sandbox: the board writable, the state folder denied. The doctor fails a Codex config that
+  does not grant the board, and one that grants the state folder. The guard still refuses file tools and shell
+  writes into the board: only the `synthesis` CLI writes it, since a session file edited by hand can drop another
+  session's claims.
 - **The board moves by itself.** Every install, and the first hook that finds the board in the old place, merges it
   into the new folder: free names move, a session in both places keeps both copies' claims, logs are appended, and
   anything else is archived, never deleted. The older release's own session-start hook can switch to this one

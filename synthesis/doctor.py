@@ -230,21 +230,39 @@ def toml_strings(raw) -> list:
     return [json.loads(f'"{basic}"') if basic else literal for basic, literal in found]
 
 
+def codex_write_roots(config: dict) -> tuple:
+    """(the folders Codex's config lets its sandbox write beyond the workspace, whether it runs with no sandbox).
+    With `sandbox_mode` set Codex reads the older [sandbox_workspace_write]; otherwise the permissions profile
+    `default_permissions` names (the built-in :workspace when unset), through `extends` (Codex 0.166's docs)."""
+    mode = config.get("sandbox_mode")
+    if mode is not None:
+        table = config.get("sandbox_workspace_write")
+        return toml_strings((table if isinstance(table, dict) else {}).get("writable_roots")), mode == "danger-full-access"
+    name, found, seen = config.get("default_permissions") or ":workspace", [], set()
+    while isinstance(name, str) and not name.startswith(":") and name not in seen:
+        seen.add(name)
+        profile = (config.get("permissions") or {}).get(name)
+        profile = profile if isinstance(profile, dict) else {}
+        rules = profile.get("filesystem") if isinstance(profile.get("filesystem"), dict) else {}
+        found += [path for path, access in rules.items() if access == "write" and not path.startswith(":")]
+        name = profile.get("extends")
+    return found, name == ":danger-full-access"
+
+
 def check_codex_board(config: dict, board: Path, state: Path) -> Check:
-    """Codex's sandbox writes only the workspace and its writable roots: without the board among them, a Codex
-    session can neither claim files nor post (2026-10-30). A root over the state folder would let a sandboxed
-    agent write approvals and send windows."""
-    table = config.get("sandbox_workspace_write")
-    roots = [os.path.realpath(os.path.expanduser(r)) for r in toml_strings((table if isinstance(table, dict) else {})
-                                                                             .get("writable_roots"))]
+    """Codex's sandbox writes only the workspace and the folders its config grants: without the board among them, a
+    Codex session can neither claim files nor post (2026-10-30). A grant over the state folder would let a
+    sandboxed agent write approvals and send windows."""
+    found, unsandboxed = codex_write_roots(config)
+    roots = [os.path.realpath(os.path.expanduser(r)) for r in found]
     exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
     if exposed:
-        return Check("fail", "codex board access", f"writable root {_short(exposed[0])} lets a sandboxed Codex agent "
-                     f"write {_short(state)}, where approvals and send windows live; list only {_short(board)}")
-    if config.get("sandbox_mode") == "danger-full-access":
-        return Check("ok", "codex board access", "sandbox_mode = danger-full-access: Codex runs without a sandbox")
+        return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which "
+                     f"holds {_short(state)}, where approvals and send windows live; grant only {_short(board)}")
+    if unsandboxed:
+        return Check("ok", "codex board access", "Codex runs without a sandbox (danger-full-access)")
     if any(paths.inside(os.path.realpath(board), r) for r in roots):
-        return Check("ok", "codex board access", f"[sandbox_workspace_write] writable_roots has {_short(board)}")
+        return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)}")
     return Check("fail", "codex board access", f"Codex's sandbox cannot write {_short(board)}, so a Codex session can "
                  "neither claim files nor post on the board: run the onboarding setup for codex again")
 

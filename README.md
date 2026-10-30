@@ -155,7 +155,8 @@ python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py plug
 the plugin with that harness's own commands, installs the runtime, links the `synthesis`
 command, and for Codex sets `[features] hooks = true`, raises
 `project_doc_max_bytes` to at least 98,304 and lets the sandbox write the synthesis board
-(`~/.synthesis/v5/board`) in `~/.codex/config.toml`, after a backup.
+(`~/.synthesis/v5/board`, through a permissions profile) in `~/.codex/config.toml`, after a
+backup.
 
 These are the native commands it runs, if you would rather type them yourself:
 

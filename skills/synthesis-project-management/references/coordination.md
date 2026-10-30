@@ -8,10 +8,10 @@ listing its harness, project, goal and claims, so no hook ever re-reads a large
 shared file.
 
 The board has its own folder (since 5.1.18) because Codex runs commands in a
-sandbox that writes only the workspace and the folders its config lists. The
-board is the one synthesis folder listed there, so a Codex session can claim and
-post; approvals and send windows stay in `~/.synthesis/v5/state/`, out of any
-sandboxed agent's reach. Write the board only through `synthesis claim`,
+sandbox that writes only the workspace and the folders its config grants. The
+board is the one synthesis folder granted there (onboarding setup writes the
+permissions profile), so a Codex session can claim and post; approvals and send
+windows stay in `~/.synthesis/v5/state/`, out of any sandboxed agent's reach. Write the board only through `synthesis claim`,
 `release` and `msg`: the guard refuses file tools and shell writes there.
 
 ## Contents

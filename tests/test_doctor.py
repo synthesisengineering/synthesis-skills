@@ -274,14 +274,21 @@ def test_codex_instruction_byte_limit():
 def test_codex_must_write_the_board_and_never_the_state_folder(tmp_path):
     """2026-10-30: Codex sessions could not claim or post, because the sandbox could not write the board."""
     board, state = tmp_path / "v5" / "board", tmp_path / "v5" / "state"
-    roots = lambda *r: {"sandbox_workspace_write": {"writable_roots": "[" + ", ".join(f'"{x}"' for x in r) + "]"}}
-    assert doctor.check_codex_board(roots("/elsewhere", str(board)), board, state).status == "ok"
-    missing = doctor.check_codex_board(roots(str(board) + "-old"), board, state)
-    assert missing.status == "fail" and "neither claim files nor post" in missing.detail
-    assert doctor.check_codex_board({}, board, state).status == "fail"
-    exposed = doctor.check_codex_board(roots(str(tmp_path / "v5"), str(board)), board, state)
-    assert exposed.status == "fail" and "approvals and send windows" in exposed.detail
+    older = lambda *r: {"sandbox_mode": "workspace-write",  # noqa: E731
+                        "sandbox_workspace_write": {"writable_roots": "[" + ", ".join(f'"{x}"' for x in r) + "]"}}
+    profile = lambda *r: {"default_permissions": "mine", "permissions": {  # noqa: E731  (granted by the profile it extends)
+        "mine": {"extends": "base"}, "base": {"extends": ":workspace", "filesystem": {x: "write" for x in r}}}}
+    for config in (older, profile):
+        assert doctor.check_codex_board(config("/elsewhere", str(board)), board, state).status == "ok"
+        missing = doctor.check_codex_board(config(str(board) + "-old"), board, state)
+        assert missing.status == "fail" and "neither claim files nor post" in missing.detail
+        exposed = doctor.check_codex_board(config(str(tmp_path / "v5")), board, state)
+        assert exposed.status == "fail" and "approvals and send windows" in exposed.detail
+    assert doctor.check_codex_board({}, board, state).status == "fail"  # the built-in :workspace
+    ignored = {"sandbox_workspace_write": older(str(board))["sandbox_workspace_write"]}  # read only with sandbox_mode
+    assert doctor.check_codex_board(ignored, board, state).status == "fail"
     assert doctor.check_codex_board({"sandbox_mode": "danger-full-access"}, board, state).status == "ok"
+    assert doctor.check_codex_board({"default_permissions": ":danger-full-access"}, board, state).status == "ok"
     assert doctor.toml_strings('[ "a\\"b", \'c\' ]') == ['a"b', "c"] and doctor.toml_strings(None) == []
 
 
@@ -483,8 +490,10 @@ def machine(tmp_path, monkeypatch):
     codex_dir = plugin_copy(home / ".codex" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0", plugin)
     muse_dir = plugin_copy(home / ".local" / "share" / "muse" / "plugins" / "cache" / "local" / "synthesis-skills" / "abc" / "package", plugin)
     state = "".join(f'[hooks.state."{k}"]\ntrusted_hash = "{v["trusted_hash"]}"\n\n' for k, v in trusted_state().items())
-    (home / ".codex" / "config.toml").write_text(f"project_doc_max_bytes = 98304\n\n[features]\nhooks = true\n\n"
-                                                 f"[sandbox_workspace_write]\nwritable_roots = [\"{synthesis_home / 'board'}\"]\n\n{state}")
+    (home / ".codex" / "config.toml").write_text(
+        f"project_doc_max_bytes = 98304\ndefault_permissions = \"synthesis\"\n\n[features]\nhooks = true\n\n"
+        f"[permissions.synthesis]\nextends = \":workspace\"\n[permissions.synthesis.filesystem]\n"
+        f"\"{synthesis_home / 'board'}\" = \"write\"\n\n{state}")
     fakebin = tmp_path / "fakebin"
     fakebin.mkdir()
     fake_cli(fakebin, "claude", [{"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(claude_dir)}])

@@ -189,7 +189,8 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
     assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 4
-    assert setup.doctor.toml_strings(config["sandbox_workspace_write"]["writable_roots"]) == [str(setup.paths.board())]
+    assert config["default_permissions"] == "synthesis" and config["permissions"]["synthesis"] == {
+        "extends": ":workspace", "filesystem": {str(setup.paths.board()): "write"}}
     assert setup.codex_overlay(new) == (new, [])  # a rerun changes nothing
 
 
@@ -212,21 +213,33 @@ def test_overlay_reports_a_fallback_list_without_claude_md_but_leaves_it():
     assert '["README.md"]' in new and any("lacks CLAUDE.md" in n for n in notes)
 
 
-def test_overlay_adds_the_board_to_the_sandbox_roots_the_person_already_has():
-    """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Only the
-    board is added: the state folder holds approvals and send windows, which no sandboxed agent may write."""
-    board = str(setup.paths.board())
+def test_overlay_grants_the_board_through_the_settings_codex_reads():
+    """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Codex reads
+    permission profiles unless `sandbox_mode` is set, and then the older [sandbox_workspace_write]. Only the board
+    is granted either way: the state folder holds approvals and send windows, which no sandboxed agent may write."""
+    board, state = setup.paths.board(), setup.paths.state()
     keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
-    for given in ('[sandbox_workspace_write]\nnetwork_access = true\n',
-                  '[sandbox_workspace_write]\nwritable_roots = ["/opt/cache"] # mine\n',
-                  '[sandbox_workspace_write]\nwritable_roots = [\n  "/opt/cache",\n]\n',
-                  'sandbox_workspace_write.writable_roots = []\n',
-                  'sandbox_workspace_write.network_access = true\n'):
-        new, notes = setup.codex_overlay(given + keep if given.startswith("sandbox") else keep + given)
-        roots = setup.doctor.toml_strings(setup.doctor.read_toml(new)["sandbox_workspace_write"]["writable_roots"])
-        assert board in roots and ("/opt/cache" in roots) == ("/opt/cache" in given), given
+    mine = 'default_permissions = "mine"\n' + keep + '[permissions.mine]\nextends = ":workspace"\n'
+    legacy = 'sandbox_mode = "workspace-write"\n'
+    for given, profile, base in (("", "synthesis", ":workspace"),
+                                 ('default_permissions = ":read-only"\n', "synthesis", ":read-only"),
+                                 (mine, "mine", ":workspace"),
+                                 (mine + '[permissions.mine.filesystem]\n"~/cache" = "write"\n', "mine", ":workspace"),
+                                 (legacy + keep + '[sandbox_workspace_write]\nwritable_roots = ["/opt/cache"] # mine\n', "", ""),
+                                 (legacy + keep + '[sandbox_workspace_write]\nwritable_roots = [\n  "/opt/cache",\n]\n', "", ""),
+                                 (legacy + 'sandbox_workspace_write.network_access = true\n' + keep, "", ""),
+                                 (legacy + keep, "", "")):
+        new, notes = setup.codex_overlay(given if keep in given else given + keep)
+        config = setup.doctor.read_toml(new)
+        assert setup.doctor.check_codex_board(config, board, state).status == "ok", given
         assert len(notes) == 1 and setup.codex_overlay(new) == (new, []), given
-    inline = 'sandbox_workspace_write = { network_access = true }\n' + keep
+        if profile:
+            assert config["default_permissions"] == profile and config["permissions"][profile]["extends"] == base, given
+        else:
+            assert "default_permissions" not in config and ("/opt/cache" in new) == ("/opt/cache" in given), given
+    for unsandboxed in ('sandbox_mode = "danger-full-access"\n' + keep, 'default_permissions = ":danger-full-access"\n' + keep):
+        assert setup.codex_overlay(unsandboxed) == (unsandboxed, []), unsandboxed
+    inline = mine + 'filesystem = { "~/x" = "read" }\n'
     new, notes = setup.codex_overlay(inline)
     assert new == inline and "form setup does not edit" in notes[0]
 
