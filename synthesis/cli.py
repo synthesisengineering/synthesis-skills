@@ -222,7 +222,7 @@ def cmd_sessions(args) -> int:
             out(m, f"{m.get('last', '')[:16]}  {m.get('harness', '?'):11s} {m.get('session', '?')}  {m.get('records', 0)} records  "
                    f"{','.join(m.get('projects', [])) or '-'}  {m.get('folder')}")
     elif args.action == "show":
-        found = [m for m in sessions.catalog() if args.target and str(m.get("session", "")).startswith(args.target)]
+        found = sessions.find(args.target)
         if len(found) != 1:
             print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
             return 1

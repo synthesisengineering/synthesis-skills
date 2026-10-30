@@ -50,6 +50,9 @@ MIME = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp
 CLAUDE_SKIP = {"api-request", "api-request-blob", "api-request-shape", "file-history-snapshot", "file-history-delta",
                "bridge-session", "atis-latch", "last-prompt", "artifact-comment-monitor", "artifact-autoreact-ledger"}
 ACTIVE_PROJECT = re.compile(r"Active project: ([A-Za-z0-9][A-Za-z0-9._-]*)")
+# Where the session-start hook's own text arrives: Claude Code's hook attachments, or a message that starts with the
+# hook's first line (Codex's developer message). Any other text that merely quotes the line names no project.
+HOOK_SOURCES = ("hook_additional_context", "hook_success")
 
 
 def root() -> Path:
@@ -205,8 +208,9 @@ class _Session:
             return
         if rec.get("kind") in ("user", "brief"):
             self.last_user = rec.get("text", "")
-        if rec.get("kind") in ("system", "user"):  # the session-start hook names the project the session works on
-            for found in ACTIVE_PROJECT.findall(str(rec.get("text") or "")):
+        text = str(rec.get("text") or "")
+        if rec.get("kind") == "system" and (rec.get("source") in HOOK_SOURCES or text.lstrip().startswith("Local time:")):
+            for found in ACTIVE_PROJECT.findall(text):  # the session-start hook names the project the session works on
                 if found not in self.meta.setdefault("projects", []):
                     self.meta["projects"].append(found)
         if rec.get("at"):
@@ -436,6 +440,8 @@ def export_file(harness: str, native: Path, project: str = "") -> int:
         return 0
     if not s.folder:
         s.folder, s.meta["cwd"] = _place(harness, native, s.session)
+        if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
+            s.meta.update(role="subagent", parent=native.parts[native.parts.index("subagents") - 1])
     if project and project not in s.meta.setdefault("projects", []):
         s.meta["projects"].append(project)
     adapter, end = ADAPTERS[harness], s.offset
@@ -526,6 +532,16 @@ def records(folder: str, kinds: tuple = (), whole: bool = False) -> list:
             if not kinds or rec.get("kind") in kinds:
                 rows.append(_whole(rec, Path(folder)) if whole else rec)
     return rows
+
+
+def find(prefix: str) -> list:
+    """The sessions a citation's id names: the exact id, else the one main session it starts (a sub-agent's id
+    starts with its parent's, so `d20ab7c4` would otherwise match every agent that session started), else every
+    session it starts."""
+    found = [m for m in catalog() if prefix and str(m.get("session", "")).startswith(prefix)]
+    exact = [m for m in found if m.get("session") == prefix]
+    main = [m for m in found if m.get("role") not in ("subagent", "reviewer") and "-agent-" not in str(m.get("session"))]
+    return exact or (main if len(main) == 1 else found)
 
 
 def around(folder: str, seq: int, span: int = 3) -> list:

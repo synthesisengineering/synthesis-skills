@@ -321,3 +321,25 @@ def test_a_session_codex_archived_is_still_exported(harness):
                       {"type": "response_item", "timestamp": "2026-07-03T13:38:00Z", "payload": {
                           "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Archive me."}]}}])
     assert sessions.export(0) == ["codex 01a1arch-0000-7000-8000-000000000003: 2 record(s)"]
+
+
+def test_only_the_session_start_hooks_own_text_names_a_project(harness):
+    rows = _claude_rows(harness["work"])
+    rows.insert(3, {"cwd": harness["work"], "sessionId": "c1", "timestamp": "2026-10-30T10:00:00Z", "type": "attachment",
+                    "attachment": {"type": "edited_text_file", "content": "fixture: Active project: beta (/kb/projects/beta)"}})
+    native = _jsonl(harness["claude"], rows)
+    sessions.export_file("claude-code", native)
+    assert _meta(native)["projects"] == ["alpha"]
+
+
+def test_a_citation_of_a_parent_session_opens_it_not_its_sub_agents(harness, capsys):
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    sub = harness["claude"].parent / "c1" / "subagents" / "agent-a1.jsonl"
+    _jsonl(sub, [{"type": "user", "isSidechain": True, "cwd": harness["work"], "timestamp": "2026-10-30T10:00:00Z",
+                  "message": {"role": "user", "content": "Check the script."}}])
+    sessions.export(0)
+    agent = _meta(sub)
+    assert agent["role"] == "subagent" and agent["parent"] == "c1" and agent["session"] == "c1-agent-a1"
+    assert [m["session"] for m in sessions.find("c1")] == ["c1"]
+    assert cli.main(["sessions", "show", "c1", "--kinds", "user"]) == 0
+    assert "Please plan the release." in capsys.readouterr().out

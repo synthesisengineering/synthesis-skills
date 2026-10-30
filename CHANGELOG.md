@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.1] - 2026-10-30
+
+- **A citation names the session it cites** (context lifecycle 2.2.1). A Claude Code sub-agent's id begins with its
+  parent's, so `synthesis sessions show d20ab7c4` matched 274 sessions and refused, and every citation of a session
+  that had started sub-agents was ambiguous. The exact id wins, then the one main session the prefix starts. A Claude
+  Code sub-agent's `meta.json` now names its `role` and `parent`, as Codex's child threads already did.
+- **Only the session-start hook names a session's project.** A test fixture's "Active project:" line, shown to a
+  session in a file-change notice, had added a project that session never worked on. The line now counts only in
+  Claude Code's hook attachments or a message that begins with the hook's first line.
+
 ## [5.3.0] - 2026-10-30
 
 - **Each workspace's conversations leave the Mac with its records** (context lifecycle 2.2.0, project management
