@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   two sessions resuming together could append the same records twice. Exports now take a lock beside the archive
   (so a rebuild's move never takes it along); `synthesis resume` does not wait for it and reads the archive as it
   is, and `synthesis sessions export --rebuild` moves the archive aside inside the same lock.
+- **Eight shortcut phrases from four months of corrections** (anti-shortcuts 2.1.0). The principal's prompts since
+  May were read for the places he corrected an agent (3,712 prompts, 306 corrections) and the replies before them
+  for the phrase that announced the mistake. Case 8 records what they show; the catalog adds `say the word`,
+  `give the word`, `leave you the judgment calls`, `in the next session`, `not acted on`, `standing down`,
+  `follow-on work` and `smallest change`, each documented and tested.
 
 ## [5.3.0] - 2026-10-30
 

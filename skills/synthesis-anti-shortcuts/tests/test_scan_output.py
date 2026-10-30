@@ -121,3 +121,19 @@ def test_category_filter():
     only = _run("--category", "dismissal", "--json", stdin="Not urgent, and we can revisit later.\n")
     ids = [d["phrase_id"] for d in json.loads(only.stdout)["detections"]]
     assert ids == ["dm_not_urgent"]
+
+
+@pytest.mark.parametrize("text,phrase_id", [
+    ("The change is ready; say the word and I'll merge it.", "as_say_the_word"),
+    ("Ready to resume whenever you give the word.", "as_give_the_word"),
+    ("I'll leave you the two judgment calls.", "as_leave_you_the_calls"),
+    ("It's the first thing I'd do in the next session.", "df_next_session"),
+    ("Noted in the files themselves, not acted on.", "df_not_acted_on"),
+    ("The service is having an outage, so I'm standing down.", "df_standing_down"),
+    ("That's separate follow-on work I didn't touch.", "se_follow_on_work"),
+    ("This is the smallest change that closes the hole.", "md_smallest_change"),
+])
+def test_phrases_mined_from_the_principals_corrections_are_flagged(text, phrase_id):
+    """Case 8: phrases that announced the work the principal then had to correct (2026-10-30)."""
+    assert phrase_id in _ids(text)
+    assert phrase_id not in _ids(f'The catalog lists "{text}" as Case 8.')

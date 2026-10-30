@@ -138,6 +138,16 @@
       "case_ref": "case-studies.md#case-2"
     },
     {
+      "id": "md_smallest_change",
+      "phrase": "\\bsmallest (change|diff|fix)\\b",
+      "match": "regex",
+      "category": "minimal_diff",
+      "exempt_when": [],
+      "rationale": "Chooses by size of change when the user asked for the right fix.",
+      "replacement": "Choose the fix that removes the cause; state its size as information.",
+      "case_ref": "case-studies.md#case-8"
+    },
+    {
       "id": "as_recommendation_colon",
       "phrase": "\\brecommendation:\\s",
       "match": "regex",
@@ -188,6 +198,36 @@
       "rationale": "Softer offloading pattern.",
       "replacement": "Scan constraints; execute if determined.",
       "case_ref": "case-studies.md#case-3"
+    },
+    {
+      "id": "as_say_the_word",
+      "phrase": "say the word",
+      "match": "literal",
+      "category": "asking_as_shortcut",
+      "exempt_when": [],
+      "rationale": "Waits on a go-ahead for work the user's direction already covers.",
+      "replacement": "Do the work and report it; ask only a question the constraints leave open.",
+      "case_ref": "case-studies.md#case-8"
+    },
+    {
+      "id": "as_give_the_word",
+      "phrase": "give the word",
+      "match": "literal",
+      "category": "asking_as_shortcut",
+      "exempt_when": [],
+      "rationale": "Parks the work until the user restarts it, when nothing needed them.",
+      "replacement": "Keep going on what is ready; name the one open question, if any.",
+      "case_ref": "case-studies.md#case-8"
+    },
+    {
+      "id": "as_leave_you_the_calls",
+      "phrase": "leave you the (\\w+ )?judge?ment calls?",
+      "match": "regex",
+      "category": "asking_as_shortcut",
+      "exempt_when": [],
+      "rationale": "Hands back decisions the stated constraints already decide.",
+      "replacement": "Decide what the constraints decide; bring only the user's own choices, with a recommendation.",
+      "case_ref": "case-studies.md#case-8"
     },
     {
       "id": "df_for_now",
@@ -368,6 +408,36 @@
       "rationale": "Marks a known defect as someone else's later problem.",
       "replacement": "Fix it in this change, or record the concrete blocker that stops the fix.",
       "case_ref": "costume-vocabulary.md#category-4-deferral"
+    },
+    {
+      "id": "df_next_session",
+      "phrase": "\\b(in|for|until) the next session\\b",
+      "match": "regex",
+      "category": "deferral",
+      "exempt_when": [],
+      "rationale": "Moves work this session could finish into one that may never pick it up.",
+      "replacement": "Finish it now, or name the external event that blocks it.",
+      "case_ref": "case-studies.md#case-8"
+    },
+    {
+      "id": "df_not_acted_on",
+      "phrase": "not acted on",
+      "match": "literal",
+      "category": "deferral",
+      "exempt_when": [],
+      "rationale": "Records a finding without doing anything about it.",
+      "replacement": "Act on the finding, or say what blocks acting and who unblocks it.",
+      "case_ref": "case-studies.md#case-8"
+    },
+    {
+      "id": "df_standing_down",
+      "phrase": "standing down",
+      "match": "literal",
+      "category": "deferral",
+      "exempt_when": [],
+      "rationale": "Stops the run on an obstacle instead of working around the wait.",
+      "replacement": "Work the next ready item; schedule the retry; alert only if nothing can move.",
+      "case_ref": "case-studies.md#case-8"
     },
     {
       "id": "av_archive_value",
@@ -556,6 +626,16 @@
       "rationale": "YAGNI applied to user-raised concerns is dismissal in costume.",
       "replacement": "Solve the user-raised concern; YAGNI is about speculative future features.",
       "case_ref": "case-studies.md#patterns-across-the-cases"
+    },
+    {
+      "id": "se_follow_on_work",
+      "phrase": "\\bfollow-on work\\b",
+      "match": "regex",
+      "category": "scope_excuse",
+      "exempt_when": [],
+      "rationale": "Labels part of the asked-for work as someone else's next task.",
+      "replacement": "Do it in this change, since it is part of what was asked.",
+      "case_ref": "case-studies.md#case-8"
     },
     {
       "id": "er_fraction_of_cost",
