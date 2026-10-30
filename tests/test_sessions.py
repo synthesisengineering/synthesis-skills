@@ -244,9 +244,22 @@ def test_a_sub_agent_belongs_to_the_workspace_its_parent_started_in_and_workflow
 def test_a_rebuild_moves_the_archive_aside_and_exports_everything_again(harness):
     native = _jsonl(harness["claude"], _claude_rows(harness["work"]))
     first = sessions.export_file("claude-code", native)
-    moved = Path(sessions.rebuild())
-    assert (moved / "acme").is_dir() and not sessions.root().exists()
-    assert sessions.export(0) == [f"claude-code c1: {first} record(s)"]
+    report = sessions.export(rebuild=True)
+    moved = Path(report[0].split(" moved to ")[1])
+    assert (moved / "acme").is_dir() and report[1:] == [f"claude-code c1: {first} record(s)"]
+
+
+def test_one_export_at_a_time_and_a_resume_never_waits_for_it(harness):
+    import fcntl
+    _jsonl(harness["claude"], _claude_rows(harness["work"]))
+    lock = sessions.paths.home() / "sessions.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        assert sessions.export(0, wait=False) == ["not exported: another export is running, so the archive is read as it is"]
+        assert not sessions.root().exists()
+    report = sessions.export(0, wait=False)
+    assert len(report) == 1 and report[0].startswith("claude-code c1: ")
 
 
 def test_show_opens_a_cited_record_with_its_neighbors(harness, capsys):

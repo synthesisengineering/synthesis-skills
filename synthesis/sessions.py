@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import base64
 import collections
+import fcntl
 import hashlib
 import json
 import os
@@ -473,9 +474,9 @@ def natives(days: float = 0) -> list:
     return found
 
 
-def rebuild() -> str:
-    """Move the whole archive aside, never deleting it, so the next export reads every transcript again with the
-    current adapters. Returns where the old archive went."""
+def _rebuild() -> str:
+    """Move the whole archive aside, never deleting it, so this export reads every transcript again with the current
+    adapters. Returns where the old archive went."""
     target = paths.home() / "archive" / f"sessions-{time.strftime('%Y%m%dT%H%M%S')}"
     target.parent.mkdir(parents=True, exist_ok=True)
     if root().exists():
@@ -483,8 +484,22 @@ def rebuild() -> str:
     return str(target)
 
 
-def export(days: float = 0, only: str = "") -> list:
-    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session."""
+def export(days: float = 0, only: str = "", wait: bool = True, rebuild: bool = False) -> list:
+    """Export every native transcript changed in the last `days` days (all when 0); `only` names one session. One
+    export runs at a time on a Mac: two sessions resuming together, or a resume during a rebuild, would otherwise
+    append the same records twice. Without `wait` a busy archive is read as it is."""
+    lock = paths.home() / "sessions.lock"  # beside the archive, so a rebuild's move never takes it along
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as held:
+        try:
+            fcntl.flock(held, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            return ["not exported: another export is running, so the archive is read as it is"]
+        moved = [f"previous archive moved to {_rebuild()}"] if rebuild else []
+        return moved + _export(0 if rebuild else days, only)
+
+
+def _export(days: float, only: str) -> list:
     from synthesis import board
     report = []
     for harness, native in natives(days):

@@ -13,6 +13,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **Only the session-start hook names a session's project.** A test fixture's "Active project:" line, shown to a
   session in a file-change notice, had added a project that session never worked on. The line now counts only in
   Claude Code's hook attachments or a message that begins with the hook's first line.
+- **One export at a time.** An export from one session and a rebuild ran into the archive at once on 2026-10-30;
+  two sessions resuming together could append the same records twice. Exports now take a lock beside the archive
+  (so a rebuild's move never takes it along); `synthesis resume` does not wait for it and reads the archive as it
+  is, and `synthesis sessions export --rebuild` moves the archive aside inside the same lock.
 
 ## [5.3.0] - 2026-10-30
 

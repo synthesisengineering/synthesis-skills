@@ -208,11 +208,8 @@ def cmd_sessions(args) -> int:
         print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
 
     if args.action == "export":
-        moved = sessions.rebuild() if args.rebuild else ""
-        report = sessions.export(0 if args.all or args.rebuild else args.days, args.session or "")
-        if moved:
-            print(f"previous archive moved to {moved}")
-        print("\n".join(report[-50:] + [f"{len(report)} session(s) exported"]) if report else "nothing new to export")
+        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild)
+        print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
     elif args.action == "sync":
         report = sessions.sync(args.workspace, push=not args.no_push)
         print("\n".join(report) or "no sessions repo configured (config sessions_repos)")

@@ -192,15 +192,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # 17: `sync`, `--rebuild`, `--seq` and `--json` 13, their arguments 4. doctor.py 29: each sessions repo cloned, synced
 # within two days and under 3 GB, 24, its call 2, the datetime import 1, spacing 2. project.py 7: handoff syncs the
 # conversations and is not ready while one is behind.
-# 5.3.1 adds 16 to both (sessions.py), from reading 5.3.0's output on 2026-10-30: `show d20ab7c4` matched 274
+# 5.3.1 adds 28 to both, 16 of them (sessions.py) from reading 5.3.0's output on 2026-10-30: `show d20ab7c4` matched 274
 # sessions, because a sub-agent's id starts with its parent's, so every citation of a session with sub-agents was
 # ambiguous; the id resolved to the exact or main session 10 (its reason 3, the lookup 5, spacing 2); a Claude Code
 # sub-agent's role and parent 2; and a project read only from the session-start hook's own text, after a test
-# fixture's line named a project this session never worked on: the hook's sources and why 3, the check 1.
+# fixture's line named a project this session never worked on: the hook's sources and why 3, the check 1. It adds
+# 12 more, after an export from one session and a rebuild ran into the archive at once that day: one export at a
+# time on a Mac (sessions.py 15: the lock beside the archive and why 3, taking it 4, a busy archive read as it is by
+# a resume 2, the rebuild inside it 2, the export's body apart from the lock 3, the fcntl import 1), the CLI reading
+# the move from the export -3.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7702
-PLUGIN_BUDGET = 24701
+CORE_BUDGET = 7714
+PLUGIN_BUDGET = 24713
 
 
 def _lines(files):
