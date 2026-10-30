@@ -244,6 +244,20 @@ def test_overlay_grants_the_board_through_the_settings_codex_reads():
     assert new == inline and "form setup does not edit" in notes[0]
 
 
+def test_claude_keeps_transcripts_ten_years_unless_the_person_chose_a_period(tmp_path, monkeypatch):
+    """2026-10-30: Claude Code's 30-day default had been deleting this Mac's transcripts."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
+    settings = tmp_path / "claude" / "settings.json"
+    settings.parent.mkdir()
+    settings.write_text('{"model": "opus"}')
+    assert "would keep" in setup.configure_claude(dry_run=True)[0] and "cleanupPeriodDays" not in settings.read_text()
+    assert "3,650 days" in setup.configure_claude()[0]
+    assert json.loads(settings.read_text()) == {"model": "opus", "cleanupPeriodDays": 3650}
+    assert list((setup.install._home() / "backups").glob("claude-settings.json.*"))
+    settings.write_text('{"cleanupPeriodDays": 14}')
+    assert setup.configure_claude() == ["claude settings: transcripts kept 14 days, as set"]
+
+
 def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     codex = tmp_path / "codex"
     codex.mkdir()

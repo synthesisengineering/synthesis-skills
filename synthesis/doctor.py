@@ -267,6 +267,22 @@ def check_codex_board(config: dict, board: Path, state: Path) -> Check:
                  "neither claim files nor post on the board: run the onboarding setup for codex again")
 
 
+def check_claude_retention(settings: Path) -> Check:
+    """Claude Code deletes a transcript idle past cleanupPeriodDays, 30 when unset, at its next start (2026-10-30:
+    this Mac kept 9 main sessions from August and 11 from September, against 97 from October)."""
+    try:
+        days = json.loads(settings.read_text(encoding="utf-8")).get("cleanupPeriodDays")
+    except (OSError, ValueError, AttributeError):
+        days = None
+    if not isinstance(days, int) or isinstance(days, bool):
+        return Check("fail", "claude transcripts", "cleanupPeriodDays is unset, so Claude Code deletes a transcript idle "
+                     "30 days: run the onboarding setup for claude")
+    if days < 365:
+        return Check("warn", "claude transcripts", f"cleanupPeriodDays = {days}: run `synthesis sessions export` at "
+                     "least that often, or Claude Code deletes transcripts first")
+    return Check("ok", "claude transcripts", f"kept {days:,} days")
+
+
 def check_board(home: Path) -> Check:
     """The board moved to board/ in 5.1.18; whatever is left under state/ is read by no session."""
     old = [n for n in paths.BOARD_FILES if os.path.lexists(home / "state" / n)]
@@ -915,7 +931,8 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         if entry:
             versions["claude"] = entry.get("version", "")
             checks += [check_package("claude", entry["path"], runtime),
-                       check_hooks_wired("claude", _commands(_hooks_file(entry["path"])))]
+                       check_hooks_wired("claude", _commands(_hooks_file(entry["path"]))),
+                       check_claude_retention(paths.transcript_roots()["claude-code"].parent / "settings.json")]
     if "codex" in found:
         codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
         listing, error = _finish(procs["codex"])

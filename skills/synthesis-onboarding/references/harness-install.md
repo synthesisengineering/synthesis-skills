@@ -68,6 +68,13 @@ different ref, setup removes the marketplace and adds it again on that ref (a ma
 added earlier on another ref answers "already" and is re-added). An installed but
 disabled plugin is reported, never silently enabled.
 
+## Claude Code setting setup owns
+
+Claude Code deletes a session's transcript 30 days after its last use unless `cleanupPeriodDays` is set. When the
+key is absent, setup sets it to 3,650 in Claude Code's `settings.json`, after copying the file to
+`~/.synthesis/v5/backups/`, so the record outlives every export interval (`synthesis sessions export`). A value the
+person set stays; the doctor warns when it is under a year and fails when it is unset.
+
 ## Codex settings setup owns
 
 Setup changes only these keys in `~/.codex/config.toml`, after copying the file to

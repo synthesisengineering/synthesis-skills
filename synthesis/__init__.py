@@ -1,3 +1,3 @@
 """Synthesis work v5: a small CLI, hooks and guards around plain-markdown skills."""
 
-__version__ = "5.1.19"
+__version__ = "5.2.0"

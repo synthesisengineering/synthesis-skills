@@ -275,9 +275,14 @@ def test_the_board_is_written_only_through_the_synthesis_cli(tmp_path, isolated_
     mine = paths.board() / "sessions" / "S1.json"
     refused = guards.check("Write", {"file_path": str(mine), "content": "{}"}, CONFIG, cwd=str(tmp_path))
     assert "inside the synthesis board" in refused and "synthesis claim" in refused
-    assert "writes into the synthesis board" in guards.check("Bash", {"command": f"rm {mine}"}, CONFIG, cwd=str(tmp_path))
+    assert "writes inside the synthesis board" in guards.check("Bash", {"command": f"rm {mine}"}, CONFIG, cwd=str(tmp_path))
     assert guards.check("Bash", {"command": "synthesis claim notes.md"}, CONFIG, cwd=str(tmp_path)) is None
     assert guards.check("Bash", {"command": f"cat {mine}"}, CONFIG, cwd=str(tmp_path)) is None
+    kept = paths.sessions() / "acme" / "2026-10" / "claude-code-S1" / "transcript-0001.jsonl"  # 5.2.0: evidence
+    assert "Only `synthesis sessions export`" in guards.check("Edit", {"file_path": str(kept), "old_string": "a",
+                                                                       "new_string": "b"}, CONFIG, cwd=str(tmp_path))
+    assert "session transcript archive" in guards.check("Bash", {"command": f"rm -f {kept}"}, CONFIG, cwd=str(tmp_path))
+    assert guards.check("Bash", {"command": "synthesis sessions export --all"}, CONFIG, cwd=str(tmp_path)) is None
 
 
 def test_a_python_script_that_only_cites_a_protected_path_may_write_a_project_record(tmp_path, isolated_home):

@@ -291,9 +291,25 @@ def resume(name: str, session_id: str = "", *, switch: bool = False) -> str:
                             f"where it holds claims and coordinate with synthesis msg {other.short}.")
     if warnings:
         lines += ["", "Before working:"] + [f"- {w}" if not w.startswith("  ") else w for w in warnings]
+    lines += _recent_conversation(pid, session_id)
     if session_id:
         board.touch(session_id, project=pid, harness=paths.harness(), briefed=pid)  # the brief is in this text
     return "\n".join(lines)
+
+
+def _recent_conversation(pid: str, session_id: str) -> list[str]:
+    """The project's last prompts and replies in any harness on this Mac, so work moved between harnesses carries
+    the conversation as well as the records (R1.3). Transcripts changed in the last two days are exported first."""
+    from synthesis import sessions
+    try:
+        sessions.export(2)
+        turns = [r for r in sessions.recent(pid, turns=8) if r.get("session") != session_id]
+    except (OSError, ValueError) as exc:
+        return ["", f"Recent conversation: not read ({exc})."]
+    if not turns:
+        return []
+    return ["", "Recent conversation in this project (any harness; `synthesis sessions show <session>` has all of it):"] + [
+        f"  [{r.get('harness')} {str(r.get('session'))[:8]}] {sessions.render(r, 400)}" for r in turns]
 
 
 def _handoff_repo(repo: Path, specs: list[str], message: str, claims: list[str]) -> tuple[bool, list[str]]:

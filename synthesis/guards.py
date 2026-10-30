@@ -1043,15 +1043,27 @@ FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_
 
 
 def _protected_roots(config: dict | None) -> list[str]:
-    """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, harness
-    transcripts, approved commit lines."""
+    """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
+    archive, harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), *paths.transcript_roots().values(), *([store] if store else [])]]
+    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *paths.transcript_roots().values(),
+                             *([store] if store else [])]]
 
 
-# The board grants nothing, but a session file edited by hand can drop another session's claims (5.1.18).
+# The board grants nothing, but a session file edited by hand can drop another session's claims (5.1.18); the
+# transcript archive is evidence of what was asked and done, so nothing but its exporter may change it (5.2.0).
 BOARD_WAY = ("Claims and messages go through `synthesis claim`, `synthesis release` and `synthesis msg`, "
              "which keep the board consistent for every session.")
+SESSIONS_WAY = "Only `synthesis sessions export` writes it, so it stays a faithful copy of what each harness recorded."
+
+
+def _cli_owned(real: str) -> str:
+    """Where a write lands when it is in a folder only the synthesis CLI writes, with the way to change it; else ''."""
+    for root, what, way in ((paths.board(), "the synthesis board", BOARD_WAY),
+                            (paths.sessions(), "the session transcript archive", SESSIONS_WAY)):
+        if paths.inside(real, os.path.realpath(root)):
+            return f"inside {what}. {way}"
+    return ""
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
@@ -1098,8 +1110,8 @@ def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
     real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
     hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots)]
-    if hits and paths.inside(real[hits[0]], os.path.realpath(paths.board())):
-        return f"Refused: {tool} would write {hits[0]}, inside the synthesis board. {BOARD_WAY}"
+    if hits and _cli_owned(real[hits[0]]):
+        return f"Refused: {tool} would write {hits[0]}, {_cli_owned(real[hits[0]])}"
     return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
             "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
             "show them what needs approving.") if hits else None
@@ -1198,8 +1210,9 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
             targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
-    if not why and any(paths.inside(t, os.path.realpath(paths.board())) for t in real):
-        return f"Refused: this command writes into the synthesis board. {BOARD_WAY}"
+    owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
+    if owned:
+        return f"Refused: this command writes {owned}"
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "

@@ -16,6 +16,8 @@ def isolated_home(tmp_path, monkeypatch):
     gitconfig.write_text("[user]\n\temail = test@example.com\n\tname = test\n", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))  # no machine-wide hooks or identity
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for key, folder in (("CLAUDE_CONFIG_DIR", "claude"), ("CODEX_HOME", "codex"), ("XDG_DATA_HOME", "xdg")):
+        monkeypatch.setenv(key, str(tmp_path / "harness" / folder))  # never this Mac's own session transcripts
     return home
 
 
