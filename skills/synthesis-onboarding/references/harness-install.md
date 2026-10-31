@@ -46,6 +46,16 @@ commands fetch the plugin with nothing else printed for up to a minute. When non
 harnesses asked for is on the Mac, setup stops before changing anything and names the app
 to install; it no longer installs a runtime that nothing would use.
 
+Setup keeps a compaction brief in each synthesis workspace's instructions (a folder whose
+`CLAUDE.md` is `@AGENTS.md`): the `## Compact Instructions` section in
+`references/compact-instructions.md`, between `synthesis-setup:begin/end compact-instructions`
+markers. Claude Code follows that section when it compacts, also from an `AGENTS.md` the
+`CLAUDE.md` imports (tested 2026-10-31 with a marker line in the summary); Codex can only replace
+its whole compaction prompt, globally, and Muse has no setting, so they rely on the files and the
+session-start hook. A workspace made by setup and an organization's generated instructions get
+the block when they are written. A file the person wrote gets it only with their yes, or with
+`--compact-brief`; a block already there is refreshed on every run, since it is setup's own.
+
 `onboard.sh` checks its own prerequisites before it fetches anything. On a Mac without
 Apple's Command Line Tools (`xcode-select -p` fails), which provide `git` and `python3`, it
 runs `xcode-select --install`, says to click Install, and waits up to an hour for the tools

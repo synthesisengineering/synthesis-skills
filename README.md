@@ -130,8 +130,10 @@ and runs the onboarding skill's
 [setup.py](skills/synthesis-onboarding/scripts/setup.py). Setup installs the plugin in
 every harness it finds, using each harness's own commands; sets the Codex settings it
 needs; installs the runtime and links `~/.local/bin/synthesis` if that name is free;
-asks whether to turn on the commit check; and on a fresh install asks two questions for
-a first config. Every step is safe to rerun.
+asks whether to turn on the commit check; on a fresh install asks two questions for a
+first config; and asks once whether to add a short compaction brief (what a summary keeps
+when a session compacts) to each synthesis workspace's instructions. Every step is safe to
+rerun.
 
 Variants:
 

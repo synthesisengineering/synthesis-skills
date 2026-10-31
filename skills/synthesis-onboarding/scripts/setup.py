@@ -557,6 +557,8 @@ def main(argv=None) -> int:
                         help="link ~/.local/bin/day-end and schedule the weekday 16:55 nudge")
     parser.add_argument("--no-launchctl", action="store_true", help="--day-end: write the schedule without loading it")
     parser.add_argument("--no-input", action="store_true", help="never ask; fail naming the flag instead")
+    parser.add_argument("--compact-brief", action="store_true",
+                        help="add the compaction brief to each synthesis workspace's instructions without asking")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     interactive = not args.no_input and can_ask()
@@ -600,6 +602,9 @@ def main(argv=None) -> int:
             else:
                 say(workspace.bring_workspace(args.kb, args.workspace, progress, args.adopt_workspace_instructions,
                                               interactive, scratch))
+        if args.command in ("all", "workspace", "org"):  # what a compaction summary keeps, in every synthesis workspace
+            import workspace
+            say(workspace.add_brief(interactive, args.compact_brief, args.dry_run))
     except (SetupError, ValueError, OSError) as exc:  # a malformed manifest or an unwritable folder: say which
         say([f"stopped: {exc}"])
         failed = True

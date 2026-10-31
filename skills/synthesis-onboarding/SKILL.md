@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.2.1"
+  version: "3.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -37,6 +37,7 @@ proves each part.
 - [references/new-mac.md](references/new-mac.md): cloning a workspace from `repos.yaml`, what is skipped and why, workspace instructions, the 2026-09-20 lesson. Read when bringing a workspace onto a Mac.
 - [references/org-manifest.md](references/org-manifest.md): the schema-2 manifest, migration from schema 1, checking a manifest, enrollment, repository and instruction rules. Read for any organization.
 - [references/kernel.example.md](references/kernel.example.md): the public instruction baseline setup writes first into an organization workspace's `AGENTS.md`. Read when changing it.
+- [references/compact-instructions.md](references/compact-instructions.md): the compaction brief setup keeps, as one marked block, in every synthesis workspace's instructions. Read when changing what a summary should keep.
 - [references/first-useful-task.md](references/first-useful-task.md): helping a new user get one useful result after install. Read after a first install.
 - [references/coverage-map.md](references/coverage-map.md): where every section of 2.10.4 went (ruling D8).
 - [references/preserved.md](references/preserved.md), [references/preserved-org-manifest.md](references/preserved-org-manifest.md), [references/preserved-kernel.md](references/preserved-kernel.md), [references/preserved-declared-maintenance.md](references/preserved-declared-maintenance.md), [references/preserved-first-run-journeys.md](references/preserved-first-run-journeys.md), [references/preserved-message-guard-onboarding.md](references/preserved-message-guard-onboarding.md), [references/preserved-modular-lifecycle.md](references/preserved-modular-lifecycle.md), [references/preserved-platform-ownership.md](references/preserved-platform-ownership.md), [references/preserved-web-distribution-contract.md](references/preserved-web-distribution-contract.md): the 2.10.4 text verbatim. Read only to review what was cut.

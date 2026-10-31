@@ -16,6 +16,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   (shortcut phrasing, unsourced quotes, file links) and harness, with any phrase or file named more than once, so a
   check that fires week after week points at the habit behind it. October's first count: 88 send-backs in 11
   sessions, 29 of them for "your call".
+- **A compaction brief in every synthesis workspace** (onboarding 3.3.0). When a session compacts, the summary should
+  keep what exists only in the conversation: the task in progress and its next step, what is waiting on someone,
+  decisions and corrections not yet written down, exact identifiers, and what was verified. Setup keeps a short
+  `## Compact Instructions` section saying so in each synthesis workspace's instructions, as one marked block from
+  `references/compact-instructions.md`. Claude Code follows it there, also through the `CLAUDE.md` import (tested with
+  a marker line in a real compaction's summary). Codex could take it only by replacing its whole compaction prompt
+  for every session, and Muse has no setting, so they keep relying on the files and the session-start hook. New and
+  organization workspaces get the block when setup writes their instructions; a file the person wrote gets it only
+  with their yes or `--compact-brief`; a block already there is refreshed on every run. Sessions outside synthesis
+  workspaces are unaffected.
 
 ## [5.3.5] - 2026-10-30
 
