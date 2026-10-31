@@ -337,10 +337,29 @@ def webp(*chunks):
     return b"RIFF" + len(body).to_bytes(4, "little") + body
 
 
+def heif(*items, brand=b"heic"):
+    """ftyp, meta (iinf, and an iloc placing each item's one extent by file offset), then mdat holding the items."""
+    def box(kind, body, version=None):
+        body = (b"" if version is None else bytes([version, 0, 0, 0])) + body
+        return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+    def meta(at):
+        places = b""
+        for n, (_, data) in enumerate(items, 1):
+            places += n.to_bytes(2, "big") + bytes(4) + b"\0\1" + at.to_bytes(4, "big") + len(data).to_bytes(4, "big")
+            at += len(data)
+        infe = b"".join(box(b"infe", n.to_bytes(2, "big") + b"\0\0" + kind + b"\0", 2) for n, (kind, _) in enumerate(items, 1))
+        count = len(items).to_bytes(2, "big")
+        return box(b"meta", box(b"iinf", count + infe, 0) + box(b"iloc", b"\x44\0" + count + places, 1), 0)
+    head = box(b"ftyp", brand + bytes(4) + b"mif1")
+    return head + meta(len(head) + len(meta(0)) + 8) + box(b"mdat", b"".join(data for _, data in items))
+
+
 GIF_PIXELS = b"," + bytes(9) + b"\2" + gif_blocks(PIXELS)
 
 
 @pytest.mark.parametrize("image", [png((b"IDAT", PIXELS)), jpeg(), gif(GIF_PIXELS), webp((b"VP8L", PIXELS)),
+                                   heif((b"hvc1", PIXELS), (b"hvc1", PIXELS)), heif((b"av01", PIXELS), brand=b"avif"),
                                    jpeg((0xDB, b"Bluebird\n" + bytes(64))), png((b"PLTE", b"Bluebird\n"), (b"IDAT", b""))])
 def test_an_images_pixels_and_coding_tables_are_not_read_as_text(tmp_path, policy, image):
     """2026-10-30: compressed pixels matched protected names at random, and every recaptured screenshot asked for
@@ -361,7 +380,8 @@ def test_an_images_pixels_and_coding_tables_are_not_read_as_text(tmp_path, polic
                                    gif(b"!\xfe" + gif_blocks(b"Bluebird launch"), GIF_PIXELS),
                                    gif(b"!\xff\x0bXMP DataXMP" + XMP + bytes([1, *range(255, -1, -1), 0])),  # XMP's trailer
                                    webp((b"VP8X", bytes(10)), (b"VP8L", PIXELS), (b"XMP ", XMP)),
-                                   webp((b"ANMF", bytes(16) + b"EXIF" + (8).to_bytes(4, "little") + b"Bluebird"))])
+                                   webp((b"ANMF", bytes(16) + b"EXIF" + (8).to_bytes(4, "little") + b"Bluebird")),
+                                   heif((b"hvc1", PIXELS), (b"Exif", b"\0\0\0\6Exif\0\0Bluebird launch")), heif((b"mime", XMP))])
 def test_the_text_an_image_carries_is_scanned_compressed_or_not(tmp_path, policy, image):
     result = commit(make_repo(tmp_path, STRICT), {"shot.bin": image})
     assert result.returncode != 0 and "shot.bin:" in result.stderr and "unapproved disclosure" in result.stderr
@@ -370,7 +390,8 @@ def test_the_text_an_image_carries_is_scanned_compressed_or_not(tmp_path, policy
 @pytest.mark.parametrize("image", [png((b"IDAT", PIXELS), after=b"\nBluebird\n"),  # bytes after the image
                                    png((b"IDAT", PIXELS))[:-6],  # truncated: no IEND
                                    png((b"zTXt", b"Comment\0\0" + zlib.compress(b"x")[:-2]), (b"IDAT", PIXELS)),
-                                   jpeg()[:-2], gif(GIF_PIXELS)[:-1], webp((b"VP8L", PIXELS))[:-1]])
+                                   jpeg()[:-2], gif(GIF_PIXELS)[:-1], webp((b"VP8L", PIXELS))[:-1],
+                                   heif((b"hvc1", PIXELS))[:-1]])
 def test_an_image_that_does_not_parse_exactly_is_read_byte_for_byte(tmp_path, policy, image):
     result = commit(make_repo(tmp_path, STRICT), {"shot.bin": image})
     assert result.returncode != 0 and "unapproved disclosure" in result.stderr

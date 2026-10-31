@@ -194,13 +194,15 @@ def exposure(policy: dict | None, cls: str) -> list[str]:
 
 
 # --- images: the text they carry, never their pixels ------------------------------------------
-# Pixels are compressed bytes, not text: read as lines, they matched short protected names at random (1,692 of the
-# 8,894 images in the principal's repositories; four screenshots in one commit needed four approval codes, 2026-10-30).
-# PNG, JPEG, GIF and WebP are read by their structure: everything but the pixel data (the coded pixels, their palettes
-# and coding tables) is scanned, compressed text inflated. A file that doesn't parse exactly, and any other format, is
-# read byte for byte as before; HEIC and AVIF keep their metadata in the box that holds the coded image.
-IMAGE = re.compile(rb"(\x89PNG\r\n\x1a\n)|(\xff\xd8\xff)|(GIF8[79]a)|(RIFF....WEBP)", re.S)
+# Pixels are compressed bytes, not text: read as lines, they matched short protected names at random (1,743 of the
+# 8,982 images in the principal's repositories; four screenshots in one commit needed four approval codes, 2026-10-30).
+# PNG, JPEG, GIF, WebP, HEIC and AVIF are read by their structure: everything but the pixel data (the coded pixels,
+# their palettes and coding tables) is scanned, compressed text inflated. A file that doesn't parse exactly, and any
+# other format, is read byte for byte as before.
+IMAGE = re.compile(rb"(\x89PNG\r\n\x1a\n)|(\xff\xd8\xff)|(GIF8[79]a)|(RIFF....WEBP)|(....ftyp(?:hei[cxms]|hev[cx]|m[is]f1|avi[fs]))",
+                   re.S)
 SCAN_END = re.compile(rb"\xff[^\x00\xd0-\xd7\xff]|\Z")  # where a JPEG scan's coded data stops: at its next marker
+HEIF_CODED = {b"hvc1", b"hvt1", b"av01", b"avc1", b"vvc1", b"jpeg", b"j2k1", b"unci"}  # item types holding pixels
 
 
 def image_text(blob: bytes) -> list | None:
@@ -211,9 +213,9 @@ def image_text(blob: bytes) -> list | None:
     rest, room, texts = blob, [MAX_CONTEXT], []
     try:
         while kind := IMAGE.match(rest):
-            found, rest = (_png, _jpeg, _gif, _webp)[kind.lastindex - 1](rest, room)
+            found, rest = (_png, _jpeg, _gif, _webp, _heif)[kind.lastindex - 1](rest, room)
             texts += found
-    except (ValueError, IndexError, zlib.error):
+    except (ValueError, IndexError, KeyError, zlib.error):
         return None
     return [line for text in texts + [rest] for line in text.split(b"\n")]
 
@@ -312,6 +314,70 @@ def _riff(data: bytes) -> list:
         elif kind not in (b"VP8 ", b"VP8L", b"ALPH"):
             texts.append(body)
     return texts
+
+
+def _heif(blob: bytes, room: list) -> tuple:
+    """HEIC and AVIF: everything but the coded image items' bytes, as stored. EXIF and XMP are items too, in the same
+    box as the coded images, so the item table says which bytes to skip."""
+    top = {kind: (start, end) for kind, start, end in _boxes(blob, 0, len(blob))}
+    if b"moov" in top:
+        raise ValueError("an image sequence: its frames are samples, not items")
+    meta = {kind: (start, end) for kind, start, end in _boxes(blob, top[b"meta"][0] + 4, top[b"meta"][1])}
+    coded = {item for item, kind in _item_types(blob, *meta[b"iinf"]).items() if kind in HEIF_CODED}
+    texts, at = [], 0
+    for start, end in sorted(_locations(blob, *meta[b"iloc"], coded)):
+        texts.append(blob[at:max(at, start)])
+        at = max(at, end)
+    return texts + [blob[at:]], b""
+
+
+def _boxes(data: bytes, i: int, end: int):
+    """(type, body start, end) of each ISOBMFF box from i to end."""
+    while i < end:
+        size, kind, head = int.from_bytes(data[i:i + 4], "big"), data[i + 4:i + 8], 8
+        if size == 1:  # a 64-bit size follows the type
+            size, head = int.from_bytes(data[i + 8:i + 16], "big"), 16
+        elif size == 0:  # the box runs to the end
+            size = end - i
+        if size < head or i + size > end:
+            raise ValueError("a box that does not fit")
+        yield kind, i + head, i + size
+        i += size
+
+
+def _item_types(blob: bytes, start: int, end: int) -> dict:
+    """Item id to item type, from iinf's infe boxes (versions 2 and 3 carry the type)."""
+    types = {}
+    for kind, at, _ in _boxes(blob, start + (6 if blob[start] == 0 else 8), end):
+        if kind == b"infe" and blob[at] >= 2:
+            n = 2 if blob[at] == 2 else 4
+            types[int.from_bytes(blob[at + 4:at + 4 + n], "big")] = blob[at + 6 + n:at + 10 + n]
+    return types
+
+
+def _locations(blob: bytes, start: int, end: int, items: set) -> list:
+    """(start, end) of every extent iloc places in this file, by file offset, for the given items."""
+    version, i, found = blob[start], start + 6, []
+    offset_size, length_size = blob[start + 4] >> 4, blob[start + 4] & 15
+    base_size, index_size = blob[start + 5] >> 4, blob[start + 5] & 15 if version else 0
+
+    def take(n: int) -> int:
+        nonlocal i
+        i += n
+        if i > end:
+            raise ValueError("an item location that does not fit")
+        return int.from_bytes(blob[i - n:i], "big")
+    for _ in range(take(2 if version < 2 else 4)):
+        item, method = take(2 if version < 2 else 4), take(2) & 15 if version else 0
+        here, base = take(2) == 0 and method == 0, take(base_size)  # data in this file, at a file offset
+        for _ in range(take(2)):
+            take(index_size)
+            offset, length = base + take(offset_size), take(length_size)
+            if item in items and here:
+                if not length or offset + length > len(blob):
+                    raise ValueError("an extent outside the file")
+                found.append((offset, offset + length))
+    return found
 
 
 def _inflate(packed: bytes, room: list) -> bytes:

@@ -53,13 +53,17 @@ Its own checks run first; the repository's hooks run only after they pass
 An image's pixels are compressed bytes, not text: read as lines, they matched short
 protected names at random, and four screenshots in one commit needed four approval codes
 (2026-10-30). So a path with an added line that isn't UTF-8 text is read whole, the staged
-file and its HEAD version, and a PNG, JPEG, GIF or WebP file is read by its structure:
+file and its HEAD version, and a PNG, JPEG, GIF, WebP, HEIC or AVIF file is read by its
+structure:
 
 - Everything but the pixel data is scanned: PNG chunks other than `IDAT`, `fdAT` and
   `PLTE`; JPEG comments, `APPn` segments (EXIF, XMP, ICC, IPTC) and unknown segments, but
   not the frame, table and scan headers or a scan's coded data; GIF extensions (comments,
   plain text, application data such as XMP) as stored, but not the header, palettes or
-  pixels; WebP chunks other than `VP8 `, `VP8L` and `ALPH`, in animation frames too.
+  pixels; WebP chunks other than `VP8 `, `VP8L` and `ALPH`, in animation frames too; in HEIC
+  and AVIF, every byte but the extents the item table (`iinf`, `iloc`) places for coded
+  image items (`hvc1`, `av01` and the other coded types), so EXIF and XMP items, stored
+  beside the coded tiles, are scanned. An image sequence (a `moov` box) is read byte for byte.
   Whatever follows the image is scanned as stored, and an image there is read the same way.
 - Compressed text is inflated first (PNG `zTXt`, compressed `iTXt` and `iCCP` profiles), so
   its words are read, which the byte scan never could. `tEXt` and `zTXt` are read as
@@ -68,9 +72,8 @@ file and its HEAD version, and a PNG, JPEG, GIF or WebP file is read by its stru
   numbered within the text, and a finding names that line. Credentials, the key rule (which
   reads the same text), exposure patterns, moved text and approvals apply to them as to any
   line.
-- A file that doesn't parse exactly, and every other format, is scanned byte for byte. HEIC
-  and AVIF are among them: they keep their metadata in the box that holds the coded image,
-  so skipping the coded data would skip the text.
+- A file that doesn't parse exactly (a chunk, segment, block or box that doesn't fit, an
+  extent outside the file), and every other format, is scanned byte for byte.
 
 (`test_an_images_pixels_and_coding_tables_are_not_read_as_text`,
 `test_the_text_an_image_carries_is_scanned_compressed_or_not`,

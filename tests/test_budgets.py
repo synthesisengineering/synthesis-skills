@@ -227,19 +227,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the remote match 5 and its spacing 2, the merge and push checks in _targets 8); the Claude desktop app's terminal
 # tab guarded like Bash 8 (the shell-tool test 4, its spacing 2, the tab's own folder 2); a --dry-run publishes
 # nothing 3.
-# 5.3.5 adds 150 to both (commit_check.py), after four README screenshots in one commit on 2026-10-30 each needed an
-# approval code for a match in their compressed pixels, and the same patterns matched 1,692 of the 8,894 images
-# tracked in the principal's repositories: PNG, JPEG, GIF and WebP read by their structure, so everything but the
-# pixel data is scanned and compressed text is inflated. The section's comment and the format and scan-end patterns
-# 8; the reader that follows concatenated images and keeps what comes after them 13; PNG chunks 20 (the zTXt, iCCP
-# and iTXt text inflated 7); JPEG segments and each scan's coded data 21; GIF blocks 14, sub-blocks 5 and palettes
-# 3; WebP 6 and its RIFF chunks, animation frames included, 13; inflation within the 32 MiB bound 8; spacing 20.
-# images() 12, an image's added lines replaced by the text its HEAD version did not carry, and its spacing 2; the
-# key rule reading that text in scan() 2; the call in problems() 1; the zlib import 1; the docstring's sentence 1.
+# 5.3.5 adds 216 to both (commit_check.py), after four README screenshots in one commit on 2026-10-30 each needed an
+# approval code for a match in their compressed pixels, and the same patterns matched 1,743 of the 8,982 images
+# tracked in the principal's repositories (51 of 80 HEIC photos): PNG, JPEG, GIF, WebP, HEIC and AVIF read by their
+# structure, so everything but the pixel data is scanned and compressed text is inflated. The section's comment, the
+# format and scan-end patterns and the coded HEIF item types 10; the reader that follows concatenated images and
+# keeps what comes after them 13; PNG chunks 20 (the zTXt, iCCP and iTXt text inflated 7); JPEG segments and each
+# scan's coded data 21; GIF blocks 14, sub-blocks 5 and palettes 3; WebP 6 and its RIFF chunks, animation frames
+# included, 13; HEIC and AVIF 13, their boxes 12, the item types 8 and the item locations 23; inflation within the
+# 32 MiB bound 8; spacing 28. images() 12, an image's added lines replaced by the text its HEAD version did not
+# carry, and its spacing 2; the key rule reading that text in scan() 2; the call in problems() 1; the zlib import 1;
+# the docstring's sentence 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8014
-PLUGIN_BUDGET = 25026
+CORE_BUDGET = 8080
+PLUGIN_BUDGET = 25092
 
 
 def _lines(files):
