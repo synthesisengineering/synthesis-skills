@@ -11,6 +11,7 @@ plain inputs, so tests feed fake ones.
 from __future__ import annotations
 
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -387,14 +388,28 @@ def muse_hook_commands(inspect: dict) -> list:
 
 # ---- finding each harness's CLI -------------------------------------------------
 # The Codex CLI ships inside the ChatGPT desktop app and is on PATH only in Codex's own
-# shells, so doctor also looks in each vendor's stable install locations. A set
-# SYNTHESIS_<NAME>_BIN override is authoritative: empty means absent, and one pointing
-# nowhere is absent rather than falling through to a different install.
+# shells, and the Claude desktop app keeps its own Claude Code, one folder per version, off
+# PATH (2026-10-30: a Mac with only the app had nothing to install into), so doctor also
+# looks in each vendor's stable install locations. A set SYNTHESIS_<NAME>_BIN override is
+# authoritative: empty means absent, and one pointing nowhere is absent rather than falling
+# through to a different install.
 
 CLIENT_ENV = {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}
 KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
     tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
-          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) for h in HARNESSES}
+          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
+    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
+    for h in HARNESSES}
+
+
+def _expand(candidate: str) -> list:
+    """A location as it is, or a pattern's matches with the newest version folder first."""
+    if "*" not in candidate:
+        return [candidate]
+    def newest(path: str) -> tuple:
+        return max((tuple(map(int, p.split("."))) for p in Path(path).parts if re.fullmatch(r"\d+(\.\d+)+", p)),
+                   default=())
+    return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
 
 
 def _version_ok(path: str, timeout: float = 2.0):
@@ -425,7 +440,8 @@ def find_client(name: str, which=shutil.which, locations=None) -> str | None:
         path = os.path.abspath(os.path.expanduser(value)) if value else ""
         return path if path and os.path.isfile(path) and os.access(path, os.X_OK) else None
     seen = set()
-    for candidate in [which(name)] + list(KNOWN_LOCATIONS[name] if locations is None else locations):
+    for candidate in [which(name)] + [p for c in (KNOWN_LOCATIONS[name] if locations is None else locations)
+                                      for p in _expand(c)]:
         path = os.path.abspath(os.path.expanduser(candidate)) if candidate else ""
         if not path or os.path.realpath(path) in seen or not (os.path.isfile(path) and os.access(path, os.X_OK)):
             continue

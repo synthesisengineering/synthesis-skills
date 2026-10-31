@@ -321,16 +321,35 @@ def test_questions_read_the_terminal_when_stdin_is_a_pipe(tmp_path, monkeypatch)
 def test_interrupt_prints_a_resume_line(monkeypatch, capsys):
     def interrupted(*a):
         raise KeyboardInterrupt
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: "/bin/true")
     monkeypatch.setattr(setup, "setup_plugins", interrupted)
     assert setup.main(["plugin", "--no-input"]) == 130
     assert "run the same command again to resume" in capsys.readouterr().err
 
 
-def test_plugin_command_prints_the_restart_sentence(monkeypatch, capsys):
-    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
-    assert setup.main(["plugin", "--no-input", "--clients", "claude"]) == 0
+def test_plugin_command_prints_the_restart_sentence(tmp_path, monkeypatch, capsys):
+    claude, _ = fake_cli(tmp_path, "claude", {"plugin list": (0, [{"id": PLUGIN_ID, "version": "5", "enabled": True}]),
+                                              "plugin": (0, "")})
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: claude if name == "claude" else None)
+    monkeypatch.setattr(setup, "configured_ref", lambda client: "stable")
+    monkeypatch.setattr(setup, "configure_claude", lambda dry_run=False: [])
+    assert setup.main(["plugin", "--no-input"]) == 0
     out = capsys.readouterr().out
-    assert "claude: not found" in out and out.strip().endswith(setup.RESTART)
+    assert f"claude: installing synthesis-skills with {claude} ..." in out and "codex: not found" in out
+    assert out.strip().endswith(setup.RESTART)
+
+
+def test_with_no_harness_setup_stops_before_changing_anything(monkeypatch, capsys):
+    """2026-10-30: a Mac with no harness setup could find got a runtime nothing used and a restart sentence."""
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
+    before = {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")}
+    assert setup.main(["all", "--no-input"]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith("stopped: no Claude Code, Codex or Muse on this Mac") and "claude.com/download" in out
+    assert setup.RESTART not in out
+    assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 1
+    assert capsys.readouterr().out.startswith("stopped: no Codex on this Mac")
+    assert {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")} == before
 
 
 def test_uninstall_removes_the_plugin_with_each_harness_command(tmp_path, monkeypatch, capsys):
@@ -363,14 +382,55 @@ def test_dry_runs_say_what_they_would_do_and_change_nothing(tmp_path, monkeypatc
     assert {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")} == before
 
 
+def _stand_ins(bin_dir, log, python_ok=True, **extra):
+    """git and python3 that log their arguments (python3's version check answers without logging), plus extras."""
+    scripts = {"git": f'echo "git $*" >> "{log}"',
+               "python3": f'[ "$1" = "-c" ] && exit {0 if python_ok else 1}; [ "$1" = "-V" ] && echo "Python 3.8.9" '
+                          f'&& exit 0; echo "python3 $*" >> "{log}"', **extra}
+    for name, body in scripts.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+
+
+def test_onboard_sh_installs_apples_command_line_tools_and_carries_on(tmp_path):
+    """A Mac without the Command Line Tools has no git or python3: open Apple's installer, wait, continue."""
+    bin_dir, log, installed = tmp_path / "bin", tmp_path / "calls.log", tmp_path / "clt"
+    bin_dir.mkdir()
+    _stand_ins(bin_dir, log, uname="echo Darwin", sleep="exit 0",
+               **{"xcode-select": f'echo "xcode-select $*" >> "{log}"; [ "$1" = "--install" ] && touch "{installed}" '
+                                  f'&& exit 0; [ -e "{installed}" ]'})
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path / "home"), "SYNTHESIS_SOURCE": str(tmp_path / "src")}
+    done = subprocess.run(["sh", str(setup.REPO / "onboard.sh"), "plugin"], env=env, capture_output=True, text=True,
+                          timeout=60)
+    assert done.returncode == 0, done.stderr
+    assert "Command Line Tools" in done.stdout and "click Install" in done.stdout
+    steps = log.read_text().splitlines()
+    assert steps[:3] == ["xcode-select -p", "xcode-select --install", "xcode-select -p"]
+    assert steps[3].startswith("git clone --quiet --branch stable ") and steps[4].startswith("python3 ")
+    installed.unlink()
+    log.unlink()
+    done = subprocess.run(["sh", str(setup.REPO / "onboard.sh"), "plugin", "--dry-run"], env=env, capture_output=True,
+                          text=True, timeout=60)
+    assert done.returncode == 1 and "a dry run installs nothing" in done.stderr
+    assert log.read_text().splitlines() == ["xcode-select -p"]  # no installer window, nothing fetched
+
+
+def test_onboard_sh_names_an_old_python_before_fetching_anything(tmp_path):
+    bin_dir, log = tmp_path / "bin", tmp_path / "calls.log"
+    bin_dir.mkdir()
+    _stand_ins(bin_dir, log, python_ok=False, uname="echo Linux")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path / "home"), "SYNTHESIS_SOURCE": str(tmp_path / "src")}
+    done = subprocess.run(["sh", str(setup.REPO / "onboard.sh")], env=env, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 1 and "this python3 is Python 3.8.9; synthesis needs 3.9 or newer" in done.stderr
+    assert not log.exists()
+
+
 def test_onboard_sh_dry_run_runs_from_a_temporary_clone_and_leaves_the_source_alone(tmp_path):
     """onboard.sh fetched the release into ~/.synthesis/v5/source before setup.py ever saw --dry-run."""
     bin_dir, log, temp = tmp_path / "bin", tmp_path / "calls.log", tmp_path / "temp"
     bin_dir.mkdir()
     temp.mkdir()
-    for name in ("git", "python3"):  # stand-ins that log their arguments
-        (bin_dir / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "{log}"\n')
-        (bin_dir / name).chmod(0o755)
+    _stand_ins(bin_dir, log)
     env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path / "home"), "TMPDIR": str(temp),
            "SYNTHESIS_SOURCE": str(tmp_path / "source")}
     script = str(setup.REPO / "onboard.sh")

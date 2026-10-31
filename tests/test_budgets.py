@@ -213,10 +213,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # loads it 5 and a private key's header with its body in JSON text 1, the reason 3; each month committed alone and a
 # refused month unstaged 2, after a refused month's files were swept into the next month's commit; the sessions in
 # a commit counted from what git staged 2.
+# 5.3.3 adds 16 to both (doctor.py), after a Mac with only the Claude desktop app had nothing to install into on
+# 2026-10-30: the app's own Claude Code as a known location 2, the reason in the finder's comment 2, a location
+# pattern expanded with the newest version folder first 10 (the function and its docstring 2, a plain location 2,
+# the version order 4, spacing 2), the glob import 1, the finder reading patterns 1. And 2 more to the plugin
+# (setup.py): each harness named before its plugin install, which prints nothing for up to a minute, after a first
+# install that looked hung. And 11 more (setup.py), at Rajiv's direction that day that anyone can install without
+# running into problems: with no harness on the Mac, setup stops before changing anything and says which app to
+# install (the message naming the harnesses asked for 6, spacing 2, the stop in main 3).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7778
-PLUGIN_BUDGET = 24777
+CORE_BUDGET = 7794
+PLUGIN_BUDGET = 24806
 
 
 def _lines(files):

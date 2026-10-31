@@ -511,6 +511,14 @@ def workspace_archive(paths: list) -> Path:
 
 # ---- the command line -----------------------------------------------------------
 
+def no_harness(clients: list) -> str:
+    """Said before anything changes: a runtime that no harness uses helps no one (2026-10-30)."""
+    names = [{"claude": "Claude Code", "codex": "Codex", "muse": "Muse"}[c] for c in clients]
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " or " + names[-1]
+    return (f"no {listed} on this Mac, so there is nothing to install into yet. Install one (the Claude desktop app, "
+            "https://claude.com/download, includes Claude Code), then run this command again.")
+
+
 def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
     lines, failed = [], False
     for client in clients:
@@ -518,6 +526,8 @@ def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
         if not binary:
             lines.append(f"{client}: not found on this Mac; skipped")
             continue
+        if not dry_run:  # the harness's own commands fetch the plugin: up to a minute with nothing printed
+            print(f"{client}: installing {PLUGIN} with {binary} ...", flush=True)
         try:
             lines.append(install_plugin(client, binary, ref, dry_run=dry_run))
             if client == "codex":
@@ -563,6 +573,9 @@ def main(argv=None) -> int:
         if args.command == "uninstall":
             return _uninstall(clients, args.dry_run)
         if args.command in ("all", "plugin"):
+            if not any(doctor.find_client(client) for client in clients):
+                say([f"stopped: {no_harness(clients)}"])
+                return 1
             plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run)
             say(plugin_lines)
             if args.dry_run:
