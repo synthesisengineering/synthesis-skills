@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.4] - 2026-10-30
+
+- **A deploy inside a script waits for approval** (agent guardrails 2.3.0). `bash scripts/publish-site.sh` published
+  a site with no approval on 2026-10-30, because the `wrangler` call inside the script never reached the guard. The
+  deploy guard now reads a shell script a command runs (`bash x.sh`, `./x.sh` with a shell `#!`), three scripts
+  deep, and holds the command when anything in it deploys. A `--dry-run` publishes nothing, so a build script that
+  checks its deploy that way is not held.
+- **Repositories where a merge publishes** (`deploy_remotes`). A push to, or `gh pr merge` on, a listed GitHub
+  repository is a deploy; the same day a merge on the Homebrew tap published a formula before its release archive
+  existed.
+- **The Claude desktop app's terminal tab is guarded like Bash.** Commands typed there (`mcp__terminal__run_in_terminal`)
+  passed every shell guard: deploys, protected deletes, force pushes and claims. They are now read like any shell
+  command, in the folder the tab starts in.
+
 ## [5.3.3] - 2026-10-30
 
 - **The Claude desktop app counts as a harness.** On a Mac with only the desktop app, setup found no `claude` and

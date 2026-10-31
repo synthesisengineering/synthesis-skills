@@ -31,11 +31,23 @@ loaded. This guard gates the act.
   the generator's page and only behind a verified Cloudflare Access sign-in, so the principal's
   listing stands in for a code. A script of that name anywhere else, or an upload to an unlisted
   project, is a deploy like any other.
+- A shell script a command runs from a file (`bash publish-site.sh`, `./publish-site.sh`, `sh -e wrapper.sh`),
+  read up to 256 KB and three scripts deep, when anything in it is a deploy (2026-10-30: `bash
+  scripts/publish-site.sh` published a site, because the `wrangler` call inside the script never reached the
+  guard). A command named by its path is read only when its first line is a shell's `#!`.
+- A push to, or a `gh pr merge` on, a GitHub repository listed in `deploy_remotes`, matched against the
+  checkout's remotes or `-R owner/repo` (2026-10-30: a merge on the Homebrew tap published a formula before
+  its release archive existed).
 - A push whose repository is named by a variable (`git -C $r push` in a loop,
   `cd $DIR && git push`) while any push-deploy repository is configured: the guard can't
   tell which repository it is, so it asks.
 - Not a deploy: `git commit -m "fix site push"` (2026-08-29 false block), `git log` with
-  push in its arguments, `echo` or `grep` of deploy words, a heredoc written to a file.
+  push in its arguments, `echo` or `grep` of deploy words, a heredoc written to a file, and any
+  command with `--dry-run` (`wrangler deploy --dry-run` in a build script publishes nothing).
+
+Every tool that runs a command line is read this way: Bash and its peers in Codex and Muse, and the Claude
+desktop app's terminal tab (`mcp__terminal__run_in_terminal`, judged in the folder its `cwd` names), whose
+commands passed every shell guard until 2026-10-30.
 
 ## Approval
 

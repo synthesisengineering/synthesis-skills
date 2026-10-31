@@ -221,10 +221,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # install that looked hung. And 11 more (setup.py), at Rajiv's direction that day that anyone can install without
 # running into problems: with no harness on the Mac, setup stops before changing anything and says which app to
 # install (the message naming the harnesses asked for 6, spacing 2, the stop in main 3).
+# 5.3.4 adds 70 to both (guards.py), after an unapproved site deploy and an early Homebrew tap merge on 2026-10-30:
+# a shell script a command runs, read and followed three deep so a deploy inside it waits for approval 44 (the file
+# reader 25, the follower 11, its limits 2, spacing 6); a push or merge to a repository listed in deploy_remotes 15
+# (the remote match 5 and its spacing 2, the merge and push checks in _targets 8); the Claude desktop app's terminal
+# tab guarded like Bash 8 (the shell-tool test 4, its spacing 2, the tab's own folder 2); a --dry-run publishes
+# nothing 3.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 7794
-PLUGIN_BUDGET = 24806
+CORE_BUDGET = 7864
+PLUGIN_BUDGET = 24876
 
 
 def _lines(files):
