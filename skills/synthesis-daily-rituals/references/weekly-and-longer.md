@@ -38,6 +38,7 @@ A `synthesis-catchup-ledger` sweep on/after that Friday counts as the week's rev
 - [ ] Each active project's `## Waiting On Others` table — flag rows whose "Last asked" / "Asked at" timestamp is >7 days ago (one full work-week without a follow-up signals the ask got buried or forgotten)
 - [ ] `sessions/YYYY-MM.md` for the current AND previous calendar month — scan for explicit personal commitments (the principal saying "I'll do X tomorrow" or "I'll send Y by EOD") and verify each has a matching completion record. Pattern-match on first-person future-tense verbs in the principal's own text, not in quoted teammate messages.
 - [ ] **The lapse register's last 14 days** (see "Slipped through" below).
+- [ ] **The Stop hook's send-backs this week (v3.5.0).** Run `python3 <rituals>/scripts/stop_reprompts.py --workspace <W>`. It counts the replies the Stop hook sent back in the last seven days, by check (shortcut phrasing, unsourced quotes, file links), from the archive `synthesis sessions` keeps, and names the phrase or file that came up more than once. Put the counts in the scan summary. A check that fires week after week points at a habit to fix where it starts (the skill, the instruction or the phrasing that produces it), not at the reply. The principal asked for this on 2026-10-30, after a reply sent back showed up as two drafts; October's first count: 88 send-backs in 11 sessions, 29 of them for "your call".
 
 ## Classify each surfaced item
 

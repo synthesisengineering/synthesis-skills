@@ -11,6 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   from the synthesis-skills checkout, counted as two deploys of synthesis-skills: the second hit the 45-minute
   rapid-redeploy brake, and both approvals bound synthesis-skills' HEAD. `gh release create -R owner/repo` is now a
   deploy of that repository and `npm publish <path>` of that package; anything else is still the folder it runs in.
+- **The weekly review counts the Stop hook's send-backs** (daily rituals 3.5.0). `stop_reprompts.py` reads the
+  archive `synthesis sessions` keeps and reports the replies the Stop hook sent back in the last seven days, by check
+  (shortcut phrasing, unsourced quotes, file links) and harness, with any phrase or file named more than once, so a
+  check that fires week after week points at the habit behind it. October's first count: 88 send-backs in 11
+  sessions, 29 of them for "your call".
 
 ## [5.3.5] - 2026-10-30
 
