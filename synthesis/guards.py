@@ -872,7 +872,10 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
 
 def _deploys(words: list[str], patterns: list[str]) -> bool:
     """A deploy pattern matches from the start of the command, or of the script an interpreter runs
-    (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match."""
+    (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match, and a
+    `--dry-run` publishes nothing (a site's build checks its deploy that way)."""
+    if "--dry-run" in words:
+        return False
     forms = [[os.path.basename(words[0])] + words[1:]]
     if INTERPRETER.match(forms[0][0]):
         rest = words[1:]
@@ -898,12 +901,71 @@ def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
     return script.endswith(os.sep + SHEET_SCRIPT) and len(projects) == 1 and projects[0] in hosts
 
 
+SCRIPT_LIMIT = 256 * 1024
+SHEBANG = re.compile(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
+
+
+def _script_file(words: list[str], cwd: str) -> str | None:
+    """The text of the shell script a command runs from a file (`bash publish.sh`, `./publish.sh`), or None."""
+    head, path = os.path.basename(words[0]), None
+    if head in SHELLS:
+        i = 1
+        while i < len(words) and words[i].startswith(("-", "+")):
+            if re.fullmatch(r"[-+][A-Za-z]*c[A-Za-z]*", words[i]):
+                return None  # -c: the script is on the command line, which the parser already reads
+            i += 2 if words[i] in ("-o", "+o", "-O", "+O") else 1
+        path = words[i] if i < len(words) else None
+    elif "/" in words[0]:
+        path = words[0]
+    if not path:
+        return None
+    try:
+        with open(os.path.join(cwd, os.path.expanduser(path)), "rb") as handle:
+            if head not in SHELLS and handle.read(2) != b"#!":
+                return None  # a program, not a script: never read past its first bytes
+            handle.seek(0)
+            text = handle.read(SCRIPT_LIMIT + 1)
+    except OSError:
+        return None
+    if len(text) > SCRIPT_LIMIT or (head not in SHELLS and not SHEBANG.match(text)):
+        return None
+    return text.decode("utf-8", "replace")
+
+
+def _script_deploys(words: list[str], cwd: str, patterns: list[str], config: dict, depth: int = 0) -> bool:
+    """Whether a shell script this command runs deploys, three scripts deep. A deploy inside a script was
+    invisible here (2026-10-30: `bash scripts/publish-site.sh` published a site with no approval)."""
+    text = _script_file(words, cwd) if depth < 3 else None
+    if text is None:
+        return False
+    commands, readable = _parse(text, cwd)
+    if not readable and any(re.search(p, text) for p in patterns):
+        return True
+    return any((_deploys(w, patterns) and not _sheet_host(w, d, config)) or _script_deploys(w, d, patterns, config, depth + 1)
+               for w, d in commands)
+
+
+def _publishes_to(directory: str, remotes: list[str]) -> bool:
+    """Whether the checkout at directory has a remote on a repository the principal listed in deploy_remotes."""
+    code, out = _run_git(directory, "remote", "-v")
+    found = {m.group(1).lower() for m in re.finditer(r"[/:]([\w.-]+/[\w.-]+?)(?:\.git)?\s", out)}
+    return code == 0 and bool(found & {r.lower().removesuffix(".git") for r in remotes})
+
+
 def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None]]:
     """(directory, rev) for each deploy in the command. A push deploys HEAD; a build deploys the tree."""
     patterns = DEFAULT_DEPLOY_PATTERNS + list(config.get("deploy_patterns", []))
     commands, readable = _parse(command, cwd)
     targets: list[tuple[str, str | None]] = [(d, None) for words, d in commands
-                                             if _deploys(words, patterns) and not _sheet_host(words, d, config)]
+                                             if (_deploys(words, patterns) and not _sheet_host(words, d, config))
+                                             or _script_deploys(words, d, patterns, config)]
+    remotes = [str(r) for r in config.get("deploy_remotes") or []]
+    for words, directory in commands if remotes else []:
+        if [os.path.basename(words[0])] + words[1:3] == ["gh", "pr", "merge"]:  # a merge to a repository that publishes
+            named = [b for a, b in zip(words, words[1:]) if a in ("-R", "--repo")] + [
+                w.split("=", 1)[1] for w in words if w.startswith("--repo=")]
+            if (named and named[0].lower() in {r.lower() for r in remotes}) or (not named and _publishes_to(directory, remotes)):
+                targets.append((directory, None))
     if not readable and not targets and any(re.search(p, command) for p in patterns):
         targets = [(cwd, None)]  # unreadable text with a deploy word in it: judged on the raw words
     repos = None
@@ -917,7 +979,7 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
             targets.append((where, "HEAD"))  # a variable names the repository: it may be a site
             continue
         real, main = os.path.realpath(where), _checkout(where)[1]
-        if any(paths.inside(p, r) for r in repos for p in (real, main) if p):
+        if any(paths.inside(p, r) for r in repos for p in (real, main) if p) or (remotes and _publishes_to(where, remotes)):
             targets.append((real, "HEAD"))
     return targets
 
@@ -1449,6 +1511,12 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
 SHELL_TOOLS = {"Bash", "bash", "exec_command", "exec", "shell", "local_shell", "run_shell_command"}  # "bash": Muse
 
 
+def shell_tool(tool: str) -> bool:
+    """A tool that runs a command line: the harnesses' shells and the Claude desktop app's terminal tab, whose
+    commands passed every shell guard until 2026-10-30."""
+    return tool in SHELL_TOOLS or tool.endswith("__run_in_terminal")
+
+
 def shell_command(tool_input: dict) -> str:
     """The command text, whichever harness spelled it: a string or an argv list."""
     value = tool_input.get("command", tool_input.get("cmd", ""))
@@ -1537,7 +1605,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (tool in SHELL_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or _sends(tool, tool_input or {}, {})
+    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or _sends(tool, tool_input or {}, {})
             or routed(tool, tool_input or {}))
 
 
@@ -1549,7 +1617,9 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
         except OSError:
             cwd = os.path.expanduser("~")
-    if tool in SHELL_TOOLS:
+    if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
+        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+    if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
                 or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)

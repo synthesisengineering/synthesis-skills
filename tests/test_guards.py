@@ -78,6 +78,57 @@ def test_push_to_a_repo_that_deploys_on_push_counts_as_a_deploy(tmp_path):
     assert guards.check("Bash", {"command": f"git -C {tmp_path} push origin main"}, config) is None
 
 
+def test_a_deploy_inside_a_script_the_command_runs_needs_approval(tmp_path):
+    """2026-10-30: `bash scripts/publish-site.sh` published a site; the wrangler call was inside the script."""
+    (tmp_path / "scripts").mkdir()
+    publish = tmp_path / "scripts" / "publish-site.sh"
+    publish.write_text('#!/bin/bash\nset -eu\nSITE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"\nbash build.sh\n'
+                       'npx wrangler pages deploy "$SITE_ROOT" --project-name=tool --branch=main\n')
+    publish.chmod(0o755)
+    (tmp_path / "build.sh").write_text("#!/bin/bash\nnpx astro build\nnpx wrangler deploy --dry-run --outdir out\n")
+    (tmp_path / "wrapper.sh").write_text("#!/bin/sh\nexec bash scripts/publish-site.sh \"$@\"\n")
+    for command in ("bash scripts/publish-site.sh", "./scripts/publish-site.sh", "sh -e wrapper.sh",
+                    f"cd {tmp_path} && bash -o pipefail scripts/publish-site.sh"):
+        assert "production" in guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)), command
+    for command in ("bash build.sh", "bash missing.sh", "bash -c 'echo hi'", "./build.sh"):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
+
+
+@pytest.mark.parametrize("command", ["npx wrangler deploy --dry-run", "npm publish --dry-run",
+                                     "npx wrangler pages deploy dist --dry-run"])
+def test_a_dry_run_publishes_nothing(command):
+    assert guards.check("Bash", {"command": command}, {}) is None
+
+
+def test_the_desktop_apps_terminal_tab_is_guarded_like_bash(tmp_path):
+    """2026-10-30: commands typed into the Claude desktop app's terminal tab passed every shell guard."""
+    tab = "mcp__terminal__run_in_terminal"
+    assert "protected" in guards.check(tab, {"command": "rm -rf ~"}, {})
+    assert "production" in guards.check(tab, {"command": "npx wrangler pages deploy dist"}, {})
+    (tmp_path / "publish.sh").write_text("#!/bin/sh\nnpm publish --access public\n")
+    assert "production" in guards.check(tab, {"command": "sh publish.sh", "cwd": str(tmp_path)}, {}, cwd="/")
+    assert guards.check(tab, {"command": "ls -la"}, {}) is None
+    assert guards.guarded(tab, {"command": "ls"})
+
+
+def test_a_push_or_merge_to_a_repository_that_publishes_needs_approval(tmp_path):
+    """2026-10-30: a merge on the Homebrew tap published a formula before its release existed."""
+    tap = tmp_path / "tap"
+    subprocess.run(["git", "init", "-q", str(tap)], check=True)
+    subprocess.run(["git", "-C", str(tap), "remote", "add", "origin", "https://github.com/acme/homebrew-tap.git"], check=True)
+    (tap / "Formula").mkdir()
+    (tap / "Formula" / "tool.rb").write_text("class Tool < Formula\nend\n")
+    subprocess.run(["git", "-C", str(tap), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(tap), "-c", "user.name=t", "-c", "user.email=t@example.test", "-c", "core.hooksPath=/dev/null",
+                    "commit", "-qm", "formula"], check=True)
+    config = {"deploy_remotes": ["acme/homebrew-tap"]}
+    assert "production" in guards.check("Bash", {"command": f"git -C {tap} push origin main"}, config)
+    assert "production" in guards.check("Bash", {"command": "gh pr merge 13 -R acme/homebrew-tap --merge"}, config)
+    assert "production" in guards.check("Bash", {"command": "gh pr merge 13 --merge"}, config, cwd=str(tap))
+    assert guards.check("Bash", {"command": "gh pr merge 13 -R acme/other --merge"}, config) is None
+    assert guards.check("Bash", {"command": f"git -C {tap} push origin main"}, {}) is None
+
+
 @pytest.mark.parametrize("command", ["rm -rf ~", "rm -rf ~/workspaces", "rm -Rf /", "ls && rm -rf $HOME/workspaces"])
 def test_recursive_delete_of_a_protected_root_is_refused(command):
     if "$HOME" in command:

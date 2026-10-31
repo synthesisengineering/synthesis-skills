@@ -59,8 +59,10 @@ What PreToolUse holds:
   it, because it reads the prompt you typed, which the agent cannot write.
 - **Deploys** (`wrangler deploy`, `vercel --prod`, `netlify deploy --prod`,
   `firebase deploy`, `npm publish`, `twine upload`, `gh release create`, a push to a
-  repository listed in `push_deploys`, and your own `deploy_patterns`) need approval of
-  the exact command. A deploy that would put a page live before its stated date, or
+  repository listed in `push_deploys`, a push or merge to a repository listed in
+  `deploy_remotes`, any of these inside a shell script the command runs, and your own
+  `deploy_patterns`) need approval of the exact command, from Bash or the Claude desktop
+  app's terminal tab alike. A deploy that would put a page live before its stated date, or
   change the date of a published page, is refused even with approval. A second deploy of
   the same site within 45 minutes needs its own approval.
 - **Destructive commands.** A recursive `rm` of `/`, your home folder, `~/workspaces`,
