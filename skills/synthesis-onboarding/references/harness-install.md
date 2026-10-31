@@ -42,7 +42,15 @@ desktop app keeps its own Claude Code under
 newest version there when no `claude` is installed elsewhere (`SYNTHESIS_CLAUDE_BIN`
 overrides it). (2026-10-30: a Mac with only the desktop app had nothing to install into.)
 Before each harness's install, setup prints a line naming it, because the harness's own
-commands fetch the plugin with nothing else printed for up to a minute.
+commands fetch the plugin with nothing else printed for up to a minute. When none of the
+harnesses asked for is on the Mac, setup stops before changing anything and names the app
+to install; it no longer installs a runtime that nothing would use.
+
+`onboard.sh` checks its own prerequisites before it fetches anything. On a Mac without
+Apple's Command Line Tools (`xcode-select -p` fails), which provide `git` and `python3`, it
+runs `xcode-select --install`, says to click Install, and waits up to an hour for the tools
+before carrying on, the way Homebrew's installer does; a dry run stops there instead. A
+missing `git` or `python3`, or a `python3` older than 3.9, is named and nothing is fetched.
 
 ## Each harness's own commands
 

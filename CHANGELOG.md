@@ -12,6 +12,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 - **A first install never looks hung.** `onboard.sh` says where it is getting the source before the quiet clone,
   and setup names each harness before its plugin install, which fetches the plugin with nothing else printed for up
   to a minute.
+- **Prerequisites are found and fixed first.** On a Mac without Apple's Command Line Tools, which provide `git` and
+  `python3`, `onboard.sh` opens Apple's installer, waits for it and carries on, as Homebrew's installer does; a
+  missing tool or a `python3` older than 3.9 is named before anything is fetched. With no Claude Code, Codex or Muse
+  on the Mac, setup stops before changing anything and says which app to install, where it used to install a
+  runtime nothing would use.
 
 ## [5.3.2] - 2026-10-30
 

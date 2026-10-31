@@ -464,7 +464,10 @@ def test_org_dry_run_writes_nothing_and_says_what_it_would_do(tmp_path, local_gi
 
 def test_a_first_org_dry_run_leaves_the_home_folder_as_it_was(tmp_path, local_git, temp_root, capsys, monkeypatch):
     org = org_repo(tmp_path)
-    monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
+    claude = tmp_path / "claude"  # a harness with nothing installed yet: setup stops when there is none at all
+    claude.write_text("#!/bin/sh\necho '[]'\n")
+    claude.chmod(0o755)
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: str(claude) if name == "claude" else None)
     before = snapshot(Path.home())
     lines = dry_run(["org", "--org-repo", org], capsys)
     lines += dry_run(["--org-repo", org, "--clients", "claude"], capsys)  # the whole install, clients from the manifest
