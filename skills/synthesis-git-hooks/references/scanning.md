@@ -7,6 +7,7 @@ Each rule names the test that pins it (`tests/test_commit_policy.py`,
 
 - [The hooks and their order](#the-hooks-and-their-order)
 - [The staged diff, byte for byte](#the-staged-diff-byte-for-byte)
+- [Images](#images)
 - [Credentials](#credentials)
 - [Private keys](#private-keys)
 - [Credential file names](#credential-file-names)
@@ -43,9 +44,40 @@ Its own checks run first; the repository's hooks run only after they pass
   never earn an allowlist exemption, and a path with invalid UTF-8 or a newline never
   earns a path exclusion (`test_invalid_utf8_cannot_hide_a_match_or_earn_an_allowlist_exemption`,
   `test_catalog_paths_skip_exposure_patterns_but_never_credentials`).
-- Bounds: 60 seconds for the whole check, 256 MiB of diff, 1 MiB of message, 32 MiB of
-  staged file read for the key rule. Reaching one refuses the commit; staged files are
-  never changed (`test_git_output_is_bounded_in_size_and_time`).
+- Bounds: 60 seconds for the whole check, 256 MiB of diff (and of each version of an image
+  read whole), 1 MiB of message, 32 MiB of staged file read for the key rule. Reaching one
+  refuses the commit; staged files are never changed (`test_git_output_is_bounded_in_size_and_time`).
+
+## Images
+
+An image's pixels are compressed bytes, not text: read as lines, they matched short
+protected names at random, and four screenshots in one commit needed four approval codes
+(2026-10-30). So a path with an added line that isn't UTF-8 text is read whole, the staged
+file and its HEAD version, and a PNG, JPEG, GIF or WebP file is read by its structure:
+
+- Everything but the pixel data is scanned: PNG chunks other than `IDAT`, `fdAT` and
+  `PLTE`; JPEG comments, `APPn` segments (EXIF, XMP, ICC, IPTC) and unknown segments, but
+  not the frame, table and scan headers or a scan's coded data; GIF extensions (comments,
+  plain text, application data such as XMP) as stored, but not the header, palettes or
+  pixels; WebP chunks other than `VP8 `, `VP8L` and `ALPH`, in animation frames too.
+  Whatever follows the image is scanned as stored, and an image there is read the same way.
+- Compressed text is inflated first (PNG `zTXt`, compressed `iTXt` and `iCCP` profiles), so
+  its words are read, which the byte scan never could. `tEXt` and `zTXt` are read as
+  Latin-1. More than 32 MiB of inflated text in one file reads as malformed.
+- The image's added lines are the lines of that text its HEAD version did not carry,
+  numbered within the text, and a finding names that line. Credentials, the key rule (which
+  reads the same text), exposure patterns, moved text and approvals apply to them as to any
+  line.
+- A file that doesn't parse exactly, and every other format, is scanned byte for byte. HEIC
+  and AVIF are among them: they keep their metadata in the box that holds the coded image,
+  so skipping the coded data would skip the text.
+
+(`test_an_images_pixels_and_coding_tables_are_not_read_as_text`,
+`test_the_text_an_image_carries_is_scanned_compressed_or_not`,
+`test_an_image_that_does_not_parse_exactly_is_read_byte_for_byte`,
+`test_credentials_and_keys_in_an_images_text_block_in_every_repository`,
+`test_an_edited_image_is_checked_for_the_text_its_last_commit_did_not_carry`,
+`test_image_text_inflates_within_its_bound_and_follows_concatenated_images`.)
 
 ## Credentials
 

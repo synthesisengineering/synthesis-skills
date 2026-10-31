@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.5] - 2026-10-30
+
+- **The commit check reads an image's text, not its pixels** (git hooks 3.2.0). Read byte for byte, an image's
+  compressed pixels matched short protected names at random: four README screenshots in one commit each needed an
+  approval code on 2026-10-30, and across the principal's repositories the same patterns matched 1,692 of 8,894
+  tracked images. PNG, JPEG, GIF and WebP files are now read by their structure. Everything but the pixel data (the
+  coded pixels, their palettes and coding tables) is scanned as before, and compressed text (PNG's `zTXt`, `iTXt`
+  and ICC profiles) is inflated first, so its words are read for the first time. Of those 8,894 images, 10 still
+  match, in their EXIF, XMP or ICC metadata or in text after the image, and those lines go to the principal like
+  any other. An edited image is checked for the text its last commit did not carry. Credentials and private keys
+  in an image's text block in every repository. A file that doesn't parse exactly, and every other format, is
+  still read byte for byte; HEIC and AVIF keep their metadata in the box that holds the coded image.
+
 ## [5.3.4] - 2026-10-30
 
 - **A deploy inside a script waits for approval** (agent guardrails 2.3.0). `bash scripts/publish-site.sh` published
