@@ -952,11 +952,37 @@ def _publishes_to(directory: str, remotes: list[str]) -> bool:
     return code == 0 and bool(found & {r.lower().removesuffix(".git") for r in remotes})
 
 
+NPM_VALUE_OPTIONS = {"--access", "--tag", "--otp", "--registry", "--workspace", "-w", "--auth-type"}
+
+
+def _publish_target(words: list[str], cwd: str) -> str:
+    """What a build deploy publishes: `gh release create -R owner/repo` names its repository, `npm publish
+    <path>` its package; anything else publishes the folder it runs in. Until 2026-10-30 every one was the
+    folder, so a release of one repository run from another checkout counted as that checkout's deploy, bound
+    its HEAD and set off its rapid-redeploy brake."""
+    head = [os.path.basename(words[0])] + words[1:3]
+    named = [b for a, b in zip(words, words[1:]) if a in ("-R", "--repo")] + [
+        w.split("=", 1)[1] for w in words if w.startswith("--repo=")]
+    if head == ["gh", "release", "create"] and named:
+        return "github:" + named[0].lower()
+    if head[:2] == ["npm", "publish"]:
+        rest, path = words[2:], None
+        while rest and path is None:
+            word, rest = rest[0], rest[1:]
+            if word in NPM_VALUE_OPTIONS:
+                rest = rest[1:]
+            elif not word.startswith("-"):
+                path = word
+        if path:
+            return os.path.normpath(os.path.join(cwd, os.path.expanduser(path)))
+    return cwd
+
+
 def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None]]:
     """(directory, rev) for each deploy in the command. A push deploys HEAD; a build deploys the tree."""
     patterns = DEFAULT_DEPLOY_PATTERNS + list(config.get("deploy_patterns", []))
     commands, readable = _parse(command, cwd)
-    targets: list[tuple[str, str | None]] = [(d, None) for words, d in commands
+    targets: list[tuple[str, str | None]] = [(_publish_target(words, d), None) for words, d in commands
                                              if (_deploys(words, patterns) and not _sheet_host(words, d, config))
                                              or _script_deploys(words, d, patterns, config)]
     remotes = [str(r) for r in config.get("deploy_remotes") or []]
@@ -1004,7 +1030,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     # A site whose build renders other repositories' working trees publishes their dates too.
     renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in (config.get("deploy_also_renders") or {}).items()}
     for directory, rev in targets:
-        root, main = (None, None) if re.search(r"[$`]", directory) else _checkout(directory)
+        root, main = (None, None) if re.search(r"[$`]", directory) or directory.startswith("github:") else _checkout(directory)
         identities.append(main or directory)
         if root:
             reason = check_dates(root, rev, config)

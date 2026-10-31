@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.6] - 2026-10-30
+
+- **A publish is identified by what it publishes** (agent guardrails 2.3.1). The deploy guard took every build
+  deploy to be a deploy of the folder it ran in. On 2026-10-30 the Ownwords release and its npm publish, both run
+  from the synthesis-skills checkout, counted as two deploys of synthesis-skills: the second hit the 45-minute
+  rapid-redeploy brake, and both approvals bound synthesis-skills' HEAD. `gh release create -R owner/repo` is now a
+  deploy of that repository and `npm publish <path>` of that package; anything else is still the folder it runs in.
+
 ## [5.3.5] - 2026-10-30
 
 - **The commit check reads an image's text, not its pixels** (git hooks 3.2.0). Read byte for byte, an image's
