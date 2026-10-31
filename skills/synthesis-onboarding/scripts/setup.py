@@ -518,6 +518,8 @@ def setup_plugins(clients: list, ref: str, dry_run: bool) -> tuple:
         if not binary:
             lines.append(f"{client}: not found on this Mac; skipped")
             continue
+        if not dry_run:  # the harness's own commands fetch the plugin: up to a minute with nothing printed
+            print(f"{client}: installing {PLUGIN} with {binary} ...", flush=True)
         try:
             lines.append(install_plugin(client, binary, ref, dry_run=dry_run))
             if client == "codex":

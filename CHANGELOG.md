@@ -4,6 +4,15 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.3] - 2026-10-30
+
+- **The Claude desktop app counts as a harness.** On a Mac with only the desktop app, setup found no `claude` and
+  installed the plugin nowhere; the app keeps its own Claude Code, one folder per version, off PATH. Setup and doctor
+  now use the newest version there when no `claude` is installed elsewhere (`SYNTHESIS_CLAUDE_BIN` still overrides).
+- **A first install never looks hung.** `onboard.sh` says where it is getting the source before the quiet clone,
+  and setup names each harness before its plugin install, which fetches the plugin with nothing else printed for up
+  to a minute.
+
 ## [5.3.2] - 2026-10-30
 
 - **What leaves the Mac is masked with exactly what the commit check refuses.** The first sync of history was refused

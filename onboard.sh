@@ -27,6 +27,7 @@ for arg in "$@"; do
     exit "$status"
   fi
 done
+echo "synthesis: getting the $REF source into $SRC ..."  # a first clone is about 15 MB, with nothing else printed
 if [ -d "$SRC/.git" ]; then
   git -C "$SRC" fetch --quiet origin "$REF"
   git -C "$SRC" checkout --quiet --detach FETCH_HEAD

@@ -36,7 +36,13 @@ cloned, copied the organization's skills and rewritten `AGENTS.md`.)
 A harness that is not on the Mac is skipped with a line saying so; it never fails the
 run. The Codex CLI ships inside the ChatGPT desktop app and is on PATH only in Codex's
 own shells, so setup looks in the app's install folders too (the same finder doctor
-uses; `SYNTHESIS_CODEX_BIN` overrides it, and an empty value means "absent").
+uses; `SYNTHESIS_CODEX_BIN` overrides it, and an empty value means "absent"). The Claude
+desktop app keeps its own Claude Code under
+`~/Library/Application Support/Claude/claude-code/<version>/`, off PATH; setup uses the
+newest version there when no `claude` is installed elsewhere (`SYNTHESIS_CLAUDE_BIN`
+overrides it). (2026-10-30: a Mac with only the desktop app had nothing to install into.)
+Before each harness's install, setup prints a line naming it, because the harness's own
+commands fetch the plugin with nothing else printed for up to a minute.
 
 ## Each harness's own commands
 

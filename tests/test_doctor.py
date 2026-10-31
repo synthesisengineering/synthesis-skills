@@ -614,6 +614,20 @@ def test_codex_inside_the_desktop_app_is_found_off_path(tmp_path, monkeypatch):
     assert doctor.find_client("codex", which=lambda n: None, locations=[str(app)]) == str(app)
 
 
+def test_claude_inside_the_desktop_app_is_found_newest_version_first(tmp_path, monkeypatch):
+    monkeypatch.delenv("SYNTHESIS_CLAUDE_BIN", raising=False)
+    root = tmp_path / "Claude" / "claude-code"
+    for version in ("2.1.99", "2.1.309", "2.1.1000"):
+        _exe(root / version / "5af865b9901c" / "claude.app" / "Contents" / "MacOS" / "claude")
+    pattern = str(root / "*" / "*" / "claude.app" / "Contents" / "MacOS" / "claude")
+    newest = str(root / "2.1.1000" / "5af865b9901c" / "claude.app" / "Contents" / "MacOS" / "claude")
+    assert doctor.find_client("claude", which=lambda n: None, locations=[pattern]) == newest
+    on_path = _exe(tmp_path / "bin" / "claude")
+    assert doctor.find_client("claude", which=lambda n: str(on_path), locations=[pattern]) == str(on_path)
+    assert doctor.find_client("claude", which=lambda n: None, locations=[str(tmp_path / "none" / "*" / "claude")]) is None
+    assert any("Claude/claude-code/*" in c for c in doctor.KNOWN_LOCATIONS["claude"])
+
+
 def test_client_override_is_authoritative(tmp_path, monkeypatch):
     app = _exe(tmp_path / "codex")
     monkeypatch.setenv("SYNTHESIS_CODEX_BIN", "")

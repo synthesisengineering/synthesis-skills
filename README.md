@@ -110,7 +110,9 @@ to get past the check. It then runs the repository's own hooks. Setup asks befor
 ## Install
 
 The installer targets macOS. It needs `git`, `python3` (the `/usr/bin/python3` that
-ships with macOS is enough) and at least one of the harnesses.
+ships with macOS is enough) and at least one of the harnesses. The Claude desktop app
+counts: setup finds the Claude Code it keeps, so a separate command-line install is not
+needed.
 
 ### A whole Mac
 
