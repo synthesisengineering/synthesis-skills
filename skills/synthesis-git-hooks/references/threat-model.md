@@ -59,6 +59,7 @@ Personal-private repos are where Tier 1 false positives would otherwise dominate
 
 - **History rewriting attacks.** If you committed a credential and pushed, the leak happened. The hook can't help retroactively. Use `git secret-scan` (or equivalent) on push, or rotate credentials.
 - **Steganographic leaks.** Someone hand-crafting an obfuscated leak past the regex will succeed. The threat model assumes good-faith engineers making mistakes, not adversaries.
+- **What an image shows.** The check reads the text an image file carries (metadata, comments, ICC profiles), never what its pixels depict: a screenshot that shows a client's name or a key passes. Look at a screenshot before committing it.
 - **Side-channel leaks via tool output.** A leaked `process.env.OPENAI_API_KEY` value in a log file would be caught; a leaked value in a comment that decomposes the key letter-by-letter would not. Again: good-faith assumption.
 
 The hook is a developer-side first line. CI/CD-side secret scanning is the second line, and credential rotation policies are the third. The three are complementary; none are sufficient alone.

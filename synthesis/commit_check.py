@@ -11,7 +11,8 @@ only). Commit messages get the strict set in strict and public-surface repositor
 disclosure line that already exists verbatim in HEAD is moved or copied text, not a new
 disclosure; a credential blocks wherever it moves. Any other disclosure hit passes only once
 the principal approves that exact line (ruling of 2026-10-06): no word list can tell a leak
-from a legitimate mention, and rewording text to get past the check weakens both.
+from a legitimate mention, and rewording text to get past the check weakens both. An image is
+checked through the text it carries, never its pixels (2026-10-30).
 Anything it can't read or decide blocks the commit (R3.5); a machine with no board advises.
 After its own checks it runs the repository's own hooks (E37): the `.githooks/<hook>`
 delegate, then `.git/hooks/<hook>`, each once and never itself; a repository that declares
@@ -27,6 +28,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -191,6 +193,203 @@ def exposure(policy: dict | None, cls: str) -> list[str]:
     return list(dict.fromkeys(leaves(tier1)))
 
 
+# --- images: the text they carry, never their pixels ------------------------------------------
+# Pixels are compressed bytes, not text: read as lines, they matched short protected names at random (1,743 of the
+# 8,982 images in the principal's repositories; four screenshots in one commit needed four approval codes, 2026-10-30).
+# PNG, JPEG, GIF, WebP, HEIC and AVIF are read by their structure: everything but the pixel data (the coded pixels,
+# their palettes and coding tables) is scanned, compressed text inflated. A file that doesn't parse exactly, and any
+# other format, is read byte for byte as before.
+IMAGE = re.compile(rb"(\x89PNG\r\n\x1a\n)|(\xff\xd8\xff)|(GIF8[79]a)|(RIFF....WEBP)|(....ftyp(?:hei[cxms]|hev[cx]|m[is]f1|avi[fs]))",
+                   re.S)
+SCAN_END = re.compile(rb"\xff[^\x00\xd0-\xd7\xff]|\Z")  # where a JPEG scan's coded data stops: at its next marker
+HEIF_CODED = {b"hvc1", b"hvt1", b"av01", b"avc1", b"vvc1", b"jpeg", b"j2k1", b"unci"}  # item types holding pixels
+
+
+def image_text(blob: bytes) -> list | None:
+    """The lines of text an image file carries, and of whatever follows the image; None for any other file and for
+    one that doesn't parse exactly."""
+    if not IMAGE.match(blob):
+        return None
+    rest, room, texts = blob, [MAX_CONTEXT], []
+    try:
+        while kind := IMAGE.match(rest):
+            found, rest = (_png, _jpeg, _gif, _webp, _heif)[kind.lastindex - 1](rest, room)
+            texts += found
+    except (ValueError, IndexError, KeyError, zlib.error):
+        return None
+    return [line for text in texts + [rest] for line in text.split(b"\n")]
+
+
+def _png(blob: bytes, room: list) -> tuple:
+    """Chunks through IEND, and what follows: image data and palette skipped, compressed text and ICC profiles
+    inflated, Latin-1 text read as such."""
+    texts, i = [], 8
+    while True:
+        size, kind = int.from_bytes(blob[i:i + 4], "big"), blob[i + 4:i + 8]
+        data, i = blob[i + 8:i + 8 + size], i + 12 + size
+        if not (len(kind) == 4 and kind.isalpha() and i <= len(blob)):
+            raise ValueError("a PNG chunk that does not fit")
+        if kind == b"IEND":
+            return texts, blob[i:]
+        if kind in (b"zTXt", b"iCCP"):  # a name, the compression method, then the text or the profile
+            name, packed = data.split(b"\0", 1)
+            data = name + b"\n" + _inflate(packed[1:], room)
+        elif kind == b"iTXt":  # a keyword, the compression flag and method, a language, a translated keyword, the text
+            key, rest = data.split(b"\0", 1)
+            lang, title, text = rest[2:].split(b"\0", 2)
+            data = b"\n".join([key, lang, title, _inflate(text, room) if rest[:1] == b"\1" else text])
+        if kind not in (b"IDAT", b"fdAT", b"PLTE"):
+            texts.append(data.decode("latin-1").encode() if kind in (b"tEXt", b"zTXt") else data)
+
+
+def _jpeg(blob: bytes, room: list) -> tuple:
+    """Segments through EOI, and what follows: comments, APPn segments (EXIF, XMP, ICC, IPTC) and unknown ones
+    scanned; frame, table and scan headers and each scan's coded data skipped."""
+    texts, i = [], 2
+    while True:
+        if blob[i] != 0xFF:
+            raise ValueError("not a JPEG marker")
+        marker = blob[i + 1]
+        i += 1 if marker == 0xFF else 2  # fill bytes may come before a marker
+        if marker == 0xFF or 0xD0 <= marker <= 0xD7 or marker == 0x01:  # fill, or a marker with no segment
+            continue
+        if marker == 0xD9:
+            return texts, blob[i:]
+        size = int.from_bytes(blob[i:i + 2], "big")
+        if size < 2 or i + size > len(blob):
+            raise ValueError("a JPEG segment that does not fit")
+        if not 0xC0 <= marker <= 0xDF:  # 0xC0 to 0xDF: frame, table and scan headers, coding data
+            texts.append(blob[i + 2:i + size])
+        i += size
+        if marker == 0xDA:  # the scan's coded data runs to its next marker
+            i = SCAN_END.search(blob, i).start()
+
+
+def _gif(blob: bytes, room: list) -> tuple:
+    """Blocks through the trailer, and what follows: extensions (comments, plain text, application data such as
+    XMP) scanned as stored; the header, palettes and each image's pixels skipped."""
+    texts, i = [], 13 + _palette(blob[10])
+    while blob[i] != 0x3B:
+        start = i
+        if blob[i] == 0x2C:  # an image: its descriptor, palette and LZW code size, then its pixels
+            i = _blocks(blob, i + 11 + _palette(blob[i + 9]))
+        elif blob[i] == 0x21:  # an extension: its label, then its data
+            i = _blocks(blob, i + 2)
+            texts.append(blob[start:i])
+        else:
+            raise ValueError("not a GIF block")
+    return texts, blob[i + 1:]
+
+
+def _blocks(blob: bytes, i: int) -> int:
+    """Past a GIF run of data sub-blocks and its terminator."""
+    while blob[i]:
+        i += blob[i] + 1
+    return i + 1
+
+
+def _palette(packed: int) -> int:
+    """The size of a GIF color table, from the flags that declare it."""
+    return 3 << ((packed & 7) + 1) if packed & 0x80 else 0
+
+
+def _webp(blob: bytes, room: list) -> tuple:
+    """The RIFF chunks, and what follows."""
+    end = 8 + int.from_bytes(blob[4:8], "little")
+    if end > len(blob):
+        raise ValueError("a WebP file shorter than it says")
+    return _riff(blob[12:end]), blob[end:]
+
+
+def _riff(data: bytes) -> list:
+    """EXIF, XMP, ICC and unknown chunks scanned; the coded image and its alpha skipped, in each animation frame too."""
+    texts, i = [], 0
+    while i < len(data):
+        kind, size = data[i:i + 4], int.from_bytes(data[i + 4:i + 8], "little")
+        if i + 8 + size > len(data):
+            raise ValueError("a WebP chunk that does not fit")
+        body, i = data[i + 8:i + 8 + size], i + 8 + size + size % 2  # chunks are padded to an even size
+        if kind == b"ANMF":  # a frame: its position and timing, then its own chunks
+            texts += _riff(body[16:])
+        elif kind not in (b"VP8 ", b"VP8L", b"ALPH"):
+            texts.append(body)
+    return texts
+
+
+def _heif(blob: bytes, room: list) -> tuple:
+    """HEIC and AVIF: everything but the coded image items' bytes, as stored. EXIF and XMP are items too, in the same
+    box as the coded images, so the item table says which bytes to skip."""
+    top = {kind: (start, end) for kind, start, end in _boxes(blob, 0, len(blob))}
+    if b"moov" in top:
+        raise ValueError("an image sequence: its frames are samples, not items")
+    meta = {kind: (start, end) for kind, start, end in _boxes(blob, top[b"meta"][0] + 4, top[b"meta"][1])}
+    coded = {item for item, kind in _item_types(blob, *meta[b"iinf"]).items() if kind in HEIF_CODED}
+    texts, at = [], 0
+    for start, end in sorted(_locations(blob, *meta[b"iloc"], coded)):
+        texts.append(blob[at:max(at, start)])
+        at = max(at, end)
+    return texts + [blob[at:]], b""
+
+
+def _boxes(data: bytes, i: int, end: int):
+    """(type, body start, end) of each ISOBMFF box from i to end."""
+    while i < end:
+        size, kind, head = int.from_bytes(data[i:i + 4], "big"), data[i + 4:i + 8], 8
+        if size == 1:  # a 64-bit size follows the type
+            size, head = int.from_bytes(data[i + 8:i + 16], "big"), 16
+        elif size == 0:  # the box runs to the end
+            size = end - i
+        if size < head or i + size > end:
+            raise ValueError("a box that does not fit")
+        yield kind, i + head, i + size
+        i += size
+
+
+def _item_types(blob: bytes, start: int, end: int) -> dict:
+    """Item id to item type, from iinf's infe boxes (versions 2 and 3 carry the type)."""
+    types = {}
+    for kind, at, _ in _boxes(blob, start + (6 if blob[start] == 0 else 8), end):
+        if kind == b"infe" and blob[at] >= 2:
+            n = 2 if blob[at] == 2 else 4
+            types[int.from_bytes(blob[at + 4:at + 4 + n], "big")] = blob[at + 6 + n:at + 10 + n]
+    return types
+
+
+def _locations(blob: bytes, start: int, end: int, items: set) -> list:
+    """(start, end) of every extent iloc places in this file, by file offset, for the given items."""
+    version, i, found = blob[start], start + 6, []
+    offset_size, length_size = blob[start + 4] >> 4, blob[start + 4] & 15
+    base_size, index_size = blob[start + 5] >> 4, blob[start + 5] & 15 if version else 0
+
+    def take(n: int) -> int:
+        nonlocal i
+        i += n
+        if i > end:
+            raise ValueError("an item location that does not fit")
+        return int.from_bytes(blob[i - n:i], "big")
+    for _ in range(take(2 if version < 2 else 4)):
+        item, method = take(2 if version < 2 else 4), take(2) & 15 if version else 0
+        here, base = take(2) == 0 and method == 0, take(base_size)  # data in this file, at a file offset
+        for _ in range(take(2)):
+            take(index_size)
+            offset, length = base + take(offset_size), take(length_size)
+            if item in items and here:
+                if not length or offset + length > len(blob):
+                    raise ValueError("an extent outside the file")
+                found.append((offset, offset + length))
+    return found
+
+
+def _inflate(packed: bytes, room: list) -> bytes:
+    """Compressed text, within what is left of the file's bound: more than MAX_CONTEXT in all reads as malformed."""
+    stream = zlib.decompressobj()
+    text = stream.decompress(packed, room[0] + 1)
+    room[0] -= len(text)
+    if room[0] < 0 or not stream.eof:
+        raise ValueError("compressed text that does not inflate within the bound")
+    return text + stream.unused_data
+
+
 # --- reading the commit, byte for byte --------------------------------------------------------
 
 
@@ -269,6 +468,20 @@ def added(diff: bytes) -> list:
     return found
 
 
+def images(lines: list, deadline: float) -> tuple:
+    """The added lines, each staged image's replaced by the lines of text it carries that its HEAD version did not,
+    and all of that text by path, for the key rule. Only a path with an added line that isn't UTF-8 text is read
+    whole to tell."""
+    texts, before = {}, {}
+    for path in dict.fromkeys(p for p, _, t in lines if b"\0" in t or t.decode("utf-8", "replace").encode() != t):
+        text = image_text(git_bytes(["cat-file", "blob", b":" + path], deadline))
+        if text is not None:
+            old = git_bytes(["cat-file", "blob", b"HEAD:" + path], deadline, ok=(0, 128))  # nothing there: a new file
+            texts[path], before[path] = text, set(image_text(old) or old.split(b"\n"))
+    return [x for x in lines if x[0] not in texts] + [
+        (p, n, line) for p, text in texts.items() for n, line in enumerate(text, 1) if line not in before[p]], texts
+
+
 def key_lines(lines: list) -> set:
     """Line numbers that belong to a private key: a key header followed by key body lines. A
     header with no body (a detection rule, a doc example) is not a key."""
@@ -312,11 +525,12 @@ def _own(found: str, own: set) -> bool:
 
 
 def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, approve, staged: bool = True,
-         own: set = frozenset()) -> list[str]:
+         own: set = frozenset(), texts: dict | None = None) -> list[str]:
     """Credentials and keys in every line; exposure patterns outside catalog files and allowlisted lines, each
     hit then put to `approve`. Lines with invalid UTF-8 are matched through a replacement view and never exempted.
-    A key header is left to the key rule (header plus body), whichever tier-0 pattern names it."""
-    policy, found, by_path, skip, hits = policy or {}, [], {}, {}, []
+    A key header is left to the key rule (header plus body), whichever tier-0 pattern names it; in an image, the
+    rule reads the text in `texts`."""
+    policy, texts, found, by_path, skip, hits = policy or {}, texts or {}, [], {}, {}, []
     tier0 = [(n, re.compile(p)) for n, p in CREDENTIALS.items()] + [("credential pattern", regex(p)) for p in leaves(policy.get("tier_0_always"))]
     exposed = [regex(p) for p in patterns]
     allow = [regex(p) for p in leaves(policy.get("allowlist_lines"))]
@@ -337,7 +551,8 @@ def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float,
             if not (valid and any(rx.search("+" + text) for rx in allow)):
                 hits.append((path, number, line))
     for path, numbers in by_path.items():
-        content = git_bytes(["cat-file", "blob", b":" + path], deadline, MAX_CONTEXT).split(b"\n") if staged else [x[2] for x in lines]
+        content = texts.get(path) or (git_bytes(["cat-file", "blob", b":" + path], deadline, MAX_CONTEXT).split(b"\n")
+                                      if staged else [x[2] for x in lines])
         keys = key_lines(content) & numbers
         found += [f"{_show(path, n, content[n - 1])}  <- private key material; never commit a key" for n in sorted(keys)]
     moved = _in_head({h[2] for h in hits}, deadline) if hits and staged else set()
@@ -460,7 +675,8 @@ def problems(config: dict, session_id: str, repo_root: str, message: str | None 
         return scan(message_lines(message), policy, patterns, deadline, approve, False, own), [], cls
     diff = git_bytes(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/",
                       "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
-    found = scan(added(diff), policy, patterns, deadline, approve, own=own)
+    lines, texts = images(added(diff), deadline)
+    found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
     names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
     found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
               for n in names if n and SECRET_FILE.search(os.fsdecode(n))]

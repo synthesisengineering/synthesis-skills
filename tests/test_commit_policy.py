@@ -7,6 +7,7 @@ former employer the principal has published, example-person for the principal's 
 import subprocess
 import sys
 import time
+import zlib
 from pathlib import Path
 
 import pytest
@@ -303,6 +304,127 @@ def test_a_moved_credential_still_blocks(tmp_path):
     subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-q", "--no-verify", "-m", "an old leak"], check=True)
     assert commit(repo, {"old.txt": "gone\n", "new.txt": leaked}).returncode != 0
+
+
+# --- images: the text they carry, never their pixels --------------------------------------------
+# Pixels are stored uncompressed here, so the protected name is in the file's bytes, where the old byte scan found it.
+PIXELS = zlib.compress(b"\0Bluebird\n" * 8, 0)
+XMP = b"<x:xmpmeta><dc:title>Bluebird launch</dc:title></x:xmpmeta>"
+
+
+def png(*chunks, after=b""):
+    body = [(b"IHDR", bytes(13)), *chunks, (b"IEND", b"")]
+    return b"\x89PNG\r\n\x1a\n" + b"".join(len(d).to_bytes(4, "big") + k + d + zlib.crc32(k + d).to_bytes(4, "big")
+                                           for k, d in body) + after
+
+
+def jpeg(*segments, coded=b"\0Bluebird\n" * 8):  # coded data with no 0xFF, as an encoder stuffs it
+    def segment(marker, data):
+        return bytes([0xFF, marker]) + (len(data) + 2).to_bytes(2, "big") + data
+    return b"\xff\xd8" + b"".join(segment(m, d) for m, d in [*segments, (0xDA, bytes(10))]) + coded + b"\xff\xd9"
+
+
+def gif(*blocks):
+    return b"GIF89a" + bytes(7) + b"".join(blocks) + b";"
+
+
+def gif_blocks(data):
+    return b"".join(bytes([len(data[i:i + 255])]) + data[i:i + 255] for i in range(0, len(data), 255)) + b"\0"
+
+
+def webp(*chunks):
+    body = b"WEBP" + b"".join(k + len(d).to_bytes(4, "little") + d + bytes(len(d) % 2) for k, d in chunks)
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
+
+
+def heif(*items, brand=b"heic"):
+    """ftyp, meta (iinf, and an iloc placing each item's one extent by file offset), then mdat holding the items."""
+    def box(kind, body, version=None):
+        body = (b"" if version is None else bytes([version, 0, 0, 0])) + body
+        return (len(body) + 8).to_bytes(4, "big") + kind + body
+
+    def meta(at):
+        places = b""
+        for n, (_, data) in enumerate(items, 1):
+            places += n.to_bytes(2, "big") + bytes(4) + b"\0\1" + at.to_bytes(4, "big") + len(data).to_bytes(4, "big")
+            at += len(data)
+        infe = b"".join(box(b"infe", n.to_bytes(2, "big") + b"\0\0" + kind + b"\0", 2) for n, (kind, _) in enumerate(items, 1))
+        count = len(items).to_bytes(2, "big")
+        return box(b"meta", box(b"iinf", count + infe, 0) + box(b"iloc", b"\x44\0" + count + places, 1), 0)
+    head = box(b"ftyp", brand + bytes(4) + b"mif1")
+    return head + meta(len(head) + len(meta(0)) + 8) + box(b"mdat", b"".join(data for _, data in items))
+
+
+GIF_PIXELS = b"," + bytes(9) + b"\2" + gif_blocks(PIXELS)
+
+
+@pytest.mark.parametrize("image", [png((b"IDAT", PIXELS)), jpeg(), gif(GIF_PIXELS), webp((b"VP8L", PIXELS)),
+                                   heif((b"hvc1", PIXELS), (b"hvc1", PIXELS)), heif((b"av01", PIXELS), brand=b"avif"),
+                                   jpeg((0xDB, b"Bluebird\n" + bytes(64))), png((b"PLTE", b"Bluebird\n"), (b"IDAT", b""))])
+def test_an_images_pixels_and_coding_tables_are_not_read_as_text(tmp_path, policy, image):
+    """2026-10-30: compressed pixels matched protected names at random, and every recaptured screenshot asked for
+    approval codes again. Only the pixel data is skipped: the coded pixels, their palette and coding tables."""
+    assert b"Bluebird" in image
+    result = commit(make_repo(tmp_path, STRICT), {"shot.bin": image})
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("image", [png((b"tEXt", b"Comment\0Bluebird launch"), (b"IDAT", PIXELS)),
+                                   png((b"zTXt", b"Comment\0\0" + zlib.compress(b"Bluebird launch"))),
+                                   png((b"iTXt", b"XML:com.adobe.xmp\0\1\0\0\0" + zlib.compress(XMP))),
+                                   png((b"iTXt", b"XML:com.adobe.xmp\0\0\0en\0\0" + XMP)),
+                                   png((b"iCCP", b"Display\0\0" + zlib.compress(b"desc Bluebird panel"))),
+                                   png((b"caBX", b"Bluebird")),
+                                   jpeg((0xFE, b"Bluebird launch")), jpeg((0xE1, b"http://ns.adobe.com/xap/1.0/\0" + XMP)),
+                                   jpeg((0xE1, b"Exif\0\0" + zlib.compress(b"x"))) + jpeg((0xFE, b"Bluebird")),
+                                   gif(b"!\xfe" + gif_blocks(b"Bluebird launch"), GIF_PIXELS),
+                                   gif(b"!\xff\x0bXMP DataXMP" + XMP + bytes([1, *range(255, -1, -1), 0])),  # XMP's trailer
+                                   webp((b"VP8X", bytes(10)), (b"VP8L", PIXELS), (b"XMP ", XMP)),
+                                   webp((b"ANMF", bytes(16) + b"EXIF" + (8).to_bytes(4, "little") + b"Bluebird")),
+                                   heif((b"hvc1", PIXELS), (b"Exif", b"\0\0\0\6Exif\0\0Bluebird launch")), heif((b"mime", XMP))])
+def test_the_text_an_image_carries_is_scanned_compressed_or_not(tmp_path, policy, image):
+    result = commit(make_repo(tmp_path, STRICT), {"shot.bin": image})
+    assert result.returncode != 0 and "shot.bin:" in result.stderr and "unapproved disclosure" in result.stderr
+
+
+@pytest.mark.parametrize("image", [png((b"IDAT", PIXELS), after=b"\nBluebird\n"),  # bytes after the image
+                                   png((b"IDAT", PIXELS))[:-6],  # truncated: no IEND
+                                   png((b"zTXt", b"Comment\0\0" + zlib.compress(b"x")[:-2]), (b"IDAT", PIXELS)),
+                                   jpeg()[:-2], gif(GIF_PIXELS)[:-1], webp((b"VP8L", PIXELS))[:-1],
+                                   heif((b"hvc1", PIXELS))[:-1]])
+def test_an_image_that_does_not_parse_exactly_is_read_byte_for_byte(tmp_path, policy, image):
+    result = commit(make_repo(tmp_path, STRICT), {"shot.bin": image})
+    assert result.returncode != 0 and "unapproved disclosure" in result.stderr
+
+
+def test_credentials_and_keys_in_an_images_text_block_in_every_repository(tmp_path, policy):
+    repo = make_repo(tmp_path, PERSONAL)
+    result = commit(repo, {"a.png": png((b"tEXt", f"Source\0{FAKE_AWS}".encode()), (b"IDAT", PIXELS))})
+    assert result.returncode != 0 and "AWS access key" in result.stderr
+    pem = "\n".join([KEY, *BODY, "abc=", KEY.replace("BEGIN", "END")]).encode()
+    result = commit(make_repo(tmp_path, PERSONAL, "keys"), {"b.png": png((b"zTXt", b"Key\0\0" + zlib.compress(pem)))})
+    assert result.returncode != 0 and "private key material" in result.stderr
+
+
+def test_an_edited_image_is_checked_for_the_text_its_last_commit_did_not_carry(tmp_path, policy):
+    repo = make_repo(tmp_path, PERSONAL)
+    assert commit(repo, {"shot.png": png((b"tEXt", b"Comment\0Bluebird launch"), (b"IDAT", PIXELS))}).returncode == 0
+    subprocess.run(["git", "-C", str(repo), "remote", "set-url", "origin", STRICT], check=True)
+    recaptured = (b"IDAT", zlib.compress(b"\0Bluebird\n" * 9, 0))
+    result = commit(repo, {"shot.png": png((b"tEXt", b"Comment\0Bluebird launch"), recaptured)})
+    assert result.returncode == 0, result.stderr
+    assert commit(repo, {"shot.png": png((b"tEXt", b"Comment\0Bluebird relaunch"), recaptured)}).returncode != 0
+
+
+def test_image_text_inflates_within_its_bound_and_follows_concatenated_images(monkeypatch):
+    # A stuffed 0xFF, a restart marker and a fill byte inside the first scan, a second scan, then a second image.
+    progressive = jpeg((0xFE, b"first"), coded=b"\x12\xff\x00\x34\xff\xd0\x56\xff\xff\xda")[:-2]
+    text = cc.image_text(progressive + b"\0\x0c" + bytes(10) + b"Bluebird\xff\xd9" + jpeg((0xFE, b"second")))
+    assert b"first" in text and b"second" in text and not any(b"Bluebird" in line for line in text)
+    assert cc.image_text(b"plain text\n") is None and cc.image_text(b"\x89PNG\r\n\x1a\n") is None
+    monkeypatch.setattr(cc, "MAX_CONTEXT", 1000)
+    assert cc.image_text(png((b"zTXt", b"k\0\0" + zlib.compress(b"x" * 999)))) is not None
+    assert cc.image_text(png((b"zTXt", b"k\0\0" + zlib.compress(b"x" * 1001)))) is None
 
 
 # --- the YAML subset ----------------------------------------------------------------------------
