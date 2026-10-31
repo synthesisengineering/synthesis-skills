@@ -238,10 +238,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # 32 MiB bound 8; spacing 28. images() 12, an image's added lines replaced by the text its HEAD version did not
 # carry, and its spacing 2; the key rule reading that text in scan() 2; the call in problems() 1; the zlib import 1;
 # the docstring's sentence 1.
+# 5.3.6 adds 26 to both (guards.py), after the Ownwords release and npm publish on 2026-10-30, run from the
+# synthesis-skills checkout, counted as two deploys of synthesis-skills: a publish identified by what it publishes, the
+# function 21 (its docstring 4, the release's repository 4, the npm package path 11, the folder otherwise 1, def 1),
+# npm's options that take a value 1, spacing 4. And 118 more to the plugin (synthesis-daily-rituals'
+# stop_reprompts.py), the weekly count of Stop-hook send-backs Rajiv asked for that night: the module's docstring and
+# shebang 15, imports 8, the hook's labels 7, the archive's location 2, the hook's words read from its blocking-error
+# report 5, each send-back in the window found by its file's last write 27, the count by check, harness and repeated
+# item 14, the command line and its report 25, the entry point 2, spacing 13.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8080
-PLUGIN_BUDGET = 25092
+CORE_BUDGET = 8106
+PLUGIN_BUDGET = 25236
 
 
 def _lines(files):

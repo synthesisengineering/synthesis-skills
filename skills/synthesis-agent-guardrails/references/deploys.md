@@ -54,7 +54,10 @@ commands passed every shell guard until 2026-10-30.
 A blocked deploy files a request under a random code, which the principal types as
 `approve <code>`; the block message says "approve followed by the code", never the two
 together. The approval binds the exact command text and, for pushes, the commit each
-target's HEAD is at: HEAD moving before the run voids it. It lets one run through within
+target's HEAD is at: HEAD moving before the run voids it. A build deploy's target is what it
+publishes: `gh release create -R owner/repo` that repository, `npm publish <path>` that package, anything
+else the folder it runs in. Until 2026-10-30 it was always the folder, so a release run from an unrelated
+checkout bound that checkout's HEAD and set off its rapid-redeploy brake. It lets one run through within
 15 minutes. A command that deploys the same site twice (`git push && git push`) is
 refused outright: one approval covers one publish. `synthesis approvals` lists what is
 waiting. There is no command to approve: only the principal's own prompt grants, and the

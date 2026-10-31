@@ -226,6 +226,25 @@ def test_a_rapid_approval_still_counts_if_the_window_closes_before_the_rerun(sit
     assert _push(site) is None
 
 
+def test_a_publish_is_identified_by_what_it_publishes_not_the_folder_it_runs_in(site, tmp_path):
+    """2026-10-30: a release of one repository and an npm publish of a tarball, run from another checkout, counted
+    as two deploys of that checkout: the second hit its rapid-redeploy brake and both bound its HEAD."""
+    release = "gh release create v2.0.0 -R acme/tool --verify-tag --title Tool release.tgz"
+    publish = f"npm publish --access public {tmp_path / 'build' / 'tool-2.0.0.tgz'}"
+    run = lambda command: guards.check("Bash", {"command": command}, {}, cwd=str(site))  # noqa: E731
+    _approve(run(release))
+    assert run(release) is None
+    reason = run(publish)
+    assert "production" in reason and "rapid" not in reason  # another package: not a second deploy of anything
+    _approve(reason)
+    _post(site, "unrelated", LIVE)
+    _commit(site, "unrelated work in the checkout the shell is in")
+    assert run(publish) is None  # bound to the package, not to that checkout's HEAD
+    assert "within 45 minutes" in run(release)  # the same repository again is a rapid redeploy
+    assert guards._publish_target(["npm", "publish"], str(site)) == str(site)  # publishing the folder itself
+    assert guards._publish_target(["gh", "release", "create", "v1"], str(site)) == str(site)
+
+
 def test_linked_worktrees_share_the_brake_with_their_main_checkout(site, tmp_path):
     _approve(_push(site))
     _push(site)
