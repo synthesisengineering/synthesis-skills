@@ -8,8 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 - **A later mid-day run is swept** (daily rituals 3.5.1). The skill allows several mid-day syncs a day, but the decay
   sweep read only `YYYY-MM-DD-(day-start|midday|day-end).md`, so a second mid-day record (`2026-10-30-midday-2.md`)
-  landed in `excluded` and its Decays lines were never swept (reported by the McClatchy operations seat,
-  2026-10-31). `midday-N` (N = 2 to 999) is now read in order after the first mid-day and before the day-end, and
+  landed in `excluded` and its Decays lines were never swept (reported by another workspace's operations
+  seat, 2026-10-31). `midday-N` (N = 2 to 999) is now read in order after the first mid-day and before the day-end, and
   the worker contract names the form.
 
 ## [5.3.6] - 2026-10-30
