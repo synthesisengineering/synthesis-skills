@@ -185,7 +185,7 @@ This is fast (under a second) and prevents an entire class of "I lost an hour be
 
 ## Gmail IMAP throttle makes `imapsync` ETA throttle-bound, not bandwidth-bound
 
-**Incident:** A Gmail-to-Gmail migration of ~1,000 unique messages (~300 MiB total) was estimated at 15–30 minutes based on Gmail's documented IMAP transfer ceiling of roughly 1.5 MiB/sec. Actual observed transfer rate: **0.10 messages/sec, ~14 KiB/sec** sustained. The full run took just under 3 hours of wall-clock for the copy phase alone, an order of magnitude longer than the byte-count estimate suggested.
+**Incident:** A Gmail-to-Gmail migration of 731 unique messages (~292 MiB total) was estimated at 15–30 minutes based on Gmail's documented IMAP transfer ceiling of roughly 1.5 MiB/sec. The observed rate was **0.10 messages/sec** sustained, two orders of magnitude below that ceiling, so a fresh copy of that size takes about two hours: the estimate was low by 5–10×. That copy finished sooner only because a first attempt, stopped after 33 minutes, had already copied part of the mailbox, and `imapsync` skipped those messages on the second run, which took about 10 minutes.
 
 **Why it happens:** Gmail's IMAP server enforces per-account throttling that prioritizes interactive use (Gmail web UI, mobile clients) over sustained automated transfers. The 1.5 MiB/sec figure represents an upper bound under non-throttling conditions; in practice, sustained transfer from a single account during normal Google business hours runs at 1–2 orders of magnitude slower. The throttle scales with the destination account's activity, source account's activity, time of day, and Google's current capacity headroom.
 
@@ -196,7 +196,7 @@ This is fast (under a second) and prevents an entire class of "I lost an hour be
 3. Compute the projected wall-clock from `(total_unique_messages / observed_msgs_per_sec)`.
 4. Report the revised ETA explicitly to the user. Do not let an early under-estimate stand.
 
-For a fresh account-pair migration of ~1,000 unique messages, plan on 2–3 hours wall-clock as the baseline. Faster is a pleasant surprise; slower is normal under aggressive throttling.
+For a fresh account-pair migration of about 700 unique messages, plan on 2–3 hours wall-clock as the baseline. Faster is a pleasant surprise; slower is normal under aggressive throttling.
 
 **Implication for orchestration:** A multi-hour run cannot live inside a single conversation session's lifetime. Use a shell-level detachment pattern (`nohup` + stdio redirection + `disown`) so the imapsync process re-parents to `init` and survives any session reset, terminal disconnect, or harness lifecycle event. The harness's `background-task` mechanism is not equivalent — it tracks the task and can terminate it.
 

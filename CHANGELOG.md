@@ -18,6 +18,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   CI was parked behind the principal's next message, though the agent could watch CI itself. The catalog's new entry
   and the Stop hook's built-in phrases catch "any message from you" and "ping me when", and Case 9 says what to do
   instead: a watcher that waits, carries the work forward and stops at the first failure.
+- **The Gmail throttle pitfall gives its incident's recorded figures** (inbox cleanup 2.0.1). It said about 1,000
+  messages and a copy that ran just under three hours; the record says 731 messages, a first attempt stopped at 33
+  minutes and a second run of about 10 minutes, with the observed rate putting a fresh copy at about two hours. The
+  2–3 hour planning figure stands.
 
 ## [5.3.7] - 2026-11-02
 
