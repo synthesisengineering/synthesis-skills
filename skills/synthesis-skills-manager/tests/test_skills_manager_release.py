@@ -165,6 +165,60 @@ def test_dry_run_publishes_nothing(tmp_path):
     assert git(repo, "tag") == ""
 
 
+# ---- the GitHub release -------------------------------------------------------
+
+def gh_fake(exists=False, latest="v5.1.0", create_rc=0):
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:3] == ["gh", "release", "view"]:
+            return subprocess.CompletedProcess(argv, 0 if exists else 1, "", "")
+        if argv[:3] == ["gh", "release", "create"]:
+            return subprocess.CompletedProcess(argv, create_rc, "", "HTTP 403" if create_rc else "")
+        listed = [{"tagName": latest, "isLatest": True}, {"tagName": "v4.149.7", "isLatest": False}]
+        return subprocess.CompletedProcess(argv, 0, json.dumps(listed), "")
+    return run, calls
+
+
+def test_github_release_is_created_from_the_changelog_and_read_back_as_latest(tmp_path):
+    repo = source_repo(tmp_path, changelog="# Changelog\n\n## [5.1.0] - 2026-11-02\n\n- **One** thing.\n\n"
+                                          "## [5.0.9] - 2026-11-01\n\n- older\n")
+    git(repo, "remote", "add", "github", "https://github.com/example/demo.git")
+    run, calls = gh_fake()
+    assert release.github_release(repo, "5.1.0", run=run) == ["example/demo: GitHub release v5.1.0, latest"]
+    create = next(c for c in calls if c[:3] == ["gh", "release", "create"])
+    assert create[3:] == ["v5.1.0", "-R", "example/demo", "--verify-tag", "--latest", "--title", "Synthesis 5.1.0",
+                          "--notes", "- **One** thing."]
+
+
+def test_an_existing_github_release_is_not_created_twice(tmp_path):
+    repo = source_repo(tmp_path)
+    git(repo, "remote", "add", "github", "git@github.com:example/demo.git")
+    run, calls = gh_fake(exists=True)
+    assert release.github_release(repo, "5.1.0", run=run) == ["example/demo: GitHub release v5.1.0, latest"]
+    assert not [c for c in calls if c[:3] == ["gh", "release", "create"]]
+
+
+def test_a_github_release_that_fails_or_is_not_latest_stops_the_release(tmp_path):
+    repo = source_repo(tmp_path)
+    git(repo, "remote", "add", "github", "https://github.com/example/demo")
+    with pytest.raises(setup.SetupError, match="cannot create the GitHub release v5.1.0: HTTP 403"):
+        release.github_release(repo, "5.1.0", run=gh_fake(create_rc=1)[0])
+    with pytest.raises(setup.SetupError, match="GitHub shows v4.149.7 as latest, not v5.1.0"):
+        release.github_release(repo, "5.1.0", run=gh_fake(latest="v4.149.7")[0])
+
+
+def test_without_a_github_remote_or_in_a_dry_run_no_github_release_is_made(tmp_path):
+    repo = source_repo(tmp_path)
+    run, calls = gh_fake()
+    assert release.github_release(repo, "5.1.0", run=run) == ["no GitHub remote, so no GitHub release"]
+    git(repo, "remote", "add", "github", "https://github.com/example/demo.git")
+    assert release.github_release(repo, "5.1.0", dry_run=True, run=run)[0].startswith(
+        "would create the GitHub release v5.1.0 on example/demo")
+    assert calls == []
+
+
 # ---- installed bytes against the tag -------------------------------------------
 
 def test_installed_bytes_must_equal_the_tag_whatever_the_label(tmp_path):

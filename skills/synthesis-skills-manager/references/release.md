@@ -65,6 +65,12 @@ per remote, so a channel or pin never moves without the others. Success is read 
 with `git ls-remote`, never from an exit status: a piped push once reported success
 while nothing moved (lesson 2026-09-21, release train quiet tree and exit codes).
 
+Then the GitHub release: for each GitHub remote, the script creates the release for the
+tag (`gh release create --verify-tag --latest`, titled "Synthesis X.Y.Z", its notes the
+version's CHANGELOG entry) unless it exists, and reads `gh release list` back until that
+tag is the latest. A visitor reads GitHub's release list as the current version; before
+5.3.9 v5 releases created none, and the list showed a 4.x release as latest.
+
 ## Each harness's own commands
 
 Installation calls onboarding's `scripts/setup.py`, so release and setup cannot drift:

@@ -17,6 +17,7 @@ Stages, each gating the next:
      holding it means another release is under way: refuse and name it.
   3. Publish: create the tag, push main, stable and the tag to every push remote in one
      atomic push each; success is read back with `git ls-remote`, never from an exit status.
+     Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest.
   4. Install with each harness's own commands (onboarding's setup.py), then verify bytes.
   5. Update the stable runtime from a verified copy and run `synthesis doctor`.
 Exit 0 only when every found harness verified and doctor is healthy.
@@ -44,6 +45,7 @@ from synthesis import board, doctor, install, paths  # noqa: E402
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
 LOADABLE = ("skills/", "synthesis/", "hooks/", ".claude-plugin/", ".codex-plugin/", ".muse-plugin/")
 IGNORED = ("__pycache__", ".DS_Store")
+GITHUB = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
 
 
 def git(repo: Path, *args: str, timeout: float = 600) -> subprocess.CompletedProcess:
@@ -66,6 +68,12 @@ def manifest_version(repo: Path) -> tuple:
 def changelog_version(repo: Path) -> str:
     match = re.search(r"^## \[?(\d+\.\d+\.\d+)\]?", (repo / "CHANGELOG.md").read_text(encoding="utf-8"), re.M)
     return match.group(1) if match else ""
+
+
+def changelog_entry(repo: Path, version: str) -> str:
+    text = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+    match = re.search(rf"^## \[?{re.escape(version)}\]?[^\n]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return match.group(1).strip() if match else ""
 
 
 def ci_state(repo: Path, sha: str, run=setup.run) -> tuple:
@@ -160,6 +168,30 @@ def publish(repo: Path, version: str, dry_run: bool = False) -> list:
     return lines
 
 
+def github_release(repo: Path, version: str, dry_run: bool = False, run=setup.run) -> list:
+    """The GitHub release for the tag, marked latest: a visitor reads GitHub's release list as the current version,
+    and on 2026-11-02 it still showed a 4.x release as latest because v5 releases created none."""
+    tag = f"v{version}"
+    slugs = sorted({m.group(1) for m in map(GITHUB.match, git(repo, "remote", "-v").stdout.split()) if m})
+    if not slugs:
+        return ["no GitHub remote, so no GitHub release"]
+    if dry_run:
+        return [f"would create the GitHub release {tag} on {', '.join(slugs)}, latest, notes from the CHANGELOG"]
+    lines = []
+    for slug in slugs:
+        if run(["gh", "release", "view", tag, "-R", slug, "--json", "tagName"]).returncode:
+            made = run(["gh", "release", "create", tag, "-R", slug, "--verify-tag", "--latest", "--title",
+                        f"Synthesis {version}", "--notes", changelog_entry(repo, version) or f"Release {tag}"])
+            if made.returncode:
+                raise setup.SetupError(f"{slug}: cannot create the GitHub release {tag}: {setup._tail(made)}")
+        listed = run(["gh", "release", "list", "-R", slug, "--json", "tagName,isLatest", "--limit", "20"])
+        latest = [r.get("tagName") for r in setup._json(listed.stdout) or [] if r.get("isLatest")]
+        if latest != [tag]:
+            raise setup.SetupError(f"{slug}: GitHub shows {', '.join(latest) or 'no release'} as latest, not {tag}")
+        lines.append(f"{slug}: GitHub release {tag}, latest")
+    return lines
+
+
 def blob_id(path: Path) -> str:
     data = os.readlink(path).encode() if path.is_symlink() else path.read_bytes()
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
@@ -245,6 +277,7 @@ def main(argv=None) -> int:
                 raise setup.SetupError(f"another release is under way: {holders[0].session} ({holders[0].goal})")
             train = "" if args.dry_run else hold_train(repo, session, version)
             lines += publish(repo, version, args.dry_run)
+            lines += github_release(repo, version, args.dry_run)
         installed, verified, found = install_and_verify(repo, version, clients, args.dry_run)
         lines += installed
     except setup.SetupError as exc:

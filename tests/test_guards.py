@@ -95,9 +95,14 @@ def test_a_deploy_inside_a_script_the_command_runs_needs_approval(tmp_path):
 
 
 @pytest.mark.parametrize("command", ["npx wrangler deploy --dry-run", "npm publish --dry-run",
-                                     "npx wrangler pages deploy dist --dry-run"])
-def test_a_dry_run_publishes_nothing(command):
+                                     "npx wrangler pages deploy dist --dry-run", "gh release create --help"])
+def test_a_dry_run_or_help_publishes_nothing(command):
     assert guards.check("Bash", {"command": command}, {}) is None
+
+
+def test_a_short_h_still_deploys():
+    """2026-11-02: `--help` publishes nothing; a short `-h` stays held, as some deploy tools read it otherwise."""
+    assert "approve" in guards.check("Bash", {"command": "gh release create v1.0.0 -h"}, {})
 
 
 def test_the_desktop_apps_terminal_tab_is_guarded_like_bash(tmp_path):

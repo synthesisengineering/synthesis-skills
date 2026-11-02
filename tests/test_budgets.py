@@ -258,10 +258,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # lesson in the usual place: the module's shebang and docstring 16, imports 8, the heading and label markers 2, the git
 # helper 3, a line's marker test 2, the section a marker covers 13, the markers added since the date and unlinked 23,
 # the command line and its report 22, the entry point 2, spacing 13.
+# 5.3.9 adds 1 to both (guards.py): the docstring line saying a `--help` publishes nothing and why `-h` stays held.
+# And 33 more to the plugin (synthesis-skills-manager's release.py), a GitHub release for each version at Rajiv's yes
+# of 2026-11-02, since GitHub's release list still showed a 4.x release as latest: the stage's docstring line 1, the
+# GitHub remote pattern 1, the CHANGELOG entry reader 4, github_release 22 (def 1, docstring 2, the tag and the
+# GitHub remotes 2, no remote or a dry run 4, the loop 2, create unless it exists and refuse on failure 5, read back
+# as latest 4, the line and its return 2), its call in main 1, spacing 4.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8107
-PLUGIN_BUDGET = 25395
+CORE_BUDGET = 8108
+PLUGIN_BUDGET = 25429
 
 
 def _lines(files):

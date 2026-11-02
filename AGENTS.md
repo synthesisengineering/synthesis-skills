@@ -93,7 +93,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   on the main checkout's `CHANGELOG.md`; another live session holding it means
   another release is under way, and the script names it), tags, pushes `main`,
   `stable` and the tag atomically to every push remote and reads them back with
-  `git ls-remote`, installs into Claude Code, Codex and Muse with each harness's
+  `git ls-remote`, creates the GitHub release for the tag (its CHANGELOG entry as the
+  notes, read back as latest), installs into Claude Code, Codex and Muse with each harness's
   own commands, verifies each harness's installed files equal the tag at the folder
   it reports loading, then updates the stable runtime and runs `synthesis doctor`.
   A release is not complete until the script exits 0.
