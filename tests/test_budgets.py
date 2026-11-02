@@ -252,10 +252,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # --compact-brief flag 2 and its call 3.
 # 5.3.7 adds 6 to the plugin (decay_sweep.py), after a second mid-day run's record was never swept: its name 1, the
 # match that reads it 0, its place after the first mid-day and before the day-end 5.
+# 5.3.8 adds 1 to both (reply_check.py), the Stop hook's two phrases for an external wait handed back to the
+# principal (2026-11-02). And 104 more to the plugin (synthesis-daily-rituals' stray_lessons.py), day-end's check for
+# lessons written into project records instead of the lessons folder, after the principal asked that day for every
+# lesson in the usual place: the module's shebang and docstring 16, imports 8, the heading and label markers 2, the git
+# helper 3, a line's marker test 2, the section a marker covers 13, the markers added since the date and unlinked 23,
+# the command line and its report 22, the entry point 2, spacing 13.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8106
-PLUGIN_BUDGET = 25290
+CORE_BUDGET = 8107
+PLUGIN_BUDGET = 25395
 
 
 def _lines(files):
