@@ -113,8 +113,25 @@ def test_self_test_fails_when_the_deny_is_for_another_reason(runtime):
 
 def test_self_test_warns_over_the_latency_budget(runtime):
     home, _ = runtime
-    check = doctor.check_self_test(home, runs=1, run=deny(delay=0.06))
+    check = doctor.check_self_test(home, runs=1, run=deny(delay=0.06), background=lambda: False)
     assert check.status == "warn" and "over the 50 ms budget" in check.detail
+
+
+def test_self_test_at_background_priority_reports_the_time_without_judging_it(runtime):
+    """2026-11-02: the Console runs as a launchd Background job, and its doctor read 131 ms; 37 ms at normal priority."""
+    home, _ = runtime
+    check = doctor.check_self_test(home, runs=1, run=deny(delay=0.06), background=lambda: True)
+    assert check.status == "info" and "background priority" in check.detail
+    assert doctor.check_self_test(home, runs=1, run=allow, background=lambda: True).status == "fail"
+
+
+def test_background_priority_is_read_from_the_os():
+    assert doctor.background_priority() is False  # this test process runs at normal priority
+    if sys.platform == "darwin":
+        probe = "from synthesis import doctor; print(doctor.background_priority())"
+        out = subprocess.run(["taskpolicy", "-b", sys.executable, "-c", probe], capture_output=True, text=True,
+                             cwd=Path(doctor.__file__).parents[1]).stdout.strip()
+        assert out == "True"
 
 
 def test_self_test_times_the_fastest_run(runtime):
