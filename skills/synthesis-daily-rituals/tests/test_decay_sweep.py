@@ -208,6 +208,19 @@ def test_worker_artifacts_use_declared_order_without_cross_workspace_discovery(t
     assert code == 0 and report["status"] == "CLEAR" and len(report["scanned"]) == 2
 
 
+def test_a_later_mid_day_run_is_swept_after_the_first_and_before_the_day_end(tmp_path):
+    """2026-10-31: a second mid-day run's record (2026-10-30-midday-2.md) matched no name and was never swept."""
+    root = tmp_path / "worker"
+    plan(root, "2026-09-08-midday", item())
+    plan(root, "2026-09-08-midday-2", item() + "**Released:** 2026-09-08 (user decision)\n")
+    code, report = run(extra=["--artifacts-dir", str(root)])
+    assert code == 0 and report["status"] == "CLEAR" and len(report["scanned"]) == 2 and report["excluded"] == []
+    plan(root, "2026-09-08-day-end", item())  # the day-end, later still, puts it back
+    plan(root, "2026-09-08-midday-1", "")  # not a later run's name
+    code, report = run(extra=["--artifacts-dir", str(root)])
+    assert len(report["due"]) == 1 and [Path(p).name for p in report["excluded"]] == ["2026-09-08-midday-1.md"]
+
+
 def test_list_metadata_and_done_markers_are_item_scoped(tmp_path):
     plan(tmp_path, "2026-09-08", "- [x] Closed\n  **Decays:** 2026-09-08\n- [ ] Still open\n  **Decays:** 2026-09-08\n")
     code, report = run(tmp_path)
