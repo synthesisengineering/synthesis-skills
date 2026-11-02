@@ -17,7 +17,6 @@ import json
 import os
 import re
 import shutil
-import statistics
 import subprocess
 import sys
 import time
@@ -123,9 +122,10 @@ def run_hook(home: Path, payload: dict, run=subprocess.run):
 
 
 def check_self_test(home: Path, runs: int = 3, run=subprocess.run) -> Check:
-    """Send `rm -rf ~` to the stable hook (it only inspects); it must deny, within the budget."""
+    """Send `rm -rf ~` to the stable hook (it only inspects); it must deny, within the budget. The fastest run is
+    the hook's own cost: other work on the Mac only adds time (2026-11-02: a median of 161 ms beside a busy scan)."""
     results = [run_hook(home, SELF_TEST, run) for _ in range(runs)]
-    ms = statistics.median(r[2] for r in results)
+    ms = min(r[2] for r in results)
     denied, reason = results[-1][0], results[-1][1]
     if not denied or "recursive delete" not in reason:
         return Check("fail", "hook self-test", f"the stable hook let `rm -rf ~` through ({reason or 'no decision'})")

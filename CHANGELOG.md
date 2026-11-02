@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.10] - 2026-11-02
+
+- **The hook self-test times the hook, not the Mac's load.** The doctor sends `rm -rf ~` to the stable hook three
+  times and warned when the median took over 50 ms. Run by the Synthesis Console beside its own repository scan and
+  records doctor, the median read 161 ms and 364 ms while the same test alone read 44 ms. It now takes the fastest of
+  the three runs, the hook's own cost, since other work on the Mac only adds time; a hook slower than the budget on
+  every run still warns.
+
 ## [5.3.9] - 2026-11-02
 
 - **Each release gets a GitHub release** (skills manager 3.2.0). GitHub's release list is what a visitor reads as

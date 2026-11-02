@@ -117,6 +117,15 @@ def test_self_test_warns_over_the_latency_budget(runtime):
     assert check.status == "warn" and "over the 50 ms budget" in check.detail
 
 
+def test_self_test_times_the_fastest_run(runtime):
+    """2026-11-02: the Console's own scans ran beside the doctor, and a median of three runs read 161 ms."""
+    home, _ = runtime
+    delays = iter([0.2, 0.0, 0.2])
+    busy = lambda *args, **kwargs: deny(delay=next(delays))(*args, **kwargs)  # noqa: E731
+    check = doctor.check_self_test(home, run=busy)
+    assert check.status == "ok", check.detail
+
+
 def test_shell_name_probe(runtime):
     home, _ = runtime
     assert doctor.check_shell_name(home, "muse", "bash", run=deny()).status == "ok"
