@@ -220,6 +220,16 @@
       "case_ref": "case-studies.md#case-8"
     },
     {
+      "id": "as_message_me_to_continue",
+      "phrase": "\\b(?:any|a|one) (?:message|word|reply|ping) from you\\b|\\b(?:ping|message|nudge|remind) me (?:when|once|after)\\b",
+      "match": "regex",
+      "category": "asking_as_shortcut",
+      "exempt_when": [],
+      "rationale": "Hands the principal a wake-up chore for an external wait (CI, a registry, a deploy) the agent can watch itself.",
+      "replacement": "Start a watcher that waits, carries the work forward and stops on a failure; report what it will do.",
+      "case_ref": "case-studies.md#case-9"
+    },
+    {
       "id": "as_leave_you_the_calls",
       "phrase": "leave you the (\\w+ )?judge?ment calls?",
       "match": "regex",

@@ -19,6 +19,14 @@ def test_shortcut_phrasing_blocks_once():
     assert reply_check.check({**payload, "stop_hook_active": True}, {}) is None
 
 
+def test_a_wait_handed_back_to_the_principal_is_sent_back():
+    """2026-11-02: a merged release waiting on CI was parked behind the principal's next message."""
+    reason = reply_check.check({"last_assistant_message": "CI is still queued; any message from you, even release, "
+                                                          "starts it."}, {})
+    assert reason and '"any message from you"' in reason
+    assert reply_check.check({"last_assistant_message": "A watcher releases it when CI passes."}, {}) is None
+
+
 def test_naming_a_rule_in_quotes_or_code_is_not_a_violation():
     reply = 'The voice rules ban "for now" and `as a first pass`, so I removed both.'
     assert reply_check.check({"last_assistant_message": reply}, {}) is None

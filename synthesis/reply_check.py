@@ -20,6 +20,7 @@ DEFAULT_PHRASES = [
     "that's a larger task", "not a pain point today", "doesn't bite hard", "not a real concern at current volume",
     "the only real con is", "won't matter until", "that's a theoretical concern", "in the interim",
     "document-and-defer", "execute or defer", "defer this", "deferred to", "out of scope for now",
+    "any message from you", "ping me when",  # an external wait handed back to the principal (2026-11-02)
 ]
 CODE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 QUOTED = re.compile(r"\"[^\"\n]{1,400}\"|“[^”\n]{1,400}”")
