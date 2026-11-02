@@ -14,6 +14,7 @@ Called from setup.py; see its usage.
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -30,6 +31,7 @@ import setup
 from synthesis import yamlish  # the plugin's YAML reader; setup put the plugin root on sys.path
 
 ARCHIVE_NOTE = "<!-- synthesis-instructions:generated -->"
+BRIEF_BEGIN, BRIEF_END = "<!-- synthesis-setup:begin compact-instructions -->", "<!-- synthesis-setup:end compact-instructions -->"
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 LEGACY_KEYS = {"workspace_instructions", "migrations", "installer", "installer_args", "source_env",
                "status_args", "primary", "fallbacks", "superseded_remotes"}
@@ -199,7 +201,8 @@ def new_workspace(name: str, remote: str = "", dry_run: bool = False) -> list:
     assets, written = Path(__file__).resolve().parents[1] / "assets" / "workspace", []
     seeds = {(".agents/" + r[7:] if r.startswith("agents/") else r): src.read_text(encoding="utf-8")
              for src in assets.rglob("*") if src.is_file() for r in [src.relative_to(assets).as_posix()]}
-    seeds.update({"CLAUDE.md": "@AGENTS.md\n", ".gitignore": ".DS_Store\n"})
+    seeds.update({"CLAUDE.md": "@AGENTS.md\n", ".gitignore": ".DS_Store\n",
+                  ".agents/workspace-AGENTS.md": with_brief(seeds[".agents/workspace-AGENTS.md"])})
     if dry_run:  # counts the seeds it would write, and writes nothing
         missing, origin = sum(not (repo / rel).exists() for rel in seeds), _git(["remote", "get-url", "origin"], repo)
         return [f"{repo.name}: would {f'write and commit {missing} files' if missing else 'leave its files as they are'}"
@@ -474,7 +477,47 @@ def _digest(folder: Path) -> str:
 def render_instructions(org_text: str, personal_text: str = "") -> str:
     kernel = (Path(__file__).resolve().parents[1] / "references" / "kernel.example.md").read_text(encoding="utf-8")
     parts = [ARCHIVE_NOTE, "# Workspace Instructions", "## Public", kernel.strip(), "## Organization", org_text.strip()]
-    return "\n\n".join(parts + (["## Personal", personal_text.strip()] if personal_text.strip() else [])) + "\n"
+    return with_brief("\n\n".join(parts + (["## Personal", personal_text.strip()] if personal_text.strip() else [])) + "\n")
+
+
+# ---- the compaction brief in each workspace's instructions --------------------------
+# Claude Code follows a "Compact Instructions" section in an AGENTS.md its CLAUDE.md imports (tested 2026-10-31), so
+# the brief lives in the workspace instructions synthesis keeps: only synthesis workspaces carry it.
+
+def with_brief(text: str) -> str:
+    """The text with the compaction brief's marked block refreshed where it is, or added at the end."""
+    brief = (Path(__file__).resolve().parents[1] / "references" / "compact-instructions.md").read_text(encoding="utf-8")
+    block = f"{BRIEF_BEGIN}\n{brief.strip()}\n{BRIEF_END}\n"
+    if BRIEF_BEGIN in text and BRIEF_END in text:
+        head, rest = text.split(BRIEF_BEGIN, 1)
+        return head + block + rest.split(BRIEF_END, 1)[1].lstrip("\n")
+    return text.rstrip("\n") + "\n\n" + block
+
+
+def add_brief(interactive: bool, yes: bool = False, dry_run: bool = False) -> list:
+    """Keep the brief current in every synthesis workspace (a folder whose CLAUDE.md is `@AGENTS.md`): a block already
+    there is refreshed; a file without one is the person's, so it gets one only with their yes or --compact-brief."""
+    lines, seen = [], set()
+    for pattern in setup.paths.config().get("workspace_roots") or ["~/workspaces/*"]:
+        for root in sorted(Path(p) for p in glob.glob(os.path.expanduser(pattern))):
+            claude, agents = root / "CLAUDE.md", root / "AGENTS.md"
+            if not (claude.is_file() and agents.is_file()) or claude.read_text(errors="replace").strip() != "@AGENTS.md":
+                continue
+            path = agents.resolve()
+            text = path.read_text(encoding="utf-8") if path not in seen else ""
+            seen.add(path)
+            if not text or with_brief(text) == text:
+                continue
+            ours = BRIEF_BEGIN in text
+            if not (ours or yes or (interactive and not dry_run and setup.confirm(
+                    f"Add the compaction brief (what a summary keeps) to {path}?", "--compact-brief", default=True))):
+                lines.append(f"{path}: no compaction brief" + ("" if interactive else "; pass --compact-brief to add it"))
+                continue
+            if not dry_run:
+                path.write_text(with_brief(text), encoding="utf-8")
+            lines.append(f"{path}: {'would ' if dry_run else ''}{'refresh' if ours else 'add'}{'' if dry_run else 'ed'} "
+                         "the compaction brief")
+    return lines
 
 
 def org_preferences(url: str, scratch: Path = None) -> tuple:

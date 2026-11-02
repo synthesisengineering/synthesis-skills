@@ -4,6 +4,29 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.6] - 2026-10-30
+
+- **A publish is identified by what it publishes** (agent guardrails 2.3.1). The deploy guard took every build
+  deploy to be a deploy of the folder it ran in. On 2026-10-30 the Ownwords release and its npm publish, both run
+  from the synthesis-skills checkout, counted as two deploys of synthesis-skills: the second hit the 45-minute
+  rapid-redeploy brake, and both approvals bound synthesis-skills' HEAD. `gh release create -R owner/repo` is now a
+  deploy of that repository and `npm publish <path>` of that package; anything else is still the folder it runs in.
+- **The weekly review counts the Stop hook's send-backs** (daily rituals 3.5.0). `stop_reprompts.py` reads the
+  archive `synthesis sessions` keeps and reports the replies the Stop hook sent back in the last seven days, by check
+  (shortcut phrasing, unsourced quotes, file links) and harness, with any phrase or file named more than once, so a
+  check that fires week after week points at the habit behind it. October's first count: 88 send-backs in 11
+  sessions, 29 of them for "your call".
+- **A compaction brief in every synthesis workspace** (onboarding 3.3.0). When a session compacts, the summary should
+  keep what exists only in the conversation: the task in progress and its next step, what is waiting on someone,
+  decisions and corrections not yet written down, exact identifiers, and what was verified. Setup keeps a short
+  `## Compact Instructions` section saying so in each synthesis workspace's instructions, as one marked block from
+  `references/compact-instructions.md`. Claude Code follows it there, also through the `CLAUDE.md` import (tested with
+  a marker line in a real compaction's summary). Codex could take it only by replacing its whole compaction prompt
+  for every session, and Muse has no setting, so they keep relying on the files and the session-start hook. New and
+  organization workspaces get the block when setup writes their instructions; a file the person wrote gets it only
+  with their yes or `--compact-brief`; a block already there is refreshed on every run. Sessions outside synthesis
+  workspaces are unaffected.
+
 ## [5.3.5] - 2026-10-30
 
 - **The commit check reads an image's text, not its pixels** (git hooks 3.2.0). Read byte for byte, an image's

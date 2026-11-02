@@ -520,3 +520,58 @@ def test_enrollment_notes_commands_the_organizations_text_names_that_v5_lacks(tm
     notes = [line for line in lines if line.startswith("note:")]
     assert len(notes) == 1 and "`synthesis update`" in notes[0] and "doctor" not in notes[0]
     assert not [line for line in workspace.enroll(org_repo(tmp_path / "plain"), lambda line: None) if line.startswith("note:")]
+
+
+# ---- the compaction brief -------------------------------------------------------
+
+def _workspace(home, name, agents_text, adapter="@AGENTS.md\n"):
+    root = home / "workspaces" / name
+    root.mkdir(parents=True)
+    (root / "AGENTS.md").write_text(agents_text, encoding="utf-8")
+    if adapter is not None:
+        (root / "CLAUDE.md").write_text(adapter, encoding="utf-8")
+    return root
+
+
+def test_the_brief_is_one_marked_block_refreshed_in_place():
+    text = workspace.with_brief("# Rules\n\nKeep it short.\n")
+    assert text.startswith("# Rules\n\nKeep it short.\n\n" + workspace.BRIEF_BEGIN)
+    assert "## Compact Instructions" in text and text.endswith(workspace.BRIEF_END + "\n")
+    assert workspace.with_brief(text) == text
+    stale = text.replace("Drop tool output", "Drop everything") + "\n## After\n"
+    refreshed = workspace.with_brief(stale)
+    assert refreshed.count(workspace.BRIEF_BEGIN) == 1 and "Drop tool output" in refreshed and refreshed.endswith("## After\n")
+
+
+def test_new_and_organization_workspaces_get_the_brief(tmp_path, local_git):
+    assert workspace.BRIEF_BEGIN in workspace.render_instructions("Team rules.")
+    workspace.new_workspace("fresh")
+    source = Path.home() / "workspaces" / "fresh" / "ai-knowledge-fresh" / ".agents" / "workspace-AGENTS.md"
+    assert workspace.BRIEF_BEGIN in source.read_text() and "{workspace}" not in source.read_text()
+
+
+def test_existing_workspaces_get_the_brief_only_with_a_yes_and_keep_it_current(monkeypatch, isolated):
+    """2026-10-31: the brief reaches workspaces made before it existed, but a file the person wrote changes only with
+    their yes; a block already there is setup's own and is refreshed silently."""
+    kb = isolated / "workspaces" / "mine" / "ai-knowledge-mine" / ".agents"
+    kb.mkdir(parents=True)
+    (kb / "workspace-AGENTS.md").write_text("# Mine\n", encoding="utf-8")
+    (isolated / "workspaces" / "mine" / "AGENTS.md").symlink_to(Path("ai-knowledge-mine") / ".agents" / "workspace-AGENTS.md")
+    (isolated / "workspaces" / "mine" / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+    _workspace(isolated, "plain", "# Plain\n")
+    _workspace(isolated, "notsynthesis", "# Other\n", adapter="# my own Claude notes\n")
+    assert workspace.add_brief(False, dry_run=True) == [
+        f"{kb / 'workspace-AGENTS.md'}: no compaction brief; pass --compact-brief to add it",
+        f"{isolated / 'workspaces' / 'plain' / 'AGENTS.md'}: no compaction brief; pass --compact-brief to add it"]
+    answers = iter(["n", "y"])
+    monkeypatch.setattr(setup, "confirm", lambda question, flag, default=True: next(answers) == "y")
+    lines = workspace.add_brief(True)
+    assert lines == [f"{kb / 'workspace-AGENTS.md'}: no compaction brief",
+                     f"{isolated / 'workspaces' / 'plain' / 'AGENTS.md'}: added the compaction brief"]
+    assert workspace.BRIEF_BEGIN not in (kb / "workspace-AGENTS.md").read_text()
+    assert "## Compact Instructions" not in (isolated / "workspaces" / "notsynthesis" / "AGENTS.md").read_text()
+    assert workspace.add_brief(False, yes=True) == [f"{kb / 'workspace-AGENTS.md'}: added the compaction brief"]
+    assert workspace.add_brief(False) == []  # current everywhere: nothing to say
+    plain = isolated / "workspaces" / "plain" / "AGENTS.md"
+    plain.write_text(plain.read_text().replace("Drop tool output", "Drop all"), encoding="utf-8")
+    assert workspace.add_brief(False) == [f"{plain}: refreshed the compaction brief"]
