@@ -873,8 +873,9 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
 def _deploys(words: list[str], patterns: list[str]) -> bool:
     """A deploy pattern matches from the start of the command, or of the script an interpreter runs
     (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match, and a
-    `--dry-run` publishes nothing (a site's build checks its deploy that way)."""
-    if "--dry-run" in words:
+    `--dry-run` (a site's build checks its deploy that way) or `--help` publishes nothing; `-h` can mean
+    something else, such as rsync's human-readable sizes."""
+    if "--dry-run" in words or "--help" in words:
         return False
     forms = [[os.path.basename(words[0])] + words[1:]]
     if INTERPRETER.match(forms[0][0]):

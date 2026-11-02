@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.9] - 2026-11-02
+
+- **Each release gets a GitHub release** (skills manager 3.2.0). GitHub's release list is what a visitor reads as
+  the current version, and it still marked a 4.x release Latest, because v5 releases created none. After publishing
+  the tag, `release.py` now creates its GitHub release, titled "Synthesis X.Y.Z" with the version's CHANGELOG entry
+  as the notes, and reads `gh release list` back until that tag is the latest; a rerun skips a release that exists.
+- **A help page is not a deploy** (agent guardrails 2.3.2). The deploy guard held `gh release create --help` for an
+  approval code. `--help` now publishes nothing, as `--dry-run` already did; a short `-h` stays held, since some
+  deploy tools read it as another flag.
+- **Client detail in a lesson follows the principal's rule** (daily rituals 3.6.1). Day-end Step 5 said a lesson
+  from a workspace-private record goes to the personal lessons folder without client detail; whether client names
+  stay in a lesson is now the principal's own routing rule.
+
 ## [5.3.8] - 2026-11-02
 
 - **Day-end finds lessons written outside the lessons folder** (daily rituals 3.6.0). A lesson belongs in the
