@@ -76,8 +76,11 @@ Runs first inside Step 4, in **every mode including Quick Close** — the next-d
 
 ## 5. Lessons Learned
 
-- [ ] **Curate the day's `## 🌱 Lesson candidates` (v2.14.0):** present the accumulated one-liners from today's plan; the user answers keep/drop per line. Keepers get promoted to `lessons/` or folded into the owning project's docs; drops get struck through in place. In Quick Close this is human moment #2.
+Every lesson is its own file in the knowledge repository's `lessons/`, where later sessions search. A project record may tell the story; it links to the lesson rather than holding it (2026-11-02: a sweep found 165 lesson sections and 71 **Lesson:** lines in project records with no link to a lesson file).
+
+- [ ] **Curate the day's `## 🌱 Lesson candidates` (v2.14.0):** present the accumulated one-liners from today's plan; the user answers keep/drop per line. Each keeper becomes a file in `lessons/`, linked from where it came up; a keeper that is a fact about one project, not a lesson, goes to that project's REFERENCE.md. Drops get struck through in place. In Quick Close this is human moment #2.
 - [ ] Document any additional reusable lessons in `lessons/` (patterns, mistakes, solutions that apply beyond this session).
+- [ ] **Find lessons written outside the folder:** `python3 <rituals>/scripts/stray_lessons.py --since <last day-end date> --repo <each knowledge repository>` prints each lesson heading or **Lesson:** line added to a project record since then whose section links to no lessons folder. Move each into `lessons/` and link the section to it; a lesson from a workspace-private record goes to the personal lessons folder without client detail, and the record stays where it is. Leave a line that is not a lesson.
 - [ ] Update project REFERENCE.md with any new stable facts discovered today.
 
 ## 5a. Native-Memory Sweep

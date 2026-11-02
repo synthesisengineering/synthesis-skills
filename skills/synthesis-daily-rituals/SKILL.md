@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.1"
+  version: "3.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -61,7 +61,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 
 **Mid-day sync** ([mid-day-and-modes.md](references/mid-day-and-modes.md)): every declared surface, every target re-read, the same gate.
 
-**Day-end** ([day-end.md](references/day-end.md)): ask f, q or o; final capture under the gate; source sync; integration sweep; tomorrow's calendar review; `decay_sweep.py` and the send-or-release pass with lapses recorded; lessons keep or drop; the native-memory sweep; `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <files written today>`; context capture with stamped open items `(as of YYYY-MM-DD, review Nd)`; `ritual_state.py record --direction day-end`; the weekly review if owed; then `synthesis handoff` per project worked, the records doctor with `--project`, and `repo_state.py --discover ~/workspaces/<W>` for anything stranded.
+**Day-end** ([day-end.md](references/day-end.md)): ask f, q or o; final capture under the gate; source sync; integration sweep; tomorrow's calendar review; `decay_sweep.py` and the send-or-release pass with lapses recorded; lessons keep or drop, then `stray_lessons.py`; the native-memory sweep; `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <files written today>`; context capture with stamped open items `(as of YYYY-MM-DD, review Nd)`; `ritual_state.py record --direction day-end`; the weekly review if owed; then `synthesis handoff` per project worked, the records doctor with `--project`, and `repo_state.py --discover ~/workspaces/<W>` for anything stranded.
 
 **Desk** (only with a workers registry): `python3 <rituals>/scripts/ritual_workers.py coverage` prints the coverage line that opens every brief.
 

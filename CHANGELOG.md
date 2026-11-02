@@ -4,12 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.8] - 2026-11-02
+
+- **Day-end finds lessons written outside the lessons folder** (daily rituals 3.6.0). A lesson belongs in the
+  knowledge repository's `lessons/`, one file each, where later sessions search. Sessions had also been writing them
+  into project records: a sweep on 2026-11-02 found 165 lesson sections and 71 **Lesson:** lines in one corpus's
+  project records with no link to a lessons file, and the principal asked for every lesson to be stored in the usual
+  place. `stray_lessons.py` lists each lesson heading or **Lesson:** line added to a project record since the last
+  day-end whose section links to no lessons folder, and day-end Step 5 moves each into `lessons/` and links the record
+  to it. A kept lesson candidate now always becomes a file in `lessons/`; a fact about one project goes to its
+  REFERENCE.md instead.
+- **A wait handed back to the principal is sent back** (anti-shortcuts 2.2.0). A merged release that waited only on
+  CI was parked behind the principal's next message, though the agent could watch CI itself. The catalog's new entry
+  and the Stop hook's built-in phrases catch "any message from you" and "ping me when", and Case 9 says what to do
+  instead: a watcher that waits, carries the work forward and stops at the first failure.
+- **The Gmail throttle pitfall gives its incident's recorded figures** (inbox cleanup 2.0.1). It said about 1,000
+  messages and a copy that ran just under three hours; the record says 731 messages, a first attempt stopped at 33
+  minutes and a second run of about 10 minutes, with the observed rate putting a fresh copy at about two hours. The
+  2–3 hour planning figure stands.
+
 ## [5.3.7] - 2026-11-02
 
 - **A later mid-day run is swept** (daily rituals 3.5.1). The skill allows several mid-day syncs a day, but the decay
   sweep read only `YYYY-MM-DD-(day-start|midday|day-end).md`, so a second mid-day record (`2026-10-30-midday-2.md`)
-  landed in `excluded` and its Decays lines were never swept (reported by the McClatchy operations seat,
-  2026-10-31). `midday-N` (N = 2 to 999) is now read in order after the first mid-day and before the day-end, and
+  landed in `excluded` and its Decays lines were never swept (reported by another workspace's operations
+  seat, 2026-10-31). `midday-N` (N = 2 to 999) is now read in order after the first mid-day and before the day-end, and
   the worker contract names the form.
 
 ## [5.3.6] - 2026-10-30

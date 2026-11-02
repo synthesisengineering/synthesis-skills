@@ -299,6 +299,34 @@ his, with a recommendation. While one item waits on him, the rest keep moving.
 
 ---
 
+## Case 9: A Release Parked Behind the Principal's Next Message
+
+### Situation
+
+On 2026-11-02 a release was merged and waited only on CI, where the hosting service had not yet started two jobs.
+
+### What the agent had done
+
+It ended the turn by telling the principal that any message from them, even a single word, would start the release.
+
+### Why it counts as a costume
+
+The offer read as considerate. It handed the principal a chore: remembering to wake the agent for a wait the agent
+could watch itself. The principal asked why the agent was putting that burden on them, and added that a watcher could
+also catch problems and fix them, instead of waiting for the next turn.
+
+### What should have happened
+
+A background watcher that checks on an interval, releases when CI passes, moves to the next step, and stops at the
+first failure so the agent is woken to fix it. The agent had used such watchers for other waits the same week; it
+had misapplied a rule against polling pull-request checks, which the app watches itself, to a release gate it does not.
+
+### Catalog entries this case produced
+
+`any message from you`, `ping me when` (asking_as_shortcut).
+
+---
+
 ## Patterns Across the Cases
 
 Seven different domains. The same shape:

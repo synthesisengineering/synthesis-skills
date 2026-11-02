@@ -144,6 +144,15 @@ word", an overnight run "ready to resume whenever you give the word", decisions 
 Replacement framing: do the work and report it. Bring the user only the choices that are theirs, with a
 recommendation.
 
+### `any message from you` / `ping me when` (2026-11-02)
+
+Why it is a shortcut: the next step waits on something external (CI before a release, a registry, a deploy going
+live), and the reply asks the principal to restart the work when it is ready, which the agent can watch for itself
+(Case 9).
+
+Replacement framing: start a watcher that checks on an interval, carries the work forward and stops at the first
+failure, so a problem wakes the agent rather than the principal; say what it will do and when.
+
 ---
 
 ## Category 4: `deferral`
