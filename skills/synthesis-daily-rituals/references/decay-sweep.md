@@ -26,7 +26,7 @@ each plan directory declared for this seat. Include archived subdirectories
 under each declared root: there is no lookback cutoff. Supply `--artifacts-dir
 <declared-ritual-workers-directory>` for this workspace's worker artifacts when
 the distributed contract uses them. That option accepts dated day-start,
-midday and day-end Markdown artifacts; plan directories accept dated Markdown
+midday (and `midday-N` for a later mid-day run that day) and day-end Markdown artifacts; plan directories accept dated Markdown
 plans (`YYYY-MM-DD.md`). Pass today's verified calendar date as `--as-of`, even
 when closing an earlier logical workday.
 

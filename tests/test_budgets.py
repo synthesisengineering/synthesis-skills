@@ -250,10 +250,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2026-10-31, for every user rather than him alone: in workspace.py, add_brief 24 (its docstring 2), with_brief 8,
 # the section's comment 3, the markers 1, the glob import 1, the new workspace's seed 1, spacing 5; in setup.py, the
 # --compact-brief flag 2 and its call 3.
+# 5.3.7 adds 6 to the plugin (decay_sweep.py), after a second mid-day run's record was never swept: its name 1, the
+# match that reads it 0, its place after the first mid-day and before the day-end 5.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8106
-PLUGIN_BUDGET = 25284
+PLUGIN_BUDGET = 25290
 
 
 def _lines(files):

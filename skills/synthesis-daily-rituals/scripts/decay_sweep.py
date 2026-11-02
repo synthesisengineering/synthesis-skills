@@ -18,6 +18,7 @@ import re
 DATE = r"\d{4}-\d{2}-\d{2}"
 PLAN = re.compile(rf"^({DATE})\.md$")
 ARTIFACT = re.compile(rf"^({DATE})-(day-start|midday|day-end)\.md$")
+MIDDAY_RUN = re.compile(rf"^({DATE})-midday-([2-9]|[1-9][0-9]{{1,2}})\.md$")  # a later mid-day run that day (2026-10-31)
 FIELD = re.compile(r"\*\*(Decays|Decay ID|Sent|Released|Resolved):\*\*\s*(.*)", re.I)
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+)")
 LIST = re.compile(r"^(\s*)(?:[-*+] |\d+[.)] )(.*)")
@@ -197,7 +198,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date) -> dict:
                 if path.is_symlink():
                     gap(report, path, "symlink file not scanned")
                     continue
-                match = pattern.fullmatch(name)
+                match = pattern.fullmatch(name) or (kind == "artifacts" and MIDDAY_RUN.fullmatch(name))
                 if not match:
                     report["excluded"].append(str(path))
                     continue
@@ -213,7 +214,12 @@ def collect(roots: list[tuple[Path, str]], as_of: date) -> dict:
                 if path in seen:
                     continue
                 seen.add(path)
-                rank = RUN_ORDER[match[2]] if kind == "artifacts" else 2
+                if kind != "artifacts":
+                    rank = 2
+                elif match.re is MIDDAY_RUN:  # midday-2 after midday, before the day-end
+                    rank = RUN_ORDER["midday"] + int(match[2]) / 1000
+                else:
+                    rank = RUN_ORDER[match[2]]
                 entries.extend(parse_plan(path, day, rank, as_of, report))
         if selected == 0:
             gap(report, root, "no dated source files; coverage is not established")

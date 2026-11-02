@@ -69,7 +69,11 @@ mechanism, or a vendor.
 
 The personal workspace writes to the person repo's `ritual-workers/` directory. One file
 per (date, run_type); a re-run of the same (date, run_type) overwrites its own file — git
-history preserves the earlier pass. Workspace-confidential content stays in the
+history preserves the earlier pass. The exception is a second or later mid-day sync, which
+the skill allows: it writes `YYYY-MM-DD-midday-N.md` (N = 2, 3, …) so each sync keeps its
+own record, and the decay sweep reads them in order after the first mid-day and before the
+day-end (2026-10-31: a `midday-2` record matched no name, so its Decays lines were never
+swept). Workspace-confidential content stays in the
 workspace-private repo by construction; the desk reads across repos on the same machine.
 
 ## Schema — YAML frontmatter
