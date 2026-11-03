@@ -9,6 +9,7 @@
 - [Why a client's own version report is not sufficient evidence](#why-a-clients-own-version-report-is-not-sufficient-evidence)
 - [The release train: one publisher at a time](#the-release-train-one-publisher-at-a-time)
 - [The stable path: never pin a version](#the-stable-path-never-pin-a-version)
+- [The merge gate: branch protection and auto-merge](#the-merge-gate-branch-protection-and-auto-merge)
 - [After the release](#after-the-release)
 
 ## Why release is a script
@@ -147,6 +148,28 @@ v5 has two stable paths, both outside the harnesses' caches:
 
 Instruction files and scripts call `synthesis` (or `~/.synthesis/v5/bin/synthesis`),
 never a versioned folder.
+
+## The merge gate: branch protection and auto-merge
+
+"Merge only after CI passes" written as a rule is a convention any session can break by accident; the repository
+enforces it instead. The CI workflow ends with one job, `ci`, that depends on every test job and passes only when all
+of them passed; it runs even when one fails, so it never leaves a pull request waiting. Branch protection on `main`
+and `stable` requires that one check, for admins too, since agents act with the maintainer's rights. Requiring the
+summary job, not each matrix job by name, keeps the protection valid when the matrix changes. With auto-merge allowed,
+`gh pr merge --auto --merge` merges a pull request the moment its checks pass, and a watcher on `main` releases it.
+The release script is unaffected: it pushes `main` at the commit already there, and `stable` to a commit whose `ci`
+check passed. A branch need not be current with `main` before it merges (`strict` off): `main`'s own CI on the merge
+commit gates the release.
+
+Set it once for each repository whose `main` reaches users:
+
+```bash
+gh api -X PATCH repos/OWNER/REPO -F allow_auto_merge=true
+gh api -X PUT repos/OWNER/REPO/branches/main/protection --input protection.json
+```
+
+with `protection.json` holding `{"required_status_checks": {"strict": false, "contexts": ["ci"]}, "enforce_admins":
+true, "required_pull_request_reviews": null, "restrictions": null}`, and the same for `stable`.
 
 ## After the release
 

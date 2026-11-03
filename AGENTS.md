@@ -80,7 +80,9 @@ Codex's settings and catalog, instruction adapters and durable storage.
 
 - Use semantic versioning; bump all three plugin manifests together and add the
   CHANGELOG entry for that version in the same pull request.
-- Use a feature branch and a pull request; merge only after CI passes.
+- Use a feature branch and a pull request; merge only after CI passes. GitHub enforces it: `main` and `stable`
+  require the `ci` check (branch protection, admins included), and with auto-merge allowed,
+  `gh pr merge --auto --merge` merges a pull request when its checks pass.
 - Ship with the release script from a clean checkout of the merged default branch:
 
   ```bash

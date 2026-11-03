@@ -47,3 +47,13 @@ jobs:
         env:
           SYNTHESIS_REQUIRE_SANDBOX: "1"  # sandbox tests fail instead of skipping
           SYNTHESIS_REQUIRE_CHROMIUM: "1"  # browser tests fail instead of skipping
+
+  ci:
+    # The one check branch protection requires on main and stable: it runs after every test job, even when one fails,
+    # and passes only when all of them passed, so the matrix can change without touching the repository's settings.
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: test "${{ needs.test.result }}" = success
