@@ -121,14 +121,27 @@ def run_hook(home: Path, payload: dict, run=subprocess.run):
     return decision.get("permissionDecision") == "deny", str(decision.get("permissionDecisionReason", "")), ms
 
 
-def check_self_test(home: Path, runs: int = 3, run=subprocess.run) -> Check:
+def background_priority() -> bool:
+    """True when this process runs at background priority, as a launchd Background job or under `taskpolicy -b`
+    does. macOS throttles it, so a latency it measures says nothing about the hook at normal priority."""
+    if sys.platform != "darwin":
+        return os.getpriority(os.PRIO_PROCESS, 0) >= 10
+    pri = subprocess.run(["ps", "-o", "pri=", "-p", str(os.getpid())], capture_output=True, text=True).stdout.strip()
+    return pri.isdigit() and int(pri) <= 4
+
+
+def check_self_test(home: Path, runs: int = 3, run=subprocess.run, background=background_priority) -> Check:
     """Send `rm -rf ~` to the stable hook (it only inspects); it must deny, within the budget. The fastest run is
-    the hook's own cost: other work on the Mac only adds time (2026-11-02: a median of 161 ms beside a busy scan)."""
+    the hook's own cost: other work on the Mac only adds time (2026-11-02: a median of 161 ms beside a busy scan).
+    At background priority the timing is reported, not judged (the Console's service read 131 ms; 37 ms otherwise)."""
     results = [run_hook(home, SELF_TEST, run) for _ in range(runs)]
     ms = min(r[2] for r in results)
     denied, reason = results[-1][0], results[-1][1]
     if not denied or "recursive delete" not in reason:
         return Check("fail", "hook self-test", f"the stable hook let `rm -rf ~` through ({reason or 'no decision'})")
+    if ms > HOOK_BUDGET_MS and background():
+        return Check("info", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms at background priority, which macOS "
+                     f"throttles; the {HOOK_BUDGET_MS} ms budget is for a normal call")
     if ms > HOOK_BUDGET_MS:
         return Check("warn", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms, over the {HOOK_BUDGET_MS} ms budget")
     return Check("ok", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms")

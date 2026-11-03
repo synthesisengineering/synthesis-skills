@@ -264,10 +264,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # GitHub remote pattern 1, the CHANGELOG entry reader 4, github_release 22 (def 1, docstring 2, the tag and the
 # GitHub remotes 2, no remote or a dry run 4, the loop 2, create unless it exists and refuse on failure 5, read back
 # as latest 4, the line and its return 2), its call in main 1, spacing 4.
+# 5.3.11 adds 13 to both (doctor.py), the hook self-test at background priority, after the Synthesis Console, a launchd
+# Background job, kept showing the warning 5.3.10 meant to clear: background_priority 7 (def 1, docstring 2, the
+# priority read on Linux 2 and on macOS 2), spacing 2, the self-test's docstring line 1, the time reported rather than
+# judged 3.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8108
-PLUGIN_BUDGET = 25429
+CORE_BUDGET = 8121
+PLUGIN_BUDGET = 25442
 
 
 def _lines(files):

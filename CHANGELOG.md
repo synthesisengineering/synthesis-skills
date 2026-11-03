@@ -4,6 +4,14 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.11] - 2026-11-02
+
+- **A self-test timed at background priority is reported, not judged.** 5.3.10 did not clear the Synthesis Console's
+  warning. The Console runs as a launchd Background job, which macOS throttles along with everything it starts, and
+  the doctor's self-test read 107 to 136 ms there against 37 to 45 ms at normal priority; `taskpolicy -b` reproduces
+  it (131 ms). At background priority the doctor still requires the hook to deny `rm -rf ~`, and reports the time as
+  information: the 50 ms budget is for a normal call.
+
 ## [5.3.10] - 2026-11-02
 
 - **The hook self-test times the hook, not the Mac's load.** The doctor sends `rm -rf ~` to the stable hook three
