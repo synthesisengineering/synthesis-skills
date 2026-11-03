@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.12] - 2026-11-03
+
+- **Homebrew installs the current release** (skills manager 3.3.0). The `synthesis` formula still pointed at 5.0.3
+  after eleven releases, so `brew install synthesisengineering/tap/synthesis` ran an onboarding without 5.3.3's
+  prerequisite checks and `--dry-run`. After the GitHub release, `release.py` now downloads the tag's archive with
+  `curl`, computes its sha256 as Homebrew will, and opens a pull request on the tap that sets the formula's `url` and
+  `sha256`, to merge itself when the tap's install tests pass. The pull request goes up before the harnesses install,
+  so its checks run meanwhile. The release is complete only once the formula on the tap's `main` serves the tag; a
+  rerun reuses an open pull request, and a fork's release leaves the formula alone.
+- **The thread checker files each thread under its own channel** (slack sync 4.0.3). On one day-end transcript it
+  listed a thread twice, once under a channel whose heading came 566 lines earlier, and listed the thread's five
+  replies as parents. A thread's heading that said it was "returned by a full thread read" had opened a section of
+  threads read, and a channel heading's scope never ended. Now a heading that carries a message's TS names that one
+  message; a heading's channel holds for the headings below it and ends at the next heading at its level; a reply's
+  link stands for its thread; and in a list of threads read each TS takes the channel id written nearest before it.
+  The old rule, the first id on the line, was wrong for 285 of 411 such readings, where the transcript itself showed
+  the right channel. A TS read with its own link keeps that link's channel, and message headers written
+  `(TS 1234567890.123456)`, without the colon, are listed too. Across 844 transcripts the list loses 409 replies that
+  had been listed as threads (each one's thread stays listed) and gains 140 threads it had missed.
+
 ## [5.3.11] - 2026-11-02
 
 - **A self-test timed at background priority is reported, not judged.** 5.3.10 did not clear the Synthesis Console's

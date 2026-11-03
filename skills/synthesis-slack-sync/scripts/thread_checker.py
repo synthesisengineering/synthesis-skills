@@ -27,24 +27,35 @@ from pathlib import Path
 CHANNEL_WITH_ID = re.compile(r"^#{1,3}\s+#([\w-]+)\s*\(([A-Z][A-Z0-9]+)\)")
 # Channel header without ID: ### #channel-name (used in mid-day/evening sync sections)
 CHANNEL_NO_ID = re.compile(r"^#{1,3}\s+#([\w-]+)\s*$")
-# TS pattern in parentheses: (TS: 1775064672.791199) — legacy pre-v3.1.0 format
-TS_IN_PARENS = re.compile(r"\(TS:\s*([\d.]+)\)")
+# A heading about one channel's messages: "### #channel-name — Jane's question, [TS](link)" or
+# "## #channel-name (afternoon)". It names the channel for a message that carries none of its own, but
+# its bullets are replies or details, not a listing. A heading that names several channels names none.
+CHANNEL_NAMED = re.compile(r"^#{1,3}\s+#([\w-]+)\s+[—–(-]")
+# TS pattern in parentheses: (TS: 1775064672.791199), or (TS 1775064672.791199) in message headers
+# of 2026-04 — legacy pre-v3.1.0 format
+TS_IN_PARENS = re.compile(r"\(TS(?::\s*|\s+(?=\d{10}\.\d{6}\)))([\d.]+)\)")
 # TS embedded in Slack permalink path: /p1775064672791199 — v3.1.0+ format.
 # Captures the 16-digit suffix; the dot is re-inserted to normalize.
 TS_IN_PERMALINK = re.compile(r"/p(\d{10})(\d{6})\b")
 # The same permalink with its channel: /archives/C0123ABC/p1775064672791199. The link's channel
 # id wins over the heading's, so a digest or cross-channel link keeps its own channel.
 PERMALINK = re.compile(r"/archives/([A-Z][A-Z0-9]+)/p(\d{10})(\d{6})\b")
-# Any H1-H3 heading: a section or channel heading ends the previous channel's listing.
-SECTION = re.compile(r"^#{1,3}\s")
+# A reply's permalink also names its thread: /archives/C0123ABC/p1775064700000000?thread_ts=1775064672.791199
+REPLY_LINK = re.compile(r"/archives/([A-Z][A-Z0-9]+)/p(\d{10})(\d{6})\?[^\s)\]]*?\bthread_ts=(\d{10}\.\d{6})")
+# Any H1-H3 heading: a section or channel heading ends the previous channel's listing, and every
+# channel heading at its level or deeper (2026-11-03: a bare TS 566 lines and many sections after a
+# channel heading was filed under that channel).
+SECTION = re.compile(r"^(#{1,3})\s")
 REPLY_COUNT = re.compile(r"(\d+)\s*repl(?:y|ies)")
 THREAD_LABEL = re.compile(r"\*\*Thread\s*\((\d+)\s*repl")
 # A section listing the threads a sync read ("## Part C — threads re-read"): every message there is a thread
-# parent, at any indent, linked or bare, in the link's channel or the backticked id on its line (2026-10-26: a
+# parent, at any indent, linked or bare, in the link's channel or the channel id on its line (2026-10-26: a
 # DM-half transcript's five threads with replies sat there, as indented bullets, and none was listed).
 READ_THREADS = re.compile(r"^#{1,3}\s.*\bthreads?\b.*\b(?:re-?read|read)\b", re.I)
 BARE_TS = re.compile(r"(?<![\d.])(\d{10})\.(\d{6})(?!\d)")
-CHANNEL_CODE = re.compile(r"`([CDG][A-Z0-9]{8,})`")
+# A channel, DM or group id written on a line, backticked or not: `C0123ABC`, (D0123ABC, ...)
+CHANNEL_CODE = re.compile(r"(?<![\w/])([CDG](?=[A-Z0-9]*\d)[A-Z0-9]{8,10})(?!\w)")
+LINK_TARGET = re.compile(r"\]\([^)\s]*\)|https?://\S+")
 NAMED_MESSAGE = re.compile(r"\(ts \d{10}\.\d{6}\)")  # "(ts …)" names one message, such as a reply
 
 
@@ -69,11 +80,26 @@ def structural_lines(content: str) -> list[str]:
 
 
 def stamps_in(line: str) -> list[tuple[str | None, str]]:
-    """(channel id or None, TS) for every message link or legacy `(TS: ...)` on a line."""
-    found = [(m.group(1), f"{m.group(2)}.{m.group(3)}") for m in PERMALINK.finditer(line)]
-    linked = {ts for _, ts in found}
+    """(channel id or None, TS) for every message link or legacy `(TS: ...)` on a line. A reply's
+    link stands for its thread, in the link's channel: the thread is what a re-read reads."""
+    threads = {f"{m.group(2)}.{m.group(3)}": (m.group(1), m.group(4)) for m in REPLY_LINK.finditer(line)}
+    found = [threads.get(f"{m.group(2)}.{m.group(3)}", (m.group(1), f"{m.group(2)}.{m.group(3)}"))
+             for m in PERMALINK.finditer(line)]
+    linked = {ts for _, ts in found} | set(threads)
     found += [(None, f"{a}.{b}") for a, b in TS_IN_PERMALINK.findall(line) if f"{a}.{b}" not in linked]
     return found + [(None, ts) for ts in TS_IN_PARENS.findall(line)]
+
+
+def line_channel(line: str, at: int = 0) -> str | None:
+    """The channel a line writes for a TS at position `at` that carries none: the nearest channel id
+    before it ("`D0AAA` ts; `D0BBB` ts, ts"), else the line's one id. An id inside a link counts for
+    nothing, and nor does a `#name` in prose (2026-11-03: a sentence mentioning one channel listed
+    two threads of two others)."""
+    links = [m.span() for m in LINK_TARGET.finditer(line)]
+    codes = [(m.start(), m.group(1)) for m in CHANNEL_CODE.finditer(line)
+             if not any(start <= m.start() < end for start, end in links)]
+    before = [code for start, code in codes if start < at]
+    return before[-1] if before else (codes[0][1] if len({code for _, code in codes}) == 1 else None)
 
 
 def extract_threads(transcript_path: str | None, *, content: str | None = None) -> list[dict]:
@@ -96,43 +122,53 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
             channel_ids[found.group(1)] = found.group(2)
     names = {cid: name for name, cid in channel_ids.items()}
 
-    threads, seen = [], {}
+    seen, rank = {}, {}  # (channel id, TS) -> thread; -> 2 from its own link, 1 its line or heading, 0 none
 
-    def record(stamps, replies, context):
+    def record(stamps, replies, context, where):
         for link_channel, ts in stamps:
-            cid = link_channel or channel_id
+            cid = link_channel or where(ts)
+            rank[(cid, ts)] = max(rank.get((cid, ts), 0), 2 if link_channel else int(cid is not None))
             if (cid, ts) in seen:  # listed twice, say as a top-level message and as a thread
                 seen[(cid, ts)]["reply_count"] = max(seen[(cid, ts)]["reply_count"], replies)
                 continue
             name = names.get(cid) or (channel if cid == channel_id else None)
             seen[(cid, ts)] = {"ts": ts, "channel": name or "unknown", "channel_id": cid or "?",
                                "reply_count": replies, "context": context[:100]}
-            threads.append(seen[(cid, ts)])
 
     channel = channel_id = None
+    scope = []  # (level, channel, id) of each enclosing heading that names a channel, outermost first
     listing = parent_open = False  # under a channel heading; a parent recorded since that heading
     read_section = with_replies = False  # in a section of threads read; under its "with replies" bullet
     for i, line in enumerate(lines):
         stripped = line.strip()
-        found = CHANNEL_WITH_ID.match(stripped)
-        bare = None if found else CHANNEL_NO_ID.match(stripped)
-        if found or bare:
-            channel = (found or bare).group(1)
-            # never inherit the previous channel's ID
-            channel_id = found.group(2) if found else channel_ids.get(channel)
-            listing, parent_open, read_section = True, False, False
-        elif SECTION.match(stripped):
-            listing = parent_open = with_replies = False
-            read_section = bool(READ_THREADS.match(stripped))
+        heading = SECTION.match(stripped)
+        if heading:
+            level = len(heading.group(1))
+            scope = [entry for entry in scope if entry[0] < level]
+            found = CHANNEL_WITH_ID.match(stripped)
+            listing = bool(found or CHANNEL_NO_ID.match(stripped))
+            named = found or CHANNEL_NO_ID.match(stripped) or CHANNEL_NAMED.match(stripped)
+            code = None if named else line_channel(stripped)  # "## Outside the targets: #name (C0123ABC)"
+            if named:  # never inherit the previous channel's ID
+                scope.append((level, named.group(1), found.group(2) if found else channel_ids.get(named.group(1))))
+            elif code:
+                scope.append((level, names.get(code), code))
+            channel, channel_id = scope[-1][1:] if scope else (None, None)
+            parent_open = with_replies = False
+            # A heading that carries a message's TS names that one message, even when it says the
+            # thread was read in full; only a heading over several threads opens a section of them.
+            read_section = not listing and bool(READ_THREADS.match(stripped)) and not stamps_in(stripped)
         if read_section:
             if stripped.startswith("- ") and not line[:1].isspace():
                 with_replies = bool(re.search(r"\b(?:with|gained) repl", stripped, re.I))
             stamps = stamps_in(line)
-            code = CHANNEL_CODE.search(line)
-            stamps += [(code.group(1) if code else None, f"{a}.{b}") for a, b in
-                       BARE_TS.findall(NAMED_MESSAGE.sub("", line)) if f"{a}.{b}" not in {ts for _, ts in stamps}]
+            linked = {ts for _, ts in stamps} | {f"{a}.{b}" for a, b in TS_IN_PERMALINK.findall(line)}
+            stamps += [(None, f"{a}.{b}") for a, b in
+                       BARE_TS.findall(NAMED_MESSAGE.sub("", line)) if f"{a}.{b}" not in linked]
             count = REPLY_COUNT.search(stripped)
-            record(stamps, int(count.group(1)) if count else int(with_replies and line[:1].isspace()), stripped)
+            # A list of threads read gathers several channels: each TS takes the id written before it.
+            record(stamps, int(count.group(1)) if count else int(with_replies and line[:1].isspace()), stripped,
+                   lambda ts: line_channel(line, line.find(ts)) or channel_id)
             continue
         if stripped.startswith("|"):  # a coverage or watermark table points at messages recorded elsewhere
             continue
@@ -148,8 +184,20 @@ def extract_threads(transcript_path: str | None, *, content: str | None = None) 
             parent_open = True
             context = "\n".join(lines[i:i + 5])
         count = THREAD_LABEL.search(context) or REPLY_COUNT.search(context)
-        record(stamps, int(count.group(1)) if count else 0, stripped)
-    return threads
+        # A message header belongs to the channel whose heading encloses it.
+        record(stamps, int(count.group(1)) if count else 0, stripped,
+               lambda ts: channel_id or line_channel(line, line.find(ts)))
+    # A TS read again with weaker evidence of its channel is the same message: keep the best reading,
+    # with the highest reply count any reading recorded.
+    best = {}
+    for key, strength in rank.items():
+        if strength > rank.get(best.get(key[1]), -1):
+            best[key[1]] = key
+    weaker = {key for key in seen if rank[key] < rank[best[key[1]]]}
+    for key in weaker:
+        kept = seen[best[key[1]]]
+        kept["reply_count"] = max(kept["reply_count"], seen[key]["reply_count"])
+    return [thread for key, thread in seen.items() if key not in weaker]
 
 
 def message_links(content: str) -> int:

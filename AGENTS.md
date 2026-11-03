@@ -96,9 +96,12 @@ Codex's settings and catalog, instruction adapters and durable storage.
   another release is under way, and the script names it), tags, pushes `main`,
   `stable` and the tag atomically to every push remote and reads them back with
   `git ls-remote`, creates the GitHub release for the tag (its CHANGELOG entry as the
-  notes, read back as latest), installs into Claude Code, Codex and Muse with each harness's
+  notes, read back as latest), opens the Homebrew tap's pull request that points the
+  `synthesis` formula at the tag's archive (it merges itself when the tap's install tests
+  pass), installs into Claude Code, Codex and Muse with each harness's
   own commands, verifies each harness's installed files equal the tag at the folder
-  it reports loading, then updates the stable runtime and runs `synthesis doctor`.
+  it reports loading, updates the stable runtime and runs `synthesis doctor`, then waits
+  for the tap's pull request to merge and reads the formula back from the tap's `main`.
   A release is not complete until the script exits 0.
 - `release.py --install-only` installs and verifies the tag HEAD carries, for a new
   Mac or after drift.
