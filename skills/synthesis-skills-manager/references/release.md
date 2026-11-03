@@ -72,6 +72,22 @@ version's CHANGELOG entry) unless it exists, and reads `gh release list` back un
 tag is the latest. A visitor reads GitHub's release list as the current version; before
 5.3.9 v5 releases created none, and the list showed a 4.x release as latest.
 
+Then the Homebrew formula, for the canonical repository only (a fork's release leaves it
+alone). The script reads `Formula/synthesis.rb` on the tap's `main`, downloads the tag's
+archive with `curl` and computes its sha256 as Homebrew will, and, unless `main` already
+serves that archive, opens a pull request on the tap from a `synthesis-X.Y.Z` branch that
+sets the formula's `url` and `sha256`, then sets it to merge when its checks pass (`gh pr
+merge --auto`). The tap's own checks install and test every formula, so a formula that
+cannot install never merges. A rerun reuses the open pull request. The pull request goes
+up before the harnesses install, so its checks run meanwhile; after `synthesis doctor`
+the script waits up to 30 minutes for the merge and reads the formula back from `main`.
+Failed checks, a closed pull request, no merge in time, or a `main` that does not serve
+the tag leave the release not complete. From 5.0.3 to 5.3.11 no release moved the
+formula, so `brew install synthesisengineering/tap/synthesis` installed 5.0.3's
+onboarding, without the prerequisite checks and `--dry-run` that 5.3.3 added. The
+formula is part of what a release publishes, so the approval to release covers the tap's
+merge.
+
 ## Each harness's own commands
 
 Installation calls onboarding's `scripts/setup.py`, so release and setup cannot drift:

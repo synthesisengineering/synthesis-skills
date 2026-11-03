@@ -17,21 +17,26 @@ Stages, each gating the next:
      holding it means another release is under way: refuse and name it.
   3. Publish: create the tag, push main, stable and the tag to every push remote in one
      atomic push each; success is read back with `git ls-remote`, never from an exit status.
-     Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest.
+     Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest,
+     and a pull request on the Homebrew tap pointing the synthesis formula at the tag's
+     archive, set to merge itself when the tap's install tests pass.
   4. Install with each harness's own commands (onboarding's setup.py), then verify bytes.
   5. Update the stable runtime from a verified copy and run `synthesis doctor`.
-Exit 0 only when every found harness verified and doctor is healthy.
+  6. Wait for the tap's pull request to merge and read the formula back from the tap's main.
+Exit 0 only when every found harness verified, doctor is healthy and Homebrew serves the tag.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -46,6 +51,10 @@ MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-p
 LOADABLE = ("skills/", "synthesis/", "hooks/", ".claude-plugin/", ".codex-plugin/", ".muse-plugin/")
 IGNORED = ("__pycache__", ".DS_Store")
 GITHUB = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
+# The Homebrew formula follows the canonical repository's tags only; a fork's release leaves it alone.
+CANONICAL, TAP = "synthesisengineering/synthesis-skills", "synthesisengineering/homebrew-tap"
+FORMULA = "Formula/synthesis.rb"
+FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 
 
 def git(repo: Path, *args: str, timeout: float = 600) -> subprocess.CompletedProcess:
@@ -192,6 +201,104 @@ def github_release(repo: Path, version: str, dry_run: bool = False, run=setup.ru
     return lines
 
 
+def archive(version: str) -> str:
+    return f"https://github.com/{CANONICAL}/archive/refs/tags/v{version}.tar.gz"
+
+
+def archive_sha256(url: str) -> str:
+    """The archive's checksum as Homebrew computes it, downloaded with curl as Homebrew does: python.org's
+    Python on macOS cannot verify GitHub's certificate until its own certificate step has run."""
+    try:
+        got = subprocess.run(["curl", "-fsSL", "--retry", "3", "--max-time", "300", url], capture_output=True,
+                             timeout=330, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise setup.SetupError(f"cannot download {url}: {exc}") from exc
+    if got.returncode or not got.stdout:
+        raise setup.SetupError(f"cannot download {url}: "
+                               + (got.stderr.decode(errors="replace").strip() or f"curl exit {got.returncode}"))
+    return hashlib.sha256(got.stdout).hexdigest()
+
+
+def tap_formula(run, ref: str = "main") -> dict:
+    """The formula file on the tap: its text and blob id."""
+    read = run(["gh", "api", f"repos/{TAP}/contents/{FORMULA}?ref={ref}"])
+    found = setup._json(read.stdout) or {}
+    if read.returncode or "content" not in found:
+        raise setup.SetupError(f"cannot read {TAP} {FORMULA}: {setup._tail(read)}")
+    return {"text": base64.b64decode(found["content"]).decode("utf-8"), "sha": found["sha"]}
+
+
+def serves(text: str, version: str, digest: str = "") -> bool:
+    return f'url "{archive(version)}"' in text and (not digest or f'sha256 "{digest}"' in text)
+
+
+def homebrew_formula(repo: Path, version: str, dry_run: bool = False, run=setup.run, fetch=archive_sha256) -> tuple:
+    """Open the tap pull request that points the synthesis formula at this tag, to merge itself when the tap's
+    install tests pass: ([lines], {"pr", "sha256"} or None). From 5.0.3 to 5.3.11 every release left the formula
+    behind, so `brew install` users ran 5.0.3's onboarding and missed every fix to it."""
+    slugs = {m.group(1) for m in map(GITHUB.match, git(repo, "remote", "-v").stdout.split()) if m}
+    if CANONICAL not in slugs:
+        return ["not the canonical repository, so the Homebrew formula is left alone"], None
+    if dry_run:
+        return [f"would point {TAP} {FORMULA} at v{version} by a pull request that merges when its install tests "
+                "pass, then read it back from the tap's main"], None
+    current, digest, branch = tap_formula(run), fetch(archive(version)), f"synthesis-{version}"
+    if serves(current["text"], version, digest):
+        return [f"{TAP}: Homebrew already serves synthesis {version}"], None
+    listed = setup._json(run(["gh", "pr", "list", "-R", TAP, "--head", branch, "--state", "open",
+                              "--json", "url"]).stdout) or []
+    pr = listed[0]["url"] if listed else ""
+    if not pr:  # the branch starts at the tap's main, whatever an earlier attempt left on it
+        main = (setup._json(run(["gh", "api", f"repos/{TAP}/git/ref/heads/main"]).stdout) or {}).get("object", {})
+        made = run(["gh", "api", "-X", "POST", f"repos/{TAP}/git/refs", "-f", f"ref=refs/heads/{branch}",
+                    "-f", f"sha={main.get('sha', '')}"])
+        if made.returncode:
+            made = run(["gh", "api", "-X", "PATCH", f"repos/{TAP}/git/refs/heads/{branch}", "-f",
+                        f"sha={main.get('sha', '')}", "-F", "force=true"])
+        text = re.sub(r'(?m)^(\s*url ")[^"]*"', rf'\g<1>{archive(version)}"', current["text"], count=1)
+        text = re.sub(r'(?m)^(\s*sha256 ")[0-9a-f]{64}"', rf'\g<1>{digest}"', text, count=1)
+        steps = [made, run(["gh", "api", "-X", "PUT", f"repos/{TAP}/contents/{FORMULA}", "-f",
+                            f"message=synthesis {version}", "-f", f"branch={branch}", "-f", f"sha={current['sha']}",
+                            "-f", "content=" + base64.b64encode(text.encode("utf-8")).decode("ascii")])]
+        failed = [setup._tail(step) for step in steps if step.returncode]
+        if failed or not serves(text, version, digest):
+            raise setup.SetupError(f"cannot prepare {TAP} {branch}: "
+                                   + (failed[0] if failed else "the formula has no url and sha256 lines to set"))
+        opened = run(["gh", "pr", "create", "-R", TAP, "--head", branch, "--base", "main", "--title",
+                      f"synthesis {version}", "--body", f"Points the synthesis formula at [v{version}]"
+                      f"(https://github.com/{CANONICAL}/releases/tag/v{version}). Opened by synthesis-skills' "
+                      "release.py; it merges when the formula acceptance checks pass."])
+        pr = opened.stdout.strip().splitlines()[-1] if opened.returncode == 0 and opened.stdout.strip() else ""
+        if not pr:
+            raise setup.SetupError(f"cannot open the {TAP} pull request: {setup._tail(opened)}")
+    armed = run(["gh", "pr", "merge", pr, "-R", TAP, "--auto", "--merge"])
+    if armed.returncode:
+        raise setup.SetupError(f"cannot set {pr} to merge when its checks pass: {setup._tail(armed)}")
+    return [f"{TAP}: {pr} points the formula at v{version} and merges when its install tests pass"], \
+        {"pr": pr, "version": version, "sha256": digest}
+
+
+def homebrew_merged(formula: dict, run=setup.run, sleep=time.sleep, interval: float = 20,
+                    timeout: float = 1800) -> list:
+    """Wait for the tap pull request to merge, then read the formula Homebrew serves from the tap's main."""
+    for _ in range(max(1, int(timeout / interval))):
+        view = setup._json(run(["gh", "pr", "view", formula["pr"], "-R", TAP, "--json",
+                                "state,statusCheckRollup"]).stdout) or {}
+        failed = sorted(check.get("name") or check.get("context") or "?" for check in view.get("statusCheckRollup")
+                        or [] if str(check.get("conclusion") or check.get("state") or "").upper() in FAILED)
+        if view.get("state") == "MERGED":
+            break
+        if view.get("state") == "CLOSED" or failed:
+            raise setup.SetupError(f"{formula['pr']} did not merge ({', '.join(failed) or 'closed'}); Homebrew "
+                                   "still serves the previous release")
+        sleep(interval)
+    else:
+        raise setup.SetupError(f"{formula['pr']} had not merged after {int(timeout / 60)} minutes")
+    if not serves(tap_formula(run)["text"], formula["version"], formula["sha256"]):
+        raise setup.SetupError(f"{formula['pr']} merged, but {TAP} main does not serve v{formula['version']}")
+    return [f"{TAP}: Homebrew serves synthesis {formula['version']} ({formula['pr']} merged)"]
+
+
 def blob_id(path: Path) -> str:
     data = os.readlink(path).encode() if path.is_symlink() else path.read_bytes()
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
@@ -266,7 +373,7 @@ def main(argv=None) -> int:
     if problems:
         print("refused before publishing anything:\n  " + "\n  ".join(problems))
         return 1
-    lines, train = [f"preflight: v{version} ready"], ""
+    lines, train, formula = [f"preflight: v{version} ready"], "", None
     try:
         if not args.install_only:
             session = args.session or paths.session_id()
@@ -278,6 +385,8 @@ def main(argv=None) -> int:
             train = "" if args.dry_run else hold_train(repo, session, version)
             lines += publish(repo, version, args.dry_run)
             lines += github_release(repo, version, args.dry_run)
+            opened, formula = homebrew_formula(repo, version, args.dry_run)
+            lines += opened
         installed, verified, found = install_and_verify(repo, version, clients, args.dry_run)
         lines += installed
     except setup.SetupError as exc:
@@ -293,6 +402,12 @@ def main(argv=None) -> int:
     if verified and not args.dry_run:
         healthy = doctor.main([]) == 0
     complete = args.dry_run or (healthy and found and set(verified) == set(found))
+    if formula:  # the tap's install tests ran while the harnesses installed
+        try:
+            print("\n".join(homebrew_merged(formula)), flush=True)
+        except setup.SetupError as exc:
+            print(f"Homebrew: {exc}", flush=True)
+            complete = False
     print(("release complete: " if complete else "release NOT complete: ") + f"v{version}")
     return 0 if complete else 1
 

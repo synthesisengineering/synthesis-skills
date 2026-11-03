@@ -1,6 +1,7 @@
 """release.py: preflight, one releaser at a time, atomic publication read back from the remote,
 and verification of installed bytes against the tag."""
 
+import base64
 import json
 import subprocess
 import sys
@@ -217,6 +218,126 @@ def test_without_a_github_remote_or_in_a_dry_run_no_github_release_is_made(tmp_p
     assert release.github_release(repo, "5.1.0", dry_run=True, run=run)[0].startswith(
         "would create the GitHub release v5.1.0 on example/demo")
     assert calls == []
+
+
+# ---- the Homebrew formula -------------------------------------------------------
+
+OLD_SHA = "4ea2592feaf1d8664a210205d636d8fdf404c1d094675adfe0ef14f441dd73e4"
+FORMULA_RB = f"""class Synthesis < Formula
+  url "https://github.com/synthesisengineering/synthesis-skills/archive/refs/tags/v5.0.3.tar.gz"
+  sha256 "{OLD_SHA}"
+end
+"""
+DIGEST = "ab" * 32
+PR = "https://github.com/synthesisengineering/homebrew-tap/pull/16"
+
+
+def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None):
+    """gh against the tap: the formula on main, the pull request's states in turn, and main after the merge."""
+    calls, state = [], {"text": served, "views": list(views)}
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        reply = lambda out="", rc=0: subprocess.CompletedProcess(argv, rc, out, "")  # noqa: E731
+        if argv[:2] == ["gh", "api"] and argv[2].startswith(f"repos/{release.TAP}/contents/"):
+            encoded = base64.b64encode(state["text"].encode()).decode()
+            return reply(json.dumps({"content": encoded, "sha": "blob1"}))
+        if argv[:3] == ["gh", "pr", "list"]:
+            return reply(json.dumps([{"url": open_pr}] if open_pr else []))
+        if argv[:3] == ["gh", "api", f"repos/{release.TAP}/git/ref/heads/main"]:
+            return reply(json.dumps({"object": {"sha": "main1"}}))
+        if argv[:3] == ["gh", "pr", "create"]:
+            return reply(PR + "\n")
+        if argv[:3] == ["gh", "pr", "view"]:
+            view = state["views"].pop(0)
+            if view["state"] == "MERGED":
+                state["text"] = merged_text if merged_text is not None else state["pushed"]
+            return reply(json.dumps(view))
+        if argv[:4] == ["gh", "api", "-X", "PUT"]:
+            state["pushed"] = base64.b64decode(argv[-1].split("=", 1)[1]).decode()
+        return reply()
+    return run, calls, state
+
+
+def canonical_repo(tmp_path):
+    repo = source_repo(tmp_path)
+    git(repo, "remote", "add", "github", "https://github.com/synthesisengineering/synthesis-skills.git")
+    return repo
+
+
+def test_the_formula_follows_the_tag_through_a_pull_request_the_tap_tests_merge(tmp_path):
+    """2026-11-03: the formula still pointed at v5.0.3 after eleven releases, so `brew install` ran an onboarding
+    without 5.3.3's prerequisite checks."""
+    run, calls, state = tap_fake(views=[{"state": "OPEN", "statusCheckRollup": [{"name": "ci", "status": "QUEUED"}]},
+                                        {"state": "MERGED", "statusCheckRollup": [{"conclusion": "SUCCESS"}]}])
+    lines, formula = release.homebrew_formula(canonical_repo(tmp_path), "5.1.0", run=run, fetch=lambda url: DIGEST)
+    assert lines == [f"{release.TAP}: {PR} points the formula at v5.1.0 and merges when its install tests pass"]
+    assert f'url "{release.archive("5.1.0")}"' in state["pushed"] and f'sha256 "{DIGEST}"' in state["pushed"]
+    assert "class Synthesis < Formula" in state["pushed"] and "v5.0.3" not in state["pushed"]
+    assert ["gh", "pr", "merge", PR, "-R", release.TAP, "--auto", "--merge"] in calls
+    assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
+        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged)"]
+
+
+def test_a_formula_already_serving_the_tag_or_an_open_pull_request_is_not_made_twice(tmp_path):
+    current = FORMULA_RB.replace("v5.0.3", "v5.1.0").replace(OLD_SHA, DIGEST)
+    run, calls, _ = tap_fake(served=current)
+    assert release.homebrew_formula(canonical_repo(tmp_path), "5.1.0", run=run, fetch=lambda url: DIGEST) == (
+        [f"{release.TAP}: Homebrew already serves synthesis 5.1.0"], None)
+    run, calls, _ = tap_fake(open_pr=PR)
+    assert release.homebrew_formula(canonical_repo(tmp_path / "again"), "5.1.0", run=run,
+                                    fetch=lambda url: DIGEST)[1] == {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+    assert not [c for c in calls if c[:3] == ["gh", "pr", "create"] or c[:4] == ["gh", "api", "-X", "PUT"]]
+
+
+def test_failed_install_tests_a_closed_pull_request_or_no_merge_leave_the_release_incomplete():
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+    failing = [{"state": "OPEN", "statusCheckRollup": [{"name": "formulas (macos-latest)", "conclusion": "FAILURE"}]}]
+    with pytest.raises(setup.SetupError, match=r"did not merge \(formulas \(macos-latest\)\)"):
+        release.homebrew_merged(formula, run=tap_fake(views=failing)[0], sleep=lambda s: None)
+    with pytest.raises(setup.SetupError, match=r"did not merge \(closed\)"):
+        release.homebrew_merged(formula, run=tap_fake(views=[{"state": "CLOSED"}])[0], sleep=lambda s: None)
+    with pytest.raises(setup.SetupError, match="had not merged after 2 minutes"):
+        release.homebrew_merged(formula, run=tap_fake(views=[{"state": "OPEN"}] * 6)[0], sleep=lambda s: None,
+                                interval=20, timeout=120)
+    with pytest.raises(setup.SetupError, match="does not serve v5.1.0"):
+        release.homebrew_merged(formula, run=tap_fake(views=[{"state": "MERGED"}], merged_text=FORMULA_RB)[0],
+                                sleep=lambda s: None)
+
+
+def test_a_fork_or_a_dry_run_leaves_the_formula_alone(tmp_path):
+    repo = source_repo(tmp_path)
+    git(repo, "remote", "add", "github", "https://github.com/example/synthesis-skills.git")
+    run, calls, _ = tap_fake()
+    assert release.homebrew_formula(repo, "5.1.0", run=run)[0] == [
+        "not the canonical repository, so the Homebrew formula is left alone"]
+    assert release.homebrew_formula(canonical_repo(tmp_path / "canonical"), "5.1.0", dry_run=True,
+                                    run=run)[0][0].startswith(f"would point {release.TAP} {release.FORMULA} at v5.1.0")
+    assert calls == []
+
+
+@pytest.mark.parametrize("merged", [True, False])
+def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, monkeypatch, capsys, merged):
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+
+    def homebrew_merged(found):
+        if not merged:
+            raise setup.SetupError(f"{PR} did not merge (ci)")
+        return [f"{release.TAP}: Homebrew serves synthesis 5.1.0"]
+    monkeypatch.setattr(release, "preflight", lambda repo, install_only: ("5.1.0", []))
+    monkeypatch.setattr(release, "hold_train", lambda repo, session, version: "train")
+    monkeypatch.setattr(release.board, "release", lambda session, paths: None)
+    monkeypatch.setattr(release, "publish", lambda repo, version, dry_run: ["pushed"])
+    monkeypatch.setattr(release, "github_release", lambda repo, version, dry_run: ["github"])
+    monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap pull request"], formula))
+    monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"claude": tmp_path}, ["claude"]))
+    monkeypatch.setattr(release.install, "install", lambda source: "runtime")
+    monkeypatch.setattr(release.doctor, "main", lambda argv: 0)
+    monkeypatch.setattr(release, "homebrew_merged", homebrew_merged)
+    assert release.main(["--session", "s1"]) == (0 if merged else 1)
+    out = capsys.readouterr().out
+    assert ("release complete: v5.1.0" if merged else "release NOT complete: v5.1.0") in out
+    assert "tap pull request" in out and ("Homebrew serves" in out if merged else f"Homebrew: {PR} did not merge" in out)
 
 
 # ---- installed bytes against the tag -------------------------------------------

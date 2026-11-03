@@ -268,10 +268,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # Background job, kept showing the warning 5.3.10 meant to clear: background_priority 7 (def 1, docstring 2, the
 # priority read on Linux 2 and on macOS 2), spacing 2, the self-test's docstring line 1, the time reported rather than
 # judged 3.
+# 5.3.12 adds 163 to the plugin. 48 in synthesis-slack-sync's thread_checker.py, after it listed a thread under a
+# channel whose heading came 566 lines earlier and listed the thread's replies as parents (2026-11-03): the pattern
+# for a heading naming one channel and its comment 4, the colon-less `(TS n)` stamp's comment 1, the reply-link
+# pattern and its comment 2, the heading levels' comment 2, a channel id written on a line and the link targets it
+# skips 2, stamps_in's reply links 3, line_channel 12 (def 1, docstring 4, the ids outside links 3, the nearest one
+# before a TS 2, spacing 2), and in extract_threads the evidence rank in place of the thread list 0, the scope of
+# enclosing channel headings 1, the heading block 7 (17 lines in place of 10: its level and the channels it ends, a
+# heading that names one channel or writes one id, a heading carrying a TS never a section of threads read), each
+# TS's channel by where it is listed 4, the best reading of a TS kept 10. And 115 in synthesis-skills-manager's
+# release.py, the Homebrew formula moved to each release's tag at Rajiv's approval of 2026-11-03, after it had stayed
+# at 5.0.3 through eleven releases: the docstring 3, imports 2, the canonical repository, the tap, the formula and the
+# failed check states 4, archive 2, archive_sha256 12, tap_formula 7, serves 2, homebrew_formula 44, homebrew_merged
+# 19, their spacing 12, the calls in main 8.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8121
-PLUGIN_BUDGET = 25442
+PLUGIN_BUDGET = 25605
 
 
 def _lines(files):

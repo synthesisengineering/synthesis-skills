@@ -143,4 +143,12 @@ If the per-project config does not set `slack_workspace_domain`, the skill MUST 
 
 ### Older daily plans
 
-Files written before v3.1.0 keep the bare `(TS: 1234567890.123456)` form. They stay as they are: `thread_checker.py` reads both forms. In a section of threads read (a heading such as "threads re-read"), it lists every message, at any indent, linked or bare, in the link's channel or the backticked id on its line; a table row (coverage, watermarks, controls) is never a parent (4.0.2). The one-time retrofit script that linkified them was retired in v4.0.0 once no current plan used the old form; its text is in [preserved.md](preserved.md).
+Files written before v3.1.0 keep the bare `(TS: 1234567890.123456)` form, or `(TS 1234567890.123456)` without the colon in some message headers. They stay as they are: `thread_checker.py` reads every form. In a section of threads read (a heading such as "threads re-read"), it lists every message, at any indent, linked or bare; a table row (coverage, watermarks, controls) is never a parent (4.0.2).
+
+Each listed TS gets its channel from the best evidence the transcript holds (4.0.3):
+
+- **Its own link.** A link's channel always wins, and a reply's link (`?thread_ts=`) stands for its thread, the message a re-read starts from.
+- **An id written on its line.** In a list of threads read, a bare TS takes the channel id written nearest before it, as in "`D0AAA` ts; `D0BBB` ts, ts", else the line's one id. A `#name` in prose names nothing.
+- **The heading that encloses it.** A heading starting with `#name`, or carrying exactly one channel id, holds for the headings below it, and the next heading at its own level or higher ends it.
+
+A heading that carries a message's TS names that one message, even when it says the thread was read in full; it never opens a section of threads read. When one TS is read more than once, the reading with the strongest evidence of its channel is kept. In 2026-11, a thread listed under "After the window" was filed under a channel whose heading came 566 lines earlier, and a list naming several DMs filed every TS under the first. The one-time retrofit script that linkified them was retired in v4.0.0 once no current plan used the old form; its text is in [preserved.md](preserved.md).
