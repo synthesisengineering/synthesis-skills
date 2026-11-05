@@ -232,7 +232,7 @@ DIGEST = "ab" * 32
 PR = "https://github.com/synthesisengineering/homebrew-tap/pull/16"
 
 
-def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_502s=0, delete_rc=0):
+def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_502s=0, delete_err=""):
     """gh against the tap: the formula on main, the pull request's states in turn, and main after the merge;
     GitHub may answer the first pull request creations with a 502, as it did on 2026-11-05."""
     calls, state = [], {"text": served, "views": list(views), "create_502s": create_502s}
@@ -253,7 +253,7 @@ def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_5
                 return reply(rc=1, err="pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)")
             return reply(PR + "\n")
         if argv[:4] == ["gh", "api", "-X", "DELETE"]:
-            return reply(rc=delete_rc, err="HTTP 422: Reference does not exist" if delete_rc else "")
+            return reply(rc=1 if delete_err else 0, err=delete_err)
         if argv[:3] == ["gh", "pr", "view"]:
             view = state["views"].pop(0)
             if view["state"] == "MERGED":
@@ -412,13 +412,19 @@ def test_ci_state_reads_again_after_a_server_error():
     assert waits == [10]
 
 
-def test_a_merged_tap_branch_is_deleted_and_one_that_cannot_be_is_reported_not_fatal():
+@pytest.mark.parametrize("answer, note", [
+    ("", ""),  # the release deleted it
+    # gh's words, read 2026-11-05, for a branch already gone: the tap deletes a merged branch itself
+    ("gh: Reference does not exist (HTTP 422)", ""),
+    ("gh: Resource not accessible by integration (HTTP 403)",
+     "; branch synthesis-5.1.0 left: gh: Resource not accessible by integration (HTTP 403)"),
+])
+def test_a_merged_tap_branch_is_gone_after_the_release_and_one_left_is_reported_not_fatal(answer, note):
     formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
     served = FORMULA_RB.replace("v5.0.3", "v5.1.0").replace(OLD_SHA, DIGEST)
-    run = tap_fake(views=[{"state": "MERGED"}], merged_text=served, delete_rc=1)[0]
+    run = tap_fake(views=[{"state": "MERGED"}], merged_text=served, delete_err=answer)[0]
     assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
-        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged; branch synthesis-5.1.0 left: "
-        "HTTP 422: Reference does not exist)"]
+        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged{note})"]
 
 
 # ---- installed bytes against the tag -------------------------------------------
