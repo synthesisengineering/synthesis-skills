@@ -286,10 +286,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # retrying 14 (def 1, docstring 3, the loop and the stage 3, a server error or the last attempt 3, the notice and the
 # wait 2, spacing 2), ci_state's second read 4 (the loop 1, the check and the break 2, the wait 1),
 # the tap branch gone after the merge 4 (comment 1, the call 1, its answer 1, the line when it stays 1).
+# 5.3.14 adds 31 to the core and 51 to the plugin (Rajiv's yes, 2026-11-05), after an idle compaction applied a summary
+# whose in-flight items were 2 h 22 min old with nothing saying so, and a tap job with no runner stopped a release: in
+# hook.py 30, the docstring 1, the pause threshold and its spacing 3, _away_note 20 (def 1, docstring 4, the end and
+# the time 2, the threshold 2, the span 4, the end's time 2, the note 3, spacing 2), the Stop hook recording the
+# turn's end 6; in board.py the session's `ended` 1; in release.py 20, no_runner 7 (def 1, docstring 2, the check 2,
+# spacing 2) and homebrew_merged 13 (docstring 1, the rerun count 1, the failing checks 1, their runs 4, a run
+# running again 2, the rerun and its notice 4).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8121
-PLUGIN_BUDGET = 25632
+CORE_BUDGET = 8152
+PLUGIN_BUDGET = 25683
 
 
 def _lines(files):

@@ -232,10 +232,12 @@ DIGEST = "ab" * 32
 PR = "https://github.com/synthesisengineering/homebrew-tap/pull/16"
 
 
-def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_502s=0, delete_err=""):
+def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_502s=0, delete_err="",
+             run_views=()):
     """gh against the tap: the formula on main, the pull request's states in turn, and main after the merge;
-    GitHub may answer the first pull request creations with a 502, as it did on 2026-11-05."""
-    calls, state = [], {"text": served, "views": list(views), "create_502s": create_502s}
+    GitHub may answer the first pull request creations with a 502, as it did on 2026-11-05; `gh run view` answers
+    with the runs behind the checks in turn."""
+    calls, state = [], {"text": served, "views": list(views), "create_502s": create_502s, "runs": list(run_views)}
 
     def run(argv, **kwargs):
         calls.append(argv)
@@ -254,6 +256,8 @@ def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_5
             return reply(PR + "\n")
         if argv[:4] == ["gh", "api", "-X", "DELETE"]:
             return reply(rc=1 if delete_err else 0, err=delete_err)
+        if argv[:3] == ["gh", "run", "view"]:
+            return reply(json.dumps(state["runs"].pop(0)))
         if argv[:3] == ["gh", "pr", "view"]:
             view = state["views"].pop(0)
             if view["state"] == "MERGED":
@@ -311,6 +315,58 @@ def test_failed_install_tests_a_closed_pull_request_or_no_merge_leave_the_releas
     with pytest.raises(setup.SetupError, match="does not serve v5.1.0"):
         release.homebrew_merged(formula, run=tap_fake(views=[{"state": "MERGED"}], merged_text=FORMULA_RB)[0],
                                 sleep=lambda s: None)
+
+
+RUN = "https://github.com/synthesisengineering/homebrew-tap/actions/runs/42095650840/job/"
+NO_RUNNER = {"state": "OPEN", "statusCheckRollup": [  # tap #17, 2026-11-05
+    {"name": "formulas (macos-latest)", "conclusion": "CANCELLED", "detailsUrl": RUN + "127493416529"},
+    {"name": "formulas (ubuntu-latest)", "conclusion": "SUCCESS", "detailsUrl": RUN + "127493416530"},
+    {"name": "ci", "conclusion": "FAILURE", "detailsUrl": RUN + "127493416531"}]}
+NEVER_RAN = {"status": "completed", "jobs": [
+    {"name": "formulas (macos-latest)", "conclusion": "cancelled", "steps": []},
+    {"name": "formulas (ubuntu-latest)", "conclusion": "success", "steps": [{}] * 6},
+    {"name": "ci", "conclusion": "failure", "steps": [{}] * 3}]}
+RERUN = ["gh", "run", "rerun", "42095650840", "-R", release.TAP, "--failed"]
+
+
+def test_a_tap_job_github_never_ran_is_run_again_and_the_release_waits_for_the_merge(capsys):
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
+    served = FORMULA_RB.replace("v5.0.3", "v5.1.0").replace(OLD_SHA, DIGEST)
+    running = {"state": "OPEN", "statusCheckRollup": [{"name": "formulas (macos-latest)", "status": "IN_PROGRESS"}]}
+    run, calls, _ = tap_fake(views=[NO_RUNNER, running, {"state": "MERGED"}], merged_text=served,
+                             run_views=[NEVER_RAN])
+    assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
+        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged)"]
+    assert calls.count(RERUN) == 1 and "GitHub gave a job no runner; rerun 1 of 3" in capsys.readouterr().out
+
+
+def test_a_tap_job_that_failed_in_its_steps_stops_the_release_without_a_rerun():
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
+    failed = {"status": "completed", "jobs": [{"name": "formulas (macos-latest)", "conclusion": "failure",
+                                               "steps": [{}] * 4}]}
+    run, calls, _ = tap_fake(views=[NO_RUNNER], run_views=[failed])
+    with pytest.raises(setup.SetupError, match=r"did not merge \(ci, formulas \(macos-latest\)\)"):
+        release.homebrew_merged(formula, run=run, sleep=lambda s: None)
+    assert RERUN not in calls
+
+
+def test_a_job_that_never_gets_a_runner_is_run_again_three_times_then_the_release_stops():
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
+    run, calls, _ = tap_fake(views=[NO_RUNNER] * 4, run_views=[NEVER_RAN] * 4)
+    with pytest.raises(setup.SetupError, match="did not merge"):
+        release.homebrew_merged(formula, run=run, sleep=lambda s: None)
+    assert calls.count(RERUN) == 3
+
+
+def test_a_failed_check_whose_run_is_running_again_is_waited_for():
+    """Right after a rerun, the pull request can still show the failed checks while their run is queued again."""
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
+    served = FORMULA_RB.replace("v5.0.3", "v5.1.0").replace(OLD_SHA, DIGEST)
+    queued = {"status": "queued", "jobs": [{"name": "formulas (macos-latest)", "conclusion": "", "steps": []}]}
+    run, calls, _ = tap_fake(views=[NO_RUNNER, {"state": "MERGED"}], merged_text=served, run_views=[queued])
+    assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
+        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged)"]
+    assert RERUN not in calls
 
 
 def test_a_fork_or_a_dry_run_leaves_the_formula_alone(tmp_path):

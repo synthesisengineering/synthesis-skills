@@ -103,7 +103,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   it reports loading, updates the stable runtime and runs `synthesis doctor`, then waits
   for the tap's pull request to merge and reads the formula back from the tap's `main`.
   A GitHub server error runs its stage again, up to three times, since each stage reads
-  what is already published first. A release is not complete until the script exits 0.
+  what is already published first, and a tap job GitHub never gave a runner is run again.
+  A release is not complete until the script exits 0.
 - `release.py --install-only` installs and verifies the tag HEAD carries, for a new
   Mac or after drift.
 

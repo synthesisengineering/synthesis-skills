@@ -101,6 +101,13 @@ Any other error stops the release at once. On 2026-11-05 GitHub answered 502 to 
 release's GitHub release and to its tap pull request, and the release took three runs by
 hand.
 
+A tap check whose jobs GitHub never gave a runner (each failed job cancelled before any
+step ran, so the summary `ci` check failed) is run again, up to three times, and the
+script keeps waiting for the merge; a check whose run is already running again is waited
+for. A job that failed in its steps stops the release at once. On 2026-11-05 GitHub's
+macOS runners turned away a job on `main`, on a pull request and on the tap within one
+day, and the tap's stopped that day's release.
+
 ## Each harness's own commands
 
 Installation calls onboarding's `scripts/setup.py`, so release and setup cannot drift:
