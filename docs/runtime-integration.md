@@ -47,9 +47,9 @@ A failed self-update never blocks the session; `synthesis doctor` reports it.
 | Harness event | Argument | Timeout | Registered for |
 |---|---|---|---|
 | SessionStart | `session-start` | 10 s | every start, with no matcher, so it also fires after compaction where the harness supports that |
-| UserPromptSubmit | `user-prompt-submit` | 5 s | every prompt; it also briefs a session whose project changed since its last brief |
+| UserPromptSubmit | `user-prompt-submit` | 5 s | every prompt; it also briefs a session whose project changed since its last brief, and after a pause of ten minutes or more says when the last turn ended |
 | PreToolUse | `pre-tool-use` | 5 s | shell tools, and MCP tools whose names send, draft, reply, forward, schedule, change calendar events, set focus time or out-of-office, trash mail, or share files |
-| Stop | `stop` | 5 s | every turn end |
+| Stop | `stop` | 5 s | every turn end, which it records for the next prompt |
 
 The PreToolUse matcher is the regular expression in `hooks/hooks.json`;
 `tests/test_hooks_registration.py` checks that every guarded tool reaches it and
@@ -234,6 +234,15 @@ A session that chooses its project after it started (`synthesis use`) gets the b
 at its next prompt, once, in every harness: UserPromptSubmit briefs a session whose
 project differs from the one it was last briefed on. `synthesis resume` prints the
 brief itself, so it counts as briefed.
+
+A session that comes back after a pause learns how old its picture is. The Stop hook
+records when each turn ends, and a prompt that comes ten minutes or more later carries
+one line: the time now, when the last turn ended and how long ago, and that what the
+conversation says is in flight is as of then. Claude Code's idle compaction makes this
+matter: it writes the summary about 54 minutes into a pause and applies it at the next
+prompt, however much later, and the summary carries no time. SessionStart still restores
+the project state from disk when the summary takes effect; the note covers what only
+the conversation held.
 
 ## Muse
 

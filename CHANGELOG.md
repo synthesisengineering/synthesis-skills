@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.14] - 2026-11-05
+
+- **A prompt after a pause says how old the conversation is** (core). An agent cannot perceive a pause, and after
+  Claude Code's idle compaction its summary reads as current: on 2026-11-05 a summary of a conversation whose last
+  turn ended at 11:52 was written at 12:46 and took effect at 14:14, and nothing said that what it called in flight
+  was 2 h 22 min old. The Stop hook now records when each turn ends, and a prompt that comes ten minutes or more later
+  carries one line: the time now, when the last turn ended and how long ago, and that what the conversation says is in
+  flight (background tasks, CI runs, deploys, replies awaited) is as of then. It works with or without compaction, in
+  Claude Code, Codex and Muse, with no setting to change, so idle compaction can stay on. The checkpoint skill's
+  ten-minute pause trigger now names the note (checkpoint 2.0.1).
+- **The compaction brief names background tasks and watchers** (onboarding 3.3.1), each with its id and what it waits
+  for, among the waits a summary keeps, so a session knows what to check after a pause. Setup refreshes the marked
+  block in each workspace's instructions.
+- **A release runs a tap job again when GitHub never gave it a runner** (skills manager 3.3.2). On 2026-11-05 GitHub's
+  macOS runners turned away a job on `main`, on a pull request and on the tap, whose failed check stopped that day's
+  release. `release.py` now reruns a tap check whose failed jobs were all cancelled before any step ran, up to three
+  times, and keeps waiting for the merge; a job that failed in its steps still stops the release.
+
 ## [5.3.13] - 2026-11-05
 
 - **A release gets past GitHub's server errors on its own** (skills manager 3.3.1). The 5.3.12 release took three

@@ -47,6 +47,7 @@ class Session:
     ceded: list[str] = field(default_factory=list)  # claims another session took over while this one was stale
     briefed: str = ""  # the project whose brief this session was last given
     version: str = ""  # the runtime release this session last saw; a newer one earns a note once
+    ended: float = 0.0  # when its last turn ended, for the next prompt's time-away note
     started: float = 0.0
     seen: float = 0.0
     schema: int = SCHEMA

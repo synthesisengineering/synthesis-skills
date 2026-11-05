@@ -301,16 +301,36 @@ def homebrew_formula(repo: Path, version: str, dry_run: bool = False, run=setup.
         {"pr": pr, "version": version, "sha256": digest, "branch": branch}
 
 
+def no_runner(run: dict) -> bool:
+    """Every job of a workflow run that did not pass was cancelled before a step ran: GitHub gave it no runner, and the
+    summary `ci` job failed only for that (tap #17's macOS job, 2026-11-05)."""
+    missed = [job for job in run.get("jobs") or [] if job.get("name") != "ci" and job.get("conclusion") != "success"]
+    return bool(missed) and all(job.get("conclusion") == "cancelled" and not job.get("steps") for job in missed)
+
+
 def homebrew_merged(formula: dict, run=setup.run, sleep=time.sleep, interval: float = 20,
                     timeout: float = 1800) -> list:
-    """Wait for the tap pull request to merge, then read the formula Homebrew serves from the tap's main."""
+    """Wait for the tap pull request to merge, then read the formula Homebrew serves from the tap's main.
+    A failed check whose job never got a runner is run again, up to three times."""
+    reruns = 0
     for _ in range(max(1, int(timeout / interval))):
         view = setup._json(run(["gh", "pr", "view", formula["pr"], "-R", TAP, "--json",
                                 "state,statusCheckRollup"]).stdout) or {}
-        failed = sorted(check.get("name") or check.get("context") or "?" for check in view.get("statusCheckRollup")
-                        or [] if str(check.get("conclusion") or check.get("state") or "").upper() in FAILED)
+        failing = [check for check in view.get("statusCheckRollup") or []
+                   if str(check.get("conclusion") or check.get("state") or "").upper() in FAILED]
+        failed = sorted(check.get("name") or check.get("context") or "?" for check in failing)
         if view.get("state") == "MERGED":
             break
+        links = [re.search(r"/runs/(\d+)", check.get("detailsUrl") or "") for check in failing]
+        ids = sorted({link.group(1) for link in links if link}) if view.get("state") != "CLOSED" else []
+        runs = [setup._json(run(["gh", "run", "view", i, "-R", TAP, "--json", "status,jobs"]).stdout) or {}
+                for i in ids]
+        if any(r.get("status") not in (None, "completed") for r in runs):
+            failed = []  # running again: the pull request still shows the checks from before the rerun
+        elif runs and reruns < 3 and all(map(no_runner, runs)) and all(
+                run(["gh", "run", "rerun", i, "-R", TAP, "--failed"]).returncode == 0 for i in ids):
+            reruns, failed = reruns + 1, []
+            print(f"{formula['pr']}: GitHub gave a job no runner; rerun {reruns} of 3", flush=True)
         if view.get("state") == "CLOSED" or failed:
             raise setup.SetupError(f"{formula['pr']} did not merge ({', '.join(failed) or 'closed'}); Homebrew "
                                    "still serves the previous release")

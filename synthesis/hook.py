@@ -2,9 +2,10 @@
 
 session-start: register the session and re-inject the active project's brief
 (also after compaction, R1.2). user-prompt-submit: grant typed approvals, deliver
-board messages, and brief a session whose project changed since its last brief
-(Muse runs session-start only when a session is created). pre-tool-use: run the
-guards (R3). stop: check the reply and the autopilot run. Each event
+board messages, brief a session whose project changed since its last brief
+(Muse runs session-start only when a session is created), and say how long ago
+the last turn ended after a pause. pre-tool-use: run the guards (R3). stop:
+record the turn's end, check the reply and the autopilot run. Each event
 reads one JSON payload on stdin and must finish fast (R8.1), so modules load
 only for the event that needs them.
 """
@@ -105,6 +106,29 @@ def _window_note() -> str:
     return sends.describe(window) if window else ""
 
 
+AWAY = 600  # seconds: the checkpoint skill's trigger, a pause of ten minutes or more
+
+
+def _away_note(me, now=None) -> str:
+    """How long ago this session's last turn ended, once that is ten minutes or more. An agent cannot perceive a pause,
+    and after an idle compaction its summary reads as current though written long before it took effect (2026-11-05:
+    a summary of a conversation whose last turn ended at 11:52, written at 12:46, took effect at 14:14). A turn the
+    person interrupts records no end, so the note then counts from the turn before it."""
+    ended = me.ended if me else 0.0
+    now = time.time() if now is None else now
+    if not ended or now - ended < AWAY:
+        return ""
+    minutes = int((now - ended) // 60)
+    hours, days = minutes // 60, minutes // 1440
+    span = (f"{minutes} min" if minutes < 60 else f"{hours} h {minutes % 60} min" if hours < 24
+            else f"{days} day{'s' * (days > 1)} {hours % 24} h")
+    when = time.strftime("%H:%M" if time.localtime(ended)[:3] == time.localtime(now)[:3] else "%A %Y-%m-%d %H:%M",
+                         time.localtime(ended))
+    return (f"It is {time.strftime('%H:%M', time.localtime(now))}; this session's last turn ended at {when}, {span} "
+            "ago. What the conversation says is in flight (background tasks, CI runs, deploys, replies awaited) is as "
+            "of then: check each before relying on it or reporting it.")
+
+
 def user_prompt_submit(payload):
     """Grant approvals the principal typed, brief a session whose project changed, deliver board messages."""
     from synthesis import approvals, board, paths
@@ -118,7 +142,7 @@ def user_prompt_submit(payload):
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)
-        notes += [n for n in [_upgrade_note(session_id, me)] if n]
+        notes += [n for n in [_away_note(me), _upgrade_note(session_id, me)] if n]
         if me and me.project and me.project != me.briefed:  # after `synthesis use`, once
             from synthesis import project
             found = project.find(me.project)
@@ -157,6 +181,12 @@ def pre_tool_use(payload):
 def stop(payload):
     """Revise the reply once if it defers work or quotes words with no source (S15), then
     let an autopilot run that owns a plan continue to its next item (R6)."""
+    try:  # the turn's end, for the next prompt's time-away note; a turn sent back ends later and records again
+        from synthesis import board, paths
+        if paths.session_id(payload):
+            board.touch(paths.session_id(payload), ended=time.time())
+    except Exception:
+        pass  # a note's bookkeeping never costs a turn its end
     try:
         from synthesis import autopilot, paths, reply_check
         config = paths.config()

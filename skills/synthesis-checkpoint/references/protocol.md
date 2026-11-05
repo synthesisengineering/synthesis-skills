@@ -39,11 +39,14 @@ Invoke synthesis-checkpoint when any of these conditions fire:
 **Triggered by the agent's own self-monitoring:**
 - Before generating any time-interval claim ("N days ago", "yesterday", "last session", "this week")
 - Before quoting any project status from cached memory
-- After at least 10 minutes between user turns when the client exposes message
-  timestamps. Ten minutes is the default freshness boundary: long enough to
-  avoid checkpointing ordinary back-and-forth, short enough to catch another
-  client session changing shared state. If timestamps are unavailable, any
-  resume/continue phrasing after an apparent pause triggers the checkpoint.
+- After at least 10 minutes between user turns. The prompt hook says when: a
+  prompt that comes ten minutes or more after the last turn ended carries a note
+  naming that time and how long ago it was (since 5.3.14), because an agent
+  cannot perceive a pause, and after an idle compaction its summary reads as
+  current. Ten minutes is the default freshness boundary: long enough to avoid
+  checkpointing ordinary back-and-forth, short enough to catch another client
+  session changing shared state. Without the note (a harness without the hook),
+  any resume/continue phrasing after an apparent pause triggers the checkpoint.
 - After ~25 substantive tool calls, regardless of perceived need
 - When the model says or thinks "I don't recall" about a recent decision
 - When a file read reveals content the model didn't expect (state drift signal)
