@@ -102,7 +102,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   own commands, verifies each harness's installed files equal the tag at the folder
   it reports loading, updates the stable runtime and runs `synthesis doctor`, then waits
   for the tap's pull request to merge and reads the formula back from the tap's `main`.
-  A release is not complete until the script exits 0.
+  A GitHub server error runs its stage again, up to three times, since each stage reads
+  what is already published first. A release is not complete until the script exits 0.
 - `release.py --install-only` installs and verifies the tag HEAD carries, for a new
   Mac or after drift.
 

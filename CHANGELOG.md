@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.13] - 2026-11-05
+
+- **A release gets past GitHub's server errors on its own** (skills manager 3.3.1). The 5.3.12 release took three
+  runs by hand: GitHub answered HTTP 502 to the GitHub release, which it had created anyway, and then to the tap's
+  pull request, which it had not opened. `release.py` now runs a stage again after a GitHub server error (HTTP 5xx,
+  or an empty error body that `gh` reports as "unexpected end of JSON input"), up to three times, 20 and then 40
+  seconds apart; the CI read in preflight does the same. Each stage reads what is already published before it acts,
+  so the release is not created twice and the pull request is opened once. Any other error still stops the release.
+- **No release leaves its tap branch behind.** The tap now deletes each merged pull request's branch itself (its
+  `delete_branch_on_merge` setting, on since 2026-11-05). Once the merge is read back, `release.py` deletes the branch
+  it made if the tap has not; GitHub's "Reference does not exist" means it is already gone, and a branch it cannot
+  delete is reported and fails nothing.
+
 ## [5.3.12] - 2026-11-03
 
 - **Homebrew installs the current release** (skills manager 3.3.0). The `synthesis` formula still pointed at 5.0.3
