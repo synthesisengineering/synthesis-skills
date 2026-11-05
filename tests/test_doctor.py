@@ -282,6 +282,69 @@ def test_codex_trust_without_a_hooks_file_fails():
     assert doctor.check_codex_trust(None, {}, PLUGIN_ID).status == "fail"
 
 
+# ---- Codex ties a hook approval to the plugin's files (Codex 0.166) ----------------------------------------------
+
+def _plugin(tmp_path):
+    root = tmp_path / "plugin"
+    (root / "synthesis").mkdir(parents=True)
+    (root / "synthesis" / "hook.py").write_text("print('hook')\n")
+    return root
+
+
+def test_the_codex_fingerprint_reproduces_codex(tmp_path):
+    """A fixed tree's fingerprint, from the code that reproduced on 2026-11-05 the fingerprint Codex 0.166 stored when
+    the synthesis 5.3.14 hooks were approved (sha256:161ba7ca..., over the installed plugin and its .git)."""
+    root = tmp_path / "plugin"
+    (root / "b").mkdir(parents=True)
+    (root / "a.txt").write_bytes(b"x")
+    (root / "b" / "c.py").write_bytes(b"print(1)\n")
+    expected = "sha256:232fde32ff1c340573c4d728c8a6e2bce2477b1ebf09aa4a3ab63f64f6b577de"
+    assert doctor.codex_plugin_hash(root) == expected
+    for skipped in ("b/__pycache__/c.cpython-312.pyc", "d.pyc", ".venv/bin/python", "pkg.egg-info/PKG-INFO"):
+        (root / skipped).parent.mkdir(parents=True, exist_ok=True)
+        (root / skipped).write_bytes(b"generated")
+    assert doctor.codex_plugin_hash(root) == expected  # bytecode, virtual environments and package metadata
+    (root / "a.txt").write_bytes(b"y")
+    assert doctor.codex_plugin_hash(root) != expected
+
+
+def test_hooks_approved_for_earlier_plugin_files_need_approval_again(tmp_path):
+    """2026-11-05: Codex ran none of synthesis's hooks after a release, since it ties each approval to the plugin's
+    files, while doctor, which compared only the hook definitions, reported all four trusted."""
+    root = _plugin(tmp_path)
+    state = trusted_state()
+    for value in state.values():
+        value["trusted_content_hash"] = "sha256:" + "0" * 64
+    check = doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": state}}, PLUGIN_ID, root)
+    assert check.status == "fail" and "approved before the plugin last changed" in check.detail
+    for value in state.values():
+        value["trusted_content_hash"] = doctor.codex_plugin_hash(root)
+    assert doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": state}}, PLUGIN_ID, root).status == "ok"
+
+
+def test_an_approval_from_before_codex_stored_fingerprints_is_held_to_its_baseline(tmp_path):
+    """Codex pins one baseline per plugin for an approval that carries no fingerprint, at the path its plugin_trust.rs
+    derives from the config file and the plugin id (it matched a real Codex home on 2026-11-05)."""
+    root, codex_home = _plugin(tmp_path), tmp_path / "codex"
+    config = {"hooks": {"state": trusted_state()}}
+    assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, root, codex_home).status == "ok"  # pinned on use
+    baseline = doctor.codex_trust_baseline(codex_home, PLUGIN_ID)
+    assert baseline.parent == codex_home / ".hook-trust" and len(baseline.name) == 64
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("sha256:" + "0" * 64)
+    check = doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, root, codex_home)
+    assert check.status == "fail" and "approved before the plugin last changed" in check.detail
+    baseline.write_text(doctor.codex_plugin_hash(root))
+    assert doctor.check_codex_trust(REPO_HOOKS, config, PLUGIN_ID, root, codex_home).status == "ok"
+
+
+def test_a_plugin_codex_cannot_fingerprint_runs_none_of_its_hooks(tmp_path):
+    root = _plugin(tmp_path)
+    (root / "link").symlink_to(root / "synthesis" / "hook.py")
+    check = doctor.check_codex_trust(REPO_HOOKS, {"hooks": {"state": trusted_state()}}, PLUGIN_ID, root)
+    assert check.status == "fail" and "Codex cannot fingerprint the plugin" in check.detail
+
+
 def test_codex_hooks_feature():
     assert doctor.check_codex_features({"features": {"hooks": True}}).status == "ok"
     missing = doctor.check_codex_features({"features": {"memories": True}})

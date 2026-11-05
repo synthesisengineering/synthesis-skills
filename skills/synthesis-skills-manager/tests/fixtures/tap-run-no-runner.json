@@ -1,0 +1,110 @@
+{
+ "conclusion": "failure",
+ "jobs": [
+  {
+   "completedAt": "2026-11-05T19:52:28Z",
+   "conclusion": "cancelled",
+   "databaseId": 127484840258,
+   "name": "formulas (macos-latest)",
+   "startedAt": "2026-11-05T19:37:26Z",
+   "status": "completed",
+   "steps": [],
+   "url": "https://github.com/synthesisengineering/homebrew-tap/actions/runs/42095650840/job/127484840258"
+  },
+  {
+   "completedAt": "2026-11-05T19:39:40Z",
+   "conclusion": "success",
+   "databaseId": 127484841187,
+   "name": "formulas (ubuntu-latest)",
+   "startedAt": "2026-11-05T19:37:29Z",
+   "status": "completed",
+   "steps": [
+    {
+     "completedAt": "2026-11-05T19:37:31Z",
+     "conclusion": "success",
+     "name": "Set up job",
+     "number": 1,
+     "startedAt": "2026-11-05T19:37:29Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:37:54Z",
+     "conclusion": "success",
+     "name": "Run Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c",
+     "number": 2,
+     "startedAt": "2026-11-05T19:37:31Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:37:55Z",
+     "conclusion": "success",
+     "name": "Verify the checked-out tap and use individual formula trust",
+     "number": 3,
+     "startedAt": "2026-11-05T19:37:54Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:39:38Z",
+     "conclusion": "success",
+     "name": "Install and exercise each immutable artifact",
+     "number": 4,
+     "startedAt": "2026-11-05T19:37:55Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:39:38Z",
+     "conclusion": "success",
+     "name": "Post Run Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c",
+     "number": 8,
+     "startedAt": "2026-11-05T19:39:38Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:39:39Z",
+     "conclusion": "success",
+     "name": "Complete job",
+     "number": 9,
+     "startedAt": "2026-11-05T19:39:39Z",
+     "status": "completed"
+    }
+   ],
+   "url": "https://github.com/synthesisengineering/homebrew-tap/actions/runs/42095650840/job/127484841187"
+  },
+  {
+   "completedAt": "2026-11-05T19:52:33Z",
+   "conclusion": "failure",
+   "databaseId": 127493109837,
+   "name": "ci",
+   "startedAt": "2026-11-05T19:52:31Z",
+   "status": "completed",
+   "steps": [
+    {
+     "completedAt": "2026-11-05T19:52:31Z",
+     "conclusion": "success",
+     "name": "Set up job",
+     "number": 1,
+     "startedAt": "2026-11-05T19:52:31Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:52:32Z",
+     "conclusion": "failure",
+     "name": "Run test \"abandoned\" = success",
+     "number": 2,
+     "startedAt": "2026-11-05T19:52:31Z",
+     "status": "completed"
+    },
+    {
+     "completedAt": "2026-11-05T19:52:32Z",
+     "conclusion": "success",
+     "name": "Complete job",
+     "number": 3,
+     "startedAt": "2026-11-05T19:52:32Z",
+     "status": "completed"
+    }
+   ],
+   "url": "https://github.com/synthesisengineering/homebrew-tap/actions/runs/42095650840/job/127493109837"
+  }
+ ],
+ "status": "completed"
+}
