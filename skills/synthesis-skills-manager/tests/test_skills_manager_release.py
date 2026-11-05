@@ -232,13 +232,14 @@ DIGEST = "ab" * 32
 PR = "https://github.com/synthesisengineering/homebrew-tap/pull/16"
 
 
-def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None):
-    """gh against the tap: the formula on main, the pull request's states in turn, and main after the merge."""
-    calls, state = [], {"text": served, "views": list(views)}
+def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None, create_502s=0, delete_rc=0):
+    """gh against the tap: the formula on main, the pull request's states in turn, and main after the merge;
+    GitHub may answer the first pull request creations with a 502, as it did on 2026-11-05."""
+    calls, state = [], {"text": served, "views": list(views), "create_502s": create_502s}
 
     def run(argv, **kwargs):
         calls.append(argv)
-        reply = lambda out="", rc=0: subprocess.CompletedProcess(argv, rc, out, "")  # noqa: E731
+        reply = lambda out="", rc=0, err="": subprocess.CompletedProcess(argv, rc, out, err)  # noqa: E731
         if argv[:2] == ["gh", "api"] and argv[2].startswith(f"repos/{release.TAP}/contents/"):
             encoded = base64.b64encode(state["text"].encode()).decode()
             return reply(json.dumps({"content": encoded, "sha": "blob1"}))
@@ -247,7 +248,12 @@ def tap_fake(served=FORMULA_RB, open_pr="", views=(), merged_text=None):
         if argv[:3] == ["gh", "api", f"repos/{release.TAP}/git/ref/heads/main"]:
             return reply(json.dumps({"object": {"sha": "main1"}}))
         if argv[:3] == ["gh", "pr", "create"]:
+            if state["create_502s"]:
+                state["create_502s"] -= 1
+                return reply(rc=1, err="pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)")
             return reply(PR + "\n")
+        if argv[:4] == ["gh", "api", "-X", "DELETE"]:
+            return reply(rc=delete_rc, err="HTTP 422: Reference does not exist" if delete_rc else "")
         if argv[:3] == ["gh", "pr", "view"]:
             view = state["views"].pop(0)
             if view["state"] == "MERGED":
@@ -277,6 +283,7 @@ def test_the_formula_follows_the_tag_through_a_pull_request_the_tap_tests_merge(
     assert ["gh", "pr", "merge", PR, "-R", release.TAP, "--auto", "--merge"] in calls
     assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
         f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged)"]
+    assert calls[-1] == ["gh", "api", "-X", "DELETE", f"repos/{release.TAP}/git/refs/heads/synthesis-5.1.0"]
 
 
 def test_a_formula_already_serving_the_tag_or_an_open_pull_request_is_not_made_twice(tmp_path):
@@ -286,12 +293,13 @@ def test_a_formula_already_serving_the_tag_or_an_open_pull_request_is_not_made_t
         [f"{release.TAP}: Homebrew already serves synthesis 5.1.0"], None)
     run, calls, _ = tap_fake(open_pr=PR)
     assert release.homebrew_formula(canonical_repo(tmp_path / "again"), "5.1.0", run=run,
-                                    fetch=lambda url: DIGEST)[1] == {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+                                    fetch=lambda url: DIGEST)[1] == {"pr": PR, "version": "5.1.0", "sha256": DIGEST,
+                                                       "branch": "synthesis-5.1.0"}
     assert not [c for c in calls if c[:3] == ["gh", "pr", "create"] or c[:4] == ["gh", "api", "-X", "PUT"]]
 
 
 def test_failed_install_tests_a_closed_pull_request_or_no_merge_leave_the_release_incomplete():
-    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
     failing = [{"state": "OPEN", "statusCheckRollup": [{"name": "formulas (macos-latest)", "conclusion": "FAILURE"}]}]
     with pytest.raises(setup.SetupError, match=r"did not merge \(formulas \(macos-latest\)\)"):
         release.homebrew_merged(formula, run=tap_fake(views=failing)[0], sleep=lambda s: None)
@@ -318,7 +326,7 @@ def test_a_fork_or_a_dry_run_leaves_the_formula_alone(tmp_path):
 
 @pytest.mark.parametrize("merged", [True, False])
 def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, monkeypatch, capsys, merged):
-    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST}
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
 
     def homebrew_merged(found):
         if not merged:
@@ -338,6 +346,79 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
     out = capsys.readouterr().out
     assert ("release complete: v5.1.0" if merged else "release NOT complete: v5.1.0") in out
     assert "tap pull request" in out and ("Homebrew serves" in out if merged else f"Homebrew: {PR} did not merge" in out)
+
+
+# ---- GitHub server errors ------------------------------------------------------
+
+def flaky(errors, result=("done",)):
+    """A stage that fails with each of `errors` in turn, then returns `result`."""
+    queue = list(errors)
+
+    def stage(*args, **kwargs):
+        if queue:
+            raise setup.SetupError(queue.pop(0))
+        return list(result)
+    return stage
+
+
+def test_a_github_server_error_runs_the_stage_again_and_any_other_error_stops_it():
+    waits = []
+    stage = flaky(["cannot create the GitHub release v5.1.0: HTTP 502: Server Error",
+                   "cannot prepare tap: unexpected end of JSON input"])
+    assert release.retrying(stage, sleep=waits.append) == ["done"] and waits == [20, 40]
+    waits.clear()
+    with pytest.raises(setup.SetupError, match="HTTP 403"):
+        release.retrying(flaky(["cannot create the GitHub release v5.1.0: HTTP 403"]), sleep=waits.append)
+    assert waits == []
+    with pytest.raises(setup.SetupError, match="503 Service Unavailable"):
+        release.retrying(flaky(["503 Service Unavailable"] * 3), sleep=waits.append)
+    assert waits == [20, 40]
+
+
+def test_a_release_github_created_while_answering_502_is_not_created_twice(tmp_path):
+    """2026-11-05: GitHub answered 502 to `gh release create` and published the release anyway."""
+    repo = source_repo(tmp_path)
+    git(repo, "remote", "add", "github", "https://github.com/example/demo.git")
+    calls, made = [], []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:3] == ["gh", "release", "view"]:
+            return subprocess.CompletedProcess(argv, 0 if made else 1, "", "")
+        if argv[:3] == ["gh", "release", "create"]:
+            made.append(argv)
+            return subprocess.CompletedProcess(argv, 1, "", "HTTP 502: Server Error (https://api.github.com/repos)")
+        return subprocess.CompletedProcess(argv, 0, json.dumps([{"tagName": "v5.1.0", "isLatest": True}]), "")
+    assert release.retrying(release.github_release, repo, "5.1.0", run=run, sleep=lambda s: None) == [
+        "example/demo: GitHub release v5.1.0, latest"]
+    assert len(made) == 1
+
+
+def test_a_tap_pull_request_answered_502_is_opened_on_the_next_attempt(tmp_path):
+    run, calls, _ = tap_fake(create_502s=1)
+    lines, formula = release.retrying(release.homebrew_formula, canonical_repo(tmp_path), "5.1.0", run=run,
+                                      fetch=lambda url: DIGEST, sleep=lambda s: None)
+    assert formula["pr"] == PR and lines[0].startswith(f"{release.TAP}: {PR} points the formula at v5.1.0")
+    assert len([c for c in calls if c[:3] == ["gh", "pr", "create"]]) == 2  # the second one opened it
+    assert ["gh", "pr", "merge", PR, "-R", release.TAP, "--auto", "--merge"] in calls
+
+
+def test_ci_state_reads_again_after_a_server_error():
+    replies = [subprocess.CompletedProcess([], 1, "", "HTTP 502: Bad Gateway"),
+               subprocess.CompletedProcess([], 0, json.dumps([{"status": "completed", "conclusion": "success",
+                                                              "workflowName": "CI"}]), "")]
+    waits = []
+    assert release.ci_state(Path("."), "a" * 40, run=lambda *a, **k: replies.pop(0), sleep=waits.append)[0] is True
+    assert waits == [10]
+
+
+def test_a_merged_tap_branch_is_deleted_and_one_that_cannot_be_is_reported_not_fatal():
+    formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
+    served = FORMULA_RB.replace("v5.0.3", "v5.1.0").replace(OLD_SHA, DIGEST)
+    run = tap_fake(views=[{"state": "MERGED"}], merged_text=served, delete_rc=1)[0]
+    assert release.homebrew_merged(formula, run=run, sleep=lambda s: None) == [
+        f"{release.TAP}: Homebrew serves synthesis 5.1.0 ({PR} merged; branch synthesis-5.1.0 left: "
+        "HTTP 422: Reference does not exist)"]
 
 
 # ---- installed bytes against the tag -------------------------------------------
