@@ -12,8 +12,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   or an empty error body that `gh` reports as "unexpected end of JSON input"), up to three times, 20 and then 40
   seconds apart; the CI read in preflight does the same. Each stage reads what is already published before it acts,
   so the release is not created twice and the pull request is opened once. Any other error still stops the release.
-- **The release deletes the tap branch it made** once the merge is read back; one it cannot delete is reported and
-  fails nothing.
+- **No release leaves its tap branch behind.** The tap now deletes each merged pull request's branch itself (its
+  `delete_branch_on_merge` setting, on since 2026-11-05). Once the merge is read back, `release.py` deletes the branch
+  it made if the tap has not; GitHub's "Reference does not exist" means it is already gone, and a branch it cannot
+  delete is reported and fails nothing.
 
 ## [5.3.12] - 2026-11-03
 

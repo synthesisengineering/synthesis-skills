@@ -319,9 +319,10 @@ def homebrew_merged(formula: dict, run=setup.run, sleep=time.sleep, interval: fl
         raise setup.SetupError(f"{formula['pr']} had not merged after {int(timeout / 60)} minutes")
     if not serves(tap_formula(run)["text"], formula["version"], formula["sha256"]):
         raise setup.SetupError(f"{formula['pr']} merged, but {TAP} main does not serve v{formula['version']}")
-    # The tap keeps a merged branch; the release removes the one it made. A branch left behind fails nothing.
+    # The tap deletes a merged branch itself; if it has not, the release deletes its own. One left fails nothing.
     gone = run(["gh", "api", "-X", "DELETE", f"repos/{TAP}/git/refs/heads/{formula['branch']}"])
-    left = "" if gone.returncode == 0 else f"; branch {formula['branch']} left: {setup._tail(gone)}"
+    tail = setup._tail(gone) if gone.returncode else ""
+    left = f"; branch {formula['branch']} left: {tail}" if tail and "Reference does not exist" not in tail else ""
     return [f"{TAP}: Homebrew serves synthesis {formula['version']} ({formula['pr']} merged{left})"]
 
 
