@@ -284,7 +284,12 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
 When a harness asks the person to review or approve hooks, that decision stays
 with the person. Setup never approves hooks; `synthesis doctor` names every
 hook still waiting, and for Codex it reproduces the trust hash Codex stores to
-find hooks that are untrusted, modified or disabled.
+find hooks that are untrusted, modified or disabled. Codex 0.166 also stores a
+fingerprint of the installed plugin's files with each approval and runs no hook
+of a plugin whose files changed, which every release does. Doctor computes that
+fingerprint the way Codex does (and the baseline Codex pins for approvals made
+before it stored one), so a stale approval fails the check instead of passing
+while Codex runs none of the hooks.
 
 ## Adding another harness
 

@@ -317,15 +317,14 @@ def test_failed_install_tests_a_closed_pull_request_or_no_merge_leave_the_releas
                                 sleep=lambda s: None)
 
 
-RUN = "https://github.com/synthesisengineering/homebrew-tap/actions/runs/42095650840/job/"
-NO_RUNNER = {"state": "OPEN", "statusCheckRollup": [  # tap #17, 2026-11-05
-    {"name": "formulas (macos-latest)", "conclusion": "CANCELLED", "detailsUrl": RUN + "127493416529"},
-    {"name": "formulas (ubuntu-latest)", "conclusion": "SUCCESS", "detailsUrl": RUN + "127493416530"},
-    {"name": "ci", "conclusion": "FAILURE", "detailsUrl": RUN + "127493416531"}]}
-NEVER_RAN = {"status": "completed", "jobs": [
-    {"name": "formulas (macos-latest)", "conclusion": "cancelled", "steps": []},
-    {"name": "formulas (ubuntu-latest)", "conclusion": "success", "steps": [{}] * 6},
-    {"name": "ci", "conclusion": "failure", "steps": [{}] * 3}]}
+# GitHub's own answers for tap #17 on 2026-11-05: `gh run view --attempt 1 --json status,conclusion,jobs` for the run
+# whose macOS job got no runner, and `gh pr view --json state,statusCheckRollup` once its rerun merged it.
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+NEVER_RAN = json.loads((FIXTURES / "tap-run-no-runner.json").read_text())
+CHECKS = json.loads((FIXTURES / "tap-pull-request-checks.json").read_text())["statusCheckRollup"]
+NO_RUNNER = {"state": "OPEN", "statusCheckRollup": [  # the checks as the pull request showed them before the rerun
+    dict(c, conclusion={"formulas (macos-latest)": "CANCELLED", "ci": "FAILURE"}.get(c["name"], c["conclusion"]))
+    for c in CHECKS]}
 RERUN = ["gh", "run", "rerun", "42095650840", "-R", release.TAP, "--failed"]
 
 
@@ -342,8 +341,8 @@ def test_a_tap_job_github_never_ran_is_run_again_and_the_release_waits_for_the_m
 
 def test_a_tap_job_that_failed_in_its_steps_stops_the_release_without_a_rerun():
     formula = {"pr": PR, "version": "5.1.0", "sha256": DIGEST, "branch": "synthesis-5.1.0"}
-    failed = {"status": "completed", "jobs": [{"name": "formulas (macos-latest)", "conclusion": "failure",
-                                               "steps": [{}] * 4}]}
+    failed = dict(NEVER_RAN, jobs=[dict(job, conclusion="failure", steps=[{"name": "Install"}])
+                                   if job["name"] == "formulas (macos-latest)" else job for job in NEVER_RAN["jobs"]])
     run, calls, _ = tap_fake(views=[NO_RUNNER], run_views=[failed])
     with pytest.raises(setup.SetupError, match=r"did not merge \(ci, formulas \(macos-latest\)\)"):
         release.homebrew_merged(formula, run=run, sleep=lambda s: None)
@@ -396,12 +395,35 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
     monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap pull request"], formula))
     monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"claude": tmp_path}, ["claude"]))
     monkeypatch.setattr(release.install, "install", lambda source: "runtime")
-    monkeypatch.setattr(release.doctor, "main", lambda argv: 0)
+    monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("ok", "runtime", "current")])
     monkeypatch.setattr(release, "homebrew_merged", homebrew_merged)
     assert release.main(["--session", "s1"]) == (0 if merged else 1)
     out = capsys.readouterr().out
     assert ("release complete: v5.1.0" if merged else "release NOT complete: v5.1.0") in out
     assert "tap pull request" in out and ("Homebrew serves" in out if merged else f"Homebrew: {PR} did not merge" in out)
+
+
+@pytest.mark.parametrize("failing, complete", [
+    ("codex hook trust", True),  # the person approves hooks in the harness; no release can
+    ("muse hook approval", True),
+    ("runtime", False),
+])
+def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path, monkeypatch, capsys, failing,
+                                                                          complete):
+    """2026-11-05: Codex ties a hook approval to the plugin's files, so every release leaves it to be given again."""
+    monkeypatch.setattr(release, "preflight", lambda repo, install_only: ("5.1.0", []))
+    monkeypatch.setattr(release, "hold_train", lambda repo, session, version: "train")
+    monkeypatch.setattr(release.board, "release", lambda session, paths: None)
+    monkeypatch.setattr(release, "publish", lambda repo, version, dry_run: ["pushed"])
+    monkeypatch.setattr(release, "github_release", lambda repo, version, dry_run: ["github"])
+    monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap: nothing to move"], None))
+    monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"codex": tmp_path}, ["codex"]))
+    monkeypatch.setattr(release.install, "install", lambda source: "runtime")
+    monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("fail", failing, "needs approval")])
+    assert release.main(["--session", "s1"]) == (0 if complete else 1)
+    out = capsys.readouterr().out
+    assert ("release complete: v5.1.0" if complete else "release NOT complete: v5.1.0") in out
+    assert (f"waiting on your approval ({failing}): needs approval" in out) == complete
 
 
 # ---- GitHub server errors ------------------------------------------------------

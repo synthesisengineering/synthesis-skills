@@ -293,10 +293,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # turn's end 6; in board.py the session's `ended` 1; in release.py 20, no_runner 7 (def 1, docstring 2, the check 2,
 # spacing 2) and homebrew_merged 13 (docstring 1, the rerun count 1, the failing checks 1, their runs 4, a run
 # running again 2, the rerun and its notice 4).
+# 5.3.15 adds 59 to the core and 66 to the plugin (Rajiv's yes, 2026-11-05), after Codex ran none of synthesis's
+# hooks while doctor reported them trusted: in doctor.py 59, imports 2, codex_plugin_hash 25 (def 1, docstring 4,
+# the walk 18, spacing 2), codex_trust_baseline 8 (def 1, docstring 2, the key 2, the path 1, spacing 2),
+# check_codex_trust 17 (signature 1, docstring 1, the fingerprint 5, the baseline 5, a stale approval 5), APPROVALS
+# and report 9 (the names 1, report 4, spacing 4), main 2 fewer; in release.py 7, the docstring 1 and the doctor
+# stage 6 (the checks and their report 3, the approvals waiting 3).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8152
-PLUGIN_BUDGET = 25683
+CORE_BUDGET = 8211
+PLUGIN_BUDGET = 25749
 
 
 def _lines(files):

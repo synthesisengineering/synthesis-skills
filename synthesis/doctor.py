@@ -17,6 +17,8 @@ import json
 import os
 import re
 import shutil
+import stat
+import struct
 import subprocess
 import sys
 import time
@@ -225,6 +227,39 @@ def codex_hook_hash(event: str, matcher, handler: dict) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def codex_plugin_hash(root: Path) -> str:
+    """Codex's fingerprint of an installed plugin (codex-rs hooks plugin_fingerprint.rs, 0.166): sha256 over every
+    entry in sorted depth-first order, with its relative path, kind, size and bytes, skipping bytecode, virtual
+    environments and package metadata. Codex stores it with a hook approval and runs no hook of a plugin whose
+    fingerprint has changed; this reproduced the value Codex stored for synthesis 5.3.14 (2026-11-05)."""
+    digest, pending = hashlib.sha256(b"codex-plugin-bundle-v1"), [(Path(root), "")]
+    while pending:
+        path, rel = pending.pop()
+        name = rel.rsplit("/", 1)[-1]
+        if name in ("__pycache__", ".venv") or name.endswith((".pyc", ".egg-info")):
+            continue
+        raw = os.fsencode(rel)
+        digest.update(struct.pack("<Q", len(raw)) + raw)
+        info = os.lstat(path)
+        if stat.S_ISDIR(info.st_mode):
+            digest.update(b"directory")
+            pending += [(path / n, f"{rel}/{n}" if rel else n) for n in sorted(os.listdir(path), key=os.fsencode,
+                                                                              reverse=True)]
+        elif stat.S_ISREG(info.st_mode):
+            digest.update(b"file" + struct.pack("<Q", info.st_size) + path.read_bytes())
+        else:
+            raise ValueError(f"{rel} is neither a file nor a folder")
+    return "sha256:" + digest.hexdigest()
+
+
+def codex_trust_baseline(codex_home: Path, plugin_id: str) -> Path:
+    """Where Codex keeps the fingerprint it pinned for approvals made before it stored one with each (plugin_trust.rs:
+    .hook-trust/ beside config.toml, named by a hash of that file's path and the plugin id)."""
+    key = b"".join(struct.pack("<Q", len(part)) + part
+                   for part in (os.fsencode(str(Path(codex_home) / "config.toml")), plugin_id.encode()))
+    return Path(codex_home) / ".hook-trust" / hashlib.sha256(key).hexdigest()
+
+
 def _snake(event: str) -> str:
     return "".join("_" + c.lower() if c.isupper() else c for c in event).lstrip("_")
 
@@ -343,12 +378,24 @@ def check_codex_doc_bytes(config: dict) -> Check:
     return Check("ok", "codex instruction bytes", f"project_doc_max_bytes = {value:,}")
 
 
-def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str) -> Check:
-    """Codex runs a plugin hook only once its exact definition is trusted in /hooks."""
+def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str, root: Path | None = None,
+                      codex_home: Path | None = None) -> Check:
+    """Codex runs a plugin hook only once its exact definition is trusted in /hooks, and (0.166) only while the
+    plugin's files match the fingerprint stored with that approval, so every release needs the approval again."""
     if not hooks_data:
         return Check("fail", "codex hook trust", "the installed plugin has no hooks/hooks.json")
     states = (config.get("hooks") or {}).get("state") or {}
-    problems, total = [], 0
+    problems, stale, total, content, baseline = [], [], 0, "", ""
+    if root is not None:
+        try:
+            content = codex_plugin_hash(root)
+        except (OSError, ValueError) as exc:
+            problems.append(f"Codex cannot fingerprint the plugin ({exc}), so it runs none of its hooks")
+    if content and codex_home is not None:
+        try:
+            baseline = codex_trust_baseline(codex_home, plugin_id).read_text(encoding="utf-8").strip()
+        except OSError:
+            baseline = ""  # none yet: Codex pins the files it finds on the next run
     for event, groups in (hooks_data.get("hooks") or {}).items():
         for gi, group in enumerate(groups or []):
             for hi, handler in enumerate(group.get("hooks") or []):
@@ -363,6 +410,11 @@ def check_codex_trust(hooks_data: dict | None, config: dict, plugin_id: str) -> 
                     problems.append(f"{where} untrusted")
                 elif state["trusted_hash"] != codex_hook_hash(event, group.get("matcher"), handler):
                     problems.append(f"{where} modified")
+                elif content and (state.get("trusted_content_hash") or baseline) not in ("", content):
+                    stale.append(where)
+    if stale:
+        problems.append(f"{', '.join(stale)} approved before the plugin last changed (Codex ties an approval to the "
+                        "plugin's files), so Codex runs none of them")
     if problems:
         return Check("fail", "codex hook trust", "needs /hooks approval: " + ", ".join(problems))
     return Check("ok", "codex hook trust", f"all {total} synthesis hooks trusted")
@@ -1004,7 +1056,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
             versions["codex"] = entry.get("version", "")
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
-                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN)]
+                       check_codex_trust(hooks, config, entry.get("id") or PLUGIN, Path(entry["path"]), codex_home)]
             if catalog is not None:
                 result, catalog_error = catalog()
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))
@@ -1083,6 +1135,15 @@ def summary(checks: list, ms: float) -> str:
             f"{counts['info']} info) in {ms:.0f} ms")
 
 
+APPROVALS = ("codex hook trust", "muse hook approval")  # the person gives these in the harness; no release can
+
+
+def report(checks: list, ms: float) -> str:
+    """The summary line, then every check, failures first."""
+    rows = sorted(checks, key=lambda c: ("fail", "warn", "info", "ok").index(c.status))
+    return "\n".join([summary(checks, ms)] + [f"  {c.status:<5} {c.name:<24} {c.detail}" for c in rows])
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="synthesis doctor", description="Check that every part of synthesis is "
                                      "installed, current and wired into each harness found on PATH.")
@@ -1097,9 +1158,7 @@ def main(argv=None) -> int:
     if args.json:
         print(json.dumps({"healthy": healthy, "ms": round(ms), "checks": [c._asdict() for c in checks]}, indent=1))
     else:
-        print(summary(checks, ms))
-        for c in sorted(checks, key=lambda c: ("fail", "warn", "info", "ok").index(c.status)):
-            print(f"  {c.status:<5} {c.name:<24} {c.detail}")
+        print(report(checks, ms))
     return 0 if healthy else 1
 
 

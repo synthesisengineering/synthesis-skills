@@ -104,7 +104,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   for the tap's pull request to merge and reads the formula back from the tap's `main`.
   A GitHub server error runs its stage again, up to three times, since each stage reads
   what is already published first, and a tap job GitHub never gave a runner is run again.
-  A release is not complete until the script exits 0.
+  A release is not complete until the script exits 0; a hook approval only the person can
+  give in a harness (Codex asks again after every release) is named as waiting, not counted.
 - `release.py --install-only` installs and verifies the tag HEAD carries, for a new
   Mac or after drift.
 
