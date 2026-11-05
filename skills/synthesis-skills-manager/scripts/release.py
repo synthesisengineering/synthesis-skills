@@ -24,6 +24,7 @@ Stages, each gating the next:
   5. Update the stable runtime from a verified copy and run `synthesis doctor`.
   6. Wait for the tap's pull request to merge and read the formula back from the tap's main.
 Exit 0 only when every found harness verified, doctor is healthy and Homebrew serves the tag.
+A GitHub server error runs its stage again, up to three times: each stage reads what is published before acting.
 """
 
 from __future__ import annotations
@@ -55,6 +56,10 @@ GITHUB = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\
 CANONICAL, TAP = "synthesisengineering/synthesis-skills", "synthesisengineering/homebrew-tap"
 FORMULA = "Formula/synthesis.rb"
 FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
+# GitHub's own server errors, which the same request usually gets past a moment later. An error body GitHub sends
+# empty reaches gh as "unexpected end of JSON input".
+TRANSIENT = re.compile(r"HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time-?out|unexpected end of JSON input|"
+                       r"connection reset|i/o timeout|TLS handshake timeout", re.I)
 
 
 def git(repo: Path, *args: str, timeout: float = 600) -> subprocess.CompletedProcess:
@@ -85,10 +90,28 @@ def changelog_entry(repo: Path, version: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def ci_state(repo: Path, sha: str, run=setup.run) -> tuple:
+def retrying(stage, *args, attempts: int = 3, wait: float = 20, sleep=time.sleep, **kwargs):
+    """Run a stage again after a GitHub server error. Every stage reads what is already published before it acts,
+    so a second run finishes the first one's work: on 2026-11-05 GitHub answered 502 to a release it had created
+    and to a tap pull request it had not opened, and one release took three runs by hand."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return stage(*args, **kwargs)
+        except setup.SetupError as exc:
+            if attempt == attempts or not TRANSIENT.search(str(exc)):
+                raise
+            print(f"GitHub server error, trying again in {wait * attempt:g} s: {exc}", flush=True)
+            sleep(wait * attempt)
+
+
+def ci_state(repo: Path, sha: str, run=setup.run, sleep=time.sleep) -> tuple:
     """(passed, detail) for HEAD's CI on GitHub. Unknown is not passed."""
-    proc = run(["gh", "run", "list", "--commit", sha, "--json", "status,conclusion,workflowName", "--limit", "50"],
-               60, cwd=str(repo))
+    for attempt in range(1, 4):
+        proc = run(["gh", "run", "list", "--commit", sha, "--json", "status,conclusion,workflowName", "--limit", "50"],
+                   60, cwd=str(repo))
+        if proc.returncode == 0 or attempt == 3 or not TRANSIENT.search(setup._tail(proc)):
+            break
+        sleep(10 * attempt)
     runs = setup._json(proc.stdout) if proc.returncode == 0 else None
     if not isinstance(runs, list):
         return False, f"cannot read CI for {sha[:12]} (is gh installed and signed in?): {setup._tail(proc)}"
@@ -275,7 +298,7 @@ def homebrew_formula(repo: Path, version: str, dry_run: bool = False, run=setup.
     if armed.returncode:
         raise setup.SetupError(f"cannot set {pr} to merge when its checks pass: {setup._tail(armed)}")
     return [f"{TAP}: {pr} points the formula at v{version} and merges when its install tests pass"], \
-        {"pr": pr, "version": version, "sha256": digest}
+        {"pr": pr, "version": version, "sha256": digest, "branch": branch}
 
 
 def homebrew_merged(formula: dict, run=setup.run, sleep=time.sleep, interval: float = 20,
@@ -296,7 +319,10 @@ def homebrew_merged(formula: dict, run=setup.run, sleep=time.sleep, interval: fl
         raise setup.SetupError(f"{formula['pr']} had not merged after {int(timeout / 60)} minutes")
     if not serves(tap_formula(run)["text"], formula["version"], formula["sha256"]):
         raise setup.SetupError(f"{formula['pr']} merged, but {TAP} main does not serve v{formula['version']}")
-    return [f"{TAP}: Homebrew serves synthesis {formula['version']} ({formula['pr']} merged)"]
+    # The tap keeps a merged branch; the release removes the one it made. A branch left behind fails nothing.
+    gone = run(["gh", "api", "-X", "DELETE", f"repos/{TAP}/git/refs/heads/{formula['branch']}"])
+    left = "" if gone.returncode == 0 else f"; branch {formula['branch']} left: {setup._tail(gone)}"
+    return [f"{TAP}: Homebrew serves synthesis {formula['version']} ({formula['pr']} merged{left})"]
 
 
 def blob_id(path: Path) -> str:
@@ -383,9 +409,9 @@ def main(argv=None) -> int:
             if args.dry_run and holders:
                 raise setup.SetupError(f"another release is under way: {holders[0].session} ({holders[0].goal})")
             train = "" if args.dry_run else hold_train(repo, session, version)
-            lines += publish(repo, version, args.dry_run)
-            lines += github_release(repo, version, args.dry_run)
-            opened, formula = homebrew_formula(repo, version, args.dry_run)
+            lines += retrying(publish, repo, version, args.dry_run)
+            lines += retrying(github_release, repo, version, args.dry_run)
+            opened, formula = retrying(homebrew_formula, repo, version, args.dry_run)
             lines += opened
         installed, verified, found = install_and_verify(repo, version, clients, args.dry_run)
         lines += installed
@@ -404,7 +430,7 @@ def main(argv=None) -> int:
     complete = args.dry_run or (healthy and found and set(verified) == set(found))
     if formula:  # the tap's install tests ran while the harnesses installed
         try:
-            print("\n".join(homebrew_merged(formula)), flush=True)
+            print("\n".join(retrying(homebrew_merged, formula)), flush=True)
         except setup.SetupError as exc:
             print(f"Homebrew: {exc}", flush=True)
             complete = False

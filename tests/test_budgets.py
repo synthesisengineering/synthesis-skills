@@ -281,10 +281,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # at 5.0.3 through eleven releases: the docstring 3, imports 2, the canonical repository, the tap, the formula and the
 # failed check states 4, archive 2, archive_sha256 12, tap_formula 7, serves 2, homebrew_formula 44, homebrew_merged
 # 19, their spacing 12, the calls in main 8.
+# 5.3.13 adds 26 to the plugin (synthesis-skills-manager's release.py), after the 5.3.12 release took three runs by
+# hand for GitHub's 502s (Rajiv's yes, 2026-11-05): the docstring line 1, the server-error pattern and its comment 4,
+# retrying 14 (def 1, docstring 3, the loop and the stage 3, a server error or the last attempt 3, the notice and the
+# wait 2, spacing 2), ci_state's second read 4 (the loop 1, the check and the break 2, the wait 1),
+# the tap branch deleted after the merge 3 (comment 1, the call 1, the line when it stays 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8121
-PLUGIN_BUDGET = 25605
+PLUGIN_BUDGET = 25631
 
 
 def _lines(files):

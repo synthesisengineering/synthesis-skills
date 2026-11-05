@@ -86,7 +86,18 @@ the tag leave the release not complete. From 5.0.3 to 5.3.11 no release moved th
 formula, so `brew install synthesisengineering/tap/synthesis` installed 5.0.3's
 onboarding, without the prerequisite checks and `--dry-run` that 5.3.3 added. The
 formula is part of what a release publishes, so the approval to release covers the tap's
-merge.
+merge. Once the merge is read back, the script deletes the tap branch it made; a branch it
+cannot delete is reported and fails nothing.
+
+GitHub's API sometimes answers with a server error (HTTP 5xx, or an empty error body that
+`gh` reports as "unexpected end of JSON input"), sometimes after doing what was asked. A
+stage that fails that way runs again, up to three times, 20 and then 40 seconds apart, and
+the CI read in preflight does the same. Each stage reads what is already published before it
+acts, so a second run finishes the first one's work: a release GitHub created while
+answering 502 is found and not created twice, and a pull request it did not open is opened.
+Any other error stops the release at once. On 2026-11-05 GitHub answered 502 to the
+release's GitHub release and to its tap pull request, and the release took three runs by
+hand.
 
 ## Each harness's own commands
 
