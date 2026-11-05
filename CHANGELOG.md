@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.15] - 2026-11-05
+
+- **Doctor sees what Codex sees: an approval tied to the plugin's files** (core). Codex 0.166 stores a fingerprint of
+  the installed plugin with each hook approval and runs no hook of a plugin whose files changed, and every release
+  changes them. On 2026-11-05 a real Codex turn ran none of synthesis's hooks, the guards included, while doctor,
+  comparing only the hook definitions, reported all four trusted. Doctor now computes the fingerprint the way Codex
+  does (it reproduced the value Codex stored for 5.3.14) and the baseline Codex pins for approvals made before it
+  stored one, and fails with "approved before the plugin last changed" until the person approves the hooks again in
+  Codex's `/hooks`. A plugin Codex cannot fingerprint fails the check too.
+- **A release names the approvals only you can give and does not wait on them** (skills manager 3.3.3). After
+  installing, `release.py` prints each failing hook approval (Codex's `/hooks`, Muse's `plugins approve`) as waiting
+  on your approval; any other doctor failure still leaves the release not complete. Onboarding's install notes say
+  Codex asks again after every update (onboarding 3.3.2).
+- **The tap rerun tests read GitHub's recorded answers** for the run whose macOS job got no runner and for the pull
+  request's checks, in place of shapes written by hand.
+
 ## [5.3.14] - 2026-11-05
 
 - **A prompt after a pause says how old the conversation is** (core). An agent cannot perceive a pause, and after

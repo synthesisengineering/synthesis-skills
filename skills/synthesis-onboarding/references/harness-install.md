@@ -166,7 +166,10 @@ says so.
 
 Codex runs a plugin hook only after the person approves its exact definition in
 `/hooks`; Muse holds hooks until `muse plugins approve synthesis-skills`. Setup never
-approves either. `synthesis doctor` names every hook still waiting.
+approves either. `synthesis doctor` names every hook still waiting. Codex also ties
+an approval to the installed plugin's files, so after every update it runs none of
+synthesis's hooks until they are approved again in `/hooks`; doctor checks that the
+way Codex does.
 
 ## Restart, verify, uninstall
 

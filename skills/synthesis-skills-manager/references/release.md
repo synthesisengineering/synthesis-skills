@@ -126,6 +126,14 @@ A harness that is not on the Mac is skipped, not failed. Codex hook trust and Mu
 approval stay the person's decisions: when a hook definition changed, doctor names
 what to approve in Codex's `/hooks` and with `muse plugins approve synthesis-skills`.
 
+Codex also ties an approval to a fingerprint of the installed plugin's files (Codex
+0.166), and every release changes them, so after each release Codex runs none of
+synthesis's hooks, the guards included, until the person approves them again in
+`/hooks`. Doctor fingerprints the installed plugin the way Codex does and fails until
+then. The release still completes and prints each such approval as waiting on the
+person, since no release can give it. Before 5.3.15 doctor compared only the hook
+definitions and reported the hooks trusted while Codex ran none of them (2026-11-05).
+
 ## Why a client's own version report is not sufficient evidence
 
 A client can report the intended version while the tree it actually loads is
@@ -210,6 +218,7 @@ true, "required_pull_request_reviews": null, "restrictions": null}`, and the sam
 ## After the release
 
 - Read the doctor output the script prints. Codex `hook trust` and Muse `hook approval`
-  failures need the person's approval of the changed hook definitions; say so plainly.
+  failures need the person's approval (in Codex, after every release); the script
+  prints them as waiting on your approval. Say so plainly.
 - Tell the person which harnesses to restart: a restart reloads hooks and skills
   without a new conversation (lesson 2026-08-17).

@@ -23,7 +23,8 @@ Stages, each gating the next:
   4. Install with each harness's own commands (onboarding's setup.py), then verify bytes.
   5. Update the stable runtime from a verified copy and run `synthesis doctor`.
   6. Wait for the tap's pull request to merge and read the formula back from the tap's main.
-Exit 0 only when every found harness verified, doctor is healthy and Homebrew serves the tag.
+Exit 0 only when every found harness verified, doctor is healthy and Homebrew serves the tag; a hook approval only
+the person can give in a harness (Codex asks again after every release) is named as waiting, not counted.
 A GitHub server error runs its stage again, up to three times: each stage reads what is published before acting.
 """
 
@@ -447,7 +448,13 @@ def main(argv=None) -> int:
         lines.append(install.install(next(iter(verified.values()))))  # the stable runtime from verified bytes
     print("\n".join(lines), flush=True)
     if verified and not args.dry_run:
-        healthy = doctor.main([]) == 0
+        start = time.perf_counter()
+        checks = doctor.run_checks()
+        print(doctor.report(checks, (time.perf_counter() - start) * 1000), flush=True)
+        waiting = [c for c in checks if c.status == "fail" and c.name in doctor.APPROVALS]
+        healthy = not any(c.status == "fail" and c not in waiting for c in checks)
+        for c in waiting:  # given in the harness by the person, never by a release, so none waits on it
+            print(f"waiting on your approval ({c.name}): {c.detail}", flush=True)
     complete = args.dry_run or (healthy and found and set(verified) == set(found))
     if formula:  # the tap's install tests ran while the harnesses installed
         try:
