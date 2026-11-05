@@ -537,6 +537,7 @@ def test_the_brief_is_one_marked_block_refreshed_in_place():
     text = workspace.with_brief("# Rules\n\nKeep it short.\n")
     assert text.startswith("# Rules\n\nKeep it short.\n\n" + workspace.BRIEF_BEGIN)
     assert "## Compact Instructions" in text and text.endswith(workspace.BRIEF_END + "\n")
+    assert "a background task or watcher (its id and what it waits for)" in text  # what to check after a pause
     assert workspace.with_brief(text) == text
     stale = text.replace("Drop tool output", "Drop everything") + "\n## After\n"
     refreshed = workspace.with_brief(stale)
