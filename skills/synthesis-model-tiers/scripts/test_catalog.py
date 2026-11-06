@@ -15,7 +15,8 @@ ROLES = ('judgment', 'routine', 'bulk')
 HOSTS = {
     'anthropic': {'platform.claude.com'},
     'openai': {'developers.openai.com'},
-    'google': {'ai.google.dev'},
+    # Google's model docs moved to aistudio.google.com; the old ai.google.dev pages answer 301.
+    'google': {'aistudio.google.com'},
     'ollama': {'ollama.com'},
 }
 
@@ -79,10 +80,15 @@ def test_shipped_catalog_contract():
 def test_verified_role_assignments():
     catalog = yamlish.load((ROOT/'tiers.yaml').read_text(encoding='utf-8'))
     assert {role: catalog['providers']['openai'][role] for role in ROLES} == {
-        'judgment': ['gpt-6-astra'], 'routine': ['gpt-6-sol'], 'bulk': ['gpt-6-luna']}
-    assert catalog['providers']['anthropic']['judgment'] == ['claude-fable-5-1', 'claude-opus-5-5']
-    assert catalog['providers']['google']['routine'] == ['gemini/gemini-3.8-flash']
-    assert catalog['providers']['google']['bulk'] == ['gemini/gemini-3.5-flash-lite']
+        'judgment': ['gpt-6-astra'], 'routine': ['gpt-6.1-sol', 'gpt-6.1-terra'], 'bulk': ['gpt-6-luna']}
+    assert {role: catalog['providers']['anthropic'][role] for role in ROLES} == {
+        'judgment': ['claude-fable-5-1', 'claude-opus-5-5'], 'routine': ['claude-sonnet-5-5'],
+        'bulk': ['claude-haiku-5-5']}
+    assert {role: catalog['providers']['google'][role] for role in ROLES} == {
+        'judgment': ['gemini/gemini-4-argon'], 'routine': ['gemini/gemini-3.8-flash'],
+        'bulk': ['gemini/gemini-3.5-flash-lite']}
+    assert catalog['providers']['ollama']['judgment'][0] == 'gemma4:31b'
+    assert catalog['providers']['ollama']['routine'][0] == 'qwen3.8:27b'
 
 
 @pytest.mark.parametrize('defect', ['missing_source', 'wrong_host', 'restamped', 'unknown_as_model',
@@ -116,10 +122,10 @@ def test_negative_catalog_controls(defect):
     elif defect == 'local_readiness_inferred':
         catalog['providers']['ollama']['hardware_fit'] = 'verified'
     elif defect == 'active_selection':
-        catalog['selected_model'] = 'gpt-6-sol'
+        catalog['selected_model'] = 'gpt-6.1-sol'
     elif defect == 'effort_default':
         catalog['reasoning_effort'] = 'max'
     elif defect == 'lost_retained_model':
-        catalog['providers']['ollama']['judgment'].remove('qwen3.6:35b-a3b')
+        catalog['providers']['ollama']['judgment'].remove('gemma4:31b')
     with pytest.raises((AssertionError, KeyError, ValueError)):
         validate(catalog, evidence)

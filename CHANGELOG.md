@@ -4,6 +4,18 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.3.16] - 2026-11-06
+
+- **The model table names November's models** (model tiers 3.0.1). Every role list in `tiers.yaml` now names the
+  provider's current release, verified on 2026-11-06 against each provider's own documentation, with the page,
+  excerpt and identifiers recorded in `references/catalog-verification.yaml`. Anthropic routine and bulk move to
+  `claude-sonnet-5-5` and `claude-haiku-5-5`; OpenAI routine to `gpt-6.1-sol`, with `gpt-6.1-terra` as its
+  alternative; Google judgment to `gemini/gemini-4-argon`, since `gemini-3.1-pro-preview` is superseded. The Ollama
+  lists gain Qwen3.8, Muse Glimmer, Nemotron 3.5 Super, Mistral Medium 3.5, Gemma 4 12B and the Qwen3.8 Flash-Next
+  preview, and drop Qwen3.6. Tags Ollama publishes only as cloud models are left out, because they do not run
+  locally. Google's model documentation moved to `aistudio.google.com` (the old `ai.google.dev` page answers 301),
+  so the catalog test accepts that host for Google sources.
+
 ## [5.3.15] - 2026-11-05
 
 - **Doctor sees what Codex sees: an approval tied to the plugin's files** (core). Codex 0.166 stores a fingerprint of
