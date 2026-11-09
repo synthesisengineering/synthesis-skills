@@ -1,0 +1,5 @@
+# Test exclusions: OKF's reserved files, a private folder, and a glob that matches nothing.
+**/index.md
+log.md
+datasets/private/**
+archive/**

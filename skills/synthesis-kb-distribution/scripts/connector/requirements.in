@@ -1,0 +1,5 @@
+# The connector's direct dependencies; requirements.txt pins them and everything they need, with hashes.
+# Regenerate after changing this file:
+#   uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes -o requirements.txt
+fastmcp==4.1.6
+py-key-value-aio[firestore]==0.4.6

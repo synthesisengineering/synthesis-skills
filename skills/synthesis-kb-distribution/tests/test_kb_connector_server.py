@@ -1,0 +1,378 @@
+"""The server over HTTP, in process: the tools, /health, and the access list at sign-in, on every token and
+on every tool call. Sign-in runs FastMCP's real OAuth proxy end to end (registration, consent, the Google
+callback, the token exchange); only Google is replaced: its token endpoint by a stand-in client, its
+tokeninfo and userinfo endpoints by an httpx2 mock transport.
+
+These need the connector's pinned requirements (requirements.txt), which need Python 3.12 or newer.
+Without FastMCP they skip, unless SYNTHESIS_REQUIRE_FASTMCP=1, which makes a missing FastMCP fail.
+"""
+
+import asyncio
+import base64
+import hashlib
+import json
+import logging
+import os
+import re
+import secrets
+import subprocess
+import time
+from urllib.parse import parse_qs, urlparse
+
+import pytest
+
+if os.environ.get("SYNTHESIS_REQUIRE_FASTMCP") != "1":  # when it is "1", a missing FastMCP fails the imports below
+    pytest.importorskip("fastmcp", reason="needs the connector's requirements.txt (Python 3.12+)")
+
+import httpx2  # noqa: E402
+from fastmcp.server.auth import AccessToken, TokenVerifier  # noqa: E402
+from fastmcp.utilities.tests import asgi_server  # noqa: E402
+
+from kb_connector import config, server  # noqa: E402
+from kb_connector.access import AccessPolicy  # noqa: E402
+from kb_connector.source import DirectorySource, Library  # noqa: E402
+
+CLIENT_ID = "test-client.apps.googleusercontent.com"
+SCOPES = "openid https://www.googleapis.com/auth/userinfo.email"
+REDIRECT = "http://localhost:8765/callback"
+RESOURCE = "http://127.0.0.1/mcp"
+PEOPLE = {"code-lead": ("lead@example.com", True, "example.com"),
+          "code-outsider": ("outsider@example.com", True, "example.com"),
+          "code-unverified": ("lead@example.com", False, "example.com"),
+          "code-personal": ("lead@example.com", True, None)}
+PRICING = "datasets/active/pricing-decision.md"
+
+
+def settings_for(published, **env):
+    return config.load({"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1",
+                        "KB_GOOGLE_CLIENT_ID": CLIENT_ID, "KB_GOOGLE_CLIENT_SECRET": "test-secret",
+                        "KB_ALLOWED_EMAILS": "lead@example.com,analyst@example.com",
+                        "KB_DOCUMENT_URL_TEMPLATE": "https://git.example.com/kb/src/{commit}/{source_path}", **env})
+
+
+def loaded(published):
+    library = Library(DirectorySource(published))
+    assert library.refresh()
+    return library
+
+
+class ClaimsVerifier(TokenVerifier):
+    """Bearer tokens that map straight to claims, to exercise the tool-level check on its own."""
+
+    def __init__(self, tokens):
+        super().__init__()
+        self.tokens = tokens
+
+    async def verify_token(self, token):
+        claims = self.tokens.get(token)
+        return AccessToken(token=token, client_id="test", scopes=[], claims=claims) if claims else None
+
+
+class FakeGoogle:
+    """Google's token endpoint, tokeninfo and userinfo, for the people in PEOPLE."""
+
+    def __init__(self):
+        self.tokens = {}
+
+    def upstream_client(self):
+        google = self
+
+        class TokenEndpoint:  # the surface OAuthProxy uses: fetch_token, refresh_token, aclose
+            async def fetch_token(self, url, **params):
+                assert url == "https://oauth2.googleapis.com/token" and params["code_verifier"]
+                token = f"ya29.test-{secrets.token_hex(12)}"
+                google.tokens[token] = PEOPLE[params["code"]]
+                return {"access_token": token, "refresh_token": "1//test-refresh", "expires_in": 3600,
+                        "expires_at": int(time.time()) + 3600, "token_type": "Bearer", "scope": SCOPES}
+
+            async def refresh_token(self, url, **params):
+                raise AssertionError("no refresh expected")
+
+            async def aclose(self):
+                pass
+        return TokenEndpoint()
+
+    def handle(self, request):
+        person = self.tokens.get(request.headers.get("authorization", "")[len("Bearer "):])
+        if person is None:
+            return httpx2.Response(400, json={"error": "invalid_token"})
+        email, verified, domain = person
+        if request.url.path == "/tokeninfo":
+            return httpx2.Response(200, json={"aud": CLIENT_ID, "sub": f"sub-{email}", "scope": SCOPES,
+                                              "expires_in": "3599", "email": email,
+                                              "email_verified": "true" if verified else "false"})
+        profile = {"id": f"sub-{email}", "email": email, "verified_email": verified, **({"hd": domain} if domain else {})}
+        return httpx2.Response(200, json=profile)
+
+
+def google_auth(settings, policy, google):
+    auth = server.build_auth(settings, policy, http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(google.handle)))
+    auth._create_upstream_oauth_client = google.upstream_client  # FastMCP's documented override point
+    return auth
+
+
+async def sign_in(http, code_name):
+    """Register a client, consent, come back from Google, and exchange the code: (callback response, token)."""
+    registered = await http.post("/register", json={"redirect_uris": [REDIRECT], "client_name": "test client",
+                                                    "token_endpoint_auth_method": "none",
+                                                    "grant_types": ["authorization_code", "refresh_token"],
+                                                    "response_types": ["code"]})
+    assert registered.status_code == 201, registered.text
+    client_id = registered.json()["client_id"]
+    verifier = secrets.token_urlsafe(48)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    authorize = await http.get("/authorize", params={
+        "response_type": "code", "client_id": client_id, "redirect_uri": REDIRECT, "code_challenge": challenge,
+        "code_challenge_method": "S256", "state": "client-state", "scope": SCOPES, "resource": RESOURCE})
+    assert authorize.status_code in (302, 303, 307), authorize.text
+    consent_url = authorize.headers["location"]
+    txn = parse_qs(urlparse(consent_url).query)["txn_id"][0]
+    page = await http.get(consent_url)
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
+    approved = await http.post("/consent", data={"txn_id": txn, "csrf_token": csrf, "action": "approve"})
+    assert approved.status_code == 302 and approved.headers["location"].startswith("https://accounts.google.com/")
+    callback = await http.get("/auth/callback", params={"code": code_name, "state": txn})
+    if callback.status_code != 302:
+        return callback, None
+    location = urlparse(callback.headers["location"])
+    assert f"{location.scheme}://{location.netloc}{location.path}" == REDIRECT
+    granted = await http.post("/token", data={"grant_type": "authorization_code", "client_id": client_id,
+                                              "code": parse_qs(location.query)["code"][0], "redirect_uri": REDIRECT,
+                                              "code_verifier": verifier, "resource": RESOURCE})
+    assert granted.status_code == 200, granted.text
+    return callback, granted.json()["access_token"]
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+def test_the_tools_are_read_only_search_and_fetch(published):
+    policy = AccessPolicy.from_settings("lead@example.com")
+    mcp = server.build_server(settings_for(published), loaded(published), policy,
+                              ClaimsVerifier({"t": {"email": "lead@example.com", "email_verified": "true"}}))
+
+    async def go():
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.client(auth="t") as client:
+            return await client.list_tools()
+    tools = {tool.name: tool for tool in run(go())}
+    assert set(tools) == {"search", "fetch"}
+    for tool in tools.values():
+        hints = tool.annotations.model_dump(by_alias=True, exclude_none=True)
+        assert hints == {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True,
+                         "openWorldHint": False}
+    assert list(tools["search"].input_schema["properties"]) == ["query"]
+    assert list(tools["fetch"].input_schema["properties"]) == ["id"]
+
+
+def test_search_and_fetch_return_what_chatgpt_expects(published):
+    subprocess.run(["git", "init", "--quiet"], cwd=published, check=True)
+    subprocess.run(["git", "add", "."], cwd=published, check=True)
+    subprocess.run(["git", "commit", "--quiet", "-m", "fixture"], cwd=published, check=True)
+    library = loaded(published)
+    mcp = server.build_server(settings_for(published), library, AccessPolicy.from_settings("lead@example.com"),
+                              ClaimsVerifier({"t": {"email": "lead@example.com", "email_verified": True}}))
+
+    async def go():
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.client(auth="t") as client:
+            found = await client.call_tool("search", {"query": "per-seat pricing"})
+            fetched = await client.call_tool("fetch", {"id": PRICING})
+            missing = await client.call_tool("fetch", {"id": "../../etc/passwd"}, raise_on_error=False)
+            return found, fetched, missing
+    found, fetched, missing = run(go())
+    results = found.structured_content["results"]
+    assert json.loads(found.content[0].text) == found.structured_content
+    assert results[0] == {"id": PRICING, "title": "Pricing decision for 2027",
+                          "url": "https://git.example.com/kb/src/abc1234/source/datasets/active/pricing-decision.md",
+                          "snippet": results[0]["snippet"]}
+    assert "per-seat pricing" in results[0]["snippet"]
+    doc = fetched.structured_content
+    assert json.loads(fetched.content[0].text) == doc
+    assert doc["id"] == PRICING and doc["title"] == "Pricing decision for 2027" and doc["url"] == results[0]["url"]
+    assert doc["text"].startswith("> Published from `source/datasets/active/pricing-decision.md`")
+    assert "five-person clinic" in doc["text"] and "status: decided" not in doc["text"]
+    meta = doc["metadata"]
+    assert meta["front_matter"]["status"] == "decided" and meta["front_matter"]["tags"] == ["pricing", "decision"]
+    assert meta["provenance"].startswith("> Published from") and meta["source_commit"] == "abc1234"
+    assert meta["source_repository"] == "example/knowledge-base" and meta["published"] == "2026-11-01"
+    assert meta["served_commit"] == library.current.commit and len(library.current.commit) == 40
+    assert missing.is_error and "No document has the id '../../etc/passwd'" in missing.content[0].text
+
+
+def test_health_reports_the_served_commit_and_503_before_a_load(published):
+    library = loaded(published)
+    policy = AccessPolicy.from_settings("lead@example.com")
+
+    async def health(lib):
+        mcp = server.build_server(settings_for(published), lib, policy, ClaimsVerifier({}))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await http.get("/health")
+    ok = run(health(library))
+    assert ok.status_code == 200 and ok.json()["status"] == "ok" and ok.json()["files"] == 4
+    assert set(ok.json()) == {"status", "commit", "files", "refreshed_at", "last_attempt_at", "last_refresh_failed"}
+    empty = run(health(Library(DirectorySource(published))))
+    assert empty.status_code == 503 and empty.json()["status"] == "unavailable"
+
+
+def test_a_listed_person_signs_in_with_google_and_searches_and_no_token_is_logged(published, caplog):
+    for name in ("", "fastmcp", "mcp", "httpx2", "kb_connector"):  # FastMCP sets its own loggers' levels
+        caplog.set_level(logging.DEBUG, logger=name)
+    settings, google = settings_for(published), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            unauthenticated = await http.post("/mcp", json={})
+            callback, token = await sign_in(http, "code-lead")
+            async with srv.client(auth=token) as client:
+                found = await client.call_tool("search", {"query": "glossary"})
+            return unauthenticated, callback, token, found
+    unauthenticated, callback, token, found = run(go())
+    assert unauthenticated.status_code == 401 and "resource_metadata" in unauthenticated.headers["www-authenticate"]
+    assert callback.status_code == 302 and token
+    assert found.structured_content["results"][0]["id"] == "datasets/reference/glossary.md"
+    assert "sign-in allowed for lead@example.com" in caplog.text
+    assert "Token swap successful" in caplog.text  # FastMCP's own debug lines on the token path were captured
+    secrets_seen = [token, *google.tokens, "1//test-refresh", "test-secret"]
+    assert not [s for s in secrets_seen if s in caplog.text]
+
+
+@pytest.mark.parametrize("code_name, message", [
+    ("code-outsider", "outsider@example.com is not on this knowledge base"),
+    ("code-unverified", "Google has not verified the address lead@example.com"),
+])
+def test_a_person_the_list_refuses_sees_why_and_gets_no_grant(published, code_name, message):
+    settings, google = settings_for(published), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await sign_in(http, code_name)
+    callback, token = run(go())
+    assert callback.status_code == 403 and token is None and "location" not in callback.headers
+    assert "Access denied" in callback.text and message in callback.text
+
+
+def test_hosted_domains_refuse_a_personal_account_at_sign_in(published):
+    settings, google = settings_for(published, KB_ALLOWED_HOSTED_DOMAINS="example.com"), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains)
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await sign_in(http, "code-personal"), await sign_in(http, "code-lead")
+    (personal, none), (workspace, token) = run(go())
+    assert personal.status_code == 403 and none is None and "allowed Google Workspace domain" in personal.text
+    assert workspace.status_code == 302 and token
+
+
+def test_a_person_removed_from_the_list_loses_access_at_once(published):
+    settings, google = settings_for(published), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            _, token = await sign_in(http, "code-lead")
+            before = await http.post("/mcp", headers={"authorization": f"Bearer {token}"}, json={})
+            auth.policy = AccessPolicy.from_settings("analyst@example.com")  # the list no longer has lead@
+            after = await http.post("/mcp", headers={"authorization": f"Bearer {token}"}, json={})
+            return before, after
+    before, after = run(go())
+    assert before.status_code != 401
+    assert after.status_code == 401 and 'error="invalid_token"' in after.headers["www-authenticate"]
+
+
+def test_a_sign_in_that_cannot_be_checked_is_refused(published):
+    settings, google = settings_for(published), FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+
+    class BrokenStore:
+        async def get(self, key):
+            raise RuntimeError("storage down")
+
+        async def delete(self, key):
+            raise RuntimeError("storage down")
+
+    async def go():
+        auth = google_auth(settings, policy, google)
+        mcp = server.build_server(settings, loaded(published), policy, auth)
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            real = auth._code_store
+            proxy_put = real.put
+
+            class HalfBroken(BrokenStore):  # FastMCP still stores the grant; the access check cannot read it
+                put = staticmethod(proxy_put)
+            auth._code_store = HalfBroken()
+            return await sign_in(http, "code-lead")
+    callback, token = run(go())
+    assert callback.status_code == 403 and token is None and "could not be checked" in callback.text
+
+
+def test_the_tool_check_refuses_anyone_not_listed_whatever_the_token(published):
+    policy = AccessPolicy.from_settings("lead@example.com")
+    verifier = ClaimsVerifier({"outsider": {"email": "outsider@example.com", "email_verified": "true"},
+                               "unverified": {"email": "lead@example.com", "email_verified": "false"}})
+    mcp = server.build_server(settings_for(published), loaded(published), policy, verifier)
+
+    async def go(token):
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.client(auth=token) as client:
+            return await client.list_tools(), await client.call_tool("search", {"query": "x"}, raise_on_error=False)
+    for token, message in (("outsider", "outsider@example.com is not on this knowledge base's access list"),
+                           ("unverified", "Google has not verified")):
+        tools, result = run(go(token))
+        assert tools == [] and result.is_error and message in result.content[0].text
+
+
+def test_oauth_state_goes_to_firestore_encrypted_and_prefixed(published, monkeypatch):
+    from cryptography.fernet import Fernet
+    from key_value.aio.stores.firestore import store as firestore_store
+    from key_value.aio.stores.memory import MemoryStore
+    from key_value.aio.wrappers.encryption import FernetEncryptionWrapper
+    from key_value.aio.wrappers.prefix_collections import PrefixCollectionsWrapper
+
+    made = {}
+
+    class FakeFirestore(MemoryStore):
+        def __init__(self, **kwargs):
+            made.update(kwargs)
+            super().__init__()
+    monkeypatch.setattr(firestore_store, "FirestoreStore", FakeFirestore)
+    import key_value.aio.stores.firestore as firestore_package
+    monkeypatch.setattr(firestore_package, "FirestoreStore", FakeFirestore)
+    settings = settings_for(published, KB_OAUTH_STORE="firestore", KB_STORAGE_ENCRYPTION_KEY=Fernet.generate_key().decode(),
+                            KB_FIRESTORE_PROJECT="example-project", KB_FIRESTORE_COLLECTION_PREFIX="kb-test")
+    storage = server.oauth_storage(settings)
+    assert made == {"project": "example-project", "database": None}
+    assert isinstance(storage, FernetEncryptionWrapper) and isinstance(storage.key_value, PrefixCollectionsWrapper)
+    assert storage.key_value.prefix == "kb-test"
+    assert isinstance(server.oauth_storage(settings_for(published)), MemoryStore)
+    google = FakeGoogle()
+    policy = AccessPolicy.from_settings(settings.allowed_emails)
+
+    async def go():  # a whole sign-in through the encrypted, prefixed store
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await sign_in(http, "code-lead")
+    assert run(go())[1]
+
+
+def test_main_refuses_bad_settings_and_serves_good_ones_statelessly(published, monkeypatch, capsys):
+    assert server.main({}) == 2
+    assert "KB_GOOGLE_CLIENT_ID is required" in capsys.readouterr().err
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_EMAILS": "lead@example.com", "KB_REFRESH_SECONDS": "0"}
+    assert server.main({**env, "KB_SOURCE_DIR": str(published / "absent")}) == 1
+    assert "the first load failed" in capsys.readouterr().err
+    assert server.main({**env, "KB_SOURCE_DIR": "", "KB_GIT_URL": "git@git.example.com:x/y.git"}) == 2
+    assert "KB_GIT_SSH_KEY_FILE and KB_GIT_KNOWN_HOSTS" in capsys.readouterr().err
+    calls = []
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: calls.append((self, kwargs)))
+    assert server.main(env) == 0
+    mcp, kwargs = calls[0]
+    assert isinstance(mcp.auth, server.AccessListGoogleProvider)
+    assert kwargs == {"transport": "http", "host": "0.0.0.0", "port": 8080, "show_banner": False,
+                      "stateless_http": True, "uvicorn_config": {"access_log": False}}

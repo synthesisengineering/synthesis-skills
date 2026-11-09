@@ -1,0 +1,5 @@
+{
+  "name": "example",
+  "owner": {"name": "Example Co."},
+  "plugins": [{"name": "example-knowledge", "source": "./plugins/example-knowledge", "version": "1.20261101.930"}]
+}
