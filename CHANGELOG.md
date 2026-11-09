@@ -4,6 +4,21 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.4.0] - 2026-11-09
+
+- **New skill: synthesis-kb-distribution** (1.0.0). Distributes an OKF knowledge base from one published tree to the
+  people who need it. `scripts/build_plugin.py` builds the organization plugin Claude and ChatGPT sync from GitHub
+  (both marketplaces and manifests, one skill with an index, every reference stamped with its source path and commit),
+  with every organization value in a config file, an exclusion list and templates; it refuses missing front matter,
+  text addressed to an AI assistant, uncommitted source and symbolic links, and guards its output folder.
+  `scripts/publish_plugin.sh` pushes the build to the published repository over a pinned host key and exits cleanly
+  when nothing changed. `scripts/connector` is a read-only MCP connector for people the organization's Claude and
+  ChatGPT workspaces cannot reach, such as executives on personal accounts: `search` and `fetch` in the shapes ChatGPT
+  expects, Google sign-in through FastMCP's OAuth proxy with an email access list checked at sign-in, on every token and
+  on every tool call, refresh from the published repository over a read-only deploy key with the last good copy kept
+  on any failure, and `/health` naming the served commit. It runs on Google Cloud Run from a hashed lock;
+  `references/connector.md` covers every setting and the deployment.
+
 ## [5.3.16] - 2026-11-06
 
 - **The model table names November's models** (model tiers 3.0.1). Every role list in `tiers.yaml` now names the
