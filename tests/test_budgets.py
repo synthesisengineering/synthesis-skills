@@ -299,10 +299,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # check_codex_trust 17 (signature 1, docstring 1, the fingerprint 5, the baseline 5, a stale approval 5), APPROVALS
 # and report 9 (the names 1, report 4, spacing 4), main 2 fewer; in release.py 7, the docstring 1 and the doctor
 # stage 6 (the checks and their report 3, the approvals waiting 3).
+# The knowledge-base distribution skill adds 857 to the plugin (the core is unchanged; Rajiv's yes, 2026-11-09): its
+# read-only MCP connector,
+# which serves an organization's published knowledge base to people its Claude and ChatGPT workspaces cannot reach.
+# server.py 224: FastMCP's Google provider with the access list at sign-in and on every token, the tool-call check,
+# the OAuth store (memory, or Firestore encrypted and prefixed), search and fetch in the shapes ChatGPT expects,
+# /health and the start. source.py 192: the shallow git clone with a private copy of the deploy key and strict host
+# keys, the remote-head check, snapshot swap and removal, the last good copy kept on any failure, and the refresh
+# thread. corpus.py 131: documents from the published references folder, never through a symbolic link, front
+# matter through synthesis/yamlish.py (reused, not copied) and the provenance stamp. search.py 124: BM25F ranking,
+# word folding and snippets with the standard library. config.py 112: every environment variable checked at once.
+# access.py 61: the access list, verified addresses and hosted domains. The package docstring and entry point 13.
+# The connector runs in its own image, so nothing in the core could be reused beyond the YAML reader.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8211
-PLUGIN_BUDGET = 25749
+PLUGIN_BUDGET = 26606
 
 
 def _lines(files):

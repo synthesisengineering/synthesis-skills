@@ -151,6 +151,10 @@
         "path": "skills/synthesis-inbox-cleanup/SKILL.md"
       },
       {
+        "id": "synthesis-kb-distribution",
+        "path": "skills/synthesis-kb-distribution/SKILL.md"
+      },
+      {
         "id": "synthesis-kb-edit",
         "path": "skills/synthesis-kb-edit/SKILL.md"
       },

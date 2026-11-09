@@ -1,0 +1,6 @@
+# The build context is the repository root; send only what the image copies.
+*
+!synthesis/__init__.py
+!synthesis/yamlish.py
+!skills/synthesis-kb-distribution/scripts/connector/requirements.txt
+!skills/synthesis-kb-distribution/scripts/connector/kb_connector/*.py

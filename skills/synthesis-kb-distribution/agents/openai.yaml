@@ -1,0 +1,7 @@
+interface:
+  display_name: "Synthesis Knowledge Base Distribution"
+  short_description: "Publish a knowledge base as a plugin and read-only connector"
+  default_prompt: "Use $synthesis-kb-distribution to publish this knowledge base as an organization plugin and deploy or check its read-only connector."
+
+policy:
+  allow_implicit_invocation: false
