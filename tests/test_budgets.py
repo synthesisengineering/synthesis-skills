@@ -311,10 +311,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # word folding and snippets with the standard library. config.py 112: every environment variable checked at once.
 # access.py 61: the access list, verified addresses and hosted domains. The package docstring and entry point 13.
 # The connector runs in its own image, so nothing in the core could be reused beyond the YAML reader.
+# The same skill's build_plugin.py adds 436 more to the plugin (the core is unchanged; Rajiv's yes, 2026-11-09): the
+# plugin build an organization kept as its own script, made general, every organization value now coming from its config, exclusion list and
+# templates. Each count includes the two blank lines before it. The shebang and docstring 19; imports and the
+# plugin-root path 18 (synthesis/yamlish.py and the connector's front-matter split, reused, not copied); constants 37
+# (the default lint patterns 10, the config schema 14, the limits 2, names, versions and placeholders 11);
+# check_shape 20 and load_config 49 (every config problem reported at once, then the defaults); glob_to_regex 16;
+# read_excludes 8; git 7; collect 21 (exclusions, hidden paths, links never followed); one_line 4; build_index 19;
+# fill 17; guard_output 13; dump 4; resolve_commit 16 (the UTC version, {count} refused on a shallow clone);
+# uncommitted 8 (what is read must be the commit the stamps name); read_knowledge 30 (the lint, OKF front matter and
+# the stamp); render_skill 17; manifests 22; main 82; the entry point 4. Its publish_plugin.sh is shell, outside the
+# count.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8211
-PLUGIN_BUDGET = 26606
+PLUGIN_BUDGET = 27042
 
 
 def _lines(files):

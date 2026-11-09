@@ -1,0 +1,24 @@
+{
+  "source_repository": "example/knowledge-base",
+  "exclude_file": "exclude.txt",
+  "corrections_contact": "the knowledge team (knowledge@example.com)",
+  "marketplace": {
+    "name": "example",
+    "display_name": "Example Co.",
+    "description": "Example Co.'s own plugins.",
+    "owner": "Example Co."
+  },
+  "plugin": {
+    "name": "example-knowledge",
+    "display_name": "Example Knowledge",
+    "description": "Example Co.'s knowledge base: products, pricing, decisions and the terms the company uses.",
+    "skill_description": "Example Co.'s knowledge base. Use it for any question about Example Co.: its products, pricing, plans, decisions or terms.",
+    "author": "Example Co."
+  },
+  "index": {
+    "sections": [
+      {"prefix": "datasets/active/", "heading": "Active work"},
+      {"prefix": "datasets/reference/", "heading": "Reference"}
+    ]
+  }
+}

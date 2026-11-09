@@ -17,8 +17,9 @@ metadata:
 An organization's knowledge base (OKF markdown in its own repository) reaches its people two ways
 from one published tree: an organization plugin inside the Claude and ChatGPT workspaces, and a
 read-only MCP connector for people those workspaces cannot reach, such as executives on personal
-accounts. This skill holds the published tree's contract, the connector (`scripts/connector/`),
-its tests and its deployment.
+accounts. This skill holds the published tree's contract, the scripts that build and publish it
+(`scripts/build_plugin.py`, `scripts/publish_plugin.sh`) with generic templates, the connector
+(`scripts/connector/`), their tests and the connector's deployment.
 
 ## Binding rules
 
@@ -45,14 +46,21 @@ its tests and its deployment.
 10. **Run the connector's tests with its pinned requirements before any deploy or upgrade:** the
     sign-in check reads two private FastMCP attributes and fails closed when they move.
 11. **Nothing organization-specific goes into this skill.** Names, addresses and repositories live in
-    the deployment's settings.
+    the deployment's settings and in the knowledge base's own build config and templates.
+12. **CI runs the scripts at a pinned release whose commit it checks:** that step holds the write
+    key, so a moved tag must not change what runs.
+13. **A refused file is fixed or excluded, never let through by loosening the lint:** every
+    assistant that loads the plugin would read it.
 
 ## Contents
 
 - [references/published-layout.md](references/published-layout.md): the published tree (paths,
-  manifests, index, provenance stamp), the checks a build makes before publishing, the CI step and
-  how administrators give the plugin to the organization. Read it when building or checking the
-  organization plugin or the publishing pipeline.
+  manifests, index, provenance stamp), the build script with every config setting and template
+  placeholder, its checks, the publish script and its CI step at a pinned release, and how
+  administrators give the plugin to the organization. Read it when setting up, changing or
+  troubleshooting the build or the publishing pipeline.
+- `templates/`: the generic SKILL.md and README.md templates, and the example config and exclusion
+  list to copy.
 - [references/connector.md](references/connector.md): what the connector does, how access works,
   every environment variable, a local run, deployment on Google Cloud Run, adding it in ChatGPT
   and Claude, changing the access list and operating it. Read it before deploying, configuring or
@@ -61,7 +69,7 @@ its tests and its deployment.
 
 ## Commands
 
-The connector's tests, from the repository root:
+The skill's tests (the build, the publish script and the connector), from the repository root:
 
 ```bash
 python3 -m pytest -q skills/synthesis-kb-distribution/tests
@@ -84,6 +92,18 @@ The image, from the repository root:
 docker build --platform linux/amd64 -f skills/synthesis-kb-distribution/scripts/connector/Dockerfile -t kb-connector .
 ```
 
+The build and the publication, from the knowledge base's repository (references/published-layout.md,
+sections 4 and 6):
+
+```bash
+python3 <skill>/scripts/build_plugin.py --config distribution/kb-plugin.json --source source --out build/kb-plugin
+KB_PUBLISH_REPO=<url> KB_PUBLISH_KNOWN_HOSTS=<line> sh <skill>/scripts/publish_plugin.sh --config distribution/kb-plugin.json --source source
+```
+
+The build prints `Built <plugin> <version> from <sha7> (<date>) into <out>` and each file left out;
+a refusal lists every problem, writes nothing and exits 1. The publication then prints
+`Published <plugin> <version> to <repository> (<branch>).` or `... nothing to push.`
+
 The running connector (`python -B -m kb_connector` from `scripts/connector/`) prints
 `serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
 fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
@@ -93,19 +113,22 @@ exits 1.
 
 ## Setting it up
 
-1. **Publish.** Make CI build the published tree on every merge to the knowledge base's default
-   branch and push it to a private repository (references/published-layout.md, sections 2 to 5).
+1. **Publish.** Copy and fill in the example config and exclusion list from `templates/`, then make
+   CI run `publish_plugin.sh` at a pinned release on every merge (references/published-layout.md,
+   sections 4 to 6).
 2. **Organization plugin.** The workspace administrators add the published repository in Claude and
-   ChatGPT and assign the plugin (section 6 there).
+   ChatGPT and assign the plugin (section 7 there).
 3. **Connector.** Deploy it on Cloud Run with a Google OAuth client, Firestore, Secret Manager and a
    read-only deploy key (references/connector.md, section 5), then give the listed people its
    address ending in `/mcp` to add in ChatGPT or Claude (section 6).
 
 ## Checking it
 
-1. `curl -s <public-url>/health` shows `"status": "ok"` and the commit CI last pushed.
-2. A listed person adds the connector, signs in and gets results from a search.
-3. An address that is not listed reaches Google's sign-in and then sees
+1. The pipeline's log ends with `Published ...` or `nothing to push`, with only the expected
+   `left out` lines.
+2. `curl -s <public-url>/health` shows `"status": "ok"` and the commit CI last pushed.
+3. A listed person adds the connector, signs in and gets results from a search.
+4. An address that is not listed reaches Google's sign-in and then sees
    `Access denied: <email> is not on this knowledge base's access list.`
-4. After an address is removed (references/connector.md, section 7), that person's next request
+5. After an address is removed (references/connector.md, section 7), that person's next request
    is refused.

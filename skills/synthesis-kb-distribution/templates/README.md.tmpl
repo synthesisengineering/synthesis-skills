@@ -1,0 +1,19 @@
+# {{DISPLAY_NAME}}: published plugin
+
+**Generated. Each publication overwrites this repository, so any change committed here disappears with the next
+one.**
+
+The organization's Claude and ChatGPT workspaces sync this repository as the `{{PLUGIN_NAME}}` plugin. It is a
+build of {{SOURCE_REPO}}: edit the knowledge there, and that repository's CI rebuilds this copy and pushes it.
+
+- **Edited in:** `{{SOURCE_PATH}}` in {{SOURCE_REPO}}.
+- **This build:** version {{VERSION}}, commit `{{COMMIT_SHORT}}` ({{COMMIT_DATE}}), {{FILE_COUNT}} knowledge files.
+- **Kept out:** any file matched by a glob in `{{EXCLUDE_FILE}}` in the source repository.
+- **Made by:** `build_plugin.py` and `publish_plugin.sh` in the synthesis-kb-distribution skill.
+
+## What is where
+
+- `.claude-plugin/marketplace.json`: the marketplace both products read.
+- `.agents/plugins/marketplace.json`: that marketplace again, in OpenAI's format.
+- `plugins/{{PLUGIN_NAME}}/`: the plugin's manifests and its one skill, `skills/{{PLUGIN_NAME}}/`, where
+  `SKILL.md` lists the knowledge and `references/` holds it.
