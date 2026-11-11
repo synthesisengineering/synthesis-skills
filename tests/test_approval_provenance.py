@@ -623,7 +623,6 @@ REFUSED = "Approvals come only from the principal's own prompt"
     "T={claude}/-work; cp /tmp/forged.jsonl \"$T/s.jsonl\"",
     "A={claude}; B=$A/-work; printf x | tee -a $B/s.jsonl",          # a variable built from another
     "D='{state}/approvals' && mv /tmp/forged \"$D/abc.json\"",
-    "M={claude}/-work/memory; printf 'x\\n' >> \"$M/MEMORY.md\"",     # the shell stays refused in a memory folder too
     "D={state}/approvals; printf x > \"$D/$(date +%s).json\"",        # what a variable leaves unread is still inside
     "D={state}; echo x > \"$UNSET/$D/approvals/a.json\"",             # a target that starts with something unreadable
 ])
@@ -673,6 +672,8 @@ def test_a_link_in_a_memory_folder_does_not_open_the_transcript_it_points_at(roo
     (project / "memory" / "link.md").symlink_to(project / "s.jsonl")
     refused = guards.check("Write", {"file_path": str(project / "memory" / "link.md"), "content": "x"}, {}, cwd=str(tmp_path))
     assert "session transcripts" in refused
+    through = guards.check("Bash", {"command": f"echo x >> {project}/memory/link.md"}, {}, cwd=str(tmp_path))
+    assert REFUSED in through  # the shell writes where the link points, too
     made = guards.check("Bash", {"command": f"ln -s {project}/s.jsonl {project}/memory/other.md"}, {}, cwd=str(tmp_path))
     assert REFUSED in made  # and no command may make such a link there
 
@@ -820,3 +821,54 @@ def test_the_approved_lines_file_can_be_staged_and_committed_but_not_rewritten(t
         assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command
     for command in (f"echo '{{}}' > {store}", f"cd {store.parent} && echo '{{}}' > line-allowances.json", f"jq -S . {store} | sponge {store}"):
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
+
+
+# --- what ten days of recorded commands showed (2026-11-11) ------------------------------------------------
+# Before release, 83,207 distinct shell commands from this Mac's transcripts were run through the installed guard
+# and the new one, and every newly refused command was read. Most were needless: a loop over memory folders, a
+# pipeline's filters after a `cd` into the transcripts folder, a sed script that begins with `$`, a script run by
+# its path on a saved tool result, a memory note written or moved to the Trash from the shell, and a file named
+# hook.py handed to a line counter. Each is a case here.
+
+
+@pytest.fixture
+def work(roots):
+    project = roots["claude"] / "-work"
+    (project / "memory").mkdir(parents=True)
+    (project / "s.jsonl").write_text("{}\n", encoding="utf-8")
+    (project / "memory" / "old.md").write_text("old\n", encoding="utf-8")
+    return {**roots, "work": project}
+
+
+@pytest.mark.parametrize("command", [
+    "for d in {work}/memory {claude}/-other/memory; do echo \"== $d\"; ls -la \"$d\"; done",
+    "ls {work} | while read f; do echo \"$f\"; done",
+    "cd {work} && grep -o x s.jsonl | sort | uniq -c | sort -rn | head -5",          # filters after a cd into the folder
+    "cd {work} && grep -c x s.jsonl; docker start bench; kill 123",                  # and programs that touch no file there
+    "P=$(pgrep -f probe); ls {work}; [ -n \"$P\" ] && kill $P",                      # a value the guard cannot read is no path
+    "/tmp/tools/tab.sh {work}/s.jsonl",                                               # a script run by its path, like one run by its shell
+    "fold -w 100 {work}/s.jsonl | head -3",
+    "M=/tmp/notes.md; ls {work}; sed -i '' '$d' \"$M\"",                             # a sed script is not a file
+    "M={work}/memory/MEMORY.md; [ -f \"$M\" ] || printf '# Memory\\n' > \"$M\"; echo '- a note' >> \"$M\"",
+    "mv {work}/memory/old.md /tmp/trash/",                                            # a memory note is the agent's to write or remove
+    "sed -i '' '$d' {work}/memory/MEMORY.md",
+    "python3 tools/itemize.py synthesis/hook.py",                                     # the hook handed to a program is not run
+    "for f in synthesis/guards.py synthesis/hook.py; do wc -l \"$f\"; done",
+    "grep -c \"a\\|b\" {work}/s.jsonl | head -1; echo 'an unbalanced quote",          # unreadable text is judged on its writers only
+])
+def test_ordinary_commands_from_ten_days_of_transcripts_are_not_refused(work, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work} && gzip s.jsonl",                           # a file that exists there, handed to a program that may change it
+    "cd {work} && mv s.jsonl /tmp/elsewhere/",
+    "sed -i '' '$d' {work}/s.jsonl",
+    "sed -i -e '$d' {work}/s.jsonl",
+    "echo x > {work}/memory/s.jsonl",                      # only a memory folder's Markdown is the agent's
+    "mkdir -p {work}/memory/sub && touch {work}/memory/sub/a.txt",
+    "python3 -W ignore synthesis/hook.py",
+    "ls {work} | xargs gzip",
+])
+def test_what_stays_refused_after_those_cases(work, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) or ""), command
