@@ -240,3 +240,32 @@ def test_without_the_policys_hours_only_the_time_home_is_shown(tmp_path):
 def test_a_read_that_ends_before_the_next_morning_cannot_judge_the_night(tmp_path):
     code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=RESTED, window=("2026-11-10", "2026-11-12"))
     assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep")
+
+
+# --- the morning begins whether or not the calendar says so (2026-11-11) -----------------------------------
+# The night was measured to the next morning's first calendar entry, so a late return cost nothing the check could
+# see when the morning held none: a principal's mornings began at a fixed hour with no entry. The policy can say
+# when the morning starts, and the night ends at the earlier of that hour and the first entry.
+
+MORNING = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8, "morning_starts": "06:30"}}
+
+
+def test_a_morning_with_no_entry_still_begins_at_the_policys_hour(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=MORNING)          # home 23:48, so 6 h 42 min
+    assert levels(report)["sleep"] == "REVIEW"
+    assert "the morning starts 06:30" in detail(report, "sleep") and "6 h 42 min" in detail(report, "sleep")
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING, config=MORNING)       # an entry at 07:30: the earlier of the two
+    assert "the morning starts 06:30" in detail(report, "sleep") and "Training session" not in detail(report, "sleep")
+    sooner = [meeting("2026-11-13", "05:45", "06:15", "Airport check-in")]
+    code, report = check(tmp_path, "19:00", "22:00", sooner, *EVENING, config=MORNING)
+    assert "Airport check-in" in detail(report, "sleep") and "05:45" in detail(report, "sleep")
+    code, report = check(tmp_path, "12:00", "13:00", [], "--in-person", "--travel-before", "30", "--travel-after", "30", config=MORNING)
+    assert levels(report)["sleep"] == "OK"                                                   # home at 13:30: the night is whole
+
+
+def test_the_policys_hour_judges_the_night_even_when_the_read_ends_before_the_morning(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=MORNING, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "REVIEW" and "the morning starts 06:30" in detail(report, "sleep")
+    code, report = check(tmp_path, "12:00", "13:00", [], "--in-person", "--travel-before", "30", "--travel-after", "30",
+                         config=MORNING, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "NOTE"                                                 # long enough by the policy; an entry could be earlier

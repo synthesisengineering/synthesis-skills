@@ -364,6 +364,20 @@ def test_a_short_night_before_an_early_commitment_goes_to_the_principal(tmp_path
     assert check(tmp_path, [RESOLVED, GOING, RETURNING, same_day], config=rested)[0] == 0
 
 
+def test_the_policys_morning_counts_when_the_calendar_holds_no_entry(tmp_path):
+    """A principal's mornings began at a fixed hour with nothing on the calendar, so the night after a late return
+    looked whole (2026-11-11). `morning_starts` is that hour."""
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "06:30"}}
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING], config=rested)             # home 23:20, so 7 h 10 min
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert "the morning starts 06:30" in night and "7 h 10 min" in night and "8 hours" in night and "decision" in night
+    decided = dict(RETURNING, description=BACK + '\nDecision: "worth it, and the morning starts late"')
+    assert check(tmp_path, [RESOLVED, GOING, decided], config=rested)[0] == 0
+    later = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8, "morning_starts": "07:30"}}
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING], config=later)[0] == 0               # 8 h 10 min is enough
+
+
 # --- the second review round (2026-11-11), each as a test that failed first --------------------------------
 
 def test_a_street_number_that_only_contains_the_home_number_is_another_address(tmp_path):
