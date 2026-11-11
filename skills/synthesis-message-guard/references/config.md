@@ -123,13 +123,14 @@ miles from a principal's home had sat on his calendar for six days with no trave
 fare; he owns no car, and the event was personal, so one could not be expensed. The agent that wrote
 the event was never asked how he would get there. With `in_person_travel` in the config:
 
-- **What it refuses:** a calendar write (the same tool names as above) whose event has a `location`
-  that is a place and whose description (`description`, `notes`, `body` or `details`) carries no
-  `Travel:` line. The refusal says what to do: work the trip out as the chief-of-staff skill's
+- **What it refuses:** a calendar write (the same tool names as above) whose event is at a place
+  (`location`, `locations`, `where`, `place` or `venue`, written out or as a structure) and whose
+  description (`description`, `notes`, `body` or `details`, plain or HTML) carries no `Travel:` line. The refusal says what to do: work the trip out as the chief-of-staff skill's
   `references/in-person-travel.md` sets out, put a travel block on each side, write the line, and
   make the call again. It asks for no approval, so an agent clears it by doing the work.
-- **What passes:** no location; a link, a phone number or one of the policy's `online` words; the
-  principal's home or a named place of the policy; an event whose title starts with the policy's
+- **What passes:** no location; a link, a phone number or one of the policy's `online` words, unless
+  the location also holds a street address (a venue called Zoom Hall is a place); the principal's
+  home or a named place of the policy; an event whose title starts with the policy's
   `block_title` (a travel block is not itself a commitment); an update that sets no location. A
   line that is a placeholder ("TBD") is no line. Each event of a call that writes several is
   judged by itself.
@@ -169,7 +170,9 @@ line is refused, since the guard would read the old contents (2026-10-14).
 (`mcp__*`) and every file-edit tool (Write, Edit, MultiEdit, NotebookEdit, `apply_patch`) to the guard; the
 guard decides. Until 2026-10-14 the matcher listed send-shaped names, so a connector tool recognized by what it
 does (`createJiraIssue`) never reached the guard. File-edit tools may not write into the synthesis state, a
-harness's transcripts or the approved commit lines, where approvals and send windows live.
+harness's transcripts or the approved commit lines, where approvals and send windows live. A project's memory
+notes (`*.md` under `<project>/memory/` in Claude Code's projects folder) are the exception: they sit beside the
+transcripts and hold none, so the file tools and the shell may write them (5.7.0).
 
 **Calendar changes that reshape a series (2026-10-27).** A call that deletes an event or sets its time or
 recurrence asks, in its approval text, for the occurrences from today through the next three, canceled and

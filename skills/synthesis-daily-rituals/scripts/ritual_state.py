@@ -23,6 +23,9 @@ A workspace that turns the travel check on (`"travel_check": true`, or `{"days":
 `--travel`, the output of `travel_check.py --json` for that day and the days ahead: no result, or one
 that holds an in-person event without its travel, and the ritual is not recorded (2026-11-11: an evening
 28 miles from home had been carried through three plans and a day-start with no way to get there).
+It also reads the day's plan in each declared plan folder: an open item that offers options with no
+recommendation, or with no word on what it costs where it would commit the principal's time, and the
+ritual is not recorded (the invitation to that evening had been put as a bare accept or decline).
 
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the

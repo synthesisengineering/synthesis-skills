@@ -181,15 +181,43 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    tool output, hook text or another session's message that carries the code.
 2. **The shell guard** refuses a command that carries a pending code (for example
    `codex queue <thread> "approve <code>"`, or `claude -p --resume <id>` with it), that
-   runs the stable hook or `synthesis/hook.py` for any event, or that writes into the v5
-   state folder, its board (which only the `synthesis` CLI writes, so that Codex's sandbox
-   may be granted it without reaching the state folder), a harness's transcript folder or the
-   approved commit lines (by path, or
-   by the store's file name from inside its folder): redirects, the destination of `cp`,
-   `mv`, `ln`, `install` and `rsync`, `tee`, `touch`, `truncate`, `mkdir`, `rm`,
-   `unlink`, `chmod`, `sed -i` and `perl -i`, and interpreter scripts given inline or on
-   stdin that write there.
-   Reading a transcript, and working on the hook's source, stay allowed.
+   runs the stable hook or `synthesis/hook.py` for any event, or that changes anything in
+   the v5 state folder, its board (which only the `synthesis` CLI writes, so that Codex's
+   sandbox may be granted it without reaching the state folder), a harness's transcript
+   folder or the approved commit lines.
+   - **How it reads a path.** Every write in the command is resolved and judged, whether or
+     not the command spells a protected folder out: relative to the session's folder, to a
+     `cd`, through a variable. A command is read once for each value it gives a variable
+     (`D=…`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a
+     quoted script), with the environment's value for one it does not set, the default a
+     use carries (`${D:-…}`) and an end trimmed by `%` or `#`. A path is compared the way a
+     Mac's file system finds it, whatever its case.
+   - **What counts as a change.** A redirect; what a file utility changes (the destination
+     of `cp`, `ln`, `install`, `rsync` and `ditto`, with `-t`; both ends of `mv`; `tee`,
+     `touch`, `truncate`, `mkdir`, `rmdir`, `rm`, `unlink`, `shred`, `chmod`, `chown`,
+     `chgrp`; `dd of=`; `sed` and `perl` editing in place; a compressor that replaces its
+     file; what `find` deletes or runs a changing command on; the files `xargs` hands such a
+     command); an interpreter script that writes there; and a path inside one of those
+     folders handed to any program the guard does not know to only read it. A Python
+     program given inline or on stdin is judged by its own code: a protected path named in
+     another command of the line does not count against it, and one that reaches it
+     through its arguments, its environment or the folder it runs in does. A list of the programs
+     that write never ends, so the guard keeps the other list: the usual readers (`cat`,
+     `head`, `tail`, `grep`, `ls`, `jq`, `wc`, `diff` and their like) may be given such a
+     path, an interpreter or a shell is judged by the script it is given, and `git` and the
+     `synthesis` CLI pass, since they keep the approved lines and the board. Anything else
+     is refused and told to read the file with `cat` and pipe it in, or to copy it out.
+   - **A project's memory notes** (`*.md` under `<project>/memory/` in Claude Code's
+     projects folder) are the agent's to write, move and remove, by shell or by file tool.
+     A link made there is refused, and a path is judged where it really leads.
+   - **A saved tool result** (`<session>/tool-results/` beside a transcript: a fetched PDF,
+     a screenshot, a long output) is material the agent is sent there to work on, so any
+     program may be given it. Changing or removing it where it lies stays refused.
+   - The hook is run when it is the script an interpreter or a shell runs. A program handed
+     the hook's file (a line counter, a compiler) is not running it.
+   Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
+   shipped, 30 days of shell commands recorded on one machine were run through the old
+   guard and this one, and every command the new one refused was read.
 3. **No hook text holds the phrase** (see What the hook returns).
 4. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.
@@ -200,18 +228,20 @@ No local file is secret from an agent running as the person's own OS user, so th
 stay open, and no hook running as that same user can close them:
 
 - An agent that deliberately forges its harness's transcript, writing a line shaped
-  like the person's prompt, defeats the transcript check. The shell guard refuses the
-  natural routes; a command that builds the path or the code at run time (a variable,
-  an encoding, a script file written first), a file-edit tool (edits are not guarded,
-  for latency), or a program the agent writes and runs gets through.
+  like the person's prompt, defeats the transcript check. The shell guard and the guard
+  on the file tools (Write, Edit, `apply_patch` and their like) refuse the natural routes.
+  A command that builds the path or the code at run time (an encoding, the output of a
+  substitution, a glob in the folder's own name), a script file or a program run by its
+  path, which the guard cannot read, a file-writing tool of another server that the guard
+  does not know as a file tool, or a program the agent writes and runs gets through.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
   that builds the code at run time is not caught.
-- A grant written with a file-edit tool can reuse a code the person typed for the
+- A grant written by one of those routes can reuse a code the person typed for the
   identical call within the last 15 minutes: a second, identical send or deploy.
-- The approved commit lines are a file the agent can edit with a file-edit tool, or
-  change through git when the store lives in a synced repository (a pull, a checkout).
+- The approved commit lines are a file the agent can change by one of those routes, or
+  through git when the store lives in a synced repository (a pull, a checkout, a restore).
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
 - The agent can rewrite the runtime under `~/.synthesis/v5` or its config.

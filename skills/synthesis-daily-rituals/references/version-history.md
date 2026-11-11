@@ -18,6 +18,14 @@ leaving or returning time in a plan or draft comes from a travel block. An eveni
 from a principal's home had been carried through three plans and a day-start with no way to get
 there, and two estimated times had gone out.
 
+The same release reads the plan's choices. The invitation to that evening had been put to the
+principal as a bare accept or decline, with no recommendation and no trip, and he said yes.
+`ritual_state.py record` now reads the day's plan in each declared plan folder and refuses while an
+open item that offers options has no `Recommendation:` line, or, when it is an accept-or-decline or
+carries a `Commits:` line, no `Consequences:` line (binding rule 15, `plan-format.md`). A travel
+result must also agree with itself: its dates are read as dates, and its counts and verdict are
+checked against its events.
+
 ## v3.8.0 — LinkedIn messages; deadlines that live in drafts
 
 v3.8.0 (2026-11-11) adds LinkedIn messages as a declared surface: `linkedin_messages.py` reads the

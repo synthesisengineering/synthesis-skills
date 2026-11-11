@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.0"
+  version: "2.4.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -76,8 +76,8 @@ to build now, later, or never · candidates to advance on a defined rubric.
 - **The decisions are not parallel in shape.** A packet of unlike questions is a form, and a form
   is worse than a conversation.
 - **You have no recommendation per item.** Then the packet is a questionnaire and *your analysis
-  is not finished*. Do the analysis. The generator refuses a packet where no row carries a
-  recommendation, unless every row is blind.
+  is not finished*. Do the analysis. The generator refuses a row that recommends nothing,
+  unless it is blind.
 
 - **A deadline whose miss cannot be undone.** It is never one row among many: it leads the day
   plan in its own section (synthesis-daily-rituals) and closes only on evidence. The generator

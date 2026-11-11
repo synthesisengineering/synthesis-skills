@@ -37,8 +37,8 @@ The daily plan follows this canonical structure. On each update, consolidate int
 **Calendar:** [the calendar entries that mark the closing date and the working block]
 
 ## Decisions needed from Rajiv     ← cockpit: NEEDS YOU region
-[H3 question per decision. Each H3 may have **Option A:** / **Option B:** lines
- and a **Recommendation:** line. The cockpit renders option buttons that record
+[H3 question per decision. Each H3 has **Option A:** / **Option B:** lines,
+ a **Consequences:** line when it commits the principal's time, and a **Recommendation:** line. The cockpit renders option buttons that record
  a `**Decided:** Option X — <ISO>` marker back to the file on click.]
 
 ## Priority Tasks                  ← cockpit: TODAY region
@@ -111,7 +111,9 @@ Within each section, the parser also recognizes structural patterns. Adhering to
 **Decisions section** (`## Decisions needed`):
 - One H3 per decision (`### 1. Force-push origin/develop?`)
 - Options as bold paragraphs: `**Option A:** description`, `**Option B:** description`
-- Optional: `Recommendation: **A** with rationale`
+- Required: `**Recommendation:** **A**, with the reason`. A choice put with no view defaults to yes. "TBD", "your call" and "either" are no recommendation.
+- Required when the choice would commit the principal's time (an accept or decline, or an item with a `**Commits:**` line saying what it takes): `**Consequences:**`, what each answer costs them: the time with its trip door to door, the money and who pays, when they are home, the night it leaves, and what it collides with that day and the next morning. The trip is worked out before the ask (synthesis-chief-of-staff, `references/asks-and-decisions.md`).
+- `ritual_state.py record` refuses the day's record while an open item that offers options lacks either line. An item with `**Decided:**`, `**Resolved:**`, `**Released:**`, `**Lapsed:**` or `**Withdrawn:**` under it, or a struck title, is closed and not checked.
 - After click: skill / human appends `**Decided:** Option X — <ISO>` directly under the H3
 - **Synthetic asks**: an H2 like `## Open ask for Rajiv` with prose body and NO H3s also surfaces in NEEDS YOU as a single card with the prose verbatim. Use this for one-off requests that don't fit the A/B/C structure.
 

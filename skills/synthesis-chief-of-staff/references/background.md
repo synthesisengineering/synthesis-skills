@@ -11,7 +11,13 @@ needs, an arrival early enough, and the cases the principal settles (a return th
 late, a car on a personal trip). `slot_check.py` takes `--travel-before` and `--travel-after` and counts
 the trip as taken time; `--in-person` with neither is refused. Binding rule 13 and
 [in-person-travel.md](in-person-travel.md) hold the step. An evening 28 miles from a principal's home had
-sat on his calendar for six days with no way to get there. To make room in SKILL.md, the prime
+sat on his calendar for six days with no way to get there. Shown the repaired plan, he said the trip was
+a burden he had not seen when he agreed, and that a chief of staff would have warned him. So the trip is
+worked out at the ask: with the trip's minutes, `slot_check.py` says when the principal is home and what the
+night leaves (`travel_policy.latest_return`, `sleep_hours`), and `travel_check.py` sends a short night to
+the principal as it does a late return. Binding rule 14 and [asks-and-decisions.md](asks-and-decisions.md)
+set what every ask carries: what it costs, a recommendation, and a plain challenge when the costs outweigh
+the event. To make room in SKILL.md, the prime
 directive's four points moved word for word to
 [meetings-correspondence-travel.md](meetings-correspondence-travel.md).
 

@@ -14,6 +14,25 @@ trains got him home at 11:48. A rule about realistic travel was already in his p
 calendar rebuilds, so nothing ran it when one event was added. The event was personal, so a car could not be
 expensed.
 
+## At the ask, before the yes
+
+The same principal, shown the repaired plan, said the trip was a burden he had not seen when he agreed: he had
+taken the event to be in his own city, and a short night costs him his health. The decision he had been given
+named the town and showed no trip. Travel worked out after the yes comes too late to change the answer.
+
+So the trip is worked out before an invitation or an ask that would put the principal somewhere is brought to
+them. Do steps 1 to 4 below, then run the slot check with the trip's minutes:
+
+```bash
+python3 <cos>/scripts/slot_check.py --start … --end … --events read.json --in-person --travel-before 85 --travel-after 108
+```
+
+Its `return` line says when the principal is home; a return past `travel_policy.latest_return` is theirs to
+decide. Its `sleep` line compares that with the next morning's first commitment against
+`travel_policy.sleep_hours`. Put what the event costs in the decision itself, beside the invitation: door to
+door each way, the fare and who pays, the time home, the night it leaves, and what it collides with that day
+and the next morning. Then recommend, as [asks-and-decisions.md](asks-and-decisions.md) sets out.
+
 ## At intake
 
 Do this whenever an in-person commitment lands, before the calendar write and before the yes goes out: an
@@ -31,9 +50,10 @@ RSVP, an invitation the agent accepts, a decision in a plan.
    and it saves real time.
 5. **Put a travel block on each side** of the commitment and the travel line in the commitment's own event
    (the format is below).
-6. **Bring it to the principal now when travel changes the answer:** a return after `latest_return`, a trip
-   longer than the event, a fare out of proportion to it, or leaving before the end to catch the last
-   reasonable train. Give the times and the cost, and write their words on the block's `Decision:` line.
+6. **Bring it to the principal now when travel changes the answer:** a return after `latest_return`, a night
+   shorter than `sleep_hours` before the next morning's first commitment, a trip longer than the event, a
+   fare out of proportion to it, or leaving before the end to catch the last reasonable train. Give the times
+   and the cost, and write their words on the block's `Decision:` line.
 7. **Run the check** (below). With a time still to choose, give `slot_check.py` the trip:
    `--in-person --travel-before <minutes> --travel-after <minutes>`.
 
@@ -54,6 +74,11 @@ Ticket: the rail app, before boarding (more on board)
 Decision: <the principal's words>        only where step 6 applied
 ```
 
+`For:` repeats the commitment's title, or its opening words. A block that serves two commitments, the way
+from one place to the next, carries a `For:` line for each. A block with no `For:` line serves the one
+in-person commitment nearest to it, so name the commitment whenever two stand within a day of each other.
+Free text can follow the lines, and a description a connector returns as HTML is read as the text it shows.
+
 The commitment's own description carries one line that says where its travel stands:
 
 ```text
@@ -63,7 +88,8 @@ Travel: none, already at the venue for the session before
 ```
 
 A place that is the principal's home or one of the policy's named `places` (an office with a standing
-commute) needs neither blocks nor a line.
+commute) needs neither blocks nor a line. A named place is known by its address anywhere in the location, or
+by its label alone or with a room or a note after it (`Office, 4th floor`).
 
 ## The policy
 
@@ -78,6 +104,7 @@ commute) needs neither blocks nor a line.
 | `local_minutes` | a walk or ride this short needs a line and no blocks |
 | `arrive_early_minutes` | how long before the start the outbound block must arrive |
 | `latest_return` | a return after this hour is the principal's to decide |
+| `sleep_hours` | the hours the principal keeps between getting home and the next morning's first commitment; a shorter night is theirs to decide. No key, no rule |
 | `cost` | `personal` and `business`: the rule for each, in words |
 | `block_title` | the word a travel block's title starts with |
 | `online` | words that mark a location as not a place |
@@ -102,10 +129,22 @@ travel: 2 in-person events from 2026-11-11 through 2026-11-17; 1 lacks its trave
 
 It flags: no exact address; no travel line; a missing block; a block without one of its lines (a placeholder
 such as "TBD" is no line); an outbound block that arrives after the start or less than
-`arrive_early_minutes` before it; and three things only the principal settles, each cleared by a `Decision:`
-line on the block: a return that leaves before the end, a return that ends after `latest_return`, and a car
-on a personal trip. Exit 0 when every in-person event is whole, 1 when one is flagged, 2 when it was not
-shown enough (no `travel_policy`, a read that does not cover the days). `--json` gives the same per event,
+`arrive_early_minutes` before it; and four things only the principal settles, each cleared by a `Decision:`
+line on the block: a return that leaves before the end, a return that ends after `latest_return`, a night
+shorter than `sleep_hours` before the next morning's first commitment, and a car on a personal trip.
+
+What it takes each word to mean:
+
+- **An exact address** is a house number with its street, or a postcode with its town (`149 Main St`,
+  `10115 Berlin`), or a number in one part and a name in another (`Calle Mayor, 5`). A venue whose name ends
+  in a number (`Studio 54`) and a time of day are not one. A location that holds a street address is a place
+  whatever else it says: an online word in a venue's name, a map link beside it.
+- **The days it judges** are every day a commitment covers. One under way when the days begin is judged for
+  its way back, and its way there is left to a read that holds its start. An all-day event counts on each day
+  it covers and needs its travel line; give it clock times to have its blocks checked.
+- **Whose a block is** follows its `For:` lines, as above. When a block beside an event belongs to another,
+  the report says whose it is. Exit 0 when every in-person event is whole, 1 when one is flagged, 2 when it was not
+shown enough (no `travel_policy`, a read that does not cover the days, a read it cannot make sense of). `--json` gives the same per event,
 with `leave`, `home` and `paid_by` taken from the blocks.
 
 It plans nothing and reads no timetable: steps 2 to 4 are the agent's, from a live source. It cannot tell
@@ -114,7 +153,8 @@ that a route is wrong, only that one is written down.
 ## At the calendar write
 
 Where the synthesis config carries `in_person_travel`, the guard refuses a calendar write that creates an
-event at a place, or gives one a place, when the call carries no `Travel:` line. It asks for no approval:
+event at a place, or gives one a place (under `location`, `where`, `place` or `venue`, written out or as a
+structure), when the call carries no `Travel:` line. It asks for no approval:
 do steps 1 to 5 above and make the call again. It reads the call alone, so it cannot see whether the blocks
 exist; the check above does (synthesis-message-guard, `references/config.md`, "A meeting at a place").
 

@@ -37,6 +37,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 12. **A critical deadline is never one item among many.** Tag a deadline whose miss cannot be undone `**Critical:** <class>` the day it is first seen. From seven days out it opens every plan and brief in its own section; it never lapses and closes only on evidence or the principal's own words; `ritual_state.py record` refuses while one is past due. An enrollment window once closed as one dated row among a hundred.
 13. **LinkedIn's conversation list is read from the new-message view, never the bare messaging page,** which opens the newest conversation and marks it read. Scroll back to the day the plan names and stop there. Open a thread only when its preview cannot show whether something is owed, and name each one opened.
 14. **An in-person event is not planned until its travel is.** Where the workspace checks travel, each ritual runs `travel_check.py` over the days ahead, no ritual is recorded while an event lacks its travel, and a leaving or returning time in a plan or draft is taken from a travel block, never estimated (2026-11-11).
+15. **A choice in the plan is put with a recommendation, and with what it costs when it would commit the principal's time.** `ritual_state.py record` refuses while an open item that offers options lacks either (2026-11-11).
 
 ## Contents
 

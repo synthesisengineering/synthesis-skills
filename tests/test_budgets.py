@@ -401,26 +401,42 @@ ROOT = Path(__file__).resolve().parents[1]
 # _prompt 4 (each block of a record read by itself, one marked as not the principal's left out), typed_codes 3,
 # the module docstring 1; in hook.py, user_prompt_submit 6 (a pending code that is in the message and was not
 # approved is said aloud).
-# 5.7.0 adds 319 to the plugin, 66 of them in the core (the request came from the principal through his operations
-# seat on 2026-11-11; the release waits for his go). travel_check.py 203, after an evening 28 miles from a principal's
-# home sat on his calendar for six days with no travel time, route or fare: judge 90 (each in-person event of the
-# days asked for: an exact address, the event's travel line, a block on each side with every line a traveler needs,
-# an arrival early enough, and the three cases only the principal settles), main 34, the docstring 23, place 17
-# (no place, the principal's base, anywhere else), imports 10, the entry point 10, lines 5 (a block's labeled
-# lines, a placeholder counting as none), stop 4, the path to the slot check and no bytecode 3, the patterns and
-# constants 7. slot_check.py 17: judge 11 (the trip there and back as taken time, an in-person slot refused
-# without its minutes), the docstring 3, main 3. ritual_state.py 33: travel 26 (where a workspace checks travel,
-# no record without today's result or while an event lacks its travel), the docstring 4, spacing 2, main 1. In the
-# core, guards.py 66: check_travel 35 (a calendar write at a place carries its travel line; what a place is comes
-# from the chief of staff's own check and the principal's policy), _resolved 13 and its two patterns 2 (a
-# variable a command assigns is put where it is used before a write's target is judged, after nine such writes
-# into protected folders passed), _memory 9 (a project's memory folder is the file tools' to write),
-# check_self_grant 3 (a target that starts with something the command does not set is refused), the reader's path
-# and spacing 3, check 1.
+# 5.7.0 adds 622 to the plugin, 227 of them in the core (the request came from the principal through his operations
+# seat on 2026-11-11, with two additions the same afternoon; he gave the release its go that day). travel_check.py
+# 269, after an evening 28 miles from a principal's home sat on his calendar for six days with no travel time, route
+# or fare: judge 107 (each in-person event of the days asked for: an exact address, the event's travel line, a block
+# on each side with every line a traveler needs, whose a block is, an arrival early enough, and the four cases only
+# the principal settles), main 34, the docstring 23, place 18 (no place, the principal's base, anywhere else; a
+# street address is a place whatever else the location says), days 15 (the days an entry covers, so one under way
+# counts), the entry point 13 (a read it cannot make sense of exits 2), lines 10 (a block's labeled lines, read
+# through HTML, a placeholder counting as none), exact 9 and street 6 (what an address is: a venue's number and a
+# time of day are not one), tidy 5, stop 4, imports 11, the patterns, constants and the path to the slot check 14.
+# slot_check.py 45: judge 25 (the trip there and back as taken time, an in-person slot refused without its minutes,
+# when the principal is home, and what the night leaves), morning_after 9 and span 5 (the next morning's first
+# commitment, shared with the travel check), the docstring 3, main 3. ritual_state.py 80: travel 34 (where a
+# workspace checks travel, no record without today's result, with one that does not agree with itself, or while an
+# event lacks its travel), choices 28 (no record while the plan puts a choice with no recommendation, or with no
+# word on its cost where it commits the principal's time: a bare accept-or-decline had got a yes), the docstring 8,
+# the five patterns and spacing 7, an import 1, cmd_record 1, main 1. build_packet.py 1 (validate: every row that is
+# not blind recommends). In the core, guards.py 219 and paths.py 8, after a second model's review of the first fix
+# and a replay of 30 days of recorded commands: check_travel 35 and _place 8 (a calendar write at a place carries
+# its travel line; what a place is comes from the chief of staff's own check and the principal's policy; a place
+# is read under any of its field names), _self_grant 45 less the 17 it took over from check_self_grant (each
+# reading of a command judged: every write looked at whether or not a protected folder is spelled out, a path
+# handed to a program not known to only read it, a script judged by its own code and by what reaches it), _landing
+# 27 (where a utility lands what it writes: -t, both ends of a move, dd, install -d, compressors, find, sed and
+# perl without their script), _resolved 26 and _put 16 (every reading of a command with its variables put where
+# they are used: assignments, a loop's list, the environment, a default, a trimmed end), _ran 14 (the hook is run
+# when it is the script an interpreter runs, not when a program is handed its file), _named 11 and _changes 6 (the
+# paths a command hands an unknown program, and whether a command find runs changes its files), READERS with its
+# reason 8, _memory 8 and _material 8 (a project's memory notes and a saved tool result are the agent's own), the
+# twelve patterns and constants 12, _bare 3 (the files xargs hands a command are marked), imports 2, spacing 4,
+# check_destructive 1, _shell_writes 1 and check 1 (the destructive guard and the claim check read the same
+# readings); in paths.py, spelled 4, inside 3 and an import 1 (a path compared as a Mac's file system finds it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8779
-PLUGIN_BUDGET = 28860
+CORE_BUDGET = 8940
+PLUGIN_BUDGET = 29163
 
 
 def _lines(files):

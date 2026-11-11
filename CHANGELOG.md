@@ -16,31 +16,73 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   - `travel_check.py` (chief of staff) reads a saved calendar read and the `travel_policy` in the preferences and
     lists each in-person event with what its travel lacks: an exact address, the event's own `Travel:` line, a
     travel block on each side with every line a traveler needs (who pays, leave, route, arrive, backup, fare,
-    ticket), an arrival early enough, and three things only the principal settles (a return that leaves before
-    the end, one that ends after the latest hour, a car on a personal trip). It plans no trip: an agent does that
-    from a live source.
-  - `slot_check.py` takes `--travel-before` and `--travel-after` and counts the trip as taken time; `--in-person`
-    with neither is refused.
+    ticket), an arrival early enough, and four things only the principal settles (a return that leaves before
+    the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a personal
+    trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. It plans
+    no trip: an agent does that from a live source.
+  - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
+    the principal is home; `--in-person` with neither is refused.
   - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
     day-end run the check over that day and the six after and put each flagged event in the plan, and
-    `ritual_state.py record --travel` refuses without today's result or while an event lacks its travel. A
-    leaving or returning time in a plan or draft is taken from a travel block.
+    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself,
+    or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
+    block.
   - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
     one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy
     of the travel rules: it asks the chief of staff's check and the principal's policy.
   - `preferences.example.json` gains a `travel_policy`; the step is `references/in-person-travel.md`.
-- **The write guard reads a variable the command assigns** (core). A shell write's target was expanded from the
-  process environment only, so a command that set a variable to a protected folder and wrote through it was
-  judged as writing somewhere else: nine such writes into approval state and session transcripts passed in the
-  tests written first. Each variable a command assigns is now put where it is used before its writes are judged,
-  and a target that still starts with something the command does not set is refused when the command names a
-  protected folder.
-- **A project's memory folder is the file tools' to write** (core). Claude Code keeps each project's memory in a
-  folder beside that project's session transcripts and has the agent write it with its file tools; the guard
-  refused them, because it protected the whole folder. A Markdown file in a project's memory folder now passes.
-  The shell stays refused there, and a link in the folder does not open the transcript it points at.
+- **The trip is seen at the ask, and every choice is put with a view** (chief of staff 2.3.0, daily rituals 3.9.0,
+  decision packet 2.4.0). Shown the repaired plan, the same principal said the trip was a burden he had not seen
+  when he agreed, that a short night costs him his health, and that a chief of staff would have warned him. The
+  invitation had been put to him as a bare accept or decline: no recommendation, no trip, no time home.
+  - The trip is worked out before an invitation is brought, not after the yes. With the trip's minutes,
+    `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
+    and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment).
+  - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
+    carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
+  - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item
+    that offers options has no `Recommendation:` line, or, when it is an accept-or-decline or carries a
+    `Commits:` line, no `Consequences:` line. **This applies to every workspace that declares plan folders,**
+    from its next ritual record.
+  - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
+    recommended row covered for rows with none.
+- **The write guard reads a path however a command names it, and passes a protected path only to a program it
+  knows to only read it** (core). It began as two faults: a write through a variable the command had just
+  assigned was judged as a write somewhere else, and the file tools were refused in a project's memory folder.
+  A second model's review of the first fix, and this project's own probes while answering it, showed the guard
+  was narrower than the shell in three ways.
+  - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
+    protected folder out: relative to the session's folder, to a `cd`, through a variable. A command is read once
+    for each value it gives a variable (an assignment, after `export`, `readonly`, `declare` or `env`, in a
+    `for … in` list, inside a quoted script), with the environment's value for one it does not set, the default
+    a use carries and an end trimmed by `%` or `#`. A path is compared the way a Mac's file system finds it,
+    whatever its case. The destructive-command guard and the claim check read the same readings, so a recursive
+    delete, a force push or a write into another session's claim through a variable or a loop is seen.
+  - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
+    `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so
+    the rule is turned round: a path inside a protected folder may be handed to a program the guard knows only
+    reads it, to an interpreter or a shell (judged by the script it is given), and to `git` and the `synthesis`
+    CLI. Any other program is refused and told to read the file with `cat` and pipe it in, or to copy it out.
+    A Python program given inline or on stdin is judged by its own code; a path named in another command of the
+    line no longer counts against it, and one that reaches it through its arguments, its environment or the
+    folder it runs in does.
+  - **What is the agent's own.** A project's memory notes (`*.md` under `<project>/memory/` in Claude Code's
+    projects folder) are the agent's to write, move and remove, by file tool or shell; a link made there is
+    refused. A tool result the harness saved beside a transcript is material any program may be given; changing
+    it where it lies stays refused. The hook is run when it is the script an interpreter runs, not when another
+    program is handed its file.
+  - **Measured before release.** 109,893 distinct shell commands from 30 days of one machine's transcripts were
+    run through the 5.6.0 guard and this one, and every command whose verdict changed was read. The needless
+    refusals the first passes showed are now tests. At the end the new guard refused 2 commands the old one
+    passed (a move of a saved tool result and a subagent's transcript to the Trash, and a database tool opening
+    a session store) and passed 56 the old one refused: 37 scripts that edit project files while a protected
+    path is only read or mentioned elsewhere on the line, 17 memory notes written from the shell, and 2
+    programs handed the hook's file. The destructive guard newly refused 2 recursive deletes of a scratch clone
+    named through a variable, which it always refused when the path was written out.
 - **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
-  word for word into `references/meetings-correspondence-travel.md` to make room for binding rule 13.
+  word for word into `references/meetings-correspondence-travel.md` to make room for binding rules 13 and 14.
+- synthesis-kb-distribution: the connector's no-token-logged test captures FastMCP's own log lines under pytest
+  8 as well as 9 (test code only, from its own pull request).
 
 ## [5.6.0] - 2026-11-11
 
