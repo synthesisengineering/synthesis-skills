@@ -5,8 +5,13 @@ The list shows, without opening a thread: who, the day (the clock time for today
 last message, unread counts and LinkedIn's own "Reply?" nudge. This reads that text, lists the conversations
 that end with someone else, and prints one coverage line. It opens nothing and writes nothing.
 
+    linkedin_messages.py plan --config .agents/linkedin-sync.yaml
     linkedin_messages.py parse --text list.txt --read-at 2026-11-11T09:45:00-05:00
         [--since YYYY-MM-DD] [--opened N] [--json]
+
+`plan` reads the workspace's declaration (`workspace`, `parking_thread`, `inboxes`) and prints the address to
+open and, per inbox, the day the last read reached. The address is always the parking thread's: the bare
+messaging page opens the newest conversation by itself, which marks an unread one read.
 
 `list.txt` is the conversation list's text as the browser tool returned it (the list alone, or the whole
 page). `--since` is the day the last read reached: a read whose oldest conversation is newer than that
@@ -22,6 +27,10 @@ import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
+
+sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # the plugin root, which holds synthesis/
 
 END = re.compile(r"^Open the options list in your conversation with (.+)$")
 CLOCK = re.compile(r"^(\d{1,2}):(\d{2})\s*([AP])M$", re.I)
@@ -117,9 +126,36 @@ def parse(text: str, read: datetime, since: str = "", opened: int = 0) -> dict:
             "line": line}
 
 
+def plan(config: Path) -> list:
+    """What a read opens and how far back it must reach, from the workspace's declaration."""
+    import sync_watermark as watermarks
+    from synthesis.yamlish import load
+    try:
+        declared = load(config.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        stop(f"cannot read the declaration {config} ({exc})")
+    declared = declared if isinstance(declared, dict) else {}
+    workspace, inboxes = declared.get("workspace"), declared.get("inboxes", ["focused"])
+    thread = re.search(r"(?:/messaging/thread/)?([\w=+-]{8,})/?$", str(declared.get("parking_thread") or "").strip())
+    if not isinstance(workspace, str) or not workspace.strip():
+        stop(f"{config} names no workspace")
+    if not thread:
+        stop(f"{config} names no parking_thread: a dormant conversation whose opening changes nothing. Without one the "
+             "read would load the bare messaging page, which opens the newest conversation and marks it read")
+    if not isinstance(inboxes, list) or not inboxes or not all(isinstance(i, str) and i.strip() for i in inboxes):
+        stop(f"{config}: inboxes is a list of the list views to read, for example [focused]")
+    lines = [f"open  https://www.linkedin.com/messaging/thread/{thread[1]}/  (the parking thread; never the bare messaging page)"]
+    for inbox in inboxes:
+        last = watermarks.window(workspace, "linkedin", inbox)["from"]
+        lines.append(f"read  {inbox}: read through {last[:10]}; scroll back to that day and pass --since {last[:10]}" if last
+                     else f"read  {inbox}: never read; scroll back two weeks")
+    return lines
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("plan", help="what to open and how far back to read").add_argument("--config", required=True, type=Path)
     read = sub.add_parser("parse", help="read the saved text of the conversation list")
     read.add_argument("--text", required=True, type=Path)
     read.add_argument("--read-at", required=True, help="when the list was read, ISO-8601 with its offset")
@@ -127,6 +163,9 @@ def main(argv=None) -> int:
     read.add_argument("--opened", type=int, default=0, help="how many threads this read opened (each marks one read)")
     read.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "plan":
+        print("\n".join(plan(args.config)))
+        return 0
     try:
         moment = datetime.fromisoformat(args.read_at.replace("Z", "+00:00"))
         text = args.text.read_text(encoding="utf-8")

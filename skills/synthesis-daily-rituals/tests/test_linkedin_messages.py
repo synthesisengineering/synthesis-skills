@@ -148,3 +148,51 @@ def test_the_watermark_moves_only_with_the_readers_coverage(tmp_path):
     _, short = run(tmp_path, LIST, "--since", "2026-11-01")
     with pytest.raises(ValueError, match="no `through`"):
         marks.advance("desk", "linkedin", READ_AT, ("focused",), now=now, home=tmp_path, coverage=short)
+
+
+# --- the declaration ------------------------------------------------------------------------------
+
+
+def plan(tmp_path: Path, declaration: str):
+    import os
+    config = tmp_path / "linkedin-sync.yaml"
+    config.write_text(declaration, encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPT), "plan", "--config", str(config)], capture_output=True, text=True,
+                          env={**os.environ, "SYNTHESIS_HOME": str(tmp_path / "home")})
+    return done.returncode, done.stdout + done.stderr
+
+
+DECLARED = 'workspace: desk\nparking_thread: "2-ABCdef123xyz=="\ninboxes: [focused]\n'
+
+
+def test_the_plan_opens_the_parking_thread_and_never_the_bare_page(tmp_path):
+    """The bare messaging page opens the newest conversation by itself, which marks an unread one read."""
+    code, out = plan(tmp_path, DECLARED)
+    assert code == 0, out
+    assert "https://www.linkedin.com/messaging/thread/2-ABCdef123xyz==/" in out
+    assert "https://www.linkedin.com/messaging/ " not in out and "focused: never read" in out
+    code, out = plan(tmp_path, DECLARED.replace('"2-ABCdef123xyz=="', '"https://www.linkedin.com/messaging/thread/2-ABCdef123xyz==/"'))
+    assert code == 0 and "thread/2-ABCdef123xyz==/" in out  # the thread's address is accepted too
+
+
+@pytest.mark.parametrize("declaration, says", [
+    ("workspace: desk\ninboxes: [focused]\n", "parking_thread"),
+    ('workspace: desk\nparking_thread: ""\n', "parking_thread"),
+    ('parking_thread: "2-ABCdef123xyz=="\n', "workspace"),
+    ('workspace: desk\nparking_thread: "2-ABCdef123xyz=="\ninboxes: focused\n', "inboxes"),
+])
+def test_a_declaration_it_cannot_use_is_refused(tmp_path, declaration, says):
+    code, out = plan(tmp_path, declaration)
+    assert code == 2 and says in out
+
+
+def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
+    import os
+    _, complete = run(tmp_path, LIST, "--since", "2026-11-06")
+    spec = importlib.util.spec_from_file_location("sync_watermark", SCRIPTS / "sync_watermark.py")
+    marks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(marks)
+    marks.advance("desk", "linkedin", READ_AT, ("focused",), now=datetime.fromisoformat("2026-11-11T10:00:00-05:00"),
+                  home=tmp_path / "home", coverage=complete)
+    code, out = plan(tmp_path, DECLARED)
+    assert code == 0 and "focused: read through 2026-11-11" in out and "--since 2026-11-11" in out
