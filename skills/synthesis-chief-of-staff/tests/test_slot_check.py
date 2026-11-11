@@ -191,7 +191,8 @@ def test_the_trip_counts_as_taken_time(tmp_path):
 
 
 def test_the_deep_work_block_is_judged_with_the_trip_in_it(tmp_path):
-    day = [meeting(THURSDAY, "11:00", "12:00", "Review"), meeting(THURSDAY, "16:00", "17:00", "Wrap-up")]
+    day = [meeting(THURSDAY, "09:30", "10:30", "Standup"), meeting(THURSDAY, "11:00", "12:00", "Review"),
+           meeting(THURSDAY, "16:00", "17:00", "Wrap-up")]
     code, report = check(tmp_path, "15:00", "15:30", day)          # 12:00-15:00 stays free: three hours
     assert levels(report)["deep work"] == "OK"
     code, report = check(tmp_path, "15:00", "15:30", day, "--travel-before", "75")  # 13:45 on is the trip: 1 h 45 left

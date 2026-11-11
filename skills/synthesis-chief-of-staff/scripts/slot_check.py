@@ -6,10 +6,13 @@ the first open half hour of the same day, three days running, to suit the reques
 slot, the calendar read that covers its day and the principal's preferences, this prints one
 verdict and the reason for each check: same day, protected hours, working hours, the deep-work
 block left, the day's meeting load, placement beside existing meetings, an existing meeting with
-the same people, and whose deadline binds. It reads two files and writes nothing.
+the same people, and whose deadline binds. A meeting in person takes the trip there and back as
+well: give the minutes on each side and they count as taken time (2026-11-11: an evening 28 miles
+away was placed with no travel time at all). It reads two files and writes nothing.
 
     slot_check.py --start 2026-11-12T14:00 --end 2026-11-12T14:30 --events read.json
         [--attendee a@example.com ...] [--requester a@example.com] [--deadline YYYY-MM-DD]
+        [--in-person] [--travel-before MINUTES] [--travel-after MINUTES]
         [--today YYYY-MM-DD] [--config ~/.synthesis/chief-of-staff/preferences.json] [--json]
 
 `read.json` is the calendar read, saved with the days it covers:
@@ -81,6 +84,9 @@ def judge(args, config: dict, read: dict) -> dict:
     if not start or not end or end <= start:
         stop("--start and --end need clock times, the end after the start")
     today = date.fromisoformat(args.today) if args.today else datetime.now(zone).date()
+    out, back = timedelta(minutes=args.travel_before), timedelta(minutes=args.travel_after)
+    if args.in_person and not (out or back):
+        stop("an in-person slot needs its travel minutes on each side (--travel-before, --travel-after): work out the trip first")
     window = read.get("window") if isinstance(read, dict) else None
     if not isinstance(window, dict) or not window.get("from") or not window.get("through"):
         stop('the calendar read must say which days it covers: {"window": {"from": ..., "through": ...}, "events": [...]}')
@@ -134,13 +140,21 @@ def judge(args, config: dict, read: dict) -> dict:
     need, blocks = int(limits.get("maker_block_minutes", 120)), int(limits.get("min_maker_blocks_per_day", 1))
     long_enough = lambda gaps: [g for g in gaps if g[1] - g[0] >= timedelta(minutes=need)]  # noqa: E731
     before = long_enough(free_blocks([(a, b) for a, b, _ in that_day], opens, closes))
-    after = long_enough(free_blocks([(a, b) for a, b, _ in that_day] + [(start, end)], opens, closes))
+    after = long_enough(free_blocks([(a, b) for a, b, _ in that_day] + [(start - out, end + back)], opens, closes))
     if len(after) < blocks:
         broke = next((g for g in before if g not in after), None)
         add("deep work", "REFUSE", (f"it would break the day's last {need}-minute free block ({hm(broke[0])}-{hm(broke[1])})" if broke
                                     else f"the day has no {need}-minute free block left, so it takes nothing more"))
     else:
         add("deep work", "OK", f"{len(after)} free block(s) of {need} minutes or more remain, the first {hm(after[0][0])}-{hm(after[0][1])}")
+
+    if out or back:  # the trip is taken time: it may not run through another event
+        there = next((s for a, b, s in that_day if out and a < start and b > start - out), None)
+        home = next((s for a, b, s in that_day if back and a < end + back and b > end), None)
+        add("travel", "REFUSE" if there or home else "OK",
+            f"the trip there ({hm(start - out)}-{hm(start)}) overlaps {there}" if there
+            else f"the trip back ({hm(end)}-{hm(end + back)}) overlaps {home}" if home
+            else f"{hm(start - out)}-{hm(start)} there, {hm(end)}-{hm(end + back)} back, clear of other events")
 
     load = sum(((b - a).total_seconds() for a, b, _ in that_day), (end - start).total_seconds()) / 3600
     most = float(limits.get("max_meeting_hours_per_day", 5))
@@ -191,6 +205,9 @@ def main(argv=None) -> int:
     parser.add_argument("--attendee", action="append", default=[])
     parser.add_argument("--requester")
     parser.add_argument("--deadline", help="the requester's date, YYYY-MM-DD")
+    parser.add_argument("--in-person", action="store_true", help="the meeting is at a place: the travel minutes are required")
+    parser.add_argument("--travel-before", type=int, default=0, help="minutes door to door to get there")
+    parser.add_argument("--travel-after", type=int, default=0, help="minutes door to door to get back")
     parser.add_argument("--today", help="YYYY-MM-DD; defaults to today in the principal's zone")
     parser.add_argument("--config", type=Path, default=Path.home() / ".synthesis" / "chief-of-staff" / "preferences.json")
     parser.add_argument("--json", action="store_true")
