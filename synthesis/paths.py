@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from pathlib import Path
 
 
@@ -69,8 +70,15 @@ def write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+def spelled(path: str) -> str:
+    """A path as a Mac's file system compares it: neither the case of a letter nor the form an accent is written in
+    makes it another file (2026-11-11: a protected file named in capitals was written)."""
+    return unicodedata.normalize("NFD", str(path)).casefold()
+
+
 def inside(path: str, root: str) -> bool:
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+    path, root = spelled(path), spelled(root).rstrip(os.sep)
+    return path == root or path.startswith(root + os.sep)
 
 
 def session_id(payload: dict | None = None) -> str:

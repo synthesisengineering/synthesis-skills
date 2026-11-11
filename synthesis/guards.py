@@ -8,7 +8,9 @@ These fail closed when their config can't be read or is malformed (R3.5).
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import json
+import math
 import os
 import re
 import shlex
@@ -335,6 +337,15 @@ def _own_hold(event: dict) -> bool:
 
 
 TRAVEL_READER = os.path.join(os.path.dirname(HOLDS_READER), "travel_check.py")
+PLACE_KEYS = frozenset({"location", "locations", "where", "place", "venue"})
+
+
+def _place(value, under: bool = False):
+    """Each text a call gives for where an event is: what a location field holds, written out or as a structure."""
+    for key, item in value.items() if isinstance(value, dict) else enumerate(value) if isinstance(value, list) else ():
+        yield from _place(item, under or str(key).lower() in PLACE_KEYS)
+    if under and isinstance(value, str) and value.strip():
+        yield value.strip()
 
 
 def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
@@ -359,9 +370,9 @@ def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
             said = {key.lower(): text for key, text in _strings(event)}
             name = next((said[k] for k in ("summary", "title", "subject", "name") if said.get(k)), "an event")
             notes = "\n".join(said.get(k, "") for k in ("description", "notes", "body", "details"))
-            if (reader.place(said.get("location", ""), policy) == "away" and not name.lower().startswith(title)
-                    and not reader.lines(notes).get("travel")):
-                return (f"Refused: this writes \"{name}\" at a place ({said['location']}) and says nothing about how the "
+            spot = ", ".join(_place(event))
+            if reader.place(spot, policy) == "away" and not name.lower().startswith(title) and not reader.lines(notes).get("travel"):
+                return (f"Refused: this writes \"{name}\" at a place ({spot}) and says nothing about how the "
                         "principal gets there. Work the trip out first (synthesis-chief-of-staff, references/in-person-travel.md): "
                         "who pays, the exact address, the trip door to door from a live source, a travel block on each side. "
                         "Then put the event's travel line in its description (`Travel: blocks before and after`, or `Travel: "
@@ -1293,12 +1304,13 @@ def _protected(config: dict) -> list[str]:
 
 def check_destructive(command: str, config: dict, cwd: str | None = None) -> str | None:
     protected = None
-    for words, directory in _parse(command, cwd or os.getcwd())[0]:
+    found = [item for text in _resolved(command) for item in _parse(text, cwd or os.getcwd())[0]]  # each reading of it
+    for words, directory in found:
         if os.path.basename(words[0]) == "rm" and any(w.startswith("-") and "r" in w.lstrip("-").lower() for w in words[1:]):
-            protected = protected if protected is not None else _protected(config)
+            protected = protected if protected is not None else {paths.spelled(p) for p in _protected(config)}
             for target in (w for w in words[1:] if not w.startswith("-")):
                 real = os.path.realpath(os.path.join(directory, os.path.expanduser(os.path.expandvars(target))))
-                if real in protected or os.path.exists(os.path.join(real, ".git")):
+                if paths.spelled(real) in protected or os.path.exists(os.path.join(real, ".git")):
                     return f"refusing a recursive delete of {real}: it is a protected root or a repository"
         if _git(words, directory)[0] == "push":
             rest = words[words.index("push") + 1:]
@@ -1542,8 +1554,10 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
 # routes to forging one, and to writing the approved commit lines. A route assembled at run time is beyond a
 # text check: docs/runtime-integration.md.
 
-COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync"})  # these write only their last argument
-WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rm", "unlink", "chmod"}
+COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync", "ditto"})  # these write only where the copy lands
+WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
+IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
+INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
@@ -1560,21 +1574,69 @@ SCRIPTED_WRITE = re.compile(
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
-ASSIGNED = re.compile(r"(?:^|[;&|\n(]|\bexport\s)\s*([A-Za-z_]\w*)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
-USED = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
+LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
+USED = re.compile(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
+READINGS = 32  # past this many, a variable the command gives several values stays as written
 
 
-def _resolved(text: str) -> str:
-    """The command with each variable it assigns put where it is used, so a folder named through one is read as if
-    written out (2026-11-11: `D=<state folder>; echo x > "$D/a"` passed, a target being expanded from the process
-    environment only). A variable the command does not assign stays as written."""
-    for _ in range(4):  # a variable built from another
-        values = {m[1]: m[2].strip("'\"") for m in ASSIGNED.finditer(text)}
-        put = USED.sub(lambda m: values.get(m[1] or m[2], m[0]), text)
-        if put == text:
-            break
-        text = put
-    return text
+def _put(use, values: dict) -> str:
+    """What the shell puts for one use of a variable: its value from the command or the environment, the default
+    the use carries, or the value with an end trimmed. The use as written when that cannot be told."""
+    name, op, word = use[1] or use[4], use[2] or "", use[3] or ""
+    value = values.get(name, os.environ.get(name))
+    if name in values and value is None:
+        return use[0]
+    if op[-1:] in ("-", "=", "?", "+"):
+        return (word if value else "") if op[-1] == "+" else value or (word if op[-1] in "-=" else use[0])
+    if value is None or not op:
+        return use[0] if value is None else value
+    hits = [i for i in range(len(value) + 1) if fnmatch.fnmatchcase(value[i:] if op[0] == "%" else value[:i], word)]
+    cut = (min if op in ("%%", "#") else max)(hits, default=None)
+    return value if cut is None else value[:cut] if op[0] == "%" else value[cut:]
+
+
+def _resolved(text: str) -> list[str]:
+    """Every reading of a command with its variables put where they are used: a value the command gives one (`D=…`,
+    after `export`, `readonly` or `env`, in a `for … in` list, inside a quoted script), else the environment's
+    (2026-11-11: `D=<state folder>; echo x > "$D/a"` passed, a target being expanded from the environment only).
+    A variable given several values gives a reading for each, since which one a command gets depends on the order
+    things run in. A variable neither sets stays as written."""
+    found: dict = {}
+    for m in ASSIGNED.finditer(text):
+        found.setdefault(m[1], {})[m[2].strip("'\"")] = None
+    for m in LOOPED.finditer(text):
+        found.setdefault(m[1], {}).update(dict.fromkeys(word.strip("'\"") for word in m[2].split()))
+    used = {m[1] or m[4] for m in USED.finditer(text)}
+    found = {name: list(values) for name, values in found.items() if name in used}
+    if math.prod(map(len, found.values())) > READINGS:
+        found = {name: values if len(values) == 1 else [None] for name, values in found.items()}
+    readings = {}
+    for choice in itertools.product(*found.values()):
+        values, put = dict(zip(found, choice)), text
+        for _ in range(4):  # a variable built from another
+            put, before = USED.sub(lambda use: _put(use, values), put), put
+            if put == before:
+                break
+        readings[put] = None
+    return list(readings)
+
+
+def _landing(words: list[str]) -> list[str]:
+    """The words of a command that name what it changes: each operand of a file utility, or of `sed` or `perl`
+    editing in place; `dd`'s `of=`; for a copier where the copy lands, which is its last operand or the folder `-t`
+    gives, and each source's name inside it in case that is a folder (2026-11-11: `cp -t <folder>`, `dd of=` and
+    `perl -pi` wrote where no check was looking)."""
+    head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
+    if head == "dd":
+        return [w[3:] for w in rest if w.startswith("of=")]
+    if head in ("sed", "perl"):
+        return rest if any(IN_PLACE.fullmatch(w) for w in words[1:]) else []
+    if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
+        return rest if head in WRITERS else []
+    given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
+    into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
+    return into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
 
 
 PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
@@ -1621,19 +1683,20 @@ def _file_targets(tool: str, tool_input: dict) -> list[str]:
 
 
 def _shell_writes(command: str, cwd: str) -> list[str]:
-    """The files a shell line writes or removes: redirects, copiers and writers, `sed -i`, `apply_patch`."""
-    writes = []
-    try:
-        found = _commands(command, cwd, writes=writes)
-    except (Unreadable, StopIteration, IndexError):
-        return []
-    targets = [os.path.join(w, t) for t, w in writes]
-    for words, where in found:
-        head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
-        if head in WRITERS or (head in ("sed", "perl") and "-i" in words):
-            targets += [os.path.join(where, w) for w in (rest[-1:] if head in COPIERS else rest)]
-        if head == "apply_patch":
-            targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(command)]
+    """The files a shell line writes or removes: redirects, what its utilities change (`_landing`), `apply_patch`;
+    in every reading of the line (`_resolved`)."""
+    targets = []
+    for text in _resolved(command):
+        writes = []
+        try:
+            found = _commands(text, cwd, writes=writes)
+        except (Unreadable, StopIteration, IndexError):
+            continue
+        targets += [os.path.join(w, t) for t, w in writes]
+        for words, where in found:
+            targets += [os.path.join(where, w) for w in _landing(words)]
+            if os.path.basename(words[0]) == "apply_patch":
+                targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     return targets
 
 
@@ -1721,11 +1784,20 @@ def _python_writes(source: str, names: list) -> bool | None:
 
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
+    home = os.path.expanduser("~")
+    readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
+    return next(filter(None, (_self_grant(command, text, cwd, config) for text in readings)), None)
+
+
+def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
+    """One reading of a command: the reason it is refused, or None."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
-    text = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     raw = _protected_roots(config)
-    mine = store and store.name in text  # the store's own name: a write from inside its folder
-    names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text] + ([store.name] if mine else [])
+
+    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case
+        return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
+    mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
+    names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
     redirects, readable = [], True
     try:  # the files the parsed command writes; a `>` inside a quoted string is not one (2026-10-13)
         _commands(text, cwd, writes=redirects) if names else None
@@ -1741,8 +1813,8 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and any(HOOK_RUN.search(w) for w in words[1:])):
             why = why or "runs the synthesis hook, which only the harness may run"
-        if names and (head in WRITERS or (head in ("sed", "perl") and "-i" in own)):
-            asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in (words[-1:] if head in COPIERS else words[1:])]
+        if names:
+            asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
