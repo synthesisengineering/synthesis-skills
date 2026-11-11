@@ -144,3 +144,8 @@ def test_a_street_number_that_only_contains_the_home_number_is_another_address(c
     """The second review: home at 10 River St, and an event at 110 River St passed as home."""
     assert refused(guards.check(CREATE, event(location="110 River St, Example City"), config))
     assert guards.check(CREATE, event(location="10 River St, Example City"), config) is None
+
+
+@pytest.mark.parametrize("line", ["Travel: locally unavailable", "Travel: by car", "Travel: none", "Travel: 80 min train; local transfer, 5 min walk"])
+def test_a_line_that_is_not_one_of_the_three_forms_is_no_travel_line(config, line):
+    assert refused(guards.check(CREATE, event(description=line), config))
