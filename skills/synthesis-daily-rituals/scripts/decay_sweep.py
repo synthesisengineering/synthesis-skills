@@ -34,6 +34,7 @@ from synthesis import rituals  # noqa: E402
 DATE = r"\d{4}-\d{2}-\d{2}"
 PLAN = re.compile(rf"^({DATE})\.md$")
 ARTIFACT = re.compile(rf"^({DATE})-(day-start|midday|day-end)\.md$")
+RECORD = re.compile(rf"^({DATE})(?!\d)")  # a record named with a leading date speaks as of that day; any other as of the sweep's
 MIDDAY_RUN = re.compile(rf"^({DATE})-midday-([2-9]|[1-9][0-9]{{1,2}})\.md$")  # a later mid-day run that day (2026-10-31)
 FIELD = re.compile(r"\*\*(Decays|Decay ID|Sent|Released|Resolved|Critical|Calendar|Evidence|Lapsed):\*\*\s*(.*)", re.I)
 HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+)")
@@ -192,14 +193,15 @@ def parse_plan(path: Path, day: date, rank: int, as_of: date, report: dict) -> l
 
 
 def declared(cfg: dict, workspace: str):
-    """The plan and artifact folders a workspace declares in the ritual config; None when it declares neither key."""
+    """The plan and artifact folders a workspace declares in the ritual config, with any folders of other records
+    (drafts, a ledger) whose items it wants swept; None when it declares neither plans nor artifacts."""
     conf = rituals.settings(cfg, workspace)
     if "plans_dirs" not in conf and "artifacts_dirs" not in conf:
         return None
-    roots = [(Path(p), kind) for kind in ("plans", "artifacts") for p in conf.get(f"{kind}_dirs") or []]
-    if not all(isinstance(p, str) for kind in ("plans", "artifacts") for p in conf.get(f"{kind}_dirs") or []):
-        raise ValueError(f"ritual config: plans_dirs and artifacts_dirs of {workspace} must be lists of folders")
-    return roots
+    kinds = ("plans", "artifacts", "records")
+    if not all(isinstance(p, str) for kind in kinds for p in conf.get(f"{kind}_dirs") or []):
+        raise ValueError(f"ritual config: plans_dirs, artifacts_dirs and records_dirs of {workspace} must be lists of folders")
+    return [(Path(p), kind) for kind in kinds for p in conf.get(f"{kind}_dirs") or []]
 
 
 def alert_today(due: date, as_of: date, working) -> bool:
@@ -300,13 +302,19 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 if path.is_symlink():
                     gap(report, path, "symlink file not scanned")
                     continue
-                match = pattern.fullmatch(name) or (kind == "artifacts" and MIDDAY_RUN.fullmatch(name))
-                if not match:
-                    report["excluded"].append(str(path))
-                    continue
+                if kind == "records":  # any Markdown file: a draft, a ledger
+                    match = RECORD.match(name) if name.endswith(".md") else None
+                    if not name.endswith(".md"):
+                        report["excluded"].append(str(path))
+                        continue
+                else:
+                    match = pattern.fullmatch(name) or (kind == "artifacts" and MIDDAY_RUN.fullmatch(name))
+                    if not match:
+                        report["excluded"].append(str(path))
+                        continue
                 selected += 1
                 try:
-                    day = iso_day(match[1])
+                    day = iso_day(match[1]) if match else as_of
                 except ValueError:
                     gap(report, path, "invalid date in source filename")
                     continue
@@ -316,6 +324,10 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 if path in seen:
                     continue
                 seen.add(path)
+                if kind == "records":
+                    found = parse_plan(path, day, 0, as_of, report)
+                    entries.extend(dict(entry, record=True) for entry in found)
+                    continue
                 if kind != "artifacts":
                     rank = 2
                 elif match.re is MIDDAY_RUN:  # midday-2 after midday, before the day-end
@@ -323,12 +335,14 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
                 else:
                     rank = RUN_ORDER[match[2]]
                 entries.extend(parse_plan(path, day, rank, as_of, report))
-        if selected == 0:
+        if selected == 0 and kind != "records":  # a folder of drafts may hold none today
             gap(report, root, "no dated source files; coverage is not established")
     grouped = defaultdict(list)
     for entry in entries:
         grouped[entry["identity"]].append(entry)
     for identity, history in grouped.items():
+        # A plan outranks a record: once a plan or ritual artifact carries the item, the plans decide it.
+        history = [e for e in history if not e.get("record")] or history
         history.sort(key=lambda r: (r["plan_date"], r["run_rank"], r["path"], r["line"]))
         # Resolve each file's last occurrence first, without ordering peer files by name.
         latest = history[-1]
@@ -356,7 +370,7 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
         due_choices = [e for e in choices if e["due_date"] and e["due_date"] <= as_of.isoformat() and not e["closed"]]
         if due_choices:
             chosen = min(due_choices, key=lambda e: e["due_date"])
-            result = {k: v for k, v in chosen.items() if k not in ("closed", "run_rank", "invalid")}
+            result = {k: v for k, v in chosen.items() if k not in ("closed", "run_rank", "invalid", "record")}
             result["sources"] = [{"path": e["path"], "line": e["line"]} for e in history]
             report["due"].append(result)
     report["due"].sort(key=lambda e: (e["due_date"], e["path"], e["line"]))
@@ -389,13 +403,15 @@ def main(argv=None) -> int:
     parser.add_argument("--as-of", required=True, help="verified current calendar date, YYYY-MM-DD")
     parser.add_argument("--plans-dir", action="append", default=[], type=Path)
     parser.add_argument("--artifacts-dir", action="append", default=[], type=Path)
+    parser.add_argument("--records-dir", action="append", default=[], type=Path,
+                        help="a folder of other Markdown records (drafts, a ledger) whose items are swept unless a plan carries them")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--workspace", help="also read the plan and artifact folders this workspace declares in the ritual config")
     parser.add_argument("--alert", action="store_true", help="post the critical-deadline banner and spoken line when one is due today")
     parser.add_argument("--alert-declared", action="store_true",
                         help="one alert counting every workspace's declared folders, for a day with no ritual")
     args = parser.parse_args(argv)
-    roots = [(p, "plans") for p in args.plans_dir] + [(p, "artifacts") for p in args.artifacts_dir]
+    roots = [(p, "plans") for p in args.plans_dir] + [(p, "artifacts") for p in args.artifacts_dir] + [(p, "records") for p in args.records_dir]
     try:
         as_of = iso_day(args.as_of)
         cfg = rituals.config() if args.workspace or args.alert_declared else {"workspaces": {}}

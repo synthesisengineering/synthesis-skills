@@ -2,7 +2,8 @@
 
 When a guard blocks a send or a deploy it files a request under a random six-character
 code, so nobody can know the code before the request exists. The principal types
-"approve <code>" and the UserPromptSubmit hook records a grant. The agent runs as the same
+"approve <code>" (or several codes after the one word) and the UserPromptSubmit hook
+records a grant for each. The agent runs as the same
 OS user and can write that grant itself, or feed the hook a made-up prompt (M5,
 2026-10-05), so a grant alone never lets a call through: the harness's own record of the
 session must also hold that prompt, typed by the principal after the request was filed.
@@ -22,8 +23,18 @@ from pathlib import Path
 from synthesis import paths
 
 TTL_SECONDS = 15 * 60
-CODE = re.compile(r"\bapprove\s+(\d[0-9a-f]{5})\b", re.IGNORECASE)  # the shape request() issues: no English word fits
-INSERTED = r"(?s)<([A-Za-z][\w-]*)\b[^>]*>.*?</\1\s*>"  # blocks a harness wraps into a prompt; compiled on use
+ONE = r"\d[0-9a-f]{5}\b"  # the shape request() issues: no English word fits
+GAP = "[ \\t\\u00a0\\u1680\\u2000-\\u200a\\u202f\\u205f\\u3000]"  # a space inside a line; a line break is not one
+NOT = r"(?:n['’]t|\b(?:not|never|no|cannot|dont|cant|wont))"  # "don't approve ...": group 1 of CODE when it stands before
+# The word, then on its own line the codes it approves, separated by spaces, commas or "and". The first thing that
+# is not a code ends the list: "approve code <code>", the form hook text is rewritten to, approves nothing
+# (hook._defuse), and neither does pasted context that opens the next line with a code. A negation before the
+# word, across any space, line break or removed block, is part of the match so that it can be refused.
+CODE = re.compile(rf"(?:({NOT})[\s/]+)?\bapprove{GAP}+({ONE}(?:(?:{GAP}*,{GAP}*(?:and{GAP}+)?|{GAP}+and{GAP}+|{GAP}+){ONE})*)",
+                  re.IGNORECASE)
+# A harness wraps what it inserts into a prompt in a pair of tags: a closing tag, or the start of an opening one.
+TAG = re.compile(r"<(?:(/)([^\W\d][\w.:-]*)\s*>|([^\W\d][\w.:-]*)(?=[\s/>]))")
+CUT = " / "  # stands where a wrapped block was: it ends a list and parts the word from a code
 NOT_TYPED = ("isMeta", "isSidechain", "isCompactSummary", "isVisibleInTranscriptOnly", "isSynthetic", "toolUseResult")
 
 
@@ -75,10 +86,38 @@ def _expire() -> None:
             pass
 
 
+def typed_text(prompt: str) -> str:
+    """The prompt without the blocks a harness wrapped into it, such as a background task's report (2026-10-20: a
+    helper's report quoting the guard reached this hook as a prompt). What a wrapper holds can carry the wrapper's
+    own closing tag (in a comment, a quoted report, on purpose), so no pairing of tags says where a block ends:
+    everything from a name's first opening tag to its last closing tag goes, and a mark stands where it was so no
+    list runs across it. One pass over the tags, so a long prompt cannot stall the hook (2026-11-11: removing
+    blocks one pattern match at a time took seconds on 300,000 characters)."""
+    prompt, first, last = prompt or "", {}, {}
+    for tag in TAG.finditer(prompt):
+        if tag[3]:
+            first.setdefault(tag[3].lower(), tag.start())
+        elif tag[2].lower() in first:
+            last[tag[2].lower()] = tag.end()
+    kept, at = [], 0
+    for start, end in sorted((first[name], end) for name, end in last.items()):
+        if start >= at:
+            kept.append(prompt[at:start])
+        at = max(at, end)
+    return CUT.join(kept + [prompt[at:]])
+
+
 def typed_codes(prompt: str) -> list[str]:
-    """The codes the principal typed: never one inside a block the harness wrapped into the prompt, such as
-    a background task's report (2026-10-20: a helper's report quoting the guard reached this hook as a prompt)."""
-    return list(dict.fromkeys(m.lower() for m in CODE.findall(re.sub(INSERTED, " ", prompt or ""))))
+    """The codes the principal approved in what they typed. One "approve" may carry several (2026-11-11: nine were
+    typed after the word and eight were passed over). A negation before the word approves nothing."""
+    lists = [m[2] for m in CODE.finditer(typed_text(prompt)) if not m[1]]
+    return list(dict.fromkeys(code.lower() for codes in lists for code in re.findall(ONE, codes, re.IGNORECASE)))
+
+
+def mentioned(prompt: str) -> list[str]:
+    """Every word shaped like a code anywhere in the message, tags and wrapped blocks included: it grants nothing,
+    and it lets the hook name a pending code that was in the message and did not take."""
+    return list(dict.fromkeys(code.lower() for code in re.findall(rf"\b{ONE}", prompt or "", re.IGNORECASE)))
 
 
 def grant_from_prompt(prompt: str) -> list[str]:
@@ -109,11 +148,12 @@ def transcript(session: dict | None) -> str:
     return str(found[0]) if len(found) == 1 else ""
 
 
-def _prompt(record: dict, session_id: str) -> tuple[float, str]:
-    """(time, text) when a transcript line is a prompt the principal typed, else (0, "").
+def _prompt(record: dict, session_id: str) -> tuple[float, list]:
+    """(time, its blocks of text) when a transcript line is a prompt the principal typed, else (0, []).
     Claude Code: a user entry, or a prompt typed while the agent worked, from a human; never meta, a
     subagent's, a compaction summary or a tool result. Codex: the user's own message item, never a tool
-    output or a hook's prompt. Muse: a chat intent accepted on this session's main surface."""
+    output or a hook's prompt. Muse: a chat intent accepted on this session's main surface. Each block is
+    read by itself, and a block marked as not the principal's is left out as a whole record would be."""
     body = record.get("payload") if isinstance(record.get("payload"), dict) else {}
     item, queued = body.get("item") or {}, record.get("attachment") or {}
     if record.get("type") == "user":
@@ -126,18 +166,21 @@ def _prompt(record: dict, session_id: str) -> tuple[float, str]:
           and (body.get("semantic_kind") or {}).get("kind") == "chat" and body.get("source_session_id") in (None, session_id)):
         entry, content = record, body.get("refill_blocks")
     else:
-        return 0.0, ""
-    blocks = content if isinstance(content, list) else [content]
-    origin = entry.get("origin")
-    if (any(entry.get(k) for k in NOT_TYPED) or (isinstance(origin, dict) and origin.get("kind") != "human")
-            or any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks)):
-        return 0.0, ""
-    text = " ".join(b if isinstance(b, str) else str(b.get("text") or "") for b in blocks if isinstance(b, (str, dict)))
+        return 0.0, []
+    blocks = [{"text": b} if isinstance(b, str) else b for b in (content if isinstance(content, list) else [content])]
+    blocks = [b for b in blocks if isinstance(b, dict)]
+
+    def machine(part: dict) -> bool:
+        origin = part.get("origin")
+        return any(part.get(k) for k in NOT_TYPED) or (isinstance(origin, dict) and origin.get("kind") != "human")
+    if machine(entry) or any(b.get("type") == "tool_result" for b in blocks):
+        return 0.0, []
+    texts = [str(b.get("text") or "") for b in blocks if not machine(b)]
     stamp = record.get("timestamp") or record.get("recorded_at")
     if isinstance(stamp, (int, float)):
-        return stamp / 1e6, text  # Muse records microseconds
+        return stamp / 1e6, texts  # Muse records microseconds
     from datetime import datetime
-    return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp(), text
+    return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp(), texts
 
 
 def typed(transcript_path: str, code: str, since: float, session_id: str = "") -> bool:
@@ -147,10 +190,10 @@ def typed(transcript_path: str, code: str, since: float, session_id: str = "") -
             if not code or code not in line.lower():
                 continue
             try:
-                when, text = _prompt(json.loads(line), session_id)
+                when, texts = _prompt(json.loads(line), session_id)
             except (ValueError, TypeError, AttributeError):
                 continue
-            if when > since and code in typed_codes(text):
+            if when > since and any(code in typed_codes(text) for text in texts):
                 return True
     return False
 

@@ -131,6 +131,11 @@ store is the single-slot shape again. Stores written before v5 sit at
   owed items and forbids "unanswered" on a read older than the run.
 - `scripts/mailboxes.py report` judges each due mailbox from the same store:
   advanced this run, deferred with a reason, or BLIND.
+- `scripts/linkedin_messages.py` reads LinkedIn's conversation list, whose
+  `linkedin` watermark (one target per inbox) moves only with that reader's
+  coverage: a list that loads as it scrolls is read only as far back as it was
+  scrolled, the same rule as a local message store
+  ([linkedin-messages.md](linkedin-messages.md)).
 
 ## Google Chat targets
 

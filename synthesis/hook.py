@@ -137,8 +137,14 @@ def user_prompt_submit(payload):
     waiting = set(approvals.pending())
     notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt)]
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
+    typed = approvals.typed_codes(prompt)
     notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
-              "been mistyped. Run the call again for a new code." for c in approvals.typed_codes(prompt) if c not in waiting]
+              "been mistyped. Run the call again for a new code." for c in typed if c not in waiting]
+    # So is a pending code that is in the message and was not approved (2026-11-11: eight of nine were passed over)
+    notes += [f"Not granted: the pending code {c} is in the message, but not in a list right after the word approve on "
+              "its line in the principal's own words (a new line, another word, a negation or a tagged block came "
+              "between). If the principal meant it, ask them to type the word and the code together."
+              for c in approvals.mentioned(prompt) if c in waiting and c not in typed]
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)

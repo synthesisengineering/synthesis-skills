@@ -4,6 +4,46 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.6.0] - 2026-11-11
+
+- **LinkedIn messages as a declared ritual surface** (daily rituals 3.8.0). A principal found messages on LinkedIn
+  that no ritual had shown him: the rituals saw LinkedIn only through notification emails, which often hide the
+  text and never cover InMail. A workspace now declares `.agents/linkedin-sync.yaml` (the workspace and the
+  inboxes to read: the focused inbox and the other inbox, where LinkedIn files messages from people the account is
+  not connected to; both unless it says otherwise). `linkedin_messages.py plan` prints, per inbox, the address to
+  open and the day to scroll back to;
+  `linkedin_messages.py parse` reads the saved text of the conversation list, lists the conversations that end
+  with someone else (with unread counts, InMail and LinkedIn's own reply nudge) and prints one coverage line that
+  names no one. The `linkedin` watermark moves only with a complete read's coverage. **The read opens LinkedIn's
+  new-message view, never the bare messaging page,** which opens the newest conversation by itself and marks it
+  read; the new-message view shows the same list beside an empty composer and opens nothing. The read stops at the
+  day the plan names, because the list loads older conversations for as long as it is scrolled. A thread is opened
+  only when its preview cannot show whether something is owed, and each one opened is counted and named.
+  Day-start, mid-day and day-end carry the step; the ritual itself sends nothing. Checked against both inboxes of
+  a live account.
+- **A deadline that lives only in a draft or a ledger is swept too** (daily rituals 3.8.0). The sweep read only
+  dated plans and the three ritual artifact names; nine draft files and a ledger that carried their own
+  `**Decays:**` lines were listed as excluded and never read. A workspace can declare `records_dirs` in the ritual
+  config (`decay_sweep.py --records-dir`): every Markdown file under it is read with the same item grammar, as of
+  the date in its name or of the sweep's day. A plan outranks a record: once a plan or ritual artifact carries the
+  item's Decay ID, the plans decide it.
+- **One `approve` can carry several codes, and nothing typed is passed over without a word** (core, message guard
+  2.6.1). A principal typed the word once with nine codes after it; the first was granted and the other eight were
+  passed over in silence, because only a code that directly followed the word was read. Each of the eight then cost
+  a turn of its own. The prompt hook now reads a list after the word on its line, separated by spaces, commas or
+  "and" (`approve <code> <code>`), and ends it at the first thing that is not a code and at the end of the line, so
+  pasted context that opens the next line with a code cannot join it. A pending code that is in the message and
+  was not approved is now named back, as a code that matched nothing already was. Each code still grants one exact
+  pending call, and the harness's transcript must show the principal typing it. `approve code <code>`, the form
+  every hook message is rewritten to, still approves nothing.
+- **What two reviews of that change found in the approval reader, fixed with it** (core). A negation before the
+  word ("don't approve ...") used to grant; it grants nothing now, across spaces, a line break or a removed block.
+  What a harness wraps into a prompt was taken out up to the first closing tag of its name, so a wrapper holding
+  its own closing tag (a quoted report, a comment) left the rest to be read; now everything from a name's first
+  opening tag to its last closing tag goes, and what stands where it was ends a list. Taking it out is one pass
+  over the tags: the old pattern took seconds on a prompt of 300,000 characters. In a transcript record of several
+  blocks, each block is read by itself and one marked as not the principal's is left out.
+
 ## [5.5.0] - 2026-11-11
 
 - **Critical deadlines** (daily rituals 3.7.0, chief of staff 2.2.0, decision packet 2.3.0). A deadline whose miss

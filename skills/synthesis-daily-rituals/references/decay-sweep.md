@@ -25,7 +25,8 @@ Run `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD
 prints a JSON report: `status` (`CLEAR`, `REVIEW` or `BLOCKED`), the `due` items with source
 locators, the `critical` view, and the coverage of every root and file. Repeat `--plans-dir` for
 each plan directory declared for this seat, or pass `--workspace <W>` to read the folders the
-workspace declares in the ritual config (`plans_dirs`, `artifacts_dirs`). Include archived subdirectories
+workspace declares in the ritual config (`plans_dirs`, `artifacts_dirs`, and `records_dirs` for drafts or
+a ledger that carry their own deadlines: [critical-deadlines.md](critical-deadlines.md)). Include archived subdirectories
 under each declared root: there is no lookback cutoff. Supply `--artifacts-dir
 <declared-ritual-workers-directory>` for this workspace's worker artifacts when
 the distributed contract uses them. That option accepts dated day-start,
