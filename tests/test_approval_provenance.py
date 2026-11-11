@@ -1118,3 +1118,29 @@ def test_a_write_from_inside_that_cannot_be_shown_to_land_elsewhere_is_refused(s
 def test_git_reads_inside_the_state_folder_and_git_acting_elsewhere_are_not_held(spots, command, held, tmp_path):
     reason = guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path))
     assert (REFUSED in (reason or "")) == held, command
+
+
+@pytest.mark.parametrize("program", [
+    "import shutil; shutil.copy(src='/tmp/x', dst='{state}/a.json')",                       # arguments given by keyword
+    "import subprocess; subprocess.run(args=['cp', '/tmp/x', '{state}/a.json'])",
+    "def w(p='{state}/a.json'): open(p, 'w').write('x')\\nw()",                               # a default, a loop, a with
+    "for p in ['{state}/a.json']: open(p, 'w').write('x')",
+    "from shutil import copy; copy('/tmp/x', '{state}/a.json')",                             # a name imported or renamed
+    "from os import remove as rm; rm('{state}/a.json')",
+    "import os as o; o.remove('{state}/a.json')",
+    "import shutil; shutil.move('{state}/a.json', '/tmp/elsewhere.json')",                   # a move takes the file away
+])
+def test_a_python_program_that_writes_a_protected_path_is_read_however_it_spells_the_call(spots, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**spots).replace("\\n", "\n") + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("program", [
+    "import shutil; shutil.copy('{state}/a.json', '/tmp/copy.json')",                        # a copy out only reads
+    "from shutil import copyfile; copyfile(src='{state}/a.json', dst='/tmp/copy.json')",
+    "from pathlib import Path; print(Path('{state}/a.json').read_text())",
+    "import os; print(os.listdir('{state}'), os.path.getsize('{state}/a.json'))",
+])
+def test_a_python_program_that_only_reads_a_protected_path_passes(spots, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
