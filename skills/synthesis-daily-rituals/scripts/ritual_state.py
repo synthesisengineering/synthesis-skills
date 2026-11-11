@@ -35,6 +35,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import sys
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -156,6 +157,41 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
+OPTION = re.compile(r"(?im)^\s*(?:[-*] )?\**Option [A-Z0-9]+\b(.*)$")
+SAID = re.compile(r"(?im)^\s*(?:[-*] )?\**(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
+CLOSED = re.compile(r"(?im)^\s*(?:[-*] )?\**(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
+NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
+COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
+
+
+def choices(workspace: str, day: str) -> str:
+    """The line `record` prints about the choices the day's plan puts to the principal, or a refusal: an open item
+    that offers options with no recommendation, or, when it would commit their time (an accept or decline, or a
+    `Commits:` line), with no word on what it costs (2026-10-30: a bare accept-or-decline got a yes to an evening
+    three hours of travel away)."""
+    roots = decay_sweep.declared(rituals.config(), workspace) or []
+    open_items, bare = 0, []
+    for plan in (folder / f"{day}.md" for folder, kind in roots if kind == "plans"):
+        text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
+        for item in re.split(r"(?m)^#{3} ", text)[1:]:
+            item = re.split(r"(?m)^#{1,2} ", item)[0]
+            title, options = item.splitlines()[0].strip(), OPTION.findall(item)
+            if not options or CLOSED.search(item) or title.startswith("~~") or "✅" in title:
+                continue
+            said = {m[1].lower(): m[2] for m in SAID.finditer(item) if not NOTHING.fullmatch(m[2])}
+            needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
+            lacks = [word for word in needs if word not in said]
+            open_items += 1
+            bare += [f"  {plan.name}: {title}: lacks its {' and its '.join(lacks)}"] if lacks else []
+    if bare:
+        refuse(f"{len(bare)} choice(s) in today's plan are put to the principal unfinished, so this ritual is not recorded:\n"
+               + "\n".join(bare) + "\nA choice put with no view is not neutral: it defaults to yes. Under each, write "
+               "`**Consequences:**` (what each answer costs the principal: the time, the trip door to door, the money, when "
+               "they are home, the sleep it leaves, what it collides with that day and the next morning) and "
+               "`**Recommendation:**` (which you would take and why; say decline plainly when the costs outweigh the event).")
+    return f"\nchoices: {open_items} open in today's plan, each with a recommendation" if roots else ""
+
+
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
@@ -164,7 +200,8 @@ def cmd_record(args) -> int:
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
-    critical = critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
+    critical = (critical_deadlines(args.workspace, args.outcome) + travel(args.workspace, args.date, args.travel)
+                + choices(args.workspace, args.date))
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}

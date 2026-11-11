@@ -595,10 +595,11 @@ def validate(spec: dict) -> list:
                         "in the principal's terms): " + ", ".join(missing))
     if assets_ok and all(isinstance(r, dict) for r in rows):  # the reading path is measurable only on valid assets
         problems += _reading_problems(rows)
-    if not any(isinstance(r, dict) and r.get("recommendation") for r in rows) and not all(
-            isinstance(r, dict) and r.get("blind") is True for r in rows):  # a blind packet recommends nothing, by design
-        problems.append("no row carries a recommendation. A packet without recommendations is a "
-                        "questionnaire, which means the analysis is not finished - see SKILL.md.")
+    bare = [str(r.get("id")) for r in rows if isinstance(r, dict) and not r.get("recommendation") and r.get("blind") is not True]
+    if bare:  # one recommended row does not cover for the others (2026-11-11: a bare accept-or-decline got a yes)
+        problems.append("rows without a recommendation: " + ", ".join(bare) + ". A choice put to the principal with no "
+                        "recommendation is not neutral: it defaults to yes and leaves the analysis to them. Recommend, or "
+                        "mark the row blind where a recommendation would sway a judgment that must be theirs - see SKILL.md.")
     return problems
 
 
