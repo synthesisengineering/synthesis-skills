@@ -116,3 +116,12 @@ def test_a_recommendation_inside_a_code_fence_is_an_example_not_a_recommendation
 def test_a_recommendation_written_as_any_list_item_counts(tmp_path, record, view):
     code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS + view))
     assert code == 0, refusal
+
+
+def test_options_in_a_quote_are_options_and_a_ticked_title_is_closed(tmp_path, record):
+    quoted = "### 6. The panel in March\n> **Option A:** Accept\n> **Option B:** Decline\n"
+    code, _, refusal = record(workspace(tmp_path, quoted))
+    assert code != 0 and "The panel in March" in refusal
+    ticked = "### [x] 7. The dinner on Friday\n**Option A:** Accept\n**Option B:** Decline\n"
+    code, out, refusal = record(workspace(tmp_path, ticked))
+    assert code == 0, refusal

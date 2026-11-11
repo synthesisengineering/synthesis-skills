@@ -397,3 +397,16 @@ def test_events_that_are_not_a_list_of_entries_cannot_be_judged(tmp_path, events
 def test_a_room_and_a_town_are_not_an_address(tmp_path, location):
     code, report = check(tmp_path, [dict(RESOLVED, location=location), GOING, RETURNING])
     assert code == 1 and any("no exact address" in item for item in lacks(report)), report
+
+
+def test_a_for_line_in_quotes_names_its_event_and_one_event_on_two_calendars_is_one_event(tmp_path):
+    quoted = [named(GOING, '"Book launch at the Grand Theatre"'), named(RETURNING, "\u201cBook launch at the Grand Theatre\u201d.")]
+    code, report = check(tmp_path, [RESOLVED, dict(RESOLVED), *quoted])  # the same event read from two calendars
+    assert code == 0 and report["in_person"] == 1, report
+
+
+def test_the_next_mornings_first_commitment_may_be_a_trip(tmp_path):
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    dawn = event("Travel: to the airport", "05:30", "06:30", "", OUT, day="2026-11-12")
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, dawn], config=rested)
+    assert code == 1 and any("Travel: to the airport" in item and "05:30" in item for item in lacks(report)), report

@@ -848,7 +848,7 @@ def work(roots):
     "for d in {work}/memory {claude}/-other/memory; do echo \"== $d\"; ls -la \"$d\"; done",
     "ls {work} | while read f; do echo \"$f\"; done",
     "cd {work} && grep -o x s.jsonl | sort | uniq -c | sort -rn | head -5",          # filters after a cd into the folder
-    "cd {work} && grep -c x s.jsonl; docker start bench; kill 123",                  # and programs that touch no file there
+    "cd {work} && grep -c x s.jsonl; sleep 1; kill 123; echo done",                  # and commands that touch no file anywhere
     "P=$(pgrep -f probe); ls {work}; [ -n \"$P\" ] && kill $P",                      # a value the guard cannot read is no path
     "/tmp/tools/tab.sh {work}/s.jsonl",                                               # a script run by its path, like one run by its shell
     "fold -w 100 {work}/s.jsonl | head -3",
@@ -982,3 +982,36 @@ def test_a_script_that_writes_where_it_stands_or_where_its_environment_points_is
     assert REFUSED in (guards.check("Bash", {"command": writes}, {}, cwd=str(tmp_path)) or "")
     reads = "python3 -c 'import os; print(open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\").read())'"
     assert guards.check("Bash", {"command": reads}, {}, cwd=str(tmp_path)) is None
+
+
+# --- what a third look found before the third review (2026-11-11) -----------------------------------------
+# A program the guard cannot read may write where it stands, without naming a file: an archive unpacked, a
+# script file. Inside a protected folder only a command the guard can read runs. And a link made and written
+# through in one command was judged before the link existed.
+
+@pytest.mark.parametrize("command", [
+    "cd {state} && tar -xf /tmp/forged.tar",
+    "cd {state}/approvals && unzip -o /tmp/forged.zip",
+    "cd {state} && /tmp/tools/unpack.sh",
+    "cd {state} && python3 /tmp/tools/unpack.py",
+    "cd {work} && grep -c x s.jsonl; docker start bench",
+    "ln -s {state}/approvals /tmp/elsewhere/link && echo x > /tmp/elsewhere/link/a.json",
+])
+def test_inside_a_protected_folder_only_a_command_the_guard_can_read_runs(work, command, tmp_path):
+    reason = guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path))
+    assert REFUSED in (reason or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "cd {work} && python3 - <<'EOF'\nimport json\nprint(len(open('s.jsonl').read()))\nEOF",
+    "cd {work} && ls -la && git log --oneline -1 && wc -l s.jsonl",
+    "(cd {work} && grep -c x s.jsonl) && docker start bench",                        # the subshell's cd ends with it
+    "ln -s {work}/memory /tmp/elsewhere/notes && echo x > /tmp/elsewhere/notes/a.md",   # a memory note through a link is still one
+])
+def test_and_a_command_it_can_read_still_runs_there(work, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+
+
+def test_the_refusal_for_standing_in_a_protected_folder_says_to_run_it_elsewhere(work, tmp_path):
+    reason = guards.check("Bash", {"command": "docker start bench"}, {}, cwd=str(work["work"]))
+    assert "`docker`" in reason and "another folder" in reason
