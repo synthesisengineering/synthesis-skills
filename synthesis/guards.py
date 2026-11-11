@@ -632,6 +632,7 @@ OPERATORS = ("<<<", "<<-", "<<", "<&", "<", "&&", "&>", "&", "||", "|&", "|", ";
 REDIRECTS = frozenset({"<<<", "<&", "<", "&>", ">>", ">&", ">|", ">"})
 PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
+HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
 INTERPRETER = re.compile(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
 KEYWORDS = frozenset({"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "time", "fi", "done"})
@@ -873,9 +874,9 @@ def _bare(words: list[str]) -> tuple[list[str], list[str]]:
             elif words[i].startswith("--split-string="):
                 scripts.append(words[i].split("=", 1)[1])
             i += 2 if words[i] in takes else 1
-        if head == "xargs" and words[i:]:  # the files it hands a command arrive on its input: `$` stands where they go
+        if head == "xargs" and words[i:]:  # the files it hands a command arrive on its input: HANDED stands where they go
             mark = next((w[2:] or "".join(words[k + 1:k + 2]) for k, w in enumerate(words[1:i], 1) if w[:2] in ("-I", "-J")), "")
-            words[i:] = [w.replace(mark, "$") for w in words[i:]] if mark else words[i:] + ["$"]
+            words[i:] = [w.replace(mark, HANDED) for w in words[i:]] if mark else words[i:] + [HANDED]
         words = words[i + (head == "timeout"):]  # timeout's first operand is its duration
     return words, scripts
 
@@ -1568,7 +1569,7 @@ INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t D
 READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq awk date which "
-                     "git synthesis").split())
+                     "for case select read fold fmt expand paste join rev git synthesis").split())
 OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch")  # each is read where it is handled
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
@@ -1585,6 +1586,7 @@ SCRIPTED_WRITE = re.compile(
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
+SCRIPT_FILE = re.compile(r"\.(?:py|sh|bash|zsh|js|mjs|ts|rb|pl)$")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
 LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
@@ -1642,8 +1644,10 @@ def _landing(words: list[str]) -> list[str]:
     head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
     if head == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
-    if head in ("sed", "perl"):
-        return rest if any(IN_PLACE.fullmatch(w) for w in words[1:]) else []
+    if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, else the first operand
+        scripts = [words[i + 1] for i, w in enumerate(words[:-1]) if w in ("-e", "-f", "--expression", "--file")]
+        files = [w for w in rest if w and w not in scripts]
+        return (files if scripts else files[1:]) if any(IN_PLACE.fullmatch(w) for w in words[1:]) else []
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
         runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
                 for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
@@ -1660,10 +1664,11 @@ def _landing(words: list[str]) -> list[str]:
 def _named(words: list[str]) -> list[str]:
     """Every path a command hands a program the guard does not know: not a reader, not a file utility whose writes
     `_landing` reads, not an interpreter or a shell. A word is taken whole, after its `=`, and for an option from
-    its first `/` or `~`, so `-C <folder>`, `--output=<file>` and `-o<file>` are all seen."""
+    its first `/` or `~`, so `-C <folder>`, `--output=<file>` and `-o<file>` are all seen. The caller keeps the
+    ones that are paths."""
     head = os.path.basename(words[0])
-    if head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
-        return []
+    if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
+        return []  # a program run by its path is a script the guard cannot read, like one run by its shell
     return [part for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w}]
 
 
@@ -1703,8 +1708,9 @@ def _cli_owned(real: str) -> str:
 
 def _memory(real: str) -> bool:
     """A Markdown file in a project's memory folder. Claude Code keeps that folder beside the project's session
-    transcripts and has the agent write it with its file tools; it holds no transcript and no approval. The shell
-    stays refused there: a command could leave a link that points a later write at a transcript."""
+    transcripts and has the agent write it; it holds no transcript and no approval. The file tools and the shell may
+    write, move and remove one (ten days of transcripts held ten such shell writes). A path is judged where it
+    really leads, so a link there opens nothing, and a command that makes a link there is refused."""
     root = os.path.realpath(paths.transcript_roots()["claude-code"])
     parts = os.path.relpath(real, root).split(os.sep) if paths.inside(real, root) else []
     return len(parts) >= 3 and parts[1] == "memory" and real.endswith(".md")
@@ -1839,16 +1845,22 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         readable = False
     asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
-    why, wheres, handed = "", {cwd}, []
+    why, wheres, handed, links = "", {cwd}, [], []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     for words, where in _parse(text, cwd)[0]:
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
-        if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and any(HOOK_RUN.search(w) for w in words[1:])):
+        ran = next((w for w in words[1:] if not w.startswith("-") and (HOOK_RUN.search(w) or SCRIPT_FILE.search(w))), "")
+        if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(ran)):  # run, not handed to a script
             why = why or "runs the synthesis hook, which only the harness may run"
         asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
-        handed += [(head, w, os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(w))))) for w in _named(words)]
+        links += [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head == "ln" else []
+        within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
+        for word in _named(words) if readable else ():  # words the parser could not read name no program
+            led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
+            if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
+                handed.append((head, word, led))
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
@@ -1870,10 +1882,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
+    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw if t in links or not _memory(t)):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
-    given = "" if why else next((head for head, word, path in handed if (word == "$" and names) or any(
-        paths.inside(path, os.path.realpath(r)) for r in raw)), "")  # `$`: files xargs hands it, which cannot be read here
+    given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or any(
+        paths.inside(path, os.path.realpath(r)) for r in raw)), "")  # HANDED: files from xargs, which cannot be read here
     if given:
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
