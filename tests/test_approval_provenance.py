@@ -1242,3 +1242,53 @@ def test_and_what_stays_refused_after_the_evening_replay(saved, command, tmp_pat
 def test_the_file_tools_can_edit_a_sessions_saved_workflow_script_and_nothing_beside_it(saved, path, held, tmp_path):
     refused = guards.check("Edit", {"file_path": path.format(**saved), "old_string": "a", "new_string": "b"}, {}, cwd=str(tmp_path))
     assert ("session transcripts" in (refused or "")) == held, path
+
+
+# --- the same evening: the rewritten reader probed and replayed once more ---------------------------------------
+# What a file holds is not where it is: a loop over a transcript's lines, a counter beside them, a record parsed
+# from one made every later file name a protected path, and six programs that read a saved result and wrote
+# elsewhere were refused. A loop over rows the program spells out gives each name its own column. And the ways a
+# program is handed to Python (-Bc, -cPROGRAM, a decoy -c after `-`) are read as Python reads them.
+
+@pytest.mark.parametrize("command", [
+    "python3 - -c pass <<'EOF'\nopen('{state}/a.json', 'w')\nEOF",                               # the program is on stdin
+    "python3 -W -c - <<'EOF'\nopen('{state}/a.json', 'w')\nEOF",                                 # -c is the value -W takes
+    "python3 -Bc \"from shutil import copy; copy('/tmp/x', '{state}/a.json')\"",                 # options in one word
+    "python3 -c\"from shutil import copy; copy('/tmp/x', '{state}/a.json')\"",                   # the program in the option's word
+    "python3 - <<'EOF'\nclass C:\n    P = '{state}/a.json'\n    def go(self): open(self.P, 'w')\nC().go()\nEOF",
+    "python3 - <<'EOF'\nclass C: pass\nc = C()\nsetattr(c, 'p', '{state}/a.json')\nopen(c.p, 'w')\nEOF",
+    "python3 - <<'EOF'\nimport io\nio.FileIO('{state}/a.json', 'w')\nEOF",
+    "python3 - <<'EOF'\nimport fileinput\nfor line in fileinput.input('{work}/s.jsonl', inplace=True): print(line, end='')\nEOF",
+    "python3 - <<'EOF'\nimport os\nrm = os.remove\nrm('{state}/a.json')\nEOF",                   # a function under another name
+    "python3 - <<'EOF'\nw = open\nw('{state}/a.json', 'w')\nEOF",
+    "python3 - <<'EOF'\nopen(*['{state}/a.json', 'w'])\nEOF",
+    "python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall('{state}')\nEOF",
+    "cd {work} && python3 - <<'EOF'\nimport zipfile\nzipfile.ZipFile('/tmp/a.zip').extractall()\nEOF",   # unpacked where it stands
+    "python3 - <<'EOF'\nimport glob, os\nfor f in glob.glob('{work}/*.jsonl'): open(os.path.join('/tmp/pad', f), 'w')\nEOF",  # a full path joined on
+    "python3 - <<'EOF'\nrows = [('/tmp/pad/a', '{state}/a.json')]\nfor src, dst in rows: open(dst, 'w')\nEOF",
+    "python3 - <<'EOF'\nrows = [('/tmp/pad/a', '/tmp/pad/b')]\nrows.append(('/tmp/pad/c', '{state}/a.json'))\n"
+    "for src, dst in rows: open(dst, 'w')\nEOF",                                                  # a row added after the list was written
+])
+def test_what_the_last_probe_before_the_third_review_got_through_is_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    # rows the program spells out: each name takes its own column
+    "python3 - <<'PY'\nimport os\nOUT = os.path.expanduser('/tmp/pad/meetings')\nBASE = '{work}/abc/tool-results'\n"
+    "jobs = [(f'{{BASE}}/events.txt', 'a.md', 'A'), (f'{{BASE}}/big.txt', 'b.md', 'B')]\n"
+    "for path, fname, title in jobs:\n    raw = open(path).read()\n    open(os.path.join(OUT, fname), 'w').write(title + raw)\nPY",
+    # a counter beside a transcript's lines names no protected path
+    "python3 - <<'EOF'\np = '{work}/s.jsonl'\nout = '/tmp/pad/brain/'\nwith open(p) as f:\n    for i, line in enumerate(f):\n"
+    "        fn = out + f'notif-{{i}}.txt'\n        open(fn, 'w').write(line)\nEOF",
+    # nor does what was parsed out of one
+    "cd /tmp/pad && python3 - <<'EOF'\nimport json, os\nf = '{work}/abc/subagents/agent-1.jsonl'\nfiles = {{}}\n"
+    "for i, line in enumerate(open(f)):\n    d = json.loads(line)\n    files[os.path.basename(d.get('file_path', ''))] = d.get('content')\n"
+    "for k, v in files.items():\n    open('recovered/' + k, 'w').write(v)\nEOF",
+    # one name for the handle that reads and the handle that writes
+    "cd /tmp && python3 << 'EOF'\nimport json, os\npath = '{work}/abc/tool-results/events.txt'\nwith open(path) as f:\n    data = json.load(f)\n"
+    "os.makedirs('/tmp/pad/parse', exist_ok=True)\nfor i, raw in enumerate(data['result'].split('---'), 1):\n"
+    "    fn = f'/tmp/pad/parse/msg_{{i:02d}}.txt'\n    with open(fn, 'w') as f:\n        f.write(raw)\nEOF",
+])
+def test_what_a_program_reads_from_a_protected_file_is_not_a_path_into_it(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
