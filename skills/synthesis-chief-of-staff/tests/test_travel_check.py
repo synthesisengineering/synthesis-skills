@@ -341,3 +341,24 @@ def test_a_named_place_is_known_by_its_label_with_a_room_or_a_note_after_it(tmp_
     for elsewhere in ("Home Depot, 40 W 23rd St, Example City", "Officers' Club, 9 Fort Rd, Example City"):
         code, report = check(tmp_path, [event("Errand", "09:00", "10:00", elsewhere)])
         assert code == 1 and report["in_person"] == 1, report
+
+
+# --- sleep is a cost (2026-11-11) --------------------------------------------------------------------------
+# The principal, shown the plan for that evening: the trip was a burden he had not seen when he said yes, and a
+# short night before an early morning costs him his health. The policy can say how many hours he keeps between
+# getting home and the next morning's first commitment; a shorter night is his to decide, like a late return.
+
+def test_a_short_night_before_an_early_commitment_goes_to_the_principal(tmp_path):
+    rested = {**CONFIG, "travel_policy": {**POLICY, "sleep_hours": 8}}
+    early = event("Training session", "07:00", "08:00", "Office", day="2026-11-12")  # home 23:20, so 7 h 40 min
+    code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, early], config=rested)
+    assert code == 1, report
+    night = next(item for item in lacks(report) if "home at 23:20" in item)
+    assert '"Training session" starts 07:00 the next morning' in night and "7 h 40 min" in night and "8 hours" in night and "decision" in night
+    decided = dict(RETURNING, description=BACK + '\nDecision: "worth it, and I will start late on Friday"')
+    assert check(tmp_path, [RESOLVED, GOING, decided, early], config=rested)[0] == 0
+    later = dict(early, start="2026-11-12T08:00", end="2026-11-12T09:00")
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, later], config=rested)[0] == 0       # 8 h 40 min is enough
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, early])[0] == 0                       # no sleep_hours, no rule
+    same_day = event("Call", "23:40", "23:55", "", day=DAY)                                   # later the same night is not the morning
+    assert check(tmp_path, [RESOLVED, GOING, RETURNING, same_day], config=rested)[0] == 0

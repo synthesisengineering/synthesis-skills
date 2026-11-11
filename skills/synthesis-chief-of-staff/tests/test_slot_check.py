@@ -206,3 +206,37 @@ def test_a_slot_with_no_trip_has_no_travel_line_and_an_in_person_slot_must_give_
     assert code == 2 and "--travel-before" in said and "work out the trip first" in said
     code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--in-person", "--travel-before", "10", "--travel-after", "10")
     assert code in (0, 1) and levels(report)["travel"] == "OK"
+
+
+# --- what an evening away costs, seen at the ask (2026-11-11) ----------------------------------------------
+# A principal said yes to an evening event without seeing the trip: three hours of travel and home near midnight
+# before an early morning. With the trip's minutes given, the check now says when the principal is home, and
+# sends a return past the policy's latest hour or a night shorter than the policy keeps to the principal.
+
+RESTED = {**CONFIG, "travel_policy": {"latest_return": "23:00", "sleep_hours": 8}}
+EARLY = [meeting("2026-11-13", "07:30", "08:30", "Training session")]
+EVENING = ("--in-person", "--travel-before", "85", "--travel-after", "108")
+
+
+def test_an_evening_away_shows_when_the_principal_is_home_and_what_the_night_leaves(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING, config=RESTED)
+    assert levels(report)["return"] == "REVIEW" and "home at 23:48, after 23:00" in detail(report, "return")
+    assert levels(report)["sleep"] == "REVIEW"
+    assert "Training session" in detail(report, "sleep") and "07:30" in detail(report, "sleep") and "7 h 42 min" in detail(report, "sleep")
+    assert report["verdict"] != "OK"
+
+
+def test_a_trip_that_is_home_in_time_says_so(tmp_path):
+    code, report = check(tmp_path, "12:00", "13:00", EARLY, "--in-person", "--travel-before", "30", "--travel-after", "30", config=RESTED)
+    assert levels(report)["return"] == "OK" and "home at 13:30" in detail(report, "return")
+    assert levels(report)["sleep"] == "OK"
+
+
+def test_without_the_policys_hours_only_the_time_home_is_shown(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", EARLY, *EVENING)
+    assert levels(report)["return"] == "OK" and "home at 23:48" in detail(report, "return") and "sleep" not in levels(report)
+
+
+def test_a_read_that_ends_before_the_next_morning_cannot_judge_the_night(tmp_path):
+    code, report = check(tmp_path, "19:00", "22:00", [], *EVENING, config=RESTED, window=("2026-11-10", "2026-11-12"))
+    assert levels(report)["sleep"] == "NOTE" and "2026-11-13" in detail(report, "sleep")
