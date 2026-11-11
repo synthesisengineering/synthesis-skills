@@ -852,7 +852,7 @@ def _simple(tokens: list) -> list:
     return items
 
 
-def _bare(words: list[str]) -> tuple[list[str], list[str]]:
+def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[str]]:
     """The command a line runs, past assignments, keywords and wrappers like env or timeout, plus
     any script a wrapper takes as text (eval, env -S)."""
     scripts: list[str] = []
@@ -870,6 +870,8 @@ def _bare(words: list[str]) -> tuple[list[str], list[str]]:
         takes, i = WRAPPERS[head], 1
         while i < len(words) and ((words[i].startswith("-") and words[i] != "-")
                                   or (head == "env" and re.match(r"[A-Za-z_]\w*=", words[i]))):
+            if moved is not None and head == "env" and words[i] in ("-C", "--chdir") and i + 1 < len(words):
+                moved.append(words[i + 1])  # `env -C <folder> <command>` runs the command there
             if words[i] in ("-S", "--split-string") and i + 1 < len(words):
                 scripts.append(words[i + 1])
             elif words[i].startswith("--split-string="):
@@ -932,10 +934,12 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
-        words, inner = _bare(words)
+        moved: list = []
+        words, inner = _bare(words, moved)
         scripts = scripts + inner
+        here = os.path.normpath(os.path.join(cwd, os.path.expanduser(moved[-1]))) if moved else cwd
         if words:
-            found.append((words, cwd))
+            found.append((words, here))
             if runs is not None:
                 runs.append((chain, needed))
             if words[0] in ("cd", "pushd") and (len(words) == 1 or words[1] != "-"):
@@ -948,7 +952,7 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 scripts += [text for text, _ in stdin] + ([upstream] if piped else [])
         upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
         for script in scripts:
-            found += _commands(script, cwd, depth + 1, writes, runs)
+            found += _commands(script, here, depth + 1, writes, runs)
     return found
 
 
@@ -1576,7 +1580,7 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
 AWKS = ("awk", "gawk", "mawk", "nawk")
 AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
 OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
-TAKES_VALUE = frozenset({"-W", "-X", "-r", "--require", "--loader", "--import", "-I", "-o", "+o", "-O", "+O"})  # then the next word
+GIT_READS = frozenset({"status", "log", "diff", "show", "ls-files", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog"})
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
@@ -1621,16 +1625,18 @@ def _ran(words: list[str]) -> str:
     """The file of code an interpreter or a shell runs: its first operand, past its options and their values, or the
     module after -m; nothing when the program is given inline (-c, an interpreter's -e, or `-` for its input). The
     words after it are handed to it, not run (2026-11-11: a line counter handed hook.py was refused as running it)."""
-    skip = False
+    skip, head = False, os.path.basename(words[0])
+    takes = ({"-W", "-X"} if head.startswith("python") else {"-o", "+o", "-O", "+O"} if head in SHELLS  # options that take the next word
+             else {"-r", "--require", "--loader", "--import"} if head in ("node", "bun", "deno") else {"-I", "-r"})
     for i, word in enumerate(words[1:], 1):
         if skip:
             skip = False
-        elif word in ("-c", "-") or (word == "-e" and os.path.basename(words[0]) not in SHELLS):
+        elif word in ("-c", "-") or (word == "-e" and head not in SHELLS):
             return ""
         elif word == "-m" or not word.startswith(("-", "+")):
             return "".join(words[i + (word == "-m"):i + 1 + (word == "-m")])
         else:
-            skip = word in TAKES_VALUE
+            skip = word in takes
     return ""
 
 
@@ -1849,23 +1855,46 @@ OS_WRITES = re.compile(r"remove|unlink|rmdir|removedirs|renames?|replace|makedir
                        r"|write|system|popen|exec\w*|spawn\w*")
 
 
-def _python_writes(source: str, names: list, stands: list | tuple = ()) -> bool | None:
-    """Whether a Python program writes into a protected path: True, False, or None when it cannot be told
-    (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so a
-    project record that cites a transcript path is not a write into transcripts (2026-10-14). `stands` holds the
-    protected folders when the program runs inside one: there every write must name a plain path somewhere else."""
+OPENERS = ("io", "codecs", "gzip", "bz2", "lzma", "tarfile", "zipfile")  # their open (or ZipFile) takes the file, then the mode
+
+
+def _python_writes(source: str, names: list, stands: list | tuple = ()) -> tuple:
+    """(whether a Python program writes into a protected path, whether it writes at all); (None, None) when it cannot
+    be told (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so
+    a project record that cites a transcript path is not a write into transcripts (2026-10-14). The program is read
+    by its syntax, since a pattern over its text stops at the first closing parenthesis (2026-11-11). `stands` holds
+    the protected folders when the program runs inside one: there every write must spell a plain path somewhere else."""
     import ast
     try:
         tree = ast.parse(source) if source.strip() else None
     except SyntaxError:
         tree = None
     if tree is None or any(isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile", "__import__") for n in ast.walk(tree)):
-        return None
-    tainted, grew = set(), True
+        return None, None
+    tainted, grew, bound = set(), True, {}
+    stored = [n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)]
 
     def named(node) -> bool:  # built from a protected path, directly or through an assigned name
         return any((isinstance(n, ast.Constant) and isinstance(n.value, str) and any(m in n.value for m in names))
                    or (isinstance(n, ast.Name) and n.id in tainted) for n in ast.walk(node))
+
+    def spelled(node):  # the plain path a node spells out, or None: a string, a name given one once, strings joined
+        if isinstance(node, ast.JoinedStr):
+            parts = [spelled(v.value if isinstance(v, ast.FormattedValue) else v) for v in node.values]
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
+            parts = [spelled(node.left), "/" if isinstance(node.op, ast.Div) else "", spelled(node.right)]
+        elif isinstance(node, ast.Call) and node.args and not node.keywords:
+            label = getattr(node.func, "attr", getattr(node.func, "id", ""))
+            parts = [spelled(a) for a in node.args] if label in ("join", "Path", "str", "expanduser", "abspath") else [None]
+            parts = [os.path.join(*parts)] if label == "join" and None not in parts else parts[:1]
+        else:
+            parts = [node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else
+                     bound.get(node.id) if isinstance(node, ast.Name) else None]
+        return None if None in parts else "".join(parts)
+
+    def elsewhere(node) -> bool:  # a plain absolute path outside every folder the program stands in
+        where = os.path.expanduser(spelled(node) or "")
+        return os.path.isabs(where) and not any(paths.inside(os.path.realpath(where), r) for r in stands)
     while grew:
         grew = False
         for n in ast.walk(tree):
@@ -1874,26 +1903,30 @@ def _python_writes(source: str, names: list, stands: list | tuple = ()) -> bool 
                 for target in (n.targets if isinstance(n, ast.Assign) else [n.target]):
                     new = {x.id for x in ast.walk(target) if isinstance(x, ast.Name)} - tainted
                     tainted, grew = tainted | new, grew or bool(new)
+            once = n.targets[0] if isinstance(n, ast.Assign) and len(n.targets) == 1 else None
+            if isinstance(once, ast.Name) and stored.count(once.id) == 1 and once.id not in bound and spelled(n.value) is not None:
+                bound[once.id], grew = spelled(n.value), True
+    hit = wrote = False
     for n in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
         func, args = n.func, n.args
         attr = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
         base = func.value if isinstance(func, ast.Attribute) else None
-        given = args[0:1] if base is not None else args[1:2]  # Path(p).open("w") takes its mode first; open(p, "w") second
+        plain = base is None or (isinstance(base, ast.Name) and base.id in OPENERS)  # open(p, "w"), io.open(p, "w")
+        given = args[1:2] if plain else args[0:1]  # Path(p).open("w") takes its mode first
         mode = next(iter(given), next((k.value for k in n.keywords if k.arg == "mode"), None))
         writes_mode = mode is not None and not (isinstance(mode, ast.Constant) and not re.search(r"[wax+]", str(mode.value)))
         first = args[:1] or [k.value for k in n.keywords if k.arg == "file"]  # open(path, "w") or open(file=path, mode="w")
-        targets = (first if attr == "open" and base is None and writes_mode else
+        targets = (first if attr in ("open", "ZipFile") and plain and writes_mode else
                    [base] + args[:1] if base is not None and attr in ("rename", "replace") and len(args) == 1 else  # both ends change; str.replace takes two
-                   [base] if base is not None and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
-                                                            "symlink_to", "hardlink_to", "chmod", "truncate")
-                                                   or (attr == "open" and writes_mode)) else [])
-        if isinstance(base, ast.Name) and base.id in ("os", "shutil", "subprocess") and (base.id != "os" or OS_WRITES.fullmatch(attr)):
+                   [base] if base is not None and not plain and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
+                                                                           "symlink_to", "hardlink_to", "chmod", "truncate")
+                                                                 or (attr == "open" and writes_mode)) else [])
+        if isinstance(base, ast.Name) and (base.id in ("shutil", "subprocess") or (base.id == "os" and OS_WRITES.fullmatch(attr))
+                                           or (base.id, attr) == ("sqlite3", "connect")):
             targets = list(args)  # every argument of a filesystem or process call can name what it changes
-        if any(named(t) for t in targets) or (stands and not all(  # standing in a protected folder, a write is safe only
-                isinstance(t, ast.Constant) and isinstance(t.value, str) and os.path.isabs(os.path.expanduser(t.value))  # to a
-                and not any(paths.inside(os.path.realpath(os.path.expanduser(t.value)), r) for r in stands) for t in targets)):  # plain path elsewhere
-            return True
-    return False
+        wrote = wrote or bool(targets)
+        hit = hit or any(named(t) for t in targets) or bool(stands and not all(map(elsewhere, targets)))
+    return hit, wrote
 
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
@@ -1944,18 +1977,17 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
         # runs in (2026-10-06: through a variable), and then any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
-        wrote = re.search(SCRIPTED_WRITE, source or script)
+        hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw] if within else ()) if source else (None, None)
+        wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         reaches = any(n in w for w in words[1:] if w != source for n in names) or (
             re.search(r"\b(?:environ|getenv)\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
                 v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw)))
-        judged = (_python_writes(source, names, [os.path.realpath(r) for r in raw] if within else ())
-                  if within or any(n in source for n in names) else False) if source else None
-        if SCRIPT.match(head) and wrote and (reaches or (judged is not False and (within or any(n in script for n in names)))):
+        if SCRIPT.match(head) and (hit or (wrote and (reaches or (hit is None and (within or any(n in script for n in names)))))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
-        inline = bool(source) or not _ran(words) or any(w in ("-c", "-e") for w in words[1:])
-        stood = any(paths.inside(os.path.realpath(where), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
-        if stood and readable and not (head in READERS or head in WRITERS or head in OWN_RULES or (
-                (SCRIPT.match(head) or head in SHELLS) and inline)):  # nothing it names, yet it may write where it stands
+        sub, acts = _git(words, where)  # git acts where -C sends it
+        stood = any(paths.inside(os.path.realpath(acts), os.path.realpath(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
+        if stood and readable and not ((head in READERS and (sub is None or sub in GIT_READS)) or head in WRITERS or head in OWN_RULES or (
+                (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
