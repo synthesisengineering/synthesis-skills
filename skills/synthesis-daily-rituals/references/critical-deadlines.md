@@ -148,6 +148,14 @@ Each workspace declares where its dated plans live, once, in `<synthesis home>/r
 A workspace that keeps no dated plans says so with `"plans_dirs": []`. The sweep, the record
 and the nudge all read this one declaration.
 
+A deadline can also live only in a draft or a ledger, where no plan carries it. A workspace
+that has such files adds `"records_dirs": ["<folder>"]`: the sweep reads every Markdown file
+under it with the same item grammar. A file named with a leading date speaks as of that day;
+any other speaks as of the sweep's day. **A plan outranks a record:** once a plan or ritual
+artifact carries the item (the same `**Decay ID:**`), the plans decide it and the record's own
+line is ignored. An item with no Decay ID is known only where it sits, so it stays due until
+it is closed there (`**Sent:**`, `**Resolved:**`, `**Released:**`).
+
 ## Why
 
 On 2026-11-06 an enrollment window closed with its item still open. It had been seen three weeks

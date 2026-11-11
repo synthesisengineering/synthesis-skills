@@ -17,7 +17,7 @@ than half-reading it.
 | `python3 <rituals>/scripts/sync_watermark.py status --workspace <W> --surface <s> ... [--targets-from F] --since run` | a row per surface and per stale target, then the blocking keys | 1 while anything blocks; 2 on an empty declared set or no bound |
 | `python3 <rituals>/scripts/repo_state.py --workspace-root ~/workspaces/<W> [--fetch] [--ff] [--skip <name>] [--json]` | one state per declared repo (CURRENT, CACHED, BEHIND, DECISION, DIRTY, BLIND, UNREACHABLE, EXCLUDED) with dirty files listed, then `N of M current, ...` | 2 any BLIND or UNREACHABLE; 1 any DECISION or DIRTY |
 | `python3 <rituals>/scripts/repo_state.py --discover ~/workspaces[/<W>] [--fetch] [--ff]` | the same, for every repository two levels under the root (linked worktrees belong to their repository) | as above |
-| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --plans-dir <dir> [--plans-dir ...] [--artifacts-dir <dir>] --json` | JSON: `status` CLEAR, REVIEW or BLOCKED, the due items with source locators, the `critical` view (`open`, `closed`, `unclassified`), every scanned and refused source | 2 BLOCKED; 0 otherwise (collection succeeded, nothing approved) |
+| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --plans-dir <dir> [--plans-dir ...] [--artifacts-dir <dir>] [--records-dir <dir>] --json` | JSON: `status` CLEAR, REVIEW or BLOCKED, the due items with source locators, the `critical` view (`open`, `closed`, `unclassified`), every scanned and refused source | 2 BLOCKED; 0 otherwise (collection succeeded, nothing approved) |
 | `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --workspace <W> --alert [--json]` | the same over the folders `<W>` declares, opening with `CRITICAL: N open (P past due, L within 7 days); A due an alert today` and one line per critical item; `--alert` posts one count-only banner and spoken line when any is due and reports it under `critical.alert` | 2 BLOCKED (including a workspace that declares no folders); 0 otherwise |
 | `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --alert-declared` | `critical alert: N due across M declared set(s) of plan folders; {...}` after one alert for every workspace together (the 16:55 nudge runs this) | 0; 2 when the ritual config cannot be read |
 | `python3 <rituals>/scripts/portfolio_review.py [--threshold 30] [--all] [--json] [--index P] [--source R]` | at most three stale "active" projects, oldest first, each with close / pause / pick up | 0 always |
@@ -39,7 +39,8 @@ than half-reading it.
   "artifacts_dirs": ["<folder of ritual-worker artifacts>"]}}}`; an example ships as
   `assets/ritual-config.example.json`). `plans_dirs` and `artifacts_dirs` declare where the
   workspace's dated plans live: the deadline sweep, `record` and the nudge read them, and `record`
-  refuses a workspace that declares neither (`"plans_dirs": []` says it keeps none). A top-level
+  refuses a workspace that declares neither (`"plans_dirs": []` says it keeps none). `records_dirs` adds folders of
+  other Markdown records (drafts, a ledger) whose items the sweep reads unless a plan carries them. A top-level
   `critical_words` list replaces the words that flag an untagged deadline as possibly critical
   ([critical-deadlines.md](critical-deadlines.md)). `streak: expected-days` counts an unbroken run over
   days the workspace is expected to close; working on a day that is not expected credits the
