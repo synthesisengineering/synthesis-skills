@@ -301,8 +301,12 @@ def test_a_stdin_script_is_judged_by_the_whole_command_and_the_refusal_says_how_
     (a variable set elsewhere could carry it into the script). The refusal names the remedy (2026-10-06)."""
     note = f"sed -i '' 's#board#board in {roots['state']}/sessions#' REFERENCE.md"
     combined = f"python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF\n{note}"
-    reason = guards.check("Bash", {"command": combined}, {}, cwd=str(tmp_path))
-    assert "run the script alone" in reason
+    # Until 5.7.0 this was refused: a path named anywhere on the line counted against a script on stdin. The script's
+    # text is now read apart from the line, and a path reaches it only through its arguments, its environment or
+    # the folder it runs in; each of those is refused below (2026-11-11).
+    assert guards.check("Bash", {"command": combined}, {}, cwd=str(tmp_path)) is None
+    carried = f"export P={roots['state']}/approvals/a.json\npython3 - <<'EOF'\nimport os\nopen(os.environ['P'], 'w').write('x')\nEOF"
+    assert "run the script alone" in guards.check("Bash", {"command": carried}, {}, cwd=str(tmp_path))
     assert guards.check("Bash", {"command": note}, {}, cwd=str(tmp_path)) is None
     assert guards.check("Bash", {"command": "python3 - <<'EOF'\nopen('CONTEXT.md', 'w').write('x')\nEOF"},
                         {}, cwd=str(tmp_path)) is None
@@ -892,3 +896,35 @@ def test_a_second_replay_left_these_and_they_pass(work, command, tmp_path):
 ])
 def test_and_these_stay_refused(work, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.fixture
+def saved(work):
+    results = work["work"] / "abc" / "tool-results"
+    results.mkdir(parents=True)
+    for name in ("webfetch-1.pdf", "shot.png", "events.txt", "big.txt"):
+        (results / name).write_text("x", encoding="utf-8")
+    return work
+
+
+@pytest.mark.parametrize("command", [
+    "pdftotext -layout {work}/abc/tool-results/webfetch-1.pdf /tmp/out.txt",   # a saved tool result is material to work on
+    "sips -s format jpeg {work}/abc/tool-results/shot.png --out /tmp/shot.jpg",
+    "SP=/tmp/pad; F={work}/abc/tool-results/events.txt; python3 -c \"import json; t = json.load(open('$F'))['result']; "
+    "open('$SP/out.txt', 'w').write(t); print(t.count('\\n- \\\"'))\"",
+    "gzip -dc {work}/abc/tool-results/big.txt | head -3",
+])
+def test_a_thirty_day_replay_left_these_and_they_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "gzip {work}/abc/tool-results/big.txt",                                   # but not to compress or remove where it lies
+    "rm {work}/abc/tool-results/big.txt",
+    "pdftotext {work}/s.jsonl /tmp/out.txt",                                  # and a transcript is not material
+    "cd {state}/approvals && python3 - <<'EOF'\nopen('a.json', 'w').write('x')\nEOF",          # a script that writes where it stands
+    "python3 - {work}/s.jsonl <<'EOF'\nimport sys\nopen(sys.argv[1], 'a').write('x')\nEOF",   # or where its arguments point
+    "export P={work}/s.jsonl; python3 - <<'EOF'\nimport os\nopen(os.environ['P'], 'a').write('x')\nEOF",
+])
+def test_and_these_stay_refused_too(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
