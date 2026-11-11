@@ -25,6 +25,7 @@ no `~/.synthesis`.
 | `forbidden_phrases[].channels` | Optional on a register rule: the channels (`jira`, `bitbucket`, `slack`, `docs`...) where it holds; elsewhere the rule is skipped. For a line that fits some channels only: on 2026-10-27 a line saying the principal had not reviewed the details, which fits scheduling, went out on Jira answers. |
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
 | `same_day_meetings` | `{"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}` (`own` optional: the principal's addresses beyond those `account_routing` names). With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
+| `in_person_travel` | `{"preferences": "<the chief-of-staff preferences file>"}`. With this key present, a calendar write that creates an event at a place, or gives one a place, is refused unless the call carries the event's travel line (`Travel: ...` in its description). What a place is comes from that file's `travel_policy` and the chief of staff's `travel_check.py`. No approval is asked. Without the key nothing changes; a policy that cannot be read refuses the write |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
@@ -114,6 +115,33 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   on today), an RSVP, a start written in a form this cannot read (it reads ISO and day, month and year in words), and a
   meeting placed through a browser or computer use. The
   chief-of-staff skill's slot check covers the decision before any call is made.
+
+## A meeting at a place
+
+An in-person commitment is not on the calendar until its travel is. On 2026-11-11 an evening event 28
+miles from a principal's home had sat on his calendar for six days with no travel time, route or
+fare; he owns no car, and the event was personal, so one could not be expensed. The agent that wrote
+the event was never asked how he would get there. With `in_person_travel` in the config:
+
+- **What it refuses:** a calendar write (the same tool names as above) whose event has a `location`
+  that is a place and whose description (`description`, `notes`, `body` or `details`) carries no
+  `Travel:` line. The refusal says what to do: work the trip out as the chief-of-staff skill's
+  `references/in-person-travel.md` sets out, put a travel block on each side, write the line, and
+  make the call again. It asks for no approval, so an agent clears it by doing the work.
+- **What passes:** no location; a link, a phone number or one of the policy's `online` words; the
+  principal's home or a named place of the policy; an event whose title starts with the policy's
+  `block_title` (a travel block is not itself a commitment); an update that sets no location. A
+  line that is a placeholder ("TBD") is no line. Each event of a call that writes several is
+  judged by itself.
+- **Whose rules:** what a place is and what a travel line is are read from the chief of staff's own
+  `travel_check.py` and the `travel_policy` in the preferences file the key names. The guard holds
+  no copy of either. When that file or its policy cannot be read, the write is refused with the
+  reason.
+- **What it cannot see:** an event the principal accepts or adds themselves, an invitation that
+  arrives, an update that moves an event without naming its place, and a write through a browser
+  or computer use. The daily rituals' travel check reads the calendar itself and covers those.
+  Whether the line is true is not something a guard can know; the travel check then looks for the
+  blocks the line promises.
 
 ## Every channel and send windows (2026-10-13)
 

@@ -111,6 +111,13 @@ with `leave`, `home` and `paid_by` taken from the blocks.
 It plans nothing and reads no timetable: steps 2 to 4 are the agent's, from a live source. It cannot tell
 that a route is wrong, only that one is written down.
 
+## At the calendar write
+
+Where the synthesis config carries `in_person_travel`, the guard refuses a calendar write that creates an
+event at a place, or gives one a place, when the call carries no `Travel:` line. It asks for no approval:
+do steps 1 to 5 above and make the call again. It reads the call alone, so it cannot see whether the blocks
+exist; the check above does (synthesis-message-guard, `references/config.md`, "A meeting at a place").
+
 ## In the daily rituals
 
 A workspace turns the check on in the ritual config (`<synthesis home>/rituals/config.json`), under the
