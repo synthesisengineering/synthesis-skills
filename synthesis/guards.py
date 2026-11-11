@@ -1612,11 +1612,13 @@ def _put(use, values: dict) -> str:
 
 def _ran(words: list[str]) -> str:
     """The file of code an interpreter or a shell runs: its first operand that is one, unless the program is given
-    inline (-c, an interpreter's -e, or `-` for its input), when the words after it are only handed to that program
+    inline (-c, an interpreter's -e, or `-` for its input) or as a module (-m), when the words after are handed to it
     (2026-11-11: a line counter handed hook.py was refused as running the hook)."""
-    for word in words[1:]:
+    for i, word in enumerate(words[1:], 1):
         if word in ("-c", "-") or (word == "-e" and os.path.basename(words[0]) not in SHELLS):
             return ""
+        if word == "-m":  # the module is what runs; the words after it are handed to it
+            return "".join(words[i + 1:i + 2])
         if not word.startswith("-") and (HOOK_RUN.search(word) or SCRIPT_FILE.search(word)):
             return word
     return ""
