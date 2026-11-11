@@ -123,6 +123,10 @@ makes the policy mechanical:
 - A request that hits the shield is not refused; it is **routed**: VIP tiers
   pass per config, everything else becomes a proposal for a later slot, in
   this skill's scheduling voice. The shield converts ambush into triage.
+  The later slot passes `slot_check.py` first
+  ([scheduling-protocol.md](scheduling-protocol.md)), and with `same_day_meetings`
+  in the synthesis config the send guard holds any invitation for today until the
+  principal types a code for that same-day meeting.
 - Protected personal blocks (training, rituals, family time) are **not**
   holds. They are real commitments and are never released for anything below
   the config's override tiers. The difference is exactly why holds carry ids.

@@ -32,6 +32,11 @@ and exit status 2. `carry_forward.py` prints the ids it carried, or `reconciled 
 or `carry_forward: refused:` with one line per missing, extra, duplicate or unproven id and
 exit status 2.
 
+The same in the one paragraph SKILL.md carried until 2.3.0 (moved here word for word on
+2026-11-11, to make room there for a fourth limit):
+
+Output: the generator prints READER/NOTE findings and each path written; the recorder `filed <path>  (N of M decided; no action authority granted)`; `carry_forward.py` the ids carried or `reconciled N ids: ...`. Refusals print their reasons (the recorder quotes what it received) and exit 2. Template and schema text: `assets/`.
+
 Write a JSON spec, generate, file, hand over the file. It is self-contained: no build step, no
 dependencies, no server. It opens from disk, over a local HTTP server, or published as an
 artifact, in light or dark, on a phone or a laptop.

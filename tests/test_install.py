@@ -247,6 +247,19 @@ def test_inbox_scripts_get_a_stable_path_and_a_change_makes_a_new_release(tmp_pa
     assert install.current_hash() != first and (stable / "icloud_plan.py").read_text() == "print('plan v2')\n"
 
 
+def test_the_nudge_finds_the_deadline_sweep_in_the_runtime(tmp_path, isolated_home):
+    """The 16:55 nudge runs the critical-deadline alert outside any session, so the sweep needs a stable path."""
+    plugin = _plugin_copy(tmp_path)
+    shutil.copytree(ROOT / "skills" / "synthesis-daily-rituals" / "scripts", plugin / "skills" / "synthesis-daily-rituals" / "scripts",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    install.install(plugin)
+    sweep = isolated_home / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
+    done = subprocess.run([sys.executable, "-S", str(sweep), "--alert-declared", "--as-of", "2026-11-06"],
+                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
+    assert done.returncode == 0, done.stderr
+    assert "0 due" in done.stdout  # no workspace declares plan folders here, so nothing is posted or spoken
+
+
 def test_the_cli_installs_from_a_plugin_folder(tmp_path, isolated_home, capsys):
     from synthesis import cli
     assert cli.main(["install", str(_plugin_copy(tmp_path))]) == 0
@@ -300,3 +313,18 @@ def test_any_hook_merges_a_board_an_older_release_wrote_in_the_state_folder(tmp_
     out = _run_hook(isolated_home, "pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "ls"}})
     assert out.returncode == 0 and (isolated_home / "board" / "sessions" / "S9.json").is_file()
     assert not (isolated_home / "state" / "sessions").exists()
+
+
+def test_the_guard_finds_the_holds_ledgers_reader_in_the_runtime(tmp_path, isolated_home):
+    """The same-day rule asks the chief of staff's own ledger reader which holds are in force; hooks run from the runtime."""
+    plugin = _plugin_copy(tmp_path)
+    scripts = plugin / "skills" / "synthesis-chief-of-staff" / "scripts"
+    shutil.copytree(ROOT / "skills" / "synthesis-chief-of-staff" / "scripts", scripts, ignore=shutil.ignore_patterns("__pycache__"))
+    install.install(plugin)
+    reader = isolated_home / "current" / "skills" / "synthesis-chief-of-staff" / "scripts" / "holds_state.py"
+    assert reader.read_bytes() == (scripts / "holds_state.py").read_bytes()
+    probe = ("import sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; import os; "
+             "print(os.path.realpath(guards.HOLDS_READER))")
+    done = subprocess.run([sys.executable, "-S", "-c", probe, str(isolated_home / "current")], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == os.path.realpath(reader)

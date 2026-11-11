@@ -24,6 +24,7 @@ no `~/.synthesis`.
 | `send_window_signatures` | Regexes; inside an open send window, a send goes without a per-message code only if one matches its text. List the signatures of the lanes the principal lets a window cover. Empty means a window covers nothing. |
 | `forbidden_phrases[].channels` | Optional on a register rule: the channels (`jira`, `bitbucket`, `slack`, `docs`...) where it holds; elsewhere the rule is skipped. For a line that fits some channels only: on 2026-10-27 a line saying the principal had not reviewed the details, which fits scheduling, went out on Jira answers. |
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
+| `same_day_meetings` | `{"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}` (`own` optional: the principal's addresses beyond those `account_routing` names). With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
@@ -62,6 +63,57 @@ A message that names the person without any identifier in the call (a group chan
 where they are mentioned by name only) is not checked; the drafting rule still applies.
 An entry that is not an object stops every guarded send, like any malformed config
 (R3.5); `identifiers` is a list, never a single string.
+
+## Same-day meetings (2026-11-09)
+
+A yes to a meeting is not a yes to the earliest free slot. On 2026-11-09 an agent staged a
+meeting into the first open slot of the same day, three days running, because the requester
+had suggested "tomorrow or Monday". The principal approved each invitation, and nothing in
+that approval said the meeting was today. With `same_day_meetings` in the config:
+
+- **What it holds:** a calendar write (`create_event`, `update_event`, `manage_event`,
+  `move_event`, with `_` or `-` in the name, singular or plural) whose start falls on today
+  and that invites at least one address other than the principal's own, or that moves an
+  existing event to today (an update names the event, not its guests, so only a write that
+  emails no one is left alone). The start is read from `start`, `start_time`, `startTime`,
+  `start_datetime`, `startDateTime`, `start_date` or `startDate`, flat or nested
+  (`{"dateTime": ...}`, `{"date": ...}`), in the call or in a list of events at any depth
+  inside it. A start is today when its date as written is today (ISO, or a written date such
+  as `9 November 2026 at 3:00 PM`), when the same moment is today on this machine's clock,
+  or, for a time with no offset, when it is today in a time zone that event names. Attendees are read from any field
+  whose name contains attend, guest, invite or particip, in whatever shape the connector
+  takes; people a call removes and booked rooms are not counted.
+- **What it says:** `This puts a meeting on today's date and invites N other(s)` (or `This
+  moves a meeting to today's date`) `... propose
+  another day unless the principal asked for today ... type approve followed by the code
+  <code> for this same-day meeting.` The ordinary invitation approval does not cover it, and
+  neither does a send window.
+- **A move with notifications off is still a move.** Turning notifications off makes a calendar
+  write the quiet kind that needs no approval, except when it moves an existing event to
+  today: its guests' calendars change all the same. The one exception is an event the
+  chief-of-staff skill's holds ledger has as a hold the agent placed that is in force today
+  (not released, not past its expiry, its instance for today not released), which has no
+  guests by construction. The guard asks the ledger's own reader, `holds_state.py`, which
+  every install keeps in the runtime; a ledger or a reader it cannot read exempts nothing.
+- **What it leaves alone:** a meeting on any other day; a write with no attendees (a hold,
+  a focus block), including an update that sets an empty guest list; a meeting whose guests
+  include an `exempt` address or pattern (`chief@example.test`, `*@board.example.test`),
+  which keeps the ordinary approval because that person's timing binds; and the principal's
+  own addresses, taken from `account_routing` (`default_account`, each workspace's `account`
+  and `aliases`) and from the rule's `own` list. A guest is exempt by their address field, never by a display name, and in
+  a call that writes several events each event is judged by itself, with its own time zone,
+  wherever the list of events sits in the call.
+- **A zone it cannot read is sent back, not guessed:** when a start has no offset, names a
+  time zone this machine does not know (a Windows name such as `Tokyo Standard Time`) and
+  its written date is within a day of today, the call is refused with a request for a UTC
+  offset or an IANA zone name; nothing is approved or held.
+- **Also since 2.6.0:** a tool named `move_event` is a send like the other calendar writes
+  (moving a meeting notifies its guests), and a calendar write with guests anywhere in the
+  call, not only at its top level, is never the quiet kind that needs no approval.
+- **What it cannot see:** an update that sets no start (adding a guest to a meeting already
+  on today), an RSVP, a start written in a form this cannot read (it reads ISO and day, month and year in words), and a
+  meeting placed through a browser or computer use. The
+  chief-of-staff skill's slot check covers the decision before any call is made.
 
 ## Every channel and send windows (2026-10-13)
 

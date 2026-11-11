@@ -338,10 +338,48 @@ ROOT = Path(__file__).resolve().parents[1]
 # for a service account's), published_files 18, drive_files 19 (every page, duplicate names refused), upload 11
 # (replaced in place or added), sync 29 (unchanged files left alone by MD5, dropped ones to the trash, the notebook's
 # manual steps named), main 18, the entry point 4. Each count includes the two blank lines before it.
+# 5.5.0 adds 453 to the core and 880 to the plugin (Rajiv's go on the plan, 2026-11-11), after three things that
+# happened in one week: a deadline that could not be undone lapsed as one row among many, an agent staged a meeting
+# into the same day three days running, and a repository whose rule was "pull requests only" turned out to have
+# taken 61 direct pushes. Five review rounds by a second model shaped the two guards, and every finding has a test
+# that failed first.
+# In guards.py 400. The same-day rule 157: _invited_today 43 (the rule's setting, the principal's own addresses,
+# each event of a call judged by itself, its zone, its guests, a move that names no guest list), _falls 19 (today
+# as written, on this clock, in the event's zone, or not knowable), _invitees 15 (guests in whatever shape a
+# connector gives them, removals and rooms left out), _own_hold 15 and HOLDS_READER 4 (the holds ledger's own
+# reader says which holds are in force today), _starts 11, _events 9, _keys 8, _today 4, the start keys and their
+# comment 5, the address, month and written-date patterns 3, the guest and calendar-write patterns and the address
+# keys 5, check_send's approval of its own 11, _sends 2 (a quiet move to today is not quiet), spacing 2, an import 1.
+# The shell reader 16: _simple 5, _commands 7 and _parse 4 report the `&&` chain each command stands in, so a
+# branch switch counts only for a push that runs only if the switch succeeded.
+# The pull-request gate 227: _gated_push 68 (where a push can go, every branch at once, routing config, the default
+# branch or the lack of a record of it, what earlier commands left current, each refspec's destination),
+# check_pr_gate 58 (the line's pushes, what rerouted a push or moved the branch before it, the approval for one
+# exact push), _push_options 32 (options as git reads them), _push 28 (a push through aliases and leading options),
+# _switched_to 13, _repo_names and the section's comment 6, the git commands that are never aliases 4, the push
+# options 5 and their short forms 2, the routing prefixes 3, the two refusal phrases 4, the rebase options that
+# take a value 1, spacing 2, the dispatch line 1.
+# In doctor.py 50: check_pr_gate 46 (commits on a gated default branch that came through no pull request, a
+# checkout that records no default branch, a repository with no checkout here), its call 2, spacing 2. In
+# install.py 2: the chief of staff's scripts in the runtime 1, the docstring's line on hook approvals 1. In
+# sends.py 1: a moved event is a calendar write.
+# And 427 more to the plugin. slot_check.py 224, the verdict that goes with every proposed meeting time: judge 108
+# (the same day, protected hours, working hours, the deep-work block, the meeting load, placement beside existing
+# meetings, an existing touchpoint with the same people, the requester's deadline), main 31, the docstring 19,
+# moment 13, free_blocks 12, imports 10, the entry point and its spacing 10, part 5, stop 4, hm 4, clock 4, the
+# verdict order 2, the beside window 1, the address pattern 1. decay_sweep.py 143, critical deadlines reported
+# apart from the rest: critical_row 26, collect 20, alert_today 17 (three days out, one day out, the day, past
+# due, moved off a day the workspace does not work), main 17, critical_lines 15, alert 15, declared 9, the
+# docstring 6, parse_plan 6, imports 4, the path to the core and the lead and alert days 7, the keyword net 1.
+# ritual_state.py 43, a ritual record refused over a past-due critical deadline: critical_deadlines 27, the
+# docstring 5, today 4, cmd_record 3, the sweep's import and its spacing 3, the clean outcomes 1.
+# build_packet.py 4: a row tagged critical is refused. sync_watermark.py 13, after two workers advancing one
+# store at once lost 27 of 632 advances (reported 2026-11-11): held 12 (the store read, changed and written back
+# under a lock), its imports 2, spacing 2, and one line fewer in each of begin, advance and defer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8211
-PLUGIN_BUDGET = 27377
+CORE_BUDGET = 8664
+PLUGIN_BUDGET = 28257
 
 
 def _lines(files):

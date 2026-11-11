@@ -26,10 +26,16 @@ $HOME/.synthesis/v5/bin/synthesis-hook <event>
 ```
 
 `synthesis install` writes that script, and its text never changes between
-releases. A harness that asks the person to trust a hook's exact
-definition (Codex's `/hooks`, Muse's `plugins approve`) therefore keeps that
-trust across upgrades, and a harness deleting an old plugin folder never breaks
-a running session. The script runs
+releases, so a harness deleting an old plugin folder never breaks a running
+session. Whether an approval of the hooks lasts across upgrades depends on the
+harness. Muse (`plugins approve`) has kept it across every release so far. Codex
+(`/hooks`) does not: it stores, with each approval, a fingerprint of the
+installed plugin, so every release that reinstalls the plugin leaves the
+approval stale, and Codex runs none of synthesis's hooks until the person
+approves them again (found 2026-11-05 on Codex 0.166 by running a real turn;
+the doctor had read Codex's own record and reported the hooks trusted). The
+doctor's `codex hook trust` check now computes that fingerprint itself, and the
+release script names the approval as waiting on the person. The script runs
 `python3 -S ~/.synthesis/v5/current/synthesis/hook.py <event>`; `current` is a
 symlink switched atomically, so a running hook sees the old release or the new
 one, never neither.

@@ -13,6 +13,7 @@ loaded. This guard gates the act.
 - [The date rules](#the-date-rules)
 - [The rapid-redeploy brake](#the-rapid-redeploy-brake)
 - [Destruction](#destruction)
+- [The pull-request gate](#the-pull-request-gate)
 - [How the shell is read](#how-the-shell-is-read)
 - [Tests](#tests)
 
@@ -107,6 +108,79 @@ approval lets it through, and it still counts if the window closes before the re
   feature branch is not.
 - `git worktree remove` of an ordinary worktree is allowed (the 1.x guard refused it only
   to protect its own manifests).
+
+## The pull-request gate
+
+A repository can have the rule "changes land through a pull request" and no way to hold it: a
+hosting plan without branch protection, or an agent whose instructions say "push every remote".
+One private skills repository took 61 commits pushed straight to `main` in six weeks, beside 35
+merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `owner/repo`.
+
+- **The rule:** from a checkout (or linked worktree) with a remote on a listed repository, a
+  `git push` goes through only when it provably leaves that repository's default branch
+  alone. The guard does not work out what a push would change. Two reviews of earlier
+  versions found every hole where it predicted git (a commit made earlier on the same line,
+  a branch that tracks the default branch, a configured refspec, a level branch that a lease
+  could rewind), so a push that names the default branch is held even when nothing is ahead,
+  and a level push is a no-op to lose. The default branch is the one the rule names
+  (`"branch": "develop"`), else the remote's `HEAD` as the checkout records it. When neither
+  names it, nothing can be shown to leave it alone, so every branch push from that checkout
+  is held until the rule names it or `git remote set-head origin --auto` records it; the
+  doctor warns of such a checkout.
+- **Passes:** a push that names a branch other than the default (`git push -u origin feature`,
+  `feature:feature`, `HEAD:refs/heads/feature`); a bare `git push`, `git push origin` or
+  `git push origin HEAD` while the current branch is not the default; a push whose
+  destination is a tag (`--tags`, `tag <name>`, `refs/tags/...`); a dry run; a push to a
+  remote on another repository. Whatever ran earlier on the line does not matter for these
+  (`npm test && git push -u origin feature`, `git rebase origin/main && git push`,
+  `git config --get ... && git push`), except as below.
+- **Held:** a push whose destination is the default branch (`git push origin main`,
+  `HEAD:main`, `feature:main`, `refs/heads/main`, `refs/tags/v1:refs/heads/main`, `:main`,
+  `--delete main`, a bare `git push` on the default branch), with the route in the refusal: push a branch, open the pull
+  request, let its checks pass, merge it, install from the merged branch.
+- **Held because it cannot be read:** every branch at once (`--all`, `--mirror`, `--branches`,
+  `:`, any wildcard refspec, a remote configured as a mirror); a branch or remote named
+  through a variable or a substitution; an option git would not know; routing config on the
+  line (`git -c remote.x.url=...`, `-c remote.origin.push=...`, `-c push.default=...`,
+  `-c alias.x=...`, `--config-env`) or in its environment (`GIT_CONFIG_*`, `GIT_DIR`,
+  `GIT_WORK_TREE`); a bare push, or a branch named without its destination, when the
+  checkout has a configured `remote.<name>.push` refspec or a `push.default` other than
+  `simple` or `current`; a `git config` or `git remote` that writes earlier on the same
+  line; a push in a folder that does not exist yet (a clone or a worktree made earlier on the
+  line: none of its remotes or branches can be read beforehand; run the push by itself
+  afterwards); a shell alias that pushes; and a command with an unclosed quote.
+- **Read the way git reads it:** a remote is judged by every URL it pushes to (`pushurl`);
+  `--repo` names the repository when the line names none; options are taken as git takes
+  them (any unambiguous start of a long option, `--no-` to turn one off, the last of a pair,
+  short options run together, so `--mir` is a mirror and `-qn` a dry run); a git alias is
+  followed through other aliases and through options it puts first; and `git switch`,
+  `git checkout -b` and their kin earlier on the line set the branch a later `git push` or
+  `HEAD` refers to (`git switch main && git push origin HEAD` is held; `git checkout -b topic
+  && git push -u origin HEAD` passes). A switch settles the branch only for a push that
+  stands in its own `&&` chain, in the same shell, and so runs only if the switch ran and
+  succeeded (a newline after `&&` continues the chain). After `;`, `||`, `|`, `&`, a
+  newline, a `!`, a subshell or a nested `sh -c`, the push is judged against the branch
+  before the line as well. A `git rebase <upstream> <branch>` checks `<branch>` out, so that
+  name is judged too. When the branch cannot be read (`git checkout -`, a variable,
+  `git branch -m`, a `git symbolic-ref` that writes, `git stash branch`, `git bisect`, a
+  detached `HEAD`), a push that depends on it is held.
+- **One exact push with the principal's code:** the refusal carries a code; when the
+  principal types it, the identical command runs once. There are no exceptions by path or
+  kind of change: a list of exceptions is where a gate erodes. A forced push to a default
+  branch is refused outright, as before, and no code admits it.
+- **What it cannot see:** a push made inside a script file, a branch switched by a program
+  other than git earlier on the line, a ref moved through the host's API, and any push from
+  a machine or tool without the hook. The doctor's check below is what catches those.
+- **The doctor:** `pr gate` reads each listed repository's checkout under the workspace
+  folders and lists commits on its default branch since `since` that are neither merge
+  commits nor GitHub squash merges (subject ending `(#N)`) nor in `direct_ok`. A push made
+  where the guard cannot see it (another machine, a script, a harness without the hook) shows
+  there at the next day-start. A repository with no checkout on this machine, or whose
+  history cannot be read, is a warning, never a pass.
+- Where the host offers it, turn on branch protection as well: it covers every machine and
+  every tool, and the guard and the doctor then never fire.
+
+Tests: `tests/test_pr_gate.py`.
 
 ## How the shell is read
 

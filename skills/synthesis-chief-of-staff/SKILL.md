@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.1.0"
+  version: "2.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -29,10 +29,14 @@ skill derives from that single fact.
 8. **Protected personal blocks are not holds.** They are never released for anything below the config's override tiers.
 9. **Write warmly, directly and unhurriedly.** Never manufacture or absorb urgency, and load this skill and the calendar before drafting any message that touches the calendar.
 10. **Preview a series change occurrence by occurrence, and read back every calendar write.** Before asking, list today through the next three occurrences, canceled and moved ones included, each checked against accepted meetings; prefer changing this and following occurrences over the whole series, because cancellations stay keyed to the old start time and moving the series brings them back. After any write, read back the principal's calendar for today and every date it touched (2026-10-27; references/calendar-guardian.md).
+11. **A yes to a meeting is not a yes to the earliest free slot.** Set it on the principal's terms: never on today unless the principal asks, an existing touchpoint with the same people before a new meeting, beside other meetings so a free block stays whole, and a requester's deadline read as their preference unless the tiers say their timing binds. Run `slot_check.py` on every time before proposing or placing it, and again each day a staged meeting is carried (2026-11-09).
+12. **A deadline whose miss cannot be undone is critical from the day it is first seen:** tag it, put its closing date and a working block on the calendar that day, never decide for the principal that nothing is needed, and close it only on evidence or their own words (2026-11-06).
 
 ## Contents
 
 - [references/calendar-guardian.md](references/calendar-guardian.md): the calendar guardian: horizons, the next-day review checklist, the same-day shield with the `holds_state.py` commands, and the `calendar_guardian` config keys. Read it at every day-start and day-end calendar pass, and before placing, releasing or querying a hold.
+- [references/scheduling-protocol.md](references/scheduling-protocol.md): the scheduling steps, placing a meeting on the principal's terms, `slot_check.py` with its output, and staged meetings. Read it before proposing, placing or re-staging any meeting.
+- [references/critical-deadlines.md](references/critical-deadlines.md): recognizing a critical deadline, its calendar entries and closing it on evidence. Read it the day such a deadline is first seen and when one closes.
 - [references/meetings-correspondence-travel.md](references/meetings-correspondence-travel.md): the meeting quality bar, correspondence posture, the proactive job and follow-up ledger, and the travel protocol. Read it before accepting a meeting, drafting a reply, or planning a trip.
 - [references/background.md](references/background.md): release notes for 1.1.0 to 2.0.0 and related skills. Read it when checking what changed or which sibling skill applies.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.3.0 text and each script change now lives.
@@ -83,28 +87,4 @@ principal's time move for this, and if so, on what terms?"
 
 ## Scheduling protocol
 
-1. **Read the principal's calendar FIRST.** No scheduling sentence is written
-   before the actual calendar for the window is fetched. An agent with
-   calendar access that asks the counterpart for their availability has the
-   relationship backwards. Read every account the principal schedules from,
-   each through its own connector (the account-routing guard sends calendar
-   calls to the account that owns the workspace). An account or calendar the
-   agent cannot read is an unanswered question, not a free window — name it
-   before proposing anything inside it, and ask the principal for that
-   window rather than assuming it is open.
-2. **Propose, never solicit.** Offer 2–3 concrete windows from the
-   principal's calendar that already respect protected hours, buffer rules,
-   and prep time — or route through the principal's human assistant per
-   config. Asking the counterpart to "send times" hands them the calendar and
-   converts the principal into the accommodating party. (The principal may
-   choose that posture deliberately for someone senior; the agent never
-   defaults to it.)
-3. **Respect the config's timing floors** — earliest meeting hour, same-day
-   rules, latency norms. A request answered gracefully next week nearly
-   always beats one answered obsequiously today.
-4. **Build in preparation.** If the meeting needs a pre-read, research on a
-   new contact, or a prep pack, the offered windows must leave room for that
-   work to happen first — prep time is real time.
-5. **Deadlines change math, not posture.** When the subject has a real date
-   (a launch, a season, a filing), acknowledge the date and pick the earliest
-   window that honors it WITH preparation — still on the principal's terms.
+The steps, the principal's terms and the slot check: [references/scheduling-protocol.md](references/scheduling-protocol.md). Read it before proposing, placing or re-staging any meeting.

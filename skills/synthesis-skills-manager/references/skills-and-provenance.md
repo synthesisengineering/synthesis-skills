@@ -136,7 +136,7 @@ This is the key differentiator from package managers. Skills are methodology —
    - Keep all local customizations that don't conflict with source intent
    - For true conflicts (both changed the same instruction differently), present both versions and ask the user
 6. Write the merged result to the source repository.
-7. Commit and push every configured source remote.
+7. Commit, then land the change the way the source repository takes changes: a pull request whose checks pass where it is PR-gated or protected, otherwise a push to every configured source remote.
 8. Reinstall or update the plugin/user-skill deployment.
 9. Verify the installed result against source.
 

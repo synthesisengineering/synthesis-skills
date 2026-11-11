@@ -798,3 +798,34 @@ def test_other_surfaces_advance_without_coverage_and_the_command_line_reads_it(t
                               "--target", "imessage", "--through", "2026-08-28T09:00:00-04:00"],
                              capture_output=True, text=True, env=env)
     assert refused.returncode == 2 and "local message store" in refused.stderr
+
+
+# --- parallel writers (2026-11-11) --------------------------------------------------------------
+
+
+def test_advances_from_parallel_workers_all_persist(tmp_path):
+    """Two workers advancing one workspace's store at once: each rewrote the whole file from its own snapshot, and
+    27 of 632 advances vanished though every one had printed moved: true (2026-11-11)."""
+    worker = ("import sys, importlib.util; from datetime import datetime, timedelta, timezone; from pathlib import Path\n"
+              "spec = importlib.util.spec_from_file_location('sync_watermark', sys.argv[1]); m = importlib.util.module_from_spec(spec)\n"
+              "sys.modules['sync_watermark'] = m; spec.loader.exec_module(m)\n"
+              "now = datetime(2026, 8, 28, 12, 0, tzinfo=timezone(timedelta(hours=-4)))\n"
+              "for i in range(40):\n"
+              "    got = m.advance('testspace', sys.argv[3], '2026-08-28T11:00:00-04:00', (f'{sys.argv[3]}-{i}',), now=now, home=Path(sys.argv[2]))\n"
+              "    assert got['moved']\n")
+    running = [subprocess.Popen([sys.executable, "-c", worker, str(SCRIPT), str(tmp_path), surface])
+               for surface in ("slack", "gchat", "mail", "jira", "confluence", "drive")]
+    assert [p.wait(timeout=120) for p in running] == [0] * 6
+    stored = MODULE.load(WS, tmp_path)["surfaces"]
+    kept = {surface: len(entry.get("targets") or {}) for surface, entry in stored.items()}
+    assert kept == {surface: 40 for surface in ("slack", "gchat", "mail", "jira", "confluence", "drive")}
+    assert not list((tmp_path / "sync-watermarks").glob(".*.tmp"))  # no half-written file is left behind
+
+
+def test_a_refused_advance_writes_nothing_and_leaves_the_store_usable(tmp_path):
+    MODULE.advance(WS, "slack", "2026-08-28T11:00:00-04:00", ("C1",), now=NOW, home=tmp_path)
+    before = MODULE.store_path(WS, tmp_path).read_bytes()
+    with pytest.raises(ValueError, match="per-target"):
+        MODULE.advance(WS, "slack", "2026-08-28T11:30:00-04:00", now=NOW, home=tmp_path)
+    assert MODULE.store_path(WS, tmp_path).read_bytes() == before
+    assert MODULE.advance(WS, "slack", "2026-08-28T11:30:00-04:00", ("C1",), now=NOW, home=tmp_path)["moved"]  # the lock was let go

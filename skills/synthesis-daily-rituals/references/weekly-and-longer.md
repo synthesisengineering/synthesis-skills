@@ -46,7 +46,7 @@ A `synthesis-catchup-ledger` sweep on/after that Friday counts as the week's rev
 - **OBSOLETE** → annotate IN PLACE on the original source file with a one-line reason (e.g., "obviated by Y on YYYY-MM-DD", "stakeholder OOO through Z", "decision moot post-X"). These items stop appearing in future weekly reviews because they're now marked. Do NOT delete — the annotation is the record that the item was triaged.
 - **AMBIGUOUS** → surface to the user with a brief context block. They decide carry-forward vs close. Do not guess; for items that touch other people's commitments or strategic direction, the user must be the one to call it.
 
-An item whose date passed with no decision is not OBSOLETE by default: mark it `**Lapsed:**` at its source and give it a register row (Day-End Step 4b) before classifying it.
+An item whose date passed with no decision is not OBSOLETE by default: mark it `**Lapsed:**` at its source and give it a register row (Day-End Step 4b) before classifying it. A critical deadline is the exception: it is never marked Lapsed or OBSOLETE; it stays open and leads the plan until evidence or the principal's own words close it ([critical-deadlines.md](critical-deadlines.md)).
 
 ## Output requirements
 

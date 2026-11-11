@@ -4,6 +4,16 @@ Release notes for 1.1.0 to 2.0.0 and the skill's relationship to other skills.
 
 ## Release notes
 
+**Version 2.2.0** (2026-11-11) adds scheduling on the principal's terms and critical deadlines.
+`scripts/slot_check.py` judges every proposed time before it is offered: never today unless the
+principal asks, a deep-work block kept, the day's meeting load, placement beside existing
+meetings, an existing meeting with the same people first, and a requester's deadline read as
+their preference (2026-11-09: a follow-up was staged into the same day three days running). A
+deadline whose miss cannot be undone is tagged and calendared the day it is first seen and
+closes only on evidence (2026-11-06: an enrollment window closed unanswered). The scheduling
+steps moved, word for word, from SKILL.md into [scheduling-protocol.md](scheduling-protocol.md)
+to make room for the two binding rules.
+
 **Version 2.0.0** (v5, 2026-10-05) removes `scripts/overlap.py` and the
 shared time-block layer it read: no seat ever published the layer, and
 scheduling now reads each account's calendar through its own connector, with

@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import time
+from datetime import date, datetime
 
 from synthesis import approvals, paths
 
@@ -214,18 +215,29 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     from synthesis import sends
     subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
-    if sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
+    others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
+    if isinstance(others, str):
+        return others
+    kind = "send-same-day" if others else "send"
+    if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         sends.log(chan, tool, summary, "window", session)
         sends.settle()
         return None
-    if approvals.consume("send", subject, session):
+    if approvals.consume(kind, subject, session):
         sends.log(chan, tool, summary, "approval", session)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
-    code = approvals.request("send", subject, f"{tool}: {text[:120]}")
+    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
+    reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
+    if others:
+        what = (f"puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}" if others > 0
+                else "moves a meeting to today's date (its guests are on the event, not in this call)")
+        return (f"This {what}. A meeting is "
+                "not added to today by an agent's choice, and a requester's timing is their preference: propose another day "
+                "unless the principal asked for today. If they did, show them the exact event and ask them to type "
+                f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again."
-            + (RESHAPE if _reshapes_calendar(tool, tool_input) else ""))
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape)
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -241,6 +253,149 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
     return bool(re.search(r"(?:create|update|manage|delete|move)_event$", tool)) and (deletes or bool(timed))
 
 
+# --- same-day meetings (R3.1, R5) ---------------------------------------------------------------
+# 2026-11-09: an agent staged a meeting into the first open slot of the same day, three days running, because the
+# requester had said "tomorrow or Monday". The principal approved every invitation, and no approval said it was today.
+
+START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime", "start_date", "startDate"})
+ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+WRITTEN = re.compile(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
+
+
+def _today() -> date:
+    return date.today()
+
+
+def _starts(value):
+    """Every start a calendar call names: flat, nested ({"dateTime": ...}) and inside a list of events."""
+    for key, item in value.items() if isinstance(value, dict) else ():
+        if key in START_KEYS:
+            yield from (str(v) for v in (item.values() if isinstance(item, dict) else [item]) if isinstance(v, str))
+        else:
+            yield from _starts(item)
+    for item in value if isinstance(value, list) else ():
+        yield from _starts(item)
+
+
+GUESTS = re.compile(r"attend|guest|invite|particip", re.I)
+ADDRESS_KEYS = ("email", "address", "emailAddress", "mail")  # an entry's own address; a display name can look like one
+CALENDAR_WRITE = re.compile(r"(?:create|update|manage|move)[_-]events?$")
+
+
+def _invitees(value, inside: bool = False):
+    """Addresses of the people a calendar call invites: anywhere under an attendee, guest, invitee or participant
+    field, whatever shape each entry takes. People a call removes are not invited, and a booked room is not a person."""
+    if isinstance(value, dict):
+        own = inside and any(k in value for k in ADDRESS_KEYS)
+        for key, item in value.items():
+            if not re.search(r"remov", key, re.I) and (not own or key in ADDRESS_KEYS):
+                yield from _invitees(item, inside or bool(GUESTS.search(key)))
+    elif isinstance(value, list):
+        for item in value:
+            yield from _invitees(item, inside)
+    elif inside and isinstance(value, str):
+        yield from (a for a in ADDRESS.findall(value.lower()) if not a.endswith("@resource.calendar.google.com"))
+
+
+def _keys(value):
+    for key, item in value.items() if isinstance(value, dict) else ():
+        yield key
+        yield from _keys(item)
+    for item in value if isinstance(value, list) else ():
+        yield from _keys(item)
+
+
+def _events(value):
+    """Each event a call writes: the entries of any list of events inside it, however deep the list sits."""
+    for item in value.values() if isinstance(value, dict) else value if isinstance(value, list) else ():
+        if isinstance(value, list) and isinstance(item, dict) and any(_starts(item)):
+            yield item
+        else:
+            yield from _events(item)
+
+
+HOLDS_READER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", "synthesis-chief-of-staff",
+                            "scripts", "holds_state.py")
+
+
+def _own_hold(event: dict) -> bool:
+    """Whether the event a call names is a hold the agent placed that is in force today. The chief of staff's
+    holds ledger is the one record of which calendar entries are the agent's own, and its own reader is asked
+    (a copy of its rules here once missed expiry and a day's release). A reader or a ledger that cannot be read
+    proves nothing, so the move is approved like any other."""
+    named = {text for key, text in _strings(event) if re.fullmatch(r"(?:event_?)?id", key, re.I)}
+    try:
+        ledger = type(os)("holds_state")
+        with open(HOLDS_READER, encoding="utf-8") as source:
+            exec(compile(source.read(), HOLDS_READER, "exec"), ledger.__dict__)  # no import: nothing is written beside it
+        return bool(named) and any(hold.get("id") in named for hold in ledger.current(ledger.load_events(), _today()))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _falls(text: str, zones: list, unread: bool) -> str:
+    """"today" when the date as written is today (ISO, or a written date such as "9 November 2026 at 3:00 PM"), the
+    same moment is today on this machine's clock, or (for a time with no offset) it is today in a zone the event
+    names; "unknown" when it names a zone this machine cannot read and the date as written is within a day of
+    today, so it could be; "" otherwise."""
+    today, text = _today(), text.strip()
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
+        local = [m.astimezone().date() for m in ([moment] if moment.tzinfo else [moment.replace(tzinfo=z) for z in zones])]
+    except (ValueError, OverflowError, OSError):  # not an ISO time, or one no calendar holds: only its written date can count
+        found = WRITTEN.search(text)
+        day, month, year = (found.group(1) or found.group(4), (found.group(2) or found.group(3)).lower(), found.group(5)) if found else ("", "", "")
+        written = month in MONTHS and (int(year), MONTHS.index(month) + 1, int(day)) == (today.year, today.month, today.day)
+        return "today" if written or text.startswith(today.isoformat()) else ""
+    if moment.date() == today or today in local:
+        return "today"
+    return "unknown" if unread and not moment.tzinfo and abs((moment.date() - today).days) <= 1 else ""
+
+
+def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
+    """How many other people a calendar write invites to a meeting that starts today; -1 when it moves an existing
+    event to today and names no guest list (the guests are on the event, not in the call); 0 when the rule does
+    not apply; a refusal when its setting, or a time zone that decides the day, cannot be read. Config:
+    {"same_day_meetings": {"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}}: a meeting with an
+    exempt guest keeps the ordinary approval, and `own` lists the principal's addresses beyond those account
+    routing names. Each event in a call that writes several is judged by itself. No key, no rule."""
+    rule = config.get("same_day_meetings")
+    if rule is None or not CALENDAR_WRITE.search(tool):
+        return 0
+    exempt, mine = (rule.get("exempt", []), rule.get("own", [])) if isinstance(rule, dict) else (None, None)
+    if not all(isinstance(names, list) and all(isinstance(e, str) for e in names) for names in (exempt, mine)):
+        return ("same_day_meetings in the synthesis config needs \"exempt\" and \"own\" as lists of addresses or patterns "
+                "(either may be empty or absent); calendar writes are blocked until it is fixed")
+    routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
+    own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
+           for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
+    moves = bool(re.search(r"(?:update|move)[_-]events?$", tool)) or str(tool_input.get("action", "")).lower() == "update"
+    shared = {k: v for k, v in tool_input.items() if isinstance(v, str)}  # a zone named once for the whole call
+    count = 0
+    for event in list(_events(tool_input)) or [tool_input]:
+        zones, unread = [], []
+        for key, text in [*_strings(event), *shared.items()]:  # an event's own zone, never another event's
+            if re.search(r"time_?zone", key, re.I):
+                try:
+                    from zoneinfo import ZoneInfo
+                    zones.append(ZoneInfo(text))
+                except (KeyError, ValueError, OSError):  # a name this machine does not know, such as a Windows one
+                    unread.append(text)
+        when = {_falls(start, zones, bool(unread)) for start in _starts(event)}
+        invited = {a for a in set(_invitees(event)) - own if not any(fnmatch.fnmatchcase(a, m.lower()) for m in mine)}
+        listed = any(re.fullmatch(r"attendees|guests|invitees|participants", key, re.I) for key in _keys(event))
+        others = len(invited) or (-1 if moves and not listed and not _own_hold(event) else 0)
+        if not others or not when & {"today", "unknown"} or any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
+            continue
+        if "today" not in when:
+            return (f"This event's start names a time zone this machine cannot read ({unread[0]}), so it cannot tell "
+                    "whether the meeting falls on today. Give the start with a UTC offset, or name the zone the IANA way "
+                    "(for example Asia/Tokyo), and make the call again.")
+        count = others if others < 0 and not count else max(count, 0) + max(others, 0)
+    return count
+
+
 # --- account routing (R3.6) ---------------------------------------------------------------------
 # Calendar, mail and sharing calls act as an account, and their recipients see which one: an
 # invitation sent from the wrong account cannot be unsent (2026-09-11). Matched on the tool's own
@@ -249,7 +404,7 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # addresses a mailbox or a Chat space. Slack sends belong to the send guard alone.
 
 ROUTED_TOOLS = frozenset({
-    "create_event", "update_event", "delete_event", "manage_event", "respond_to_event",
+    "create_event", "update_event", "delete_event", "manage_event", "move_event", "respond_to_event",
     "manage_focus_time", "manage_out_of_office", "send_gmail_message", "draft_gmail_message",
     "create_draft", "update_draft", "send_email", "reply", "forward", "trash_message", "trash_thread",
     "share_file", "set_drive_file_permissions", "manage_drive_access"})
@@ -614,8 +769,10 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 
 
 def _simple(tokens: list) -> list:
-    """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in)."""
-    items, words, stdin, scripts, skip, piped, writes = [], [], [], [], "", False, []
+    """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
+    link). The link is "&&" when only `&&` stands between a command and the one before it, so it runs only if that
+    one succeeded; "||" when it runs only if that one failed; "" otherwise."""
+    items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
     for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
@@ -633,7 +790,10 @@ def _simple(tokens: list) -> list:
             skip = rest[0]
         else:
             if words or stdin or scripts or writes:
-                items.append((words, stdin, scripts, piped, writes))
+                link = before[0] if before[:1] in (["&&"], ["||"]) and set(before[1:]) <= {"\n"} else ""  # `&&` may end a line
+                items.append((words, stdin, scripts, piped, writes, link))
+                before = []
+            before.append(rest[0])
             words, stdin, scripts, skip, writes = [], [], [], "", []
             piped = rest[0] in ("|", "|&")
             if rest[0] in "()":
@@ -693,13 +853,15 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool]:
     return None, not command
 
 
-def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None) -> list[tuple[list[str], str]]:
+def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
-    collects (file, directory) for every redirect that writes a file."""
+    collects (file, directory) for every redirect that writes a file. `runs` collects, for each
+    command found and in the same order, (the `&&` chain it stands in, whether a later command of
+    that chain runs only if this one ran and succeeded)."""
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    found, outer, upstream = [], [], ""
+    found, outer, upstream, chain = [], [], "", object()
     for item in _simple(_lex(command)):
         if item in ("(", ")"):
             if item == "(":
@@ -707,7 +869,10 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             elif outer:
                 cwd = outer.pop()  # a subshell's cd ends with it
             continue
-        words, stdin, scripts, piped, targets = item
+        words, stdin, scripts, piped, targets, link = item
+        chain = chain if link == "&&" else object()
+        opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
+        needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
         if writes is not None:
             writes += [(t, cwd) for t in targets]
         for text, literal in stdin:
@@ -717,6 +882,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         scripts = scripts + inner
         if words:
             found.append((words, cwd))
+            if runs is not None:
+                runs.append((chain, needed))
             if words[0] in ("cd", "pushd") and (len(words) == 1 or words[1] != "-"):
                 target = os.path.expanduser(os.path.expandvars(words[1] if len(words) > 1 else "~"))
                 cwd = os.path.normpath(os.path.join(cwd, target))
@@ -727,17 +894,21 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 scripts += [text for text, _ in stdin] + ([upstream] if piped else [])
         upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
         for script in scripts:
-            found += _commands(script, cwd, depth + 1, writes)
+            found += _commands(script, cwd, depth + 1, writes, runs)
     return found
 
 
-def _parse(command: str, cwd: str) -> tuple[list[tuple[list[str], str]], bool]:
-    """(commands, readable). Unreadable text falls back to a plain split on its separators."""
+def _parse(command: str, cwd: str, runs: list | None = None) -> tuple[list[tuple[list[str], str]], bool]:
+    """(commands, readable). Unreadable text falls back to a plain split on its separators, where no
+    command can be shown to depend on another."""
     try:
-        return _commands(command, cwd), True
+        return _commands(command, cwd, runs=runs), True
     except (Unreadable, StopIteration, IndexError):
         found = [(_bare(part.split())[0], cwd) for part in SEPARATORS.split(command)]
-        return [(words, where) for words, where in found if words], False
+        found = [(words, where) for words, where in found if words]
+        if runs is not None:
+            runs[:] = [(None, False)] * len(found)
+        return found, False
 
 
 def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
@@ -1098,6 +1269,232 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
                 if (forced or ref.startswith("+")) and ref.split(":")[-1].lstrip("+") in ("main", "master"):
                     return "refusing a force push to a default branch"
     return None
+
+
+# --- pull-request gate (R3, R7) ------------------------------------------------------------------
+# 2026-11-09: a repository whose rule was "changes land through a pull request" had taken 61 commits pushed
+# straight to main in six weeks; its instructions said "push every remote", and nothing refused the push.
+
+def _repo_names(text: str) -> set:
+    return {m.group(1).lower() for m in re.finditer(r"[/:]([\w.-]+/[\w.-]+?)(?:\.git)?(?=\s|$)", text)}
+
+
+ROUTING = ("remote.", "push.", "alias.", "branch.", "url.")  # config on the command line that can send a push elsewhere
+GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
+    "add am apply bisect blame branch cat-file checkout cherry-pick clean clone commit config describe diff fetch "
+    "for-each-ref gc grep init lfs log ls-files ls-remote merge mv notes pull rebase reflog remote reset restore revert "
+    "rev-list rev-parse rm show stash status submodule switch symbolic-ref tag update-ref version worktree".split())
+REBASE_VALUES = frozenset({"--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec"})  # their value is the next word
+UNREAD_BRANCH = ("its default branch (where the push goes could not be read from the command, so no branch can be ruled out; "
+                 "a push that names its branch outright, run by itself from the checkout, can be read)")
+UNKNOWN_DEFAULT = ("what may be its default branch (this checkout does not record which branch that is: name it as \"branch\" in "
+                   "the repository's pr_gated rule, or run `git remote set-head {remote} --auto` there, and push again)")
+
+
+def _push(words: list[str], where: str, depth: int = 0) -> tuple[list[str], bool] | None:
+    """(the words of the `git push` this command runs, whether where it goes can be read): a push named outright
+    or through an alias, which may name another alias or put git options first. Config given on the command line
+    that can send a push elsewhere, a shell alias that pushes, and an alias defined on the line make it unreadable."""
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
+    if os.path.basename(words[0]) != "git" or i >= len(words):
+        return None
+    sub, given = words[i], [b.lower() for a, b in zip(words[1:i], words[2:i + 1]) if a == "-c"]
+    plain = not any(key.startswith(ROUTING) for key in given) and not any(w.startswith("--config-env") for w in words[1:i])
+    if sub == "push":
+        return words, plain
+    if sub in GIT_COMMANDS:
+        return None
+    here = any(key.startswith(f"alias.{sub.lower()}=") for key in given)
+    code, alias = _run_git(where, "config", "--get", f"alias.{sub}")
+    alias = alias.strip() if code == 0 else ""
+    try:
+        expansion = [] if here or alias.startswith("!") else shlex.split(alias)
+    except ValueError:
+        expansion = []
+    if expansion and depth < 5:
+        found = _push(words[:i] + expansion + words[i + 1:], where, depth + 1)
+        return (found[0], found[1] and plain) if found else None
+    return (words[:i] + ["push"], False) if here or "push" in alias else None
+
+
+def _switched_to(words: list[str], where: str):
+    """The branch a `git checkout` or `git switch` leaves current: its name, "" when that cannot be read, or None
+    when the command changes no branch (a path, a commit)."""
+    rest = words[words.index("checkout" if "checkout" in words else "switch") + 1:]
+    for flag, name in zip(rest, rest[1:] + [""]):
+        if flag in ("-b", "-B", "-c", "-C", "--orphan"):
+            return "" if not name or re.search(r"[$`]", name) else name
+    names = [w for w in rest[:rest.index("--")] if not w.startswith("-")] if "--" in rest else [w for w in rest if not w.startswith("-")]
+    if not names or re.search(r"[$`]", names[0]) or names[0] == "-":
+        return "" if names or "-" in rest else None
+    return names[0] if _run_git(where, "show-ref", "--verify", "--quiet", f"refs/heads/{names[0]}")[0] == 0 else None
+
+
+PUSH_OPTIONS = ("all", "atomic", "branches", "delete", "dry-run", "exec", "follow-tags", "force", "force-if-includes",
+                "force-with-lease", "ipv4", "ipv6", "mirror", "porcelain", "progress", "prune", "push-option", "quiet",
+                "receive-pack", "recurse-submodules", "repo", "set-upstream", "signed", "tags", "thin", "verbose", "verify")
+PUSH_SHORT = {"n": "dry-run", "d": "delete", "f": "force", "u": "set-upstream", "q": "quiet", "v": "verbose", "4": "ipv4",
+              "6": "ipv6", "o": "push-option"}
+
+
+def _push_options(rest: list[str]):
+    """(options by their full name, the other words) as git reads a push's arguments: any unambiguous start of a
+    long option, `--no-` to turn one off, the last of a pair winning, short options run together. None for the
+    options when one of them cannot be read."""
+    options, args, i = {}, [], 0
+    while i < len(rest):
+        word, i = rest[i], i + 1
+        if word == "--":
+            return options, args + rest[i:]
+        if word.startswith("--"):
+            name, given, value = word[2:].partition("=")
+            off = name.startswith("no-")
+            base = name[3:] if off else name
+            full = [o for o in PUSH_OPTIONS if o == base] or [o for o in PUSH_OPTIONS if o.startswith(base)]
+            if len(full) != 1:
+                return None, args
+            if full[0] in ("push-option", "repo", "receive-pack", "exec") and not given and not off:
+                value, i = "".join(rest[i:i + 1]), i + 1
+            options[full[0]] = False if off else value or True
+        elif word.startswith("-") and len(word) > 1:
+            for at, letter in enumerate(word[1:], 2):
+                if letter not in PUSH_SHORT:
+                    return None, args
+                if letter == "o":  # the rest of the word, or the next word, is its value
+                    i += not word[at:]
+                    break
+                options[PUSH_SHORT[letter]] = True
+        else:
+            args.append(word)
+    return options, args
+
+
+def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branches, line: str, places: set) -> tuple[str, str] | None:
+    """(repository, branch) unless this `git push` provably leaves the default branch of every gated repository
+    alone. Nothing is worked out about what the push would change: one that names the default branch, or whose
+    destination cannot be read, is held, even with nothing ahead (three reviews showed that predicting git is
+    where the holes were). `branches` is what earlier commands on the line may have left current: None when none
+    switched, else a set of names, with "" for one that cannot be read and None for the branch before the line.
+    `line` is the whole command and `places` every folder it runs git in, for a push whose own folder cannot be read."""
+    options, args = _push_options(words[words.index("push") + 1:])
+    if options and options.get("dry-run"):
+        return None
+    inside = _run_git(where, "rev-parse", "--git-dir")[0] == 0  # a clone or a worktree made earlier on the line is not there yet
+    readable, options = readable and inside and options is not None, options or {}
+    destination, refspecs = (args[0] if args else str(options.get("repo") or "")), args[1:]  # `--repo` when none is named
+    named = "" if re.search(r"[$`]", destination) else destination  # a remote named through a variable is any remote
+    known, urls = _run_git(where, "remote", "get-url", "--push", "--all", named) if named else (1, "")
+    remote = named if known == 0 else "origin"
+    # Where it can go: every URL the named remote pushes to, or a URL given outright. When the line names none, or
+    # its routing cannot be read, that is every remote here and any repository the command's own words name.
+    reach = (urls if known == 0 else named) if named and readable else " ".join(
+        [line] + [_run_git(place, "remote", "-v")[1] for place in ([where] if inside else sorted(places))])
+    found = _repo_names(reach) & set(rules)
+    if not found:
+        return None
+    repo = sorted(found)[0]
+    # Config that sends branches somewhere their names do not say: a refspec or a mirror on a remote, or a
+    # push.default other than git's own.
+    config = _run_git(where, "config", "--get-regexp", r"^remote\..*\.(push|mirror)$")[1]
+    mapped = bool(re.search(r"\.push\s", config)) or _run_git(where, "config", "--get", "push.default")[1].strip() not in ("", "simple", "current")
+    mirror = any(value.strip().lower() not in ("false", "no", "off", "0")  # a boolean as git reads one; no value is true
+                 for key, _, value in (entry.partition(" ") for entry in config.splitlines()) if key.endswith(".mirror"))
+    every = (any(options.get(o) for o in ("all", "mirror", "branches")) or mirror
+             or any("*" in s or s.lstrip("+") == ":" for s in refspecs))
+    if not readable or every or any(re.search(r"[$`]", spec) for spec in refspecs):
+        return repo, UNREAD_BRANCH
+    code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
+    stated = rules[repo].get("branch") if isinstance(rules[repo], dict) else None
+    defaults = {str(stated)} if stated else {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else set()
+    now = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip()
+    current = {now} if branches is None else {now if b is None else b for b in branches}
+
+    def lands(target: str):
+        """The default branch a push to `target` reaches, or why that cannot be ruled out (the default branch is
+        not recorded, or HEAD cannot be known), else None."""
+        if not defaults:
+            return UNKNOWN_DEFAULT.format(remote=remote)
+        if target not in ("HEAD", "@"):
+            return target if target in defaults else None
+        return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
+
+    if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
+        hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
+        return (repo, hit) if hit else None
+    at = 0
+    while at < len(refspecs):
+        spec, at = refspecs[at], at + 1
+        if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
+            at += 1
+            continue
+        source, colon, target = spec.lstrip("+").partition(":")
+        target = target or source
+        if target.startswith("refs/tags/"):  # a tag is what gets updated, whatever is pushed onto it
+            continue
+        hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
+        if hit:
+            return repo, hit
+    return None
+
+
+def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """Config: {"pr_gated": {"<owner>/<repo>": {"since": "YYYY-MM-DD", "direct_ok": ["<commit>"]}}}. A push that
+    would move such a repository's default branch waits for the principal's code for that one push."""
+    gated = config.get("pr_gated")
+    if gated is None:
+        return None
+    runs: list = []
+    commands, readable = _parse(command, cwd, runs)
+    # Git reads its config and its repository from the environment too; a line that sets either is not what it looks.
+    readable = readable and not re.search(r"\bGIT_(?:CONFIG\w*|DIR|WORK_TREE|COMMON_DIR|NAMESPACE)=", command)
+    pushes, rerouted, moved, places = [], set(), {}, {cwd}
+    for (words, directory), (chain, needed) in zip(commands, runs):
+        sub, where = _git(words, directory)
+        found, said = _push(words, where), set(words)
+        rest = words[words.index(sub, 1) + 1:] if sub else []
+        named = [w for at, w in enumerate(rest)  # the words that name something; a rebase option's own value names no branch
+                 if not w.startswith("-") and not (sub == "rebase" and at and rest[at - 1] in REBASE_VALUES)]
+        places |= {where} if sub else set()
+        if found:
+            # What earlier commands may have left current. A switch settles it only when this push stands in its
+            # `&&` chain and so runs only if the switch did; any other leaves the branch before the line in play.
+            level = None
+            for link, firm, there in moved.get(where, []):
+                level = {there} if there and firm and link is chain else (level or {None}) | {there}
+            pushes.append((found[0], where, readable and found[1] and where not in rerouted, level))
+        elif ((sub == "config" and not said & {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "get", "list"})
+              or (sub == "remote" and said & {"add", "set-url", "rename", "remove", "rm", "set-branches"})):
+            rerouted.add(where)  # written earlier on the line, these change where a later push goes
+        elif sub in ("checkout", "switch"):
+            there = _switched_to(words, where)
+            if there is not None:
+                moved.setdefault(where, []).append((chain, needed, there))
+        elif sub == "rebase":  # `git rebase <upstream> <branch>` checks <branch> out first; with --root every name is one
+            moved.setdefault(where, []).extend((chain, False, name) for name in (named if "--root" in said else named[1:]))
+        elif (sub == "bisect" or (sub == "symbolic-ref" and (len(named) > 1 or said & {"-d", "--delete"}))
+              or (sub == "branch" and said & {"-m", "-M", "--move"}) or (sub == "stash" and named[:1] == ["branch"])):
+            moved.setdefault(where, []).append((chain, False, ""))
+    if not pushes:
+        return None
+    if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
+        return ("pr_gated in the synthesis config needs a map of \"owner/repo\" names to their settings; pushes are "
+                "blocked until it is fixed")
+    names = {k.lower(): rule for k, rule in gated.items()}
+    hits = [hit for words, where, clear, level in pushes
+            for hit in [_gated_push(words, where, names, clear, level, command, places)] if hit]
+    if not hits:
+        return None
+    subject = {"command": command, "runs_in": sorted({where for _, where, _, _ in pushes})}
+    if approvals.consume("push-direct", subject, session):
+        return None
+    repo, branch = hits[0]
+    code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
+    return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
+            "branch, open the pull request, let its checks pass, merge it, then install from the merged branch. If the "
+            f"principal wants this one push to go direct, show them the exact command and ask them to type {approvals.how(code)}. "
+            "Then run the identical command again.")
 
 
 # --- approvals come only from the principal's own prompt (R3.0) ------------------------------------
@@ -1556,8 +1953,8 @@ def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
     always waits: the organizer sees the answer (2026-10-23, an accepted RSVP with notifications off went unasked)."""
     notify = str(tool_input.get("send_updates", tool_input.get("sendUpdates", ""))).strip().lower()
     rsvp = str(tool_input.get("action", "")).strip().lower() == "rsvp" or bool(tool_input.get("response"))
-    return (bool(re.search(r"(?:create|update|manage)_event$", tool)) and notify == "none"
-            and not tool_input.get("attendees") and not rsvp)
+    return (bool(CALENDAR_WRITE.search(tool)) and notify == "none"
+            and not tool_input.get("attendees") and not any(_invitees(tool_input)) and not rsvp)  # guests at any depth
 
 
 def _sends(tool: str, tool_input: dict, config: dict) -> bool:
@@ -1567,7 +1964,9 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
     from synthesis import sends
     if sends.own_repo(sends.tool_repo(tool_input), config):
         return False
-    return (((is_send_tool(tool, config) or sends.says(tool, config)) and not _quiet_calendar_write(tool, tool_input))
+    # A write that emails no one is quiet, unless it moves a meeting to today: its guests' calendars still change.
+    quiet = _quiet_calendar_write(tool, tool_input) and _invited_today(tool, tool_input, config) == 0
+    return (((is_send_tool(tool, config) or sends.says(tool, config)) and not quiet)
             or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
 
 
@@ -1649,6 +2048,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
+                or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:

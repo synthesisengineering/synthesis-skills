@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.3.2"
+  version: "2.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -31,12 +31,13 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 8. **A reply is sent back once,** never twice in a row, when it defers work, quotes words no tool returned this session, or (when enabled) names a file without a clickable absolute-path link.
 9. **At day-end, run the provenance scan** over the records written that day; a timestamp or quote that appears in no source is named, not trusted.
 10. **A browser call acts in the Chrome profile of the workspace its session started in.** The extension is shared: a call passes only when this session made the latest selection, to its workspace's browser, and that selection reported success (2026-10-21).
+11. **A repository listed under `pr_gated` takes changes only through a pull request.** A push that would move its default branch is refused with the route (branch, pull request, checks, merge, install); only the principal's code for that one push admits it, and `synthesis doctor` names any commit that reached the branch another way (2026-11-09).
 
 ## Contents
 
 - **Procedure** (below): configure, and what to do when each guard blocks.
 - [references/config.md](references/config.md): every config key these guards read, with examples, and how the 1.x config files map onto them. Read when setting up or changing a guard.
-- [references/deploys.md](references/deploys.md): what counts as a deploy, approvals, the date and rapid-redeploy rules, how the shell is read, and the tests that pin each. Read when a deploy or shell command is blocked, or before changing the shell reader.
+- [references/deploys.md](references/deploys.md): what counts as a deploy, approvals, the date and rapid-redeploy rules, the pull-request gate, how the shell is read, and the tests that pin each. Read when a deploy or shell command is blocked, or before changing the shell reader.
 - [references/account-routing.md](references/account-routing.md): the routing rule, its incident, and why its boundary is narrow; the browser-profile rule and its limits. Read when a calendar, mail or browser call is blocked.
 - [references/reply-and-provenance.md](references/reply-and-provenance.md): the turn-end reply check and the provenance scan, with commands and output. Read when a reply is sent back, or at day-end.
 - [references/coverage-map.md](references/coverage-map.md): where every part of 1.0.3 and its scripts went (ruling D8), and what moves to the anti-shortcuts skill.
@@ -44,11 +45,11 @@ at the moment of acting. These guards sit before the tool call, in the v5 PreToo
 
 ## Procedure
 
-1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md): `account_routing`, `browser_routing`, `push_deploys`, `deploy_remotes`, `deploy_patterns`, `deploy_content`, `sheet_hosts`, `protected_roots`, `shortcut_phrases`, `reply_file_links`. Every guard runs with safe defaults when its key is absent: no routing, the built-in deploy commands, home and workspace roots protected.
+1. **Configure** in `~/.synthesis/v5/config.json` (references/config.md): `account_routing`, `browser_routing`, `push_deploys`, `deploy_remotes`, `deploy_patterns`, `pr_gated`, `deploy_content`, `sheet_hosts`, `protected_roots`, `shortcut_phrases`, `reply_file_links`. Every guard runs with safe defaults when its key is absent: no routing, the built-in deploy commands, home and workspace roots protected.
 2. **A deploy is blocked for approval:** show the principal the exact command and what it publishes (a preview, the diff, or the built output), and the code. When they type `approve <code>`, run the identical command once. A changed command or a moved HEAD needs a new approval. A date-rule refusal is never approvable: fix the date or hold the deploy.
 3. **A rapid redeploy is blocked:** stop and put the options to the principal (wait, revert, or deploy now); ask for the rapid code only if they want it now.
 4. **A calendar or mail call is blocked for its account:** use the tool that takes the workspace's account and pass it (for example `user_google_email`); afterwards, check the organizer or sender.
-5. **A delete or force push is refused:** name a narrower target; never route around the guard.
+5. **A delete or force push is refused:** name a narrower target; never route around the guard. **A direct push to a gated default branch is refused:** push a branch and open the pull request.
 6. **A reply is sent back:** revise exactly what it names, then end the turn.
 7. **Day-end:** `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <records or folders written today>`; resolve every line it prints against its source before the records are handed off.
 8. **A browser call is blocked:** call `list_connected_browsers`, then `select_browser` with the deviceId the message names, and wait for its result before the next browser call. Never select another workspace's browser to get past it.

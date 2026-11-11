@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.2.0"
+  version: "2.3.0"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -79,7 +79,11 @@ to build now, later, or never · candidates to advance on a defined rubric.
   is not finished*. Do the analysis. The generator refuses a packet where no row carries a
   recommendation, unless every row is blind.
 
-The failure mode of a good pattern is over-application. These three limits are the skill.
+- **A deadline whose miss cannot be undone.** It is never one row among many: it leads the day
+  plan in its own section (synthesis-daily-rituals) and closes only on evidence. The generator
+  refuses a row tagged `critical`.
+
+The failure mode of a good pattern is over-application. These four limits are the skill.
 
 ## Use
 
@@ -98,4 +102,4 @@ python3 scripts/carry_forward.py PROJECT/resources/artifacts/<date>-<slug>-spec.
     --check reconciliation.json                      # every id answered or carried, once
 ```
 
-Output: the generator prints READER/NOTE findings and each path written; the recorder `filed <path>  (N of M decided; no action authority granted)`; `carry_forward.py` the ids carried or `reconciled N ids: ...`. Refusals print their reasons (the recorder quotes what it received) and exit 2. Template and schema text: `assets/`.
+What each command prints: [references/filing-and-authority.md](references/filing-and-authority.md).

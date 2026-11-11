@@ -7,7 +7,7 @@ than half-reading it.
 
 | Command | What it prints | Exit |
 |---|---|---|
-| `python3 <rituals>/scripts/ritual_state.py record --direction day-start\|day-end\|weekly-review --workspace <W> --date YYYY-MM-DD [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]` | `recorded day-end <W> <date> (<outcome>)` | 0; non-zero on an empty workspace, a missing or malformed date, an unknown outcome, mode `migration`, a record over 2,048 bytes, or a log whose last line was interrupted |
+| `python3 <rituals>/scripts/ritual_state.py record --direction day-start\|day-end\|weekly-review --workspace <W> --date YYYY-MM-DD [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]` | `recorded day-end <W> <date> (<outcome>)`, then `critical deadlines: N open, M within 7 days` | 0; non-zero on an empty workspace, a missing or malformed date, an unknown outcome, mode `migration`, a record over 2,048 bytes, a log whose last line was interrupted, a critical deadline past due and open (each is named), a clean outcome over plans that could not be read whole, or a workspace that declares no plan folders |
 | `python3 <rituals>/scripts/ritual_state.py query summary\|last\|open [--workspace <W>] [--today D] [--json]` | one row per workspace (last close, streak, last weekly review, OWED) and every workday started and never closed | 0; non-zero on an empty workspace or unreadable config |
 | `python3 <rituals>/scripts/ritual_state.py query weekly-review\|streak --workspace <W> [--json]` | `{"workspace", "last_weekly_review", "owed"}` or `{"workspace", "streak"}` | non-zero without `--workspace` when the log names more than one workspace (streak: always) |
 | `python3 <rituals>/scripts/sync_watermark.py begin --workspace <W> --label day-start` | `run started <moment>` | 0 |
@@ -17,7 +17,9 @@ than half-reading it.
 | `python3 <rituals>/scripts/sync_watermark.py status --workspace <W> --surface <s> ... [--targets-from F] --since run` | a row per surface and per stale target, then the blocking keys | 1 while anything blocks; 2 on an empty declared set or no bound |
 | `python3 <rituals>/scripts/repo_state.py --workspace-root ~/workspaces/<W> [--fetch] [--ff] [--skip <name>] [--json]` | one state per declared repo (CURRENT, CACHED, BEHIND, DECISION, DIRTY, BLIND, UNREACHABLE, EXCLUDED) with dirty files listed, then `N of M current, ...` | 2 any BLIND or UNREACHABLE; 1 any DECISION or DIRTY |
 | `python3 <rituals>/scripts/repo_state.py --discover ~/workspaces[/<W>] [--fetch] [--ff]` | the same, for every repository two levels under the root (linked worktrees belong to their repository) | as above |
-| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --plans-dir <dir> [--plans-dir ...] [--artifacts-dir <dir>] --json` | JSON: `status` CLEAR, REVIEW or BLOCKED, the due items with source locators, every scanned and refused source | 2 BLOCKED; 0 otherwise (collection succeeded, nothing approved) |
+| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --plans-dir <dir> [--plans-dir ...] [--artifacts-dir <dir>] --json` | JSON: `status` CLEAR, REVIEW or BLOCKED, the due items with source locators, the `critical` view (`open`, `closed`, `unclassified`), every scanned and refused source | 2 BLOCKED; 0 otherwise (collection succeeded, nothing approved) |
+| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --workspace <W> --alert [--json]` | the same over the folders `<W>` declares, opening with `CRITICAL: N open (P past due, L within 7 days); A due an alert today` and one line per critical item; `--alert` posts one count-only banner and spoken line when any is due and reports it under `critical.alert` | 2 BLOCKED (including a workspace that declares no folders); 0 otherwise |
+| `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD --alert-declared` | `critical alert: N due across M declared set(s) of plan folders; {...}` after one alert for every workspace together (the 16:55 nudge runs this) | 0; 2 when the ritual config cannot be read |
 | `python3 <rituals>/scripts/portfolio_review.py [--threshold 30] [--all] [--json] [--index P] [--source R]` | at most three stale "active" projects, oldest first, each with close / pause / pick up | 0 always |
 | `python3 <rituals>/scripts/stop_reprompts.py [--workspace W] [--since D] [--until D] [--json] [--archive P]` | the replies the Stop hook sent back in the window (default the last seven days), by check and harness, and any phrase or file named more than once | 0 always |
 | `python3 <rituals>/scripts/stray_lessons.py --since YYYY-MM-DD --repo <knowledge repository> [--repo ...] [--json]` | each lesson heading or **Lesson:** line added to a project record since the date whose section links to no lessons folder, then any repository it could not read | 0 always |
@@ -29,9 +31,15 @@ than half-reading it.
 
 ## Files the scripts keep
 
-- The ritual log, `<synthesis home>/rituals/history.jsonl`, and its optional `config.json`
+- The ritual log, `<synthesis home>/rituals/history.jsonl`, and its `config.json`
   (`{"defaults": {...}, "workspaces": {"<W>": {"streak": "expected-days", "weekdays": [0,1,2,3,4],
-  "non_working_dates": ["YYYY-MM-DD"]}}}`). `streak: expected-days` counts an unbroken run over
+  "non_working_dates": ["YYYY-MM-DD"], "plans_dirs": ["<folder of dated plans>"],
+  "artifacts_dirs": ["<folder of ritual-worker artifacts>"]}}}`; an example ships as
+  `assets/ritual-config.example.json`). `plans_dirs` and `artifacts_dirs` declare where the
+  workspace's dated plans live: the deadline sweep, `record` and the nudge read them, and `record`
+  refuses a workspace that declares neither (`"plans_dirs": []` says it keeps none). A top-level
+  `critical_words` list replaces the words that flag an untagged deadline as possibly critical
+  ([critical-deadlines.md](critical-deadlines.md)). `streak: expected-days` counts an unbroken run over
   days the workspace is expected to close; working on a day that is not expected credits the
   streak and never debits it; `none` (the default) is right for seats worked occasionally. A date
   in `non_working_dates` (holidays, time off) is never expected. `quiet_after_days` (a whole
@@ -48,4 +56,7 @@ than half-reading it.
 The SessionStart hook reads the same log through `synthesis/rituals.py` and adds one line to the
 session's context: this workspace's last close, streak, workdays never closed, whether a day-start
 is recorded today and whether the weekly review is owed, then the other workspaces as counts.
-`rituals.py --owed-today` answers the 16:55 nudge; any failure makes the nudge fire.
+`rituals.py --owed-today` answers the 16:55 nudge; any failure makes the nudge fire. The nudge
+first runs `decay_sweep.py --alert-declared` from the runtime's copy of these scripts
+(`<synthesis home>/current/skills/synthesis-daily-rituals/scripts/`), and shows a second fixed
+banner when that check cannot run.

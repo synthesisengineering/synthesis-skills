@@ -1,6 +1,8 @@
 # Deadline collection and reconciliation
 
-Read at Day-End Step 4b, before the send-or-release pass.
+Read at Day-End Step 4b, before the send-or-release pass. A deadline whose miss cannot be undone
+is handled apart from everything here: the `**Critical:**` tag, its own view in the report,
+alerts, and closure only on evidence are in [critical-deadlines.md](critical-deadlines.md).
 
 Day-End Step 4 selects by a tag's target date, not the date of its plan. A
 deadline noticed in an older plan must remain visible when due, even after a
@@ -21,8 +23,9 @@ It does not infer that local files represent all history or all workspaces.
 Run `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD
 --plans-dir <declared-daily-plans-directory> --json` (`<rituals>` is this skill's folder). It
 prints a JSON report: `status` (`CLEAR`, `REVIEW` or `BLOCKED`), the `due` items with source
-locators, and the coverage of every root and file. Repeat `--plans-dir` for
-each plan directory declared for this seat. Include archived subdirectories
+locators, the `critical` view, and the coverage of every root and file. Repeat `--plans-dir` for
+each plan directory declared for this seat, or pass `--workspace <W>` to read the folders the
+workspace declares in the ritual config (`plans_dirs`, `artifacts_dirs`). Include archived subdirectories
 under each declared root: there is no lookback cutoff. Supply `--artifacts-dir
 <declared-ritual-workers-directory>` for this workspace's worker artifacts when
 the distributed contract uses them. That option accepts dated day-start,
@@ -91,6 +94,10 @@ Read every returned item at its source, reconcile against current sent/released
 evidence, then ask for the actual send, re-date or release decision. Do not send,
 delete, re-date or mark complete merely because a script surfaced the item.
 
+An item tagged `**Critical:**` is never in `due` and never takes the release or lapse outcome
+above: it stays in the report's `critical` view until a closing mark carries an `**Evidence:**`
+line ([critical-deadlines.md](critical-deadlines.md)).
+
 ## Regression contract
 
 Fixtures cover an old tag due today, an unresolved tag older than fourteen days,
@@ -98,3 +105,5 @@ future tags, invalid dates, unrelated files and quoted examples. Additional
 tests cover carry-forward deduplication, reasoned re-dating, later resolution,
 distinct obligations with matching titles, missing/unreadable sources, symlink
 boundaries and invalid timestamps. The same helper and tests serve both clients.
+`tests/test_critical_deadlines.py` covers the critical view, the alerts and the ritual record,
+and replays the window of 2026-11-06 day by day.

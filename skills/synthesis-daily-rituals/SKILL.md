@@ -9,7 +9,7 @@ depends_on:
   - synthesis-checkpoint
 metadata:
   author: "Rajiv Pant"
-  version: "3.6.1"
+  version: "3.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -34,10 +34,11 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 9. **Banners and spoken alerts carry counts and a pointer only,** never a client, repo, workspace or person name, and honor `~/.synthesis/quiet-audio`. Speakers are overheard and banners are screen-shared.
 10. **Observe around live sessions:** claim only the files you write, fast-forward only unheld branches, never repair or re-run another session's work, release claims at the end.
 11. **Native memory stays on.** Durable entries move into synthesis records archive-first; raw memory files are never deleted or edited.
+12. **A critical deadline is never one item among many.** Tag a deadline whose miss cannot be undone `**Critical:** <class>` the day it is first seen. From seven days out it opens every plan and brief in its own section; it never lapses and closes only on evidence or the principal's own words; `ritual_state.py record` refuses while one is past due. An enrollment window once closed as one dated row among a hundred.
 
 ## Contents
 
-- **Procedure** (below): each ritual's order and commands. Read every time.
+- [references/procedure.md](references/procedure.md): each ritual's order and commands. Read every time.
 - [references/day-start.md](references/day-start.md): the full Day-Start checklist, Steps 1 to 8. Read at day-start.
 - [references/day-end.md](references/day-end.md): modes and Steps 1 to 11, with the memory sweep, provenance scan and publishing. Read at day-end.
 - [references/mid-day-and-modes.md](references/mid-day-and-modes.md): mid-day sync, observer and concurrent-sessions modes, audio alerts. Read on a sync request or when a mode applies.
@@ -47,6 +48,7 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 - [references/draft-grounding.md](references/draft-grounding.md): grounding, formatting, numbering and temporal checks for drafts. Read before any draft.
 - [references/sync-watermarks.md](references/sync-watermarks.md): the watermark contract and the Google Chat target set. Read before any sync.
 - [references/decay-sweep.md](references/decay-sweep.md): deadline tags, identity and the sweep's coverage. Read at Day-End Step 4b.
+- [references/critical-deadlines.md](references/critical-deadlines.md): the Critical tag, its section in the plan, alerts, closure on evidence, and the plan folders each workspace declares. Read at day-start, at every sweep, and the day such a deadline is first seen.
 - [references/mailbox-manifest.md](references/mailbox-manifest.md): `.agents/mailboxes.yaml` and the mailbox states. Read before an email sweep.
 - [references/ownership-routing.md](references/ownership-routing.md): which workspace owns an item, and which side of a conflict moves. Read at the catch-up read.
 - [references/ritual-worker-contract.md](references/ritual-worker-contract.md): desk and workers, artifacts, plan storage separation. Read when a workers registry exists.
@@ -55,16 +57,4 @@ slips silently. Each workspace runs its own; a project supplement may add repos 
 
 ## Procedure
 
-`<rituals>` is this skill's folder; `<W>` the workspace (its folder under `~/workspaces/`). Scripts run with plain `python3`, standard library only.
-
-**Day-start** ([day-start.md](references/day-start.md)): `date`; `synthesis who`, `synthesis inbox`; `synthesis doctor`; `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --root <knowledge root>` (exit 0 healthy, 1 defects, 2 cannot tell); `python3 <rituals>/scripts/portfolio_review.py` (at most three stale projects as decisions); `ritual_state.py query summary --workspace <W>` and `query weekly-review`; context optimization; `repo_state.py --workspace-root ~/workspaces/<W> --fetch --ff`; channel sync under the watermark gate (Slack, Chat via `gchat_preflight.py`, email via `mailboxes.py`, documents, meeting transcripts); inbox hygiene; catch-up read with ownership routing; `pr_queue_scan.py --workspace <W>`; the day plan with decay tags; morning messages; `ritual_state.py record --direction day-start`.
-
-**Mid-day sync** ([mid-day-and-modes.md](references/mid-day-and-modes.md)): every declared surface, every target re-read, the same gate.
-
-**Day-end** ([day-end.md](references/day-end.md)): ask f, q or o; final capture under the gate; source sync; integration sweep; tomorrow's calendar review; `decay_sweep.py` and the send-or-release pass with lapses recorded; lessons keep or drop, then `stray_lessons.py`; the native-memory sweep; `python3 <synthesis-agent-guardrails>/scripts/provenance_scan.py --since <today> <files written today>`; context capture with stamped open items `(as of YYYY-MM-DD, review Nd)`; `ritual_state.py record --direction day-end`; the weekly review if owed; then `synthesis handoff` per project worked, the records doctor with `--project`, and `repo_state.py --discover ~/workspaces/<W>` for anything stranded.
-
-**Desk** (only with a workers registry): `python3 <rituals>/scripts/ritual_workers.py coverage` prints the coverage line that opens every brief.
-
-Every script's exact command line, what it prints and its exit codes: [scripts.md](references/scripts.md).
-
-The v5 install puts the `day-end` launcher (`day-end -q` opens a harness on the ritual) beside the runtime; `install.py --day-end` loads the weekday 16:55 nudge: one fixed banner unless every workspace expected to close today has closed.
+Each ritual's order and commands, with the scripts they run: [references/procedure.md](references/procedure.md). Read it every time, then the ritual's own checklist.
