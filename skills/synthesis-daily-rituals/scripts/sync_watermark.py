@@ -24,7 +24,8 @@ or receipt is required (2026-10-01: requiring them stopped every bookmark).
     sync_watermark.py begin   --workspace W [--label L]
     sync_watermark.py window  --workspace W --surface S [--target T]
     sync_watermark.py advance --workspace W --surface S --through TS [--target T ...] [--surface-level]
-                              [--coverage FILE]   (required for a local message store: imessage, whatsapp)
+                              [--coverage FILE]   (required for a local message store: imessage, whatsapp;
+                                                   and for linkedin, whose list is read only as far as it scrolled)
     sync_watermark.py defer   --workspace W --surface S [--target T] --reason TEXT
     sync_watermark.py status  --workspace W --surface S ... [--target S:T ...] [--targets-from FILE]
                               [--since run|TS] [--max-age 4h]
@@ -52,7 +53,9 @@ DEFERRAL_MAX_AGE = timedelta(days=1)  # an indefinite silence is how a gap becom
 # Stores read on this Mac hold only what their app last synced, so their watermark moves no further than the reader
 # read (its coverage.through). 2026-10-26: a quit WhatsApp's store held messages only to Sat 07:26, its watermark was
 # advanced by hand to the window's end, 20:45, and nothing in between was ever read.
-LOCAL_STORES = frozenset({"messages", "imessage", "whatsapp", "sms"})
+# LinkedIn's conversation list is the same kind of source: it loads as it scrolls, so a read covers only as far back
+# as it was scrolled, and `linkedin_messages.py` states that reach.
+LOCAL_STORES = frozenset({"messages", "imessage", "whatsapp", "sms", "linkedin"})
 _EPOCH = re.compile(r"\A([1-9]\d{9})(?:\.\d+)?\Z")  # ten digits, no leading zero
 _EPOCH_MS = re.compile(r"\A[1-9]\d{12}\Z")
 ACCEPTED = ("ISO-8601 such as 2026-09-14T09:15:00-04:00, YYYY-MM-DD for complete through the END of "
@@ -348,8 +351,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--through", required=True, help=moment_help)
             p.add_argument("--target", action="append", default=[])
             p.add_argument("--surface-level", action="store_true")
-            p.add_argument("--coverage", help="the local message reader's output (JSON); required for imessage and "
-                           "whatsapp, whose watermark stops at its coverage.through")
+            p.add_argument("--coverage", help="the reader's output (JSON); required for imessage, whatsapp and "
+                           "linkedin, whose watermark stops at its coverage.through")
         if name == "defer":
             p.add_argument("--reason", required=True)
         if name == "status":
