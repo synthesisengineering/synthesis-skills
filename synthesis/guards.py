@@ -1559,7 +1559,8 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
 # text check: docs/runtime-integration.md.
 
 COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync", "ditto"})  # these write only where the copy lands
-WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
+PACKERS = frozenset({"gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "zstd", "compress", "uncompress"})  # replace their files
+WRITERS = COPIERS | PACKERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
 IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
 INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
 # Programs that only read the files they are given. A path inside a protected folder may be handed to one of these,
@@ -1658,6 +1659,8 @@ def _landing(words: list[str]) -> list[str]:
     head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
     if head == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
+    if head in PACKERS:  # to its output, or only listed or tested, a file is read
+        return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest
     if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, else the first operand
         scripts = [words[i + 1] for i, w in enumerate(words[:-1]) if w in ("-e", "-f", "--expression", "--file")]
         files = [w for w in rest if w and w not in scripts]
@@ -1728,6 +1731,14 @@ def _memory(real: str) -> bool:
     root = os.path.realpath(paths.transcript_roots()["claude-code"])
     parts = os.path.relpath(real, root).split(os.sep) if paths.inside(real, root) else []
     return len(parts) >= 3 and parts[1] == "memory" and real.endswith(".md")
+
+
+def _material(real: str) -> bool:
+    """A tool result Claude Code saved beside a session's transcript (a fetched PDF, a screenshot, a long output):
+    material the agent is sent there to work on, so any program may be given it. Changing it in place stays
+    refused (30 days of transcripts: three of six new refusals were a converter reading one)."""
+    root = os.path.realpath(paths.transcript_roots()["claude-code"])
+    return paths.inside(real, root) and os.path.relpath(real, root).split(os.sep)[2:3] == ["tool-results"]
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
@@ -1826,7 +1837,7 @@ def _python_writes(source: str, names: list) -> bool | None:
         mode = next(iter(given), next((k.value for k in n.keywords if k.arg == "mode"), None))
         writes_mode = mode is not None and not (isinstance(mode, ast.Constant) and not re.search(r"[wax+]", str(mode.value)))
         targets = ([args[0]] if attr == "open" and base is None and args and writes_mode else
-                   [base] + args[:1] if base is not None and attr in ("rename", "replace") else  # both ends change
+                   [base] + args[:1] if base is not None and attr in ("rename", "replace") and len(args) == 1 else  # both ends change; str.replace takes two
                    [base] if base is not None and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
                                                             "symlink_to", "hardlink_to", "chmod", "truncate")
                                                    or (attr == "open" and writes_mode)) else [])
@@ -1878,15 +1889,15 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         source = _python_source(words, text) if head.startswith("python") else ""
-        # The code decides only when every mention of a protected path is inside it; one named elsewhere on the line
-        # could reach the script through a variable (2026-10-06), so that stays judged by the whole command. An
-        # assignment is not such a mention: its value is already put where the script uses it. But a script that
-        # reads its environment can be handed a path in one, so that is refused whatever the code shows.
-        rest = ASSIGNED.sub("", text.replace(source, ""))
-        judged = _python_writes(source, names) if source and not any(n in rest for n in names) else None
-        carried = re.search(r"\b(?:environ|getenv)\b", script) and any(n in m[2] for m in ASSIGNED.finditer(text) for n in names)
-        if names and SCRIPT.match(head) and re.search(SCRIPTED_WRITE, script) and (
-                carried or (any(n in script for n in names) and judged is not False)):
+        # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
+        # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
+        # runs in (2026-10-06: through a variable), and then any write it makes is refused. Another script is
+        # judged by the words it is given, or, read from stdin, by the whole command.
+        wrote = re.search(SCRIPTED_WRITE, source or script)
+        reaches = (within or any(n in w for w in words[1:] if w != source for n in names) or (
+            re.search(r"\b(?:environ|getenv)\b", script) and any(n in m[2] for m in ASSIGNED.finditer(text) for n in names)))
+        judged = (_python_writes(source, names) if any(n in source for n in names) else False) if source else None
+        if names and SCRIPT.match(head) and wrote and (reaches or (judged is not False and any(n in script for n in names))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
@@ -1901,8 +1912,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         return f"Refused: this command writes {owned}"
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw if t in links or not _memory(t)):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
-    given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or any(
-        paths.inside(path, os.path.realpath(r)) for r in raw)), "")  # HANDED: files from xargs, which cannot be read here
+    given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and any(
+        paths.inside(path, os.path.realpath(r)) for r in raw))), "")  # HANDED: files from xargs, which cannot be read here
     if given:
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "

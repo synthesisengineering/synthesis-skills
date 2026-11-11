@@ -814,8 +814,8 @@ def test_reading_a_protected_folder_with_a_program_the_guard_knows_is_not_refuse
 
 
 def test_a_refusal_for_an_unknown_program_says_how_to_read_the_file_instead(spots, tmp_path):
-    reason = guards.check("Bash", {"command": "gzip -k {claude}/-work/s.jsonl".format(**spots)}, {}, cwd=str(tmp_path))
-    assert "`gzip`" in reason and "cat" in reason and "pipe" in reason
+    reason = guards.check("Bash", {"command": "sqlite3 {claude}/-work/index.db .tables".format(**spots)}, {}, cwd=str(tmp_path))
+    assert "`sqlite3`" in reason and "cat" in reason and "pipe" in reason and "copy it out" in reason
 
 
 def test_the_approved_lines_file_can_be_staged_and_committed_but_not_rewritten(tmp_path):
