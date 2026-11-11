@@ -872,3 +872,22 @@ def test_ordinary_commands_from_ten_days_of_transcripts_are_not_refused(work, co
 ])
 def test_what_stays_refused_after_those_cases(work, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "for f in synthesis/guards.py synthesis/hook.py; do python3 -c 'import sys; print(len(open(sys.argv[1]).read()))' \"$f\"; done",
+    "python3 - synthesis/hook.py <<'EOF'\nimport sys\nprint(sys.argv[1])\nEOF",                 # handed to a program given inline
+    "F={work}/s.jsonl; python3 -c \"t = open('$F').read(); open('/tmp/out.txt', 'w').write(t)\"",  # reads there, writes elsewhere
+])
+def test_a_second_replay_left_these_and_they_pass(work, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "F={work}/s.jsonl; python3 -c \"open('$F', 'a').write('x')\"",                                # the same variable, written through
+    "F={work}/s.jsonl python3 -c \"import os; open(os.environ['F'], 'a').write('x')\"",            # a path that reaches the script at run time
+    "python3 -c \"import sys; open(sys.argv[1], 'a').write('x')\" {work}/s.jsonl",
+    "python3 -m synthesis.hook pre-tool < /tmp/payload.json",
+])
+def test_and_these_stay_refused(work, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) or ""), command
