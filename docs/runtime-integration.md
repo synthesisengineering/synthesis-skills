@@ -187,7 +187,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
      not the command spells a protected folder out: relative to the session's folder, to a
-     `cd`, through a variable, through a link the same command makes. A command is read once
+     `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends the
+     command, through a variable, through a link the same command makes (a relative link is
+     read from the folder it is made in). A command is read once
      for each value it gives a variable (`D=…`, `D+=…`, after `export`, `readonly`, `declare`
      or `env`, in a `for … in` list, inside a quoted script), with the environment's value
      for one it does not set, the default a use carries (`${D:-…}`) and an end trimmed by `%`
@@ -196,7 +198,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      of `cp`, `ln`, `install`, `rsync` and `ditto`, with `-t`; both ends of `mv`; `tee`,
      `touch`, `truncate`, `mkdir`, `rmdir`, `rm`, `unlink`, `shred`, `chmod`, `chown`,
      `chgrp`; `dd of=`; `sed` and `perl` editing in place; a compressor that replaces its
-     file; what `sort -o`, `uniq` or an awk program writes; what `find` deletes or runs a
+     file; what `sort -o`, `uniq` or an awk program writes (its redirects, and what a command
+     it is given as a plain string writes); what `find` deletes or runs a
      changing command on; the files `xargs` hands such a command); an interpreter script
      that writes there; and a path inside one of those folders handed to any program the
      guard does not know to only read it.
@@ -205,16 +208,18 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      syntax, and alone: another command's heredoc is not its text. A write is a file opened
      to write, a `pathlib` call that changes a file, a call into `os`, `shutil` or
      `subprocess`, a database opened, an archive unpacked, an in-place `fileinput`, however
-     the call was imported or renamed. A target the program spells out (a string, a name
+     the call was imported or renamed. A link a program makes is judged at both ends, and
+     none is made at a path that is the agent's own. A target the program spells out (a string, a name
      given one once, strings joined, a path built with `os.path.join` or `Path`) is judged
      where it leads. Any other target is judged by what it is built from: a protected path
      in a string, or a name one reached through an assignment, a loop, a `with`, a default,
-     a call to the program's own function, a list or an attribute. The words after the
+     a call to the program's own function, a list or an attribute; a helper called in one
+     place spells what that caller hands it. The words after the
      program are placed where it reads `sys.argv[n]`, and a variable of the environment
      where it reads it by name. Taken another way (a slice, an argument parser, the whole
      environment), one that names a protected path makes any write a refusal. What the
-     program reads from a file is content and names no path, and a copy out of a protected
-     folder changes only the copy. A program that runs code it builds (`exec`, `eval`, a
+     program reads from a file is content and names no path (the `.name` of a file it opened
+     is that file's path), and a copy out of a protected folder changes only the copy. A program that runs code it builds (`exec`, `eval`, a
      module it names at run time) cannot be read: it is taken to write, and is refused
      while it names a protected path, is handed one or runs inside one. A program with a
      syntax error, and a script for another interpreter, is judged by its text: the words
@@ -274,8 +279,9 @@ stay open, and no hook running as that same user can close them:
   of another server that the guard does not know as a file tool, or a program the agent
   writes and runs gets through. So does a write the Python reader does not follow: a
   library's own writer (a data frame saved, a figure saved), a call reached through
-  `getattr`, a method kept under another name, and a path the program reads out of a file
-  or builds from a value the reader cannot read.
+  `getattr`, a method kept under another name, a path the program reads out of a file or
+  builds from a value the reader cannot read, and a command an awk program builds in a
+  variable and only reads from.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one

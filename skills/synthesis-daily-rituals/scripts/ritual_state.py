@@ -144,7 +144,8 @@ def travel(workspace: str, day: str, given) -> str:
         bare = [e for e in events if e["lacks"]]
         sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
                  (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
-                 and all(date.fromisoformat(e["start"][:10]).isoformat() <= through for e in events))  # each event within its days
+                 and all(datetime.fromisoformat(str(e["start"]).replace("Z", "+00:00")).date().isoformat() <= through
+                         for e in events))  # each event within its days, its start a whole date and time
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
     if not sound:  # a result edited by hand, or cut short
@@ -170,6 +171,33 @@ NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your cal
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
 
+MARK = re.compile(r"^ {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )?")  # what stands before a title that is a list entry
+LABEL = re.compile(r"(?i)Option ([A-Z0-9]+)\b")
+
+
+def _items(text: str):
+    """Each choice a plan puts, as its own lines, the title first. A choice is a run of options with the lines
+    around it: under a heading of its own, or one entry of a list under a shared heading, where options whose
+    label starts again (A after B) begin the next choice (the third review: decisions listed under a second-level
+    heading were not read, and a heading inside a fenced example was read as a choice)."""
+    for section in re.split(r"(?m)^#{1,3} ", FENCE.sub("", text)):
+        lines, firsts, label = section.splitlines(), [], None
+        for at, line in enumerate(lines):
+            if OPTION.match(line):
+                this = LABEL.search(line)[1].upper()
+                firsts += [at] if label is None or this <= label else []
+                label = this
+        def titled(k):  # the line a choice starts at: the entry just above its options, else the section's own first line
+            floor = firsts[k - 1] + 1 if k else 0
+            above = next((j for j in range(firsts[k] - 1, floor - 1, -1) if lines[j].strip()
+                          and not (OPTION.match(lines[j]) or SAID.match(lines[j]) or CLOSED.match(lines[j]))), None)
+            entry = above is not None and (len(firsts) > 1 or re.match(r" {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )", lines[above]))
+            return above if entry else 0 if k == 0 else firsts[k]
+        starts = [titled(k) for k in range(len(firsts))]
+        for k, start in enumerate(starts):
+            yield "\n".join(lines[start:starts[k + 1] if k + 1 < len(starts) else len(lines)])
+
+
 def choices(workspace: str, day: str) -> str:
     """The line `record` prints about the choices the day's plan puts to the principal, or a refusal: an open item
     that offers options with no recommendation, or, when it would commit their time (an accept or decline, or a
@@ -179,9 +207,8 @@ def choices(workspace: str, day: str) -> str:
     open_items, bare = 0, []
     for plan in (folder / f"{day}.md" for folder, kind in roots if kind == "plans"):
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
-        for item in re.split(r"(?m)^#{3} ", text)[1:]:
-            item = FENCE.sub("", re.split(r"(?m)^#{1,2} ", item)[0])
-            title, options = item.splitlines()[0].strip(), OPTION.findall(item)
+        for item in _items(text):
+            title, options = MARK.sub("", item.splitlines()[0]).strip(), OPTION.findall(item)
             if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]")) or "✅" in title:
                 continue
             said = {m[1].lower(): m[2] for m in SAID.finditer(item) if not NOTHING.fullmatch(m[2])}
