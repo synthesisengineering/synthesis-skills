@@ -330,3 +330,14 @@ def test_a_read_it_cannot_make_sense_of_is_not_a_verdict(tmp_path):
     assert code in (1, 2) and "Traceback" not in str(said), said
     code, said = check(tmp_path, [dict(RESOLVED, start={"dateTime": 5})])
     assert code == 2 and "Traceback" not in str(said), said
+
+
+def test_a_named_place_is_known_by_its_label_with_a_room_or_a_note_after_it(tmp_path):
+    """His real week: "the gym (main floor), <his building>" was read as somewhere away."""
+    events = [event("Stand-up", "09:00", "09:30", "Office, 4th floor"), event("Review", "10:00", "11:00", "Office (east wing)"),
+              event("Movers", "12:00", "13:00", "Home - ring twice")]
+    code, report = check(tmp_path, events)
+    assert code == 0 and report["in_person"] == 0, report
+    for elsewhere in ("Home Depot, 40 W 23rd St, Example City", "Officers' Club, 9 Fort Rd, Example City"):
+        code, report = check(tmp_path, [event("Errand", "09:00", "10:00", elsewhere)])
+        assert code == 1 and report["in_person"] == 1, report
