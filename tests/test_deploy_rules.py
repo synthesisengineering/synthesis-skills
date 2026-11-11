@@ -291,3 +291,21 @@ def test_a_sheet_upload_is_free_only_by_the_plugin_script_to_a_listed_host(site,
     assert (reason is not None and "approve" in reason) == held, command
     if not held:  # without the principal's listing, the same upload waits for a code like any deploy
         assert "approve" in guards.check("Bash", {"command": command}, {}, cwd=str(elsewhere))
+
+
+# --- the knowledge base's Drive publisher (2026-11-11) ----------------------------------------------------
+# A script wrote 36 files into a shared Drive folder in its principal's name with no hold, the same afternoon a
+# read-only POST by curl was held: the guard reads a command's text and cannot see what a script sends. An edit
+# to a Drive file's contents waits for the principal's code, so the plugin's own Drive publisher is named.
+
+@pytest.mark.parametrize("command, held", [
+    ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb", True),
+    ("cd skills/synthesis-kb-distribution/scripts && python3 publish_drive.py --tree ../../../build/kb", True),
+    ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --tree build/kb --dry-run", False),
+    ("python3 skills/synthesis-kb-distribution/scripts/publish_drive.py --help", False),
+    ("cat skills/synthesis-kb-distribution/scripts/publish_drive.py | head -20", False),
+    ("python3 -m pytest -q skills/synthesis-kb-distribution/tests -k publish_drive", False),
+])
+def test_the_drive_publisher_waits_for_the_principals_code_and_its_dry_run_does_not(site, command, held):
+    reason = guards.check("Bash", {"command": command}, {}, cwd=str(site))
+    assert (reason is not None and "approve" in reason) == held, command
