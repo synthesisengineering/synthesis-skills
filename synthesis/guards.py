@@ -1284,6 +1284,7 @@ GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
     "add am apply bisect blame branch cat-file checkout cherry-pick clean clone commit config describe diff fetch "
     "for-each-ref gc grep init lfs log ls-files ls-remote merge mv notes pull rebase reflog remote reset restore revert "
     "rev-list rev-parse rm show stash status submodule switch symbolic-ref tag update-ref version worktree".split())
+REBASE_VALUES = frozenset({"--onto", "-s", "--strategy", "-X", "--strategy-option", "-x", "--exec"})  # their value is the next word
 UNREAD_BRANCH = ("its default branch (where the push goes could not be read from the command, so no branch can be ruled out; "
                  "a push that names its branch outright, run by itself from the checkout, can be read)")
 UNKNOWN_DEFAULT = ("what may be its default branch (this checkout does not record which branch that is: name it as \"branch\" in "
@@ -1452,7 +1453,9 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     for (words, directory), (chain, needed) in zip(commands, runs):
         sub, where = _git(words, directory)
         found, said = _push(words, where), set(words)
-        named = [w for w in words[words.index(sub, 1) + 1:] if not w.startswith("-")] if sub else []
+        rest = words[words.index(sub, 1) + 1:] if sub else []
+        named = [w for at, w in enumerate(rest)  # the words that name something; a rebase option's own value names no branch
+                 if not w.startswith("-") and not (sub == "rebase" and at and rest[at - 1] in REBASE_VALUES)]
         places |= {where} if sub else set()
         if found:
             # What earlier commands may have left current. A switch settles it only when this push stands in its
