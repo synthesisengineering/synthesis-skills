@@ -20,7 +20,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
         include:
-          - os: ubuntu-22.04
+          # On the same image as the other Linux jobs. It ran on ubuntu-22.04 until 2026-11-11, when apt there could
+          # resolve no mirror for over an hour and the job never reached a test.
+          - os: ubuntu-latest
             python: "3.9"
     steps:
       - uses: actions/checkout@v4
@@ -32,7 +34,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get install -y bubblewrap
-          # Ubuntu 24.04 blocks the unprivileged user namespace bwrap needs; 22.04 has no such switch.
+          # Ubuntu 24.04 blocks the unprivileged user namespace bwrap needs; an image without the switch needs nothing.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --die-with-parent --unshare-all --ro-bind / / true
       - name: Chrome's headless shell for the decision-packet browser tests
