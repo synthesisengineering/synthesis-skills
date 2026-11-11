@@ -818,12 +818,13 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
         return Check("fail", "pr gate", 'pr_gated needs {"owner/repo": {"since": "YYYY-MM-DD"}} for every repository, '
                      "and one has no since date")
 
-    def git(repo: Path, *args: str) -> str:
+    def git(repo: Path, *args: str):
+        """The command's output, or None when it failed: history that cannot be read is never an empty history."""
         try:
             done = run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError):
-            return ""
-        return done.stdout if done.returncode == 0 else ""
+            return None
+        return done.stdout if done.returncode == 0 else None
 
     problems, missing = [], []
     for name, rule in gated.items():
@@ -831,10 +832,13 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
         home = next((r for r in repos if (r / ".git" / "config").is_file()
                      and remote.search((r / ".git" / "config").read_text(encoding="utf-8", errors="replace"))), None)
         if home is None:
-            missing.append(name)
+            missing.append(f"no checkout of {name} under the workspace folders")
             continue
-        ref = git(home, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").strip() or "origin/main"
+        ref = (git(home, "symbolic-ref", "--short", "refs/remotes/origin/HEAD") or "").strip() or "origin/main"
         log = git(home, "log", "--first-parent", "--no-merges", f"--since={rule['since']}T00:00:00", "--format=%h%x09%s", ref)
+        if log is None:
+            missing.append(f"cannot read {ref} in the checkout of {name}")
+            continue
         direct = [commit for commit, _, subject in (line.partition("\t") for line in log.splitlines())
                   if not re.search(r"\(#\d+\)$", subject.strip())
                   and not any(str(ok).startswith(commit) or commit.startswith(str(ok)) for ok in rule.get("direct_ok") or [])]
@@ -845,8 +849,7 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
         return Check("fail", "pr gate", "; ".join(problems) + ". Revert each, or list it under that repository's "
                      "direct_ok with the principal's yes")
     if missing:
-        return Check("warn", "pr gate", f"no checkout of {', '.join(missing)} under the workspace folders, so its "
-                     "default branch cannot be read here")
+        return Check("warn", "pr gate", "; ".join(missing) + ": its default branch was not checked here")
     return Check("ok", "pr gate", f"{len(gated)} gated repositor{'y' if len(gated) == 1 else 'ies'}: every commit on a "
                  "default branch since its gate began came through a pull request")
 

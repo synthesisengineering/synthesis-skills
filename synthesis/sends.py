@@ -27,7 +27,8 @@ SAID = {"comment", "message", "issue", "page", "post", "reply", "review", "draft
         "reaction", "canvas", "envelope", "request", "ticket", "thread", "announcement", "story", "access", "permission"}
 PREPOSITIONS = {"to", "on", "in", "for", "from", "with", "by", "of", "into", "as", "at"}
 NOT_PEOPLE = ["mcp__ccd_*", "mcp__*__*session*"]  # agents talking to agents
-ALSO_SENDS = ["mcp__*execute_zapier_write_action*", "mcp__*manage_out_of_office*"]
+ALSO_SENDS = ["mcp__*execute_zapier_write_action*", "mcp__*manage_out_of_office*",
+              "mcp__*move[_-]event*"]  # moving a meeting notifies its guests; "move" is no saying verb (2026-11-11)
 # An edit to a document, sheet or deck others read is published in the principal's name: on 2026-10-27 an agent
 # added a line to an agenda seven colleagues read, with no code (the principal had approved it in chat).
 DOCUMENT_EDITS = ["mcp__*__modify_doc_text", "mcp__*__batch_update_doc", "mcp__*__insert_doc_elements",

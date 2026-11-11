@@ -158,7 +158,7 @@ def test_a_commit_and_a_push_in_one_command_is_judged_as_it_will_be_after_the_co
     "git -c remote.origin.push=HEAD:main push origin",
     "git -c alias.ship='push origin HEAD:main' ship",
     "git -c push.default=upstream push",
-    "git push --repo=origin main",
+    "git push --repo=origin",
     "git push origin :",
     "git push origin 'refs/heads/*:refs/heads/*'",
 ])
@@ -193,7 +193,7 @@ def test_a_remote_that_fetches_from_one_repository_and_pushes_to_a_gated_one_is_
 def test_a_destination_given_as_an_option_is_read(repo, tmp_path):
     commit(repo, "second")
     git(repo, "remote", "remove", "origin")
-    assert "pull request" in push(repo, f"git push --repo={tmp_path / 'acme' / 'skills.git'} main")
+    assert "pull request" in push(repo, f"git push --repo={tmp_path / 'acme' / 'skills.git'}")  # no repository named: this is it
 
 
 def test_pushing_every_branch_passes_when_the_default_branch_would_not_move(repo):

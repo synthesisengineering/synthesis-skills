@@ -276,13 +276,19 @@ def _starts(value):
         yield from _starts(item)
 
 
+GUESTS = re.compile(r"attend|guest|invite|particip", re.I)
+ADDRESS_KEYS = ("email", "address", "emailAddress", "mail")  # an entry's own address; a display name can look like one
+CALENDAR_WRITE = re.compile(r"(?:create|update|manage|move)[_-]events?$")
+
+
 def _invitees(value, inside: bool = False):
-    """Addresses anywhere under an attendee, guest, invitee or participant field, whatever shape each entry takes.
-    People a call removes are not invited, and a booked room is not a person."""
+    """Addresses of the people a calendar call invites: anywhere under an attendee, guest, invitee or participant
+    field, whatever shape each entry takes. People a call removes are not invited, and a booked room is not a person."""
     if isinstance(value, dict):
+        own = inside and any(k in value for k in ADDRESS_KEYS)
         for key, item in value.items():
-            if not re.search(r"remov", key, re.I):
-                yield from _invitees(item, inside or bool(re.search(r"attend|guest|invite|particip", key, re.I)))
+            if not re.search(r"remov", key, re.I) and (not own or key in ADDRESS_KEYS):
+                yield from _invitees(item, inside or bool(GUESTS.search(key)))
     elif isinstance(value, list):
         for item in value:
             yield from _invitees(item, inside)
@@ -290,48 +296,69 @@ def _invitees(value, inside: bool = False):
         yield from (a for a in ADDRESS.findall(value.lower()) if not a.endswith("@resource.calendar.google.com"))
 
 
-def _on_today(text: str, zones: list) -> bool:
-    """The date as written; the same moment on this machine's clock; or, for a time with no offset, that time
-    in a zone the call names. Any one of them being today counts."""
-    today, text = _today().isoformat(), text.strip()
+def _keys(value):
+    for key, item in value.items() if isinstance(value, dict) else ():
+        yield key
+        yield from _keys(item)
+    for item in value if isinstance(value, list) else ():
+        yield from _keys(item)
+
+
+def _falls(text: str, zones: list, unread: bool) -> str:
+    """"today" when the date as written is today, the same moment is today on this machine's clock, or (for a time
+    with no offset) it is today in a zone the call names; "unknown" when the call names a zone this machine cannot
+    read and the date as written is within a day of today, so it could be; "" otherwise."""
+    today, text = _today(), text.strip()
     try:
         moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
-    except ValueError:
-        return text.startswith(today)
-    moments = [moment] if moment.tzinfo else [moment.replace(tzinfo=zone) for zone in zones]
-    return text[:10] == today or any(m.astimezone().date().isoformat() == today for m in moments)
+        local = [m.astimezone().date() for m in ([moment] if moment.tzinfo else [moment.replace(tzinfo=z) for z in zones])]
+    except (ValueError, OverflowError, OSError):  # not a time, or one no calendar holds: only its written date can count
+        return "today" if text.startswith(today.isoformat()) else ""
+    if moment.date() == today or today in local:
+        return "today"
+    return "unknown" if unread and not moment.tzinfo and abs((moment.date() - today).days) <= 1 else ""
 
 
 def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     """How many other people a calendar write invites to a meeting that starts today; -1 when it moves an existing
-    event to today and names no guest (they are on the event, not in the call); 0 when the rule does not apply; a
-    refusal when its setting cannot be read. Config: {"same_day_meetings": {"exempt": ["<address or pattern>"]}}:
-    a meeting with an exempt attendee keeps the ordinary approval. No key, no rule."""
+    event to today and names no guest list (the guests are on the event, not in the call); 0 when the rule does
+    not apply; a refusal when its setting, or a time zone that decides the day, cannot be read. Config:
+    {"same_day_meetings": {"exempt": ["<address or pattern>"]}}: a meeting with an exempt guest keeps the ordinary
+    approval. Each event in a call that writes several is judged by itself. No key, no rule."""
     rule = config.get("same_day_meetings")
-    if rule is None or not re.search(r"(?:create|update|manage|move)[_-]events?$", tool):
+    if rule is None or not CALENDAR_WRITE.search(tool):
         return 0
     exempt = rule.get("exempt", []) if isinstance(rule, dict) else None
     if not isinstance(exempt, list) or not all(isinstance(e, str) for e in exempt):
         return ("same_day_meetings in the synthesis config needs an \"exempt\" list of addresses or patterns (it may be "
                 "empty); calendar writes are blocked until it is fixed")
-    zones = []
+    zones, unread = [], []
     for key, text in _strings(tool_input):
         if re.search(r"time_?zone", key, re.I):
             try:
                 from zoneinfo import ZoneInfo
                 zones.append(ZoneInfo(text))
-            except (KeyError, ValueError, OSError):  # not a zone name this machine knows
-                pass
-    if not any(_on_today(start, zones) for start in _starts(tool_input)):
-        return 0
+            except (KeyError, ValueError, OSError):  # a name this machine does not know, such as a Windows one
+                unread.append(text)
     routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
     own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
            for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
-    invited = set(_invitees(tool_input)) - own
-    if any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
-        return 0
     moves = bool(re.search(r"(?:update|move)[_-]events?$", tool)) or str(tool_input.get("action", "")).lower() == "update"
-    return len(invited) or (-1 if moves else 0)
+    events = [e for v in tool_input.values() if isinstance(v, list) for e in v if isinstance(e, dict) and any(_starts(e))]
+    count = 0
+    for event in events or [tool_input]:
+        when = {_falls(start, zones, bool(unread)) for start in _starts(event)}
+        invited = set(_invitees(event)) - own
+        listed = any(re.fullmatch(r"attendees|guests|invitees|participants", key, re.I) for key in _keys(event))
+        others = len(invited) or (-1 if moves and not listed else 0)
+        if not others or not when & {"today", "unknown"} or any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
+            continue
+        if "today" not in when:
+            return (f"This event's start names a time zone this machine cannot read ({unread[0]}), so it cannot tell "
+                    "whether the meeting falls on today. Give the start with a UTC offset, or name the zone the IANA way "
+                    "(for example Asia/Tokyo), and make the call again.")
+        count = others if others < 0 and not count else max(count, 0) + max(others, 0)
+    return count
 
 
 # --- account routing (R3.6) ---------------------------------------------------------------------
@@ -342,7 +369,7 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
 # addresses a mailbox or a Chat space. Slack sends belong to the send guard alone.
 
 ROUTED_TOOLS = frozenset({
-    "create_event", "update_event", "delete_event", "manage_event", "respond_to_event",
+    "create_event", "update_event", "delete_event", "manage_event", "move_event", "respond_to_event",
     "manage_focus_time", "manage_out_of_office", "send_gmail_message", "draft_gmail_message",
     "create_draft", "update_draft", "send_email", "reply", "forward", "trash_message", "trash_thread",
     "share_file", "set_drive_file_permissions", "manage_drive_access"})
@@ -1204,44 +1231,97 @@ def _repo_names(text: str) -> set:
     return {m.group(1).lower() for m in re.finditer(r"[/:]([\w.-]+/[\w.-]+?)(?:\.git)?(?=\s|$)", text)}
 
 
-def _gated_push(words: list[str], where: str, names: set, readable: bool) -> tuple[str, str] | None:
-    """(repository, branch) when this `git push` would move the default branch of a gated repository."""
-    rest, args, flags, i = words[words.index("push") + 1:], [], set(), 0
+ROUTING = ("remote.", "push.", "alias.", "branch.", "url.")  # config on the command line that can send a push elsewhere
+READS = frozenset({"status", "log", "diff", "show", "fetch", "rev-parse", "rev-list", "describe", "ls-remote"})
+HARMLESS = frozenset({"cd", "pushd", "popd", "echo", "printf", "pwd", "ls", "cat", "head", "tail", "grep", "true", ":", "test", "["})
+GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
+    "add am apply bisect blame branch cat-file checkout cherry-pick clean clone commit config describe diff fetch "
+    "for-each-ref gc grep init lfs log ls-files ls-remote merge mv notes pull rebase reflog remote reset restore revert "
+    "rev-list rev-parse rm show stash status submodule switch symbolic-ref tag update-ref version worktree".split())
+UNREAD_BRANCH = "its default branch (where the push goes could not be read from the command, so no branch can be ruled out)"
+
+
+def _push(words: list[str], where: str) -> tuple[list[str], bool] | None:
+    """(the words of the `git push` this command runs, whether where it goes can be read): a push named outright
+    or through an alias. Config given on the command line that can send it elsewhere makes it unreadable."""
+    i = 1
+    while i < len(words) and words[i].startswith("-"):
+        i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
+    if os.path.basename(words[0]) != "git" or i >= len(words):
+        return None
+    sub, given = words[i], [b.lower() for a, b in zip(words[1:i], words[2:i]) if a == "-c"]
+    plain = not any(key.startswith(ROUTING) for key in given) and not any(w.startswith("--config-env") for w in words[1:i])
+    if sub == "push":
+        return words, plain
+    if sub in GIT_COMMANDS:
+        return None
+    code, alias = _run_git(where, "config", "--get", f"alias.{sub}")
+    alias = alias.strip()
+    if any(key.startswith(f"alias.{sub.lower()}=") for key in given) or (code == 0 and alias.startswith("!") and "push" in alias):
+        return words[:i] + ["push"], False  # an alias defined on the line, or a shell alias that pushes
+    try:
+        expansion = shlex.split(alias) if code == 0 else []
+    except ValueError:
+        return words[:i] + ["push"], False
+    return (words[:i] + expansion + words[i + 1:], plain) if expansion[:1] == ["push"] else None
+
+
+def _gated_push(words: list[str], where: str, names: set, readable: bool, settled: bool) -> tuple[str, str] | None:
+    """(repository, branch) when this `git push` would move the default branch of a gated repository. `settled` is
+    False when an earlier command on the line may have changed the refs this reads (`git commit ... && git push`)."""
+    rest, args, flags, option, i = words[words.index("push") + 1:], [], set(), "", 0
     while i < len(rest):
+        name, _, value = rest[i].partition("=")
         if rest[i].startswith("-"):
-            flags.add(rest[i].split("=", 1)[0])
+            flags.add(name)
+            option = (value or "".join(rest[i + 1:i + 2])) if name == "--repo" else option
             i += 2 if rest[i] in PUSH_VALUE_OPTIONS else 1
         else:
             args.append(rest[i])
             i += 1
     if flags & {"-n", "--dry-run"}:
         return None
-    named = args[0] if args and not re.search(r"[$`]", args[0]) else ""  # a remote named through a variable is any remote
-    known, url = _run_git(where, "remote", "get-url", named) if named else (1, "")
+    destination, refspecs = (args[0] if args else option), args[1:]  # `--repo` stands in for a repository not named
+    named = "" if re.search(r"[$`]", destination) else destination  # a remote named through a variable is any remote
+    known, urls = _run_git(where, "remote", "get-url", "--push", "--all", named) if named else (1, "")
     remote = named if known == 0 else "origin"
-    # The remote it names, a URL given outright, or every remote when it names none.
-    found = _repo_names(url if known == 0 else named or _run_git(where, "remote", "-v")[1]) & names
+    # Every URL the remote pushes to, a URL given outright, or every remote when the line names none.
+    found = _repo_names(urls if known == 0 else named or _run_git(where, "remote", "-v")[1]) & names
     if not found:
         return None
     repo = sorted(found)[0]
-    if not readable or any(re.search(r"[$`]", spec) for spec in args[1:]):
-        return repo, "its default branch (the branch could not be read from the command, so none can be ruled out)"
+    if not readable or any(re.search(r"[$`]", spec) for spec in refspecs):
+        return repo, UNREAD_BRANCH
     code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
     defaults = {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
-    if flags & {"--all", "--mirror"}:
-        return repo, sorted(defaults)[0]
-    code, current = _run_git(where, "symbolic-ref", "--short", "HEAD")
-    for spec in args[1:] or ([] if "--tags" in flags else ["HEAD"]):  # `--tags` alone pushes tags and no branch
+    current = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip()
+
+    def moves(source: str, target: str) -> bool:
+        """Nothing ahead moves nothing, as after a merged pull request has been pulled."""
+        code, ahead = _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}") if settled else (1, "")
+        return code != 0 or ahead.strip() != "0"
+
+    if not refspecs and "--tags" not in flags:  # `--tags` alone pushes tags and no branch
+        # What a push with no refspec sends: the remote's own refspecs, every matching branch, or the branch's destination.
+        code, own = _run_git(where, "config", "--get-all", f"remote.{remote}.push")
+        there = _run_git(where, "rev-parse", "--abbrev-ref", "@{push}")[1].strip()
+        refspecs = (own.split() if code == 0 and own.strip() else [":"]
+                    if _run_git(where, "config", "--get", "push.default")[1].strip() == "matching"
+                    else [f"HEAD:{there.split('/', 1)[1]}"] if there.startswith(remote + "/") else ["HEAD"])
+    for spec in [":"] if flags & {"--all", "--mirror", "--branches"} else refspecs:
+        source, colon, target = spec.lstrip("+").partition(":")
         if spec.startswith("refs/tags/"):
             continue
-        source, _, target = spec.lstrip("+").partition(":")
+        if "*" in spec or (colon and not source and not target):  # every branch both sides have, the default among them
+            for name in sorted(defaults):
+                local = _run_git(where, "show-ref", "--verify", "--quiet", f"refs/heads/{name}")[0] == 0
+                if moves(name, name) if local else "--mirror" in flags:  # a mirror deletes what is not here
+                    return repo, name
+            continue
         target = (target or source).replace("refs/heads/", "", 1)
-        target = current.strip() if target == "HEAD" and code == 0 else target
-        if target in defaults:
-            deletes = not source or bool(flags & {"-d", "--delete"})
-            ahead = (1, "") if deletes else _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}")
-            if ahead[0] != 0 or ahead[1].strip() != "0":  # nothing ahead moves nothing, as after a merged pull request
-                return repo, target
+        target = current if target in ("HEAD", "@") and current else target
+        if target in defaults and (not source or flags & {"-d", "--delete"} or moves(source, target)):
+            return repo, target
     return None
 
 
@@ -1249,18 +1329,27 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     """Config: {"pr_gated": {"<owner>/<repo>": {"since": "YYYY-MM-DD", "direct_ok": ["<commit>"]}}}. A push that
     would move such a repository's default branch waits for the principal's code for that one push."""
     gated = config.get("pr_gated")
+    if gated is None:
+        return None
     commands, readable = _parse(command, cwd)
-    pushes = [(words, where) for words, d in commands for sub, where in [_git(words, d)] if sub == "push"]
-    if gated is None or not pushes:
+    pushes, settled = [], True
+    for words, directory in commands:
+        sub, where = _git(words, directory)
+        found = _push(words, where)
+        if found:
+            pushes.append((found[0], where, readable and found[1], settled))
+        # Anything but a read may change the refs a later push on this line is judged by.
+        settled = settled and (os.path.basename(words[0]) in HARMLESS or sub in READS)
+    if not pushes:
         return None
     if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
         return ("pr_gated in the synthesis config needs a map of \"owner/repo\" names to their settings; pushes are "
                 "blocked until it is fixed")
     names = {k.lower() for k in gated}
-    hits = [hit for words, where in pushes for hit in [_gated_push(words, where, names, readable)] if hit]
+    hits = [hit for words, where, clear, level in pushes for hit in [_gated_push(words, where, names, clear, level)] if hit]
     if not hits:
         return None
-    subject = {"command": command, "runs_in": sorted({where for _, where in pushes})}
+    subject = {"command": command, "runs_in": sorted({where for _, where, _, _ in pushes})}
     if approvals.consume("push-direct", subject, session):
         return None
     repo, branch = hits[0]
@@ -1727,8 +1816,8 @@ def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
     always waits: the organizer sees the answer (2026-10-23, an accepted RSVP with notifications off went unasked)."""
     notify = str(tool_input.get("send_updates", tool_input.get("sendUpdates", ""))).strip().lower()
     rsvp = str(tool_input.get("action", "")).strip().lower() == "rsvp" or bool(tool_input.get("response"))
-    return (bool(re.search(r"(?:create|update|manage)_event$", tool)) and notify == "none"
-            and not tool_input.get("attendees") and not rsvp)
+    return (bool(CALENDAR_WRITE.search(tool)) and notify == "none"
+            and not tool_input.get("attendees") and not any(_invitees(tool_input)) and not rsvp)  # guests at any depth
 
 
 def _sends(tool: str, tool_input: dict, config: dict) -> bool:

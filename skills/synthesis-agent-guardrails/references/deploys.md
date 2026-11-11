@@ -118,30 +118,42 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
 
 - **Refused:** a `git push` that would move a listed repository's default branch: `git push`
   on that branch, `git push origin main`, `HEAD:main`, `feature:main`, `refs/heads/main`,
-  `:main`, `--all`, `--mirror`, from the checkout or any linked worktree of it, however the
-  command reaches it (`git -C`, `cd ... &&`). The default branch is the remote's `HEAD`
+  `:main`, and `--all`, `--mirror`, `:` or a wildcard refspec when the default branch is
+  among what they send, from the checkout or any linked worktree of it, however the command
+  reaches it (`git -C`, `cd ... &&`, `sh -c`). The default branch is the remote's `HEAD`
   (`main` or `master` when the checkout has not recorded one). The refusal names the route:
   push a branch, open the pull request, let its checks pass, merge it, install from the
   merged branch.
+- **Read the way git reads it:** with no refspec on the line, the push goes where git would
+  send it (the remote's configured `push` refspecs, `push.default`, the branch's push
+  destination), so a branch that tracks the default branch is caught. A remote is judged by
+  every URL it pushes to (`pushurl`), `--repo` names the repository when the line names none,
+  and a git alias that expands to a push is followed.
 - **Passes:** a push to any other branch, tags (`--tags`, a tag name), `--dry-run`, a push to
   another repository's remote, and a push with nothing ahead of the remote branch (the state
-  after a merged pull request has been pulled).
+  after a merged pull request has been pulled). That last one holds only when nothing earlier
+  on the same line could have made a commit: `git commit -am x && git push` is judged as it
+  will be after the commit, and only reads (`cd`, `git status`, `git fetch`, `git log`, `ls`,
+  `echo`) may come before the push.
 - **One exact push with the principal's code:** the refusal carries a code; when the
   principal types it, the identical command runs once. There are no exceptions by path or
   kind of change: a list of exceptions is where a gate erodes. A forced push to a default
   branch is refused outright, as before, and no code admits it.
-- **A command the guard cannot read** (an unclosed quote), or one that names its branch or
-  remote through a variable or a substitution (`git push origin "$(...)"`), is refused when it
-  pushes from a gated checkout: no branch can be ruled out. Deleting the default branch is
+- **A command the guard cannot read** (an unclosed quote), one that names its branch or
+  remote through a variable or a substitution (`git push origin "$(...)"`), one that sets
+  routing config on the line (`git -c remote.origin.push=... push`, `-c alias.x=...`,
+  `-c push.default=...`, `--config-env`), and a shell alias that pushes are refused when
+  they push from a gated checkout: no branch can be ruled out. Deleting the default branch is
   refused whether or not anything is ahead.
-- **What it cannot see:** a push made by a script file or a git alias, a ref moved through the
-  host's API, and any push from a machine or tool without the hook. The doctor's check below
-  is what catches those.
+- **What it cannot see:** a push made inside a script file, a ref moved through the host's
+  API, and any push from a machine or tool without the hook. The doctor's check below is
+  what catches those.
 - **The doctor:** `pr gate` reads each listed repository's checkout under the workspace
   folders and lists commits on its default branch since `since` that are neither merge
   commits nor GitHub squash merges (subject ending `(#N)`) nor in `direct_ok`. A push made
   where the guard cannot see it (another machine, a script, a harness without the hook) shows
-  there at the next day-start. A repository with no checkout on this machine is a warning.
+  there at the next day-start. A repository with no checkout on this machine, or whose
+  history cannot be read, is a warning, never a pass.
 - Where the host offers it, turn on branch protection as well: it covers every machine and
   every tool, and the guard and the doctor then never fire.
 

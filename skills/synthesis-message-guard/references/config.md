@@ -88,10 +88,19 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   <code> for this same-day meeting.` The ordinary invitation approval does not cover it, and
   neither does a send window.
 - **What it leaves alone:** a meeting on any other day; a write with no attendees (a hold,
-  a focus block); a meeting whose attendees include an `exempt` address or pattern
-  (`chief@example.test`, `*@board.example.test`), which keeps the ordinary approval because
-  that person's timing binds; and the principal's own addresses, taken from
-  `account_routing` (`default_account`, each workspace's `account` and `aliases`).
+  a focus block), including an update that sets an empty guest list; a meeting whose guests
+  include an `exempt` address or pattern (`chief@example.test`, `*@board.example.test`),
+  which keeps the ordinary approval because that person's timing binds; and the principal's
+  own addresses, taken from `account_routing` (`default_account`, each workspace's `account`
+  and `aliases`). A guest is exempt by their address field, never by a display name, and in
+  a call that writes several events each event is judged by itself.
+- **A zone it cannot read is sent back, not guessed:** when a start has no offset, names a
+  time zone this machine does not know (a Windows name such as `Tokyo Standard Time`) and
+  its written date is within a day of today, the call is refused with a request for a UTC
+  offset or an IANA zone name; nothing is approved or held.
+- **Also since 2.6.0:** a tool named `move_event` is a send like the other calendar writes
+  (moving a meeting notifies its guests), and a calendar write with guests anywhere in the
+  call, not only at its top level, is never the quiet kind that needs no approval.
 - **What it cannot see:** an update that sets no start (adding a guest to a meeting already
   on today), an RSVP, a connector that takes its start as prose ("15 March at 2 PM"), and a
   meeting placed through a browser or computer use. The
