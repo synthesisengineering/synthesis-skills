@@ -20,9 +20,9 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
         include:
-          # On the same image as the other Linux jobs. It ran on ubuntu-22.04 until 2026-11-11, when apt there could
-          # resolve no mirror for over an hour and the job never reached a test.
-          - os: ubuntu-latest
+          # The newest image setup-python has Python 3.9 for (ubuntu-latest, 26.04, has none). It ran on ubuntu-22.04
+          # until 2026-11-11, when apt there could resolve no mirror for over an hour and the job never reached a test.
+          - os: ubuntu-24.04
             python: "3.9"
     steps:
       - uses: actions/checkout@v4
