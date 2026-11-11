@@ -510,6 +510,10 @@ def _row_problems(r: dict, i: int, opts: list) -> list:
             problems.append(f"rows[{i}] ({rid}) link scheme is not permitted")
     if "tags" in r and not (isinstance(r["tags"], list) and all(isinstance(t, str) for t in r["tags"])):
         problems.append(f"rows[{i}] ({rid}) tags must be a list of strings")
+    elif any(t.strip().lower() == "critical" for t in r.get("tags") or []):
+        problems.append(f"rows[{i}] ({rid}) is tagged critical - a deadline whose miss cannot be undone is never one row "
+                        "among many: take it out of the packet and lead the day plan with it (synthesis-daily-rituals, "
+                        "the Critical section), where it closes only on evidence or the principal's own words")
     return problems
 
 
