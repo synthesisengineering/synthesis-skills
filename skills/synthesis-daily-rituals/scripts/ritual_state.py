@@ -124,7 +124,7 @@ def critical_deadlines(workspace: str, outcome: str) -> str:
 
 def travel(workspace: str, day: str, given) -> str:
     """The line `record` prints about travel, or a refusal: no result, one for other days, an event without its travel."""
-    wanted = ((rituals.config().get("workspaces") or {}).get(workspace) or {}).get("travel_check")
+    wanted = rituals.settings(rituals.config(), workspace).get("travel_check")
     if not wanted:
         return ""
     days = int(wanted.get("days", 7)) if isinstance(wanted, dict) else 7

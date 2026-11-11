@@ -6,6 +6,18 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v3.9.0 — Travel for in-person events
+
+v3.9.0 (2026-11-11) makes travel a mechanical part of the rituals. A workspace turns the check on
+with `travel_check` in the ritual config. Day-start, mid-day and day-end then run
+`travel_check.py` (in synthesis-chief-of-staff) over that day and the six after, put each flagged
+event in the plan under `## Travel: needs your attention`, and read the live source again for the
+travel blocks of today and tomorrow. `ritual_state.py record` takes the result as `--travel` and
+refuses without it, with one for other days, or while it holds an event that lacks its travel. A
+leaving or returning time in a plan or draft comes from a travel block. An evening event 28 miles
+from a principal's home had been carried through three plans and a day-start with no way to get
+there, and two estimated times had gone out.
+
 ## v3.8.0 — LinkedIn messages; deadlines that live in drafts
 
 v3.8.0 (2026-11-11) adds LinkedIn messages as a declared surface: `linkedin_messages.py` reads the

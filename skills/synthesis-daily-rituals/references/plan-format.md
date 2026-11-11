@@ -99,6 +99,10 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 
 Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
 
+**Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
+- One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.
+- **A leaving or returning time anywhere in a plan or a draft is taken from a travel block and says which block.** "You leave about 6" and "back around 11" are estimates; on 2026-11-11 both went out with no source, and the real train reached home at 11:48.
+
 **Critical deadlines section** (`## Critical deadlines: needs your attention`):
 - The first H2 of the plan from seven days before the earliest critical deadline until every one is closed, and the first thing in every brief. One H3 per deadline, in date order.
 - Each H3 carries `**Critical:**`, `**Decays:**`, `**Decay ID:**` and `**Calendar:**` directly under it. A critical deadline never appears in the Priority Tasks buckets, in Carried Items or as a decision-packet row.

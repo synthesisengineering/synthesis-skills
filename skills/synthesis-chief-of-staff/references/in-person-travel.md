@@ -111,6 +111,15 @@ with `leave`, `home` and `paid_by` taken from the blocks.
 It plans nothing and reads no timetable: steps 2 to 4 are the agent's, from a live source. It cannot tell
 that a route is wrong, only that one is written down.
 
+## In the daily rituals
+
+A workspace turns the check on in the ritual config (`<synthesis home>/rituals/config.json`), under the
+workspace or under `defaults`: `"travel_check": true`, or `{"days": N}` to look N days ahead where 7 is not
+right. Each ritual of that workspace then runs the check on a fresh calendar read and puts what it flags in
+the plan, and `ritual_state.py record` takes the result as `--travel <the --json output>`. It refuses with no
+result, with one whose first day is not the day being recorded, with one that covers too few days, and while
+the result holds an event that lacks its travel (synthesis-daily-rituals, binding rule 14).
+
 ## The day before and the morning of
 
 Read the live source again for each block of that day and the next: the same train still runs, at the same
