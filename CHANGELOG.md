@@ -29,8 +29,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
     block.
   - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
-    one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy
-    of the travel rules: it asks the chief of staff's check and the principal's policy.
+    one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy of
+    the travel rules: it asks the chief of staff's check and the principal's policy, which it reads only for a
+    call that names a place. That call is refused when the policy cannot be read.
   - `preferences.example.json` gains a `travel_policy`; the step is `references/in-person-travel.md`.
 - **The trip is seen at the ask, and every choice is put with a view** (chief of staff 2.3.0, daily rituals 3.9.0,
   decision packet 2.4.0). Shown the repaired plan, the same principal said the trip was a burden he had not seen
@@ -39,13 +40,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   trip, no time home.
   - The trip is worked out before an invitation is brought, not after the yes. With the trip's minutes,
     `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
-    and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment).
+    and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment, or
+    before the hour `travel_policy.morning_starts` gives the morning if that is earlier: a morning that begins at
+    a fixed hour with nothing on the calendar cost nothing the check could see).
   - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
     carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
-  - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item
-    that offers options has no `Recommendation:` line, or, when it is an accept-or-decline or carries a
-    `Commits:` line, no `Consequences:` line. **This applies to every workspace that declares plan folders,**
-    from its next ritual record.
+  - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
+    offers options (under a heading of its own, or as an entry of a list under a shared heading) has no
+    `Recommendation:` line, or, when it is an accept-or-decline or carries a `Commits:` line, no `Consequences:`
+    line. **This applies to every workspace that declares plan folders,** from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
 - **The write guard reads a path however a command names it, passes a protected path only to a program it knows
@@ -54,31 +57,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   refused in a project's memory folder. Three rounds of review by a second model, and this project's own probes
   and replays while answering them, showed the guard was narrower than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
-    protected folder out: relative to the session's folder, to a `cd` or to where `env -C` sends the command,
-    through a variable, through a link the same command makes. A command is read once for each value it gives a
-    variable (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a
-    quoted script), with the environment's value for one it does not set, the default a use carries and an end
-    trimmed by `%` or `#`. A path is compared the way a Mac's file system finds it, whatever its case. The
-    destructive-command guard and the claim check read the same readings, so a recursive delete, a force push or
-    a write into another session's claim through a variable or a loop is seen.
+    protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
+    to where `env -C` or `sudo -D` sends the command, through a variable, through a link the same command makes (a
+    relative one read from the folder it is made in). A command is read once for each value it gives a variable
+    (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a quoted
+    script), with the environment's value for one it does not set, the default a use carries and an end trimmed by
+    `%` or `#`. A path is compared the way a Mac's file system finds it, whatever its case. The
+    destructive-command guard and the claim check read the same readings, so a recursive delete, a force push or a
+    write into another session's claim through a variable or a loop is seen.
   - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
-    `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so
-    the rule is turned round: a path inside a protected folder may be handed to a program the guard knows only
-    reads it, to an interpreter or a shell (judged by the script it is given), and to `git` and the `synthesis`
-    CLI. Any other program is refused and told to read the file with `cat` and pipe it in, or to copy it out.
-    What a file utility changes is read from its own words: a copy's destination, both ends of a move, what
-    `find` deletes or runs a changing command on, what an awk program writes, the files `xargs` hands on.
+    `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so the
+    rule is turned round: a path inside a protected folder may be handed to a program the guard knows only reads
+    it, to an interpreter or a shell (judged by the script it is given), and to `git` and the `synthesis` CLI. Any
+    other program is refused and told to read the file with `cat` and pipe it in, or to copy it out. What a file
+    utility changes is read from its own words: a copy's destination, both ends of a move, what `find` deletes or
+    runs a changing command on, what an awk program writes or what a command it is given as a plain string writes,
+    the files `xargs` hands on.
   - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
-    alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line
-    was read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call
-    into `os`, `shutil` or `subprocess`, a database opened, an archive unpacked, however the call was imported or
-    renamed. A target the program spells out is judged where it leads; any other by what it is built from, a
-    name followed through assignments, loops, `with`, defaults, the program's own functions, lists and
-    attributes. The words after the program are placed where it reads `sys.argv[n]`, and a variable of the
-    environment where it reads it by name; taken another way, one that names a protected path makes any write a
-    refusal. What the program reads from a file is content and names no path. A copy out of a protected folder
-    changes only the copy. A program that runs code it builds (`exec`, `eval`, a module named at run time) is
-    taken to write. A script on stdin for another interpreter is judged by its own heredoc.
+    alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
+    read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
+    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked, however the call was imported or
+    renamed. A link a program makes is judged at both ends. A target the program spells out is judged where it
+    leads; any other by what it is built from, a name followed through assignments, loops, `with`, defaults, the
+    program's own functions, lists and attributes. The words after the program are placed where it reads
+    `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names
+    a protected path makes any write a refusal. What the program reads from a file is content and names no path
+    (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
+    A program that runs code it builds (`exec`, `eval`, a module named at run time) is taken to write. A script on
+    stdin for another interpreter is judged by its own heredoc.
   - **Standing in a protected folder.** A program can write where it stands without naming a file. Inside the
     state folder, the board or the sessions archive only a command the guard can read runs: a reader, a file
     utility, a script given inline, `git` only reading. Inside a harness's transcript folder, where sessions work
