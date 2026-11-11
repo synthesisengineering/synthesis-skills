@@ -136,6 +136,17 @@ def test_only_the_principal_opens_a_window(tmp_path, principal):
     assert guards.check("Bash", {"command": "synthesis sends close"}, CONFIG, cwd=str(tmp_path)) is None
 
 
+def test_a_program_is_judged_by_its_own_text_not_by_a_file_the_same_line_writes(tmp_path):
+    """Thirty days of recorded commands, 2026-11-11: three were refused because another heredoc of the line, a test
+    file being written, named the window code. The program that ran did not."""
+    file = "cat > tests/test_x.py <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['all'])\nEOF\n"
+    assert guards.check("Bash", {"command": file + "python3 - <<'EOF'\nprint(1)\nEOF"}, CONFIG, cwd=str(tmp_path)) is None
+    runs = file + "python3 - <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['all'])\nEOF"
+    assert "send-window code" in guards.check("Bash", {"command": runs}, CONFIG, cwd=str(tmp_path))
+    piped = "echo \"from synthesis import sends; sends.open_window(1, ['all'])\" | python3 -"  # its text comes down a pipe
+    assert "send-window code" in guards.check("Bash", {"command": piped}, CONFIG, cwd=str(tmp_path))
+
+
 def _cli(*args):
     return subprocess.run([sys.executable, "-m", "synthesis.cli", *args], capture_output=True, text=True, cwd=ROOT)
 
