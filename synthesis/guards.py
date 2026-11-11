@@ -29,6 +29,7 @@ DEFAULT_DEPLOY_PATTERNS = [
     r"\bwrangler\s+(pages\s+)?deploy\b", r"\bvercel\b.*--prod\b", r"\bnetlify\s+deploy\b.*--prod\b",
     r"\bfirebase\s+deploy\b", r"\bnpm\s+publish\b", r"\btwine\s+upload\b", r"\bgh\s+release\s+create\b",
     r"\S*publish_sheet\.py\b",  # the action sheet's upload; free only to a host in sheet_hosts (_sheet_host)
+    r"\S*publish_drive\.py\b",  # the knowledge base's Drive copy: a script's own upload is not in the command's text
 ]
 SHEET_SCRIPT = os.path.join("skills", "synthesis-action-sheet", "scripts", "publish_sheet.py")
 SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
