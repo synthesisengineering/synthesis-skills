@@ -345,7 +345,7 @@ def test_a_named_place_is_known_by_its_label_with_a_room_or_a_note_after_it(tmp_
 
 # --- sleep is a cost (2026-11-11) --------------------------------------------------------------------------
 # The principal, shown the plan for that evening: the trip was a burden he had not seen when he said yes, and a
-# short night before an early morning costs him his health. The policy can say how many hours he keeps between
+# short night before an early morning is a cost of its own. The policy can say how many hours he keeps between
 # getting home and the next morning's first commitment; a shorter night is his to decide, like a late return.
 
 def test_a_short_night_before_an_early_commitment_goes_to_the_principal(tmp_path):

@@ -33,8 +33,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   - `preferences.example.json` gains a `travel_policy`; the step is `references/in-person-travel.md`.
 - **The trip is seen at the ask, and every choice is put with a view** (chief of staff 2.3.0, daily rituals 3.9.0,
   decision packet 2.4.0). Shown the repaired plan, the same principal said the trip was a burden he had not seen
-  when he agreed, that a short night costs him his health, and that a chief of staff would have warned him. The
-  invitation had been put to him as a bare accept or decline: no recommendation, no trip, no time home.
+  when he agreed, that a late return before an early morning is a cost of its own, and that a chief of staff
+  would have warned him. The invitation had been put to him as a bare accept or decline: no recommendation, no
+  trip, no time home.
   - The trip is worked out before an invitation is brought, not after the yes. With the trip's minutes,
     `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
     and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment).

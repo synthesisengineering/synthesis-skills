@@ -17,7 +17,8 @@ expensed.
 ## At the ask, before the yes
 
 The same principal, shown the repaired plan, said the trip was a burden he had not seen when he agreed: he had
-taken the event to be in his own city, and a short night costs him his health. The decision he had been given
+taken the event to be in his own city, and a late return before an early morning is a cost of its own. The
+decision he had been given
 named the town and showed no trip. Travel worked out after the yes comes too late to change the answer.
 
 So the trip is worked out before an invitation or an ask that would put the principal somewhere is brought to
