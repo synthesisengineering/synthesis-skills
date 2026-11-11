@@ -289,7 +289,8 @@ def test_a_number_in_a_venues_name_or_a_time_is_not_an_address(tmp_path, locatio
 
 
 @pytest.mark.parametrize("location", ["149 Main St", "Hauptstraße 5, 10115 Berlin", "Kungsgatan 44, 111 35 Stockholm", "Calle Mayor, 5, Madrid",
-                                      "12, MG Road, Bengaluru 560001", "405 5th Ave, New York", "東京都千代田区丸の内1丁目9-1"])
+                                      "12, MG Road, Bengaluru 560001", "405 5th Ave, New York", "東京都千代田区丸の内1丁目9-1",
+                                      "The Grand Theatre\n149 Main St\nHarbor Town", "Doors at 149 Main St"])
 def test_an_address_is_read_as_one_however_its_country_writes_it(tmp_path, location):
     code, report = check(tmp_path, [dict(RESOLVED, location=location), GOING, RETURNING])
     assert code == 0, report

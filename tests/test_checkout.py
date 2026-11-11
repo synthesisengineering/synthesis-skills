@@ -107,3 +107,16 @@ def test_index_set_commits_its_own_change_and_keeps_another_sessions_edit(tmp_pa
     board.claim("S9", [str(index)], project="beta")
     with pytest.raises(ValueError, match="claimed by S9"):
         checkout.index_set("beta", "status", "paused", "S1")
+
+
+def test_a_claimed_path_named_another_way_is_protected_too(repo):
+    """2026-11-11: the claim check read a write's target as written, so a variable the command assigned, a copy
+    into the file's folder or `dd` wrote through another session's claim."""
+    notes = str(repo / "notes.md")
+    board.claim("S1", [notes], project="alpha")
+    other = {"session_id": "S2"}
+    for command in (f"F={notes}; echo x > \"$F\"", "F=notes.md; sed -i '' 's/a/b/' \"$F\"", f"cp /tmp/elsewhere/notes.md {repo}/",
+                    f"cp -t {repo} /tmp/elsewhere/notes.md", f"dd if=/tmp/x of={notes}", f"perl -pi -e 's/a/b/' {notes}"):
+        assert "claimed by session S1" in (guards.check("Bash", {"command": command}, {}, str(repo), other) or ""), command
+    for command in (f"F={notes}; cat \"$F\"", f"cp {notes} /tmp/elsewhere/", f"dd if={notes} of=/tmp/copy"):
+        assert guards.check("Bash", {"command": command}, {}, str(repo), other) is None, command
