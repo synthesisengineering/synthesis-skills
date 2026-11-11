@@ -127,15 +127,15 @@ echoes can stand in for the principal's words.
 on the same line, separated by spaces, commas or "and": `approve <code> <code> <code>`. Each
 code grants its own call. The list ends at the first thing that is not a code and at the end
 of the line, so a code mentioned later in the sentence, or pasted on the next line,
-approves nothing. A negation right before the word ("don't approve ...") approves nothing
-either. When several calls wait, ask for them together: show each exact text and recipient,
+approves nothing. A negation before the word ("don't approve ...", "why not approve ...")
+approves nothing either. When several calls wait, ask for them together: show each exact text and recipient,
 then the codes in one line.
 
 **Nothing typed is passed over without a word.** The next turn names every code that did not
 take: `Not granted: no pending request has the code ...` for one that had expired, been used
 or been mistyped, and `Not granted: the pending code ... is in the message, but not in a
 list right after the word` for one that is waiting and was not approved (a new line, another
-word or a negation came between). Tell the principal which ones did not take. Until 2.6.1
+word, a negation or a tagged block came between). Tell the principal which ones did not take. Until 2.6.1
 only a code that directly followed the word was read; on 2026-11-11 nine codes typed after
 one "approve" granted one call and passed over eight without a word.
 

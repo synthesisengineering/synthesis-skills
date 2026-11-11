@@ -36,12 +36,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   was not approved is now named back, as a code that matched nothing already was. Each code still grants one exact
   pending call, and the harness's transcript must show the principal typing it. `approve code <code>`, the form
   every hook message is rewritten to, still approves nothing.
-- **Three things a review of that change found in the approval reader, fixed with it** (core). A negation right
-  before the word ("don't approve ...") used to grant; it grants nothing now. A block a harness wraps into a prompt
-  is taken out whole when it sits inside another block of the same name or crosses one (the old pattern stopped at
-  the first closing tag and left the rest to be read), and what stands where a block was now ends a list. Taking
-  blocks out is one pass over the tags: the old pattern took seconds on a prompt of 300,000 characters. In a
-  transcript record of several blocks, a list no longer runs on into the next block.
+- **What two reviews of that change found in the approval reader, fixed with it** (core). A negation before the
+  word ("don't approve ...") used to grant; it grants nothing now, across spaces, a line break or a removed block.
+  What a harness wraps into a prompt was taken out up to the first closing tag of its name, so a wrapper holding
+  its own closing tag (a quoted report, a comment) left the rest to be read; now everything from a name's first
+  opening tag to its last closing tag goes, and what stands where it was ends a list. Taking it out is one pass
+  over the tags: the old pattern took seconds on a prompt of 300,000 characters. In a transcript record of several
+  blocks, each block is read by itself and one marked as not the principal's is left out.
 
 ## [5.5.0] - 2026-11-11
 

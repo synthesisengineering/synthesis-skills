@@ -142,8 +142,9 @@ def user_prompt_submit(payload):
               "been mistyped. Run the call again for a new code." for c in typed if c not in waiting]
     # So is a pending code that is in the message and was not approved (2026-11-11: eight of nine were passed over)
     notes += [f"Not granted: the pending code {c} is in the message, but not in a list right after the word approve on "
-              "its line (a new line, another word or a negation came between). If the principal meant it, ask them "
-              "to type the word and the code together." for c in approvals.mentioned(prompt) if c in waiting and c not in typed]
+              "its line in the principal's own words (a new line, another word, a negation or a tagged block came "
+              "between). If the principal meant it, ask them to type the word and the code together."
+              for c in approvals.mentioned(prompt) if c in waiting and c not in typed]
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)

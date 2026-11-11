@@ -376,7 +376,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # build_packet.py 4: a row tagged critical is refused. sync_watermark.py 13, after two workers advancing one
 # store at once lost 27 of 632 advances (reported 2026-11-11): held 12 (the store read, changed and written back
 # under a lock), its imports 2, spacing 2, and one line fewer in each of begin, advance and defer.
-# 5.6.0 adds 274 to the plugin, 39 of them in the core (Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 216,
+# 5.6.0 adds 284 to the plugin, 49 of them in the core (Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 216,
 # LinkedIn's two inboxes as a ritual surface, after a principal found messages there that no ritual had shown him:
 # main 40 (the two commands, the day a plan counts from, the inbox's name, an empty inbox, a conversation open
 # during the read named), parse 40 (each conversation from the list's text, a sign-in or security page above the
@@ -391,18 +391,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # the stores that move only with their reader's coverage 2, the docstring's line 1. decay_sweep.py 16, after nine
 # drafts and a ledger carried deadlines the sweep never read: collect 12 (a declared folder of other records, each
 # file read as of the date in its name or of today, a plan outranking a record), main 2 (the flag and its roots),
-# the record-name pattern 1, declared 1. In the core, approvals.py 34 and hook.py 5, after a principal typed nine
-# codes after one "approve" and eight were passed over without a word (2026-11-11), and after a second model's
-# review of the list: typed_text 17 (the blocks a harness wraps into a prompt, nested or crossing, taken out in one
-# pass over the tags where the old pattern took seconds on a long prompt, each gap marked so no list runs across
-# it), the patterns 7 (one code's shape, a space inside a line, the list after the word with its comment, a
-# negation before the word, a tag, the mark for a gap, less the old block pattern), mentioned 5 (every code-shaped
-# word the principal typed), typed_codes 4 (each list's codes, none after a negation), the module docstring 1; in
-# hook.py, user_prompt_submit 5 (a pending code that is in the message and was not approved is said aloud).
+# the record-name pattern 1, declared 1. In the core, approvals.py 43 and hook.py 6, after a principal typed nine
+# codes after one "approve" and eight were passed over without a word (2026-11-11), and after a second model's two
+# reviews of the reader: typed_text 19 (what a harness wraps into a prompt, from a name's first opening tag to its
+# last closing tag, taken out in one pass over the tags where the old pattern took seconds on a long prompt, a mark
+# where each block was so no list runs across it), the patterns 10 (the list after the word, with a negation before
+# it as part of the match, and its comment 5; one code's shape, a space inside a line, the negation, the mark 1
+# each; a tag and its comment 2; less the old block pattern), mentioned 6 (every code-shaped word in the message),
+# _prompt 4 (each block of a record read by itself, one marked as not the principal's left out), typed_codes 3,
+# the module docstring 1; in hook.py, user_prompt_submit 6 (a pending code that is in the message and was not
+# approved is said aloud).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8703
-PLUGIN_BUDGET = 28531
+CORE_BUDGET = 8713
+PLUGIN_BUDGET = 28541
 
 
 def _lines(files):
