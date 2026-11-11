@@ -80,6 +80,14 @@ def test_the_principals_own_addresses_are_not_other_people():
     assert "approval" in reason and not same_day(reason)
 
 
+def test_the_principals_other_addresses_can_be_listed_with_the_rule():
+    """Account routing names only the accounts it routes; a personal address invited to a work event is still the principal."""
+    config = {**CONFIG, "same_day_meetings": {"exempt": [], "own": ["me@home.example", "*@family.example"]}}
+    reason = guards.check(CREATE, event(attendees=["me@home.example", "Partner <p@family.example>"]), config, cwd="/tmp")
+    assert "approval" in reason and not same_day(reason)
+    assert same_day(guards.check(CREATE, event(attendees=["me@home.example", "a@example.com"]), config, cwd="/tmp"))
+
+
 def test_a_hold_with_no_attendees_is_untouched():
     hold = {"summary": "Hold", "start_time": f"{TODAY}T15:00:00", "end_time": f"{TODAY}T16:00:00", "send_updates": "none",
             "user_google_email": "me@example.com"}
@@ -237,7 +245,7 @@ def test_a_send_window_never_covers_a_meeting_today():
     assert same_day(guards.check(CREATE, event(**signed), config, cwd="/tmp"))
 
 
-@pytest.mark.parametrize("broken", ["yes", {"exempt": "chief@example.com"}, {"exempt": [1]}])
+@pytest.mark.parametrize("broken", ["yes", {"exempt": "chief@example.com"}, {"exempt": [1]}, {"exempt": [], "own": "me@x.example"}])
 def test_a_setting_that_cannot_be_read_blocks_calendar_writes_and_nothing_else(broken):
     config = {**CONFIG, "same_day_meetings": broken}
     reason = guards.check(CREATE, event(TOMORROW), config, cwd="/tmp")

@@ -24,7 +24,7 @@ no `~/.synthesis`.
 | `send_window_signatures` | Regexes; inside an open send window, a send goes without a per-message code only if one matches its text. List the signatures of the lanes the principal lets a window cover. Empty means a window covers nothing. |
 | `forbidden_phrases[].channels` | Optional on a register rule: the channels (`jira`, `bitbucket`, `slack`, `docs`...) where it holds; elsewhere the rule is skipped. For a line that fits some channels only: on 2026-10-27 a line saying the principal had not reviewed the details, which fits scheduling, went out on Jira answers. |
 | `messaging_apps` | Extra bundle ids of chat apps where computer use counts as messaging (Return sends, shift with Return writes a line), beside the built-in list below. A value that is not a list of strings stops every computer-use action. |
-| `same_day_meetings` | `{"exempt": ["<address or pattern>"]}`. With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
+| `same_day_meetings` | `{"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}` (`own` optional: the principal's addresses beyond those `account_routing` names). With this key present, a calendar create, update or move that starts today and invites anyone but the principal waits for an approval of its own that names it same-day. A meeting with an exempt attendee keeps the ordinary approval. Absent means no rule; a value that is not this shape blocks calendar writes. See below. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
 None of these keys can grant a send: approval is always the principal's, and overrides
@@ -92,7 +92,7 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   include an `exempt` address or pattern (`chief@example.test`, `*@board.example.test`),
   which keeps the ordinary approval because that person's timing binds; and the principal's
   own addresses, taken from `account_routing` (`default_account`, each workspace's `account`
-  and `aliases`). A guest is exempt by their address field, never by a display name, and in
+  and `aliases`) and from the rule's `own` list. A guest is exempt by their address field, never by a display name, and in
   a call that writes several events each event is judged by itself.
 - **A zone it cannot read is sent back, not guessed:** when a start has no offset, names a
   time zone this machine does not know (a Windows name such as `Tokyo Standard Time`) and

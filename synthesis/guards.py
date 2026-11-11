@@ -323,15 +323,16 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     """How many other people a calendar write invites to a meeting that starts today; -1 when it moves an existing
     event to today and names no guest list (the guests are on the event, not in the call); 0 when the rule does
     not apply; a refusal when its setting, or a time zone that decides the day, cannot be read. Config:
-    {"same_day_meetings": {"exempt": ["<address or pattern>"]}}: a meeting with an exempt guest keeps the ordinary
-    approval. Each event in a call that writes several is judged by itself. No key, no rule."""
+    {"same_day_meetings": {"exempt": ["<address or pattern>"], "own": ["<address or pattern>"]}}: a meeting with an
+    exempt guest keeps the ordinary approval, and `own` lists the principal's addresses beyond those account
+    routing names. Each event in a call that writes several is judged by itself. No key, no rule."""
     rule = config.get("same_day_meetings")
     if rule is None or not CALENDAR_WRITE.search(tool):
         return 0
-    exempt = rule.get("exempt", []) if isinstance(rule, dict) else None
-    if not isinstance(exempt, list) or not all(isinstance(e, str) for e in exempt):
-        return ("same_day_meetings in the synthesis config needs an \"exempt\" list of addresses or patterns (it may be "
-                "empty); calendar writes are blocked until it is fixed")
+    exempt, mine = (rule.get("exempt", []), rule.get("own", [])) if isinstance(rule, dict) else (None, None)
+    if not all(isinstance(names, list) and all(isinstance(e, str) for e in names) for names in (exempt, mine)):
+        return ("same_day_meetings in the synthesis config needs \"exempt\" and \"own\" as lists of addresses or patterns "
+                "(either may be empty or absent); calendar writes are blocked until it is fixed")
     zones, unread = [], []
     for key, text in _strings(tool_input):
         if re.search(r"time_?zone", key, re.I):
@@ -348,7 +349,7 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     count = 0
     for event in events or [tool_input]:
         when = {_falls(start, zones, bool(unread)) for start in _starts(event)}
-        invited = set(_invitees(event)) - own
+        invited = {a for a in set(_invitees(event)) - own if not any(fnmatch.fnmatchcase(a, m.lower()) for m in mine)}
         listed = any(re.fullmatch(r"attendees|guests|invitees|participants", key, re.I) for key in _keys(event))
         others = len(invited) or (-1 if moves and not listed else 0)
         if not others or not when & {"today", "unknown"} or any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):

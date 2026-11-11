@@ -35,7 +35,8 @@
   },
   "messaging_apps": [],
   "same_day_meetings": {
-    "exempt": ["chief@example.test", "*@board.example.test"]
+    "exempt": ["chief@example.test", "*@board.example.test"],
+    "own": ["me@personal.example.test"]
   },
   "preferred_names": [
     {
