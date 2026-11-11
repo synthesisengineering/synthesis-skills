@@ -1335,3 +1335,82 @@ def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command,
 def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protected_path(spots, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
     assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
+
+
+# --- the third review round (2026-11-11), each as a test that failed first -------------------------------------
+# Round 2's findings held. This round found: a link made by a program at a path that is the agent's own, and
+# written through; an option of Python's that takes a value; a relative link read against the wrong folder; `+=`
+# on a variable the environment holds; an awk division read as a pattern, and a command awk runs to read from;
+# the name of a file opened to read; a folder changed by keyword; and three ways back into a protected folder.
+
+@pytest.mark.parametrize("program", [
+    "from pathlib import Path\np = Path('{work}/memory/note.md')\np.symlink_to('{work}/s.jsonl')\np.write_text('forged')",
+    "from pathlib import Path\nPath('{work}/memory/note.md').hardlink_to('{work}/s.jsonl')",
+    "from pathlib import Path\nPath('{work}/abc/workflows/scripts/x.js').symlink_to('{work}/s.jsonl')",
+    "import os\nos.symlink('{work}/s.jsonl', '{work}/memory/note.md')",
+    "import os\nos.link('{work}/s.jsonl', '{work}/memory/note.md')",
+    "from pathlib import Path\nPath('/tmp/pad/l').symlink_to('{work}/s.jsonl')\nopen('/tmp/pad/l', 'w').write('x')",   # a link elsewhere, written through
+    "f = open('{work}/s.jsonl')\nopen(f.name, 'w').write('x')",                                    # the name of a file opened to read
+    "with open('{work}/s.jsonl') as f:\n    open(f.name, 'w').write('x')",
+    "open(open('{work}/s.jsonl').name, 'w').write('x')",
+    "import os\nos.chdir(path='{state}')\nopen('a', 'w').write('x')",                             # a folder changed by keyword
+])
+def test_the_third_reviews_python_programs_are_refused(saved, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**saved) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("command", [
+    "python3 --check-hash-based-pycs always synthesis/hook.py pre-tool-use",                       # an option that takes a value
+    "awk 'BEGIN {{ print 2 / 1 > \"{work}/s.jsonl\"; x = 2 / 1 }}'",                              # a division is not a pattern
+    "awk 'BEGIN {{ \"echo x > {work}/s.jsonl\" | getline x }}'",                                  # a command run to read from
+    "cd {state}; pushd /tmp; popd; tar xf /tmp/a.tar",                                             # back into the folder
+    "cd {state}; cd /tmp; cd -; tar xf /tmp/a.tar",
+    "env --chdir={state} tar xf /tmp/a.tar",
+    "sudo -D {state} tar xf /tmp/a.tar",
+    "sudo --chdir {state} tar xf /tmp/a.tar",
+    "uniq {work}/s.jsonl {work}/s2.jsonl",                                                         # uniq's second operand is its output
+    "uniq -f 1 /tmp/pad/in.txt {work}/s.jsonl",
+])
+def test_the_third_reviews_commands_are_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+def test_a_relative_link_is_read_from_the_folder_it_is_made_in(spots, tmp_path):
+    home = f"{spots['parent']}/{spots['first']}"
+    made = f"mkdir -p {home}/links; ln -s ../{spots['rest']} {home}/links/l; echo x > {home}/links/l/a"
+    assert REFUSED in (guards.check("Bash", {"command": made}, {}, cwd=str(tmp_path)) or "")
+    elsewhere = "ln -s ../notes /tmp/pad/links/l; echo x > /tmp/pad/links/l/a"                     # a relative link that leads nowhere protected
+    assert guards.check("Bash", {"command": elsewhere}, {}, cwd=str(tmp_path)) is None
+
+
+def test_a_value_added_to_a_variable_the_environment_holds_is_added_to_that_value(spots, monkeypatch, tmp_path):
+    monkeypatch.setenv("R3_BASE", f"{spots['parent']}/{spots['first']}")
+    command = f"R3_BASE+=/{spots['rest']}; echo x > $R3_BASE/a"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")
+    monkeypatch.setenv("R3_BASE", "/tmp/pad")
+    assert guards.check("Bash", {"command": "R3_BASE+=/out; echo x > $R3_BASE/a"}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "awk '{{ print ($1 > 2) }}' {work}/s.jsonl",                                                   # a comparison in parentheses
+    "awk '{{ if ($1 / 2 > 3) n++ }} END {{ print n / NR }}' {work}/s.jsonl",
+    "uniq -f 1 {work}/s.jsonl",                                                                    # an option's value is not an operand
+    "uniq -s 3 {work}/s.jsonl",
+    "uniq -c -w 8 {work}/s.jsonl | sort -rn | head -3",
+    "cd {work} && python3 - <<'EOF'\ndef save(p, text):\n    open(p, 'w').write(text)\n\nsave('/tmp/pad' + '/copy.txt', open('s.jsonl').read())\nEOF",
+    "cd /tmp; pushd /tmp/pad; popd; tar xf /tmp/a.tar",                                            # a folder stack that never enters one
+    "python3 - <<'EOF'\nf = open('/tmp/pad/in.txt')\nopen(f.name + '.bak', 'w').write(f.read())\nEOF",
+])
+def test_the_third_reviews_everyday_commands_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("program", [
+    "def save(p, text):\n    open(p, 'w').write(text)\n\nsave('copy.txt', open('s.jsonl').read())",         # a bare name, from inside
+    "def save(p, text):\n    open(p, 'w').write(text)\n\nsave('/tmp/pad/a.txt', 'x')\nsave('b.txt', 'y')",   # two callers, one of them bare
+    "def save(p, text):\n    open(p, 'w').write(text)\n\nlist(map(save, ['/tmp/pad/a.txt'], ['x']))",       # handed on, not called
+])
+def test_a_helper_given_its_path_is_judged_by_every_path_it_is_given(saved, program, tmp_path):
+    command = "cd {work} && python3 - <<'EOF'\n".format(**saved) + program + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program

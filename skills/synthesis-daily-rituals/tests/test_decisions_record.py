@@ -131,3 +131,33 @@ def test_a_recommendation_in_an_indented_code_block_is_an_example(tmp_path, reco
     shown = INVITATION + COSTS + "\nFor example:\n\n    Recommendation: **B**, decline\n"
     code, _, refusal = record(workspace(tmp_path, shown))
     assert code != 0 and "recommendation" in refusal
+
+
+# --- the third review (2026-11-11) -------------------------------------------------------------------------
+# Choices were read only under a third-level heading, so a plan that listed its decisions under a second-level
+# heading recorded with none read; and a heading inside a fenced example was read as a real choice.
+
+LISTED = ("1. Dinner with the board on Thursday\n   **Option A** - Accept\n   **Option B** - Decline\n"
+          "2. The offsite in March\n   **Option A** - Go\n   **Option B** - Send a deputy\n")
+
+
+def test_choices_listed_under_a_second_level_heading_are_read_each_by_itself(tmp_path, record):
+    code, _, refusal = record(workspace(tmp_path, LISTED))
+    assert code != 0 and "Dinner with the board" in refusal and "The offsite in March" in refusal
+    viewed = LISTED.replace("2. The offsite", COSTS + VIEW + "2. The offsite")                    # the first has its view, the second none
+    code, _, refusal = record(workspace(tmp_path, viewed))
+    assert code != 0 and "The offsite in March" in refusal and "Dinner with the board" not in refusal
+    code, out, refusal = record(workspace(tmp_path, viewed + COSTS + VIEW))
+    assert code == 0 and "choices: 2 open" in out, refusal
+
+
+def test_a_heading_inside_a_fenced_example_is_not_a_choice(tmp_path, record):
+    example = "### How a choice is written\n\n```markdown\n### 9. An example\n**Option A:** Accept\n**Option B:** Decline\n```\n"
+    code, out, refusal = record(workspace(tmp_path, example))
+    assert code == 0 and "choices: 0 open" in out, refusal
+
+
+def test_a_listed_choice_that_is_struck_or_ticked_is_closed(tmp_path, record):
+    closed = "1. ~~Dinner with the board~~\n   **Option A** - Accept\n   **Option B** - Decline\n- [x] The offsite\n  **Option A** - Go\n  **Option B** - Stay\n"
+    code, out, refusal = record(workspace(tmp_path, closed))
+    assert code == 0 and "choices: 0 open" in out, refusal

@@ -152,3 +152,12 @@ def test_an_event_outside_the_days_the_result_claims_is_not_that_results(tmp_pat
     assert code != 0 and history(state) == ""
     under_way = dict(WHOLE, start="2026-11-10T23:00:00-05:00")  # one that began the evening before still belongs
     assert record(state, "--travel", result(tmp_path, under_way))[0] == 0
+
+
+@pytest.mark.parametrize("start", ["2026-11-11nonsense", "2026-11-11T25:00:00", "2026-11-11 19:00 or so", "11 November 2026"])
+def test_an_event_whose_start_is_no_date_and_time_is_not_the_checks_own_output(tmp_path, record, start):
+    """The third review: only the first ten characters of a start were read, so `2026-11-11nonsense` was recorded."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "travel_check": True})
+    code, _, refusal = record(state, "--travel", result(tmp_path, dict(WHOLE, start=start)))
+    assert code != 0 and "travel" in refusal and history(state) == ""

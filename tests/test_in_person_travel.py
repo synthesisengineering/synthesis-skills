@@ -68,6 +68,15 @@ def test_a_travel_block_is_not_itself_asked_for_travel(config):
     assert guards.check(CREATE, block, config) is None
 
 
+@pytest.mark.parametrize("summary, block", [("Travelogue discussion", False), ("Travelers' dinner", False), ("Travel", True),
+                                             ("Travel: to the Grand Theatre", True), ("TRAVEL to the theatre", True)])
+def test_only_a_title_that_starts_with_the_block_word_itself_is_a_travel_block(config, summary, block):
+    """The third review: any title starting with the letters of the block word was let through, so an ordinary
+    event called "Travelogue discussion" needed no travel line."""
+    reason = guards.check(CREATE, event(location="Central Station, 1 Station Sq", summary=summary), config)
+    assert refused(reason) != block
+
+
 def test_an_update_is_judged_only_when_it_gives_the_event_a_place(config):
     assert refused(guards.check(MANAGE, {"action": "update", "event_id": "abc", "location": PLACE, "send_updates": "none"}, config))
     assert guards.check(MANAGE, {"action": "update", "event_id": "abc", "summary": "Book launch (moved)", "send_updates": "none"}, config) is None
