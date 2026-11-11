@@ -196,3 +196,8 @@ def test_an_all_day_event_with_a_place_is_asked_for_its_line(tmp_path):
     assert code == 1 and any("travel line" in item for item in lacks(report, "Trade fair"))
     code, report = check(tmp_path, [dict(fair, description="Travel: blocks before and after")])
     assert code == 1 and any("holds no clock times" in item for item in lacks(report, "Trade fair"))
+
+
+def test_an_entry_with_no_start_is_passed_over_and_the_rest_are_judged(tmp_path):
+    code, report = check(tmp_path, [{"summary": "A note with no time", "location": "Somewhere 5"}, LAUNCH])
+    assert code == 1 and report["in_person"] == 1 and report["events"][0]["summary"].startswith("Book launch")
