@@ -2143,7 +2143,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
-        script = text if _program(words)[0] == "stdin" else own  # read from stdin, it is the heredoc's text
+        script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])

@@ -199,28 +199,51 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      file; what `sort -o`, `uniq` or an awk program writes; what `find` deletes or runs a
      changing command on; the files `xargs` hands such a command); an interpreter script
      that writes there; and a path inside one of those folders handed to any program the
-     guard does not know to only read it. A Python program given inline or on stdin is
-     judged by its own code: a protected path named in another command of the line does not
-     count against it, and one that reaches it through its arguments or its environment
-     does.
+     guard does not know to only read it.
+   - **How it reads a Python program.** A program given to Python inline (`-c`, in each
+     form Python takes it: `-Bc PROGRAM`, `-cPROGRAM`) or on its stdin is read by its
+     syntax, and alone: another command's heredoc is not its text. A write is a file opened
+     to write, a `pathlib` call that changes a file, a call into `os`, `shutil` or
+     `subprocess`, a database opened, an archive unpacked, an in-place `fileinput`, however
+     the call was imported or renamed. A target the program spells out (a string, a name
+     given one once, strings joined, a path built with `os.path.join` or `Path`) is judged
+     where it leads. Any other target is judged by what it is built from: a protected path
+     in a string, or a name one reached through an assignment, a loop, a `with`, a default,
+     a call to the program's own function, a list or an attribute. The words after the
+     program are placed where it reads `sys.argv[n]`, and a variable of the environment
+     where it reads it by name. Taken another way (a slice, an argument parser, the whole
+     environment), one that names a protected path makes any write a refusal. What the
+     program reads from a file is content and names no path, and a copy out of a protected
+     folder changes only the copy. A program that cannot be read (a syntax error, `exec`,
+     `eval`), and a script for another interpreter, is judged by its text: the words it is
+     given, or the heredoc it reads on its stdin (the whole command when its text comes
+     down a pipe).
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
      read runs: a reader, a file utility (judged by its targets), or a script given inline.
      Anything else is refused and told to run from another folder. Inside a harness's
      transcript folder, where sessions work on saved tool results, other programs run; a
-     script given inline is read there too, and each of its writes must name a plain path
-     somewhere else. (Applied to transcript folders as well, the rule refused 17 real
-     commands in a 30-day replay, all needless.) A list of the programs
-     that write never ends, so the guard keeps the other list: the usual readers (`cat`,
-     `head`, `tail`, `grep`, `ls`, `jq`, `wc`, `diff` and their like) may be given such a
-     path, an interpreter or a shell is judged by the script it is given, and `git` and the
-     `synthesis` CLI pass, since they keep the approved lines and the board. Anything else
-     is refused and told to read the file with `cat` and pipe it in, or to copy it out.
+     Python program given inline is read there too, and each of its writes must be led by a
+     plain folder somewhere else (`/tmp/out/` followed by a name it computes passes; a bare
+     name, or a folder that holds a protected one, does not). The same holds after the
+     program changes into a protected folder. (Applied to transcript folders as well, the
+     standing rule refused 17 real commands in a 30-day replay, all needless.) A list of
+     the programs that write never ends, so the guard keeps the other list: the usual
+     readers (`cat`, `head`, `tail`, `grep`, `ls`, `jq`, `wc`, `diff` and their like) may
+     be given such a path, an interpreter or a shell is judged by the script it is given,
+     and `git` and the `synthesis` CLI pass, since they keep the approved lines and the
+     board. Anything else is refused and told to read the file with `cat` and pipe it in,
+     or to copy it out.
    - **A project's memory notes** (`*.md` under `<project>/memory/` in Claude Code's
      projects folder, under either spelling of the folder) are the agent's to write, move,
-     remove and hand to any program, by shell or by file tool, and the folder may be made.
-     A link made there is refused, and a path is judged where it really leads.
+     remove and hand to any program, by shell, by file tool or by an inline program, and
+     the folder may be made. A link made there is refused, and a path is judged where it
+     really leads.
+   - **A session's saved workflow scripts** (`*.js` directly in
+     `<session>/workflows/scripts/`) are the agent's in the same way: the harness saves
+     them there and has the agent edit them. The workflow's own record beside that folder
+     stays protected.
    - **A saved tool result** (`<session>/tool-results/` beside a transcript: a fetched PDF,
      a screenshot, a long output) is material the agent is sent there to work on, so any
      program may be given it. Changing or removing it where it lies stays refused.
@@ -247,7 +270,10 @@ stay open, and no hook running as that same user can close them:
   path, which the guard cannot read, a program that writes where it stands inside a
   transcript folder without naming a file (an archive unpacked there), a file-writing tool
   of another server that the guard does not know as a file tool, or a program the agent
-  writes and runs gets through.
+  writes and runs gets through. So does a write the Python reader does not follow: a
+  library's own writer (a data frame saved, a figure saved), a call reached through
+  `getattr`, a method kept under another name, and a path the program reads out of a file
+  or builds from a value the reader cannot read.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
