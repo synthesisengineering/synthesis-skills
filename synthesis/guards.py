@@ -1610,6 +1610,18 @@ def _put(use, values: dict) -> str:
     return value if cut is None else value[:cut] if op[0] == "%" else value[cut:]
 
 
+def _ran(words: list[str]) -> str:
+    """The file of code an interpreter or a shell runs: its first operand that is one, unless the program is given
+    inline (-c, an interpreter's -e, or `-` for its input), when the words after it are only handed to that program
+    (2026-11-11: a line counter handed hook.py was refused as running the hook)."""
+    for word in words[1:]:
+        if word in ("-c", "-") or (word == "-e" and os.path.basename(words[0]) not in SHELLS):
+            return ""
+        if not word.startswith("-") and (HOOK_RUN.search(word) or SCRIPT_FILE.search(word)):
+            return word
+    return ""
+
+
 def _resolved(text: str) -> list[str]:
     """Every reading of a command with its variables put where they are used: a value the command gives one (`D=…`,
     after `export`, `readonly` or `env`, in a `for … in` list, inside a quoted script), else the environment's
@@ -1851,8 +1863,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     for words, where in _parse(text, cwd)[0]:
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
-        ran = next((w for w in words[1:] if not w.startswith("-") and (HOOK_RUN.search(w) or SCRIPT_FILE.search(w))), "")
-        if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(ran)):  # run, not handed to a script
+        if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
         asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
         links += [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head == "ln" else []
@@ -1866,10 +1877,14 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
         source = _python_source(words, text) if head.startswith("python") else ""
         # The code decides only when every mention of a protected path is inside it; one named elsewhere on the line
-        # could reach the script through a variable (2026-10-06), so that stays judged by the whole command.
-        judged = _python_writes(source, names) if source and not any(n in text.replace(source, "") for n in names) else None
-        if names and SCRIPT.match(head) and any(n in script for n in names) and re.search(SCRIPTED_WRITE, script) \
-                and judged is not False:
+        # could reach the script through a variable (2026-10-06), so that stays judged by the whole command. An
+        # assignment is not such a mention: its value is already put where the script uses it. But a script that
+        # reads its environment can be handed a path in one, so that is refused whatever the code shows.
+        rest = ASSIGNED.sub("", text.replace(source, ""))
+        judged = _python_writes(source, names) if source and not any(n in rest for n in names) else None
+        carried = re.search(r"\b(?:environ|getenv)\b", script) and any(n in m[2] for m in ASSIGNED.finditer(text) for n in names)
+        if names and SCRIPT.match(head) and re.search(SCRIPTED_WRITE, script) and (
+                carried or (any(n in script for n in names) and judged is not False)):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
@@ -1889,7 +1904,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     if given:
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
-               "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in)")
+               "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
+               "copy it out with cp and work on the copy)")
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else None
 
