@@ -1573,7 +1573,7 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
                      "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
                      "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
 AWKS = ("awk", "gawk", "mawk", "nawk")
-AWK_OUT = re.compile(r'\bprintf?\b[^;}\n|]*?>>?\s*(?:"([^"]+)"|\S)|\bsystem\s*\(|\|\s*"')  # a redirect, or a command it runs
+AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
 OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
 TAKES_VALUE = frozenset({"-W", "-X", "-r", "--require", "--loader", "--import", "-I", "-o", "+o", "-O", "+O"})  # then the next word
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
@@ -1675,8 +1675,8 @@ def _landing(words: list[str]) -> list[str]:
                 for m in [re.fullmatch(r"-o(.*)|--output(?:=(.*))?", w)] if m]
     if head == "uniq":  # its second operand is its output
         return rest[1:2]
-    if head in AWKS:  # a reader, unless its program redirects or runs a command (`$`: where, no check can read), or it edits in place
-        return [m[1] or "$" for w in words[1:] for m in AWK_OUT.finditer(w)] + (rest if "inplace" in words else [])
+    if head in AWKS:  # a reader, unless its program redirects or runs a command, or it edits in place
+        return [out for w in rest for out in _awk_writes(w)] + (rest if "inplace" in words else [])  # `-F|` is an option, not a pipe
     if head in PACKERS:  # to its output, or only listed or tested, a file is read
         return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest
     if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, or attached to one, else the first operand
@@ -1696,6 +1696,19 @@ def _landing(words: list[str]) -> list[str]:
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
     lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
     return rest + lands if head == "mv" or "--remove-source-files" in words else lands  # these also take their sources away
+
+
+def _awk_writes(program: str) -> list[str]:
+    """What an awk program writes: the file after `print … >`, and `$` (a place no check can read) where that is not
+    a plain string or the program runs a command (a pipe, `system`). Strings and patterns are read whole, so a
+    printed bar and a comparison are neither."""
+    outs, printing, redirect = [], False, False
+    for token in AWK_TOKEN.findall(program):
+        outs += [token[1:-1] if token[:1] == '"' else "$"] if redirect else []
+        redirect = printing and token in (">", ">>")
+        printing = token in ("print", "printf") or (printing and token not in (";", "{", "}", "\n"))
+        outs += ["$"] if token == "|" or token.startswith("system") else []
+    return outs
 
 
 def _named(words: list[str]) -> list[str]:
@@ -1830,10 +1843,15 @@ def _python_source(words: list, text: str) -> str:
     return ""
 
 
-def _python_writes(source: str, names: list) -> bool | None:
+OS_WRITES = re.compile(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
+                       r"|write|system|popen|exec\w*|spawn\w*")
+
+
+def _python_writes(source: str, names: list, stands: list | tuple = ()) -> bool | None:
     """Whether a Python program writes into a protected path: True, False, or None when it cannot be told
     (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so a
-    project record that cites a transcript path is not a write into transcripts (2026-10-14)."""
+    project record that cites a transcript path is not a write into transcripts (2026-10-14). `stands` holds the
+    protected folders when the program runs inside one: there every write must name a plain path somewhere else."""
     import ast
     try:
         tree = ast.parse(source) if source.strip() else None
@@ -1867,9 +1885,11 @@ def _python_writes(source: str, names: list) -> bool | None:
                    [base] if base is not None and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
                                                             "symlink_to", "hardlink_to", "chmod", "truncate")
                                                    or (attr == "open" and writes_mode)) else [])
-        if isinstance(base, ast.Name) and base.id in ("os", "shutil", "subprocess"):
+        if isinstance(base, ast.Name) and base.id in ("os", "shutil", "subprocess") and (base.id != "os" or OS_WRITES.fullmatch(attr)):
             targets = list(args)  # every argument of a filesystem or process call can name what it changes
-        if any(named(t) for t in targets):
+        if any(named(t) for t in targets) or (stands and not all(  # standing in a protected folder, a write is safe only
+                isinstance(t, ast.Constant) and isinstance(t.value, str) and os.path.isabs(os.path.expanduser(t.value))  # to a
+                and not any(paths.inside(os.path.realpath(os.path.expanduser(t.value)), r) for r in stands) for t in targets)):  # plain path elsewhere
             return True
     return False
 
@@ -1923,11 +1943,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # runs in (2026-10-06: through a variable), and then any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
         wrote = re.search(SCRIPTED_WRITE, source or script)
-        reaches = (within or any(n in w for w in words[1:] if w != source for n in names) or (
+        reaches = any(n in w for w in words[1:] if w != source for n in names) or (
             re.search(r"\b(?:environ|getenv)\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-                v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))))
-        judged = (_python_writes(source, names) if any(n in source for n in names) else False) if source else None
-        if SCRIPT.match(head) and wrote and (reaches or (judged is not False and any(n in script for n in names))):
+                v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw)))
+        judged = (_python_writes(source, names, [os.path.realpath(r) for r in raw] if within else ())
+                  if within or any(n in source for n in names) else False) if source else None
+        if SCRIPT.match(head) and wrote and (reaches or (judged is not False and (within or any(n in script for n in names)))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         inline = bool(source) or words[1:2] in ([], ["-"]) or any(w in ("-c", "-e") for w in words[1:])
         if within and readable and ("/" in words[0] or not (head in READERS or head in WRITERS or head in OWN_RULES or (
