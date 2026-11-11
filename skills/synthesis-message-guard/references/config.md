@@ -91,8 +91,10 @@ that approval said the meeting was today. With `same_day_meetings` in the config
 - **A move with notifications off is still a move.** Turning notifications off makes a calendar
   write the quiet kind that needs no approval, except when it moves an existing event to
   today: its guests' calendars change all the same. The one exception is an event the
-  chief-of-staff skill's holds ledger records as a hold the agent placed and has not
-  released, which has no guests by construction.
+  chief-of-staff skill's holds ledger has as a hold the agent placed that is in force today
+  (not released, not past its expiry, its instance for today not released), which has no
+  guests by construction. The guard asks the ledger's own reader, `holds_state.py`, which
+  every install keeps in the runtime; a ledger or a reader it cannot read exempts nothing.
 - **What it leaves alone:** a meeting on any other day; a write with no attendees (a hold,
   a focus block), including an update that sets an empty guest list; a meeting whose guests
   include an `exempt` address or pattern (`chief@example.test`, `*@board.example.test`),

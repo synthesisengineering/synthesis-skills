@@ -152,7 +152,7 @@ def derive(events: list) -> dict:
     holds: dict = {}
     for rec in events:
         hid = rec.get("id")
-        if not hid:
+        if not hid or not isinstance(hid, str):  # an id that is not text names no calendar event
             continue
         kind = rec["event"]
         if kind == "place":

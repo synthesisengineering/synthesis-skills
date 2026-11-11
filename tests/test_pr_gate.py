@@ -363,8 +363,9 @@ def test_a_checkout_that_records_no_default_branch_holds_every_branch_push(repo)
     for command in ("git push origin develop", "git push origin main", "git push", "git push origin develop:develop"):
         reason = push(repo, command)
         assert reason and "acme/skills" in reason and "set-head" in reason and '"branch"' in reason, command
-    for command in ("git push origin v1.0.0", "git push --tags", "git push -n origin develop"):
-        assert push(repo, command) is None, command  # a tag or a dry run moves no branch
+    for command in ("git push origin tag v1.0.0", "git push origin refs/tags/v1.0.0", "git push --tags", "git push -n origin develop"):
+        assert push(repo, command) is None, command  # a push that says it is a tag, and a dry run, move no branch
+    assert "set-head" in push(repo, "git push origin v1.0.0")  # a bare name could be a branch
     named = {"pr_gated": {"acme/skills": {"since": "2026-11-11", "branch": "main"}}}
     assert push(repo, "git push origin develop", config=named) is None
 

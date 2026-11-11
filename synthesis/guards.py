@@ -315,26 +315,23 @@ def _events(value):
             yield from _events(item)
 
 
+HOLDS_READER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", "synthesis-chief-of-staff",
+                            "scripts", "holds_state.py")
+
+
 def _own_hold(event: dict) -> bool:
-    """Whether the event a call names is a hold the agent placed and has not released, by the chief of staff's
-    holds ledger: the one record of which calendar entries are the agent's own and so have no guests."""
-    root = os.environ.get("HOLDS_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".synthesis", "chief-of-staff")
+    """Whether the event a call names is a hold the agent placed that is in force today. The chief of staff's
+    holds ledger is the one record of which calendar entries are the agent's own, and its own reader is asked
+    (a copy of its rules here once missed expiry and a day's release). A reader or a ledger that cannot be read
+    proves nothing, so the move is approved like any other."""
     named = {text for key, text in _strings(event) if re.fullmatch(r"(?:event_?)?id", key, re.I)}
-    live = set()
     try:
-        with open(os.path.join(root, "holds", "events.jsonl"), encoding="utf-8") as ledger:
-            for line in ledger if named else ():
-                try:
-                    record = json.loads(line)
-                except ValueError:
-                    continue  # a torn line is skipped, never guessed at
-                if isinstance(record, dict) and record.get("event") == "place":
-                    live.add(record.get("id"))
-                elif isinstance(record, dict) and record.get("event") == "release" and not record.get("instance"):
-                    live.discard(record.get("id"))
-    except OSError:
+        ledger = type(os)("holds_state")
+        with open(HOLDS_READER, encoding="utf-8") as source:
+            exec(compile(source.read(), HOLDS_READER, "exec"), ledger.__dict__)  # no import: nothing is written beside it
+        return bool(named) and any(hold.get("id") in named for hold in ledger.current(ledger.load_events(), _today()))
+    except Exception:  # noqa: BLE001
         return False
-    return bool(named & live)
 
 
 def _falls(text: str, zones: list, unread: bool) -> str:
@@ -772,8 +769,10 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 
 
 def _simple(tokens: list) -> list:
-    """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in)."""
-    items, words, stdin, scripts, skip, piped, writes = [], [], [], [], "", False, []
+    """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
+    link). The link is "&&" when only `&&` stands between a command and the one before it, so it runs only if that
+    one succeeded; "||" when it runs only if that one failed; "" otherwise."""
+    items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
     for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
@@ -791,7 +790,10 @@ def _simple(tokens: list) -> list:
             skip = rest[0]
         else:
             if words or stdin or scripts or writes:
-                items.append((words, stdin, scripts, piped, writes))
+                link = before[0] if before[:1] in (["&&"], ["||"]) and set(before[1:]) <= {"\n"} else ""  # `&&` may end a line
+                items.append((words, stdin, scripts, piped, writes, link))
+                before = []
+            before.append(rest[0])
             words, stdin, scripts, skip, writes = [], [], [], "", []
             piped = rest[0] in ("|", "|&")
             if rest[0] in "()":
@@ -851,13 +853,15 @@ def _shell_input(words: list[str]) -> tuple[str | None, bool]:
     return None, not command
 
 
-def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None) -> list[tuple[list[str], str]]:
+def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
-    collects (file, directory) for every redirect that writes a file."""
+    collects (file, directory) for every redirect that writes a file. `runs` collects, for each
+    command found and in the same order, (the `&&` chain it stands in, whether a later command of
+    that chain runs only if this one ran and succeeded)."""
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    found, outer, upstream = [], [], ""
+    found, outer, upstream, chain = [], [], "", object()
     for item in _simple(_lex(command)):
         if item in ("(", ")"):
             if item == "(":
@@ -865,7 +869,10 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             elif outer:
                 cwd = outer.pop()  # a subshell's cd ends with it
             continue
-        words, stdin, scripts, piped, targets = item
+        words, stdin, scripts, piped, targets, link = item
+        chain = chain if link == "&&" else object()
+        opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
+        needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
         if writes is not None:
             writes += [(t, cwd) for t in targets]
         for text, literal in stdin:
@@ -875,6 +882,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         scripts = scripts + inner
         if words:
             found.append((words, cwd))
+            if runs is not None:
+                runs.append((chain, needed))
             if words[0] in ("cd", "pushd") and (len(words) == 1 or words[1] != "-"):
                 target = os.path.expanduser(os.path.expandvars(words[1] if len(words) > 1 else "~"))
                 cwd = os.path.normpath(os.path.join(cwd, target))
@@ -885,17 +894,21 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 scripts += [text for text, _ in stdin] + ([upstream] if piped else [])
         upstream = "\n".join([t for t, _ in stdin] + words[1:]).replace("\\n", "\n")
         for script in scripts:
-            found += _commands(script, cwd, depth + 1, writes)
+            found += _commands(script, cwd, depth + 1, writes, runs)
     return found
 
 
-def _parse(command: str, cwd: str) -> tuple[list[tuple[list[str], str]], bool]:
-    """(commands, readable). Unreadable text falls back to a plain split on its separators."""
+def _parse(command: str, cwd: str, runs: list | None = None) -> tuple[list[tuple[list[str], str]], bool]:
+    """(commands, readable). Unreadable text falls back to a plain split on its separators, where no
+    command can be shown to depend on another."""
     try:
-        return _commands(command, cwd), True
+        return _commands(command, cwd, runs=runs), True
     except (Unreadable, StopIteration, IndexError):
         found = [(_bare(part.split())[0], cwd) for part in SEPARATORS.split(command)]
-        return [(words, where) for words, where in found if words], False
+        found = [(words, where) for words, where in found if words]
+        if runs is not None:
+            runs[:] = [(None, False)] * len(found)
+        return found, False
 
 
 def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
@@ -1271,7 +1284,10 @@ GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
     "add am apply bisect blame branch cat-file checkout cherry-pick clean clone commit config describe diff fetch "
     "for-each-ref gc grep init lfs log ls-files ls-remote merge mv notes pull rebase reflog remote reset restore revert "
     "rev-list rev-parse rm show stash status submodule switch symbolic-ref tag update-ref version worktree".split())
-UNREAD_BRANCH = "its default branch (where the push goes could not be read from the command, so no branch can be ruled out)"
+UNREAD_BRANCH = ("its default branch (where the push goes could not be read from the command, so no branch can be ruled out; "
+                 "a push that names its branch outright, run by itself from the checkout, can be read)")
+UNKNOWN_DEFAULT = ("what may be its default branch (this checkout does not record which branch that is: name it as \"branch\" in "
+                   "the repository's pr_gated rule, or run `git remote set-head {remote} --auto` there, and push again)")
 
 
 def _push(words: list[str], where: str, depth: int = 0) -> tuple[list[str], bool] | None:
@@ -1354,23 +1370,26 @@ def _push_options(rest: list[str]):
     return options, args
 
 
-def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branches) -> tuple[str, str] | None:
+def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branches, line: str, places: set) -> tuple[str, str] | None:
     """(repository, branch) unless this `git push` provably leaves the default branch of every gated repository
     alone. Nothing is worked out about what the push would change: one that names the default branch, or whose
     destination cannot be read, is held, even with nothing ahead (three reviews showed that predicting git is
     where the holes were). `branches` is what earlier commands on the line may have left current: None when none
-    switched, else a set of names, with "" for one that cannot be read and None for the branch before the line."""
+    switched, else a set of names, with "" for one that cannot be read and None for the branch before the line.
+    `line` is the whole command and `places` every folder it runs git in, for a push whose own folder cannot be read."""
     options, args = _push_options(words[words.index("push") + 1:])
     if options and options.get("dry-run"):
         return None
-    readable, options = readable and options is not None, options or {}
+    inside = _run_git(where, "rev-parse", "--git-dir")[0] == 0  # a clone or a worktree made earlier on the line is not there yet
+    readable, options = readable and inside and options is not None, options or {}
     destination, refspecs = (args[0] if args else str(options.get("repo") or "")), args[1:]  # `--repo` when none is named
     named = "" if re.search(r"[$`]", destination) else destination  # a remote named through a variable is any remote
     known, urls = _run_git(where, "remote", "get-url", "--push", "--all", named) if named else (1, "")
     remote = named if known == 0 else "origin"
     # Where it can go: every URL the named remote pushes to, or a URL given outright. When the line names none, or
     # its routing cannot be read, that is every remote here and any repository the command's own words name.
-    reach = (urls if known == 0 else named) if named and readable else _run_git(where, "remote", "-v")[1] + " " + " ".join(words)
+    reach = (urls if known == 0 else named) if named and readable else " ".join(
+        [line] + [_run_git(place, "remote", "-v")[1] for place in ([where] if inside else sorted(places))])
     found = _repo_names(reach) & set(rules)
     if not found:
         return None
@@ -1379,18 +1398,23 @@ def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branc
     # push.default other than git's own.
     config = _run_git(where, "config", "--get-regexp", r"^remote\..*\.(push|mirror)$")[1]
     mapped = bool(re.search(r"\.push\s", config)) or _run_git(where, "config", "--get", "push.default")[1].strip() not in ("", "simple", "current")
-    every = (any(options.get(o) for o in ("all", "mirror", "branches")) or bool(re.search(r"\.mirror\s+true\b", config))
+    mirror = any(value.strip().lower() not in ("false", "no", "off", "0")  # a boolean as git reads one; no value is true
+                 for key, _, value in (entry.partition(" ") for entry in config.splitlines()) if key.endswith(".mirror"))
+    every = (any(options.get(o) for o in ("all", "mirror", "branches")) or mirror
              or any("*" in s or s.lstrip("+") == ":" for s in refspecs))
     if not readable or every or any(re.search(r"[$`]", spec) for spec in refspecs):
         return repo, UNREAD_BRANCH
     code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
     stated = rules[repo].get("branch") if isinstance(rules[repo], dict) else None
-    defaults = {str(stated)} if stated else {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
+    defaults = {str(stated)} if stated else {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else set()
     now = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip()
     current = {now} if branches is None else {now if b is None else b for b in branches}
 
     def lands(target: str):
-        """The default branch a push to `target` reaches, UNREAD_BRANCH when HEAD cannot be known, else None."""
+        """The default branch a push to `target` reaches, or why that cannot be ruled out (the default branch is
+        not recorded, or HEAD cannot be known), else None."""
+        if not defaults:
+            return UNKNOWN_DEFAULT.format(remote=remote)
         if target not in ("HEAD", "@"):
             return target if target in defaults else None
         return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
@@ -1420,35 +1444,43 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     gated = config.get("pr_gated")
     if gated is None:
         return None
-    commands, readable = _parse(command, cwd)
-    try:  # only in a line joined by && alone did every earlier command run before a later one
-        chained = all(op == "&&" for kind, op, *_ in _lex(command) if kind == "op")
-    except (Unreadable, StopIteration, IndexError, ValueError):
-        chained = False
+    runs: list = []
+    commands, readable = _parse(command, cwd, runs)
     # Git reads its config and its repository from the environment too; a line that sets either is not what it looks.
     readable = readable and not re.search(r"\bGIT_(?:CONFIG\w*|DIR|WORK_TREE|COMMON_DIR|NAMESPACE)=", command)
-    pushes, rerouted, branch = [], set(), {}
-    for words, directory in commands:
+    pushes, rerouted, moved, places = [], set(), {}, {cwd}
+    for (words, directory), (chain, needed) in zip(commands, runs):
         sub, where = _git(words, directory)
         found, said = _push(words, where), set(words)
+        named = [w for w in words[words.index(sub, 1) + 1:] if not w.startswith("-")] if sub else []
+        places |= {where} if sub else set()
         if found:
-            pushes.append((found[0], where, readable and found[1] and where not in rerouted, branch.get(where)))
+            # What earlier commands may have left current. A switch settles it only when this push stands in its
+            # `&&` chain and so runs only if the switch did; any other leaves the branch before the line in play.
+            level = None
+            for link, firm, there in moved.get(where, []):
+                level = {there} if there and firm and link is chain else (level or {None}) | {there}
+            pushes.append((found[0], where, readable and found[1] and where not in rerouted, level))
         elif ((sub == "config" and not said & {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "get", "list"})
               or (sub == "remote" and said & {"add", "set-url", "rename", "remove", "rm", "set-branches"})):
             rerouted.add(where)  # written earlier on the line, these change where a later push goes
-        elif sub in ("checkout", "switch"):  # and these, which branch it pushes: for certain only in a && chain
+        elif sub in ("checkout", "switch"):
             there = _switched_to(words, where)
             if there is not None:
-                branch[where] = {there} if chained else (branch.get(where) or {None}) | {there}
-        elif sub in ("symbolic-ref", "bisect") or (sub == "branch" and said & {"-m", "-M", "--move"}):
-            branch[where] = {""}
+                moved.setdefault(where, []).append((chain, needed, there))
+        elif sub == "rebase":  # `git rebase <upstream> <branch>` checks <branch> out first; with --root every name is one
+            moved.setdefault(where, []).extend((chain, False, name) for name in (named if "--root" in said else named[1:]))
+        elif (sub == "bisect" or (sub == "symbolic-ref" and (len(named) > 1 or said & {"-d", "--delete"}))
+              or (sub == "branch" and said & {"-m", "-M", "--move"}) or (sub == "stash" and named[:1] == ["branch"])):
+            moved.setdefault(where, []).append((chain, False, ""))
     if not pushes:
         return None
     if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
         return ("pr_gated in the synthesis config needs a map of \"owner/repo\" names to their settings; pushes are "
                 "blocked until it is fixed")
     names = {k.lower(): rule for k, rule in gated.items()}
-    hits = [hit for words, where, clear, level in pushes for hit in [_gated_push(words, where, names, clear, level)] if hit]
+    hits = [hit for words, where, clear, level in pushes
+            for hit in [_gated_push(words, where, names, clear, level, command, places)] if hit]
     if not hits:
         return None
     subject = {"command": command, "runs_in": sorted({where for _, where, _, _ in pushes})}

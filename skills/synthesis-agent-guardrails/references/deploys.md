@@ -123,8 +123,10 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
   a branch that tracks the default branch, a configured refspec, a level branch that a lease
   could rewind), so a push that names the default branch is held even when nothing is ahead,
   and a level push is a no-op to lose. The default branch is the one the rule names
-  (`"branch": "develop"`), else the remote's `HEAD` as the checkout records it, else `main`
-  and `master`; the doctor warns when neither the rule nor the checkout names it.
+  (`"branch": "develop"`), else the remote's `HEAD` as the checkout records it. When neither
+  names it, nothing can be shown to leave it alone, so every branch push from that checkout
+  is held until the rule names it or `git remote set-head origin --auto` records it; the
+  doctor warns of such a checkout.
 - **Passes:** a push that names a branch other than the default (`git push -u origin feature`,
   `feature:feature`, `HEAD:refs/heads/feature`); a bare `git push`, `git push origin` or
   `git push origin HEAD` while the current branch is not the default; a push whose
@@ -144,7 +146,9 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
   `GIT_WORK_TREE`); a bare push, or a branch named without its destination, when the
   checkout has a configured `remote.<name>.push` refspec or a `push.default` other than
   `simple` or `current`; a `git config` or `git remote` that writes earlier on the same
-  line; a shell alias that pushes; and a command with an unclosed quote.
+  line; a push in a folder that does not exist yet (a clone or a worktree made earlier on the
+  line: none of its remotes or branches can be read beforehand; run the push by itself
+  afterwards); a shell alias that pushes; and a command with an unclosed quote.
 - **Read the way git reads it:** a remote is judged by every URL it pushes to (`pushurl`);
   `--repo` names the repository when the line names none; options are taken as git takes
   them (any unambiguous start of a long option, `--no-` to turn one off, the last of a pair,
@@ -152,10 +156,14 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
   followed through other aliases and through options it puts first; and `git switch`,
   `git checkout -b` and their kin earlier on the line set the branch a later `git push` or
   `HEAD` refers to (`git switch main && git push origin HEAD` is held; `git checkout -b topic
-  && git push -u origin HEAD` passes). Only a line joined by `&&` alone proves the switch
-  ran: with `;` or `||` the push is judged against the branch before the line as well. When
-  the branch cannot be read (`git checkout -`, a variable, `git branch -m`,
-  `git symbolic-ref`), a push that depends on it is held.
+  && git push -u origin HEAD` passes). A switch settles the branch only for a push that
+  stands in its own `&&` chain, in the same shell, and so runs only if the switch ran and
+  succeeded (a newline after `&&` continues the chain). After `;`, `||`, `|`, `&`, a
+  newline, a `!`, a subshell or a nested `sh -c`, the push is judged against the branch
+  before the line as well. A `git rebase <upstream> <branch>` checks `<branch>` out, so that
+  name is judged too. When the branch cannot be read (`git checkout -`, a variable,
+  `git branch -m`, a `git symbolic-ref` that writes, `git stash branch`, `git bisect`, a
+  detached `HEAD`), a push that depends on it is held.
 - **One exact push with the principal's code:** the refusal carries a code; when the
   principal types it, the identical command runs once. There are no exceptions by path or
   kind of change: a list of exceptions is where a gate erodes. A forced push to a default
