@@ -230,7 +230,9 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
     reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
     if others:
-        return (f"This puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}. A meeting is "
+        what = (f"puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}" if others > 0
+                else "moves a meeting to today's date (its guests are on the event, not in this call)")
+        return (f"This {what}. A meeting is "
                 "not added to today by an agent's choice, and a requester's timing is their preference: propose another day "
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
@@ -275,31 +277,36 @@ def _starts(value):
 
 
 def _invitees(value, inside: bool = False):
-    """Addresses anywhere under an attendee, guest or invitee field, whatever shape each entry takes."""
+    """Addresses anywhere under an attendee, guest, invitee or participant field, whatever shape each entry takes.
+    People a call removes are not invited, and a booked room is not a person."""
     if isinstance(value, dict):
         for key, item in value.items():
-            yield from _invitees(item, inside or bool(re.search(r"attend|guest|invite", key, re.I)))
+            if not re.search(r"remov", key, re.I):
+                yield from _invitees(item, inside or bool(re.search(r"attend|guest|invite|particip", key, re.I)))
     elif isinstance(value, list):
         for item in value:
             yield from _invitees(item, inside)
     elif inside and isinstance(value, str):
-        yield from ADDRESS.findall(value.lower())
+        yield from (a for a in ADDRESS.findall(value.lower()) if not a.endswith("@resource.calendar.google.com"))
 
 
-def _on_today(text: str) -> bool:
-    """The date as written, or the same moment on this machine's clock: either one being today counts."""
-    today = _today().isoformat()
+def _on_today(text: str, zones: list) -> bool:
+    """The date as written; the same moment on this machine's clock; or, for a time with no offset, that time
+    in a zone the call names. Any one of them being today counts."""
+    today, text = _today().isoformat(), text.strip()
     try:
-        moment = datetime.fromisoformat(text.strip().replace("Z", "+00:00").replace(" ", "T", 1))
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
     except ValueError:
-        return text.strip().startswith(today)
-    return today in (text.strip()[:10], moment.astimezone().date().isoformat() if moment.tzinfo else "")
+        return text.startswith(today)
+    moments = [moment] if moment.tzinfo else [moment.replace(tzinfo=zone) for zone in zones]
+    return text[:10] == today or any(m.astimezone().date().isoformat() == today for m in moments)
 
 
 def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
-    """How many other people a calendar write invites to a meeting that starts today; 0 when the rule does not
-    apply; a refusal when its setting cannot be read. Config: {"same_day_meetings": {"exempt": ["<address or
-    pattern>"]}}: a meeting with an exempt attendee keeps the ordinary approval. No key, no rule."""
+    """How many other people a calendar write invites to a meeting that starts today; -1 when it moves an existing
+    event to today and names no guest (they are on the event, not in the call); 0 when the rule does not apply; a
+    refusal when its setting cannot be read. Config: {"same_day_meetings": {"exempt": ["<address or pattern>"]}}:
+    a meeting with an exempt attendee keeps the ordinary approval. No key, no rule."""
     rule = config.get("same_day_meetings")
     if rule is None or not re.search(r"(?:create|update|manage|move)[_-]events?$", tool):
         return 0
@@ -307,7 +314,15 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     if not isinstance(exempt, list) or not all(isinstance(e, str) for e in exempt):
         return ("same_day_meetings in the synthesis config needs an \"exempt\" list of addresses or patterns (it may be "
                 "empty); calendar writes are blocked until it is fixed")
-    if not any(_on_today(start) for start in _starts(tool_input)):
+    zones = []
+    for key, text in _strings(tool_input):
+        if re.search(r"time_?zone", key, re.I):
+            try:
+                from zoneinfo import ZoneInfo
+                zones.append(ZoneInfo(text))
+            except (KeyError, ValueError, OSError):  # not a zone name this machine knows
+                pass
+    if not any(_on_today(start, zones) for start in _starts(tool_input)):
         return 0
     routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
     own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
@@ -315,7 +330,8 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     invited = set(_invitees(tool_input)) - own
     if any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
         return 0
-    return len(invited)
+    moves = bool(re.search(r"(?:update|move)[_-]events?$", tool)) or str(tool_input.get("action", "")).lower() == "update"
+    return len(invited) or (-1 if moves else 0)
 
 
 # --- account routing (R3.6) ---------------------------------------------------------------------
@@ -1200,15 +1216,16 @@ def _gated_push(words: list[str], where: str, names: set, readable: bool) -> tup
             i += 1
     if flags & {"-n", "--dry-run"}:
         return None
-    known, url = _run_git(where, "remote", "get-url", args[0]) if args else (1, "")
-    remote = args[0] if args and known == 0 else "origin"
+    named = args[0] if args and not re.search(r"[$`]", args[0]) else ""  # a remote named through a variable is any remote
+    known, url = _run_git(where, "remote", "get-url", named) if named else (1, "")
+    remote = named if known == 0 else "origin"
     # The remote it names, a URL given outright, or every remote when it names none.
-    found = _repo_names(url if known == 0 else args[0] if args else _run_git(where, "remote", "-v")[1]) & names
+    found = _repo_names(url if known == 0 else named or _run_git(where, "remote", "-v")[1]) & names
     if not found:
         return None
     repo = sorted(found)[0]
-    if not readable:
-        return repo, "its default branch (the command could not be read, so no branch can be ruled out)"
+    if not readable or any(re.search(r"[$`]", spec) for spec in args[1:]):
+        return repo, "its default branch (the branch could not be read from the command, so none can be ruled out)"
     code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
     defaults = {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
     if flags & {"--all", "--mirror"}:
@@ -1221,7 +1238,8 @@ def _gated_push(words: list[str], where: str, names: set, readable: bool) -> tup
         target = (target or source).replace("refs/heads/", "", 1)
         target = current.strip() if target == "HEAD" and code == 0 else target
         if target in defaults:
-            ahead = _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}") if source else (1, "")
+            deletes = not source or bool(flags & {"-d", "--delete"})
+            ahead = (1, "") if deletes else _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}")
             if ahead[0] != 0 or ahead[1].strip() != "0":  # nothing ahead moves nothing, as after a merged pull request
                 return repo, target
     return None

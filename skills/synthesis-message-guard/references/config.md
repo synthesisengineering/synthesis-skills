@@ -73,13 +73,17 @@ that approval said the meeting was today. With `same_day_meetings` in the config
 
 - **What it holds:** a calendar write (`create_event`, `update_event`, `manage_event`,
   `move_event`, with `_` or `-` in the name, singular or plural) whose start falls on today
-  and that invites at least one address other than the principal's own. The start is read
-  from `start`, `start_time`, `startTime`, `start_datetime` or `startDateTime`, flat or
-  nested (`{"dateTime": ...}`, `{"date": ...}`), in the call or in a list of events inside
-  it; a start is today when its date as written is today, or when the same moment is today
-  on this machine's clock. Attendees are read from any field whose name contains attend,
-  guest or invite, in whatever shape the connector takes.
-- **What it says:** `This puts a meeting on today's date and invites N other(s) ... propose
+  and that invites at least one address other than the principal's own, or that moves an
+  existing event to today (an update names the event, not its guests, so only a write that
+  emails no one is left alone). The start is read from `start`, `start_time`, `startTime`,
+  `start_datetime` or `startDateTime`, flat or nested (`{"dateTime": ...}`, `{"date": ...}`),
+  in the call or in a list of events inside it. A start is today when its date as written is
+  today, when the same moment is today on this machine's clock, or, for a time with no
+  offset, when it is today in a time zone the call names. Attendees are read from any field
+  whose name contains attend, guest, invite or particip, in whatever shape the connector
+  takes; people a call removes and booked rooms are not counted.
+- **What it says:** `This puts a meeting on today's date and invites N other(s)` (or `This
+  moves a meeting to today's date`) `... propose
   another day unless the principal asked for today ... type approve followed by the code
   <code> for this same-day meeting.` The ordinary invitation approval does not cover it, and
   neither does a send window.
@@ -89,7 +93,8 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   that person's timing binds; and the principal's own addresses, taken from
   `account_routing` (`default_account`, each workspace's `account` and `aliases`).
 - **What it cannot see:** an update that sets no start (adding a guest to a meeting already
-  on today), an RSVP, and a meeting placed through a browser or computer use. The
+  on today), an RSVP, a connector that takes its start as prose ("15 March at 2 PM"), and a
+  meeting placed through a browser or computer use. The
   chief-of-staff skill's slot check covers the decision before any call is made.
 
 ## Every channel and send windows (2026-10-13)

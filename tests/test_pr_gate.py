@@ -71,6 +71,16 @@ def test_a_push_that_moves_the_default_branch_is_refused_with_the_route(repo, co
     assert reason and "acme/skills" in reason and "pull request" in reason and "main" in reason
 
 
+@pytest.mark.parametrize("command", ['git push origin "$(git branch --show-current)"', "git push origin $BRANCH",
+                                     "git push origin --delete main", "git push -d origin main",
+                                     "sh -c 'git push origin main'", 'bash -c "cd . && git push"',
+                                     "git push $REMOTE main", "git push `pick-remote` HEAD:main"])
+def test_a_branch_named_through_a_variable_a_delete_and_a_nested_shell_are_refused(repo, command):
+    commit(repo, "second")
+    reason = push(repo, command)
+    assert reason and "acme/skills" in reason and "pull request" in reason
+
+
 def test_a_forced_push_to_the_default_branch_is_still_refused_outright(repo):
     commit(repo, "second")
     assert push(repo, "git push origin +main") == "refusing a force push to a default branch"  # no code admits this one
@@ -93,6 +103,7 @@ def test_tags_dry_runs_and_another_repository_pass(repo, command):
 
 def test_a_push_with_nothing_to_move_passes(repo):
     assert push(repo, "git push origin main") is None  # level with the remote, as after a merged pull request
+    assert "pull request" in push(repo, "git push origin --delete main")  # deleting it moves it, level or not
 
 
 def test_the_push_is_judged_where_it_runs(repo, tmp_path):

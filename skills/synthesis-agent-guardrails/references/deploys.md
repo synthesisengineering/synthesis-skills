@@ -130,8 +130,13 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
   principal types it, the identical command runs once. There are no exceptions by path or
   kind of change: a list of exceptions is where a gate erodes. A forced push to a default
   branch is refused outright, as before, and no code admits it.
-- **A command the guard cannot read** (an unclosed quote, a substitution it cannot follow) is
-  refused when it pushes from a gated checkout.
+- **A command the guard cannot read** (an unclosed quote), or one that names its branch or
+  remote through a variable or a substitution (`git push origin "$(...)"`), is refused when it
+  pushes from a gated checkout: no branch can be ruled out. Deleting the default branch is
+  refused whether or not anything is ahead.
+- **What it cannot see:** a push made by a script file or a git alias, a ref moved through the
+  host's API, and any push from a machine or tool without the hook. The doctor's check below
+  is what catches those.
 - **The doctor:** `pr gate` reads each listed repository's checkout under the workspace
   folders and lists commits on its default branch since `since` that are neither merge
   commits nor GitHub squash merges (subject ending `(#N)`) nor in `direct_ok`. A push made

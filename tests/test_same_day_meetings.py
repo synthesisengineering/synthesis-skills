@@ -130,6 +130,48 @@ def test_moving_a_meeting_to_today_counts_and_an_update_that_sets_no_start_does_
     assert "approval" in reason and not same_day(reason)
 
 
+def test_moving_an_existing_meeting_to_today_counts_though_the_call_names_no_guests():
+    """The guests are on the event, not in the call; only a write that emails no one is exempt."""
+    for tool, call in ((MANAGE, {"action": "update", "event_id": "e1", "start_time": f"{TODAY}T16:00:00"}),
+                       ("mcp__gcal__update_event", {"eventId": "e1", "startTime": f"{TODAY}T16:00:00"}),
+                       ("mcp__planner__planner-calendar-update-events",
+                        {"updates": [{"updateType": "UPDATE", "event": {"eventId": "e1"},
+                                      "update": {"period": {"type": "DATE_TIME", "start": {"dateTime": f"{TODAY}T16:00:00"}}}}]})):
+        reason = guards.check(tool, {**call, "user_google_email": "me@example.com"}, CONFIG, cwd="/tmp")
+        assert same_day(reason) and "moves" in reason, (tool, reason)
+    quiet = {"action": "update", "event_id": "e1", "start_time": f"{TODAY}T16:00:00", "send_updates": "none",
+             "user_google_email": "me@example.com"}
+    assert guards.check(MANAGE, quiet, CONFIG, cwd="/tmp") is None
+
+
+def test_people_being_removed_and_rooms_are_not_invited_guests():
+    call = {"eventId": "e1", "summary": "Focus", "removedAttendeeEmails": ["a@example.com"], "user_google_email": "me@example.com"}
+    reason = guards.check("mcp__gcal__update_event", call, CONFIG, cwd="/tmp")
+    assert "approval" in reason and not same_day(reason)  # no start in the call, and nobody added
+    room = event(attendees=[{"email": "c_18abc@resource.calendar.google.com", "resource": True}])
+    reason = guards.check(CREATE, room, CONFIG, cwd="/tmp")
+    assert "approval" in reason and not same_day(reason)
+
+
+def test_participants_are_guests_too():
+    call = {"summary": "Follow-up", "start_time": f"{TODAY}T15:00:00", "participants": ["a@example.com"]}
+    assert same_day(guards.check(CREATE, call, CONFIG, cwd="/tmp"))
+
+
+def test_a_local_time_with_a_named_zone_is_read_in_that_zone(monkeypatch):
+    import time
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:  # 00:30 on the 10th in Tokyo is 10:30 on the 9th in New York
+        call = {"summary": "Follow-up", "startTime": "2026-11-10T00:30:00", "timeZone": "Asia/Tokyo", "attendees": [{"email": "a@example.com"}]}
+        assert same_day(guards.check("mcp__gcal__create_event", call, {**CONFIG, "send_tools": ["mcp__gcal__*"]}, cwd="/tmp"))
+        later = {**call, "startTime": "2026-11-10T23:30:00"}  # 09:30 on the 10th in New York
+        assert not same_day(guards.check("mcp__gcal__create_event", later, {**CONFIG, "send_tools": ["mcp__gcal__*"]}, cwd="/tmp"))
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
 def test_a_send_window_never_covers_a_meeting_today():
     config = {**CONFIG, "send_window_signatures": ["Helperbot"]}
     sends.open_window(1, ["calendar"], count=5)
