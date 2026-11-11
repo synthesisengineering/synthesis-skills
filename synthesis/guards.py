@@ -371,7 +371,7 @@ def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
             name = next((said[k] for k in ("summary", "title", "subject", "name") if said.get(k)), "an event")
             notes = "\n".join(said.get(k, "") for k in ("description", "notes", "body", "details"))
             spot = ", ".join(_place(event))
-            if reader.place(spot, policy) == "away" and not name.lower().startswith(title) and not reader.lines(notes).get("travel"):
+            if reader.place(spot, policy) == "away" and not name.lower().startswith(title) and not reader.form(reader.lines(notes).get("travel")):
                 return (f"Refused: this writes \"{name}\" at a place ({spot}) and says nothing about how the "
                         "principal gets there. Work the trip out first (synthesis-chief-of-staff, references/in-person-travel.md): "
                         "who pays, the exact address, the trip door to door from a live source, a travel block on each side. "
@@ -1569,9 +1569,12 @@ INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t D
 # a gate passes what it can prove; a list of the utilities that write never ends).
 READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
-                     "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq awk date which "
-                     "for case select read fold fmt expand paste join rev git synthesis").split())
-OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch")  # each is read where it is handled
+                     "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
+                     "for case select read fold fmt expand paste join rev sort uniq less more git synthesis").split())
+AWKS = ("awk", "gawk", "mawk", "nawk")
+AWK_OUT = re.compile(r'\bprintf?\b[^;}\n|]*?>>?\s*(?:"([^"]+)"|\S)|\bsystem\s*\(|\|\s*"')  # a redirect, or a command it runs
+OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
+TAKES_VALUE = frozenset({"-W", "-X", "-r", "--require", "--loader", "--import", "-I", "-o", "+o", "-O", "+O"})  # then the next word
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
@@ -1582,14 +1585,15 @@ SCRIPTED_WRITE = re.compile(
     r"|\bos\.(?:remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime"
     r"|open|write|system|popen|exec\w*|spawn\w*)\b|\bshutil\.|\bsubprocess\b|\bsqlite3\b"
     r"|\bfs\.\w*(?:[Ww]rite|[Aa]ppend|rename|unlink|rm|mkdir|copy|symlink|truncate|chmod)|createWriteStream"
-    r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\(|open\s*\(\s*\w+\s*,\s*['\"]\+?[>|]")
+    r"|\.(?:write|append)File\w*\(|\.(?:rm|unlink|rename|mkdir|copyFile|truncate|chmod|symlink)Sync\("
+    r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\("
+    r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
 # window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
-SCRIPT_FILE = re.compile(r"\.(?:py|sh|bash|zsh|js|mjs|ts|rb|pl)$")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
-ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
+ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
 LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
 USED = re.compile(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
 READINGS = 32  # past this many, a variable the command gives several values stays as written
@@ -1612,16 +1616,19 @@ def _put(use, values: dict) -> str:
 
 
 def _ran(words: list[str]) -> str:
-    """The file of code an interpreter or a shell runs: its first operand that is one, unless the program is given
-    inline (-c, an interpreter's -e, or `-` for its input) or as a module (-m), when the words after are handed to it
-    (2026-11-11: a line counter handed hook.py was refused as running the hook)."""
+    """The file of code an interpreter or a shell runs: its first operand, past its options and their values, or the
+    module after -m; nothing when the program is given inline (-c, an interpreter's -e, or `-` for its input). The
+    words after it are handed to it, not run (2026-11-11: a line counter handed hook.py was refused as running it)."""
+    skip = False
     for i, word in enumerate(words[1:], 1):
-        if word in ("-c", "-") or (word == "-e" and os.path.basename(words[0]) not in SHELLS):
+        if skip:
+            skip = False
+        elif word in ("-c", "-") or (word == "-e" and os.path.basename(words[0]) not in SHELLS):
             return ""
-        if word == "-m":  # the module is what runs; the words after it are handed to it
-            return "".join(words[i + 1:i + 2])
-        if not word.startswith("-") and (HOOK_RUN.search(word) or SCRIPT_FILE.search(word)):
-            return word
+        elif word == "-m" or not word.startswith(("-", "+")):
+            return "".join(words[i + (word == "-m"):i + 1 + (word == "-m")])
+        else:
+            skip = word in TAKES_VALUE
     return ""
 
 
@@ -1633,7 +1640,8 @@ def _resolved(text: str) -> list[str]:
     things run in. A variable neither sets stays as written."""
     found: dict = {}
     for m in ASSIGNED.finditer(text):
-        found.setdefault(m[1], {})[m[2].strip("'\"")] = None
+        for before in (list(found.get(m[1], {})) or [""]) if m[2] else [""]:  # `D+=…` adds to each value D had
+            found.setdefault(m[1], {})[before + m[3].strip("'\"")] = None
     for m in LOOPED.finditer(text):
         found.setdefault(m[1], {}).update(dict.fromkeys(word.strip("'\"") for word in m[2].split()))
     used = {m[1] or m[4] for m in USED.finditer(text)}
@@ -1653,18 +1661,29 @@ def _resolved(text: str) -> list[str]:
 
 def _landing(words: list[str]) -> list[str]:
     """The words of a command that name what it changes: each operand of a file utility, or of `sed` or `perl`
-    editing in place; `dd`'s `of=`; for a copier where the copy lands, which is its last operand or the folder `-t`
-    gives, and each source's name inside it in case that is a folder (2026-11-11: `cp -t <folder>`, `dd of=` and
-    `perl -pi` wrote where no check was looking)."""
-    head, rest = os.path.basename(words[0]), [w for w in words[1:] if not w.startswith("-")]
+    editing in place; `dd`'s `of=`; what `sort -o`, `uniq` or an awk program writes; for a copier where the copy
+    lands, which is its last operand or the folder `-t` gives, and each source's name inside it in case that is a
+    folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking)."""
+    head = os.path.basename(words[0])
+    refs = {i + 1 for i, w in enumerate(words) if w in ("-r", "--reference") and head in ("touch", "truncate")}
+    rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]  # a reference file is only read
     if head == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
+    if head == "sort":  # a reader, unless told where to write
+        return [m[1] or m[2] or "".join(words[i + 1:i + 2]) for i, w in enumerate(words)
+                for m in [re.fullmatch(r"-o(.*)|--output(?:=(.*))?", w)] if m]
+    if head == "uniq":  # its second operand is its output
+        return rest[1:2]
+    if head in AWKS:  # a reader, unless its program redirects or runs a command (`$`: where, no check can read), or it edits in place
+        return [m[1] or "$" for w in words[1:] for m in AWK_OUT.finditer(w)] + (rest if "inplace" in words else [])
     if head in PACKERS:  # to its output, or only listed or tested, a file is read
         return [] if any(re.fullmatch(r"-\w*[clt]\w*|--(?:stdout|to-stdout|list|test)", w) for w in words[1:]) else rest
-    if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, else the first operand
-        scripts = [words[i + 1] for i, w in enumerate(words[:-1]) if w in ("-e", "-f", "--expression", "--file")]
+    if head in ("sed", "perl"):  # its files, not its script: the word after -e or -f, or attached to one, else the first operand
+        if not any(IN_PLACE.fullmatch(w) for w in words[1:]):
+            return []
+        scripts = [words[i + 1] for i, w in enumerate(words[:-1]) if re.fullmatch(r"-\w*[ef]|--expression|--file", w)]
         files = [w for w in rest if w and w not in scripts]
-        return (files if scripts else files[1:]) if any(IN_PLACE.fullmatch(w) for w in words[1:]) else []
+        return files if scripts or any(re.match(r"-\w*[ef].|--(?:expression|file)=", w) for w in words[1:]) else files[1:]
     if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
         runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
                 for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
@@ -1675,7 +1694,7 @@ def _landing(words: list[str]) -> list[str]:
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
     lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
-    return rest + lands if head == "mv" else lands  # a move also takes its sources away
+    return rest + lands if head == "mv" or "--remove-source-files" in words else lands  # these also take their sources away
 
 
 def _named(words: list[str]) -> list[str]:
@@ -1690,9 +1709,14 @@ def _named(words: list[str]) -> list[str]:
 
 
 def _changes(run: list[str]) -> bool:
-    """Whether a command `find -exec` runs may change the files it is handed, where `{}` stands."""
+    """Whether a command `find -exec` runs may change the files it is handed, where `{}` stands: a file utility or an
+    unknown program given them, a shell or a script file (which cannot be read), or an inline program that writes."""
     head = os.path.basename(run[0]) if run else "echo"
-    return bool(SCRIPT.match(head) or head in SHELLS or any(w.startswith("{}") for w in _landing(run) + _named(run)))
+    if SCRIPT.match(head) or head in SHELLS:
+        flag = "-c" if head.startswith("python") else "-e"
+        inline = run[run.index(flag) + 1] if head not in SHELLS and flag in run[:-1] else None
+        return inline is None or bool(SCRIPTED_WRITE.search(inline))
+    return any(w.startswith("{}") for w in _landing(run) + _named(run))
 
 
 PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
@@ -1723,14 +1747,14 @@ def _cli_owned(real: str) -> str:
     return ""
 
 
-def _memory(real: str) -> bool:
-    """A Markdown file in a project's memory folder. Claude Code keeps that folder beside the project's session
+def _memory(real: str, folder: bool = False) -> bool:
+    """A Markdown file in a project's memory folder (with `folder`, that folder or one inside it, which `mkdir` makes). Claude Code keeps that folder beside the project's session
     transcripts and has the agent write it; it holds no transcript and no approval. The file tools and the shell may
     write, move and remove one (ten days of transcripts held ten such shell writes). A path is judged where it
     really leads, so a link there opens nothing, and a command that makes a link there is refused."""
     root = os.path.realpath(paths.transcript_roots()["claude-code"])
-    parts = os.path.relpath(real, root).split(os.sep) if paths.inside(real, root) else []
-    return len(parts) >= 3 and parts[1] == "memory" and real.endswith(".md")
+    parts = os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep) if paths.inside(real, root) else []
+    return parts[1:2] == ["memory"] and (folder or (len(parts) >= 3 and parts[-1].endswith(".md")))
 
 
 def _material(real: str) -> bool:
@@ -1738,7 +1762,7 @@ def _material(real: str) -> bool:
     material the agent is sent there to work on, so any program may be given it. Changing it in place stays
     refused (30 days of transcripts: three of six new refusals were a converter reading one)."""
     root = os.path.realpath(paths.transcript_roots()["claude-code"])
-    return paths.inside(real, root) and os.path.relpath(real, root).split(os.sep)[2:3] == ["tool-results"]
+    return paths.inside(real, root) and os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)[2:3] == ["tool-results"]
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
@@ -1836,7 +1860,8 @@ def _python_writes(source: str, names: list) -> bool | None:
         given = args[0:1] if base is not None else args[1:2]  # Path(p).open("w") takes its mode first; open(p, "w") second
         mode = next(iter(given), next((k.value for k in n.keywords if k.arg == "mode"), None))
         writes_mode = mode is not None and not (isinstance(mode, ast.Constant) and not re.search(r"[wax+]", str(mode.value)))
-        targets = ([args[0]] if attr == "open" and base is None and args and writes_mode else
+        first = args[:1] or [k.value for k in n.keywords if k.arg == "file"]  # open(path, "w") or open(file=path, mode="w")
+        targets = (first if attr == "open" and base is None and writes_mode else
                    [base] + args[:1] if base is not None and attr in ("rename", "replace") and len(args) == 1 else  # both ends change; str.replace takes two
                    [base] if base is not None and (attr in ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink",
                                                             "symlink_to", "hardlink_to", "chmod", "truncate")
@@ -1870,7 +1895,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         readable = False
     asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
-    why, wheres, handed, links = "", {cwd}, [], []
+    why, wheres, handed, links, made = "", {cwd}, [], [], []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     for words, where in _parse(text, cwd)[0]:
@@ -1879,7 +1904,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
         asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
-        links += [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head == "ln" else []
+        led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head in ("ln", "mkdir") else []
+        links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
         within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
         for word in _named(words) if readable else ():  # words the parser could not read name no program
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
@@ -1895,9 +1921,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # judged by the words it is given, or, read from stdin, by the whole command.
         wrote = re.search(SCRIPTED_WRITE, source or script)
         reaches = (within or any(n in w for w in words[1:] if w != source for n in names) or (
-            re.search(r"\b(?:environ|getenv)\b", script) and any(n in m[2] for m in ASSIGNED.finditer(text) for n in names)))
+            re.search(r"\b(?:environ|getenv)\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
+                v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))))
         judged = (_python_writes(source, names) if any(n in source for n in names) else False) if source else None
-        if names and SCRIPT.match(head) and wrote and (reaches or (judged is not False and any(n in script for n in names))):
+        if SCRIPT.match(head) and wrote and (reaches or (judged is not False and any(n in script for n in names))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
@@ -1910,9 +1937,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw if t in links or not _memory(t)):
+    if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw
+                       if t in links or not (_memory(t) or (t in made and _memory(t, True)))):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
-    given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and any(
+    given = "" if why else next((head for head, word, path in handed if (word == HANDED and names) or (not _material(path) and not _memory(path) and any(
         paths.inside(path, os.path.realpath(r)) for r in raw))), "")  # HANDED: files from xargs, which cannot be read here
     if given:
         why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "

@@ -42,6 +42,8 @@ EMPTY = re.compile(r"(?i)\s*(?:tbd|tbc|tba|tk|n/?a|unknown|to be (?:confirmed|de
 BREAK = re.compile(r"(?i)<br\s*/?>|</(?:p|div|li|tr|h\d)>")  # a connector may return a description as HTML
 STREET = re.compile(r"(?i)(?:^|[,;(@]|\bat\s)\s*\d+[^\W\d_]?(?:[-–/]\d+)*(?:[ \t]+\d+)*[ \t]+(?:\d+(?:st|nd|rd|th)\b|[^\W\d_])")
 CLOCK = re.compile(r"(?i)\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b\.?|\b\d{1,2}:\d{2}\b")
+UNIT = re.compile(r"(?i)\s*(?:room|rm|suite|ste|floor|fl|level|hall|gate|pier|studio|unit|apt|apartment|bldg|building|"
+                  r"terminal|platform|track|door|box|booth|stand|table)\b")  # what a number in a venue's name counts
 CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")  # an address in these scripts runs number and name together
 CAR = re.compile(r"(?i)\b(?:car|uber|lyft|taxi|cab|rideshare|ride[ -]share|limo|car service)\b")
 NEAR = timedelta(hours=12)  # farther than this from every commitment, a block with no `For:` line serves none
@@ -62,6 +64,12 @@ def lines(description: str) -> dict:
     return said
 
 
+def form(travel: str):
+    """A travel line in one of its three forms, or None: `blocks …`, `local, N min …` (group 2 the minutes), `none, <why>`.
+    A line that only begins like one (`locally unavailable`) or mentions one later is none of them."""
+    return re.match(r"(?i)(blocks?\b)|local\b\W*?(\d+)\s*min|(none\b\W+\w)", str(travel or "").split("\n")[0].strip())
+
+
 def tidy(location) -> str:
     """A location on one line, each line of it a part as a comma would make it."""
     return ", ".join(" ".join(row.split()) for row in str(location or "").splitlines() if row.strip())
@@ -75,11 +83,13 @@ def street(text: str):
 
 def exact(location: str) -> bool:
     """Whether a location reads as an address a route can be planned to: a street number as above, or a number in
-    one part and a name in another (`Calle Mayor, 5`). A venue whose name ends in a number (`Studio 54`) and a
-    time of day are not one. It reads the form of what is written, not a map."""
+    one part and a name in another (`Calle Mayor, 5`). A venue whose name ends in a number (`Studio 54`), a room
+    or a floor (`Room 4, Harbor Town`) and a time of day are not one. It reads the form of what is written, not
+    a map."""
     text = CLOCK.sub("", location)
-    numbered = [bool(re.search(r"\d", part)) for part in re.split(r"[,;]", text) if part.strip()]
-    return bool(street(location) or (any(numbered) and (not all(numbered) or CJK.search(text))))
+    parts = [part for part in re.split(r"[,;]", text) if part.strip()]
+    numbered = [part for part in parts if re.search(r"\d", part) and not UNIT.match(part)]  # a room or a floor is no street number
+    return bool(street(location) or (numbered and (len(numbered) < len(parts) or CJK.search(text))))
 
 
 def place(location: str, policy: dict) -> str:
@@ -95,7 +105,8 @@ def place(location: str, policy: dict) -> str:
     bases = [slot.part(policy, "home"), *[p for p in policy.get("places") or [] if isinstance(p, dict)]]
     for base in bases:
         label, address = str(base.get("label") or "").lower(), str(base.get("address") or "").lower()
-        if (label and re.match(rf"{re.escape(label)}\s*(?:$|[,(:;/–-])", low)) or (address and address in low):
+        if (label and re.match(rf"{re.escape(label)}\s*(?:$|[,(:;/–-])", low)) or (
+                address and re.search(rf"(?<!\w){re.escape(address)}(?!\w)", low)):
             return "base"  # its label, alone or with a room or a note after it, or its address anywhere
     return "away"
 
@@ -132,7 +143,10 @@ def judge(args, config: dict, read: dict) -> dict:
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
     blocks, commitments, others = [], [], []
-    for entry in (e for e in read.get("events") or [] if isinstance(e, dict)):
+    entries = read.get("events")
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        stop('the calendar read\'s "events" is not a list of entries, so it cannot be judged: save the read again')
+    for entry in entries:
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
         except SystemExit as exc:
@@ -165,15 +179,16 @@ def judge(args, config: dict, read: dict) -> dict:
                             "location": c["location"]}
         if not exact(c["location"]):
             lacks.append(f'no exact address: the location reads "{c["location"]}"')
-        travel = c["said"].get("travel", "")
-        minutes = re.search(r"(?i)\blocal\b\D*(\d+)\s*min", travel)
+        travel = c["said"].get("travel", "").split("\n")[0]
+        stands, bare = form(travel), re.match(r"(?i)local\b", travel)  # bare: it says local and gives no minutes
         if not travel:
             lacks.append("no travel line in the event: `Travel: blocks before and after`, or `Travel: local, N min walk`")
-        if re.match(r"(?i)local\b", travel) and not minutes:
-            lacks.append("the travel line says local and gives no minutes")
-        elif minutes and int(minutes[1]) > local:
-            lacks.append(f"{minutes[1]} minutes is over the {local} the policy calls local: it needs travel blocks")
-        if minutes or re.match(r"(?i)(?:local|none\b\W+\w)", travel):
+        elif not stands:
+            lacks.append("the travel line says local and gives no minutes" if bare else
+                         f'the travel line reads "{travel[:60]}": it begins `blocks`, `local, N min` or `none, <why>`')
+        elif stands[2] and int(stands[2]) > local:
+            lacks.append(f"{stands[2]} minutes is over the {local} the policy calls local: it needs travel blocks")
+        if bare or (stands and not stands[1]):  # local or none: no blocks to check
             events.append({**found, "lacks": lacks})
             continue
         if not c["start"]:

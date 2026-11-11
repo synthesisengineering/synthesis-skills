@@ -143,7 +143,8 @@ def travel(workspace: str, day: str, given) -> str:
         events = found["events"]
         bare = [e for e in events if e["lacks"]]
         sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
-                 (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK"))
+                 (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK")
+                 and all(date.fromisoformat(e["start"][:10]).isoformat() <= through for e in events))  # each event within its days
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
     if not sound:  # a result edited by hand, or cut short
@@ -160,9 +161,11 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-OPTION = re.compile(r"(?im)^\s*(?:[-*] )?\**Option [A-Z0-9]+\b(.*)$")
-SAID = re.compile(r"(?im)^\s*(?:[-*] )?\**(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
-CLOSED = re.compile(r"(?im)^\s*(?:[-*] )?\**(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
+ITEM = r"(?im)^\s*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, or a list entry of either kind
+OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
+SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
+CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
+FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$")  # a fenced block is an example, not the item's own lines
 NOTHING = re.compile(r"(?i)[*\s]*(?:tbd|tbc|none|n/?a|no recommendation|your call|up to you|either)?[\s.*]*")
 COMMITS = re.compile(r"(?i)\b(?:accept|decline|rsvp|attend|go|join|host|schedule|meet|say (?:yes|no))\b")
 
@@ -177,7 +180,7 @@ def choices(workspace: str, day: str) -> str:
     for plan in (folder / f"{day}.md" for folder, kind in roots if kind == "plans"):
         text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() else ""
         for item in re.split(r"(?m)^#{3} ", text)[1:]:
-            item = re.split(r"(?m)^#{1,2} ", item)[0]
+            item = FENCE.sub("", re.split(r"(?m)^#{1,2} ", item)[0])
             title, options = item.splitlines()[0].strip(), OPTION.findall(item)
             if not options or CLOSED.search(item) or title.startswith("~~") or "✅" in title:
                 continue
