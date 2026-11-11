@@ -13,6 +13,7 @@ loaded. This guard gates the act.
 - [The date rules](#the-date-rules)
 - [The rapid-redeploy brake](#the-rapid-redeploy-brake)
 - [Destruction](#destruction)
+- [The pull-request gate](#the-pull-request-gate)
 - [How the shell is read](#how-the-shell-is-read)
 - [Tests](#tests)
 
@@ -107,6 +108,39 @@ approval lets it through, and it still counts if the window closes before the re
   feature branch is not.
 - `git worktree remove` of an ordinary worktree is allowed (the 1.x guard refused it only
   to protect its own manifests).
+
+## The pull-request gate
+
+A repository can have the rule "changes land through a pull request" and no way to hold it: a
+hosting plan without branch protection, or an agent whose instructions say "push every remote".
+One private skills repository took 61 commits pushed straight to `main` in six weeks, beside 35
+merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `owner/repo`.
+
+- **Refused:** a `git push` that would move a listed repository's default branch: `git push`
+  on that branch, `git push origin main`, `HEAD:main`, `feature:main`, `refs/heads/main`,
+  `:main`, `--all`, `--mirror`, from the checkout or any linked worktree of it, however the
+  command reaches it (`git -C`, `cd ... &&`). The default branch is the remote's `HEAD`
+  (`main` or `master` when the checkout has not recorded one). The refusal names the route:
+  push a branch, open the pull request, let its checks pass, merge it, install from the
+  merged branch.
+- **Passes:** a push to any other branch, tags (`--tags`, a tag name), `--dry-run`, a push to
+  another repository's remote, and a push with nothing ahead of the remote branch (the state
+  after a merged pull request has been pulled).
+- **One exact push with the principal's code:** the refusal carries a code; when the
+  principal types it, the identical command runs once. There are no exceptions by path or
+  kind of change: a list of exceptions is where a gate erodes. A forced push to a default
+  branch is refused outright, as before, and no code admits it.
+- **A command the guard cannot read** (an unclosed quote, a substitution it cannot follow) is
+  refused when it pushes from a gated checkout.
+- **The doctor:** `pr gate` reads each listed repository's checkout under the workspace
+  folders and lists commits on its default branch since `since` that are neither merge
+  commits nor GitHub squash merges (subject ending `(#N)`) nor in `direct_ok`. A push made
+  where the guard cannot see it (another machine, a script, a harness without the hook) shows
+  there at the next day-start. A repository with no checkout on this machine is a warning.
+- Where the host offers it, turn on branch protection as well: it covers every machine and
+  every tool, and the guard and the doctor then never fire.
+
+Tests: `tests/test_pr_gate.py`.
 
 ## How the shell is read
 

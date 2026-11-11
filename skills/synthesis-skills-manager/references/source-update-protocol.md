@@ -2,7 +2,7 @@
 
 ## Contents
 
-- [In v5](#in-v5)
+- [In v5](#in-v5), with the sequence for a repository that takes changes only through a pull request
 - [The protocol (verbatim from 2.9.3)](#the-protocol-verbatim-from-293): the sequence, what you must not do, and why (the 2026-04-29 incident)
 
 ## In v5
@@ -18,6 +18,26 @@ Two mechanics changed:
 - **Private and shared skills** still deploy with their repository's own installer to
   `~/.claude/skills/` and `~/.agents/skills/` (never `~/.codex/skills/`, which Codex
   owns), and step 7's `diff -q` loop is still the proof.
+
+### In a repository that takes changes only through a pull request
+
+Steps 3 to 5 below push the default branch. Where the source repository is PR-gated (listed
+under `pr_gated` in the synthesis config) or protected by its host, they read this way, and the
+rest of the sequence stands:
+
+3. Commit on a branch, with the same generic message.
+4. Push the branch, open the pull request, and wait for its checks. A red check is fixed on the
+   branch; it is never merged past.
+5. Merge the pull request, then bring the local default branch level with the remote. A
+   repository with more than one push remote then pushes the merged default branch to the
+   others.
+
+Install runs from the merged default branch, and a private repository's installer should refuse
+a commit whose checks did not pass. The push is still part of the update, and so are the pull
+request and its merge: stopping at an open pull request is the same failure as stopping between
+commit and push. From 2026-10-01 to 2026-11-10 one private skills repository took 61 commits
+pushed straight to `main`, because its instructions, and this file, said "push" and nothing said
+"pull request".
 
 ## The protocol (verbatim from 2.9.3)
 

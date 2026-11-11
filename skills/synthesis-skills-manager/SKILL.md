@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-onboarding"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.3.3"
+  version: "3.4.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -19,8 +19,8 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 
 ## Binding rules
 
-1. **Source is the only edit point.** Never edit an installed copy or a harness cache; edit, commit, push every configured remote, then install. Edits made anywhere else leave three states of the truth (2026-04-29).
-2. **Push is part of the update, not a separate decision.** Permission to update a skill is permission to push its source; pausing between commit and push is the failure pattern.
+1. **Source is the only edit point.** Never edit an installed copy or a harness cache; edit and commit in source, land the change the way the repository takes changes (a pull request whose checks pass where it is PR-gated or protected, otherwise a push to every configured remote), then install. Edits made anywhere else leave three states of the truth (2026-04-29).
+2. **Push is part of the update, not a separate decision.** Permission to update a skill is permission to push its source; pausing between commit and push is the failure pattern. In a PR-gated repository the push is the branch's, and the pull request, its checks and the merge belong to the same update (2026-11-09: 61 direct pushes to one gated `main`).
 3. **A release is done only when each harness's installed bytes equal the tag.** Pushing is publishing, harness installs do not follow the remote, and version labels lie (2026-08-24).
 4. **One releaser at a time.** Claim the release train before authoring the version bump and hold it through the release; two sessions overtook each other five times on 2026-09-01.
 5. **CI on the pull request is the only test gate.** Never release a commit CI has not passed, and never bypass a hook with `--no-verify`.
@@ -67,9 +67,10 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 
 Follow [references/source-update-protocol.md](references/source-update-protocol.md):
 edit in the source repository, review `git status` and `git diff`, commit with a generic
-message, push to every remote in `git remote -v`, then install (the release above for
-public skills; the repository's installer for private and shared ones) and prove zero
-drift.
+message, then land it: in a PR-gated or protected repository push the branch, open the
+pull request, wait for its checks and merge; otherwise push to every remote in
+`git remote -v`. Then install (the release above for public skills; the repository's
+installer for private and shared ones) and prove zero drift.
 
 ### Private and shared skills
 
