@@ -187,44 +187,44 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
      not the command spells a protected folder out: relative to the session's folder, to a
-     `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends the
-     command, through a variable, through a link the same command makes (a relative link is
-     read from the folder it is made in). A command is read once
-     for each value it gives a variable (`D=…`, `D+=…`, after `export`, `readonly`, `declare`
-     or `env`, in a `for … in` list, inside a quoted script), with the environment's value
-     for one it does not set, the default a use carries (`${D:-…}`) and an end trimmed by `%`
-     or `#`. A path is compared the way a Mac's file system finds it, whatever its case.
+     `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends
+     the command, through a variable, through a link the same command makes (a relative link
+     is read from the folder it is made in). A command is read once for each value it gives
+     a variable (`D=…`, `D+=…`, after `export`, `readonly`, `declare` or `env`, in a `for …
+     in` list, inside a quoted script), with the environment's value for one it does not
+     set, the default a use carries (`${D:-…}`) and an end trimmed by `%` or `#`. A path is
+     compared the way a Mac's file system finds it, whatever its case.
    - **What counts as a change.** A redirect; what a file utility changes (the destination
      of `cp`, `ln`, `install`, `rsync` and `ditto`, with `-t`; both ends of `mv`; `tee`,
      `touch`, `truncate`, `mkdir`, `rmdir`, `rm`, `unlink`, `shred`, `chmod`, `chown`,
      `chgrp`; `dd of=`; `sed` and `perl` editing in place; a compressor that replaces its
-     file; what `sort -o`, `uniq` or an awk program writes (its redirects, and what a command
-     it is given as a plain string writes); what `find` deletes or runs a
-     changing command on; the files `xargs` hands such a command); an interpreter script
-     that writes there; and a path inside one of those folders handed to any program the
-     guard does not know to only read it.
-   - **How it reads a Python program.** A program given to Python inline (`-c`, in each
-     form Python takes it: `-Bc PROGRAM`, `-cPROGRAM`) or on its stdin is read by its
-     syntax, and alone: another command's heredoc is not its text. A write is a file opened
-     to write, a `pathlib` call that changes a file, a call into `os`, `shutil` or
-     `subprocess`, a database opened, an archive unpacked, an in-place `fileinput`, however
-     the call was imported or renamed. A link a program makes is judged at both ends, and
-     none is made at a path that is the agent's own. A target the program spells out (a string, a name
-     given one once, strings joined, a path built with `os.path.join` or `Path`) is judged
-     where it leads. Any other target is judged by what it is built from: a protected path
-     in a string, or a name one reached through an assignment, a loop, a `with`, a default,
-     a call to the program's own function, a list or an attribute; a helper called in one
-     place spells what that caller hands it. The words after the
-     program are placed where it reads `sys.argv[n]`, and a variable of the environment
-     where it reads it by name. Taken another way (a slice, an argument parser, the whole
-     environment), one that names a protected path makes any write a refusal. What the
-     program reads from a file is content and names no path (the `.name` of a file it opened
-     is that file's path), and a copy out of a protected folder changes only the copy. A program that runs code it builds (`exec`, `eval`, a
-     module it names at run time) cannot be read: it is taken to write, and is refused
-     while it names a protected path, is handed one or runs inside one. A program with a
-     syntax error, and a script for another interpreter, is judged by its text: the words
-     it is given, or the heredoc it reads on its stdin (the whole command when its text
-     comes down a pipe).
+     file; what `sort -o`, `uniq` or an awk program writes (its redirects, and what a
+     command it is given as a plain string writes); what `find` deletes or runs a changing
+     command on; the files `xargs` hands such a command); an interpreter script that writes
+     there; and a path inside one of those folders handed to any program the guard does not
+     know to only read it.
+   - **How it reads a Python program.** A program given to Python inline (`-c`, in each form
+     Python takes it: `-Bc PROGRAM`, `-cPROGRAM`) or on its stdin is read by its syntax, and
+     alone: another command's heredoc is not its text. A write is a file opened to write, a
+     `pathlib` call that changes a file, a call into `os`, `shutil` or `subprocess`, a
+     database opened, an archive unpacked, an in-place `fileinput`, however the call was
+     imported or renamed. A link a program makes is judged at both ends, and none is made at
+     a path that is the agent's own. A target the program spells out (a string, a name given
+     one once, strings joined, a path built with `os.path.join` or `Path`) is judged where
+     it leads. Any other target is judged by what it is built from: a protected path in a
+     string, or a name one reached through an assignment, a loop, a `with`, a default, a
+     call to the program's own function, a list or an attribute; a helper called in one
+     place spells what that caller hands it. The words after the program are placed where it
+     reads `sys.argv[n]`, and a variable of the environment where it reads it by name. Taken
+     another way (a slice, an argument parser, the whole environment), one that names a
+     protected path makes any write a refusal. What the program reads from a file is content
+     and names no path (the `.name` of a file it opened is that file's path), and a copy out
+     of a protected folder changes only the copy. A program that runs code it builds
+     (`exec`, `eval`, a module it names at run time) cannot be read: it is taken to write,
+     and is refused while it names a protected path, is handed one or runs inside one. A
+     program with a syntax error, and a script for another interpreter, is judged by its
+     text: the words it is given, or the heredoc it reads on its stdin (the whole command
+     when its text comes down a pipe).
    - **Standing in a protected folder.** A program can write where it stands without naming
      a file (an archive unpacked, a script file). Inside the state folder, the board or the
      sessions archive, where no session has reason to stand, only a command the guard can
