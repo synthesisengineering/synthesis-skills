@@ -95,8 +95,8 @@ def place(location: str, policy: dict) -> str:
     bases = [slot.part(policy, "home"), *[p for p in policy.get("places") or [] if isinstance(p, dict)]]
     for base in bases:
         label, address = str(base.get("label") or "").lower(), str(base.get("address") or "").lower()
-        if (label and low == label) or (address and address in low):
-            return "base"
+        if (label and re.match(rf"{re.escape(label)}\s*(?:$|[,(:;/–-])", low)) or (address and address in low):
+            return "base"  # its label, alone or with a room or a note after it, or its address anywhere
     return "away"
 
 
@@ -131,7 +131,7 @@ def judge(args, config: dict, read: dict) -> dict:
         stop(f"the calendar read does not cover {first} through {last} (it covers {covered[0]} through {covered[1]}); "
              "read the calendar for those days first")
     title = str(policy.get("block_title") or "Travel").lower()
-    blocks, commitments = [], []
+    blocks, commitments, others = [], [], []
     for entry in (e for e in read.get("events") or [] if isinstance(e, dict)):
         try:
             a, b = slot.moment(entry.get("start"), zone), slot.moment(entry.get("end"), zone)
@@ -142,6 +142,7 @@ def judge(args, config: dict, read: dict) -> dict:
             names = [" ".join(name.lower().split()) for name in said.get("for", "").splitlines()]
             blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
+        others += [(a, summary)] if a else []  # every timed entry: the next morning's first one is what a night runs into
         span, spot = days(entry, a, b), tidy(entry.get("location"))
         if span and place(spot, policy) == "away":
             commitments.append({"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
@@ -210,6 +211,10 @@ def judge(args, config: dict, read: dict) -> dict:
             late = latest and (after["end"].date() > c["start"].date() or after["end"].time() > time.fromisoformat(latest))
             if late and not decided:
                 lacks.append(f"home at {slot.hm(after['end'])}, after {latest}: {ASK}")
+            short = slot.morning_after(after["end"], others, policy.get("sleep_hours"))
+            if short and not decided:
+                lacks.append(f"home at {slot.hm(after['end'])} and \"{short[1]}\" starts {slot.hm(short[0])} the next morning: "
+                             f"{slot.span(short[2])} between, under the {float(policy['sleep_hours']):g} hours the policy keeps: {ASK}")
             found.update(home=slot.hm(after["end"]))
         events.append({**found, "lacks": lacks})
     flagged = sum(bool(e["lacks"]) for e in events)

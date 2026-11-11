@@ -62,6 +62,20 @@ def hm(value: datetime) -> str:
     return value.strftime("%H:%M")
 
 
+def span(gap: timedelta) -> str:
+    hours, minutes = divmod(int(gap.total_seconds() // 60), 60)
+    return f"{hours} h {minutes:02d} min"
+
+
+def morning_after(home: datetime, entries: list, hours) -> tuple | None:
+    """(start, title, the time between) for the next morning's first entry, when it starts less than `hours` after
+    the principal gets home. The night is the one that begins on the day they get home, or on the day before when
+    that is past midnight; an entry later the same night is not the morning."""
+    night = home.date() if home.hour >= 12 else home.date() - timedelta(days=1)
+    first = min(((a, title) for a, title in entries if a.date() == night + timedelta(days=1) and a > home), default=None)
+    return (*first, first[0] - home) if first and hours and first[0] - home < timedelta(hours=float(hours)) else None
+
+
 def clock(day: date, text: str, zone: ZoneInfo) -> datetime:
     return datetime.combine(day, time.fromisoformat(text), zone)
 
@@ -155,6 +169,20 @@ def judge(args, config: dict, read: dict) -> dict:
             f"the trip there ({hm(start - out)}-{hm(start)}) overlaps {there}" if there
             else f"the trip back ({hm(end)}-{hm(end + back)}) overlaps {home}" if home
             else f"{hm(start - out)}-{hm(start)} there, {hm(end)}-{hm(end + back)} back, clear of other events")
+    if back:  # what the evening costs is seen before the yes: when the principal is home, and what the night leaves
+        policy, home = part(config, "travel_policy"), end + back
+        latest, keeps = str(policy.get("latest_return") or ""), policy.get("sleep_hours")
+        late = latest and (home.date() > start.date() or home.time() > time.fromisoformat(latest))
+        add("return", "REVIEW" if late else "OK", f"home at {hm(home)}" + (
+            f", after {latest}: the principal's decision, made with the trip in front of them" if late else ""))
+        morning = (home.date() if home.hour >= 12 else home.date() - timedelta(days=1)) + timedelta(days=1)
+        short = morning_after(home, [(a, s) for a, _, s, _ in events], keeps)
+        if keeps and window["through"] < morning.isoformat():
+            add("sleep", "NOTE", f"the calendar read ends before {morning}, so the night cannot be judged: read through that day")
+        elif keeps:
+            add("sleep", "REVIEW" if short else "OK", f"home at {hm(home)} and \"{short[1]}\" starts {hm(short[0])} the next morning: "
+                f"{span(short[2])} between, under the {float(keeps):g} hours the policy keeps: the principal's decision" if short
+                else f"{float(keeps):g} hours or more between getting home and the next morning's first commitment")
 
     load = sum(((b - a).total_seconds() for a, b, _ in that_day), (end - start).total_seconds()) / 3600
     most = float(limits.get("max_meeting_hours_per_day", 5))
