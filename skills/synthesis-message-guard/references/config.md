@@ -136,8 +136,9 @@ the event was never asked how he would get there. With `in_person_travel` in the
   judged by itself.
 - **Whose rules:** what a place is and what a travel line is are read from the chief of staff's own
   `travel_check.py` and the `travel_policy` in the preferences file the key names. The guard holds
-  no copy of either. When that file or its policy cannot be read, the write is refused with the
-  reason.
+  no copy of either. When that file or its policy cannot be read, a write that names a place is
+  refused with the reason; a write that names none (a hold, a rename) is not judged, since there is
+  nothing for the policy to say.
 - **What it cannot see:** an event the principal accepts or adds themselves, an invitation that
   arrives, an update that moves an event without naming its place, and a write through a browser
   or computer use. The daily rituals' travel check reads the calendar itself and covers those.

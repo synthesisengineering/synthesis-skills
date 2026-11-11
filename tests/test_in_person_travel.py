@@ -118,7 +118,7 @@ def test_a_call_that_names_no_place_needs_no_policy(tmp_path, tool, call):
     among them (2026-11-11: two tests of a private config failed that way in a home with no preferences). The
     policy says what a place is, so it is read only for a call that names one; that call is still refused."""
     missing = {"in_person_travel": {"preferences": str(tmp_path / "nowhere.json")}}
-    assert guards.check(tool, call, missing) is None
+    assert guards.check_travel(tool, call, missing) is None  # the travel check alone: a batch tool also waits for a send approval
     assert "cannot be read" in guards.check(CREATE, event(), missing)
     assert "cannot be read" in guards.check(CREATE, event(location="Zoom"), missing)  # whether Zoom is a place is the policy's to say
 

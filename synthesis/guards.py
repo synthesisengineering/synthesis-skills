@@ -355,11 +355,16 @@ def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
     there, and the agent that wrote it was never asked). What a place is and what a travel line is are asked of
     the chief of staff's own travel check and the principal's travel policy; no copy of either lives here. It
     reads the call alone and asks for no approval. {"in_person_travel": {"preferences": "<the preferences file>"}};
-    no key, no change; a policy that cannot be read refuses the write."""
+    no key, no change; a policy that cannot be read refuses a write that names a place, and only that one: what a
+    place is is the policy's to say, and a call that names none needs none (2026-11-11: with no preferences file
+    every calendar write was refused, a hold with no location among them)."""
     rule = config.get("in_person_travel")
     if rule is None or not CALENDAR_WRITE.search(tool):
         return None
     try:
+        events = [*_events(tool_input)] or [tool_input]
+        if not any(next(_place(event), "") for event in events):
+            return None
         with open(os.path.expanduser(str(rule["preferences"])), encoding="utf-8") as source:
             policy = json.load(source)["travel_policy"]
         reader = type(os)("travel_check")
@@ -367,7 +372,7 @@ def check_travel(tool: str, tool_input: dict, config: dict) -> str | None:
         with open(TRAVEL_READER, encoding="utf-8") as source:
             exec(compile(source.read(), TRAVEL_READER, "exec"), reader.__dict__)  # no import: nothing is written beside it
         title = str(policy.get("block_title") or "Travel").lower()
-        for event in [*_events(tool_input)] or [tool_input]:
+        for event in events:
             said = {key.lower(): text for key, text in _strings(event)}
             name = next((said[k] for k in ("summary", "title", "subject", "name") if said.get(k)), "an event")
             notes = "\n".join(said.get(k, "") for k in ("description", "notes", "body", "details"))
