@@ -39,7 +39,7 @@ def test_every_problem_is_reported_together():
     text = problems({"KB_PUBLIC_URL": "http://kb.example.com", "KB_SEARCH_LIMIT": "500", "PORT": "x"})
     for expected in ("set exactly one of KB_GIT_URL", "KB_PUBLIC_URL must be the service's https://",
                      "KB_GOOGLE_CLIENT_ID is required", "KB_GOOGLE_CLIENT_SECRET is required",
-                     "KB_ALLOWED_EMAILS is required", "KB_SEARCH_LIMIT must be a whole number from 1 to 50",
+                     "KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required", "KB_SEARCH_LIMIT must be a whole number from 1 to 50",
                      "PORT must be a whole number"):
         assert expected in text
 

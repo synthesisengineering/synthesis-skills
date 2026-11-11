@@ -38,6 +38,8 @@ class Settings:
     jwt_signing_key: str
     allowed_emails: str
     allowed_hosted_domains: str
+    allowed_groups: str
+    group_refresh_seconds: int
     allowed_redirect_uris: tuple
     oauth_store: str
     firestore_project: str
@@ -74,9 +76,11 @@ def load(env) -> Settings:
     local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
     if parsed.scheme not in ("https", "http") or not parsed.hostname or (parsed.scheme == "http" and not local):
         problems.append("KB_PUBLIC_URL must be the service's https:// address (http:// only for localhost)")
-    for name in ("KB_GOOGLE_CLIENT_ID", "KB_GOOGLE_CLIENT_SECRET", "KB_ALLOWED_EMAILS"):
+    for name in ("KB_GOOGLE_CLIENT_ID", "KB_GOOGLE_CLIENT_SECRET"):
         if not get(name):
             problems.append(f"{name} is required")
+    if not get("KB_ALLOWED_EMAILS") and not get("KB_ALLOWED_GROUPS"):
+        problems.append("KB_ALLOWED_EMAILS or KB_ALLOWED_GROUPS is required (either or both)")
     store = get("KB_OAUTH_STORE", "memory").lower()
     if store not in STORES:
         problems.append(f"KB_OAUTH_STORE must be one of {', '.join(STORES)}, not {store!r}")
@@ -90,7 +94,8 @@ def load(env) -> Settings:
         refresh_seconds=_int(env, "KB_REFRESH_SECONDS", 600, 0, 86400, problems), public_url=public_url,
         google_client_id=get("KB_GOOGLE_CLIENT_ID"), google_client_secret=get("KB_GOOGLE_CLIENT_SECRET"),
         jwt_signing_key=get("KB_JWT_SIGNING_KEY"), allowed_emails=get("KB_ALLOWED_EMAILS"),
-        allowed_hosted_domains=get("KB_ALLOWED_HOSTED_DOMAINS"),
+        allowed_hosted_domains=get("KB_ALLOWED_HOSTED_DOMAINS"), allowed_groups=get("KB_ALLOWED_GROUPS"),
+        group_refresh_seconds=_int(env, "KB_GROUP_REFRESH_SECONDS", 300, 60, 86400, problems),
         allowed_redirect_uris=tuple(u.strip() for u in get("KB_ALLOWED_REDIRECT_URIS").split(",") if u.strip()),
         oauth_store=store, firestore_project=get("KB_FIRESTORE_PROJECT"), firestore_database=get("KB_FIRESTORE_DATABASE"),
         firestore_prefix=get("KB_FIRESTORE_COLLECTION_PREFIX", "kb-connector"), storage_key=storage_key,
@@ -105,8 +110,9 @@ def load(env) -> Settings:
     if not fields & {"id", "source_path"} or fields - set(URL_FIELDS):
         problems.append("KB_DOCUMENT_URL_TEMPLATE may use only {" + "}, {".join(URL_FIELDS) + "} and needs {id} or "
                         "{source_path}")
-    if settings.allowed_emails and any(e.count("@") != 1 for e in listed(settings.allowed_emails)):
-        problems.append("KB_ALLOWED_EMAILS must be comma-separated email addresses")
+    for name, value in (("KB_ALLOWED_EMAILS", settings.allowed_emails), ("KB_ALLOWED_GROUPS", settings.allowed_groups)):
+        if value and any(e.count("@") != 1 for e in listed(value)):
+            problems.append(f"{name} must be comma-separated email addresses")
     if problems:
         raise ConfigError("the connector cannot start:\n  - " + "\n  - ".join(problems))
     return settings

@@ -32,7 +32,8 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Route
 
 from . import config
-from .access import AccessPolicy, Decision
+from .access import AccessPolicy, Decision, listed
+from .groups import GroupRoster
 from .source import DirectorySource, GitSource, Library, SourceError
 
 LOG = logging.getLogger("kb_connector")
@@ -173,14 +174,15 @@ def build_server(settings: config.Settings, library: Library, policy: AccessPoli
     @mcp.tool(annotations=READ_ONLY)
     def fetch(id: str) -> FetchedDocument:
         """Read one knowledge-base document by the id search returned: its full markdown text, its url, and
-        metadata holding its front-matter fields and where and when it was published."""
+        metadata holding its front-matter fields and where and when it was published. The id SKILL.md returns
+        the knowledge base's own guide: what it covers and an index of its documents."""
         snap = snapshot()
         doc = snap.corpus.get(id)
         if doc is None:
             raise ToolError(f"No document has the id {id!r}. Use an id that search returned.")
         prov = doc.provenance
         return {"id": doc.id, "title": doc.title, "text": doc.body,
-                "url": document_url(settings.document_url, doc, snap.commit),
+                "url": "" if doc is snap.corpus.guide else document_url(settings.document_url, doc, snap.commit),
                 "metadata": {"front_matter": doc.fields, "provenance": prov.get("stamp", ""),
                              "source_path": prov.get("source_path", ""), "source_repository": prov.get("source_repo", ""),
                              "source_commit": prov.get("commit", ""), "published": prov.get("published", ""),
@@ -188,8 +190,11 @@ def build_server(settings: config.Settings, library: Library, policy: AccessPoli
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(request: Request) -> JSONResponse:
-        report = library.health()
-        return JSONResponse(report, status_code=200 if report["status"] == "ok" else 503)
+        report, ok = library.health(), True
+        if policy.roster is not None:
+            report["access_groups"] = policy.roster.health()
+            ok = report["access_groups"]["status"] == "ok"
+        return JSONResponse(report, status_code=200 if ok and report["status"] == "ok" else 503)
 
     return mcp
 
@@ -198,7 +203,8 @@ def main(env=None) -> int:
     env = os.environ if env is None else env
     try:
         settings = config.load(env)
-        policy = AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains)
+        roster = GroupRoster(listed(settings.allowed_groups), settings.group_refresh_seconds) if settings.allowed_groups else None
+        policy = AccessPolicy.from_settings(settings.allowed_emails, settings.allowed_hosted_domains, roster)
     except (config.ConfigError, ValueError) as error:
         print(f"kb-connector: {error}", file=sys.stderr)
         return 2
@@ -217,7 +223,12 @@ def main(env=None) -> int:
     if not library.refresh():
         print(f"kb-connector: the first load failed: {library.last_error}", file=sys.stderr)
         return 1
+    if roster is not None and not roster.refresh():
+        print(f"kb-connector: the access groups could not be read: {roster.last_error}", file=sys.stderr)
+        return 1
     library.start(settings.refresh_seconds)
+    if roster is not None:
+        roster.start()
     server = build_server(settings, library, policy, build_auth(settings, policy))
     server.run(transport="http", host=settings.host, port=settings.port, show_banner=False, stateless_http=True,
                uvicorn_config={"access_log": False})

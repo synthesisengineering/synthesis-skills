@@ -79,3 +79,16 @@ def test_links_are_never_followed_out_of_the_references_folder(published, refere
     corpus = Corpus.load(published)
     assert corpus.get("leak.md") is None and corpus.get("linked/elsewhere.md") is None
     assert not [doc for doc in corpus.documents.values() if "secret material" in doc.body]
+
+
+def test_the_plugins_guide_is_fetched_by_its_name_but_never_searched(published, references, tmp_path):
+    assert Corpus.load(published).get("SKILL.md") is None  # the fixture has no guide
+    (references.parent / "SKILL.md").write_text("---\nname: kb\n---\n\n# Guide\n\nIndex.\n", encoding="utf-8")
+    corpus = Corpus.load(published)
+    assert corpus.get("SKILL.md").title == "Guide" and "SKILL.md" not in corpus.documents
+    assert Corpus.load(references, ".").get("SKILL.md") is None  # served from the tree's root: nothing above it
+    (references.parent / "SKILL.md").unlink()
+    secret = tmp_path / "secret.md"
+    secret.write_text("# Secret\n", encoding="utf-8")
+    (references.parent / "SKILL.md").symlink_to(secret)
+    assert Corpus.load(published).get("SKILL.md") is None

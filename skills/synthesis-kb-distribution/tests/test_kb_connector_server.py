@@ -30,6 +30,7 @@ from fastmcp.utilities.tests import asgi_server  # noqa: E402
 
 from kb_connector import config, server  # noqa: E402
 from kb_connector.access import AccessPolicy  # noqa: E402
+from kb_connector.groups import GroupRoster  # noqa: E402
 from kb_connector.source import DirectorySource, Library  # noqa: E402
 
 CLIENT_ID = "test-client.apps.googleusercontent.com"
@@ -178,8 +179,12 @@ def test_search_and_fetch_return_what_chatgpt_expects(published):
             found = await client.call_tool("search", {"query": "per-seat pricing"})
             fetched = await client.call_tool("fetch", {"id": PRICING})
             missing = await client.call_tool("fetch", {"id": "../../etc/passwd"}, raise_on_error=False)
-            return found, fetched, missing
-    found, fetched, missing = run(go())
+            guide = await client.call_tool("fetch", {"id": "SKILL.md"})
+            return found, fetched, missing, guide
+    next(published.glob("plugins/*/skills/*/references")).parent.joinpath("SKILL.md").write_text("# Guide\n\nEvery document.\n", encoding="utf-8")
+    library.refresh()
+    found, fetched, missing, guide = run(go())
+    assert guide.structured_content["text"] == "# Guide\n\nEvery document." and guide.structured_content["url"] == ""
     results = found.structured_content["results"]
     assert json.loads(found.content[0].text) == found.structured_content
     assert results[0] == {"id": PRICING, "title": "Pricing decision for 2027",
@@ -212,6 +217,71 @@ def test_health_reports_the_served_commit_and_503_before_a_load(published):
     assert set(ok.json()) == {"status", "commit", "files", "refreshed_at", "last_attempt_at", "last_refresh_failed"}
     empty = run(health(Library(DirectorySource(published))))
     assert empty.status_code == 503 and empty.json()["status"] == "unavailable"
+
+
+def directory(*people):
+    """The two Cloud Identity reads for one group, leads@example.com, holding these people."""
+    def read(path):
+        if path.startswith("groups:lookup"):
+            return {"name": "groups/leads"}
+        return {"memberships": [{"preferredMemberKey": {"id": person}, "type": "USER"} for person in people]}
+    return read
+
+
+def test_health_reports_the_access_groups_and_503_when_they_are_stale(published):
+    roster = GroupRoster(["leads@example.com"], 300, directory("lead@example.com"))
+    policy = AccessPolicy.from_settings("", "", roster)
+
+    async def health():
+        mcp = server.build_server(settings_for(published), loaded(published), policy, ClaimsVerifier({}))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            return await http.get("/health")
+    stale = run(health())
+    assert stale.status_code == 503 and stale.json()["access_groups"]["status"] == "stale"
+    assert roster.refresh()
+    ok = run(health())
+    assert ok.status_code == 200 and ok.json()["access_groups"] == {
+        "status": "ok", "refreshed_at": ok.json()["access_groups"]["refreshed_at"], "last_refresh_failed": False}
+
+
+def test_a_group_member_signs_in_and_loses_access_when_the_groups_cannot_be_read(published):
+    settings, google = settings_for(published, KB_ALLOWED_EMAILS="", KB_ALLOWED_GROUPS="leads@example.com"), FakeGoogle()
+    roster = GroupRoster(["leads@example.com"], 300, directory("lead@example.com"))
+    assert roster.refresh()
+    policy = AccessPolicy.from_settings(settings.allowed_emails, "", roster)
+
+    async def go():
+        mcp = server.build_server(settings, loaded(published), policy, google_auth(settings, policy, google))
+        async with asgi_server(mcp, stateless_http=True) as srv, srv.http_client() as http:
+            outsider = await sign_in(http, "code-outsider")
+            _, token = await sign_in(http, "code-lead")
+            before = await http.post("/mcp", headers={"authorization": f"Bearer {token}"}, json={})
+            roster.refreshed_at -= 901  # three intervals without a good read
+            after = await http.post("/mcp", headers={"authorization": f"Bearer {token}"}, json={})
+            return outsider, token, before, after
+    (outsider, none), token, before, after = run(go())
+    assert outsider.status_code == 403 and none is None and "not on this knowledge base" in outsider.text
+    assert token and before.status_code != 401 and after.status_code == 401
+
+
+def test_main_refuses_to_start_when_the_access_groups_cannot_be_read(published, monkeypatch, capsys):
+    env = {"KB_SOURCE_DIR": str(published), "KB_PUBLIC_URL": "http://127.0.0.1", "KB_GOOGLE_CLIENT_ID": CLIENT_ID,
+           "KB_GOOGLE_CLIENT_SECRET": "test-secret", "KB_ALLOWED_GROUPS": "leads@example.com", "KB_REFRESH_SECONDS": "0"}
+
+    def refused(path):
+        raise RuntimeError("Cloud Identity API answered 403 for groups:lookup: permission denied")
+    monkeypatch.setattr(server, "GroupRoster", lambda groups, seconds: GroupRoster(groups, seconds, refused))
+    assert server.main(env) == 1
+    assert "the access groups could not be read: Cloud Identity API answered 403" in capsys.readouterr().err
+    started = []
+
+    def readable(groups, seconds):
+        roster = GroupRoster(groups, seconds, directory("lead@example.com"))
+        roster.start = lambda: started.append(roster)
+        return roster
+    monkeypatch.setattr(server, "GroupRoster", readable)
+    monkeypatch.setattr(server.FastMCP, "run", lambda self, **kwargs: None)
+    assert server.main(env) == 0 and started[0].members == {"lead@example.com"}
 
 
 def test_a_listed_person_signs_in_with_google_and_searches_and_no_token_is_logged(published, caplog):

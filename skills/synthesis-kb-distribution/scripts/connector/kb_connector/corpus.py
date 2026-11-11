@@ -26,6 +26,7 @@ if _ROOT is not None and str(_ROOT) not in sys.path:
 from synthesis import yamlish  # noqa: E402
 
 LOG = logging.getLogger("kb_connector")
+GUIDE = "SKILL.md"
 FRONT = re.compile(r"---[ \t]*\n(.*?\n)?---[ \t]*(?:\n|\Z)", re.S)
 STAMP = re.compile(r"^> Published from `(?P<source_path>[^`]+)` in (?P<source_repo>.+?) at commit "
                    r"`(?P<commit>[0-9a-fA-F]{4,64})` \((?P<published>[^)]*)\)\.\s*$")
@@ -104,8 +105,9 @@ def find_references(root: Path, configured: str = "") -> Path:
 class Corpus:
     """Every markdown file under the references folder, hidden paths left out, keyed by id."""
 
-    def __init__(self, documents):
+    def __init__(self, documents, guide=None):
         self.documents = {doc.id: doc for doc in documents}
+        self.guide = guide  # the plugin's SKILL.md beside references/: fetch serves it, search leaves it out
 
     @classmethod
     def load(cls, root: Path, configured: str = "") -> "Corpus":
@@ -122,10 +124,12 @@ class Corpus:
             docs.append(load_document(path, rel))
         if not docs:
             raise CorpusError(f"no markdown files under {folder.relative_to(root.resolve())}")
-        return cls(docs)
+        guide = folder.parent / GUIDE  # read only when it is inside the tree and not a link
+        return cls(docs, load_document(guide, GUIDE) if folder != root.resolve() and guide.is_file()
+                   and not guide.is_symlink() else None)
 
     def __len__(self) -> int:
         return len(self.documents)
 
     def get(self, doc_id: str):
-        return self.documents.get(doc_id)
+        return self.documents.get(doc_id) or (self.guide if doc_id == GUIDE else None)

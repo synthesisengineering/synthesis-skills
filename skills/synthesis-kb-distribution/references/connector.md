@@ -31,6 +31,11 @@ MCP server (Model Context Protocol, the protocol both products use for custom co
   the shapes ChatGPT's connectors and deep research expect: structured content, with the same
   object as JSON in the text content. Both tools carry `readOnlyHint: true`,
   `destructiveHint: false`, `idempotentHint: true` and `openWorldHint: false`.
+- **The plugin's guide through fetch.** `fetch("SKILL.md")` returns the plugin's own `SKILL.md`
+  (what the knowledge base covers and the index of its documents) with an empty `url`; search
+  never returns it. A platform that takes an MCP server but not a plugin, such as an agent builder,
+  can tell its agent to fetch `SKILL.md` first, so the agent's instructions never hold a copy of the
+  index that goes stale. The guide is read only from inside the published tree, never through a link.
 - **Ranking.** BM25F over title, description, path and body, with the standard library only.
   A title match counts three times a body match, plurals and common suffixes fold (price, prices,
   priced and pricing match each other), and a phrase match ranks higher.
@@ -53,7 +58,8 @@ MCP server (Model Context Protocol, the protocol both products use for custom co
 
 ## 2. How access works
 
-The access list is `KB_ALLOWED_EMAILS`. It is checked three times:
+The access list is `KB_ALLOWED_EMAILS`, the members of the Google groups in `KB_ALLOWED_GROUPS`, or
+both: a person on either passes. It is checked three times:
 
 1. **At sign-in.** After Google returns, the connector reads the signed-in account and checks the
    list before any grant goes back to ChatGPT or Claude. A person not on the list sees a page
@@ -63,18 +69,30 @@ The access list is `KB_ALLOWED_EMAILS`. It is checked three times:
 3. **On every tool call and tool listing.** A token for someone not on the list lists no tools and
    every call returns the reason.
 
-To pass, the account's email must be on the list (letter case does not matter), Google must
+**Groups.** With `KB_ALLOWED_GROUPS` set, the connector reads each group's members from Google's
+Cloud Identity Groups API at start and every `KB_GROUP_REFRESH_SECONDS` (five minutes by default),
+following groups nested inside them, as its own service account with the read-only groups scope.
+People added to or removed from a group gain or lose access at the next read. If a read fails, the
+last good membership is kept for at most three intervals; after that nobody gets in through a group
+until a read succeeds, while the addresses in `KB_ALLOWED_EMAILS` keep working. A start whose first
+read fails stops, so a deploy without the grant in section 7.2 fails loudly instead of letting
+nobody in quietly. A group member counts as a person only through an individual account: a group
+whose member is the whole organization or a customer is not expanded.
+
+To pass, the account's email must be on the list or in a group (letter case does not matter), Google must
 report the address as verified, and when `KB_ALLOWED_HOSTED_DOMAINS` is set the account must belong
 to one of those Google Workspace domains (Google's `hd` value; a personal Gmail account has none).
 The messages a refused person sees:
 
 - `Access denied: <email> is not on this knowledge base's access list. Ask its administrator to add the address.`
 - `Access denied: Google has not verified the address <email>.`
+- `Access denied: the access groups could not be read just now. ...` (the group membership is
+  older than three refresh intervals, so a group member is refused rather than let through)
 - `Access denied: <email> is not an account in an allowed Google Workspace domain.`
 - `Access denied: this sign-in could not be checked against the access list. ...` (the check
   itself failed, so the sign-in is refused rather than let through)
 
-There is no setting that serves without sign-in, and an empty access list stops the start.
+There is no setting that serves without sign-in, and a start with no addresses and no groups stops.
 
 Logs name the email address and the reason, never a token. The HTTP access log is off, because the
 Google callback's address carries Google's authorization code in its query string. Cloud Run's own
@@ -106,7 +124,9 @@ lists every problem at once.
 | `KB_PUBLIC_URL` | required | The service's public `https://` address, with no path. `http://` is accepted only for localhost. |
 | `KB_GOOGLE_CLIENT_ID` | required | The Google OAuth client's ID. |
 | `KB_GOOGLE_CLIENT_SECRET` | required, secret | The Google OAuth client's secret. |
-| `KB_ALLOWED_EMAILS` | required | Comma-separated addresses that may read the knowledge base. |
+| `KB_ALLOWED_EMAILS` | required unless `KB_ALLOWED_GROUPS` is set | Comma-separated addresses that may read the knowledge base. |
+| `KB_ALLOWED_GROUPS` | none | Comma-separated Google group addresses whose members may read it (section 7.2). |
+| `KB_GROUP_REFRESH_SECONDS` | `300` | How often the groups are read again, 60 to 86400. |
 | `KB_ALLOWED_HOSTED_DOMAINS` | none | Comma-separated Google Workspace domains; when set, accounts outside them are refused even if listed. |
 | `KB_JWT_SIGNING_KEY` | derived from the client secret | Secret that signs the connector's own tokens. Set it so rotating the Google client secret does not sign everyone out. |
 | `KB_OAUTH_STORE` | `memory` | `firestore` for any deployment: registrations, grants and Google tokens survive restarts and are shared by every instance. `memory` loses them when the process stops. |
@@ -303,7 +323,7 @@ list refuses that client.
 
 ## 7. Change the access list
 
-Edit `KB_ALLOWED_EMAILS` in the settings file and redeploy with the same command, or update the
+**7.1 Addresses.** Edit `KB_ALLOWED_EMAILS` in the settings file and redeploy with the same command, or update the
 one variable (gcloud's `^;^` prefix makes `;` the separator, so the commas stay inside the value):
 
 ```bash
@@ -314,12 +334,40 @@ gcloud run services update <service> --region <region> \
 The new revision serves the next request. A removed person's existing token stops working on
 their next request; an added person can sign in at once.
 
+**7.2 A Google group the organization's IT manages.** People are then added and removed in Google
+Admin or Google Groups, with no change to the connector.
+
+1. Create the group, for example `knowledge-readers@<domain>`, and add the people.
+2. Turn on the Cloud Identity API in `<project>`:
+   `gcloud services enable cloudidentity.googleapis.com --project <project>`.
+3. Let the service's service account (5.8) read groups. A super administrator, in the Google Admin
+   console under Account > Admin roles, creates a custom role holding only the Admin API privilege
+   Groups > Read, opens it, chooses Assign admin > Assign service accounts, and enters the service
+   account's email. Google's Groups API setup guide documents the prebuilt Groups Admin role for
+   this, which can also change groups; use it only if the start in step 5 reports a 403 with the
+   custom role.
+4. Set `KB_ALLOWED_GROUPS` to the group's address in the settings file (several are separated by
+   commas). `KB_ALLOWED_EMAILS` may stay, for example for the administrator, or be left empty.
+5. Redeploy with the command in 5.11. The start reads the group first and stops with
+   `the access groups could not be read: ...` if it cannot, so a running revision proves the grant;
+   `/health` then shows `access_groups` with `"status": "ok"`.
+
 ## 8. Operate it
+
+The running connector (`python -B -m kb_connector` from `scripts/connector/`) prints
+`serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
+fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
+its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
+then exits 2; if the first load fails it prints `kb-connector: the first load failed: <reason>` and
+exits 1.
 
 - **Is it current?** `/health` shows the served commit. Compare it with the published repository's
   head. `last_refresh_failed: true` means the last check, clone or load failed and the last good
   copy is still served; the log line `refresh failed (last good copy kept): ...` says why.
-- **Log lines worth alerting on:** `refresh failed`, `sign-in refused for <email>: <reason>`,
+- **Groups:** with `KB_ALLOWED_GROUPS` set, `/health` also reports `access_groups`: its `status`
+  (`ok`, or `stale` once the membership is older than three intervals, which also makes `/health`
+  answer 503), when it was last read, and whether the last read failed.
+- **Log lines worth alerting on:** `access group refresh failed`, `refresh failed`, `sign-in refused for <email>: <reason>`,
   `token refused for <email>: <reason>` and `sign-in check failed`. The first means stale content;
   the others show who was refused.
 - **Rotate a secret:** add a new version in Secret Manager and redeploy (or update the service) so
