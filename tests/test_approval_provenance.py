@@ -1320,3 +1320,15 @@ def test_a_variable_of_the_environment_is_placed_where_the_program_reads_it_by_n
 ])
 def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("program, held", [
+    ("__import__('os').remove('{state}/a.json')", True),                                    # a program that runs code it builds
+    ("import importlib\nimportlib.import_module('shutil').rmtree('{state}')", True),         # cannot be read, so while it names a
+    ("exec(\"from shutil import rmtree\\nrmtree('{state}')\")", True),                       # protected path it does not run
+    ("import runpy\nrunpy.run_path('/tmp/pad/tool.py', init_globals=dict(target='{state}'))", True),
+    ("print(eval('1 + 1'), __import__('os').getcwd())", False),                              # and one that names none does
+])
+def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protected_path(spots, program, held, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    assert (REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "")) == held, program
