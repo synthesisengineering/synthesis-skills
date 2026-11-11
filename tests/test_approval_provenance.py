@@ -771,7 +771,7 @@ def spots(roots, tmp_path):
     ("mv {state}/approvals/a.json /tmp/elsewhere/", "/"),                # a move takes the file away
     ("find {state}/approvals -name '*.json' -delete", "/"),
     ("find {state}/approvals -name '*.json' -exec rm {{}} +", "/"),
-    ("find {state}/approvals -type f -exec sh -c 'rm \"$1\"' _ {{}} \;", "/"),
+    ("find {state}/approvals -type f -exec sh -c 'rm \"$1\"' _ {{}} \\;", "/"),
     ("find {state}/approvals -name '*.json' | xargs rm", "/"),
     ("ls {state}/approvals | xargs -n 1 rm -f", "/"),
     ("tar -xf /tmp/a.tar -C {state}", "/"),                              # programs the guard does not know
