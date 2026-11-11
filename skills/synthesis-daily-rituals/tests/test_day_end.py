@@ -4,7 +4,9 @@ The v5 install copies `day-end` and `day-end-nudge.sh` into `<synthesis home>/bi
 `current/synthesis/rituals.py`. The nudge fires unless every workspace expected to
 close today has closed (2026-09-02: the first close used to silence it for every
 other workspace), fires when its state tool is missing or fails, shows only fixed
-generic text, and never writes state.
+generic text, and never writes state. It also runs the critical-deadline alert over every
+workspace's declared plan folders, so a day with no ritual still alerts (2026-11-06), and says so
+with a second fixed banner when that check cannot run.
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 PLUGIN = Path(__file__).resolve().parents[3]
 BANNER = '-e display notification "Evening ritual window — details in your synthesis console" with title "Synthesis"'
+UNCHECKED = '-e display notification "Critical-deadline check could not run — details in your synthesis console" with title "Synthesis"'
+SWEEP = Path("current") / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
 TODAY = date.today().isoformat()
 
 
@@ -32,6 +36,8 @@ def runtime(tmp_path: Path, with_rituals: bool = True) -> Path:
     if with_rituals:
         shutil.copytree(PLUGIN / "synthesis", home / "current" / "synthesis",
                         ignore=shutil.ignore_patterns("__pycache__"))
+        (home / SWEEP).parent.mkdir(parents=True)
+        shutil.copy2(SCRIPTS / "decay_sweep.py", home / SWEEP)
     return home
 
 
@@ -57,7 +63,14 @@ function /usr/bin/osascript { printf '%s\\n' "$*" >> "$NUDGE_RECORD"; }
 [[ "$(type -t /usr/bin/osascript)" == function ]] || exit 96
 source "$1"
 """
-    env = {**os.environ, "SYNTHESIS_HOME": str(home), "NUDGE_RECORD": str(record), "HOME": str(tmp_path)}
+    # The critical alert finds its banner and speech commands on PATH; these stand in for both.
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    for name in ("osascript", "say"):
+        (tools / name).write_text(f'#!/bin/sh\necho "{name}: $*" >> "{tmp_path / "critical-alerts"}"\n', encoding="utf-8")
+        (tools / name).chmod(0o755)
+    env = {**os.environ, "SYNTHESIS_HOME": str(home), "NUDGE_RECORD": str(record), "HOME": str(tmp_path),
+           "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"}
     env.pop("RITUAL_STATE_DIR", None)
     done = subprocess.run(["bash", "--noprofile", "--norc", "-c", wrapper, "nudge-test", str(home / "bin" / "day-end-nudge.sh")],
                           env=env, capture_output=True, text=True, check=False)
@@ -97,13 +110,35 @@ def test_the_nudge_fires_when_its_state_tool_cannot_answer(tmp_path: Path, break
     state(home, [], EVERY_DAY)
     if break_it == "unreadable-config":
         (home / "rituals" / "config.json").write_text("not JSON\n", encoding="utf-8")
-    assert nudge(home, tmp_path) == [BANNER]
+    assert nudge(home, tmp_path) == [UNCHECKED, BANNER]  # neither check could answer, and each says so
 
 
-def test_the_banner_text_is_fixed_and_names_nothing() -> None:
+def test_the_banner_texts_are_fixed_and_name_nothing() -> None:
     text = (SCRIPTS / "day-end-nudge.sh").read_text(encoding="utf-8")
-    assert text.count("display notification") == 1
-    assert "$" not in text.split("display notification")[1].splitlines()[0]
+    assert text.count("display notification") == 2
+    assert all("$" not in part.splitlines()[0] for part in text.split("display notification")[1:])
+
+
+def test_the_nudge_sounds_the_critical_alert_on_a_day_with_no_ritual(tmp_path: Path) -> None:
+    home, plans = runtime(tmp_path), tmp_path / "plans"
+    plans.mkdir()
+    (plans / "2026-01-05.md").write_text("### Renew the passport\n**Critical:** identity document\n**Decay ID:** passport\n"
+                                         f"**Calendar:** event 9\n**Decays:** {TODAY} (the appointment)\n", encoding="utf-8")
+    closed = [{"date": TODAY, "direction": d, "workspace": "alpha", "ts": "x"} for d in ("day-start", "day-end")]
+    state(home, closed, {"defaults": {"weekdays": [0, 1, 2, 3, 4, 5, 6]},
+                         "workspaces": {"alpha": {"streak": "expected-days", "plans_dirs": [str(plans)]}}})
+    before = snapshot(home)
+    assert nudge(home, tmp_path) == []  # the workspace closed, so no evening banner
+    said = (tmp_path / "critical-alerts").read_text(encoding="utf-8")
+    assert "osascript: " in said and "say: " in said and "1 critical deadline " in said and "passport" not in said.lower()
+    assert snapshot(home) == before, "the nudge must never write state"
+
+
+def test_the_nudge_is_silent_about_critical_deadlines_when_none_is_due_an_alert(tmp_path: Path) -> None:
+    home = runtime(tmp_path)
+    closed = [{"date": TODAY, "direction": d, "workspace": w, "ts": "x"} for w in ("alpha", "beta") for d in ("day-start", "day-end")]
+    state(home, closed, EVERY_DAY)
+    assert nudge(home, tmp_path) == [] and not (tmp_path / "critical-alerts").exists()
 
 
 # --- the launcher ------------------------------------------------------------------------

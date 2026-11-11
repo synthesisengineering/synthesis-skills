@@ -247,6 +247,19 @@ def test_inbox_scripts_get_a_stable_path_and_a_change_makes_a_new_release(tmp_pa
     assert install.current_hash() != first and (stable / "icloud_plan.py").read_text() == "print('plan v2')\n"
 
 
+def test_the_nudge_finds_the_deadline_sweep_in_the_runtime(tmp_path, isolated_home):
+    """The 16:55 nudge runs the critical-deadline alert outside any session, so the sweep needs a stable path."""
+    plugin = _plugin_copy(tmp_path)
+    shutil.copytree(ROOT / "skills" / "synthesis-daily-rituals" / "scripts", plugin / "skills" / "synthesis-daily-rituals" / "scripts",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    install.install(plugin)
+    sweep = isolated_home / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "decay_sweep.py"
+    done = subprocess.run([sys.executable, "-S", str(sweep), "--alert-declared", "--as-of", "2026-11-06"],
+                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
+    assert done.returncode == 0, done.stderr
+    assert "0 due" in done.stdout  # no workspace declares plan folders here, so nothing is posted or spoken
+
+
 def test_the_cli_installs_from_a_plugin_folder(tmp_path, isolated_home, capsys):
     from synthesis import cli
     assert cli.main(["install", str(_plugin_copy(tmp_path))]) == 0
