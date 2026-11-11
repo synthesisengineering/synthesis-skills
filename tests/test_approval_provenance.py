@@ -1107,3 +1107,14 @@ def test_and_what_the_same_probe_showed_must_pass(saved, command, tmp_path):
 ])
 def test_a_write_from_inside_that_cannot_be_shown_to_land_elsewhere_is_refused(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command, held", [
+    ("cd {state} && for w in a b; do d=$(ls -d /tmp/$w 2>/dev/null); git -C $d remote get-url origin; done", False),  # acts where it cannot be read
+    ("cd {state} && git remote -v && git remote get-url origin && git remote show origin", False),                      # these only read
+    ("cd {state} && git remote set-url origin https://example.com/other.git", True),
+    ("cd {state} && git remote add other https://example.com/other.git", True),
+])
+def test_git_reads_inside_the_state_folder_and_git_acting_elsewhere_are_not_held(spots, command, held, tmp_path):
+    reason = guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path))
+    assert (REFUSED in (reason or "")) == held, command
