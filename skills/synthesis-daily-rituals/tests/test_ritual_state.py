@@ -376,6 +376,7 @@ def test_a_malformed_line_costs_only_that_line(tmp_path: Path) -> None:
 
 
 def test_concurrent_writers_keep_whole_records(tmp_path: Path) -> None:
+    (tmp_path / "config.json").write_text(json.dumps({"defaults": {"plans_dirs": []}, "workspaces": {}}), encoding="utf-8")
     procs = [subprocess.Popen([sys.executable, str(SCRIPT), "--state-dir", str(tmp_path), "record",
                                "--direction", "day-end", "--workspace", f"ws{i}", "--date", "2026-09-14"],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE) for i in range(12)]

@@ -15,6 +15,11 @@ unset shell variable) is refused rather than read as "all workspaces".
         [--mode quick] [--outcome clean] [--session ID] [--pointer FILE] [--count sent=3]
     ritual_state.py query summary|last|open|streak|weekly-review [--workspace W] [--json]
 
+`record` first reads the plan folders the workspace declares in the ritual config (`plans_dirs`,
+`artifacts_dirs`) with the deadline sweep. It refuses while a critical deadline is past due and open,
+and refuses a clean outcome over plans it could not read whole (2026-11-06: an enrollment window
+closed unanswered and the day was recorded clean). A workspace that declares neither key is refused.
+
 The log is `<synthesis home>/rituals/history.jsonl` (`RITUAL_STATE_DIR` or
 `--state-dir` points elsewhere, to exercise a copy). Derivations live in the
 plugin's `synthesis/rituals.py`, which the SessionStart line and the nudge share.
@@ -38,10 +43,18 @@ for _root in (_PLUGIN, Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".
         break
 from synthesis import rituals  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import decay_sweep  # noqa: E402
+
 MAX_RECORD_BYTES = 2048  # structured data only; the narrative belongs in the session log
 DIRECTIONS = ("day-start", "day-end", "weekly-review")
 OUTCOMES = ("clean", "complete", "completed", "success", "partial", "failed", "skipped", "blocked", "degraded")
 VIEWS = ("summary", "last", "open", "streak", "weekly-review")
+CLEAN = ("clean", "complete", "completed", "success")  # outcomes that claim nothing was left uncovered
+
+
+def today() -> date:
+    return date.today()
 
 
 def refuse(message: str) -> None:
@@ -76,6 +89,35 @@ def append(record: dict) -> None:
         os.close(fd)
 
 
+def critical_deadlines(workspace: str, outcome: str) -> str:
+    """The line `record` prints about critical deadlines, or a refusal: one past due, plans unread, none declared."""
+    try:
+        roots = decay_sweep.declared(rituals.config(), workspace)
+    except ValueError as exc:
+        refuse(f"{exc}; refusing to guess")
+    if roots is None:
+        refuse(f"{workspace} declares no plan folders, so its critical deadlines cannot be checked and this ritual is "
+               f"not recorded. In {rituals.state_dir() / 'config.json'}, under workspaces.{workspace}, add "
+               '"plans_dirs": ["<folder of dated plans>"] (and "artifacts_dirs" for ritual-worker artifacts), '
+               'or "plans_dirs": [] for a workspace that keeps no dated plans')
+    if not roots:
+        return f"critical deadlines: {workspace} declares that it keeps no dated plans, so none are tracked"
+    report = decay_sweep.collect(roots, today(), workspace)
+    late = [row for row in report["critical"]["open"] if row["past_due"]]
+    if late:
+        refuse(f"{len(late)} critical deadline(s) past due and open, so this ritual is not recorded:\n"
+               + "\n".join(f"  {r['due_date']} {r['title']} [{r['class']}] ({r['path']}:{r['line']})" for r in late)
+               + "\nAsk the principal now. Each closes only with a closing mark and an **Evidence:** line at the item (a "
+               "confirmation, or the principal's own words quoted with the time), or carries a new date with its reason. "
+               "Never decide for the principal that nothing is needed, and never mark it Lapsed.")
+    if report["gaps"] and outcome in CLEAN:
+        refuse(f"{len(report['gaps'])} plan source(s) could not be read whole, so critical deadlines are not fully "
+               f"covered and outcome {outcome!r} would claim they are. Record --outcome partial and name the gaps "
+               "(decay_sweep.py lists each as NOT COVERED)")
+    rows = report["critical"]["open"]
+    return f"critical deadlines: {len(rows)} open, {sum(r['lead'] for r in rows)} within {decay_sweep.LEAD_DAYS} days"
+
+
 def cmd_record(args) -> int:
     check_workspace(args.workspace, "record --direction <direction> --workspace <workspace> --date YYYY-MM-DD")
     try:
@@ -84,6 +126,7 @@ def cmd_record(args) -> int:
         refuse(f"--date {args.date!r} is not YYYY-MM-DD; the logical workday is required and never inferred")
     if args.mode == "migration":
         refuse("mode 'migration' marks old bookkeeping and cannot be written")
+    critical = critical_deadlines(args.workspace, args.outcome)
     record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "date": args.date,
               "direction": args.direction, "workspace": args.workspace, "mode": args.mode,
               "outcome": args.outcome}
@@ -98,7 +141,7 @@ def cmd_record(args) -> int:
     if counts:
         record["counts"] = counts
     append(record)
-    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})")
+    print(f"recorded {args.direction} {args.workspace} {args.date} ({args.outcome})\n{critical}")
     return 0
 
 
