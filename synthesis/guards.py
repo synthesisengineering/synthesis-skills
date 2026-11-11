@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import time
+from datetime import date, datetime
 
 from synthesis import approvals, paths
 
@@ -214,18 +215,27 @@ def check_send(tool: str, tool_input: dict, config: dict, session: dict | None =
     from synthesis import sends
     subject, chan = {"tool": tool, "input": tool_input}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
-    if sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
+    others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
+    if isinstance(others, str):
+        return others
+    kind = "send-same-day" if others else "send"
+    if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         sends.log(chan, tool, summary, "window", session)
         sends.settle()
         return None
-    if approvals.consume("send", subject, session):
+    if approvals.consume(kind, subject, session):
         sends.log(chan, tool, summary, "approval", session)
         return None
     text = " ".join(t for _, t in _strings(tool_input))
-    code = approvals.request("send", subject, f"{tool}: {text[:120]}")
+    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
+    reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
+    if others:
+        return (f"This puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}. A meeting is "
+                "not added to today by an agent's choice, and a requester's timing is their preference: propose another day "
+                "unless the principal asked for today. If they did, show them the exact event and ask them to type "
+                f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
     return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again."
-            + (RESHAPE if _reshapes_calendar(tool, tool_input) else ""))
+            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape)
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -239,6 +249,73 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
     deletes = tool.endswith("delete_event") or str(tool_input.get("action", "")).lower() == "delete"
     timed = {"start", "end", "start_time", "end_time", "startTime", "endTime", "recurrence", "rrule"} & set(tool_input)
     return bool(re.search(r"(?:create|update|manage|delete|move)_event$", tool)) and (deletes or bool(timed))
+
+
+# --- same-day meetings (R3.1, R5) ---------------------------------------------------------------
+# 2026-11-09: an agent staged a meeting into the first open slot of the same day, three days running, because the
+# requester had said "tomorrow or Monday". The principal approved every invitation, and no approval said it was today.
+
+START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime"})
+ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _today() -> date:
+    return date.today()
+
+
+def _starts(value):
+    """Every start a calendar call names: flat, nested ({"dateTime": ...}) and inside a list of events."""
+    for key, item in value.items() if isinstance(value, dict) else ():
+        if key in START_KEYS:
+            yield from (str(v) for v in (item.values() if isinstance(item, dict) else [item]) if isinstance(v, str))
+        else:
+            yield from _starts(item)
+    for item in value if isinstance(value, list) else ():
+        yield from _starts(item)
+
+
+def _invitees(value, inside: bool = False):
+    """Addresses anywhere under an attendee, guest or invitee field, whatever shape each entry takes."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from _invitees(item, inside or bool(re.search(r"attend|guest|invite", key, re.I)))
+    elif isinstance(value, list):
+        for item in value:
+            yield from _invitees(item, inside)
+    elif inside and isinstance(value, str):
+        yield from ADDRESS.findall(value.lower())
+
+
+def _on_today(text: str) -> bool:
+    """The date as written, or the same moment on this machine's clock: either one being today counts."""
+    today = _today().isoformat()
+    try:
+        moment = datetime.fromisoformat(text.strip().replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return text.strip().startswith(today)
+    return today in (text.strip()[:10], moment.astimezone().date().isoformat() if moment.tzinfo else "")
+
+
+def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
+    """How many other people a calendar write invites to a meeting that starts today; 0 when the rule does not
+    apply; a refusal when its setting cannot be read. Config: {"same_day_meetings": {"exempt": ["<address or
+    pattern>"]}}: a meeting with an exempt attendee keeps the ordinary approval. No key, no rule."""
+    rule = config.get("same_day_meetings")
+    if rule is None or not re.search(r"(?:create|update|manage|move)[_-]events?$", tool):
+        return 0
+    exempt = rule.get("exempt", []) if isinstance(rule, dict) else None
+    if not isinstance(exempt, list) or not all(isinstance(e, str) for e in exempt):
+        return ("same_day_meetings in the synthesis config needs an \"exempt\" list of addresses or patterns (it may be "
+                "empty); calendar writes are blocked until it is fixed")
+    if not any(_on_today(start) for start in _starts(tool_input)):
+        return 0
+    routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
+    own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
+           for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
+    invited = set(_invitees(tool_input)) - own
+    if any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
+        return 0
+    return len(invited)
 
 
 # --- account routing (R3.6) ---------------------------------------------------------------------

@@ -46,6 +46,15 @@ def test_an_invitation_for_today_waits_for_an_approval_that_says_it_is_today():
     assert same_day(guards.check(CREATE, event(), CONFIG, cwd="/tmp"))  # one approval, one meeting
 
 
+@pytest.mark.parametrize("attendees, count", [(["a@example.com", "b@example.com"], "2 others"),
+                                              ([{"email": "A@example.com", "displayName": "A"}], "1 other."),
+                                              ("a@example.com, Someone <b@example.com>", "2 others")])
+def test_attendees_are_counted_in_whatever_shape_the_connector_takes(attendees, count):
+    reason = guards.check(CREATE, event(attendees=attendees) if isinstance(attendees, list) else {**event(), "attendees": attendees},
+                          CONFIG, cwd="/tmp")
+    assert same_day(reason) and count in reason
+
+
 def test_the_ordinary_invitation_approval_does_not_cover_a_meeting_today():
     code = approvals.request("send", {"tool": CREATE, "input": event()}, "an ordinary invitation")
     _approve(f"code {code}")
@@ -93,6 +102,11 @@ def test_every_shape_of_start_is_read(start):
     call = {"summary": "Follow-up", "user_google_email": "me@example.com", **start}
     call.setdefault("attendees", ["a@example.com"]) if "events" not in call else None
     assert same_day(guards.check(CREATE, call, CONFIG, cwd="/tmp"))
+
+
+def test_a_connector_that_names_its_tool_with_hyphens_is_read_too():
+    call = {"events": [{"title": "Now", "start": f"{TODAY}T16:00", "attendees": [{"email": "b@example.com"}]}]}
+    assert same_day(guards.check("mcp__planner__planner-calendar-create-events", call, CONFIG, cwd="/tmp"))
 
 
 def test_a_start_given_in_another_zone_counts_when_it_is_today_here(monkeypatch):

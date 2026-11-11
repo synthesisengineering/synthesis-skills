@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.5.1"
+  version: "2.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -35,6 +35,7 @@ format rules, and then the principal must approve that exact call.
 11. **Every channel is guarded, by what a call does** (2026-10-13). A connector tool whose name delivers words (send, reply, comment, post, share, or creating or editing an issue, page, message or review) and a shell command that posts (`gh` and `bkt` comments and PR writes, their `api` writes, `curl`/`wget`/HTTPie writes to another host) wait for the code; work in the principal's `own_repos` does not. A program that sends some other way is still a send the guard cannot see: ask first.
 12. **Computer use and the browser are guarded too** (2026-10-22). In a messaging app (WhatsApp, Messages, Slack, Mail, Signal, Telegram, Teams and more), and on a messaging site in the browser (Google Chat, Gmail, Slack, WhatsApp Web, LinkedIn messages and more), a click on Send, a Return in the compose field, a typed line break, the Send menu item or shortcut, and a click with no `action_summary` wait for the code; in any app or browser page, so does an action whose summary says it sends. Words typed in a messaging app or site pass the register scan as they are typed. Write each summary as what the action does, type the words and send in one call where you can (the approval then binds both), and show the principal a screenshot of the compose area with the code.
 13. **A send window is the principal's setting, never yours.** `synthesis sends open --hours N --sends M --channels ...` (at most 12 hours and 50 planned sends; the last one closes it) needs their code; inside it, a send in a covered channel that carries a `send_window_signatures` signature goes without a per-message code, after the same register scan and format rules, and is logged. `synthesis sends close` ends it; `synthesis sends log` lists the day's sends for "On your behalf".
+14. **A meeting placed on today has an approval of its own** (2026-11-09). With `same_day_meetings` in the config, a calendar write that starts today and invites anyone but the principal waits for a code typed for that same-day meeting; the ordinary invitation approval and a send window do not cover it. An exempt attendee keeps the ordinary approval, and a hold with no attendees is untouched. Propose another day unless the principal asked for today.
 
 ## Contents
 
