@@ -94,7 +94,10 @@ and the fix on offer was handing over new read tokens.
 ## Store
 
 `<synthesis home>/sync-watermarks/<workspace>.json` (the synthesis home is `~/.synthesis/v5`
-unless `SYNTHESIS_HOME` says otherwise), schema 2:
+unless `SYNTHESIS_HOME` says otherwise). Every write (`begin`, `advance`, `defer`) reads the store,
+changes it and writes it back under a lock, so workers advancing different surfaces at the same
+time cannot write over each other (2026-11-11: two workers each rewrote the file from their own
+reading, and 27 of 632 advances vanished though each had printed `moved: true`). Schema 2:
 
 ```json
 {

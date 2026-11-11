@@ -39,6 +39,8 @@ ISO-8601 to the second with an offset, so `window`'s `latest=` is `advance`'s `-
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -141,6 +143,20 @@ def save(workspace: str, data: dict, home: Path | None = None) -> None:
     os.replace(tmp, path)
 
 
+@contextlib.contextmanager
+def held(workspace: str, home: Path | None = None):
+    """The store, read and written back under a lock, so one writer at a time changes it. Without it two workers
+    each rewrote the whole file from their own reading, and 27 of 632 advances vanished though each had printed
+    `moved: true` (2026-11-11). A change that raises writes nothing."""
+    path = store_path(workspace, home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_name(f".{path.name}.lock"), "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = load(workspace, home)
+        yield data
+        save(workspace, data, home)
+
+
 def _entry(data: dict, surface: str, target: str | None = None) -> dict:
     entry = data["surfaces"].get(surface) or {}
     return entry if target is None else (entry.get("targets") or {}).get(target) or {}
@@ -160,9 +176,8 @@ def _checked(target: str | None) -> str | None:
 
 def begin(workspace: str, label: str = "", now: datetime | None = None, home: Path | None = None) -> dict:
     moment = now or now_local()
-    data = load(workspace, home)
-    data["run"] = {"started_at": stamp(moment), "label": label.strip()}
-    save(workspace, data, home)
+    with held(workspace, home) as data:
+        data["run"] = {"started_at": stamp(moment), "label": label.strip()}
     return {"started_at": stamp(moment), "label": label.strip(), "human": human(moment)}
 
 
@@ -216,27 +231,26 @@ def advance(workspace: str, surface: str, through: str, targets=(), now: datetim
         hint = (" (a bare date means complete through the END of that day; pass the moment you read)"
                 if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(through).strip()) else "")
         raise ValueError(f"refusing a future watermark: {through} is {human(new)}, after {human(moment)}{hint}")
-    data = load(workspace, home)
-    entry = data["surfaces"].setdefault(surface, {})
-    entry.setdefault("targets", {})
-    if not targets and entry["targets"] and not surface_level:
-        raise ValueError(f"{surface} carries per-target watermarks ({len(entry['targets'])}); a surface-level "
-                         "advance would claim coverage no target read backs. Advance the targets you read, or "
-                         "pass --surface-level to assert whole-surface coverage")
-    slots = [(t, entry["targets"].setdefault(t, {})) for t in targets] if targets else [(None, entry)]
-    rows = []
-    for target, slot in slots:
-        old = _stored(slot.get("through"))
-        if old is not None and new < old:
-            rows.append({"key": _key(surface, target), "moved": False, "through": stamp(old),
-                         "detail": f"refused: {human(new)} is behind the recorded {human(old)}"})
-            continue
-        slot.update(through=stamp(new), updated_at=stamp(moment))
-        data["deferrals"].pop(_key(surface, target), None)  # a write spends the deferral
-        rows.append({"key": _key(surface, target), "moved": True, "through": stamp(new),
-                     "detail": f"advanced to the store's reach, not {through}: the reader read no further" if capped
-                     else "advanced"})
-    save(workspace, data, home)
+    with held(workspace, home) as data:
+        entry = data["surfaces"].setdefault(surface, {})
+        entry.setdefault("targets", {})
+        if not targets and entry["targets"] and not surface_level:
+            raise ValueError(f"{surface} carries per-target watermarks ({len(entry['targets'])}); a surface-level "
+                             "advance would claim coverage no target read backs. Advance the targets you read, or "
+                             "pass --surface-level to assert whole-surface coverage")
+        slots = [(t, entry["targets"].setdefault(t, {})) for t in targets] if targets else [(None, entry)]
+        rows = []
+        for target, slot in slots:
+            old = _stored(slot.get("through"))
+            if old is not None and new < old:
+                rows.append({"key": _key(surface, target), "moved": False, "through": stamp(old),
+                             "detail": f"refused: {human(new)} is behind the recorded {human(old)}"})
+                continue
+            slot.update(through=stamp(new), updated_at=stamp(moment))
+            data["deferrals"].pop(_key(surface, target), None)  # a write spends the deferral
+            rows.append({"key": _key(surface, target), "moved": True, "through": stamp(new),
+                         "detail": f"advanced to the store's reach, not {through}: the reader read no further" if capped
+                         else "advanced"})
     return {"surface": surface, "through": stamp(new), "entries": rows, "moved": all(r["moved"] for r in rows)}
 
 
@@ -246,9 +260,8 @@ def defer(workspace: str, surface: str, reason: str, target: str | None = None,
         raise ValueError("a deferral requires a reason")
     _checked(target)
     moment = now or now_local()
-    data = load(workspace, home)
-    data["deferrals"][_key(surface, target)] = {"reason": reason.strip(), "deferred_at": stamp(moment)}
-    save(workspace, data, home)
+    with held(workspace, home) as data:
+        data["deferrals"][_key(surface, target)] = {"reason": reason.strip(), "deferred_at": stamp(moment)}
     return {"key": _key(surface, target), "deferred_at": stamp(moment)}
 
 

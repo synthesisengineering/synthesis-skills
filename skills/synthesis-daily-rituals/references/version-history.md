@@ -19,7 +19,8 @@ refuses while one is past due, refuses a clean outcome over plans it could not r
 needs each workspace to declare its plan folders in the ritual config. The 16:55 nudge sounds the
 same alert on a day with no ritual. The rules are in [critical-deadlines.md](critical-deadlines.md).
 The ritual procedure moved, word for word, from SKILL.md into [procedure.md](procedure.md) to make
-room for the binding rule.
+room for the binding rule. `sync_watermark.py` writes its store under a lock: two workers advancing
+at once had each rewritten the file from their own reading and lost 27 of 632 advances.
 
 ## v3.0.0 — Rewritten for synthesis v5
 
