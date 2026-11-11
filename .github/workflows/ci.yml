@@ -20,15 +20,26 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
         include:
-          # The newest image setup-python has Python 3.9 for (ubuntu-latest, 26.04, has none). It ran on ubuntu-22.04
-          # until 2026-11-11, when apt there could resolve no mirror for over an hour and the job never reached a test.
-          - os: ubuntu-24.04
-            python: "3.9"
+          # Apple's own /usr/bin/python3 (3.9), the oldest Python the plugin runs on. Until 2026-11-11 a Linux job on
+          # setup-python's 3.9 stood in for it. That day apt on the two images that still have a 3.9 build
+          # (ubuntu-22.04 and ubuntu-24.04) could resolve no mirror, so the job died installing bubblewrap before any
+          # test, and the newest image has no 3.9 build at all. macOS needs no apt and has the interpreter itself.
+          - os: macos-latest
+            python: apple
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        if: matrix.python != 'apple'
         with:
           python-version: ${{ matrix.python }}
+      - name: Apple's /usr/bin/python3 as `python`
+        if: matrix.python == 'apple'
+        run: |
+          /usr/bin/python3 -c 'import sys; print(sys.version); assert sys.version_info[:2] == (3, 9), "Apple no longer ships Python 3.9: the floor this job checks has moved"'
+          mkdir -p "$RUNNER_TEMP/apple-python"
+          printf '#!/bin/sh\nexec /usr/bin/python3 "$@"\n' > "$RUNNER_TEMP/apple-python/python"  # a link would break Xcode's shim
+          chmod +x "$RUNNER_TEMP/apple-python/python"
+          echo "$RUNNER_TEMP/apple-python" >> "$GITHUB_PATH"
       - run: python -m pip install pytest
       - name: OS sandbox for the local-messaging tests (macOS ships sandbox-exec)
         if: runner.os == 'Linux'
@@ -46,7 +57,7 @@ jobs:
           echo "SYNTHESIS_TEST_CHROMIUM=$browser" >> "$GITHUB_ENV"
       - name: The knowledge-base connector's pinned requirements, for its sign-in and access-list tests
         # The lock is resolved for Python 3.12 and newer, so the 3.9 job skips those tests; every other job runs them.
-        if: matrix.python != '3.9'
+        if: matrix.python != 'apple'
         run: |
           python -m pip install --require-hashes --no-deps -r skills/synthesis-kb-distribution/scripts/connector/requirements.txt
           echo "SYNTHESIS_REQUIRE_FASTMCP=1" >> "$GITHUB_ENV"
