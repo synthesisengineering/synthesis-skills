@@ -4,7 +4,8 @@ A principal found messages on LinkedIn the rituals had never shown him: the surf
 notification emails, which hide the text and never cover InMail. `linkedin_messages.py` reads the saved text
 of the conversation list (who, when, who spoke last, the whole last message, unread counts and LinkedIn's own
 reply nudge are all there without opening a thread), lists the conversations that end with someone else, and
-states how far back the read went. The fixture is synthetic, shaped like a live list read on 2026-11-11.
+states how far back the read went. The fixtures are synthetic, shaped like live reads on 2026-11-11: the list
+alone, and the whole new-message view (the list, then the composer with its suggested recipients).
 Committed before the script.
 """
 from __future__ import annotations
@@ -29,8 +30,10 @@ def card(who, when, last, status="Status is offline", extra=""):
     return f"{head}{who}\n{when}\n{when}\n{last}\n{extra}" + TAIL.format(who=who)
 
 
-LIST = "Messaging\nFocused\nJobs\nUnread\nConnections\nInMail\nStarred\n" + "".join([
-    card("Ana Alvarez", "7:00 AM", "You: Hope you feel better soon.", "Status is online", ". Active conversation\n"),
+HEAD = "Messaging\nFocused\nJobs\nUnread\nConnections\nInMail\nStarred\n"
+ANA = ("Ana Alvarez", "7:00 AM", "You: Hope you feel better soon.", "Status is online")
+LIST = HEAD + "".join([
+    card(*ANA),
     card("Bo Becker", "Nov 10", "You: December works. Send me a couple of dates."),
     card("Cy Castillo", "Nov 10", "Cy: We met years ago. Would you have thirty minutes to talk about a product role?", "Status is online"),
     card("Dee Dunn", "Nov 9", "Dee: thanks so much!"),
@@ -39,6 +42,14 @@ LIST = "Messaging\nFocused\nJobs\nUnread\nConnections\nInMail\nStarred\n" + "".j
     card("Gus Gray, Hana Hill", "Nov 6", "Hana: Thank you very much", "Status is reachable", "2\n2 new notifications\n"),
     card("Ira Ito", "Nov 5", "You: Thanks. Talk soon."),
 ])
+OPENED = LIST.replace(card(*ANA), card(*ANA, ". Active conversation\n"))  # a conversation was open in the page
+# The new-message view as a browser tool returns the whole page: the list, then the composer.
+PAGE = ("Messaging\nSearch messages\nCompose a new message\nFocused\nJobs Unread Connections InMail Starred\nConversation List\n"
+        "Attention screen reader users, messaging items continuously update.\n" + LIST[len(HEAD):] +
+        "Load more conversations\nNew message\nEnter message recipients\nSuggested\nStatus is reachable\nAna Alvarez\n"
+        "Investor at Example Capital\nBo Becker\nProduct executive | Board director\nStatus is online\nIra Ito\n"
+        "Founder: building something new\n\nMaximize compose field\nAttach a file for your draft conversation\nSend\n"
+        "Open send options\n")
 
 
 def run(tmp_path: Path, text: str = LIST, *args: str):
@@ -68,7 +79,35 @@ def test_unread_counts_inmail_and_linkedins_own_nudge_are_kept(tmp_path):
     assert by["Flo Fischer"]["kind"] == "inmail" and by["Flo Fischer"]["unread"] == 1 and by["Flo Fischer"]["from_me"] is False
     assert by["Gus Gray, Hana Hill"]["unread"] == 2 and by["Gus Gray, Hana Hill"]["speaker"] == "Hana"
     assert by["Eli Edwards"]["nudge"] is True and by["Dee Dunn"]["nudge"] is False
-    assert by["Ana Alvarez"]["open"] is True  # the thread the page had open
+    assert not any(t["open"] for t in got["threads"])  # the new-message view opens no conversation
+
+
+def test_the_new_message_view_is_read_whole_and_its_suggested_recipients_are_not_conversations(tmp_path):
+    """The read opens the new-message view: the list beside an empty composer, with nothing opened."""
+    code, got = run(tmp_path, PAGE)
+    assert code == 0, got
+    _, alone = run(tmp_path)
+    assert got["threads"] == alone["threads"] and len(got["threads"]) == 8
+    assert got["coverage"]["opened"] == 0 and "none opened" in got["line"]
+
+
+def test_a_conversation_open_during_the_read_is_counted_and_named(tmp_path):
+    """Opening a conversation marks it read, so a read that had one open says so even when nobody passes --opened."""
+    code, got = run(tmp_path, OPENED)
+    assert code == 0, got
+    assert got["coverage"]["opened"] == 1 and "; 1 opened" in got["line"] and "Ana" not in got["line"]
+    assert [t["who"] for t in got["threads"] if t["open"]] == ["Ana Alvarez"]
+    _, more = run(tmp_path, OPENED, "--opened", "2")  # the reader opened two; the list shows only the last
+    assert more["coverage"]["opened"] == 2 and "; 2 opened" in more["line"]
+    saved = tmp_path / "list.txt"
+    done = subprocess.run([sys.executable, str(SCRIPT), "parse", "--text", str(saved), "--read-at", READ_AT], capture_output=True, text=True)
+    assert "open during the read: Ana Alvarez" in done.stdout
+
+
+def test_the_account_is_found_whichever_side_of_the_closing_sentence_it_stands(tmp_path):
+    text = card("Kit Kim", "Nov 4", "You: Thanks.").replace("with Pat Principal and Kit Kim", "with Kit Kim and Pat Principal")
+    code, got = run(tmp_path, text)
+    assert code == 0 and got["account"] == "Pat Principal" and got["threads"][0]["who"] == "Kit Kim"
 
 
 def test_the_conversations_that_end_with_someone_else_are_the_candidates(tmp_path):
@@ -157,29 +196,37 @@ def plan(tmp_path: Path, declaration: str):
     import os
     config = tmp_path / "linkedin-sync.yaml"
     config.write_text(declaration, encoding="utf-8")
-    done = subprocess.run([sys.executable, str(SCRIPT), "plan", "--config", str(config)], capture_output=True, text=True,
-                          env={**os.environ, "SYNTHESIS_HOME": str(tmp_path / "home")})
+    done = subprocess.run([sys.executable, str(SCRIPT), "plan", "--config", str(config), "--today", "2026-11-11"],
+                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(tmp_path / "home")})
     return done.returncode, done.stdout + done.stderr
 
 
-DECLARED = 'workspace: desk\nparking_thread: "2-ABCdef123xyz=="\ninboxes: [focused]\n'
+DECLARED = "workspace: desk\ninboxes: [focused]\n"
 
 
-def test_the_plan_opens_the_parking_thread_and_never_the_bare_page(tmp_path):
-    """The bare messaging page opens the newest conversation by itself, which marks an unread one read."""
+def test_the_plan_opens_the_new_message_view_and_never_the_bare_page(tmp_path):
+    """The bare messaging page opens the newest conversation by itself, which marks an unread one read. The
+    new-message view shows the same list beside an empty composer and opens nothing, so no conversation has to
+    be set aside for the read to open, and none can gain a new message that the read would then mark read."""
     code, out = plan(tmp_path, DECLARED)
     assert code == 0, out
-    assert "https://www.linkedin.com/messaging/thread/2-ABCdef123xyz==/" in out
-    assert "https://www.linkedin.com/messaging/ " not in out and "focused: never read" in out
-    code, out = plan(tmp_path, DECLARED.replace('"2-ABCdef123xyz=="', '"https://www.linkedin.com/messaging/thread/2-ABCdef123xyz==/"'))
-    assert code == 0 and "thread/2-ABCdef123xyz==/" in out  # the thread's address is accepted too
+    assert "open  https://www.linkedin.com/messaging/thread/new/" in out
+    assert "https://www.linkedin.com/messaging/ " not in out
+    code, out = plan(tmp_path, "workspace: desk\n")  # the focused list is the default
+    assert code == 0 and "read  focused:" in out
+
+
+def test_a_first_read_is_told_how_far_back_to_go_and_to_stop_there(tmp_path):
+    """The list loads older conversations for as long as it is scrolled; a read goes back to a named day and stops."""
+    code, out = plan(tmp_path, DECLARED)
+    assert code == 0
+    assert "focused: never read; scroll back to 2026-10-28, stop there, and pass --since 2026-10-28" in out
 
 
 @pytest.mark.parametrize("declaration, says", [
-    ("workspace: desk\ninboxes: [focused]\n", "parking_thread"),
-    ('workspace: desk\nparking_thread: ""\n', "parking_thread"),
-    ('parking_thread: "2-ABCdef123xyz=="\n', "workspace"),
-    ('workspace: desk\nparking_thread: "2-ABCdef123xyz=="\ninboxes: focused\n', "inboxes"),
+    ("inboxes: [focused]\n", "workspace"),
+    ("workspace: desk\ninboxes: focused\n", "inboxes"),
+    ("workspace: desk\ninboxes: []\n", "inboxes"),
 ])
 def test_a_declaration_it_cannot_use_is_refused(tmp_path, declaration, says):
     code, out = plan(tmp_path, declaration)
@@ -195,4 +242,4 @@ def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
     marks.advance("desk", "linkedin", READ_AT, ("focused",), now=datetime.fromisoformat("2026-11-11T10:00:00-05:00"),
                   home=tmp_path / "home", coverage=complete)
     code, out = plan(tmp_path, DECLARED)
-    assert code == 0 and "focused: read through 2026-11-11" in out and "--since 2026-11-11" in out
+    assert code == 0 and "focused: read through 2026-11-11; scroll back to that day, stop there, and pass --since 2026-11-11" in out
