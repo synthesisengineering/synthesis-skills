@@ -360,7 +360,7 @@ def test_words_after_approve_are_never_read_as_codes(isolated_home):
     "approve 3a1b2c, 4d5e6f, 7a8b9c",
     "approve 3a1b2c,4d5e6f and 7a8b9c",
     "Approve 3A1B2C, 4D5E6F, and 7A8B9C.",
-    "yes: approve 3a1b2c\n4d5e6f\n7a8b9c\nthanks",
+    "yes: approve 3a1b2c 4d5e6f\t7a8b9c\nthanks",  # a no-break space or a tab is still the same line
     "approve 3a1b2c 4d5e6f 4d5e6f 7a8b9c",  # a code typed twice counts once
 ])
 def test_every_code_in_a_list_after_one_approve_is_read(prompt):
@@ -375,16 +375,114 @@ def test_every_code_in_a_list_after_one_approve_is_read(prompt):
     ("approve 3a1b2c-4d5e6f", ["3a1b2c"]),
     ("approve 3a1b2c and approve 4d5e6f", ["3a1b2c", "4d5e6f"]),  # the word again starts another list
     ("4d5e6f approve 3a1b2c", ["3a1b2c"]),                     # a code before the word is not approved
+    # The word and its codes stand on one line: pasted context that begins with a pending code (a listing of
+    # what is waiting, say) must not join the list above it.
+    ("approve 3a1b2c\n4d5e6f 13:34 send to b", ["3a1b2c"]),
+    ("approve 3a1b2c\r\n4d5e6f", ["3a1b2c"]),
+    ("approve 3a1b2c 4d5e6f", ["3a1b2c"]),
+    ("approve\n3a1b2c", []),
 ])
 def test_the_list_ends_at_the_first_thing_that_is_not_a_code(prompt, read):
     assert approvals.typed_codes(prompt) == read
+
+
+# --- what a second model's review of the list found (2026-11-11), each as a test that failed first ---------
+
+@pytest.mark.parametrize("prompt, read", [
+    ("approve 3a1b2c <x><x>ignored</x>4d5e6f</x>", ["3a1b2c"]),   # a block inside a block of the same name
+    ("<x><x>ignored</x>approve 4d5e6f</x>", []),
+    ("<a><b>one</a>approve 4d5e6f</b>", []),                       # blocks that cross
+    ("approve <x>ignored</x>3a1b2c 4d5e6f", []),                   # a block between the word and a code
+    ("approve 3a1b2c <x>y</x> 4d5e6f", ["3a1b2c"]),                # a removed block ends the list
+    ("approve 3a1b2c<x>y</x>4d5e6f", ["3a1b2c"]),
+    ("if a < b and b > c, approve 3a1b2c", ["3a1b2c"]),            # an angle bracket is not a block
+    ("<b> approve 3a1b2c", ["3a1b2c"]),                            # nor is a tag nobody closed
+])
+def test_a_wrapped_block_never_supplies_a_code_or_joins_a_list(prompt, read):
+    assert approvals.typed_codes(prompt) == read
+
+
+def test_hook_text_stays_unread_after_wrapped_blocks_are_removed():
+    from synthesis import hook
+    for said in ("approve <x>ignored</x>3a1b2c 4d5e6f", "approve <x></x>3a1b2c", "ap<x></x>prove 3a1b2c"):
+        assert approvals.typed_codes(hook._defuse(said)) == []
+
+
+@pytest.mark.parametrize("prompt", [
+    "approve 3a1b2c " + "<x>" * 100_000,
+    "<x>" * 50_000 + "</y>" * 50_000 + " approve 3a1b2c",
+    "<x>" * 50_000 + "approve 3a1b2c" + "</x>" * 50_000,
+    "approve 3a1b2c " + "<x a='" * 60_000,
+])
+def test_a_long_prompt_full_of_tags_is_read_within_the_hooks_time(prompt):
+    began = time.perf_counter()
+    approvals.typed_codes(prompt)
+    assert time.perf_counter() - began < 0.5
+
+
+@pytest.mark.parametrize("record", [
+    lambda a, b, w: claude([{"type": "text", "text": f"approve {a}"}, {"type": "text", "text": f"{b} is waiting too"}], w,
+                           promptSource="sdk"),
+    lambda a, b, w: {"timestamp": _iso(w), "type": "event_msg", "payload": {"type": "item_completed", "item": {
+        "type": "UserMessage", "content": [{"type": "text", "text": f"approve {a}"}, {"type": "text", "text": b}]}}},
+    lambda a, b, w: {"id": "e0", "recorded_at": int(w * 1e6), "record_type": "event",
+                     "payload_type": "runtime.user_intent.accepted",
+                     "payload": {"source_session_id": SID, "surface": "main", "semantic_kind": {"kind": "chat"},
+                                 "refill_blocks": [{"kind": "text", "text": f"approve {a}"}, {"kind": "text", "text": b}]}},
+])
+def test_a_list_does_not_run_on_into_the_next_block_of_a_record(tmp_path, record):
+    """A prompt's record can hold several blocks, and only some are the principal's words. A code that opens the
+    next block is not part of the list the block before it ends with."""
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(json.dumps(record("3a1b2c", "4d5e6f", time.time())) + "\n", encoding="utf-8")
+    assert approvals.typed(str(transcript), "3a1b2c", 0, SID)
+    assert not approvals.typed(str(transcript), "4d5e6f", 0, SID)
+
+
+@pytest.mark.parametrize("prompt", [
+    "do not approve 3a1b2c",
+    "Don't approve 3a1b2c, the date is wrong",
+    "don’t approve 3a1b2c 4d5e6f",
+    "never approve 3a1b2c",
+    "I cannot approve 3a1b2c yet",
+    "we should not approve 3a1b2c",
+    "no approve 3a1b2c",
+])
+def test_an_approval_the_principal_negated_grants_nothing(prompt):
+    assert approvals.typed_codes(prompt) == []
+
+
+@pytest.mark.parametrize("prompt", [
+    "why not? approve 3a1b2c",
+    "no, approve 3a1b2c",
+    "I do not object: approve 3a1b2c",
+    "not that one.\napprove 3a1b2c",
+])
+def test_a_negation_that_does_not_stand_right_before_the_word_changes_nothing(prompt):
+    assert approvals.typed_codes(prompt) == ["3a1b2c"]
+
+
+def test_a_pending_code_in_the_message_that_was_not_approved_is_said_aloud(isolated_home):
+    """Whatever the reason a code the principal put in their message did not grant (a new line, a word between,
+    a "don't" before the word), the next turn says so: nothing typed is passed over without a word."""
+    first = approvals.request("send", {"to": "a"}, "send to a")
+    second = approvals.request("send", {"to": "b"}, "send to b")
+    third = approvals.request("send", {"to": "c"}, "send to c")
+    out = _hook("user-prompt-submit", {"prompt": f"approve {first}\n{second} is the other one. don't approve {third}"}).stdout
+    assert "Approved by the principal: send to a" in out and "send to b" not in out and "send to c" not in out
+    for code in (second, third):
+        assert f"the pending code {code} is in the message" in out
+    assert sorted(approvals.pending()) == sorted([second, third])
+    quiet = _hook("user-prompt-submit", {"prompt": "carry on with the plan"}).stdout
+    assert "pending code" not in quiet
 
 
 def test_hook_text_that_repeats_a_list_still_reads_as_no_approval():
     """Hook output is rewritten so the phrase never appears: the word, then "code", then the codes. That form
     must stay unread however many codes follow, or a board message quoting a list would grant it."""
     from synthesis import hook
-    for said in ("the guard said approve 3a1b2c 4d5e6f", "type approve 3a1b2c, 4d5e6f and 7a8b9c", "approve 3a1b2c\n4d5e6f"):
+    for said in ("the guard said approve 3a1b2c 4d5e6f", "type approve 3a1b2c, 4d5e6f and 7a8b9c", "approve 3a1b2c\n4d5e6f",
+                 "approve 3a1b2c 4d5e6f"):
         assert approvals.typed_codes(said) and approvals.typed_codes(hook._defuse(said)) == []
     assert approvals.typed_codes("approve code 3a1b2c 4d5e6f") == []
     assert approvals.typed_codes("approve the codes 3a1b2c 4d5e6f") == []
