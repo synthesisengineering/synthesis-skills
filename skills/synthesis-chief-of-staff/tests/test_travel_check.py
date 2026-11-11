@@ -410,3 +410,11 @@ def test_the_next_mornings_first_commitment_may_be_a_trip(tmp_path):
     dawn = event("Travel: to the airport", "05:30", "06:30", "", OUT, day="2026-11-12")
     code, report = check(tmp_path, [RESOLVED, GOING, RETURNING, dawn], config=rested)
     assert code == 1 and any("Travel: to the airport" in item and "05:30" in item for item in lacks(report)), report
+
+
+def test_punctuation_does_not_make_another_event_or_another_address(tmp_path):
+    marked = [named(GOING, "Book launch at the Grand Theatre."), named(RETURNING, "Book launch at the Grand Theatre:")]
+    code, report = check(tmp_path, [RESOLVED, *marked])
+    assert code == 0, report
+    code, report = check(tmp_path, [event("Plumber", "09:00", "10:00", "10 River St., Example City")])  # the home, with a full stop
+    assert code == 0 and report["in_person"] == 0, report

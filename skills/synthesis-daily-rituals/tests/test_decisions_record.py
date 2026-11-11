@@ -125,3 +125,9 @@ def test_options_in_a_quote_are_options_and_a_ticked_title_is_closed(tmp_path, r
     ticked = "### [x] 7. The dinner on Friday\n**Option A:** Accept\n**Option B:** Decline\n"
     code, out, refusal = record(workspace(tmp_path, ticked))
     assert code == 0, refusal
+
+
+def test_a_recommendation_in_an_indented_code_block_is_an_example(tmp_path, record):
+    shown = INVITATION + COSTS + "\nFor example:\n\n    Recommendation: **B**, decline\n"
+    code, _, refusal = record(workspace(tmp_path, shown))
+    assert code != 0 and "recommendation" in refusal
