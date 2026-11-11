@@ -401,10 +401,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # _prompt 4 (each block of a record read by itself, one marked as not the principal's left out), typed_codes 3,
 # the module docstring 1; in hook.py, user_prompt_submit 6 (a pending code that is in the message and was not
 # approved is said aloud).
+# 5.7.0 adds 319 to the plugin, 66 of them in the core (the request came from the principal through his operations
+# seat on 2026-11-11; the release waits for his go). travel_check.py 203, after an evening 28 miles from a principal's
+# home sat on his calendar for six days with no travel time, route or fare: judge 90 (each in-person event of the
+# days asked for: an exact address, the event's travel line, a block on each side with every line a traveler needs,
+# an arrival early enough, and the three cases only the principal settles), main 34, the docstring 23, place 17
+# (no place, the principal's base, anywhere else), imports 10, the entry point 10, lines 5 (a block's labeled
+# lines, a placeholder counting as none), stop 4, the path to the slot check and no bytecode 3, the patterns and
+# constants 7. slot_check.py 17: judge 11 (the trip there and back as taken time, an in-person slot refused
+# without its minutes), the docstring 3, main 3. ritual_state.py 33: travel 26 (where a workspace checks travel,
+# no record without today's result or while an event lacks its travel), the docstring 4, spacing 2, main 1. In the
+# core, guards.py 66: check_travel 35 (a calendar write at a place carries its travel line; what a place is comes
+# from the chief of staff's own check and the principal's policy), _resolved 13 and its two patterns 2 (a
+# variable a command assigns is put where it is used before a write's target is judged, after nine such writes
+# into protected folders passed), _memory 9 (a project's memory folder is the file tools' to write),
+# check_self_grant 3 (a target that starts with something the command does not set is refused), the reader's path
+# and spacing 3, check 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8713
-PLUGIN_BUDGET = 28541
+CORE_BUDGET = 8779
+PLUGIN_BUDGET = 28860
 
 
 def _lines(files):

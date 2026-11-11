@@ -4,6 +4,44 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.7.0] - 2026-11-11
+
+- **An in-person commitment is not on the calendar until its travel is** (chief of staff 2.3.0, daily rituals
+  3.9.0, message guard 2.7.0, core). A principal who owns no car found an evening event 28 miles from home that
+  had been on his calendar for six days with no travel time, no route and no fare, its location a town and
+  "address on the card". It had been carried through three daily plans, a guest's arrival logistics and that
+  morning's day-start; two estimated times had gone out, and the real train got him home 48 minutes later than a
+  draft had promised. A rule about realistic travel was in his preferences under calendar rebuilds, so nothing
+  ran it when one event was added. Now:
+  - `travel_check.py` (chief of staff) reads a saved calendar read and the `travel_policy` in the preferences and
+    lists each in-person event with what its travel lacks: an exact address, the event's own `Travel:` line, a
+    travel block on each side with every line a traveler needs (who pays, leave, route, arrive, backup, fare,
+    ticket), an arrival early enough, and three things only the principal settles (a return that leaves before
+    the end, one that ends after the latest hour, a car on a personal trip). It plans no trip: an agent does that
+    from a live source.
+  - `slot_check.py` takes `--travel-before` and `--travel-after` and counts the trip as taken time; `--in-person`
+    with neither is refused.
+  - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
+    day-end run the check over that day and the six after and put each flagged event in the plan, and
+    `ritual_state.py record --travel` refuses without today's result or while an event lacks its travel. A
+    leaving or returning time in a plan or draft is taken from a travel block.
+  - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
+    one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy
+    of the travel rules: it asks the chief of staff's check and the principal's policy.
+  - `preferences.example.json` gains a `travel_policy`; the step is `references/in-person-travel.md`.
+- **The write guard reads a variable the command assigns** (core). A shell write's target was expanded from the
+  process environment only, so a command that set a variable to a protected folder and wrote through it was
+  judged as writing somewhere else: nine such writes into approval state and session transcripts passed in the
+  tests written first. Each variable a command assigns is now put where it is used before its writes are judged,
+  and a target that still starts with something the command does not set is refused when the command names a
+  protected folder.
+- **A project's memory folder is the file tools' to write** (core). Claude Code keeps each project's memory in a
+  folder beside that project's session transcripts and has the agent write it with its file tools; the guard
+  refused them, because it protected the whole folder. A Markdown file in a project's memory folder now passes.
+  The shell stays refused there, and a link in the folder does not open the transcript it points at.
+- **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
+  word for word into `references/meetings-correspondence-travel.md` to make room for binding rule 13.
+
 ## [5.6.0] - 2026-11-11
 
 - **LinkedIn messages as a declared ritual surface** (daily rituals 3.8.0). A principal found messages on LinkedIn
