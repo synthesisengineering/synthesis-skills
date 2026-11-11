@@ -1015,3 +1015,25 @@ def test_and_a_command_it_can_read_still_runs_there(work, command, tmp_path):
 def test_the_refusal_for_standing_in_a_protected_folder_says_to_run_it_elsewhere(work, tmp_path):
     reason = guards.check("Bash", {"command": "docker start bench"}, {}, cwd=str(work["work"]))
     assert "`docker`" in reason and "another folder" in reason
+
+
+# --- what the replay showed after the second round (2026-11-11) ------------------------------------------------
+
+@pytest.mark.parametrize("command", [
+    "awk -F'|' 'NR>3 && NF>10 {{ st=$17; gsub(/ /,\"\",st); if (st!=\"released\") print $2, \"|\", $6, \"|\", $9 }}' {work}/abc/tool-results/big.txt",
+    "awk -F'|' '/^\\|/ && $NF !~ /released/ && $3 > 5 || $4 == \"x\" {{ print $2, \"|\", $(NF-1) }}' {work}/s.jsonl | head -5",
+    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport json\nops = json.load(open('events.txt'))\njson.dump(ops, open('/tmp/pad/ops.json', 'w'))\nEOF",
+    "python3 -c \"import os; print(os.listdir('{work}')); open('/tmp/pad/list.txt', 'w').write('x')\"",
+])
+def test_the_replay_after_the_second_round_left_these_and_they_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "awk '{{ print $1 | \"tee {work}/s.jsonl\" }}' /tmp/data",                    # an awk program that runs a command
+    "awk 'BEGIN {{ system(\"rm {work}/s.jsonl\") }}'",
+    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport json\njson.dump([], open('events.txt', 'w'))\nEOF",   # written where it stands
+    "cd {work}/abc/tool-results && python3 - <<'EOF'\nimport sys\nopen(sys.argv[0] + '.out', 'w').write('x')\nEOF",
+])
+def test_and_these_after_the_second_round_stay_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
