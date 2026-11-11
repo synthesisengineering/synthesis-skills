@@ -73,7 +73,7 @@ Each event reads one JSON object on stdin. Missing fields are tolerated.
 | `session_id` | all | The session's identity on the board. If absent, the hook reads `SYNTHESIS_SESSION`, `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID` or `MUSE_SESSION_ID` from the environment. Without `transcript_path`, it also finds the session's transcript (see [Approvals](#approvals)). |
 | `transcript_path` | SessionStart, PreToolUse, Stop | Which harness is running (from where the file lives); the record an approval is checked against; the record a reply's quotes must appear in. |
 | `cwd` | SessionStart, PreToolUse | The session's working directory: the workspace for account routing, the directory a shell command starts in, and the ritual line's workspace. |
-| `prompt` (or `user_prompt`) | UserPromptSubmit | The text the person typed, scanned for `approve <code>`. |
+| `prompt` (or `user_prompt`) | UserPromptSubmit | The text the person typed, scanned for `approve <code>`, with one or more codes after the word. |
 | `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. |
 | `last_assistant_message` | Stop | The reply to check. |
 | `stop_hook_active` | Stop | Whether this turn end follows a hook's earlier request to continue. |

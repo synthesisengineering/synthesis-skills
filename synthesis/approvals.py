@@ -2,7 +2,8 @@
 
 When a guard blocks a send or a deploy it files a request under a random six-character
 code, so nobody can know the code before the request exists. The principal types
-"approve <code>" and the UserPromptSubmit hook records a grant. The agent runs as the same
+"approve <code>" (or several codes after the one word) and the UserPromptSubmit hook
+records a grant for each. The agent runs as the same
 OS user and can write that grant itself, or feed the hook a made-up prompt (M5,
 2026-10-05), so a grant alone never lets a call through: the harness's own record of the
 session must also hold that prompt, typed by the principal after the request was filed.
@@ -22,7 +23,10 @@ from pathlib import Path
 from synthesis import paths
 
 TTL_SECONDS = 15 * 60
-CODE = re.compile(r"\bapprove\s+(\d[0-9a-f]{5})\b", re.IGNORECASE)  # the shape request() issues: no English word fits
+ONE = r"\d[0-9a-f]{5}\b"  # the shape request() issues: no English word fits
+# The word, then the codes it approves, separated by spaces, commas or "and". The first thing that is not a code
+# ends the list, so "approve code <code>", the form hook text is rewritten to, approves nothing (hook._defuse).
+CODE = re.compile(rf"\bapprove\s+({ONE}(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+|\s+){ONE})*)", re.IGNORECASE)
 INSERTED = r"(?s)<([A-Za-z][\w-]*)\b[^>]*>.*?</\1\s*>"  # blocks a harness wraps into a prompt; compiled on use
 NOT_TYPED = ("isMeta", "isSidechain", "isCompactSummary", "isVisibleInTranscriptOnly", "isSynthetic", "toolUseResult")
 
@@ -77,8 +81,10 @@ def _expire() -> None:
 
 def typed_codes(prompt: str) -> list[str]:
     """The codes the principal typed: never one inside a block the harness wrapped into the prompt, such as
-    a background task's report (2026-10-20: a helper's report quoting the guard reached this hook as a prompt)."""
-    return list(dict.fromkeys(m.lower() for m in CODE.findall(re.sub(INSERTED, " ", prompt or ""))))
+    a background task's report (2026-10-20: a helper's report quoting the guard reached this hook as a prompt).
+    One "approve" may carry several (2026-11-11: nine were typed after the word and eight were passed over)."""
+    lists = CODE.findall(re.sub(INSERTED, " ", prompt or ""))
+    return list(dict.fromkeys(code.lower() for codes in lists for code in re.findall(ONE, codes, re.IGNORECASE)))
 
 
 def grant_from_prompt(prompt: str) -> list[str]:

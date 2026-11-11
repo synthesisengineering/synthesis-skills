@@ -50,7 +50,7 @@ script names it as waiting on you.
 | Event | What it does |
 |---|---|
 | SessionStart | States the local time; injects the active project's `PRIME-DIRECTIVE.md` and the current-state block of its `CONTEXT.md`, this session's autopilot run if it has one, one line of ritual state, and a count of unread board messages. Claude Code and Codex run it again after compacting the conversation, so the brief comes back on its own. It also brings the installed runtime up to the plugin version the harness loaded. |
-| UserPromptSubmit | Reads your prompt for `approve <code>` and grants that pending request. Delivers up to five unread board messages. |
+| UserPromptSubmit | Reads your prompt for `approve <code>` (several codes may follow the one word) and grants each pending request it names. Delivers up to five unread board messages. |
 | PreToolUse | Checks shell commands and message, calendar, mail and sharing tool calls before they run (see below). If its config can't be read or a guard fails, the call is blocked, never waved through. |
 | Stop | Sends the agent's final reply back once if it uses deferring language, quotes someone with words that appear nowhere in the session, or (when `reply_file_links` is set) names a file without a clickable absolute-path link. For an autopilot run, it asks the session to continue to the plan's next open item. It fails open, since a turn-end check that fails closed would loop forever. |
 
@@ -61,7 +61,8 @@ What PreToolUse holds:
   such as HTML email with whole paragraphs, and call anyone your `preferred_names` lists
   by the name they go by when the call identifies them. Then the agent shows you the exact text and
   recipient, and you type `approve <code>` in your own message. The approval covers that
-  exact call once and expires after 15 minutes. Only the UserPromptSubmit hook can grant
+  exact call once and expires after 15 minutes. To approve several calls at once, type the
+  word once and the codes after it: `approve <code> <code>`. Only the UserPromptSubmit hook can grant
   it, because it reads the prompt you typed, which the agent cannot write.
 - **Deploys** (`wrangler deploy`, `vercel --prod`, `netlify deploy --prod`,
   `firebase deploy`, `npm publish`, `twine upload`, `gh release create`, a push to a

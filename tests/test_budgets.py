@@ -376,7 +376,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # build_packet.py 4: a row tagged critical is refused. sync_watermark.py 13, after two workers advancing one
 # store at once lost 27 of 632 advances (reported 2026-11-11): held 12 (the store read, changed and written back
 # under a lock), its imports 2, spacing 2, and one line fewer in each of begin, advance and defer.
-# 5.6.0 adds 218 to the plugin (the core is unchanged; Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 199,
+# 5.6.0 adds 224 to the plugin, 6 of them in the core (Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 199,
 # LinkedIn's conversation list as a ritual surface, after a principal found messages there that no ritual had
 # shown him: main 38 (the two commands, the day a plan counts from, a conversation open during the read named),
 # parse 34 (each conversation from the list's text, a sign-in or security page above the list, the coverage, the
@@ -389,11 +389,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # the stores that move only with their reader's coverage 2, the docstring's line 1. decay_sweep.py 16, after nine
 # drafts and a ledger carried deadlines the sweep never read: collect 12 (a declared folder of other records, each
 # file read as of the date in its name or of today, a plan outranking a record), main 2 (the flag and its roots),
-# the record-name pattern 1, declared 1.
+# the record-name pattern 1, declared 1. In the core, approvals.py 6, after a principal typed nine codes after one
+# "approve" and eight were passed over without a word (2026-11-11): one code's shape 1, the list after the word
+# and why "approve code" still approves nothing 2, typed_codes 2 (each list's codes, the docstring's line), the
+# module docstring 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
-CORE_BUDGET = 8664
-PLUGIN_BUDGET = 28475
+CORE_BUDGET = 8670
+PLUGIN_BUDGET = 28481
 
 
 def _lines(files):

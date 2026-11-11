@@ -25,6 +25,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   config (`decay_sweep.py --records-dir`): every Markdown file under it is read with the same item grammar, as of
   the date in its name or of the sweep's day. A plan outranks a record: once a plan or ritual artifact carries the
   item's Decay ID, the plans decide it.
+- **One `approve` can carry several codes** (core, message guard 2.6.1). A principal typed the word once with nine
+  codes after it; the first was granted and the other eight were passed over without a word, because only a code
+  that directly followed the word was read. Each of the eight then cost a turn of its own. The prompt hook now
+  reads a list after the word, separated by spaces, commas or "and" (`approve <code> <code>`), and ends it at the
+  first thing that is not a code. Nothing else about an approval changes: each code grants one exact pending call,
+  the harness's transcript must show the principal typing it, and a code that matched no pending request is named
+  back. `approve code <code>`, the form every hook message is rewritten to, still approves nothing.
 
 ## [5.5.0] - 2026-11-11
 

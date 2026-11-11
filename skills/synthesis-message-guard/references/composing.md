@@ -123,6 +123,16 @@ the code <code>. Then make this identical call again.` The message never prints
 "approve" and the code together, and no hook text does, so nothing an agent or a tool
 echoes can stand in for the principal's words.
 
+**Several calls, one message.** The principal can type the word once and the codes after it,
+separated by spaces, commas or "and": `approve <code> <code> <code>`. Each code grants its own
+call. The list ends at the first thing that is not a code, so a code mentioned later in the
+sentence approves nothing. When several calls wait, ask for them together: show each exact
+text and recipient, then the codes in one line. Every code that matched no pending request
+is named back in the next turn (`Not granted: no pending request has the code ...`): tell
+the principal which ones did not take, and run those calls again for new codes. Until
+2.6.1 only a code that directly followed the word was read; on 2026-11-11 nine codes typed
+after one "approve" granted one call and passed over eight without a word.
+
 The principal's prompt is the only thing that grants. On 2026-10-05 (the M5 sandbox) an
 agent granted its own send by piping a made-up prompt into the prompt hook, because the
 agent runs as the same OS user as the hooks and a grant was only a file. Now the grant is
