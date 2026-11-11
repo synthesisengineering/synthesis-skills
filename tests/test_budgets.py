@@ -322,10 +322,26 @@ ROOT = Path(__file__).resolve().parents[1]
 # uncommitted 8 (what is read must be the commit the stamps name); read_knowledge 30 (the lint, OKF front matter and
 # the stamp); render_skill 17; manifests 22; main 82; the entry point 4. Its publish_plugin.sh is shell, outside the
 # count.
+# The same skill adds 335 more to the plugin (the core is unchanged; Rajiv's yes, 2026-11-11), so an organization's
+# IT team manages who reads its knowledge base and a Gemini notebook can read it too. 141 for access by Google group:
+# groups.py 110, the roster of each allowed group's members from the Cloud Identity Groups API (the docstring 9,
+# imports 7, constants 4; google_reader 17, a GET as the service's own account with the read-only groups scope;
+# GroupRoster 73: the class and its docstring 3, __init__ 9, people_in 19 following nested groups once each,
+# refresh 16 keeping the last good roster for at most three intervals, current 4, contains 4, start 11 with its
+# refresh thread, stop 3, health 4). server.py 11 (the roster started before serving and stopped on any failure,
+# its state in /health, fetch serving the plugin's guide), access.py 10 (a group member passes; an unreadable roster
+# refuses with a reason a person can act on), config.py 6 (KB_ALLOWED_GROUPS and KB_GROUP_REFRESH_SECONDS, either
+# list enough), corpus.py 4 (the guide beside references/ kept apart from search). 194 for publish_drive.py, the copy
+# a CI step keeps current in a Drive folder, signing in through workload identity federation so no key is stored:
+# the shebang and docstring 26, imports 14, constants 4, Refused 4, call 19 (a refusal names the status, never the
+# token), access_token 28 (the token given, or the step's OIDC token exchanged at Google's Security Token Service
+# for a service account's), published_files 18, drive_files 19 (every page, duplicate names refused), upload 11
+# (replaced in place or added), sync 29 (unchanged files left alone by MD5, dropped ones to the trash, the notebook's
+# manual steps named), main 18, the entry point 4. Each count includes the two blank lines before it.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8211
-PLUGIN_BUDGET = 27042
+PLUGIN_BUDGET = 27377
 
 
 def _lines(files):

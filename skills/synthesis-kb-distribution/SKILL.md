@@ -19,7 +19,8 @@ from one published tree: an organization plugin inside the Claude and ChatGPT wo
 read-only MCP connector for people those workspaces cannot reach, such as executives on personal
 accounts. This skill holds the published tree's contract, the scripts that build and publish it
 (`scripts/build_plugin.py`, `scripts/publish_plugin.sh`) with generic templates, the connector
-(`scripts/connector/`), their tests and the connector's deployment.
+(`scripts/connector/`), their tests and the connector's deployment, and a Drive copy for Gemini
+Notebook (`scripts/publish_drive.py`).
 
 ## Binding rules
 
@@ -28,11 +29,12 @@ accounts. This skill holds the published tree's contract, the scripts that build
    show the same commit, so any answer traces to one source commit.
 2. **Every published file keeps its provenance stamp,** and the connector reports the commit it
    serves (`/health`, and `served_commit` in `fetch`). Without them nobody can say what a reader saw.
-3. **The connector never serves without sign-in.** No setting turns it off, and an empty access
-   list stops the start, because a knowledge base for named people must not become public by a typo.
-4. **The access list is checked at sign-in, on every token and on every tool call;** Google must
+3. **The connector never serves without sign-in.** No setting turns it off, and a start with no
+   addresses and no groups stops, because a knowledge base for named people must not become public by a typo.
+4. **The access list is checked at sign-in, on every token and on every tool call;** it holds
+   addresses, the members of Google groups the organization's IT manages, or both. Google must
    report the address verified, and `KB_ALLOWED_HOSTED_DOMAINS` narrows it further. A removal takes
-   effect on the person's next request.
+   effect on the person's next request, or at the next group read for a group member.
 5. **The connector's deploy key is read-only and separate from CI's write key,** both kept in
    secret managers, so a leaked connector key can read but never change the published tree.
 6. **Secrets come from a secret manager,** never from the image, a repository or a deploy script:
@@ -56,9 +58,10 @@ accounts. This skill holds the published tree's contract, the scripts that build
 
 - [references/published-layout.md](references/published-layout.md): the published tree (paths,
   manifests, index, provenance stamp), the build script with every config setting and template
-  placeholder, its checks, the publish script and its CI step at a pinned release, and how
-  administrators give the plugin to the organization. Read it when setting up, changing or
-  troubleshooting the build or the publishing pipeline.
+  placeholder, its checks, the publish script and its CI step at a pinned release, how
+  administrators give the plugin to the organization, and the Drive copy for Gemini Notebook
+  (section 8). Read it when setting up, changing or troubleshooting the build, the publishing
+  pipeline or the Drive copy.
 - `templates/`: the generic SKILL.md and README.md templates, and the example config and exclusion
   list to copy.
 - [references/connector.md](references/connector.md): what the connector does, how access works,
@@ -104,13 +107,6 @@ The build prints `Built <plugin> <version> from <sha7> (<date>) into <out>` and 
 a refusal lists every problem, writes nothing and exits 1. The publication then prints
 `Published <plugin> <version> to <repository> (<branch>).` or `... nothing to push.`
 
-The running connector (`python -B -m kb_connector` from `scripts/connector/`) prints
-`serving <n> documents from commit <sha>` when a copy loads, `refresh failed (...)` when a refresh
-fails, and `sign-in allowed for <email>` or `sign-in refused for <email>: <reason>` per sign-in. If
-its settings are wrong it prints `kb-connector: the connector cannot start:` and every problem,
-then exits 2; if the first load fails it prints `kb-connector: the first load failed: <reason>` and
-exits 1.
-
 ## Setting it up
 
 1. **Publish.** Copy and fill in the example config and exclusion list from `templates/`, then make
@@ -121,6 +117,8 @@ exits 1.
 3. **Connector.** Deploy it on Cloud Run with a Google OAuth client, Firestore, Secret Manager and a
    read-only deploy key (references/connector.md, section 5), then give the listed people its
    address ending in `/mcp` to add in ChatGPT or Claude (section 6).
+4. **Gemini Notebook (optional).** Make CI also run `publish_drive.py`, keeping a shared drive
+   folder current for a notebook (references/published-layout.md, section 8).
 
 ## Checking it
 
@@ -132,3 +130,5 @@ exits 1.
    `Access denied: <email> is not on this knowledge base's access list.`
 5. After an address is removed (references/connector.md, section 7), that person's next request
    is refused.
+6. A Drive copy's log ends `Drive copy of ...`; each `added` or `moved to trash` file is a
+   notebook source to add or remove.

@@ -9,6 +9,7 @@ Contents:
 5. What the build checks
 6. Publishing it: the script and the CI step at a pinned release
 7. Giving the plugin to the organization
+8. A Drive copy for Gemini Notebook
 
 ## 1. Why one published tree
 
@@ -225,3 +226,83 @@ organization plugin marketplace and make the plugin available to the groups that
 The products' admin consoles change; follow each product's current administrator documentation for
 the exact steps and for how the repository is authorized. People outside those workspaces use the
 connector instead.
+
+## 8. A Drive copy for Gemini Notebook
+
+An organization on Gemini for Google Workspace, which cannot add a custom connector, can still ask
+Gemini about its knowledge base: a Gemini Notebook made from a Drive folder holding the published
+Markdown answers from those files and cites them. A notebook re-reads a Drive file by itself when
+the file's content changes, so CI keeps the folder current by replacing each changed file in place.
+A notebook does not pick up a new file or drop a removed one by itself; someone who owns the
+notebook adds or removes that source, and the step's log names each one.
+
+`scripts/publish_drive.py` (Python 3.9 or newer, standard library only) reads the tree the build
+wrote and brings one Drive folder in line with it:
+
+- `SKILL.md` goes in as `<plugin>-index.md`, each `references/**/*.md` under its own file name,
+  all in one flat folder. Two published files with the same name stop the run, as do two Drive
+  files with one name; nothing is written first.
+- A file whose content is unchanged (Drive's MD5 checksum) is left alone; a changed one has its
+  content replaced, keeping its Drive ID; a new one is added as `text/markdown`; a `.md` file the
+  build no longer has is moved to Drive's trash. Files with other names and subfolders are left
+  alone.
+- `--dry-run` lists the changes and writes nothing. The log ends with
+  `Drive copy of <plugin> <version>: N added, N updated, N moved to trash, N unchanged.`; it exits 1
+  on any failure and 2 on a usage error.
+
+```bash
+python3 <skill>/scripts/build_plugin.py --config distribution/kb-plugin.json --source source --out "$TMP/tree" --commit "$CI_COMMIT"
+KB_DRIVE_FOLDER_ID=<folder ID> KB_DRIVE_OIDC_TOKEN="$BITBUCKET_STEP_OIDC_TOKEN" \
+KB_DRIVE_WIF_PROVIDER=//iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider> \
+KB_DRIVE_SERVICE_ACCOUNT=<account>@<project>.iam.gserviceaccount.com \
+  python3 <skill>/scripts/publish_drive.py --tree "$TMP/tree"
+```
+
+| Variable | What it sets |
+|---|---|
+| `KB_DRIVE_FOLDER_ID` | The Drive folder the files go in, usually in a shared drive. Required. |
+| `KB_DRIVE_ACCESS_TOKEN` | An access token with the Drive scope, for a run by a person. When it is set, the next three are not used. |
+| `KB_DRIVE_OIDC_TOKEN` | The CI step's OIDC token. Bitbucket Pipelines issues one to a step with `oidc: true`, in `$BITBUCKET_STEP_OIDC_TOKEN`. |
+| `KB_DRIVE_WIF_PROVIDER` | The workload identity provider's full name, starting `//iam.googleapis.com/projects/<number>/`. |
+| `KB_DRIVE_SERVICE_ACCOUNT` | The service account whose hour-long token writes to Drive. |
+
+**Keyless sign-in from CI.** The step stores no Google key. It exchanges the CI step's OIDC token at
+Google's Security Token Service through a workload identity provider that accepts only the knowledge
+base repository's default branch, then asks for an hour-long token of a service account that can
+write to the shared drive. None of the three values is a secret. An administrator of the Google Cloud
+project sets it up once (Bitbucket shown; the provider's issuer, audience and claims differ for
+other CI systems):
+
+1. In Bitbucket, Repository settings > Pipelines > OpenID Connect shows the **Identity provider URL**
+   and **Audience** to copy. The token carries `repositoryUuid` and `branchName` among its claims
+   (the issuer's `.well-known/openid-configuration` lists them); the repository's UUID is under
+   that page's unique identifiers.
+2. In the project (the APIs, a service account, a pool, a provider that accepts only that repository's
+   default branch, and the right to use the account, given to identities from that pool only):
+
+   ```bash
+   gcloud services enable iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com drive.googleapis.com --project=<project>
+   gcloud iam service-accounts create kb-drive-copy --project=<project> --display-name="Knowledge base Drive copy"
+   gcloud iam workload-identity-pools create kb-ci --project=<project> --location=global --display-name="Knowledge base CI"
+   gcloud iam workload-identity-pools providers create-oidc bitbucket --project=<project> --location=global \
+     --workload-identity-pool=kb-ci --issuer-uri="<Identity provider URL>" --allowed-audiences="<Audience>" \
+     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repositoryUuid,attribute.branch=assertion.branchName" \
+     --attribute-condition="assertion.repositoryUuid == '<repository UUID, exactly as that page shows it>' && assertion.branchName == 'main'"
+   gcloud iam service-accounts add-iam-policy-binding kb-drive-copy@<project>.iam.gserviceaccount.com --project=<project> \
+     --role=roles/iam.workloadIdentityUser \
+     --member="principalSet://iam.googleapis.com/projects/<project number>/locations/global/workloadIdentityPools/kb-ci/*"
+   ```
+
+   The pool serves this step alone, so the provider's condition is what limits who can use the
+   account: a pipeline on any other repository or branch is refused at the exchange.
+3. In Drive, add `kb-drive-copy@<project>.iam.gserviceaccount.com` to the shared drive as a
+   **Content manager**, the role that can replace and trash files. If the shared drive refuses an
+   address outside the organization, a Workspace administrator allows it for that drive.
+4. In CI, run the step after the publication with OIDC turned on (`oidc: true` on a Bitbucket step)
+   and the four variables set.
+
+**The notebook.** Make it from the folder's files (Gemini Notebook > New notebook > Add sources >
+Drive, open the folder, select every file). Readers need two things: the notebook shared with them,
+and read access to the source files, so the people or group who should read it go on the shared
+drive as Viewers as well. Shared notebooks do not show in the Gemini app's list of notebooks, so give
+readers the notebook's link.
