@@ -201,3 +201,29 @@ def test_an_all_day_event_with_a_place_is_asked_for_its_line(tmp_path):
 def test_an_entry_with_no_start_is_passed_over_and_the_rest_are_judged(tmp_path):
     code, report = check(tmp_path, [{"summary": "A note with no time", "location": "Somewhere 5"}, LAUNCH])
     assert code == 1 and report["in_person"] == 1 and report["events"][0]["summary"].startswith("Book launch")
+
+
+# --- found on a real week's calendar read (2026-11-11), each as a test that failed first ----------------
+
+def test_a_block_that_names_no_commitment_belongs_to_the_one_nearest_to_it(tmp_path):
+    """A morning session and an evening event on one day: the evening's blocks, which name no commitment, were
+    taken for the morning's too, so the morning looked half provided for."""
+    morning = event("Training session", "08:15", "09:15", "Riverside Gym, 40 Dock St, Harbor Town", "Travel: blocks before and after")
+    unnamed = lambda block, text: dict(block, description="\n".join(row for row in text.splitlines() if not row.startswith("For:")))  # noqa: E731
+    code, report = check(tmp_path, [morning, RESOLVED, unnamed(GOING, OUT), unnamed(RETURNING, BACK)])
+    assert code == 1
+    assert lacks(report) == []  # the evening is whole
+    missing = " | ".join(lacks(report, "Training session"))
+    assert "no travel block before it" in missing and "no travel block after it" in missing and "has no" not in missing
+
+
+def test_a_description_written_as_html_is_read_line_by_line(tmp_path):
+    """Calendar connectors often return a description as HTML, where a line break is a tag."""
+    html = lambda text: "<p>" + "<br>".join(f"<b>{row.split(':', 1)[0]}:</b>{row.split(':', 1)[1]}" for row in text.splitlines()) + "</p>"  # noqa: E731
+    going = dict(GOING, description=html(OUT).replace("$15.00 train and", "$15.00 train &amp; "))
+    returning = dict(RETURNING, description=BACK.replace("\n", "<br/>\n"))
+    resolved = dict(RESOLVED, description="<div>Doors at 18:45.</div><div>Travel: blocks before and after</div>")
+    code, report = check(tmp_path, [resolved, going, returning])
+    assert code == 0, report
+    trip = next(e for e in report["events"] if e["summary"].startswith("Book launch"))
+    assert trip["paid_by"] == "personal" and trip["leave"] == "17:05"
