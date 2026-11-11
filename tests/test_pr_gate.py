@@ -61,7 +61,7 @@ def push(repo, command, config=GATED, cwd=None):
 
 
 @pytest.mark.parametrize("command", [
-    "git push origin main", "git push", "git push origin HEAD:main", "git push origin HEAD", "git push origin +main",
+    "git push origin main", "git push", "git push origin HEAD:main", "git push origin HEAD", "git push --follow-tags",
     "git push origin refs/heads/main", "git push -u origin main", "git push --all", "git push --mirror origin",
     "git push origin :main", "git push --force-with-lease origin main", "git add -A && git commit -m x && git push origin main",
 ])
@@ -69,6 +69,11 @@ def test_a_push_that_moves_the_default_branch_is_refused_with_the_route(repo, co
     commit(repo, "second")
     reason = push(repo, command)
     assert reason and "acme/skills" in reason and "pull request" in reason and "main" in reason
+
+
+def test_a_forced_push_to_the_default_branch_is_still_refused_outright(repo):
+    commit(repo, "second")
+    assert push(repo, "git push origin +main") == "refusing a force push to a default branch"  # no code admits this one
 
 
 def test_a_branch_carrying_the_same_commits_to_the_default_branch_is_refused(repo):

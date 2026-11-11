@@ -1177,6 +1177,82 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
     return None
 
 
+# --- pull-request gate (R3, R7) ------------------------------------------------------------------
+# 2026-11-09: a repository whose rule was "changes land through a pull request" had taken 61 commits pushed
+# straight to main in six weeks; its instructions said "push every remote", and nothing refused the push.
+
+PUSH_VALUE_OPTIONS = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+
+
+def _repo_names(text: str) -> set:
+    return {m.group(1).lower() for m in re.finditer(r"[/:]([\w.-]+/[\w.-]+?)(?:\.git)?(?=\s|$)", text)}
+
+
+def _gated_push(words: list[str], where: str, names: set, readable: bool) -> tuple[str, str] | None:
+    """(repository, branch) when this `git push` would move the default branch of a gated repository."""
+    rest, args, flags, i = words[words.index("push") + 1:], [], set(), 0
+    while i < len(rest):
+        if rest[i].startswith("-"):
+            flags.add(rest[i].split("=", 1)[0])
+            i += 2 if rest[i] in PUSH_VALUE_OPTIONS else 1
+        else:
+            args.append(rest[i])
+            i += 1
+    if flags & {"-n", "--dry-run"}:
+        return None
+    known, url = _run_git(where, "remote", "get-url", args[0]) if args else (1, "")
+    remote = args[0] if args and known == 0 else "origin"
+    # The remote it names, a URL given outright, or every remote when it names none.
+    found = _repo_names(url if known == 0 else args[0] if args else _run_git(where, "remote", "-v")[1]) & names
+    if not found:
+        return None
+    repo = sorted(found)[0]
+    if not readable:
+        return repo, "its default branch (the command could not be read, so no branch can be ruled out)"
+    code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
+    defaults = {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
+    if flags & {"--all", "--mirror"}:
+        return repo, sorted(defaults)[0]
+    code, current = _run_git(where, "symbolic-ref", "--short", "HEAD")
+    for spec in args[1:] or ([] if "--tags" in flags else ["HEAD"]):  # `--tags` alone pushes tags and no branch
+        if spec.startswith("refs/tags/"):
+            continue
+        source, _, target = spec.lstrip("+").partition(":")
+        target = (target or source).replace("refs/heads/", "", 1)
+        target = current.strip() if target == "HEAD" and code == 0 else target
+        if target in defaults:
+            ahead = _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}") if source else (1, "")
+            if ahead[0] != 0 or ahead[1].strip() != "0":  # nothing ahead moves nothing, as after a merged pull request
+                return repo, target
+    return None
+
+
+def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """Config: {"pr_gated": {"<owner>/<repo>": {"since": "YYYY-MM-DD", "direct_ok": ["<commit>"]}}}. A push that
+    would move such a repository's default branch waits for the principal's code for that one push."""
+    gated = config.get("pr_gated")
+    commands, readable = _parse(command, cwd)
+    pushes = [(words, where) for words, d in commands for sub, where in [_git(words, d)] if sub == "push"]
+    if gated is None or not pushes:
+        return None
+    if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
+        return ("pr_gated in the synthesis config needs a map of \"owner/repo\" names to their settings; pushes are "
+                "blocked until it is fixed")
+    names = {k.lower() for k in gated}
+    hits = [hit for words, where in pushes for hit in [_gated_push(words, where, names, readable)] if hit]
+    if not hits:
+        return None
+    subject = {"command": command, "runs_in": sorted({where for _, where in pushes})}
+    if approvals.consume("push-direct", subject, session):
+        return None
+    repo, branch = hits[0]
+    code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
+    return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
+            "branch, open the pull request, let its checks pass, merge it, then install from the merged branch. If the "
+            f"principal wants this one push to go direct, show them the exact command and ask them to type {approvals.how(code)}. "
+            "Then run the identical command again.")
+
+
 # --- approvals come only from the principal's own prompt (R3.0) ------------------------------------
 # The agent runs as the hooks' own OS user. In the M5 sandbox (2026-10-05) it granted its own send by
 # piping a made-up prompt into the hook; it could as well write a grant or a transcript line. A grant
@@ -1726,6 +1802,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_self_grant(command, cwd, config) or check_destructive(command, config, cwd)
+                or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
