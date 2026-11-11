@@ -4,6 +4,70 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.5.0] - 2026-11-11
+
+- **Critical deadlines** (daily rituals 3.7.0, chief of staff 2.2.0, decision packet 2.3.0). A deadline whose miss
+  cannot be undone is tagged `**Critical:** <class>` the day it is first seen and handled apart from ordinary dated
+  work. `decay_sweep.py` reports critical items in their own view: leading from seven days out, due an alert three
+  days and one day out, on the day and after, never lapsed, and closed only when a closing mark carries an
+  `**Evidence:**` line. It lists untagged items that read like a critical class until someone classifies them, and
+  `--alert` posts one banner and spoken line with a count and no title. `ritual_state.py record` refuses while a
+  critical deadline is past due and open, and refuses a clean outcome over plans it could not read whole. The 16:55
+  nudge sounds the same alert on a day with no ritual. `build_packet.py` refuses a row tagged `critical`. The plan
+  opens with `## Critical deadlines: needs your attention`. On 2026-11-06 an enrollment window closed unanswered
+  after three weeks as one dated row among a hundred.
+- **Each workspace declares its plan folders, and `record` needs them.** `plans_dirs` and `artifacts_dirs` in the
+  ritual config (`<synthesis home>/rituals/config.json`; `"plans_dirs": []` for a workspace that keeps no dated
+  plans) are read by the sweep (`--workspace`), the record and the nudge. **A workspace that declares neither is
+  refused by `ritual_state.py record`**, because its critical deadlines cannot be checked: add the declaration when
+  you upgrade. An example ships as `skills/synthesis-daily-rituals/assets/ritual-config.example.json`.
+- **A meeting placed on today has an approval of its own** (core, message guard 2.6.0). With `same_day_meetings` in
+  the config, a calendar write that starts today and invites someone else, or moves an existing event to today,
+  waits for a code the principal types for that same-day meeting; the ordinary invitation approval and a send
+  window do not cover it. A meeting with an exempt attendee keeps the ordinary approval, a write with no attendees
+  is untouched, and without the key nothing changes. A move with notifications off still counts, except for an
+  event the chief of staff's holds ledger has as the agent's own hold in force today: the guard asks the ledger's
+  own reader, which every install now keeps in the runtime. Checked against four calendar connectors' real schemas.
+  On 2026-11-09 a follow-up had been staged into the first open slot of the same day, three days running.
+- **`slot_check.py`: the verdict that goes with every proposed meeting time** (chief of staff 2.2.0). Given a slot,
+  the calendar read that covers its day and the principal's preferences, it refuses today, protected hours, a slot
+  that breaks the day's last deep-work block and a day past its meeting load; sends back a slot that splits a free
+  block or duplicates an existing meeting with the same people; and reads a requester's deadline as their
+  preference unless their timing binds. It will not judge a day the calendar read does not cover.
+- **The pull-request gate** (core, guardrails 2.4.0, skills manager 3.4.0). With `pr_gated` in the config, a `git
+  push` from a checkout of a listed repository goes through only when it provably leaves the default branch alone.
+  A push that names that branch, reaches every branch at once, or cannot be read is refused with the route (branch,
+  pull request, checks, merge, install); the principal's code admits one exact push. The default branch is the one
+  the rule names (`"branch"`), else the one the checkout records for the remote; **a checkout that records none
+  holds every branch push** until the rule names it or `git remote set-head origin --auto` records it. A branch
+  switched earlier on the same line counts only for a push that runs only if the switch succeeded. `synthesis
+  doctor`'s `pr gate` check lists commits on the default branch since the gate began that came through no pull
+  request, so a push made where the guard cannot see shows at the next day-start. The skills manager's rules and
+  steps no longer say only "push every remote". One private skills repository had taken 61 direct pushes to `main`
+  in six weeks under a pull-request rule nothing held. Both guards went through five review rounds by a second
+  model; every finding has a test that failed first.
+- **Watermark advances from parallel workers no longer overwrite each other** (daily rituals 3.7.0).
+  `sync_watermark.py` rewrote its whole store from each writer's own reading, so two workers advancing different
+  surfaces at once lost each other's advances: 27 of 632 on 2026-11-11, each of which had printed `moved: true`.
+  Every write now reads, changes and writes the store under a lock.
+- **The knowledge base reaches more people, with IT managing who** (synthesis-kb-distribution 1.1.0). The connector
+  now lets in the members of Google groups an organization's IT manages (`KB_ALLOWED_GROUPS`), read from the Cloud
+  Identity Groups API as the service's own account with the read-only groups scope, beside or instead of the email
+  list; nested groups are followed, and a roster that cannot be read keeps its last good copy for at most three
+  intervals, after which nobody gets in through a group until a read succeeds. `fetch("SKILL.md")` returns the
+  plugin's guide and index so an agent can start from it; `search` leaves it out. New `scripts/publish_drive.py`
+  keeps a shared-drive folder's copy of the built plugin current for a Gemini notebook: changed files replaced in
+  place, new ones added, dropped ones moved to the trash, unchanged ones left alone, and the notebook sources to add
+  or remove named; in CI it signs in through workload identity federation, so no key is stored. The connector's
+  log-lines paragraph moved word for word from SKILL.md to `references/connector.md`, section 8.
+- **Docs: a hook approval does not survive upgrades in every harness.** The README, the runtime integration page
+  and three other places said it did, because the hook's path and text never change. Codex ties each approval to
+  a fingerprint of the installed plugin and asks again after every release, running no hook until the person
+  approves; Muse has kept its approval across releases so far; Claude Code asks for none.
+- **Three SKILL.md files reorganized, nothing trimmed.** Daily rituals' procedure, chief of staff's scheduling steps
+  and the decision packet's output paragraph moved word for word into `references/` to make room for the new
+  binding rules.
+
 ## [5.4.0] - 2026-11-09
 
 - **New skill: synthesis-kb-distribution** (1.0.0). Distributes an OKF knowledge base from one published tree to the
