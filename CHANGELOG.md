@@ -8,14 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 - **LinkedIn messages as a declared ritual surface** (daily rituals 3.8.0). A principal found messages on LinkedIn
   that no ritual had shown him: the rituals saw LinkedIn only through notification emails, which often hide the
-  text and never cover InMail. A workspace now declares `.agents/linkedin-sync.yaml` (the workspace, a parking
-  thread, the inboxes to read). `linkedin_messages.py plan` prints the address to open and how far back each inbox
-  was read; `linkedin_messages.py parse` reads the saved text of the conversation list, lists the conversations
-  that end with someone else (with unread counts, InMail and LinkedIn's own reply nudge) and prints one coverage
-  line that names no one. The `linkedin` watermark moves only with a complete read's coverage. **The read opens the
-  declared parking thread, never the bare messaging page,** which opens the newest conversation by itself and
-  marks it read; a thread is opened only when its preview cannot show whether something is owed, and each one
-  opened is named. Day-start, mid-day and day-end carry the step; the ritual itself sends nothing.
+  text and never cover InMail. A workspace now declares `.agents/linkedin-sync.yaml` (the workspace and the
+  inboxes to read). `linkedin_messages.py plan` prints the address to open and the day to scroll back to;
+  `linkedin_messages.py parse` reads the saved text of the conversation list, lists the conversations that end
+  with someone else (with unread counts, InMail and LinkedIn's own reply nudge) and prints one coverage line that
+  names no one. The `linkedin` watermark moves only with a complete read's coverage. **The read opens LinkedIn's
+  new-message view, never the bare messaging page,** which opens the newest conversation by itself and marks it
+  read; the new-message view shows the same list beside an empty composer and opens nothing. The read stops at the
+  day the plan names, because the list loads older conversations for as long as it is scrolled. A thread is opened
+  only when its preview cannot show whether something is owed, and each one opened is counted and named.
+  Day-start, mid-day and day-end carry the step; the ritual itself sends nothing. Checked against a live list of
+  46 conversations.
 - **A deadline that lives only in a draft or a ledger is swept too** (daily rituals 3.8.0). The sweep read only
   dated plans and the three ritual artifact names; nine draft files and a ledger that carried their own
   `**Decays:**` lines were listed as excluded and never read. A workspace can declare `records_dirs` in the ritual

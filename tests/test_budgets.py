@@ -376,14 +376,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # build_packet.py 4: a row tagged critical is refused. sync_watermark.py 13, after two workers advancing one
 # store at once lost 27 of 632 advances (reported 2026-11-11): held 12 (the store read, changed and written back
 # under a lock), its imports 2, spacing 2, and one line fewer in each of begin, advance and defer.
-# 5.6.0 adds 208 to the plugin (the core is unchanged; Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 189,
+# 5.6.0 adds 218 to the plugin (the core is unchanged; Rajiv's go on the plan, 2026-11-11). linkedin_messages.py 199,
 # LinkedIn's conversation list as a ritual surface, after a principal found messages there that no ritual had
-# shown him: parse 33 (each conversation from the list's text, a sign-in or security page above the list, the
-# coverage and its line), main 33, entry 29 (who, when, who spoke last, unread counts, LinkedIn's own reply nudge,
-# InMail), plan 26 (the declaration, the parking thread's address, how far back each inbox was read), the docstring
-# 21, when 17 (a clock time for today, a day before it, a date from last year), imports 8, stop 5, the path to the
-# core and no bytecode 4, the entry point 4, the list's patterns 9 (the closing sentence 2; the clock, the day, the
-# months, the unread count, the nudge, the status line and the wall 1 each). sync_watermark.py 3: `linkedin` among
+# shown him: main 38 (the two commands, the day a plan counts from, a conversation open during the read named),
+# parse 34 (each conversation from the list's text, a sign-in or security page above the list, the coverage, the
+# opened count and the line), entry 31 (who, when, who spoke last, unread counts, LinkedIn's own reply nudge,
+# InMail, the account on either side of the closing sentence), the docstring 24, plan 23 (the declaration, the
+# new-message view's address, the day each inbox is scrolled back to), when 17 (a clock time for today, a day
+# before it, a date from last year), imports 8, stop 5, the path to the core and no bytecode 4, the entry point 4,
+# the list's patterns 11 (the closing sentence 2; the clock, the day, the months, the unread count, the nudge, the
+# status line, the wall, the view's address and a first read's reach 1 each). sync_watermark.py 3: `linkedin` among
 # the stores that move only with their reader's coverage 2, the docstring's line 1. decay_sweep.py 16, after nine
 # drafts and a ledger carried deadlines the sweep never read: collect 12 (a declared folder of other records, each
 # file read as of the date in its name or of today, a plan outranking a record), main 2 (the flag and its roots),
@@ -391,7 +393,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # consolidate first).
 CORE_BUDGET = 8664
-PLUGIN_BUDGET = 28465
+PLUGIN_BUDGET = 28475
 
 
 def _lines(files):
