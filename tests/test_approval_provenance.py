@@ -1292,3 +1292,31 @@ def test_what_the_last_probe_before_the_third_review_got_through_is_refused(save
 ])
 def test_what_a_program_reads_from_a_protected_file_is_not_a_path_into_it(saved, command, tmp_path):
     assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+# The environment is placed like the arguments: a variable the program reads by name has the value the command
+# gives it. One command set a transcript's path in one variable and the time in another; the program read the
+# time and wrote a project record, and was refused for the first (30 days, twice).
+
+@pytest.mark.parametrize("command", [
+    "T={work}/s.jsonl && NOW=$(date +%H%M) && grep -c x \"$T\" && export NOW && python3 - <<'EOF'\nimport os\n"
+    "NOW = os.environ['NOW']\np = 'notes/today.md'\nopen(p, 'a').write(NOW)\nEOF",
+    "export OUT=/tmp/pad/out.txt SRC={work}/s.jsonl; python3 - <<'EOF'\nimport os\n"
+    "open(os.environ['OUT'], 'w').write(open(os.environ['SRC']).read())\nEOF",
+    "export SRC={work}/s.jsonl; python3 -c \"import os; print(len(open(os.getenv('SRC')).read()), os.environ.get('TERM'))\"",
+])
+def test_a_variable_of_the_environment_is_placed_where_the_program_reads_it_by_name(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "export OUT={work}/s.jsonl SRC=/tmp/pad/in.txt; python3 - <<'EOF'\nimport os\n"
+    "open(os.environ['OUT'], 'w').write(open(os.environ['SRC']).read())\nEOF",                       # the variable it writes
+    "export OUT={work}/s.jsonl; python3 -c \"import os; open(os.getenv('OUT'), 'a').write('x')\"",
+    "export OUT={work}/s.jsonl; python3 -c \"import os; open(os.environ.get('OUT', '/tmp/x'), 'a').write('x')\"",
+    "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os\nfor k, v in os.environ.items():\n"
+    "    if k == 'OUT': open(v, 'a').write('x')\nEOF",                                                # taken another way: any write
+    "export OUT={work}/s.jsonl; python3 - <<'EOF'\nimport os, subprocess\nsubprocess.run(['sh', '-c', 'echo x >> $OUT'], env=dict(os.environ))\nEOF",
+])
+def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
