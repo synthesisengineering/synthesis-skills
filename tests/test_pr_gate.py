@@ -329,7 +329,7 @@ def test_a_default_branch_that_is_not_main_is_protected_when_the_checkout_or_the
     git(repo, "symbolic-ref", "-d", "refs/remotes/origin/HEAD")
     named = {"pr_gated": {"acme/skills": {"since": "2026-11-11", "branch": "develop"}}}
     assert "pull request" in push(repo, "git push origin develop", config=named)
-    assert push(repo, "git push origin develop") is None and "pull request" in push(repo, "git push origin main")  # the fallback names
+    assert push(repo, "git push origin main", config=named) is None
 
 
 @pytest.mark.parametrize("command", [
@@ -349,6 +349,107 @@ def test_reads_and_a_rebase_before_a_push_do_not_hold_it(repo, command):
 def test_writes_to_the_branch_or_the_routing_before_a_push_still_hold_it(repo, command):
     git(repo, "switch", "-q", "-c", "feature")
     assert "could not be read" in push(repo, command), command
+
+
+# --- found by the fourth review round (2026-11-11) ------------------------------------------------
+
+
+def test_a_checkout_that_records_no_default_branch_holds_every_branch_push(repo):
+    """Nothing can be shown to leave the default branch alone when the guard cannot tell which branch that is."""
+    git(repo, "switch", "-q", "-c", "develop")
+    commit(repo, "second")
+    git(repo, "tag", "v1.0.0")
+    git(repo, "symbolic-ref", "-d", "refs/remotes/origin/HEAD")
+    for command in ("git push origin develop", "git push origin main", "git push", "git push origin develop:develop"):
+        reason = push(repo, command)
+        assert reason and "acme/skills" in reason and "set-head" in reason and '"branch"' in reason, command
+    for command in ("git push origin v1.0.0", "git push --tags", "git push -n origin develop"):
+        assert push(repo, command) is None, command  # a tag or a dry run moves no branch
+    named = {"pr_gated": {"acme/skills": {"since": "2026-11-11", "branch": "main"}}}
+    assert push(repo, "git push origin develop", config=named) is None
+
+
+@pytest.mark.parametrize("value, held", [("1", True), ("True", True), ("yes", True), ("ON", True), ("false", False), ("0", False), ("No", False)])
+def test_a_mirror_setting_is_read_as_git_reads_a_boolean(repo, value, held):
+    git(repo, "switch", "-q", "-c", "feature")
+    git(repo, "config", "remote.origin.mirror", value)
+    assert bool(push(repo, "git push origin")) is held
+
+
+def test_a_switch_inside_a_nested_shell_counts_only_when_the_push_there_needs_it(repo):
+    git(repo, "branch", "feature")
+    commit(repo, "second")  # on main
+    assert "pull request" in push(repo, "sh -c 'git switch feature; git push origin HEAD'")
+    assert "pull request" in push(repo, 'bash -c "git switch feature || true; git push"')
+    assert "pull request" in push(repo, "git switch feature; sh -c 'git push origin HEAD'")
+    assert push(repo, "sh -c 'git switch feature && git push origin HEAD'") is None
+
+
+@pytest.mark.parametrize("command", [
+    "git switch main || git switch -c topic && git push origin HEAD",  # the first switch succeeds and the push still runs
+    "! git switch -c topic && git push origin HEAD",                    # the push runs only if the switch failed
+    "if ! git switch -c topic; then git push origin HEAD; fi",
+    "git switch -c topic | cat && git push origin HEAD",
+    "(git switch -c topic) && git push origin HEAD",
+    "git switch -c topic & git push origin HEAD",
+])
+def test_a_switch_the_push_does_not_depend_on_leaves_the_branch_before_it_in_play(repo, command):
+    commit(repo, "second")  # on main
+    assert "pull request" in push(repo, command), command
+
+
+@pytest.mark.parametrize("command", [
+    "git checkout -b topic && git push -u origin HEAD\n",
+    "git checkout -b topic &&\n  git push -u origin HEAD",
+    "git checkout -b topic && git add -A && git commit -m work && git push -u origin HEAD\n\n",
+    "git fetch origin; git switch -c topic && git push -u origin HEAD",
+    "git stash || true; git switch -c topic && git push",
+])
+def test_a_trailing_or_continuing_newline_does_not_break_a_chain(repo, command):
+    commit(repo, "second")  # on main
+    assert push(repo, command) is None, command
+
+
+def test_a_newline_between_a_switch_and_a_push_is_not_a_chain(repo):
+    git(repo, "branch", "feature")
+    commit(repo, "second")  # on main
+    assert "pull request" in push(repo, "git switch feature\ngit push origin HEAD")
+
+
+@pytest.mark.parametrize("command", [
+    "git rebase origin/main main && git push origin HEAD", "git rebase --onto origin/main HEAD~1 main && git push",
+    "git rebase --root main && git push", "git rebase origin/main main -X theirs && git push origin HEAD",
+])
+def test_a_rebase_that_names_the_branch_to_rebase_checks_it_out(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    assert "pull request" in push(repo, command), command
+
+
+@pytest.mark.parametrize("command", [
+    "git rebase main && git push --force-with-lease", "git rebase -i origin/main && git push",
+    "git rebase --onto origin/main HEAD~1 && git push --force-with-lease origin HEAD", "git rebase origin/main feature && git push",
+    "git rebase --continue && git push", "git symbolic-ref --short HEAD && git push", "git symbolic-ref refs/remotes/origin/HEAD; git push",
+])
+def test_a_rebase_onto_the_default_branch_and_a_read_of_head_do_not_hold_a_push(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    commit(repo, "second")
+    assert push(repo, command) is None, command
+
+
+def test_a_stash_turned_into_a_branch_is_a_branch_change(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    assert "could not be read" in push(repo, "git stash branch main && git push origin HEAD")
+    assert push(repo, "git stash pop && git push") is None
+
+
+def test_a_push_in_a_folder_that_does_not_exist_yet_is_unreadable(repo, tmp_path):
+    """A clone or a new worktree made earlier on the line: none of its remotes or branches can be read beforehand."""
+    remote = tmp_path / "acme" / "skills.git"
+    assert "could not be read" in push(repo, f"git clone {remote} fresh && cd fresh && git push origin main", cwd=tmp_path)
+    assert "could not be read" in push(repo, "git worktree add ../tree main && cd ../tree && git push")
+    assert push(repo, "cd ../nowhere && git push origin main", cwd=tmp_path) is None  # no gated repository anywhere on the line
+    reason = push(repo, "git worktree add ../tree -b topic && cd ../tree && git push -u origin topic")
+    assert "could not be read" in reason and "by itself" in reason  # held, with the way through
 
 
 # --- the doctor ----------------------------------------------------------------------------------

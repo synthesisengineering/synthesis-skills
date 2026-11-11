@@ -313,3 +313,18 @@ def test_any_hook_merges_a_board_an_older_release_wrote_in_the_state_folder(tmp_
     out = _run_hook(isolated_home, "pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "ls"}})
     assert out.returncode == 0 and (isolated_home / "board" / "sessions" / "S9.json").is_file()
     assert not (isolated_home / "state" / "sessions").exists()
+
+
+def test_the_guard_finds_the_holds_ledgers_reader_in_the_runtime(tmp_path, isolated_home):
+    """The same-day rule asks the chief of staff's own ledger reader which holds are in force; hooks run from the runtime."""
+    plugin = _plugin_copy(tmp_path)
+    scripts = plugin / "skills" / "synthesis-chief-of-staff" / "scripts"
+    shutil.copytree(ROOT / "skills" / "synthesis-chief-of-staff" / "scripts", scripts, ignore=shutil.ignore_patterns("__pycache__"))
+    install.install(plugin)
+    reader = isolated_home / "current" / "skills" / "synthesis-chief-of-staff" / "scripts" / "holds_state.py"
+    assert reader.read_bytes() == (scripts / "holds_state.py").read_bytes()
+    probe = ("import sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; import os; "
+             "print(os.path.realpath(guards.HOLDS_READER))")
+    done = subprocess.run([sys.executable, "-S", "-c", probe, str(isolated_home / "current")], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == os.path.realpath(reader)

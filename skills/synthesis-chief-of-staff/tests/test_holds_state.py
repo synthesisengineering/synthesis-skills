@@ -141,6 +141,14 @@ def test_torn_line_is_skipped_not_guessed_at(store) -> None:
     assert {h["id"] for h in H.load_events()} == {"good"}
 
 
+def test_a_record_whose_id_is_not_text_is_skipped(store) -> None:
+    """Found by review, 2026-11-11: one such line made every reading of the ledger fail."""
+    place("good", "2026-09-04T14:00:00-04:00", "2026-09-04T16:00:00-04:00")
+    with open(H.log_path(), "a", encoding="utf-8") as fh:
+        fh.write('{"event":"place","id":[]}\n{"event":"release","id":{"a":1}}\n{"event":"amend","id":7}\n')
+    assert [h["id"] for h in H.current(H.load_events(), date(2026, 9, 4))] == ["good"]
+
+
 def test_ledger_is_created_private(store) -> None:
     """Hold purposes name meetings, colleagues and clients.
 

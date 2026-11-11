@@ -292,6 +292,55 @@ def test_moving_an_event_to_today_with_notifications_off_is_quiet_only_for_the_a
     assert guards.check(MANAGE, tomorrow, CONFIG, cwd="/tmp") is None  # the quiet rule is unchanged on another day
 
 
+# --- found by the fourth review round (2026-11-11) ------------------------------------------------
+
+MOVE = {"action": "update", "start_time": f"{TODAY}T16:00:00", "send_updates": "none", "user_google_email": "me@example.com"}
+
+
+def _ledger(isolated_home, monkeypatch, content: bytes):
+    root = isolated_home / "chief-of-staff"
+    (root / "holds").mkdir(parents=True)
+    monkeypatch.setenv("HOLDS_STATE_DIR", str(root))
+    (root / "holds" / "events.jsonl").write_bytes(content)
+
+
+def test_a_hold_that_is_not_in_force_today_gets_no_exemption(isolated_home, monkeypatch):
+    """The ledger's own reader decides, not a copy of its rules: a hold past its expiry, or one whose instance for
+    today was released, is no longer the agent's to move without a code."""
+    import json
+    records = [
+        {"event": "place", "id": "live", "start": f"{TODAY}T14:00:00-05:00", "end": f"{TODAY}T15:00:00-05:00", "expires": "end-of-day"},
+        {"event": "place", "id": "ended", "start": "2026-11-06T14:00:00-05:00", "end": "2026-11-06T15:00:00-05:00", "expires": "end-of-day"},
+        {"event": "place", "id": "dated", "expires": "2026-11-08"},
+        {"event": "place", "id": "weekly", "recurring": True},
+        {"event": "release", "id": "weekly", "instance": TODAY},
+        {"event": "place", "id": "other-week", "recurring": True},
+        {"event": "release", "id": "other-week", "instance": TOMORROW},
+    ]
+    _ledger(isolated_home, monkeypatch, "".join(json.dumps(r) + "\n" for r in records).encode())
+    for event_id in ("live", "other-week"):
+        assert guards.check(MANAGE, {**MOVE, "event_id": event_id}, CONFIG, cwd="/tmp") is None, event_id
+    for event_id in ("ended", "dated", "weekly"):
+        assert same_day(guards.check(MANAGE, {**MOVE, "event_id": event_id}, CONFIG, cwd="/tmp")), event_id
+
+
+@pytest.mark.parametrize("content, exempt", [
+    (b'{"event": "place", "id": []}\n{"event": "place", "id": {"a": 1}}\n{"event": "place", "id": "hold-1"}\n', True),
+    (b'\xff\xfe{"event": "place", "id": "hold-1"}\n', False),  # not UTF-8: nothing in it can be trusted
+    (b'[1, 2]\n"text"\n{"event": "place"}\n{"event": "release", "id": "hold-1"}\n', False),
+])
+def test_a_ledger_record_it_cannot_use_never_stops_the_guard(isolated_home, monkeypatch, content, exempt):
+    _ledger(isolated_home, monkeypatch, content)
+    reason = guards.check(MANAGE, {**MOVE, "event_id": "hold-1"}, CONFIG, cwd="/tmp")
+    assert (reason is None) if exempt else same_day(reason)
+
+
+def test_without_the_ledgers_reader_no_move_is_exempt(isolated_home, monkeypatch):
+    _ledger(isolated_home, monkeypatch, b'{"event": "place", "id": "hold-1"}\n')
+    monkeypatch.setattr(guards, "HOLDS_READER", str(isolated_home / "absent.py"))
+    assert same_day(guards.check(MANAGE, {**MOVE, "event_id": "hold-1"}, CONFIG, cwd="/tmp"))
+
+
 def test_a_send_window_never_covers_a_meeting_today():
     config = {**CONFIG, "send_window_signatures": ["Helperbot"]}
     sends.open_window(1, ["calendar"], count=5)
