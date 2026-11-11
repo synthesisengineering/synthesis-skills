@@ -24,8 +24,17 @@ The daily plan follows this canonical structure. On each update, consolidate int
 # Daily Action Plan — [Day], [Date]
 
 **[Status line: version, key people, blockers]**
+[Critical ahead: 2, the next closes 2026-12-15   ← only while a critical deadline is more than seven days out]
 
 ---
+
+## Critical deadlines: needs your attention   ← FIRST, whenever one is inside seven days; cockpit: NEEDS YOU region
+### [What closes, its date and exact time with zone]
+[The direct link and what the principal has to do.]
+**Critical:** [class]
+**Decays:** YYYY-MM-DD (what closes)
+**Decay ID:** [stable-id]
+**Calendar:** [the calendar entries that mark the closing date and the working block]
 
 ## Decisions needed from Rajiv     ← cockpit: NEEDS YOU region
 [H3 question per decision. Each H3 may have **Option A:** / **Option B:** lines
@@ -74,6 +83,7 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 | Cockpit region / kind | Canonical H2 name | Recognized synonyms |
 |----------------------|-------------------|---------------------|
 | **decisions** (NEEDS YOU) | `Decisions needed` | "Decisions to make", "Open ask", "Asks for Rajiv", "Open Items", "Needs your attention", "Open Quality Concerns" |
+| **decisions** (NEEDS YOU), first in the plan | `Critical deadlines: needs your attention` | The words "needs your attention" place it; a heading that only starts with "Critical" is read as briefing and folds into the lower row |
 | **priority-tasks** (TODAY) | `Priority Tasks` | "Tasks", "Tasks for Rajiv", "Tasks Today", "Today's Tasks", "Today's Priorities", "Still To Do", "This Week", "Remaining Tasks", "Pending This Session", "Pending from Before Vacation" |
 | **drafts** (DRAFTS) | `Drafts — Ready to Send` | "Drafts", "Unsent — Ready to Send", "Unsent Drafts", "DM Reply Drafts", "Draft Messages", "Messages", "Next Steps", "Pending Emails", "Scheduled for Tomorrow / Later" |
 | **standup** | `Standup Highlights` | "Standup Transcript", any heading with "standup", "Newsroom Training" |
@@ -88,6 +98,11 @@ The synthesis-console v0.8+ parser classifies each H2 heading into one of these 
 ### Internal Structure Conventions
 
 Within each section, the parser also recognizes structural patterns. Adhering to these makes the UI work correctly:
+
+**Critical deadlines section** (`## Critical deadlines: needs your attention`):
+- The first H2 of the plan from seven days before the earliest critical deadline until every one is closed, and the first thing in every brief. One H3 per deadline, in date order.
+- Each H3 carries `**Critical:**`, `**Decays:**`, `**Decay ID:**` and `**Calendar:**` directly under it. A critical deadline never appears in the Priority Tasks buckets, in Carried Items or as a decision-packet row.
+- It closes in place: a closing mark plus `**Evidence:**`. The full rules are in [critical-deadlines.md](critical-deadlines.md).
 
 **Decisions section** (`## Decisions needed`):
 - One H3 per decision (`### 1. Force-push origin/develop?`)

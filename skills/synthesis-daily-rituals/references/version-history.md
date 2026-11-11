@@ -6,6 +6,21 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's 500-line budget without losing
 the reasoning. Newest first.
 
+## v3.7.0 — Critical deadlines
+
+v3.7.0 (2026-11-11) adds the `**Critical:**` tag for a deadline whose miss cannot be undone. On
+2026-11-06 an enrollment window closed with its item still open: seen three weeks ahead, it had
+been carried as a line in daily email reviews, one row among two hundred in a decision packet and
+one dated item among a hundred, written up as optional, never calendared and never escalated. The
+deadline sweep now reports critical items apart from the dated list, leading from seven days out,
+due an alert at three days and one day, never lapsed, closed only when a closing mark carries
+evidence; it also lists untagged items that read like a critical class. `ritual_state.py record`
+refuses while one is past due, refuses a clean outcome over plans it could not read whole, and
+needs each workspace to declare its plan folders in the ritual config. The 16:55 nudge sounds the
+same alert on a day with no ritual. The rules are in [critical-deadlines.md](critical-deadlines.md).
+The ritual procedure moved, word for word, from SKILL.md into [procedure.md](procedure.md) to make
+room for the binding rule.
+
 ## v3.0.0 — Rewritten for synthesis v5
 
 v3.0.0 (2026-10-05) rewrites the skill in the v5 format: a short SKILL.md with binding rules and
