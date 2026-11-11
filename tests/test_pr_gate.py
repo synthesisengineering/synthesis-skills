@@ -420,6 +420,8 @@ def test_a_newline_between_a_switch_and_a_push_is_not_a_chain(repo):
 @pytest.mark.parametrize("command", [
     "git rebase origin/main main && git push origin HEAD", "git rebase --onto origin/main HEAD~1 main && git push",
     "git rebase --root main && git push", "git rebase origin/main main -X theirs && git push origin HEAD",
+    "git rebase -X ours origin/main main && git push", "git rebase --root --onto origin/main main && git push",
+    "git rebase --whitespace fix origin/main main && git push",  # an option this does not know takes a value: its value is judged too
 ])
 def test_a_rebase_that_names_the_branch_to_rebase_checks_it_out(repo, command):
     git(repo, "switch", "-q", "-c", "feature")
@@ -430,6 +432,9 @@ def test_a_rebase_that_names_the_branch_to_rebase_checks_it_out(repo, command):
     "git rebase main && git push --force-with-lease", "git rebase -i origin/main && git push",
     "git rebase --onto origin/main HEAD~1 && git push --force-with-lease origin HEAD", "git rebase origin/main feature && git push",
     "git rebase --continue && git push", "git symbolic-ref --short HEAD && git push", "git symbolic-ref refs/remotes/origin/HEAD; git push",
+    # found by the fifth review round: an option's value is not the branch to rebase
+    "git rebase -X ours main && git push", "git rebase --onto origin/main main && git push --force-with-lease origin HEAD",
+    "git rebase -s ours main && git push", "git rebase --exec 'make test' main && git push",
 ])
 def test_a_rebase_onto_the_default_branch_and_a_read_of_head_do_not_hold_a_push(repo, command):
     git(repo, "switch", "-q", "-c", "feature")
