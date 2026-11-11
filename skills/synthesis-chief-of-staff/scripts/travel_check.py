@@ -97,16 +97,16 @@ def place(location: str, policy: dict) -> str:
     place with a standing route, 'away' for anywhere else. A location that holds a street address is a place
     whatever else it says: a venue called Zoom Hall, a map link beside it, a number to call as well."""
     text = tidy(location)
-    low = text.lower()
+    low, plain = text.lower(), lambda s: " ".join(re.sub(r"[^\w\s]", " ", str(s).lower()).split())  # without its punctuation
     online = [str(w).lower() for w in policy.get("online") or []]
     if not text or (not street(text) and ("://" in low or low.startswith("www.") or re.fullmatch(r"[\d\s()+.-]{7,}", text)
                                           or any(re.search(rf"\b{re.escape(w)}\b", low) for w in online))):
         return ""
     bases = [slot.part(policy, "home"), *[p for p in policy.get("places") or [] if isinstance(p, dict)]]
     for base in bases:
-        label, address = str(base.get("label") or "").lower(), str(base.get("address") or "").lower()
+        label, address = str(base.get("label") or "").lower(), plain(base.get("address") or "")
         if (label and re.match(rf"{re.escape(label)}\s*(?:$|[,(:;/–-])", low)) or (
-                address and re.search(rf"(?<!\w){re.escape(address)}(?!\w)", low)):
+                address and re.search(rf"(?<!\w){re.escape(address)}(?!\w)", plain(low))):
             return "base"  # its label, alone or with a room or a note after it, or its address anywhere
     return "away"
 
@@ -154,7 +154,7 @@ def judge(args, config: dict, read: dict) -> dict:
         summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
         others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
         if re.match(rf"{re.escape(title)}\b", summary.lower()):
-            names = [" ".join(name.lower().split()).strip("\"'“”‘’ .") for name in said.get("for", "").splitlines()]
+            names = [" ".join(name.lower().split()).strip("\"'“”‘’ .:;,!") for name in said.get("for", "").splitlines()]
             blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
         span, spot = days(entry, a, b), tidy(entry.get("location"))

@@ -161,7 +161,7 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^\s*(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted, or a list entry of any of them
+ITEM = r"(?im)^ {0,3}(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted or a list entry; indented by four, an example
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
