@@ -174,3 +174,34 @@ def test_the_text_report_leads_with_the_verdict(tmp_path):
     lines = done.stdout.splitlines()
     assert done.returncode == 1 and lines[0] == "slot Thu 2026-11-12 14:00-14:30: REFUSE"
     assert any(line.startswith("  REFUSE  same day:") for line in lines)
+
+
+# --- a slot that needs a trip (2026-11-11) ------------------------------------------------------
+# An in-person meeting takes the time to get there and back as well as its own. A slot that looked free was
+# judged without either, so the travel is now part of what the slot takes.
+
+def test_the_trip_counts_as_taken_time(tmp_path):
+    code, report = check(tmp_path, "14:30", "15:30", QUIET_DAY, "--travel-before", "45", "--travel-after", "45")
+    assert code == 1 and levels(report)["travel"] == "REFUSE"
+    assert "the trip there (13:45-14:30) overlaps Staff meeting" in detail(report, "travel")
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--travel-before", "45", "--travel-after", "45")
+    assert levels(report)["travel"] == "OK" and "14:15-15:00 there, 16:00-16:45 back" in detail(report, "travel")
+    code, report = check(tmp_path, "11:30", "12:15", QUIET_DAY, "--travel-before", "30", "--travel-after", "50")
+    assert levels(report)["travel"] == "REFUSE" and "the trip back (12:15-13:05) overlaps Staff meeting" in detail(report, "travel")
+
+
+def test_the_deep_work_block_is_judged_with_the_trip_in_it(tmp_path):
+    day = [meeting(THURSDAY, "11:00", "12:00", "Review"), meeting(THURSDAY, "16:00", "17:00", "Wrap-up")]
+    code, report = check(tmp_path, "15:00", "15:30", day)          # 12:00-15:00 stays free: three hours
+    assert levels(report)["deep work"] == "OK"
+    code, report = check(tmp_path, "15:00", "15:30", day, "--travel-before", "75")  # 13:45 on is the trip: 1 h 45 left
+    assert code == 1 and levels(report)["deep work"] == "REFUSE"
+
+
+def test_a_slot_with_no_trip_has_no_travel_line_and_an_in_person_slot_must_give_one(tmp_path):
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY)
+    assert "travel" not in levels(report)
+    code, said = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--in-person")
+    assert code == 2 and "--travel-before" in said and "work out the trip first" in said
+    code, report = check(tmp_path, "15:00", "16:00", QUIET_DAY, "--in-person", "--travel-before", "10", "--travel-after", "10")
+    assert code in (0, 1) and levels(report)["travel"] == "OK"
