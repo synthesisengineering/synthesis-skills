@@ -187,34 +187,42 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
      not the command spells a protected folder out: relative to the session's folder, to a
-     `cd`, through a variable. A command is read once for each value it gives a variable
-     (`D=…`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a
-     quoted script), with the environment's value for one it does not set, the default a
-     use carries (`${D:-…}`) and an end trimmed by `%` or `#`. A path is compared the way a
-     Mac's file system finds it, whatever its case.
+     `cd`, through a variable, through a link the same command makes. A command is read once
+     for each value it gives a variable (`D=…`, `D+=…`, after `export`, `readonly`, `declare`
+     or `env`, in a `for … in` list, inside a quoted script), with the environment's value
+     for one it does not set, the default a use carries (`${D:-…}`) and an end trimmed by `%`
+     or `#`. A path is compared the way a Mac's file system finds it, whatever its case.
    - **What counts as a change.** A redirect; what a file utility changes (the destination
      of `cp`, `ln`, `install`, `rsync` and `ditto`, with `-t`; both ends of `mv`; `tee`,
      `touch`, `truncate`, `mkdir`, `rmdir`, `rm`, `unlink`, `shred`, `chmod`, `chown`,
      `chgrp`; `dd of=`; `sed` and `perl` editing in place; a compressor that replaces its
-     file; what `find` deletes or runs a changing command on; the files `xargs` hands such a
-     command); an interpreter script that writes there; and a path inside one of those
-     folders handed to any program the guard does not know to only read it. A Python
-     program given inline or on stdin is judged by its own code: a protected path named in
-     another command of the line does not count against it, and one that reaches it
-     through its arguments, its environment or the folder it runs in does. A list of the programs
+     file; what `sort -o`, `uniq` or an awk program writes; what `find` deletes or runs a
+     changing command on; the files `xargs` hands such a command); an interpreter script
+     that writes there; and a path inside one of those folders handed to any program the
+     guard does not know to only read it. A Python program given inline or on stdin is
+     judged by its own code: a protected path named in another command of the line does not
+     count against it, and one that reaches it through its arguments or its environment
+     does.
+   - **Standing in a protected folder.** A program can write where it stands without naming
+     a file (an archive unpacked, a script file). Inside a protected folder only a command
+     the guard can read runs: a reader, a file utility (judged by its targets), or a script
+     given inline, whose every write must name a plain path somewhere else. Anything else is
+     refused and told to run from another folder. A list of the programs
      that write never ends, so the guard keeps the other list: the usual readers (`cat`,
      `head`, `tail`, `grep`, `ls`, `jq`, `wc`, `diff` and their like) may be given such a
      path, an interpreter or a shell is judged by the script it is given, and `git` and the
      `synthesis` CLI pass, since they keep the approved lines and the board. Anything else
      is refused and told to read the file with `cat` and pipe it in, or to copy it out.
    - **A project's memory notes** (`*.md` under `<project>/memory/` in Claude Code's
-     projects folder) are the agent's to write, move and remove, by shell or by file tool.
+     projects folder, under either spelling of the folder) are the agent's to write, move,
+     remove and hand to any program, by shell or by file tool, and the folder may be made.
      A link made there is refused, and a path is judged where it really leads.
    - **A saved tool result** (`<session>/tool-results/` beside a transcript: a fetched PDF,
      a screenshot, a long output) is material the agent is sent there to work on, so any
      program may be given it. Changing or removing it where it lies stays refused.
-   - The hook is run when it is the script an interpreter or a shell runs. A program handed
-     the hook's file (a line counter, a compiler) is not running it.
+   - The hook is run when it is the script an interpreter or a shell runs: its first
+     operand past its options, or the module after `-m`. A program handed the hook's file
+     (a line counter, a compiler, another script) is not running it.
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.

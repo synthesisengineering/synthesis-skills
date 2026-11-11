@@ -87,9 +87,14 @@ Travel: local, 12 min walk               within travel_policy.local_minutes
 Travel: none, already at the venue for the session before
 ```
 
+The line is one of those three forms or it excuses nothing: one that only begins like a form
+(`locally unavailable`) or mentions one later is flagged, and the blocks are still asked for. `local` needs its
+minutes and `none` its reason.
+
 A place that is the principal's home or one of the policy's named `places` (an office with a standing
 commute) needs neither blocks nor a line. A named place is known by its address anywhere in the location, or
-by its label alone or with a room or a note after it (`Office, 4th floor`).
+by its label alone or with a room or a note after it (`Office, 4th floor`). An address is matched whole:
+`110 River St` is not the home at `10 River St`.
 
 ## The policy
 
@@ -137,14 +142,17 @@ What it takes each word to mean:
 
 - **An exact address** is a house number with its street, or a postcode with its town (`149 Main St`,
   `10115 Berlin`), or a number in one part and a name in another (`Calle Mayor, 5`). A venue whose name ends
-  in a number (`Studio 54`) and a time of day are not one. A location that holds a street address is a place
+  in a number (`Studio 54`), a room, suite or floor (`Room 4, Harbor Town`) and a time of day are not one. A location that holds a street address is a place
   whatever else it says: an online word in a venue's name, a map link beside it.
 - **The days it judges** are every day a commitment covers. One under way when the days begin is judged for
   its way back, and its way there is left to a read that holds its start. An all-day event counts on each day
   it covers and needs its travel line; give it clock times to have its blocks checked.
-- **Whose a block is** follows its `For:` lines, as above. When a block beside an event belongs to another,
-  the report says whose it is. Exit 0 when every in-person event is whole, 1 when one is flagged, 2 when it was not
-shown enough (no `travel_policy`, a read that does not cover the days, a read it cannot make sense of). `--json` gives the same per event,
+- **Whose a block is** follows its `For:` lines, as above (quotes around a title do not matter). When a block
+  beside an event belongs to another, the report says whose it is. One event read from two calendars is one
+  event.
+- **The next morning's first commitment** is the earliest timed entry of the day after, a trip included. Exit 0 when every in-person event is whole, 1 when one is flagged, 2 when it was not
+shown enough (no `travel_policy`, a read that does not cover the days, events that are not a list of entries,
+a read it cannot make sense of). `--json` gives the same per event,
 with `leave`, `home` and `paid_by` taken from the blocks.
 
 It plans nothing and reads no timetable: steps 2 to 4 are the agent's, from a live source. It cannot tell
