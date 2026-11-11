@@ -296,6 +296,6 @@ def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
     spec.loader.exec_module(marks)
     marks.advance("desk", "linkedin", READ_AT, ("focused",), now=datetime.fromisoformat("2026-11-11T10:00:00-05:00"),
                   home=tmp_path / "home", coverage=complete)
-    code, out = plan(tmp_path, DECLARED)
+    code, out = plan(tmp_path, "workspace: desk\n")
     assert code == 0 and "focused: read through 2026-11-11; scroll back to that day, stop there, and pass --inbox focused --since 2026-11-11" in out
     assert "other: never read" in out  # each inbox keeps its own watermark
