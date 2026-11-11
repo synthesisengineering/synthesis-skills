@@ -877,6 +877,7 @@ def test_what_stays_refused_after_those_cases(work, command, tmp_path):
 @pytest.mark.parametrize("command", [
     "for f in synthesis/guards.py synthesis/hook.py; do python3 -c 'import sys; print(len(open(sys.argv[1]).read()))' \"$f\"; done",
     "python3 - synthesis/hook.py <<'EOF'\nimport sys\nprint(sys.argv[1])\nEOF",                 # handed to a program given inline
+    "for f in synthesis/hook.py synthesis/board.py; do python3 -m py_compile \"$f\" || echo \"fails $f\"; done",  # or to a module
     "F={work}/s.jsonl; python3 -c \"t = open('$F').read(); open('/tmp/out.txt', 'w').write(t)\"",  # reads there, writes elsewhere
 ])
 def test_a_second_replay_left_these_and_they_pass(work, command, tmp_path):
