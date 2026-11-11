@@ -873,6 +873,9 @@ def _bare(words: list[str]) -> tuple[list[str], list[str]]:
             elif words[i].startswith("--split-string="):
                 scripts.append(words[i].split("=", 1)[1])
             i += 2 if words[i] in takes else 1
+        if head == "xargs" and words[i:]:  # the files it hands a command arrive on its input: `$` stands where they go
+            mark = next((w[2:] or "".join(words[k + 1:k + 2]) for k, w in enumerate(words[1:i], 1) if w[:2] in ("-I", "-J")), "")
+            words[i:] = [w.replace(mark, "$") for w in words[i:]] if mark else words[i:] + ["$"]
         words = words[i + (head == "timeout"):]  # timeout's first operand is its duration
     return words, scripts
 
@@ -1558,6 +1561,15 @@ COPIERS = frozenset({"cp", "mv", "ln", "install", "rsync", "ditto"})  # these wr
 WRITERS = COPIERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
 IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
 INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
+# Programs that only read the files they are given. A path inside a protected folder may be handed to one of these,
+# to an interpreter or a shell (judged by what it runs), and to git and synthesis's own CLI, which keep the approved
+# lines and the board. Any other program may change what it is given, so the guard does not pass it one (2026-11-11:
+# a gate passes what it can prove; a list of the utilities that write never ends).
+READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
+                     "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
+                     "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq awk date which "
+                     "git synthesis").split())
+OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch")  # each is read where it is handled
 SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
@@ -1632,11 +1644,33 @@ def _landing(words: list[str]) -> list[str]:
         return [w[3:] for w in rest if w.startswith("of=")]
     if head in ("sed", "perl"):
         return rest if any(IN_PLACE.fullmatch(w) for w in words[1:]) else []
+    if head == "find":  # it changes what it finds when told to delete, to write a list, or to run a command that does
+        runs = [list(itertools.takewhile(lambda w: w not in (";", "+"), words[i + 1:]))
+                for i, w in enumerate(words) if w.startswith(("-exec", "-ok"))]
+        acts = any(w == "-delete" or w.startswith(("-fprint", "-fls")) for w in words) or any(map(_changes, runs))
+        return rest if acts else []
     if head not in COPIERS or (head == "install" and any(re.fullmatch(r"-\w*d\w*|--directory", w) for w in words)):
         return rest if head in WRITERS else []
     given = [(INTO.fullmatch(w), i) for i, w in enumerate(words)] if head != "rsync" else []
     into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for m, i in given if m] or rest[-1:]
-    return into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
+    lands = into + [os.path.join(d, os.path.basename(s.rstrip("/"))) for d in into for s in rest if s not in into]
+    return rest + lands if head == "mv" else lands  # a move also takes its sources away
+
+
+def _named(words: list[str]) -> list[str]:
+    """Every path a command hands a program the guard does not know: not a reader, not a file utility whose writes
+    `_landing` reads, not an interpreter or a shell. A word is taken whole, after its `=`, and for an option from
+    its first `/` or `~`, so `-C <folder>`, `--output=<file>` and `-o<file>` are all seen."""
+    head = os.path.basename(words[0])
+    if head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
+        return []
+    return [part for w in words[1:] for part in {w, w.split("=", 1)[-1], "".join(re.findall(r"^-[^~/]*([~/].*)", w)) or w}]
+
+
+def _changes(run: list[str]) -> bool:
+    """Whether a command `find -exec` runs may change the files it is handed, where `{}` stands."""
+    head = os.path.basename(run[0]) if run else "echo"
+    return bool(SCRIPT.match(head) or head in SHELLS or any(w.startswith("{}") for w in _landing(run) + _named(run)))
 
 
 PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
@@ -1799,13 +1833,13 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
     names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
     redirects, readable = [], True
-    try:  # the files the parsed command writes; a `>` inside a quoted string is not one (2026-10-13)
-        _commands(text, cwd, writes=redirects) if names else None
+    try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
+        _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
     except (Unreadable, StopIteration, IndexError):
         readable = False
     asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
-    why, wheres = "", {cwd}
+    why, wheres, handed = "", {cwd}, []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     for words, where in _parse(text, cwd)[0]:
@@ -1813,8 +1847,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and any(HOOK_RUN.search(w) for w in words[1:])):
             why = why or "runs the synthesis hook, which only the harness may run"
-        if names:
-            asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
+        asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
+        handed += [(head, w, os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(w))))) for w in _named(words)]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
@@ -1827,7 +1861,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
-    if not why and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
+    if not why and names and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
@@ -1838,6 +1872,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         return f"Refused: this command writes {owned}"
     if not why and any(paths.inside(t, os.path.realpath(r)) for t in real for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
+    given = "" if why else next((head for head, word, path in handed if (word == "$" and names) or any(
+        paths.inside(path, os.path.realpath(r)) for r in raw)), "")  # `$`: files xargs hands it, which cannot be read here
+    if given:
+        why = (f"gives `{given}` a file in the synthesis state folder, its board, a harness's session transcripts or the "
+               f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
+               "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in)")
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else None
 
