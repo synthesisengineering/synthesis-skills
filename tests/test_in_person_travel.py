@@ -108,6 +108,21 @@ def test_a_policy_it_cannot_read_refuses_the_write_and_says_why(tmp_path, broken
     assert reason and "travel policy" in reason and "cannot be read" in reason and not refused(reason)
 
 
+@pytest.mark.parametrize("tool, call", [
+    (CREATE, {"summary": "Hold", "start_time": "2026-11-18T15:00:00", "end_time": "2026-11-18T16:00:00", "send_updates": "none"}),
+    (MANAGE, {"action": "update", "event_id": "abc", "summary": "Book launch (moved)", "send_updates": "none"}),
+    (MANY, {"events": [{"summary": "Planning", "start_time": "2026-11-18T10:00:00"}, {"summary": "Review", "location": ""}]}),
+])
+def test_a_call_that_names_no_place_needs_no_policy(tmp_path, tool, call):
+    """With the key set and the preferences file missing, every calendar write was refused, a hold with no location
+    among them (2026-11-11: two tests of a private config failed that way in a home with no preferences). The
+    policy says what a place is, so it is read only for a call that names one; that call is still refused."""
+    missing = {"in_person_travel": {"preferences": str(tmp_path / "nowhere.json")}}
+    assert guards.check(tool, call, missing) is None
+    assert "cannot be read" in guards.check(CREATE, event(), missing)
+    assert "cannot be read" in guards.check(CREATE, event(location="Zoom"), missing)  # whether Zoom is a place is the policy's to say
+
+
 def test_a_tool_that_is_not_a_calendar_write_is_not_judged(config):
     assert guards.check("mcp__workspace__get_events", {"location": PLACE}, config) is None
     assert guards.check("mcp__maps__search_places", {"location": PLACE, "query": "theatre"}, config) is None
