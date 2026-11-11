@@ -95,3 +95,24 @@ def test_an_item_marked_as_committing_time_needs_its_costs_whatever_its_options_
               "**Option A:** Offer the week\n**Option B:** Offer two nights\n" + VIEW)
     code, _, refusal = record(workspace(tmp_path, hosted))
     assert code != 0 and "A friend asks to stay" in refusal and "consequences" in refusal
+
+
+# --- the second review round (2026-11-11) ---------------------------------------------------------------------
+
+@pytest.mark.parametrize("options", ["1. **Option A**: Accept\n2. **Option B**: Decline\n", "+ **Option A**: Accept\n+ **Option B**: Decline\n",
+                                     "* Option A: Accept\n* Option B: Decline\n"])
+def test_options_written_as_any_list_are_options(tmp_path, record, options):
+    code, _, refusal = record(workspace(tmp_path, "### 5. The dinner on Friday\n" + options))
+    assert code != 0 and "The dinner on Friday" in refusal
+
+
+def test_a_recommendation_inside_a_code_fence_is_an_example_not_a_recommendation(tmp_path, record):
+    fenced = INVITATION + COSTS + "```text\nRecommendation: **B**, decline\n```\n"
+    code, _, refusal = record(workspace(tmp_path, fenced))
+    assert code != 0 and "recommendation" in refusal
+
+
+@pytest.mark.parametrize("view", ["+ **Recommendation:** **B**, decline\n", "1. Recommendation: B, decline\n", "* **Recommendation**: B, decline\n"])
+def test_a_recommendation_written_as_any_list_item_counts(tmp_path, record, view):
+    code, out, refusal = record(workspace(tmp_path, INVITATION + COSTS + view))
+    assert code == 0, refusal

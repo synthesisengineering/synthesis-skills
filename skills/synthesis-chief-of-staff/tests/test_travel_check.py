@@ -362,3 +362,38 @@ def test_a_short_night_before_an_early_commitment_goes_to_the_principal(tmp_path
     assert check(tmp_path, [RESOLVED, GOING, RETURNING, early])[0] == 0                       # no sleep_hours, no rule
     same_day = event("Call", "23:40", "23:55", "", day=DAY)                                   # later the same night is not the morning
     assert check(tmp_path, [RESOLVED, GOING, RETURNING, same_day], config=rested)[0] == 0
+
+
+# --- the second review round (2026-11-11), each as a test that failed first --------------------------------
+
+def test_a_street_number_that_only_contains_the_home_number_is_another_address(tmp_path):
+    code, report = check(tmp_path, [event("Dinner", "19:00", "21:00", "110 River St, Example City")])
+    assert code == 1 and report["in_person"] == 1, report
+    code, report = check(tmp_path, [event("Plumber", "19:00", "21:00", "10 River St, Example City")])
+    assert code == 0 and report["in_person"] == 0, report
+
+
+@pytest.mark.parametrize("line", ["Travel: locally unavailable", "Travel: 80 min train; local transfer, 5 min walk",
+                                  "Travel: by car", "Travel: nonexistent", "Travel: local"])
+def test_a_travel_line_that_is_not_one_of_its_three_forms_excuses_nothing(tmp_path, line):
+    code, report = check(tmp_path, [dict(RESOLVED, description=line)])
+    missing = " | ".join(lacks(report))
+    assert code == 1 and "travel line" in missing, report
+    if line != "Travel: local":
+        assert "no travel block before it" in missing and "no travel block after it" in missing
+
+
+@pytest.mark.parametrize("events", ["unreadable events", ["a broken event"], {"an": "object"}, [None], [RESOLVED, 7]])
+def test_events_that_are_not_a_list_of_entries_cannot_be_judged(tmp_path, events):
+    prefs, read = tmp_path / "preferences.json", tmp_path / "events.json"
+    prefs.write_text(json.dumps(CONFIG), encoding="utf-8")
+    read.write_text(json.dumps({"window": {"from": "2026-11-11", "through": "2026-11-18"}, "events": events}), encoding="utf-8")
+    done = subprocess.run([sys.executable, str(SCRIPT), "--events", str(read), "--config", str(prefs), "--today", DAY, "--json"],
+                          capture_output=True, text=True)
+    assert done.returncode == 2 and "Traceback" not in done.stderr, done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("location", ["Room 4, Harbor Town", "The Grand Theatre, Room 4", "Harbor Town, Suite 12", "Floor 3, The Annex"])
+def test_a_room_and_a_town_are_not_an_address(tmp_path, location):
+    code, report = check(tmp_path, [dict(RESOLVED, location=location), GOING, RETURNING])
+    assert code == 1 and any("no exact address" in item for item in lacks(report)), report

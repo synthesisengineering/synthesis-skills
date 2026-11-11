@@ -138,3 +138,9 @@ def test_a_street_address_is_a_place_whatever_else_the_location_says(config, loc
                                          "Agenda attached<br/>Travel:&nbsp;none, already there for the session before"])
 def test_a_travel_line_in_a_description_written_as_html_is_read(config, description):
     assert guards.check(CREATE, event(description=description), config) is None
+
+
+def test_a_street_number_that_only_contains_the_home_number_is_another_address(config):
+    """The second review: home at 10 River St, and an event at 110 River St passed as home."""
+    assert refused(guards.check(CREATE, event(location="110 River St, Example City"), config))
+    assert guards.check(CREATE, event(location="10 River St, Example City"), config) is None

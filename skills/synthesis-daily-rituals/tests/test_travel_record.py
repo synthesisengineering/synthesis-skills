@@ -140,3 +140,15 @@ def test_a_result_that_does_not_read_as_the_checks_own_output_is_refused(tmp_pat
     saved.write_text(json.dumps({**json.loads(saved.read_text(encoding="utf-8")), **change}), encoding="utf-8")
     code, _, refusal = record(state, "--travel", str(saved))
     assert code != 0 and "travel" in refusal and history(state) == ""
+
+
+def test_an_event_outside_the_days_the_result_claims_is_not_that_results(tmp_path, record):
+    """The second review: a result for November 11 to 17 that listed a December event was recorded."""
+    state = tmp_path / "state"
+    declare(state, desk={"plans_dirs": [], "travel_check": True})
+    code, _, refusal = record(state, "--travel", result(tmp_path, dict(WHOLE, start="2026-12-25T19:00:00-05:00")))
+    assert code != 0 and "travel" in refusal and history(state) == ""
+    code, _, refusal = record(state, "--travel", result(tmp_path, {k: v for k, v in WHOLE.items() if k != "start"}))
+    assert code != 0 and history(state) == ""
+    under_way = dict(WHOLE, start="2026-11-10T23:00:00-05:00")  # one that began the evening before still belongs
+    assert record(state, "--travel", result(tmp_path, under_way))[0] == 0

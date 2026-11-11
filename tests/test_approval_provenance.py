@@ -928,3 +928,57 @@ def test_a_thirty_day_replay_left_these_and_they_pass(saved, command, tmp_path):
 ])
 def test_and_these_stay_refused_too(saved, command, tmp_path):
     assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+# --- the second review round (2026-11-11), each as a test that failed first --------------------------------
+
+@pytest.mark.parametrize("command", [
+    "D={parent}; D+=/{rel}; echo x > \"$D/x.json\"",                               # a value appended to
+    "python3 -c 'open(file=\"{state}/x.json\", mode=\"w\").write(\"x\")'",          # the file given by keyword
+    "node -e 'require(\"fs\").writeFileSync(\"{state}/x.json\", \"x\")'",
+    "perl -e 'open(my $fh, \">\", \"{state}/x.json\"); print $fh \"x\"'",
+    "sed -i '' -e's/a/b/' {state}/x.json",                                         # a script attached to its option
+    "perl -pi -e's/a/b/' {state}/x.json",
+    "sed -ni -e 's/a/b/p' {state}/x.json",
+    "rsync --remove-source-files {state}/x.json /tmp/out/",                        # a copy that removes its source
+    "awk 'BEGIN {{ print \"x\" > \"{state}/x.json\" }}' /dev/null",                 # a reader whose program writes
+    "awk '{{ print > ($1 \".txt\") }}' {state}/x.json",                             # or writes where the guard cannot read
+    "sort -o {state}/x.json /tmp/b",
+    "uniq /tmp/a {state}/x.json",
+    "find {state} -name '*.json' -exec python3 -c 'import sys; open(sys.argv[1], \"w\").write(\"\")' {{}} +",
+    "mkdir -p {claude}/-work/other",
+    "bash -o pipefail synthesis-hook pre-tool",
+])
+def test_what_the_second_review_got_through_is_refused(spots, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    "find {claude} -name '*.jsonl' -exec python3 -c 'import sys; print(open(sys.argv[1]).read()[:80])' {{}} +",
+    "touch -r {work}/s.jsonl /tmp/transcript-copy",                                # a file only referred to
+    "mkdir -p {work}/memory/topics && printf 'x\\n' > {work}/memory/topics/a.md",   # a memory folder is made as its notes are
+    "pandoc {work}/memory/old.md -o /tmp/memory.html",                             # and a note may be handed to any program
+    "sort {work}/s.jsonl | uniq -c | head -3",
+    "uniq {work}/s.jsonl",
+    "less {work}/s.jsonl",
+    "bash /tmp/inspect /tmp/runtime/synthesis/hook.py",                            # the script run is the first operand
+    "echo updated > {claude}/-work/MEMORY/old.md",                                 # one folder under either spelling
+    "awk -F'\\t' '{{ print $1 }}' {work}/s.jsonl > /tmp/first-column.txt",
+])
+def test_the_second_reviews_everyday_commands_pass(work, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**work)}, {}, cwd=str(tmp_path)) is None
+    if "MEMORY" in command:
+        path = str(work["claude"] / "-work" / "MEMORY" / "old.md")
+        assert guards.check("Write", {"file_path": path, "content": "x"}, {}, cwd=str(tmp_path)) is None
+
+
+def test_a_script_that_writes_where_it_stands_or_where_its_environment_points_is_refused(spots, monkeypatch, tmp_path):
+    inside = str(spots["state"])
+    stands = "python3 -c 'from pathlib import Path; (Path.cwd() / \"x.json\").write_text(\"x\")'"
+    assert REFUSED in (guards.check("Bash", {"command": stands}, {}, cwd=inside) or "")
+    assert guards.check("Bash", {"command": stands}, {}, cwd=str(tmp_path)) is None
+    monkeypatch.setenv("WHERE_STATE_LIVES", inside)
+    writes = "python3 -c 'import os; open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\", \"w\").write(\"x\")'"
+    assert REFUSED in (guards.check("Bash", {"command": writes}, {}, cwd=str(tmp_path)) or "")
+    reads = "python3 -c 'import os; print(open(os.environ[\"WHERE_STATE_LIVES\"] + \"/x.json\").read())'"
+    assert guards.check("Bash", {"command": reads}, {}, cwd=str(tmp_path)) is None
