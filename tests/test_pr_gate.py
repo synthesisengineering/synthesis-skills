@@ -269,6 +269,88 @@ def test_an_alias_of_an_alias_and_an_alias_that_starts_with_options_are_followed
     assert push(repo, "git up") is None
 
 
+# --- found by the third review round (2026-11-11) -------------------------------------------------
+
+
+def test_a_tag_pushed_onto_the_default_branch_is_held_and_a_tag_named_like_it_is_not(repo):
+    commit(repo, "second")
+    git(repo, "tag", "v1")
+    git(repo, "tag", "main-2026")
+    assert "pull request" in push(repo, "git push origin refs/tags/v1:refs/heads/main")
+    assert "pull request" in push(repo, "git push origin v1:main")
+    git(repo, "switch", "-q", "-c", "feature")
+    assert push(repo, "git push origin tag main-2026") is None
+    assert push(repo, "git push origin refs/tags/v1") is None
+
+
+def test_a_remote_configured_as_a_mirror_sends_every_branch(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    git(repo, "config", "remote.origin.mirror", "true")
+    assert "could not be read" in push(repo, "git push origin")
+    assert "could not be read" in push(repo, "git push")
+
+
+@pytest.mark.parametrize("command, held", [
+    ("git push origin main --dry-run --no-dry-run", True), ("git push --mir origin", True), ("git push --al origin", True),
+    ("git push --del origin main", True), ("git push -qn origin main", False), ("git push -nq origin main", False),
+    ("git push --dry origin main", False), ("git push --frobnicate origin feature", True),
+])
+def test_options_are_read_as_git_reads_them(repo, command, held):
+    """git takes any unambiguous start of a long option, the last of a pair of opposites, and short options run together."""
+    commit(repo, "second")
+    assert bool(push(repo, command)) is held, command
+
+
+def test_a_branch_switch_that_may_not_have_run_does_not_change_what_is_judged(repo):
+    git(repo, "branch", "feature")
+    commit(repo, "second")  # on main
+    assert "pull request" in push(repo, "false && git switch feature; git push origin HEAD")
+    assert "pull request" in push(repo, "git switch feature || true; git push")
+    assert push(repo, "git switch feature && git push origin HEAD") is None      # the push runs only if the switch did
+    assert push(repo, 'git checkout -b topic && git commit -m "one; two" && git push -u origin HEAD') is None
+
+
+@pytest.mark.parametrize("command", [
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=remote.origin.push GIT_CONFIG_VALUE_0=HEAD:main git push origin",
+    "export GIT_CONFIG_GLOBAL=/tmp/other; git push origin feature",
+    "GIT_DIR=../elsewhere/.git git push origin feature",
+])
+def test_git_configuration_set_through_the_environment_makes_the_push_unreadable(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    assert "could not be read" in push(repo, command)
+
+
+def test_a_default_branch_that_is_not_main_is_protected_when_the_checkout_or_the_config_names_it(repo):
+    git(repo, "switch", "-q", "-c", "develop")
+    commit(repo, "second")
+    git(repo, "push", "-q", "-u", "origin", "develop")
+    git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+    assert "pull request" in push(repo, "git push origin develop") and push(repo, "git push origin main") is None
+    git(repo, "symbolic-ref", "-d", "refs/remotes/origin/HEAD")
+    named = {"pr_gated": {"acme/skills": {"since": "2026-11-11", "branch": "develop"}}}
+    assert "pull request" in push(repo, "git push origin develop", config=named)
+    assert push(repo, "git push origin develop") is None and "pull request" in push(repo, "git push origin main")  # the fallback names
+
+
+@pytest.mark.parametrize("command", [
+    "git config --get remote.origin.url && git push", "git branch --show-current && git push", "git remote -v && git push",
+    "git rebase origin/main && git push", "git rebase origin/main && git push origin HEAD", "git config --list; git push origin feature",
+    "git pull --rebase && git push", "git stash && git push", "git push --force-with-lease", "git push --no-verify -q origin feature",
+])
+def test_reads_and_a_rebase_before_a_push_do_not_hold_it(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    commit(repo, "second")
+    assert push(repo, command) is None, command
+
+
+@pytest.mark.parametrize("command", ["git branch -m main && git push", "git symbolic-ref HEAD refs/heads/main && git push",
+                                     "git remote set-url origin ../elsewhere.git && git push origin feature",
+                                     "git config push.default upstream && git push"])
+def test_writes_to_the_branch_or_the_routing_before_a_push_still_hold_it(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    assert "could not be read" in push(repo, command), command
+
+
 # --- the doctor ----------------------------------------------------------------------------------
 
 
@@ -305,6 +387,14 @@ def test_history_the_doctor_cannot_read_is_not_reported_clean(repo):
         return subprocess.CompletedProcess(argv, 128, "", "fatal: bad object") if "log" in argv else subprocess.run(argv, **kwargs)
     check = doctor.check_pr_gate(GATED["pr_gated"], [repo], run=failing)
     assert check.status == "warn" and "cannot read" in check.detail and "acme/skills" in check.detail
+
+
+def test_a_checkout_that_records_no_default_branch_is_named(repo):
+    git(repo, "symbolic-ref", "-d", "refs/remotes/origin/HEAD")
+    check = doctor.check_pr_gate(GATED["pr_gated"], [repo])
+    assert check.status == "warn" and "default branch" in check.detail and "set-head" in check.detail
+    named = doctor.check_pr_gate({"acme/skills": {"since": "2026-11-11", "branch": "main"}}, [repo])
+    assert named.status == "ok", named.detail
 
 
 def test_a_gated_repository_with_no_checkout_or_no_start_date_is_named(repo, tmp_path):

@@ -122,33 +122,40 @@ merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `
   versions found every hole where it predicted git (a commit made earlier on the same line,
   a branch that tracks the default branch, a configured refspec, a level branch that a lease
   could rewind), so a push that names the default branch is held even when nothing is ahead,
-  and a level push is a no-op to lose. The default branch is the remote's `HEAD` (`main` or
-  `master` when the checkout has not recorded one).
+  and a level push is a no-op to lose. The default branch is the one the rule names
+  (`"branch": "develop"`), else the remote's `HEAD` as the checkout records it, else `main`
+  and `master`; the doctor warns when neither the rule nor the checkout names it.
 - **Passes:** a push that names a branch other than the default (`git push -u origin feature`,
   `feature:feature`, `HEAD:refs/heads/feature`); a bare `git push`, `git push origin` or
-  `git push origin HEAD` while the current branch is not the default; tags (`--tags`, a tag
-  name, `refs/tags/...`); `--dry-run`; a push to a remote on another repository. Whatever
-  ran earlier on the line does not matter for these (`npm test && git push -u origin feature`),
-  except as below.
+  `git push origin HEAD` while the current branch is not the default; a push whose
+  destination is a tag (`--tags`, `tag <name>`, `refs/tags/...`); a dry run; a push to a
+  remote on another repository. Whatever ran earlier on the line does not matter for these
+  (`npm test && git push -u origin feature`, `git rebase origin/main && git push`,
+  `git config --get ... && git push`), except as below.
 - **Held:** a push whose destination is the default branch (`git push origin main`,
-  `HEAD:main`, `feature:main`, `refs/heads/main`, `:main`, `--delete main`, a bare `git push`
-  on the default branch), with the route in the refusal: push a branch, open the pull
+  `HEAD:main`, `feature:main`, `refs/heads/main`, `refs/tags/v1:refs/heads/main`, `:main`,
+  `--delete main`, a bare `git push` on the default branch), with the route in the refusal: push a branch, open the pull
   request, let its checks pass, merge it, install from the merged branch.
 - **Held because it cannot be read:** every branch at once (`--all`, `--mirror`, `--branches`,
-  `:`, any wildcard refspec); a branch or remote named through a variable or a substitution;
-  routing config on the line (`git -c remote.x.url=...`, `-c remote.origin.push=...`,
-  `-c push.default=...`, `-c alias.x=...`, `--config-env`); a bare push, or a branch named
-  without its destination, when the checkout has a configured `remote.<name>.push` refspec
-  or a `push.default` other than `simple` or `current`; a `git config`, `git remote` or
-  `git worktree` earlier on the same line; a shell alias that pushes; and a command with an
-  unclosed quote.
+  `:`, any wildcard refspec, a remote configured as a mirror); a branch or remote named
+  through a variable or a substitution; an option git would not know; routing config on the
+  line (`git -c remote.x.url=...`, `-c remote.origin.push=...`, `-c push.default=...`,
+  `-c alias.x=...`, `--config-env`) or in its environment (`GIT_CONFIG_*`, `GIT_DIR`,
+  `GIT_WORK_TREE`); a bare push, or a branch named without its destination, when the
+  checkout has a configured `remote.<name>.push` refspec or a `push.default` other than
+  `simple` or `current`; a `git config` or `git remote` that writes earlier on the same
+  line; a shell alias that pushes; and a command with an unclosed quote.
 - **Read the way git reads it:** a remote is judged by every URL it pushes to (`pushurl`);
-  `--repo` names the repository when the line names none; a git alias is followed through
-  other aliases and through options it puts first; and `git switch`, `git checkout -b` and
-  their kin earlier on the line set the branch a later `git push` or `HEAD` refers to
-  (`git switch main && git push origin HEAD` is held; `git checkout -b topic && git push -u
-  origin HEAD` passes). When the branch they leave cannot be read (`git checkout -`, a
-  variable, `git rebase`, `git branch -m`), a push that depends on it is held.
+  `--repo` names the repository when the line names none; options are taken as git takes
+  them (any unambiguous start of a long option, `--no-` to turn one off, the last of a pair,
+  short options run together, so `--mir` is a mirror and `-qn` a dry run); a git alias is
+  followed through other aliases and through options it puts first; and `git switch`,
+  `git checkout -b` and their kin earlier on the line set the branch a later `git push` or
+  `HEAD` refers to (`git switch main && git push origin HEAD` is held; `git checkout -b topic
+  && git push -u origin HEAD` passes). Only a line joined by `&&` alone proves the switch
+  ran: with `;` or `||` the push is judged against the branch before the line as well. When
+  the branch cannot be read (`git checkout -`, a variable, `git branch -m`,
+  `git symbolic-ref`), a push that depends on it is held.
 - **One exact push with the principal's code:** the refusal carries a code; when the
   principal types it, the identical command runs once. There are no exceptions by path or
   kind of change: a list of exceptions is where a gate erodes. A forced push to a default

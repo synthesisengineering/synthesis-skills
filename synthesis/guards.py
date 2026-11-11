@@ -315,6 +315,28 @@ def _events(value):
             yield from _events(item)
 
 
+def _own_hold(event: dict) -> bool:
+    """Whether the event a call names is a hold the agent placed and has not released, by the chief of staff's
+    holds ledger: the one record of which calendar entries are the agent's own and so have no guests."""
+    root = os.environ.get("HOLDS_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".synthesis", "chief-of-staff")
+    named = {text for key, text in _strings(event) if re.fullmatch(r"(?:event_?)?id", key, re.I)}
+    live = set()
+    try:
+        with open(os.path.join(root, "holds", "events.jsonl"), encoding="utf-8") as ledger:
+            for line in ledger if named else ():
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue  # a torn line is skipped, never guessed at
+                if isinstance(record, dict) and record.get("event") == "place":
+                    live.add(record.get("id"))
+                elif isinstance(record, dict) and record.get("event") == "release" and not record.get("instance"):
+                    live.discard(record.get("id"))
+    except OSError:
+        return False
+    return bool(named & live)
+
+
 def _falls(text: str, zones: list, unread: bool) -> str:
     """"today" when the date as written is today (ISO, or a written date such as "9 November 2026 at 3:00 PM"), the
     same moment is today on this machine's clock, or (for a time with no offset) it is today in a zone the event
@@ -366,7 +388,7 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
         when = {_falls(start, zones, bool(unread)) for start in _starts(event)}
         invited = {a for a in set(_invitees(event)) - own if not any(fnmatch.fnmatchcase(a, m.lower()) for m in mine)}
         listed = any(re.fullmatch(r"attendees|guests|invitees|participants", key, re.I) for key in _keys(event))
-        others = len(invited) or (-1 if moves and not listed else 0)
+        others = len(invited) or (-1 if moves and not listed and not _own_hold(event) else 0)
         if not others or not when & {"today", "unknown"} or any(fnmatch.fnmatchcase(a, e.lower()) for a in invited for e in exempt):
             continue
         if "today" not in when:
@@ -1240,9 +1262,6 @@ def check_destructive(command: str, config: dict, cwd: str | None = None) -> str
 # 2026-11-09: a repository whose rule was "changes land through a pull request" had taken 61 commits pushed
 # straight to main in six weeks; its instructions said "push every remote", and nothing refused the push.
 
-PUSH_VALUE_OPTIONS = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
-
-
 def _repo_names(text: str) -> set:
     return {m.group(1).lower() for m in re.finditer(r"[/:]([\w.-]+/[\w.-]+?)(?:\.git)?(?=\s|$)", text)}
 
@@ -1296,58 +1315,102 @@ def _switched_to(words: list[str], where: str):
     return names[0] if _run_git(where, "show-ref", "--verify", "--quiet", f"refs/heads/{names[0]}")[0] == 0 else None
 
 
-def _gated_push(words: list[str], where: str, names: set, readable: bool, branch) -> tuple[str, str] | None:
+PUSH_OPTIONS = ("all", "atomic", "branches", "delete", "dry-run", "exec", "follow-tags", "force", "force-if-includes",
+                "force-with-lease", "ipv4", "ipv6", "mirror", "porcelain", "progress", "prune", "push-option", "quiet",
+                "receive-pack", "recurse-submodules", "repo", "set-upstream", "signed", "tags", "thin", "verbose", "verify")
+PUSH_SHORT = {"n": "dry-run", "d": "delete", "f": "force", "u": "set-upstream", "q": "quiet", "v": "verbose", "4": "ipv4",
+              "6": "ipv6", "o": "push-option"}
+
+
+def _push_options(rest: list[str]):
+    """(options by their full name, the other words) as git reads a push's arguments: any unambiguous start of a
+    long option, `--no-` to turn one off, the last of a pair winning, short options run together. None for the
+    options when one of them cannot be read."""
+    options, args, i = {}, [], 0
+    while i < len(rest):
+        word, i = rest[i], i + 1
+        if word == "--":
+            return options, args + rest[i:]
+        if word.startswith("--"):
+            name, given, value = word[2:].partition("=")
+            off = name.startswith("no-")
+            base = name[3:] if off else name
+            full = [o for o in PUSH_OPTIONS if o == base] or [o for o in PUSH_OPTIONS if o.startswith(base)]
+            if len(full) != 1:
+                return None, args
+            if full[0] in ("push-option", "repo", "receive-pack", "exec") and not given and not off:
+                value, i = "".join(rest[i:i + 1]), i + 1
+            options[full[0]] = False if off else value or True
+        elif word.startswith("-") and len(word) > 1:
+            for at, letter in enumerate(word[1:], 2):
+                if letter not in PUSH_SHORT:
+                    return None, args
+                if letter == "o":  # the rest of the word, or the next word, is its value
+                    i += not word[at:]
+                    break
+                options[PUSH_SHORT[letter]] = True
+        else:
+            args.append(word)
+    return options, args
+
+
+def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branches) -> tuple[str, str] | None:
     """(repository, branch) unless this `git push` provably leaves the default branch of every gated repository
     alone. Nothing is worked out about what the push would change: one that names the default branch, or whose
-    destination cannot be read, is held, even with nothing ahead (two reviews showed that predicting git is where
-    the holes were). `branch` is the branch an earlier command on the line switched to: a name, "" when that cannot
-    be read, or None when none did."""
-    rest, args, flags, option, i = words[words.index("push") + 1:], [], set(), "", 0
-    while i < len(rest):
-        name, _, value = rest[i].partition("=")
-        if rest[i].startswith("-"):
-            flags.add(name)
-            option = (value or "".join(rest[i + 1:i + 2])) if name == "--repo" else option
-            i += 2 if rest[i] in PUSH_VALUE_OPTIONS else 1
-        else:
-            args.append(rest[i])
-            i += 1
-    if flags & {"-n", "--dry-run"}:
+    destination cannot be read, is held, even with nothing ahead (three reviews showed that predicting git is
+    where the holes were). `branches` is what earlier commands on the line may have left current: None when none
+    switched, else a set of names, with "" for one that cannot be read and None for the branch before the line."""
+    options, args = _push_options(words[words.index("push") + 1:])
+    if options and options.get("dry-run"):
         return None
-    destination, refspecs = (args[0] if args else option), args[1:]  # `--repo` stands in for a repository not named
+    readable, options = readable and options is not None, options or {}
+    destination, refspecs = (args[0] if args else str(options.get("repo") or "")), args[1:]  # `--repo` when none is named
     named = "" if re.search(r"[$`]", destination) else destination  # a remote named through a variable is any remote
     known, urls = _run_git(where, "remote", "get-url", "--push", "--all", named) if named else (1, "")
     remote = named if known == 0 else "origin"
     # Where it can go: every URL the named remote pushes to, or a URL given outright. When the line names none, or
     # its routing cannot be read, that is every remote here and any repository the command's own words name.
     reach = (urls if known == 0 else named) if named and readable else _run_git(where, "remote", "-v")[1] + " " + " ".join(words)
-    found = _repo_names(reach) & names
+    found = _repo_names(reach) & set(rules)
     if not found:
         return None
     repo = sorted(found)[0]
-    every = bool(flags & {"--all", "--mirror", "--branches"}) or any("*" in s or s.lstrip("+") == ":" for s in refspecs)
+    # Config that sends branches somewhere their names do not say: a refspec or a mirror on a remote, or a
+    # push.default other than git's own.
+    config = _run_git(where, "config", "--get-regexp", r"^remote\..*\.(push|mirror)$")[1]
+    mapped = bool(re.search(r"\.push\s", config)) or _run_git(where, "config", "--get", "push.default")[1].strip() not in ("", "simple", "current")
+    every = (any(options.get(o) for o in ("all", "mirror", "branches")) or bool(re.search(r"\.mirror\s+true\b", config))
+             or any("*" in s or s.lstrip("+") == ":" for s in refspecs))
     if not readable or every or any(re.search(r"[$`]", spec) for spec in refspecs):
         return repo, UNREAD_BRANCH
     code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
-    defaults = {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
-    current = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip() if branch is None else branch
-    # A configured refspec, or a push.default other than git's own, can send a branch somewhere its name does not say.
-    plain = (not _run_git(where, "config", "--get-regexp", r"^remote\..*\.push$")[1].strip()
-             and _run_git(where, "config", "--get", "push.default")[1].strip() in ("", "simple", "current"))
-    if not refspecs:
-        if "--tags" in flags:  # tags, and no branch
-            return None
-        return (repo, UNREAD_BRANCH) if not plain or not current else (repo, current) if current in defaults else None
-    for spec in refspecs:
-        source, colon, target = spec.lstrip("+").partition(":")
-        if spec.startswith("refs/tags/"):
+    stated = rules[repo].get("branch") if isinstance(rules[repo], dict) else None
+    defaults = {str(stated)} if stated else {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
+    now = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip()
+    current = {now} if branches is None else {now if b is None else b for b in branches}
+
+    def lands(target: str):
+        """The default branch a push to `target` reaches, UNREAD_BRANCH when HEAD cannot be known, else None."""
+        if target not in ("HEAD", "@"):
+            return target if target in defaults else None
+        return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
+
+    if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
+        hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
+        return (repo, hit) if hit else None
+    at = 0
+    while at < len(refspecs):
+        spec, at = refspecs[at], at + 1
+        if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
+            at += 1
             continue
-        target = (target or source).replace("refs/heads/", "", 1)
-        if (not colon and not plain) or (target in ("HEAD", "@") and not current):
-            return repo, UNREAD_BRANCH
-        target = current if target in ("HEAD", "@") else target
-        if target in defaults:
-            return repo, target
+        source, colon, target = spec.lstrip("+").partition(":")
+        target = target or source
+        if target.startswith("refs/tags/"):  # a tag is what gets updated, whatever is pushed onto it
+            continue
+        hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
+        if hit:
+            return repo, hit
     return None
 
 
@@ -1358,25 +1421,33 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     if gated is None:
         return None
     commands, readable = _parse(command, cwd)
+    try:  # only in a line joined by && alone did every earlier command run before a later one
+        chained = all(op == "&&" for kind, op, *_ in _lex(command) if kind == "op")
+    except (Unreadable, StopIteration, IndexError, ValueError):
+        chained = False
+    # Git reads its config and its repository from the environment too; a line that sets either is not what it looks.
+    readable = readable and not re.search(r"\bGIT_(?:CONFIG\w*|DIR|WORK_TREE|COMMON_DIR|NAMESPACE)=", command)
     pushes, rerouted, branch = [], set(), {}
     for words, directory in commands:
         sub, where = _git(words, directory)
-        found = _push(words, where)
+        found, said = _push(words, where), set(words)
         if found:
             pushes.append((found[0], where, readable and found[1] and where not in rerouted, branch.get(where)))
-        elif sub in ("config", "remote", "worktree"):  # earlier on the line, these change where a later push goes
-            rerouted.add(where)
-        elif sub in ("checkout", "switch"):  # and these, which branch it pushes
+        elif ((sub == "config" and not said & {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "get", "list"})
+              or (sub == "remote" and said & {"add", "set-url", "rename", "remove", "rm", "set-branches"})):
+            rerouted.add(where)  # written earlier on the line, these change where a later push goes
+        elif sub in ("checkout", "switch"):  # and these, which branch it pushes: for certain only in a && chain
             there = _switched_to(words, where)
-            branch[where] = branch.get(where) if there is None else there
-        elif sub in ("branch", "symbolic-ref", "bisect", "rebase"):
-            branch[where] = ""
+            if there is not None:
+                branch[where] = {there} if chained else (branch.get(where) or {None}) | {there}
+        elif sub in ("symbolic-ref", "bisect") or (sub == "branch" and said & {"-m", "-M", "--move"}):
+            branch[where] = {""}
     if not pushes:
         return None
     if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
         return ("pr_gated in the synthesis config needs a map of \"owner/repo\" names to their settings; pushes are "
                 "blocked until it is fixed")
-    names = {k.lower() for k in gated}
+    names = {k.lower(): rule for k, rule in gated.items()}
     hits = [hit for words, where, clear, level in pushes for hit in [_gated_push(words, where, names, clear, level)] if hit]
     if not hits:
         return None
@@ -1858,7 +1929,9 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
     from synthesis import sends
     if sends.own_repo(sends.tool_repo(tool_input), config):
         return False
-    return (((is_send_tool(tool, config) or sends.says(tool, config)) and not _quiet_calendar_write(tool, tool_input))
+    # A write that emails no one is quiet, unless it moves a meeting to today: its guests' calendars still change.
+    quiet = _quiet_calendar_write(tool, tool_input) and _invited_today(tool, tool_input, config) == 0
+    return (((is_send_tool(tool, config) or sends.says(tool, config)) and not quiet)
             or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
 
 

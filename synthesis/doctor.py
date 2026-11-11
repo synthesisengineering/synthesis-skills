@@ -834,7 +834,11 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
         if home is None:
             missing.append(f"no checkout of {name} under the workspace folders")
             continue
-        ref = (git(home, "symbolic-ref", "--short", "refs/remotes/origin/HEAD") or "").strip() or "origin/main"
+        ref = f"origin/{rule['branch']}" if rule.get("branch") else (git(home, "symbolic-ref", "--short", "refs/remotes/origin/HEAD") or "").strip()
+        if not ref:  # the guard then protects only `main` and `master`
+            missing.append(f"the checkout of {name} records no default branch (run `git remote set-head origin --auto` "
+                           "there, or name it as \"branch\" under pr_gated)")
+            continue
         log = git(home, "log", "--first-parent", "--no-merges", f"--since={rule['since']}T00:00:00", "--format=%h%x09%s", ref)
         if log is None:
             missing.append(f"cannot read {ref} in the checkout of {name}")

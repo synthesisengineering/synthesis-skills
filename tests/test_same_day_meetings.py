@@ -139,7 +139,7 @@ def test_moving_a_meeting_to_today_counts_and_an_update_that_sets_no_start_does_
 
 
 def test_moving_an_existing_meeting_to_today_counts_though_the_call_names_no_guests():
-    """The guests are on the event, not in the call; only a write that emails no one is exempt."""
+    """The guests are on the event, not in the call, so the move is held, with notifications on or off."""
     for tool, call in ((MANAGE, {"action": "update", "event_id": "e1", "start_time": f"{TODAY}T16:00:00"}),
                        ("mcp__gcal__update_event", {"eventId": "e1", "startTime": f"{TODAY}T16:00:00"}),
                        ("mcp__planner__planner-calendar-update-events",
@@ -149,7 +149,7 @@ def test_moving_an_existing_meeting_to_today_counts_though_the_call_names_no_gue
         assert same_day(reason) and "moves" in reason, (tool, reason)
     quiet = {"action": "update", "event_id": "e1", "start_time": f"{TODAY}T16:00:00", "send_updates": "none",
              "user_google_email": "me@example.com"}
-    assert guards.check(MANAGE, quiet, CONFIG, cwd="/tmp") is None
+    assert same_day(guards.check(MANAGE, quiet, CONFIG, cwd="/tmp"))  # silence does not make a move harmless
 
 
 def test_people_being_removed_and_rooms_are_not_invited_guests():
@@ -270,6 +270,26 @@ def test_a_connector_that_takes_its_start_as_a_written_date_is_read(start):
     later = {"summary": "Existing meeting", "start_date": start.replace("9", "12", 1)}
     reason = guards.check("mcp__apple_calendar__update_event", later, CONFIG, cwd="/tmp")
     assert "approval" in reason and not same_day(reason)
+
+
+# --- found by the third review round (2026-11-11) -------------------------------------------------
+
+
+def test_moving_an_event_to_today_with_notifications_off_is_quiet_only_for_the_agents_own_hold(isolated_home, monkeypatch):
+    """Notifications off does not make a move harmless: the guests' calendars still change. The holds ledger is
+    the one record of which events are the agent's own holds, and only those move without a code."""
+    root = isolated_home / "chief-of-staff"
+    (root / "holds").mkdir(parents=True)
+    monkeypatch.setenv("HOLDS_STATE_DIR", str(root))
+    (root / "holds" / "events.jsonl").write_text('{"event": "place", "id": "hold-1", "title": "Hold"}\n{"event": "place", "id": "hold-2"}\n'
+                                         '{"event": "release", "id": "hold-2"}\n', encoding="utf-8")
+    move = {"action": "update", "start_time": f"{TODAY}T16:00:00", "send_updates": "none", "user_google_email": "me@example.com"}
+    assert guards.check(MANAGE, {**move, "event_id": "hold-1"}, CONFIG, cwd="/tmp") is None
+    for event_id in ("meeting-with-guests", "hold-2"):  # not a hold, and a hold already released
+        reason = guards.check(MANAGE, {**move, "event_id": event_id}, CONFIG, cwd="/tmp")
+        assert same_day(reason) and "moves" in reason, event_id
+    tomorrow = {**move, "event_id": "meeting-with-guests", "start_time": f"{TOMORROW}T16:00:00"}
+    assert guards.check(MANAGE, tomorrow, CONFIG, cwd="/tmp") is None  # the quiet rule is unchanged on another day
 
 
 def test_a_send_window_never_covers_a_meeting_today():
