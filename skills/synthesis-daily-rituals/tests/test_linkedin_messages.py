@@ -104,6 +104,47 @@ def test_a_conversation_open_during_the_read_is_counted_and_named(tmp_path):
     assert "open during the read: Ana Alvarez" in done.stdout
 
 
+def test_an_entry_whose_day_shows_once_and_whose_preview_is_a_subject_is_read(tmp_path):
+    """The other inbox, read live on 2026-11-11: a message request shows its day once, and a subject line where
+    a conversation shows who spoke. The first one was counted as unreadable."""
+    text = ("Messaging\nOther\nConversation List\nLee Lopez\nOct 6\n\nA model for data teams\n\n" + TAIL.format(who="Lee Lopez")
+            + card("Mo Mills", "Oct 5", "A role you may like", "")
+            + card("Nia Novak", "Apr 20", "A search you may know of", "", "1\n1 new notification\n"))
+    code, got = run(tmp_path, text)
+    assert code == 0, got
+    first, second, third = got["threads"]
+    assert (first["who"], first["last"], first["preview"]) == ("Lee Lopez", "2026-10-06", "A model for data teams")
+    assert first["from_me"] is False and first["speaker"] is None and first["kind"] == "message"
+    assert second["preview"] == "A role you may like" and third["unread"] == 1
+    assert [t["who"] for t in got["owed"]] == ["Lee Lopez", "Mo Mills", "Nia Novak"]
+
+
+def test_the_coverage_line_names_the_inbox_it_read(tmp_path):
+    _, got = run(tmp_path, LIST, "--inbox", "other")
+    assert got["line"].startswith("LinkedIn messages, other: 8 conversations read from the list") and got["inbox"] == "other"
+    _, plain = run(tmp_path)
+    assert plain["line"].startswith("LinkedIn messages: 8 conversations") and plain["inbox"] is None
+
+
+EMPTY = ("Messaging\nSearch messages\nCompose a new message\nOther\nConversation List\nNew message\nEnter message recipients\n"
+         "Suggested\nAna Alvarez\nInvestor at Example Capital\n")
+
+
+def test_an_inbox_with_nothing_in_it_is_a_complete_read_only_when_the_reader_says_it_is_empty(tmp_path):
+    """A page saved before its list loaded looks the same as an empty inbox, so emptiness is the reader's word."""
+    code, got = run(tmp_path, EMPTY)
+    assert code == 2 and "no conversation" in got and "--empty" in got
+    code, got = run(tmp_path, EMPTY, "--empty", "--inbox", "other", "--since", "2026-10-28")
+    assert code == 0, got
+    assert got["threads"] == [] and got["owed"] == [] and got["coverage"]["complete"] is True
+    assert datetime.fromisoformat(got["coverage"]["through"]) == datetime.fromisoformat(READ_AT)
+    assert got["line"] == "LinkedIn messages, other: no conversations in the list; none opened"
+    code, got = run(tmp_path, LIST, "--empty")  # the list is not empty: the flag is wrong, not the list
+    assert code == 2 and "8 conversations" in got
+    code, got = run(tmp_path, "Let's do a quick security check\n" + EMPTY, "--empty")
+    assert code == 2 and "security check" in got
+
+
 def test_the_account_is_found_whichever_side_of_the_closing_sentence_it_stands(tmp_path):
     text = card("Kit Kim", "Nov 4", "You: Thanks.").replace("with Pat Principal and Kit Kim", "with Kit Kim and Pat Principal")
     code, got = run(tmp_path, text)
@@ -212,21 +253,35 @@ def test_the_plan_opens_the_new_message_view_and_never_the_bare_page(tmp_path):
     assert code == 0, out
     assert "open  https://www.linkedin.com/messaging/thread/new/" in out
     assert "https://www.linkedin.com/messaging/ " not in out
-    code, out = plan(tmp_path, "workspace: desk\n")  # the focused list is the default
-    assert code == 0 and "read  focused:" in out
+    code, out = plan(tmp_path, "workspace: desk\n")  # both inboxes are read unless the declaration says otherwise
+    assert code == 0 and "read  focused:" in out and "read  other:" in out
+
+
+def test_each_inbox_has_its_own_address_and_its_own_day(tmp_path):
+    """The other inbox, where LinkedIn files messages from people the account is not connected to, sits behind a
+    menu on the page but has an address of its own, so reading it needs no click either."""
+    code, out = plan(tmp_path, "workspace: desk\ninboxes: [focused, other]\n")
+    assert code == 0, out
+    lines = out.splitlines()
+    assert lines[0].startswith("open  https://www.linkedin.com/messaging/thread/new/  ") and lines[1].startswith("read  focused: ")
+    assert lines[2].startswith("open  https://www.linkedin.com/messaging/thread/new/?inboxType=SECONDARY  ")
+    assert lines[3] == "read  other: never read; scroll back to 2026-10-28, stop there, and pass --inbox other --since 2026-10-28"
+    code, out = plan(tmp_path, "workspace: desk\ninboxes: [other]\n")
+    assert code == 0 and "inboxType=SECONDARY" in out and "read  focused" not in out
 
 
 def test_a_first_read_is_told_how_far_back_to_go_and_to_stop_there(tmp_path):
     """The list loads older conversations for as long as it is scrolled; a read goes back to a named day and stops."""
     code, out = plan(tmp_path, DECLARED)
     assert code == 0
-    assert "focused: never read; scroll back to 2026-10-28, stop there, and pass --since 2026-10-28" in out
+    assert "focused: never read; scroll back to 2026-10-28, stop there, and pass --inbox focused --since 2026-10-28" in out
 
 
 @pytest.mark.parametrize("declaration, says", [
     ("inboxes: [focused]\n", "workspace"),
     ("workspace: desk\ninboxes: focused\n", "inboxes"),
     ("workspace: desk\ninboxes: []\n", "inboxes"),
+    ("workspace: desk\ninboxes: [focused, archived]\n", "archived"),  # only the inboxes it knows an address for
 ])
 def test_a_declaration_it_cannot_use_is_refused(tmp_path, declaration, says):
     code, out = plan(tmp_path, declaration)
@@ -242,4 +297,5 @@ def test_the_plan_names_the_day_the_last_read_reached(tmp_path):
     marks.advance("desk", "linkedin", READ_AT, ("focused",), now=datetime.fromisoformat("2026-11-11T10:00:00-05:00"),
                   home=tmp_path / "home", coverage=complete)
     code, out = plan(tmp_path, DECLARED)
-    assert code == 0 and "focused: read through 2026-11-11; scroll back to that day, stop there, and pass --since 2026-11-11" in out
+    assert code == 0 and "focused: read through 2026-11-11; scroll back to that day, stop there, and pass --inbox focused --since 2026-11-11" in out
+    assert "other: never read" in out  # each inbox keeps its own watermark
