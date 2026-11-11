@@ -1522,6 +1522,21 @@ SCRIPTED_WRITE = re.compile(
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
+ASSIGNED = re.compile(r"(?:^|[;&|\n(]|\bexport\s)\s*([A-Za-z_]\w*)=(\"[^\"\n]*\"|'[^'\n]*'|[^\s;&|()<>\"']*)")
+USED = re.compile(r"\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)")
+
+
+def _resolved(text: str) -> str:
+    """The command with each variable it assigns put where it is used, so a folder named through one is read as if
+    written out (2026-11-11: `D=<state folder>; echo x > "$D/a"` passed, a target being expanded from the process
+    environment only). A variable the command does not assign stays as written."""
+    for _ in range(4):  # a variable built from another
+        values = {m[1]: m[2].strip("'\"") for m in ASSIGNED.finditer(text)}
+        put = USED.sub(lambda m: values.get(m[1] or m[2], m[0]), text)
+        if put == text:
+            break
+        text = put
+    return text
 
 
 PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
@@ -1550,6 +1565,15 @@ def _cli_owned(real: str) -> str:
         if paths.inside(real, os.path.realpath(root)):
             return f"inside {what}. {way}"
     return ""
+
+
+def _memory(real: str) -> bool:
+    """A Markdown file in a project's memory folder. Claude Code keeps that folder beside the project's session
+    transcripts and has the agent write it with its file tools; it holds no transcript and no approval. The shell
+    stays refused there: a command could leave a link that points a later write at a transcript."""
+    root = os.path.realpath(paths.transcript_roots()["claude-code"])
+    parts = os.path.relpath(real, root).split(os.sep) if paths.inside(real, root) else []
+    return len(parts) >= 3 and parts[1] == "memory" and real.endswith(".md")
 
 
 def _file_targets(tool: str, tool_input: dict) -> list[str]:
@@ -1595,7 +1619,7 @@ def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str
     targets = _file_targets(tool, tool_input)
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
     real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
-    hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots)]
+    hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots) and not _memory(real[t])]
     if hits and _cli_owned(real[hits[0]]):
         return f"Refused: {tool} would write {hits[0]}, {_cli_owned(real[hits[0]])}"
     return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
@@ -1660,7 +1684,7 @@ def _python_writes(source: str, names: list) -> bool | None:
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str | None:
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
-    text = command.replace("${HOME}", home).replace("$HOME", home)
+    text = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     raw = _protected_roots(config)
     mine = store and store.name in text  # the store's own name: a write from inside its folder
     names = [n for r in raw for n in (r, "~" + r[len(home):]) if n in text] + ([store.name] if mine else [])
@@ -1669,19 +1693,18 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
         _commands(text, cwd, writes=redirects) if names else None
     except (Unreadable, StopIteration, IndexError):
         readable = False
-    targets = [os.path.join(w, os.path.expanduser(os.path.expandvars(t))) for t, w in redirects]
-    targets += [t.strip("'\"") for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
+    asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
+    asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres = "", {cwd}
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
-    for words, where in _parse(command, cwd)[0]:
+    for words, where in _parse(text, cwd)[0]:
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and any(HOOK_RUN.search(w) for w in words[1:])):
             why = why or "runs the synthesis hook, which only the harness may run"
         if names and (head in WRITERS or (head in ("sed", "perl") and "-i" in own)):
-            targets += [os.path.join(where, os.path.expanduser(os.path.expandvars(w)))
-                        for w in (words[-1:] if head in COPIERS else words[1:])]
+            asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in (words[-1:] if head in COPIERS else words[1:])]
         script = text if words[1:2] in ([], ["-"]) else own  # a program read from stdin is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
@@ -1693,7 +1716,11 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None) -> str 
                 and judged is not False:
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
-            targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
+            asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
+    if not why and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
+        why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
+               "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
+    targets = [os.path.join(w, t) for t, w in asked]
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
