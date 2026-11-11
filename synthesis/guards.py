@@ -1627,23 +1627,37 @@ def _put(use, values: dict) -> str:
     return value if cut is None else value[:cut] if op[0] == "%" else value[cut:]
 
 
+def _program(words: list[str]) -> tuple[str, int, str]:
+    """How an interpreter or a shell is given its code: ("file", i, name) for a script, or the module after -m, at
+    words[i]; ("inline", i, text) for a program in its own words (-c, an interpreter's -e), its arguments starting at
+    i; ("stdin", i, "") when it reads its input, its arguments starting at i (at `-`, or past the last word). Python
+    reads a word of options letter by letter, so -Bc PROGRAM, -cPROGRAM and -Wignore are read that way, and a -c
+    after `-` or after -W is an argument (2026-11-11: each of those hid the program)."""
+    head, i = os.path.basename(words[0]), 1
+    takes = (set() if head.startswith("python") else {"-o", "+o", "-O", "+O"} if head in SHELLS  # options that take the next word
+             else {"-r", "--require", "--loader", "--import"} if head in ("node", "bun", "deno") else {"-I", "-r"})
+    while i < len(words):
+        word = words[i]
+        at = next((j for j, c in enumerate(word) if j and c in "cmWX"), 0) if head.startswith("python") and re.match(r"-[A-Za-z]", word) else 0
+        if word == "-":
+            break
+        if at and word[at] in "cm":
+            given = word[at + 1:] or "".join(words[i + 1:i + 2])
+            return ("inline", i + 1 + (not word[at + 1:]), given) if word[at] == "c" else ("file", i, given)
+        if word == "-c" or (word == "-e" and head not in SHELLS):
+            return "inline", i + 2, "".join(words[i + 1:i + 2])
+        if word == "-m" or not word.startswith(("-", "+")):
+            return "file", i, "".join(words[i + (word == "-m"):i + 1 + (word == "-m")])
+        i += 1 + (word in takes or bool(at and not word[at + 1:]))
+    return "stdin", i, ""
+
+
 def _ran(words: list[str]) -> str:
     """The file of code an interpreter or a shell runs: its first operand, past its options and their values, or the
-    module after -m; nothing when the program is given inline (-c, an interpreter's -e, or `-` for its input). The
-    words after it are handed to it, not run (2026-11-11: a line counter handed hook.py was refused as running it)."""
-    skip, head = False, os.path.basename(words[0])
-    takes = ({"-W", "-X"} if head.startswith("python") else {"-o", "+o", "-O", "+O"} if head in SHELLS  # options that take the next word
-             else {"-r", "--require", "--loader", "--import"} if head in ("node", "bun", "deno") else {"-I", "-r"})
-    for i, word in enumerate(words[1:], 1):
-        if skip:
-            skip = False
-        elif word in ("-c", "-") or (word == "-e" and head not in SHELLS):
-            return ""
-        elif word == "-m" or not word.startswith(("-", "+")):
-            return "".join(words[i + (word == "-m"):i + 1 + (word == "-m")])
-        else:
-            skip = word in takes
-    return ""
+    module after -m; nothing when the program is given inline or read from its input. The words after it are handed
+    to it, not run (2026-11-11: a line counter handed hook.py was refused as running it)."""
+    kind, _, name = _program(words)
+    return name if kind == "file" else ""
 
 
 def _resolved(text: str) -> list[str]:
@@ -1848,12 +1862,12 @@ def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str
             "show them what needs approving.") if hits else None
 
 
-def _python_source(words: list, fed: str) -> str:
-    """The Python a command runs: its -c program, or what it reads on its own stdin; "" for a script file. Read
-    together with every other heredoc of the line, two programs were judged as one (2026-11-11)."""
-    if "-c" in words[:-1]:
-        return words[words.index("-c") + 1]
-    return "" if _ran(words) else fed
+def _python_source(words: list, fed: str) -> tuple[str, list]:
+    """(the Python a command runs, the words it is handed from its own name on): its -c program, or what it reads on
+    its own stdin; ("", []) for a script file. Read together with every other heredoc of the line, two programs were
+    judged as one (2026-11-11)."""
+    kind, i, text = _program(words)
+    return ("", []) if kind == "file" else (text, ["-c"] + words[i:]) if kind == "inline" else (fed, words[i:] or [""])
 
 
 OS_WRITES = re.compile(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
@@ -1863,6 +1877,7 @@ COPIES = ("copy", "copy2", "copyfile", "copytree", "copymode", "copystat", "copy
 PATH_WRITES = ("write_text", "write_bytes", "touch", "mkdir", "rmdir", "unlink", "symlink_to", "hardlink_to", "link_to", "chmod",
                "lchmod", "truncate")
 MUTATORS = ("append", "extend", "insert", "add", "update", "setdefault", "appendleft", "extendleft", "put")
+CONTENT = ("open", "read", "readline", "readlines", "read_text", "read_bytes")  # hand back what a file holds, not where it is
 ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", "fire", "docopt"}  # take the arguments unseen
 
 
@@ -1873,7 +1888,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     by its syntax, since a pattern over its text stops at the first closing parenthesis (2026-11-11). A target the
     program spells out is judged where it leads, so what is the agent's own there is its own for a program too. Any
     other target is judged by what it is built from: a protected path in a string or an argument, or a name one
-    reached through an assignment, a loop, a `with`, a default, a call to the program's own function or a list.
+    reached through an assignment, a loop, a `with`, a default, a call to the program's own function, a list or an
+    attribute. What the program reads from a file is content, and names no path (30 days: six programs that read
+    a transcript and numbered their output files by its lines were refused).
     `argv` is what the shell hands the program, from its own name on; `where` is the folder it runs in, and inside a
     protected folder, or after a chdir into one, every write must be led by a plain folder elsewhere."""
     import ast
@@ -1884,7 +1901,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     nodes = list(ast.walk(tree)) if tree is not None else []
     if tree is None or any(isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile", "__import__") for n in nodes):
         return None, None
-    modules, direct, stars, local, pairs, tainted, bound = {}, {}, [], {}, [], set(), {}
+    modules, direct, stars, local, pairs, loops, tainted, bound = {}, {}, [], {}, [], [], set(), {}
     for n in nodes:  # what each name is: a module, a name taken from one, the program's own function, an assignment
         if isinstance(n, ast.Import):
             modules.update({(a.asname or a.name).split(".")[0]: a.name if a.asname else a.name.split(".")[0] for a in n.names})
@@ -1902,7 +1919,15 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 pairs += zip(target.elts, n.value.elts) if apart else [(target, n.value)]  # a, b = x, y is two assignments
                 if isinstance(target, ast.Name) and isinstance(n.value, ast.Lambda):
                     local.setdefault(target.id, []).append(n.value.args)
+        elif isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
+            loops.append(n)
+    for target, value in pairs:  # a function kept under another name is still that function
+        if isinstance(target, ast.Name) and isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in modules:
+            direct[target.id] = (modules[value.value.id], value.attr)
+        elif isinstance(target, ast.Name) and isinstance(value, ast.Name) and (value.id in direct or value.id == "open"):
+            direct[target.id] = direct.get(value.id, ("builtins", "open"))
     stored = [n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)] + [n.arg for n in nodes if isinstance(n, ast.arg)]
+    calls = [n for n in nodes if isinstance(n, ast.Call)]
     # The words after the program are its arguments, and `sys.argv[2]` is the second of them. Taken another way (a
     # slice, a loop, an argument parser), or after a word the shell fills in, they cannot be placed, and then any
     # write is refused while one of them names a protected path (30 days: four programs that read their first
@@ -1920,9 +1945,17 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         value = node.value if isinstance(node, ast.Constant) else None
         return value.decode("utf-8", "replace") if isinstance(value, bytes) else value if isinstance(value, str) else None
 
-    def named(node) -> bool:  # built from a protected path: in a string, in an argument, or through a name
-        return any(any(m in (said(n) or given.get(id(n), "")) for m in names) or (isinstance(n, ast.Name) and n.id in tainted)
-                   for n in ast.walk(node))
+    def named(node) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
+        todo = [node]
+        while todo:
+            n = todo.pop()
+            field = isinstance(n, ast.Attribute) and not (isinstance(n.value, ast.Name) and n.value.id in modules) and (
+                "." + n.attr in tainted or (n.attr in tainted and n.attr in classed))
+            if field or (isinstance(n, ast.Name) and n.id in tainted) or any(m in (said(n) or given.get(id(n), "")) for m in names):
+                return True
+            if not (isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in CONTENT):
+                todo += ast.iter_child_nodes(n)  # what a file holds is not where it is
+        return False
 
     def spelled(node) -> str:  # the path a node spells out, "\0" standing for each part that cannot be read
         label = getattr(getattr(node, "func", None), "attr", getattr(getattr(node, "func", None), "id", ""))
@@ -1947,8 +1980,18 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         tainted.update(new)
         return bool(new)
 
-    def held(target) -> set:
-        return {x.id for x in ast.walk(target) if isinstance(x, ast.Name)}
+    def held(target) -> set:  # what a binding gives a value to: a name, an attribute (as ".attr"), the holder of a key
+        return ({target.id} if isinstance(target, ast.Name) else {"." + target.attr} if isinstance(target, ast.Attribute)
+                else held(target.value) if isinstance(target, (ast.Subscript, ast.Starred))
+                else {x for e in getattr(target, "elts", []) for x in held(e)})
+    classed = {x for c in nodes if isinstance(c, ast.ClassDef) for b in c.body for t in getattr(b, "targets", [getattr(b, "target", None)])
+               if t is not None for x in held(t)}  # a name given in a class body is read as an attribute
+    rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and stored.count(t.id) == 1 and isinstance(v, (ast.List, ast.Tuple))}
+    for n in calls:  # a list that gains a row later is not the list as written
+        root = getattr(n.func, "value", None)
+        rows.pop(getattr(root, "id", ""), None) if getattr(n.func, "attr", "") in MUTATORS else None
+    for target, _ in pairs:
+        rows.pop(getattr(getattr(target, "value", None), "id", ""), None)
     grew = True
     while grew:
         grew = False
@@ -1956,10 +1999,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             grew |= named(value) and taint(held(target))
             if isinstance(target, ast.Name) and stored.count(target.id) == 1 and target.id not in bound and spelled(value)[:1] != "\0":
                 bound[target.id], grew = spelled(value), True  # a name given one value once spells what that value spells
-        for n in nodes:
-            if isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
+        for n in loops:  # over rows the program spells out, each name takes its own column; over anything else, all of it
+            each = n.iter.elts if isinstance(n.iter, (ast.List, ast.Tuple)) else rows.get(getattr(n.iter, "id", ""))
+            width = len(getattr(n.target, "elts", []))
+            if each is not None and width and all(isinstance(r, (ast.Tuple, ast.List)) and len(r.elts) == width and not any(
+                    isinstance(e, ast.Starred) for e in r.elts + n.target.elts) for r in each):
+                grew |= taint(x for r in each for t, v in zip(n.target.elts, r.elts) if named(v) for x in held(t))
+            else:
                 grew |= named(n.iter) and taint(held(n.target))
-            elif isinstance(n, ast.withitem) and n.optional_vars is not None:
+        for n in nodes:
+            if isinstance(n, ast.withitem) and n.optional_vars is not None:
                 grew |= named(n.context_expr) and taint(held(n.optional_vars))
             elif isinstance(n, ast.arguments):  # a default
                 takers, values = n.posonlyargs + n.args + n.kwonlyargs, [None] * (len(n.posonlyargs + n.args) - len(n.defaults)) + n.defaults + n.kw_defaults
@@ -1973,6 +2022,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     root = root.value
                 if label in MUTATORS and isinstance(root, ast.Name) and root.id not in modules:  # kept in a list, a set or a dict
                     grew |= taint([root.id])
+                if label == "setattr" and len(n.args) == 3 and named(n.args[2]):
+                    grew |= taint(held(n.args[0]) | {"." + (said(n.args[1]) or "")})
                 for name in [label] + [a.id for a in n.args if isinstance(a, ast.Name)]:  # handed to the program's own function
                     for own in local.get(name, ()):
                         takers = [a.arg for a in own.posonlyargs + own.args]
@@ -1983,7 +2034,6 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                         spare, extra = [own.vararg.arg] if own.vararg else [], [own.kwarg.arg] if own.kwarg else []
                         grew |= taint([x for i, a in enumerate(n.args) if named(a) for x in takers[i:i + 1] or spare] + [
                             x for k in n.keywords if named(k.value) for x in ([k.arg] if k.arg in takers + [a.arg for a in own.kwonlyargs] else extra)])
-    calls = [n for n in nodes if isinstance(n, ast.Call)]
     standing, moved = any(paths.inside(os.path.realpath(where), r) for r in roots), False
 
     def lands(node, folder: bool = False) -> bool:  # whether a write's target is, or may be, in a protected folder
@@ -2005,7 +2055,8 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                   else stars if plain else [])
         label = direct[label][1] if base is None and label in direct else label
         every = [a for a in n.args + list(kw.values()) if said(a) is not None or not isinstance(a, ast.Constant)]  # a number names no file
-        opener = label in ("open", "ZipFile") and (plain or any(m in OPENERS for m in owners))
+        opener = label in ("open", "ZipFile", "TarFile", "FileIO") and (plain or any(m in OPENERS for m in owners))
+        starred = any(isinstance(a, ast.Starred) for a in n.args) or None in kw  # open(*pair): the mode cannot be read
         method = base is not None and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
         writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
@@ -2013,9 +2064,12 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             [] if m == "shutil" and label in ("which", "disk_usage", "get_terminal_size")
             else n.args[1:2] + [kw[k] for k in ("dst", "fdst") if k in kw] or every if m == "shutil" and label in COPIES
             else every if m in ("shutil", "subprocess") or (m, label) == ("sqlite3", "connect") or (m == "os" and OS_WRITES.fullmatch(label))
+            or (m == "fileinput" and "inplace" in kw)
             else [])]
-        if opener and writes:  # open(path, "w") or open(file=path, mode="w")
+        if opener and (writes or starred):  # open(path, "w") or open(file=path, mode="w")
             targets += n.args[:1] or [kw[k] for k in ("file", "name") if k in kw]
+        elif method and label in ("extractall", "extract"):  # an archive unpacked: where it is told, else where the program stands
+            targets += every or [ast.Constant(value=".")]
         elif method and (label in PATH_WRITES or (label == "open" and writes)):
             targets.append(base)
         elif method and label in ("rename", "replace") and len(n.args) + len(kw) == 1 and (n.args or "target" in kw):
@@ -2067,11 +2121,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
             if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                 handed.append((head, word, led))
-        script = text if not _ran(words) and "-c" not in words and "-e" not in words else own  # read from stdin, it is the heredoc's text
+        script = text if _program(words)[0] == "stdin" else own  # read from stdin, it is the heredoc's text
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        source = _python_source(words, fed) if head.startswith("python") else ""
-        argv = ["-c"] + words[words.index("-c") + 2:] if "-c" in words[:-1] else words[words.index("-"):] if "-" in words else [""]
+        source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
         # runs in (2026-10-06: through a variable). Its arguments are put where it reads them; through the
