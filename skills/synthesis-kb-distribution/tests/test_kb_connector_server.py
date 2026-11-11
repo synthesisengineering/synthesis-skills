@@ -284,9 +284,14 @@ def test_main_refuses_to_start_when_the_access_groups_cannot_be_read(published, 
     assert server.main(env) == 0 and started[0].members == {"lead@example.com"}
 
 
-def test_a_listed_person_signs_in_with_google_and_searches_and_no_token_is_logged(published, caplog):
+def test_a_listed_person_signs_in_with_google_and_searches_and_no_token_is_logged(published, caplog, monkeypatch):
     for name in ("", "fastmcp", "mcp", "httpx2", "kb_connector"):  # FastMCP sets its own loggers' levels
         caplog.set_level(logging.DEBUG, logger=name)
+        logger = logging.getLogger(name)
+        # FastMCP's logger writes through its own handler and does not propagate, and only pytest 9
+        # captures such a logger by itself, so give it the capture handler under any pytest
+        if not logger.propagate and caplog.handler not in logger.handlers:
+            monkeypatch.setattr(logger, "handlers", [*logger.handlers, caplog.handler])
     settings, google = settings_for(published), FakeGoogle()
     policy = AccessPolicy.from_settings(settings.allowed_emails)
 
