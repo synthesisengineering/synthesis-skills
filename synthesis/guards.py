@@ -257,8 +257,10 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # 2026-11-09: an agent staged a meeting into the first open slot of the same day, three days running, because the
 # requester had said "tomorrow or Monday". The principal approved every invitation, and no approval said it was today.
 
-START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime"})
+START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime", "start_date", "startDate"})
 ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+WRITTEN = re.compile(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
 
 
 def _today() -> date:
@@ -304,16 +306,29 @@ def _keys(value):
         yield from _keys(item)
 
 
+def _events(value):
+    """Each event a call writes: the entries of any list of events inside it, however deep the list sits."""
+    for item in value.values() if isinstance(value, dict) else value if isinstance(value, list) else ():
+        if isinstance(value, list) and isinstance(item, dict) and any(_starts(item)):
+            yield item
+        else:
+            yield from _events(item)
+
+
 def _falls(text: str, zones: list, unread: bool) -> str:
-    """"today" when the date as written is today, the same moment is today on this machine's clock, or (for a time
-    with no offset) it is today in a zone the call names; "unknown" when the call names a zone this machine cannot
-    read and the date as written is within a day of today, so it could be; "" otherwise."""
+    """"today" when the date as written is today (ISO, or a written date such as "9 November 2026 at 3:00 PM"), the
+    same moment is today on this machine's clock, or (for a time with no offset) it is today in a zone the event
+    names; "unknown" when it names a zone this machine cannot read and the date as written is within a day of
+    today, so it could be; "" otherwise."""
     today, text = _today(), text.strip()
     try:
         moment = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
         local = [m.astimezone().date() for m in ([moment] if moment.tzinfo else [moment.replace(tzinfo=z) for z in zones])]
-    except (ValueError, OverflowError, OSError):  # not a time, or one no calendar holds: only its written date can count
-        return "today" if text.startswith(today.isoformat()) else ""
+    except (ValueError, OverflowError, OSError):  # not an ISO time, or one no calendar holds: only its written date can count
+        found = WRITTEN.search(text)
+        day, month, year = (found.group(1) or found.group(4), (found.group(2) or found.group(3)).lower(), found.group(5)) if found else ("", "", "")
+        written = month in MONTHS and (int(year), MONTHS.index(month) + 1, int(day)) == (today.year, today.month, today.day)
+        return "today" if written or text.startswith(today.isoformat()) else ""
     if moment.date() == today or today in local:
         return "today"
     return "unknown" if unread and not moment.tzinfo and abs((moment.date() - today).days) <= 1 else ""
@@ -333,21 +348,21 @@ def _invited_today(tool: str, tool_input: dict, config: dict) -> int | str:
     if not all(isinstance(names, list) and all(isinstance(e, str) for e in names) for names in (exempt, mine)):
         return ("same_day_meetings in the synthesis config needs \"exempt\" and \"own\" as lists of addresses or patterns "
                 "(either may be empty or absent); calendar writes are blocked until it is fixed")
-    zones, unread = [], []
-    for key, text in _strings(tool_input):
-        if re.search(r"time_?zone", key, re.I):
-            try:
-                from zoneinfo import ZoneInfo
-                zones.append(ZoneInfo(text))
-            except (KeyError, ValueError, OSError):  # a name this machine does not know, such as a Windows one
-                unread.append(text)
     routing = config.get("account_routing") if isinstance(config.get("account_routing"), dict) else {}
     own = {_address(str(a)) for meta in [routing, *(routing.get("workspaces") or {}).values()] if isinstance(meta, dict)
            for a in [meta.get("default_account"), meta.get("account"), *(meta.get("aliases") or [])] if a}
     moves = bool(re.search(r"(?:update|move)[_-]events?$", tool)) or str(tool_input.get("action", "")).lower() == "update"
-    events = [e for v in tool_input.values() if isinstance(v, list) for e in v if isinstance(e, dict) and any(_starts(e))]
+    shared = {k: v for k, v in tool_input.items() if isinstance(v, str)}  # a zone named once for the whole call
     count = 0
-    for event in events or [tool_input]:
+    for event in list(_events(tool_input)) or [tool_input]:
+        zones, unread = [], []
+        for key, text in [*_strings(event), *shared.items()]:  # an event's own zone, never another event's
+            if re.search(r"time_?zone", key, re.I):
+                try:
+                    from zoneinfo import ZoneInfo
+                    zones.append(ZoneInfo(text))
+                except (KeyError, ValueError, OSError):  # a name this machine does not know, such as a Windows one
+                    unread.append(text)
         when = {_falls(start, zones, bool(unread)) for start in _starts(event)}
         invited = {a for a in set(_invitees(event)) - own if not any(fnmatch.fnmatchcase(a, m.lower()) for m in mine)}
         listed = any(re.fullmatch(r"attendees|guests|invitees|participants", key, re.I) for key in _keys(event))
@@ -1233,8 +1248,6 @@ def _repo_names(text: str) -> set:
 
 
 ROUTING = ("remote.", "push.", "alias.", "branch.", "url.")  # config on the command line that can send a push elsewhere
-READS = frozenset({"status", "log", "diff", "show", "fetch", "rev-parse", "rev-list", "describe", "ls-remote"})
-HARMLESS = frozenset({"cd", "pushd", "popd", "echo", "printf", "pwd", "ls", "cat", "head", "tail", "grep", "true", ":", "test", "["})
 GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
     "add am apply bisect blame branch cat-file checkout cherry-pick clean clone commit config describe diff fetch "
     "for-each-ref gc grep init lfs log ls-files ls-remote merge mv notes pull rebase reflog remote reset restore revert "
@@ -1242,34 +1255,53 @@ GIT_COMMANDS = frozenset(  # never an alias, so no lookup is made for them
 UNREAD_BRANCH = "its default branch (where the push goes could not be read from the command, so no branch can be ruled out)"
 
 
-def _push(words: list[str], where: str) -> tuple[list[str], bool] | None:
+def _push(words: list[str], where: str, depth: int = 0) -> tuple[list[str], bool] | None:
     """(the words of the `git push` this command runs, whether where it goes can be read): a push named outright
-    or through an alias. Config given on the command line that can send it elsewhere makes it unreadable."""
+    or through an alias, which may name another alias or put git options first. Config given on the command line
+    that can send a push elsewhere, a shell alias that pushes, and an alias defined on the line make it unreadable."""
     i = 1
     while i < len(words) and words[i].startswith("-"):
         i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
     if os.path.basename(words[0]) != "git" or i >= len(words):
         return None
-    sub, given = words[i], [b.lower() for a, b in zip(words[1:i], words[2:i]) if a == "-c"]
+    sub, given = words[i], [b.lower() for a, b in zip(words[1:i], words[2:i + 1]) if a == "-c"]
     plain = not any(key.startswith(ROUTING) for key in given) and not any(w.startswith("--config-env") for w in words[1:i])
     if sub == "push":
         return words, plain
     if sub in GIT_COMMANDS:
         return None
+    here = any(key.startswith(f"alias.{sub.lower()}=") for key in given)
     code, alias = _run_git(where, "config", "--get", f"alias.{sub}")
-    alias = alias.strip()
-    if any(key.startswith(f"alias.{sub.lower()}=") for key in given) or (code == 0 and alias.startswith("!") and "push" in alias):
-        return words[:i] + ["push"], False  # an alias defined on the line, or a shell alias that pushes
+    alias = alias.strip() if code == 0 else ""
     try:
-        expansion = shlex.split(alias) if code == 0 else []
+        expansion = [] if here or alias.startswith("!") else shlex.split(alias)
     except ValueError:
-        return words[:i] + ["push"], False
-    return (words[:i] + expansion + words[i + 1:], plain) if expansion[:1] == ["push"] else None
+        expansion = []
+    if expansion and depth < 5:
+        found = _push(words[:i] + expansion + words[i + 1:], where, depth + 1)
+        return (found[0], found[1] and plain) if found else None
+    return (words[:i] + ["push"], False) if here or "push" in alias else None
 
 
-def _gated_push(words: list[str], where: str, names: set, readable: bool, settled: bool) -> tuple[str, str] | None:
-    """(repository, branch) when this `git push` would move the default branch of a gated repository. `settled` is
-    False when an earlier command on the line may have changed the refs this reads (`git commit ... && git push`)."""
+def _switched_to(words: list[str], where: str):
+    """The branch a `git checkout` or `git switch` leaves current: its name, "" when that cannot be read, or None
+    when the command changes no branch (a path, a commit)."""
+    rest = words[words.index("checkout" if "checkout" in words else "switch") + 1:]
+    for flag, name in zip(rest, rest[1:] + [""]):
+        if flag in ("-b", "-B", "-c", "-C", "--orphan"):
+            return "" if not name or re.search(r"[$`]", name) else name
+    names = [w for w in rest[:rest.index("--")] if not w.startswith("-")] if "--" in rest else [w for w in rest if not w.startswith("-")]
+    if not names or re.search(r"[$`]", names[0]) or names[0] == "-":
+        return "" if names or "-" in rest else None
+    return names[0] if _run_git(where, "show-ref", "--verify", "--quiet", f"refs/heads/{names[0]}")[0] == 0 else None
+
+
+def _gated_push(words: list[str], where: str, names: set, readable: bool, branch) -> tuple[str, str] | None:
+    """(repository, branch) unless this `git push` provably leaves the default branch of every gated repository
+    alone. Nothing is worked out about what the push would change: one that names the default branch, or whose
+    destination cannot be read, is held, even with nothing ahead (two reviews showed that predicting git is where
+    the holes were). `branch` is the branch an earlier command on the line switched to: a name, "" when that cannot
+    be read, or None when none did."""
     rest, args, flags, option, i = words[words.index("push") + 1:], [], set(), "", 0
     while i < len(rest):
         name, _, value = rest[i].partition("=")
@@ -1286,42 +1318,35 @@ def _gated_push(words: list[str], where: str, names: set, readable: bool, settle
     named = "" if re.search(r"[$`]", destination) else destination  # a remote named through a variable is any remote
     known, urls = _run_git(where, "remote", "get-url", "--push", "--all", named) if named else (1, "")
     remote = named if known == 0 else "origin"
-    # Every URL the remote pushes to, a URL given outright, or every remote when the line names none.
-    found = _repo_names(urls if known == 0 else named or _run_git(where, "remote", "-v")[1]) & names
+    # Where it can go: every URL the named remote pushes to, or a URL given outright. When the line names none, or
+    # its routing cannot be read, that is every remote here and any repository the command's own words name.
+    reach = (urls if known == 0 else named) if named and readable else _run_git(where, "remote", "-v")[1] + " " + " ".join(words)
+    found = _repo_names(reach) & names
     if not found:
         return None
     repo = sorted(found)[0]
-    if not readable or any(re.search(r"[$`]", spec) for spec in refspecs):
+    every = bool(flags & {"--all", "--mirror", "--branches"}) or any("*" in s or s.lstrip("+") == ":" for s in refspecs)
+    if not readable or every or any(re.search(r"[$`]", spec) for spec in refspecs):
         return repo, UNREAD_BRANCH
     code, head = _run_git(where, "symbolic-ref", "--short", f"refs/remotes/{remote}/HEAD")
     defaults = {head.strip().split("/", 1)[1]} if code == 0 and "/" in head else {"main", "master"}
-    current = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip()
-
-    def moves(source: str, target: str) -> bool:
-        """Nothing ahead moves nothing, as after a merged pull request has been pulled."""
-        code, ahead = _run_git(where, "rev-list", "--count", f"{remote}/{target}..{source}") if settled else (1, "")
-        return code != 0 or ahead.strip() != "0"
-
-    if not refspecs and "--tags" not in flags:  # `--tags` alone pushes tags and no branch
-        # What a push with no refspec sends: the remote's own refspecs, every matching branch, or the branch's destination.
-        code, own = _run_git(where, "config", "--get-all", f"remote.{remote}.push")
-        there = _run_git(where, "rev-parse", "--abbrev-ref", "@{push}")[1].strip()
-        refspecs = (own.split() if code == 0 and own.strip() else [":"]
-                    if _run_git(where, "config", "--get", "push.default")[1].strip() == "matching"
-                    else [f"HEAD:{there.split('/', 1)[1]}"] if there.startswith(remote + "/") else ["HEAD"])
-    for spec in [":"] if flags & {"--all", "--mirror", "--branches"} else refspecs:
+    current = _run_git(where, "symbolic-ref", "--short", "HEAD")[1].strip() if branch is None else branch
+    # A configured refspec, or a push.default other than git's own, can send a branch somewhere its name does not say.
+    plain = (not _run_git(where, "config", "--get-regexp", r"^remote\..*\.push$")[1].strip()
+             and _run_git(where, "config", "--get", "push.default")[1].strip() in ("", "simple", "current"))
+    if not refspecs:
+        if "--tags" in flags:  # tags, and no branch
+            return None
+        return (repo, UNREAD_BRANCH) if not plain or not current else (repo, current) if current in defaults else None
+    for spec in refspecs:
         source, colon, target = spec.lstrip("+").partition(":")
         if spec.startswith("refs/tags/"):
             continue
-        if "*" in spec or (colon and not source and not target):  # every branch both sides have, the default among them
-            for name in sorted(defaults):
-                local = _run_git(where, "show-ref", "--verify", "--quiet", f"refs/heads/{name}")[0] == 0
-                if moves(name, name) if local else "--mirror" in flags:  # a mirror deletes what is not here
-                    return repo, name
-            continue
         target = (target or source).replace("refs/heads/", "", 1)
-        target = current if target in ("HEAD", "@") and current else target
-        if target in defaults and (not source or flags & {"-d", "--delete"} or moves(source, target)):
+        if (not colon and not plain) or (target in ("HEAD", "@") and not current):
+            return repo, UNREAD_BRANCH
+        target = current if target in ("HEAD", "@") else target
+        if target in defaults:
             return repo, target
     return None
 
@@ -1333,14 +1358,19 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
     if gated is None:
         return None
     commands, readable = _parse(command, cwd)
-    pushes, settled = [], True
+    pushes, rerouted, branch = [], set(), {}
     for words, directory in commands:
         sub, where = _git(words, directory)
         found = _push(words, where)
         if found:
-            pushes.append((found[0], where, readable and found[1], settled))
-        # Anything but a read may change the refs a later push on this line is judged by.
-        settled = settled and (os.path.basename(words[0]) in HARMLESS or sub in READS)
+            pushes.append((found[0], where, readable and found[1] and where not in rerouted, branch.get(where)))
+        elif sub in ("config", "remote", "worktree"):  # earlier on the line, these change where a later push goes
+            rerouted.add(where)
+        elif sub in ("checkout", "switch"):  # and these, which branch it pushes
+            there = _switched_to(words, where)
+            branch[where] = branch.get(where) if there is None else there
+        elif sub in ("branch", "symbolic-ref", "bisect", "rebase"):
+            branch[where] = ""
     if not pushes:
         return None
     if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):

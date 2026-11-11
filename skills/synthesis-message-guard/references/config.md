@@ -76,10 +76,11 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   and that invites at least one address other than the principal's own, or that moves an
   existing event to today (an update names the event, not its guests, so only a write that
   emails no one is left alone). The start is read from `start`, `start_time`, `startTime`,
-  `start_datetime` or `startDateTime`, flat or nested (`{"dateTime": ...}`, `{"date": ...}`),
-  in the call or in a list of events inside it. A start is today when its date as written is
-  today, when the same moment is today on this machine's clock, or, for a time with no
-  offset, when it is today in a time zone the call names. Attendees are read from any field
+  `start_datetime`, `startDateTime`, `start_date` or `startDate`, flat or nested
+  (`{"dateTime": ...}`, `{"date": ...}`), in the call or in a list of events at any depth
+  inside it. A start is today when its date as written is today (ISO, or a written date such
+  as `9 November 2026 at 3:00 PM`), when the same moment is today on this machine's clock,
+  or, for a time with no offset, when it is today in a time zone that event names. Attendees are read from any field
   whose name contains attend, guest, invite or particip, in whatever shape the connector
   takes; people a call removes and booked rooms are not counted.
 - **What it says:** `This puts a meeting on today's date and invites N other(s)` (or `This
@@ -93,7 +94,8 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   which keeps the ordinary approval because that person's timing binds; and the principal's
   own addresses, taken from `account_routing` (`default_account`, each workspace's `account`
   and `aliases`) and from the rule's `own` list. A guest is exempt by their address field, never by a display name, and in
-  a call that writes several events each event is judged by itself.
+  a call that writes several events each event is judged by itself, with its own time zone,
+  wherever the list of events sits in the call.
 - **A zone it cannot read is sent back, not guessed:** when a start has no offset, names a
   time zone this machine does not know (a Windows name such as `Tokyo Standard Time`) and
   its written date is within a day of today, the call is refused with a request for a UTC
@@ -102,7 +104,7 @@ that approval said the meeting was today. With `same_day_meetings` in the config
   (moving a meeting notifies its guests), and a calendar write with guests anywhere in the
   call, not only at its top level, is never the quiet kind that needs no approval.
 - **What it cannot see:** an update that sets no start (adding a guest to a meeting already
-  on today), an RSVP, a connector that takes its start as prose ("15 March at 2 PM"), and a
+  on today), an RSVP, a start written in a form this cannot read (it reads ISO and day, month and year in words), and a
   meeting placed through a browser or computer use. The
   chief-of-staff skill's slot check covers the decision before any call is made.
 

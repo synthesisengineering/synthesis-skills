@@ -62,7 +62,7 @@ def push(repo, command, config=GATED, cwd=None):
 
 @pytest.mark.parametrize("command", [
     "git push origin main", "git push", "git push origin HEAD:main", "git push origin HEAD", "git push --follow-tags",
-    "git push origin refs/heads/main", "git push -u origin main", "git push --all", "git push --mirror origin",
+    "git push origin refs/heads/main", "git push -u origin main",
     "git push origin :main", "git push --force-with-lease origin main", "git add -A && git commit -m x && git push origin main",
 ])
 def test_a_push_that_moves_the_default_branch_is_refused_with_the_route(repo, command):
@@ -101,9 +101,20 @@ def test_tags_dry_runs_and_another_repository_pass(repo, command):
     assert push(repo, command) is None
 
 
-def test_a_push_with_nothing_to_move_passes(repo):
-    assert push(repo, "git push origin main") is None  # level with the remote, as after a merged pull request
-    assert "pull request" in push(repo, "git push origin --delete main")  # deleting it moves it, level or not
+def test_a_push_that_names_the_default_branch_is_held_even_with_nothing_ahead(repo):
+    """Two reviews found every hole in the first versions where the guard predicted what git would move. It no
+    longer predicts: the default branch is not pushed from here, level or not, and a level push is a no-op to lose."""
+    for command in ("git push origin main", "git push", "git push origin --delete main", "git push --force-with-lease origin main"):
+        assert "pull request" in push(repo, command), command
+
+
+@pytest.mark.parametrize("command", ["git push --all", "git push --all origin", "git push --mirror origin", "git push --branches origin",
+                                     "git push origin :", "git push origin 'refs/heads/*:refs/heads/*'",
+                                     "git push origin 'refs/heads/release/*:refs/heads/*'"])
+def test_a_push_of_every_branch_or_a_pattern_of_branches_is_held(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    reason = push(repo, command)
+    assert reason and "acme/skills" in reason and "pull request" in reason and "could not be read" in reason
 
 
 def test_the_push_is_judged_where_it_runs(repo, tmp_path):
@@ -146,12 +157,42 @@ def test_a_setting_that_cannot_be_read_blocks_pushes_and_nothing_else(repo, brok
 # --- found by an independent review of the first version (2026-11-11) -----------------------------
 
 
-def test_a_commit_and_a_push_in_one_command_is_judged_as_it_will_be_after_the_commit(repo):
-    """Level before the command, ahead once its own commit has run: the common `commit && push`."""
+def test_a_commit_and_a_push_in_one_command_is_held_on_the_default_branch(repo):
     (repo / "first").write_text("changed", encoding="utf-8")
     assert "pull request" in push(repo, "git commit -am change && git push origin main")
     assert "pull request" in push(repo, "./make-a-commit.sh; git push")
-    assert push(repo, f"cd {repo} && git fetch origin && git status && git push origin main") is None  # nothing before it writes
+    assert "pull request" in push(repo, "git fetch upstream main:main && git push origin main")
+
+
+@pytest.mark.parametrize("command", [
+    "git push -u origin feature", "git push", "git push origin HEAD", "git add -A && git commit -m work && git push",
+    "npm test && git push -u origin feature", "sh -c 'git push origin feature'", "git push origin feature:feature",
+    "git push origin feature v1.0.0", "git status && git fetch origin && git push origin HEAD:refs/heads/feature",
+])
+def test_the_pushes_an_agent_makes_all_day_on_a_branch_pass(repo, command):
+    git(repo, "switch", "-q", "-c", "feature")
+    commit(repo, "second")
+    git(repo, "tag", "v1.0.0")
+    assert push(repo, command) is None, command
+
+
+def test_a_branch_made_or_switched_to_earlier_on_the_line_is_the_one_judged(repo):
+    commit(repo, "second")
+    assert push(repo, "git checkout -b topic && git commit -am work && git push -u origin HEAD") is None
+    assert push(repo, "git switch -c topic && git push") is None
+    git(repo, "switch", "-q", "-c", "feature")
+    assert "pull request" in push(repo, "git switch main && git push origin HEAD")
+    assert "pull request" in push(repo, "git checkout main && git push")
+    assert "could not be read" in push(repo, "git checkout - && git push")
+    assert "could not be read" in push(repo, 'git switch "$TARGET" && git push origin HEAD')
+    assert push(repo, "git checkout -- first && git push") is None  # a path restored, no branch changed
+
+
+def test_routing_changed_earlier_on_the_line_makes_the_push_unreadable(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    for command in ("git config remote.origin.push HEAD:main && git push origin feature",
+                    "git remote set-url --push fork ../acme/skills.git && git push fork feature"):
+        assert "could not be read" in push(repo, command), command
 
 
 @pytest.mark.parametrize("command", [
@@ -196,13 +237,36 @@ def test_a_destination_given_as_an_option_is_read(repo, tmp_path):
     assert "pull request" in push(repo, f"git push --repo={tmp_path / 'acme' / 'skills.git'}")  # no repository named: this is it
 
 
-def test_pushing_every_branch_passes_when_the_default_branch_would_not_move(repo):
+def test_a_configured_refspec_that_maps_a_named_branch_elsewhere_is_held(repo):
     git(repo, "switch", "-q", "-c", "feature")
-    commit(repo, "second")
-    assert push(repo, "git push --all origin") is None
-    git(repo, "switch", "-q", "main")
-    commit(repo, "third")
-    assert "pull request" in push(repo, "git push --all origin")
+    git(repo, "config", "remote.origin.push", "refs/heads/feature:refs/heads/main")
+    assert "could not be read" in push(repo, "git push origin feature")  # the refspec sends feature to main
+    assert push(repo, "git push origin feature:feature") is None           # both sides named: nothing to consult
+
+
+def test_a_bare_push_through_another_remote_with_its_own_refspec_is_held(repo, tmp_path):
+    git(repo, "switch", "-q", "-c", "feature")
+    git(repo, "remote", "add", "publish", str(tmp_path / "acme" / "skills.git"))
+    git(repo, "config", "branch.feature.pushRemote", "publish")
+    git(repo, "config", "remote.publish.push", "HEAD:main")
+    assert "could not be read" in push(repo, "git push")
+
+
+def test_a_remote_defined_on_the_command_line_is_read_from_the_command(repo, tmp_path):
+    git(repo, "remote", "remove", "origin")
+    command = f"git -c remote.new.url={tmp_path / 'acme' / 'skills.git'} push new HEAD:main"
+    assert "pull request" in push(repo, command)
+
+
+def test_an_alias_of_an_alias_and_an_alias_that_starts_with_options_are_followed(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    git(repo, "config", "alias.publish", "push origin HEAD:main")
+    git(repo, "config", "alias.ship", "publish")
+    git(repo, "config", "alias.route", "-c remote.origin.push=HEAD:main push origin")
+    for command in ("git ship", "git publish", "git route"):
+        assert "pull request" in push(repo, command), command
+    git(repo, "config", "alias.up", "push -u origin feature")
+    assert push(repo, "git up") is None
 
 
 # --- the doctor ----------------------------------------------------------------------------------

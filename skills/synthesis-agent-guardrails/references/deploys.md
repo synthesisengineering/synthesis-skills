@@ -116,38 +116,46 @@ hosting plan without branch protection, or an agent whose instructions say "push
 One private skills repository took 61 commits pushed straight to `main` in six weeks, beside 35
 merged pull requests (found 2026-11-09). `pr_gated` lists such repositories by `owner/repo`.
 
-- **Refused:** a `git push` that would move a listed repository's default branch: `git push`
-  on that branch, `git push origin main`, `HEAD:main`, `feature:main`, `refs/heads/main`,
-  `:main`, and `--all`, `--mirror`, `:` or a wildcard refspec when the default branch is
-  among what they send, from the checkout or any linked worktree of it, however the command
-  reaches it (`git -C`, `cd ... &&`, `sh -c`). The default branch is the remote's `HEAD`
-  (`main` or `master` when the checkout has not recorded one). The refusal names the route:
-  push a branch, open the pull request, let its checks pass, merge it, install from the
-  merged branch.
-- **Read the way git reads it:** with no refspec on the line, the push goes where git would
-  send it (the remote's configured `push` refspecs, `push.default`, the branch's push
-  destination), so a branch that tracks the default branch is caught. A remote is judged by
-  every URL it pushes to (`pushurl`), `--repo` names the repository when the line names none,
-  and a git alias that expands to a push is followed.
-- **Passes:** a push to any other branch, tags (`--tags`, a tag name), `--dry-run`, a push to
-  another repository's remote, and a push with nothing ahead of the remote branch (the state
-  after a merged pull request has been pulled). That last one holds only when nothing earlier
-  on the same line could have made a commit: `git commit -am x && git push` is judged as it
-  will be after the commit, and only reads (`cd`, `git status`, `git fetch`, `git log`, `ls`,
-  `echo`) may come before the push.
+- **The rule:** from a checkout (or linked worktree) with a remote on a listed repository, a
+  `git push` goes through only when it provably leaves that repository's default branch
+  alone. The guard does not work out what a push would change. Two reviews of earlier
+  versions found every hole where it predicted git (a commit made earlier on the same line,
+  a branch that tracks the default branch, a configured refspec, a level branch that a lease
+  could rewind), so a push that names the default branch is held even when nothing is ahead,
+  and a level push is a no-op to lose. The default branch is the remote's `HEAD` (`main` or
+  `master` when the checkout has not recorded one).
+- **Passes:** a push that names a branch other than the default (`git push -u origin feature`,
+  `feature:feature`, `HEAD:refs/heads/feature`); a bare `git push`, `git push origin` or
+  `git push origin HEAD` while the current branch is not the default; tags (`--tags`, a tag
+  name, `refs/tags/...`); `--dry-run`; a push to a remote on another repository. Whatever
+  ran earlier on the line does not matter for these (`npm test && git push -u origin feature`),
+  except as below.
+- **Held:** a push whose destination is the default branch (`git push origin main`,
+  `HEAD:main`, `feature:main`, `refs/heads/main`, `:main`, `--delete main`, a bare `git push`
+  on the default branch), with the route in the refusal: push a branch, open the pull
+  request, let its checks pass, merge it, install from the merged branch.
+- **Held because it cannot be read:** every branch at once (`--all`, `--mirror`, `--branches`,
+  `:`, any wildcard refspec); a branch or remote named through a variable or a substitution;
+  routing config on the line (`git -c remote.x.url=...`, `-c remote.origin.push=...`,
+  `-c push.default=...`, `-c alias.x=...`, `--config-env`); a bare push, or a branch named
+  without its destination, when the checkout has a configured `remote.<name>.push` refspec
+  or a `push.default` other than `simple` or `current`; a `git config`, `git remote` or
+  `git worktree` earlier on the same line; a shell alias that pushes; and a command with an
+  unclosed quote.
+- **Read the way git reads it:** a remote is judged by every URL it pushes to (`pushurl`);
+  `--repo` names the repository when the line names none; a git alias is followed through
+  other aliases and through options it puts first; and `git switch`, `git checkout -b` and
+  their kin earlier on the line set the branch a later `git push` or `HEAD` refers to
+  (`git switch main && git push origin HEAD` is held; `git checkout -b topic && git push -u
+  origin HEAD` passes). When the branch they leave cannot be read (`git checkout -`, a
+  variable, `git rebase`, `git branch -m`), a push that depends on it is held.
 - **One exact push with the principal's code:** the refusal carries a code; when the
   principal types it, the identical command runs once. There are no exceptions by path or
   kind of change: a list of exceptions is where a gate erodes. A forced push to a default
   branch is refused outright, as before, and no code admits it.
-- **A command the guard cannot read** (an unclosed quote), one that names its branch or
-  remote through a variable or a substitution (`git push origin "$(...)"`), one that sets
-  routing config on the line (`git -c remote.origin.push=... push`, `-c alias.x=...`,
-  `-c push.default=...`, `--config-env`), and a shell alias that pushes are refused when
-  they push from a gated checkout: no branch can be ruled out. Deleting the default branch is
-  refused whether or not anything is ahead.
-- **What it cannot see:** a push made inside a script file, a ref moved through the host's
-  API, and any push from a machine or tool without the hook. The doctor's check below is
-  what catches those.
+- **What it cannot see:** a push made inside a script file, a branch switched by a program
+  other than git earlier on the line, a ref moved through the host's API, and any push from
+  a machine or tool without the hook. The doctor's check below is what catches those.
 - **The doctor:** `pr gate` reads each listed repository's checkout under the workspace
   folders and lists commits on its default branch since `since` that are neither merge
   commits nor GitHub squash merges (subject ending `(#N)`) nor in `direct_ok`. A push made

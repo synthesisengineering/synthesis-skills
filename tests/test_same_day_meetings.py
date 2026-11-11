@@ -237,6 +237,41 @@ def test_no_start_makes_the_guard_raise(start):
     assert reason and "approval" in reason
 
 
+# --- found by the second review round (2026-11-11) ------------------------------------------------
+
+
+def test_events_nested_inside_a_batch_container_are_still_judged_one_by_one():
+    batch = {"batch": {"events": [{"title": "With the chief", "start": f"{TODAY}T10:00", "attendees": [{"email": "chief@example.com"}]},
+                                  {"title": "With a guest", "start": f"{TODAY}T16:00", "attendees": [{"email": "b@example.com"}]}]}}
+    reason = guards.check("mcp__planner__planner-calendar-create-events", batch, CONFIG, cwd="/tmp")
+    assert same_day(reason) and "1 other" in reason
+
+
+def test_one_events_time_zone_is_not_applied_to_another(monkeypatch):
+    import time
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:  # neither is today here: the first is tomorrow in New York, the second three days out in Tokyo
+        batch = {"events": [
+            {"title": "A", "attendees": [{"email": "a@example.com"}], "period": {"start": {"dateTime": "2026-11-10T09:00:00", "timeZone": "America/New_York"}}},
+            {"title": "B", "attendees": [{"email": "b@example.com"}], "period": {"start": {"dateTime": "2026-11-12T09:00:00", "timeZone": "Asia/Tokyo"}}}]}
+        reason = guards.check("mcp__planner__planner-calendar-create-events", batch, CONFIG, cwd="/tmp")
+        assert "approval" in reason and not same_day(reason)
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+@pytest.mark.parametrize("start", ["9 November 2026 at 3:00 PM", "November 9, 2026 at 3:00 PM", "Nov 9, 2026 15:00", "9 Nov 2026"])
+def test_a_connector_that_takes_its_start_as_a_written_date_is_read(start):
+    """One desktop calendar connector documents its start as '15 March 2025 at 2:00 PM', under `start_date`."""
+    move = {"summary": "Existing meeting", "start_date": start}
+    assert same_day(guards.check("mcp__apple_calendar__update_event", move, CONFIG, cwd="/tmp"))
+    later = {"summary": "Existing meeting", "start_date": start.replace("9", "12", 1)}
+    reason = guards.check("mcp__apple_calendar__update_event", later, CONFIG, cwd="/tmp")
+    assert "approval" in reason and not same_day(reason)
+
+
 def test_a_send_window_never_covers_a_meeting_today():
     config = {**CONFIG, "send_window_signatures": ["Helperbot"]}
     sends.open_window(1, ["calendar"], count=5)
