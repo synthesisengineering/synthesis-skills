@@ -1884,7 +1884,8 @@ ARG_READERS = {"argparse", "optparse", "getopt", "fileinput", "click", "typer", 
 def _python_writes(source: str, names: list, roots: list | tuple = (), where: str = "", argv: list | tuple = (),
                    env: dict | None = None) -> tuple:
     """(whether a Python program writes into a protected path, whether it writes at all); (None, None) when it cannot
-    be told (no source, a syntax error, exec or eval). Only a write's target counts, never the content it writes, so
+    be told (no source, a syntax error), and (None, True) for a program that runs code it builds (exec, eval,
+    importlib): it cannot be read and is taken to write. Only a write's target counts, never the content it writes, so
     a project record that cites a transcript path is not a write into transcripts (2026-10-14). The program is read
     by its syntax, since a pattern over its text stops at the first closing parenthesis (2026-11-11). A target the
     program spells out is judged where it leads, so what is the agent's own there is its own for a program too. Any
@@ -1898,11 +1899,19 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     import ast
     try:
         tree = ast.parse(source) if source.strip() else None
-    except SyntaxError:
+    except (SyntaxError, ValueError, RecursionError):
         tree = None
-    nodes = list(ast.walk(tree)) if tree is not None else []
-    if tree is None or any(isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile", "__import__") for n in nodes):
+    if tree is None:
         return None, None
+    nodes = list(ast.walk(tree))
+
+    def said(node):  # the text of a string, None for anything else
+        value = node.value if isinstance(node, ast.Constant) else None
+        return value.decode("utf-8", "replace") if isinstance(value, bytes) else value if isinstance(value, str) else None
+
+    def imported(node):  # the module a call imports by a name it spells out: __import__("os"), import_module("os")
+        call = isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) in ("__import__", "import_module")
+        return said(node.args[0]) if call and node.args else None
     modules, direct, stars, local, pairs, loops, tainted, bound = {}, {}, [], {}, [], [], set(), {}
     for n in nodes:  # what each name is: a module, a name taken from one, the program's own function, an assignment
         if isinstance(n, ast.Import):
@@ -1923,12 +1932,19 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                     local.setdefault(target.id, []).append(n.value.args)
         elif isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
             loops.append(n)
+    spelt = {id(n.func) for n in nodes if imported(n)}
+    if any((isinstance(n, ast.Name) and n.id in ("exec", "eval", "compile")) or getattr(n, "id", getattr(n, "attr", "")) in ("run_path", "run_module")
+           or (getattr(n, "id", getattr(n, "attr", "")) in ("__import__", "import_module") and id(n) not in spelt) for n in nodes):
+        return None, True  # it runs code it builds, or imports a module it names at run time
     for target, value in pairs:  # a function kept under another name is still that function
         if isinstance(target, ast.Name) and isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and value.value.id in modules:
             direct[target.id] = (modules[value.value.id], value.attr)
         elif isinstance(target, ast.Name) and isinstance(value, ast.Name) and (value.id in direct or value.id == "open"):
             direct[target.id] = direct.get(value.id, ("builtins", "open"))
+        elif isinstance(target, ast.Name) and imported(value):
+            modules[target.id] = imported(value)
     stored = [n.id for n in nodes if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)] + [n.arg for n in nodes if isinstance(n, ast.arg)]
+    once = {name for name, same in itertools.groupby(sorted(stored)) if len(list(same)) == 1}  # names given a value exactly once
     calls = [n for n in nodes if isinstance(n, ast.Call)]
     # The words after the program are its arguments, and `sys.argv[2]` is the second of them. Taken another way (a
     # slice, a loop, an argument parser), or after a word the shell fills in, they cannot be placed, and then any
@@ -1942,10 +1958,6 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
               and not any(re.search(r"[*?\[{$`]", w) for w in argv[1:]))
     given = {id(index[id(n)]): argv[index[id(n)].slice.value] for n in uses if placed and 0 <= index[id(n)].slice.value < len(argv)}
     loose = not placed and any(m in w for w in argv[1:] for m in names)
-
-    def said(node):  # the text of a string, None for anything else
-        value = node.value if isinstance(node, ast.Constant) else None
-        return value.decode("utf-8", "replace") if isinstance(value, bytes) else value if isinstance(value, str) else None
 
     # The environment is placed the same way: a variable the program reads by name (os.environ["X"], .get("X"),
     # os.getenv("X")) has the value the command gives it, when that value is plain. Read any other way, a variable
@@ -2005,18 +2017,15 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
                 else {x for e in getattr(target, "elts", []) for x in held(e)})
     classed = {x for c in nodes if isinstance(c, ast.ClassDef) for b in c.body for t in getattr(b, "targets", [getattr(b, "target", None)])
                if t is not None for x in held(t)}  # a name given in a class body is read as an attribute
-    rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and stored.count(t.id) == 1 and isinstance(v, (ast.List, ast.Tuple))}
-    for n in calls:  # a list that gains a row later is not the list as written
-        root = getattr(n.func, "value", None)
-        rows.pop(getattr(root, "id", ""), None) if getattr(n.func, "attr", "") in MUTATORS else None
-    for target, _ in pairs:
-        rows.pop(getattr(getattr(target, "value", None), "id", ""), None)
+    rows = {t.id: v.elts for t, v in pairs if isinstance(t, ast.Name) and t.id in once and isinstance(v, (ast.List, ast.Tuple))}
+    for holder in [n.func.value for n in calls if getattr(n.func, "attr", "") in MUTATORS] + [getattr(t, "value", None) for t, _ in pairs]:
+        rows.pop(getattr(holder, "id", ""), None)  # a list that gains a row later is not the list as written
     grew = True
     while grew:
         grew = False
         for target, value in pairs:
             grew |= named(value) and taint(held(target))
-            if isinstance(target, ast.Name) and stored.count(target.id) == 1 and target.id not in bound and spelled(value)[:1] != "\0":
+            if isinstance(target, ast.Name) and target.id in once and target.id not in bound and spelled(value)[:1] != "\0":
                 bound[target.id], grew = spelled(value), True  # a name given one value once spells what that value spells
         for n in loops:  # over rows the program spells out, each name takes its own column; over anything else, all of it
             each = n.iter.elts if isinstance(n.iter, (ast.List, ast.Tuple)) else rows.get(getattr(n.iter, "id", ""))
@@ -2059,9 +2068,11 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         path = spelled(node)
         real = os.path.realpath(os.path.join(where, os.path.expanduser(path))) if "\0" not in path else ""
         inside = bool(real) and any(paths.inside(real, r) for r in roots)
-        if real and (inside or not any(m in path for m in names)):  # a plain path is judged where it leads; one that names a
-            return (inside and not _own(real, folder)) or (moved and not os.path.isabs(os.path.expanduser(path)))  # protected folder and climbs away is not
-        lead = os.path.dirname(os.path.expanduser(path).split("\0")[0])  # else by what it is built from, and inside by the folder that leads it
+        # A plain path is judged where it leads (one that names a protected folder and climbs away from it is not
+        # plain). Any other target is judged by what it is built from, and inside by the folder that leads it.
+        if real and (inside or not any(m in path for m in names)):
+            return (inside and not _own(real, folder)) or (moved and not os.path.isabs(os.path.expanduser(path)))
+        lead = os.path.dirname(os.path.expanduser(path).split("\0")[0])
         led = os.path.realpath(lead) if os.path.isabs(lead) else ""
         return named(node) or ((standing or moved) and not (led and not any(paths.inside(led, r) or paths.inside(r, led) for r in roots)))
     moved = any(getattr(n.func, "attr", getattr(n.func, "id", "")) in ("chdir", "fchdir") and any(map(lands, n.args)) for n in calls)
@@ -2070,13 +2081,13 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         base = n.func.value if isinstance(n.func, ast.Attribute) else None
         label, kw = n.func.attr if base is not None else getattr(n.func, "id", ""), {k.arg: k.value for k in n.keywords}
         plain = base is None and label not in direct and label not in local  # a builtin, or a name a star import brought
-        owners = ([modules.get(base.id, base.id)] if isinstance(base, ast.Name) else [direct[label][0]] if base is None and label in direct
-                  else stars if plain else [])
+        owners = ([modules.get(base.id, base.id)] if isinstance(base, ast.Name) else [imported(base).split(".")[0]] if imported(base)
+                  else [direct[label][0]] if base is None and label in direct else stars if plain else [])
         label = direct[label][1] if base is None and label in direct else label
         every = [a for a in n.args + list(kw.values()) if said(a) is not None or not isinstance(a, ast.Constant)]  # a number names no file
         opener = label in ("open", "ZipFile", "TarFile", "FileIO") and (plain or any(m in OPENERS for m in owners))
         starred = any(isinstance(a, ast.Starred) for a in n.args) or None in kw  # open(*pair): the mode cannot be read
-        method = base is not None and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
+        method = base is not None and not imported(base) and not (isinstance(base, ast.Name) and base.id in modules)  # p.write_text(), not os.remove()
         mode = ((n.args[1:2] if opener else n.args[:1]) or [kw.get("mode")])[0]  # Path(p).open("w") takes its mode first
         writes = mode is not None and (said(mode) is None or bool(re.fullmatch(r"[rbtU]*[wax+][\w+:|]*", said(mode))))
         targets = [t for m in owners for t in (  # what a call into the standard library changes: a copy, only where it lands
@@ -2152,7 +2163,10 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         # runs in (2026-10-06: through a variable). Its arguments are put where it reads them; through the
         # environment, or through arguments it takes unseen, any write it makes is refused. Another script is
         # judged by the words it is given, or, read from stdin, by the whole command.
-        hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env) if source else (None, None)
+        try:
+            hit, wrote = _python_writes(source, names, [os.path.realpath(r) for r in raw], where, argv, env) if source else (None, None)
+        except RecursionError:  # nested too deeply to follow: judged by its text
+            hit, wrote = None, None
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
             v[:1] == "/" and paths.inside(v, os.path.realpath(r)) for v in os.environ.values() for r in raw))
