@@ -14,12 +14,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   draft had promised. A rule about realistic travel was in his preferences under calendar rebuilds, so nothing
   ran it when one event was added. Now:
   - `travel_check.py` (chief of staff) reads a saved calendar read and the `travel_policy` in the preferences and
-    lists each in-person event with what its travel lacks: an exact address, the event's own `Travel:` line, a
-    travel block on each side with every line a traveler needs (who pays, leave, route, arrive, backup, fare,
-    ticket), an arrival early enough, and four things only the principal settles (a return that leaves before
-    the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a personal
-    trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. It plans
-    no trip: an agent does that from a live source.
+    lists each in-person event with what its travel lacks: an exact address (a house number with its street, or a
+    postcode with its town), the event's own `Travel:` line in one of three forms (`blocks`, `local, N min`,
+    `none, <why>`), a travel block on each side with every line a traveler needs (who pays, leave, route, arrive,
+    backup, fare, ticket), an arrival early enough, and four things only the principal settles (a return that
+    leaves before the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a
+    personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. It
+    plans no trip: an agent does that from a live source.
   - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
     the principal is home; `--in-person` with neither is refused.
   - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
@@ -47,39 +48,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     from its next ritual record.
   - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
     recommended row covered for rows with none.
-- **The write guard reads a path however a command names it, and passes a protected path only to a program it
-  knows to only read it** (core). It began as two faults: a write through a variable the command had just
-  assigned was judged as a write somewhere else, and the file tools were refused in a project's memory folder.
-  A second model's review of the first fix, and this project's own probes while answering it, showed the guard
-  was narrower than the shell in three ways.
+- **The write guard reads a path however a command names it, passes a protected path only to a program it knows
+  to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
+  through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
+  refused in a project's memory folder. Three rounds of review by a second model, and this project's own probes
+  and replays while answering them, showed the guard was narrower than what it guards against in four ways.
   - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
-    protected folder out: relative to the session's folder, to a `cd`, through a variable. A command is read once
-    for each value it gives a variable (an assignment, after `export`, `readonly`, `declare` or `env`, in a
-    `for … in` list, inside a quoted script), with the environment's value for one it does not set, the default
-    a use carries and an end trimmed by `%` or `#`. A path is compared the way a Mac's file system finds it,
-    whatever its case. The destructive-command guard and the claim check read the same readings, so a recursive
-    delete, a force push or a write into another session's claim through a variable or a loop is seen.
+    protected folder out: relative to the session's folder, to a `cd` or to where `env -C` sends the command,
+    through a variable, through a link the same command makes. A command is read once for each value it gives a
+    variable (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a
+    quoted script), with the environment's value for one it does not set, the default a use carries and an end
+    trimmed by `%` or `#`. A path is compared the way a Mac's file system finds it, whatever its case. The
+    destructive-command guard and the claim check read the same readings, so a recursive delete, a force push or
+    a write into another session's claim through a variable or a loop is seen.
   - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
     `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so
     the rule is turned round: a path inside a protected folder may be handed to a program the guard knows only
     reads it, to an interpreter or a shell (judged by the script it is given), and to `git` and the `synthesis`
     CLI. Any other program is refused and told to read the file with `cat` and pipe it in, or to copy it out.
-    A Python program given inline or on stdin is judged by its own code; a path named in another command of the
-    line no longer counts against it, and one that reaches it through its arguments, its environment or the
-    folder it runs in does.
+    What a file utility changes is read from its own words: a copy's destination, both ends of a move, what
+    `find` deletes or runs a changing command on, what an awk program writes, the files `xargs` hands on.
+  - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
+    alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line
+    was read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call
+    into `os`, `shutil` or `subprocess`, a database opened, an archive unpacked, however the call was imported or
+    renamed. A target the program spells out is judged where it leads; any other by what it is built from, a
+    name followed through assignments, loops, `with`, defaults, the program's own functions, lists and
+    attributes. The words after the program are placed where it reads `sys.argv[n]`, and a variable of the
+    environment where it reads it by name; taken another way, one that names a protected path makes any write a
+    refusal. What the program reads from a file is content and names no path. A copy out of a protected folder
+    changes only the copy. A program that runs code it builds (`exec`, `eval`, a module named at run time) is
+    taken to write. A script on stdin for another interpreter is judged by its own heredoc.
+  - **Standing in a protected folder.** A program can write where it stands without naming a file. Inside the
+    state folder, the board or the sessions archive only a command the guard can read runs: a reader, a file
+    utility, a script given inline, `git` only reading. Inside a harness's transcript folder, where sessions work
+    on saved tool results, other programs run, and an inline program's writes must each be led by a plain folder
+    somewhere else. Applied to transcript folders as well, the rule refused 17 real commands in the replay, all
+    needless.
   - **What is the agent's own.** A project's memory notes (`*.md` under `<project>/memory/` in Claude Code's
-    projects folder) are the agent's to write, move and remove, by file tool or shell; a link made there is
-    refused. A tool result the harness saved beside a transcript is material any program may be given; changing
-    it where it lies stays refused. The hook is run when it is the script an interpreter runs, not when another
-    program is handed its file.
+    projects folder) and a session's saved workflow scripts (`*.js` in `<session>/workflows/scripts/`) are the
+    agent's to write, move and remove, by file tool, shell or inline program; a link made there is refused. A
+    tool result the harness saved beside a transcript is material any program may be given; changing it where
+    it lies stays refused. The hook is run when it is the script an interpreter runs, not when another program
+    is handed its file.
   - **Measured before release.** 109,893 distinct shell commands from 30 days of one machine's transcripts were
-    run through the 5.6.0 guard and this one, and every command whose verdict changed was read. The needless
-    refusals the first passes showed are now tests. At the end the new guard refused 2 commands the old one
-    passed (a move of a saved tool result and a subagent's transcript to the Trash, and a database tool opening
-    a session store) and passed 56 the old one refused: 37 scripts that edit project files while a protected
-    path is only read or mentioned elsewhere on the line, 17 memory notes written from the shell, and 2
-    programs handed the hook's file. The destructive guard newly refused 2 recursive deletes of a scratch clone
-    named through a variable, which it always refused when the path was written out.
+    run through the 5.6.0 guard and this one, again after each change, and every command whose verdict changed
+    was read. The needless refusals each pass showed are now tests. At the end the new guard refused 5 commands
+    the old one passed (three runs of a property-list tool from inside the sessions archive, a database tool
+    opening a session store, and a move of a saved tool result and a subagent's transcript to the Trash) and
+    passed 77 the old one refused: 51 inline programs that read a protected path and write somewhere else, 21
+    commands that write what is the agent's own (memory notes and saved workflow scripts, 15 from the shell and
+    6 by program), 3 writes from inside a protected folder to a path elsewhere named through a variable, and 2
+    programs handed the hook's file. Of the 57 it refuses in those 30 days, 46 are commands whose own program
+    names the guard's approval code (work on the guard itself), 6 run the hook, and 5 are the ones above. The
+    destructive guard newly refused 2 recursive deletes of a scratch clone named through a variable, which it
+    always refused when the path was written out. `docs/runtime-integration.md` says what the reader does not
+    follow.
+- **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
+  shared Drive folder in a principal's name with no hold, while a read-only request by `curl` was held the same
+  afternoon: the guard reads a command's text and cannot see what a script sends. The knowledge base's
+  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is; `--dry-run` and
+  `--help` pass.
 - **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
   word for word into `references/meetings-correspondence-travel.md` to make room for binding rules 13 and 14.
 - synthesis-kb-distribution: the connector's no-token-logged test captures FastMCP's own log lines under pytest
