@@ -339,17 +339,38 @@ def test_plugin_command_prints_the_restart_sentence(tmp_path, monkeypatch, capsy
     assert out.strip().endswith(setup.RESTART)
 
 
+APPLE_CACHE = ("Library", "Caches", "com.apple.python")
+
+
+def home_tree() -> dict:
+    """Every path under the home folder with its time, apart from the bytecode cache Apple's Python keeps there:
+    a temporary home starts with none, so any Python started in it fills one, which is not this code's doing."""
+    home = Path.home()
+    return {str(p): p.lstat().st_mtime_ns for p in home.rglob("*")
+            if (parts := p.relative_to(home).parts)[:3] != APPLE_CACHE and parts not in (APPLE_CACHE[:1], APPLE_CACHE[:2])}
+
+
+def test_the_home_tree_leaves_out_apples_bytecode_cache_and_nothing_else():
+    before = home_tree()
+    cache = Path.home() / "Library" / "Caches" / "com.apple.python" / "Applications"
+    cache.mkdir(parents=True)
+    (cache / "os.cpython-39.pyc").write_bytes(b"x")
+    assert home_tree() == before
+    (Path.home() / "stray.txt").write_text("x")
+    assert set(home_tree()) - set(before) == {str(Path.home() / "stray.txt")}
+
+
 def test_with_no_harness_setup_stops_before_changing_anything(monkeypatch, capsys):
     """2026-10-30: a Mac with no harness setup could find got a runtime nothing used and a restart sentence."""
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
-    before = {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")}
+    before = home_tree()
     assert setup.main(["all", "--no-input"]) == 1
     out = capsys.readouterr().out
     assert out.startswith("stopped: no Claude Code, Codex or Muse on this Mac") and "claude.com/download" in out
     assert setup.RESTART not in out
     assert setup.main(["plugin", "--no-input", "--clients", "codex"]) == 1
     assert capsys.readouterr().out.startswith("stopped: no Codex on this Mac")
-    assert {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")} == before
+    assert home_tree() == before
 
 
 def test_uninstall_removes_the_plugin_with_each_harness_command(tmp_path, monkeypatch, capsys):
@@ -368,7 +389,7 @@ def test_dry_runs_say_what_they_would_do_and_change_nothing(tmp_path, monkeypatc
     claude, log = fake_cli(tmp_path, "claude", {"plugin list": (0, [{"id": PLUGIN_ID, "version": "5"}]), "plugin": (0, "")})
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: claude if name == "claude" else None)
     setup.install.install(setup.REPO)
-    before = {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")}
+    before = home_tree()
     assert setup.main(["uninstall", "--dry-run", "--clients", "claude"]) == 0
     out = capsys.readouterr().out.splitlines()
     assert "claude: would remove synthesis-skills" in out and any(line.startswith("would keep ") for line in out)
@@ -379,7 +400,7 @@ def test_dry_runs_say_what_they_would_do_and_change_nothing(tmp_path, monkeypatc
     assert out[-2].startswith("runtime: would install it from ") and "would link day-end (auto)" in out[-2]
     assert out[-1] == "Dry run: nothing was changed." and setup.RESTART not in out
     assert calls(log) == ["plugin list --json"] * 2  # no removal, install or update ran
-    assert {str(p): p.lstat().st_mtime_ns for p in Path.home().rglob("*")} == before
+    assert home_tree() == before
 
 
 def _stand_ins(bin_dir, log, python_ok=True, **extra):

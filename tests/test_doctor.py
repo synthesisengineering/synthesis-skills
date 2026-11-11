@@ -612,9 +612,29 @@ def machine(tmp_path, monkeypatch):
     return home, fakebin, muse_dir
 
 
+APPLE_CACHE = ("Library", "Caches", "com.apple.python")
+
+
 def snapshot(root: Path) -> dict:
+    """Every path under root with its size and time, apart from the runtime's own state and the bytecode cache
+    Apple's Python keeps under the home folder. A temporary home starts with no such cache, so any Python started
+    there fills one (70 entries in CI on 2026-11-11); that is the interpreter's doing, not the code's."""
     return {str(p): (p.stat().st_size, p.stat().st_mtime_ns) for p in root.rglob("*")
-            if ".synthesis" not in p.parts}
+            if ".synthesis" not in p.parts and (parts := p.relative_to(root).parts)[:3] != APPLE_CACHE
+            and parts not in (APPLE_CACHE[:1], APPLE_CACHE[:2])}
+
+
+def test_the_snapshot_leaves_out_apples_bytecode_cache_and_nothing_else(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    before = snapshot(tmp_path)
+    cache = tmp_path / "Library" / "Caches" / "com.apple.python" / "Applications" / "Xcode.app"
+    cache.mkdir(parents=True)
+    (cache / "os.cpython-39.pyc").write_bytes(b"x")
+    assert snapshot(tmp_path) == before
+    (tmp_path / "Library" / "Caches" / "other.txt").write_text("x")
+    (tmp_path / ".claude" / "settings.json").write_text("{}")
+    assert sorted(set(snapshot(tmp_path)) - set(before)) == [str(tmp_path / ".claude" / "settings.json"),
+                                                            str(tmp_path / "Library" / "Caches" / "other.txt")]
 
 
 def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, capsys):
