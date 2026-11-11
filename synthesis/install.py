@@ -1,8 +1,9 @@
 """Install the v5 runtime at one stable path, and keep it current (R7.1, R7.5).
 
 Hooks call ~/.synthesis/v5/bin/synthesis-hook, whose command text never
-changes between releases, so a harness's hook approval survives upgrades and a
-harness deleting an old plugin folder never breaks a running task. At each
+changes between releases, so a harness deleting an old plugin folder never
+breaks a running task (Codex still asks for its hook approval again after each
+release: it ties the approval to the installed plugin's contents). At each
 session start the hook passes the plugin folder the harness loaded; if it is a
 newer release than the installed copy, it is installed beside the old one and
 `current` switches atomically. A session still on an older plugin (one that

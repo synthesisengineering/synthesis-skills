@@ -70,8 +70,11 @@ Source-managed public/private skills must not also be copied there.
 Share the behavior-producing code; adapt the hook configuration to each
 runtime’s events and output schema. In v5 every hook calls one stable path,
 `~/.synthesis/v5/bin/synthesis-hook <event>`, whose text never changes between
-releases, so a harness's approval of a hook definition survives upgrades and a deleted
-plugin version folder never breaks a running task.
+releases, so a deleted plugin version folder never breaks a running task. An approval of
+the hook definitions does not survive upgrades in every harness: Codex ties it to the
+installed plugin's contents and asks again after each release, and runs no hook until
+the person approves; conformance checks the approval by running a real turn or by the
+doctor's own fingerprint, never by the harness's record alone.
 
 Required properties:
 

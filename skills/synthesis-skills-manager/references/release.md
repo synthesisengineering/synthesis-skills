@@ -182,8 +182,11 @@ task when a Codex update deleted that folder (2026-09-02, CHANGELOG 4.90.2).
 v5 has two stable paths, both outside the harnesses' caches:
 
 - `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its text never changes
-  between releases, so a harness's hook approval survives upgrades and a deleted
-  plugin folder never breaks a running task.
+  between releases, so a deleted plugin folder never breaks a running task. A hook
+  approval is another matter: Muse has kept its approval across every release so far,
+  and Codex asks again after each one, because it ties the approval to a fingerprint of
+  the installed plugin. Until the person approves in `/hooks`, Codex runs none of the
+  hooks; `release.py` names that approval as waiting.
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
   plugin folder the harness loaded; if it is a newer release, it is installed beside the
   old one and `current` switches atomically, and a session on an older plugin never

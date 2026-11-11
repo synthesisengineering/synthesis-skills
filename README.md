@@ -39,7 +39,13 @@ material lives in reference files. The [skill list](#skill-list) is below.
 ### Four hooks
 
 All four run `~/.synthesis/v5/bin/synthesis-hook <event>`. That path and its text never
-change between releases, so a harness's approval of the hook survives upgrades.
+change between releases, so a harness deleting an old plugin folder never breaks a running
+session. What it does not buy is a lasting approval in every harness: Claude Code runs an
+enabled plugin's hooks with no separate approval, Muse has kept its approval across every
+release so far, and Codex asks again after every release. Codex ties each approval to a
+fingerprint of the installed plugin, so until you approve the hooks again in `/hooks`, Codex
+runs none of them. `synthesis doctor` reports an approval that has gone stale, and the release
+script names it as waiting on you.
 
 | Event | What it does |
 |---|---|
