@@ -152,15 +152,16 @@ def judge(args, config: dict, read: dict) -> dict:
         except SystemExit as exc:
             stop(str(exc.code).split(": ", 1)[-1])
         summary, said = str(entry.get("summary") or "an event"), lines(entry.get("description"))
+        others += [(a, summary)] if a else []  # every timed entry, a trip included: what a night runs into the next morning
         if re.match(rf"{re.escape(title)}\b", summary.lower()):
-            names = [" ".join(name.lower().split()) for name in said.get("for", "").splitlines()]
+            names = [" ".join(name.lower().split()).strip("\"'“”‘’ .") for name in said.get("for", "").splitlines()]
             blocks += [{"start": a, "end": b, "said": said, "names": names}] if a and b else []
             continue
-        others += [(a, summary)] if a else []  # every timed entry: the next morning's first one is what a night runs into
         span, spot = days(entry, a, b), tidy(entry.get("location"))
-        if span and place(spot, policy) == "away":
-            commitments.append({"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
-                                "days": span, "said": said, "location": spot})
+        found = {"summary": summary, "title": " ".join(summary.lower().split()), "start": a, "end": b or a,
+                 "days": span, "said": said, "location": spot}
+        if span and place(spot, policy) == "away" and found not in commitments:  # one event read from two calendars is one event
+            commitments.append(found)
     timed = [c for c in commitments if c["start"]]
 
     def apart(block, c):  # how far a block stands from a commitment

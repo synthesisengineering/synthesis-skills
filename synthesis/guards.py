@@ -1570,7 +1570,8 @@ INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t D
 READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff cmp comm md5 md5sum shasum sha256sum "
                      "basename dirname realpath readlink test [ [[ echo printf cd pushd popd true false : export readonly "
                      "local declare typeset unset zcat gzcat strings od hexdump nl cut tr tac column jq date which "
-                     "for case select read fold fmt expand paste join rev sort uniq less more git synthesis").split())
+                     "for case select read fold fmt expand paste join rev sort uniq less more sleep kill wait exit return "
+                     "break continue shift trap seq expr bc ps pgrep uname hostname whoami id git synthesis").split())
 AWKS = ("awk", "gawk", "mawk", "nawk")
 AWK_OUT = re.compile(r'\bprintf?\b[^;}\n|]*?>>?\s*(?:"([^"]+)"|\S)|\bsystem\s*\(|\|\s*"')  # a redirect, or a command it runs
 OWN_RULES = ("sed", "perl", "find", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
@@ -1895,7 +1896,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         readable = False
     asked = [(os.path.expanduser(os.path.expandvars(t)), w) for t, w in redirects]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
-    why, wheres, handed, links, made = "", {cwd}, [], [], []
+    why, wheres, handed, links, made, linked = "", {cwd}, [], [], [], []
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
     for words, where in _parse(text, cwd)[0]:
@@ -1906,6 +1907,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         asked += [(os.path.expanduser(os.path.expandvars(w)), where) for w in _landing(words)]
         led = [os.path.realpath(os.path.join(where, os.path.expanduser(w))) for w in _landing(words)] if head in ("ln", "mkdir") else []
         links, made = links + led * (head == "ln"), made + led * (head == "mkdir")
+        aimed = [w for w in words[1:] if not w.startswith("-")][:1] if head == "ln" else []  # what a link made here points at
+        linked += [(link, os.path.realpath(os.path.join(where, os.path.expanduser(aimed[0])))) for link in led if aimed]
         within = any(paths.inside(os.path.realpath(where), os.path.realpath(r)) for r in raw)
         for word in _named(words) if readable else ():  # words the parser could not read name no program
             led = os.path.realpath(os.path.join(where, os.path.expanduser(os.path.expandvars(word))))
@@ -1926,6 +1929,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         judged = (_python_writes(source, names) if any(n in source for n in names) else False) if source else None
         if SCRIPT.match(head) and wrote and (reaches or (judged is not False and any(n in script for n in names))):
             why = why or "runs a script that writes where the synthesis state, its board or a harness's transcripts live (a script on stdin is judged by the whole command: if only another part names that path, run the script alone)"
+        inline = bool(source) or words[1:2] in ([], ["-"]) or any(w in ("-c", "-e") for w in words[1:])
+        if within and readable and ("/" in words[0] or not (head in READERS or head in WRITERS or head in OWN_RULES or (
+                (SCRIPT.match(head) or head in SHELLS) and inline))):  # nothing it names, yet it may write where it stands
+            why = why or (f"runs `{head}` inside the synthesis state folder, its board or a harness's transcripts, where a "
+                          "program this guard cannot read may write without naming a file (run it from another folder)")
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
     if not why and names and any(t.startswith(("$", "`")) for t, _ in asked):  # only asked of a command that names a protected folder
@@ -1933,6 +1941,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
     real = [os.path.realpath(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    real += [aim + t[len(link):] for t in real for link, aim in linked if t not in links and paths.inside(t, link)]  # through a link made here
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:

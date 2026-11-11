@@ -161,7 +161,7 @@ def travel(workspace: str, day: str, given) -> str:
     return f"\ntravel: {len(events)} in-person event{'s' * (len(events) != 1)} through {last}, each with its travel"
 
 
-ITEM = r"(?im)^\s*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, or a list entry of either kind
+ITEM = r"(?im)^\s*(?:>\s*)*(?:[-*+] |\d+[.)] )?\**"  # a line of an item: plain, bold, quoted, or a list entry of any of them
 OPTION = re.compile(ITEM + r"Option [A-Z0-9]+\b(.*)$")
 SAID = re.compile(ITEM + r"(Recommendation|Consequences|Commits)\**\s*:[*\s]*(.*)$")
 CLOSED = re.compile(ITEM + r"(?:Decided|Resolved|Released|Lapsed|Withdrawn)\**\s*:")
@@ -182,7 +182,7 @@ def choices(workspace: str, day: str) -> str:
         for item in re.split(r"(?m)^#{3} ", text)[1:]:
             item = FENCE.sub("", re.split(r"(?m)^#{1,2} ", item)[0])
             title, options = item.splitlines()[0].strip(), OPTION.findall(item)
-            if not options or CLOSED.search(item) or title.startswith("~~") or "✅" in title:
+            if not options or CLOSED.search(item) or title.startswith(("~~", "[x]", "[X]")) or "✅" in title:
                 continue
             said = {m[1].lower(): m[2] for m in SAID.finditer(item) if not NOTHING.fullmatch(m[2])}
             needs = ["recommendation"] + ["consequences"] * ("commits" in said or any(map(COMMITS.search, options)))
