@@ -204,10 +204,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      count against it, and one that reaches it through its arguments or its environment
      does.
    - **Standing in a protected folder.** A program can write where it stands without naming
-     a file (an archive unpacked, a script file). Inside a protected folder only a command
-     the guard can read runs: a reader, a file utility (judged by its targets), or a script
-     given inline, whose every write must name a plain path somewhere else. Anything else is
-     refused and told to run from another folder. A list of the programs
+     a file (an archive unpacked, a script file). Inside the state folder, the board or the
+     sessions archive, where no session has reason to stand, only a command the guard can
+     read runs: a reader, a file utility (judged by its targets), or a script given inline.
+     Anything else is refused and told to run from another folder. Inside a harness's
+     transcript folder, where sessions work on saved tool results, other programs run; a
+     script given inline is read there too, and each of its writes must name a plain path
+     somewhere else. (Applied to transcript folders as well, the rule refused 17 real
+     commands in a 30-day replay, all needless.) A list of the programs
      that write never ends, so the guard keeps the other list: the usual readers (`cat`,
      `head`, `tail`, `grep`, `ls`, `jq`, `wc`, `diff` and their like) may be given such a
      path, an interpreter or a shell is judged by the script it is given, and `git` and the
@@ -240,8 +244,10 @@ stay open, and no hook running as that same user can close them:
   on the file tools (Write, Edit, `apply_patch` and their like) refuse the natural routes.
   A command that builds the path or the code at run time (an encoding, the output of a
   substitution, a glob in the folder's own name), a script file or a program run by its
-  path, which the guard cannot read, a file-writing tool of another server that the guard
-  does not know as a file tool, or a program the agent writes and runs gets through.
+  path, which the guard cannot read, a program that writes where it stands inside a
+  transcript folder without naming a file (an archive unpacked there), a file-writing tool
+  of another server that the guard does not know as a file tool, or a program the agent
+  writes and runs gets through.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
