@@ -143,6 +143,68 @@ def test_a_setting_that_cannot_be_read_blocks_pushes_and_nothing_else(repo, brok
     assert push(repo, "git status", config={"pr_gated": broken}) is None
 
 
+# --- found by an independent review of the first version (2026-11-11) -----------------------------
+
+
+def test_a_commit_and_a_push_in_one_command_is_judged_as_it_will_be_after_the_commit(repo):
+    """Level before the command, ahead once its own commit has run: the common `commit && push`."""
+    (repo / "first").write_text("changed", encoding="utf-8")
+    assert "pull request" in push(repo, "git commit -am change && git push origin main")
+    assert "pull request" in push(repo, "./make-a-commit.sh; git push")
+    assert push(repo, f"cd {repo} && git fetch origin && git status && git push origin main") is None  # nothing before it writes
+
+
+@pytest.mark.parametrize("command", [
+    "git -c remote.origin.push=HEAD:main push origin",
+    "git -c alias.ship='push origin HEAD:main' ship",
+    "git -c push.default=upstream push",
+    "git push --repo=origin main",
+    "git push origin :",
+    "git push origin 'refs/heads/*:refs/heads/*'",
+])
+def test_config_given_on_the_command_line_and_refspecs_that_match_every_branch_are_refused(repo, command):
+    commit(repo, "second")
+    reason = push(repo, command)
+    assert reason and "acme/skills" in reason and "pull request" in reason, command
+
+
+def test_a_push_through_an_alias_or_a_configured_refspec_is_read(repo):
+    commit(repo, "second")
+    git(repo, "config", "alias.ship", "push origin HEAD:main")
+    assert "pull request" in push(repo, "git ship")
+    git(repo, "switch", "-q", "-c", "feature")
+    git(repo, "config", "remote.origin.push", "HEAD:main")
+    assert "pull request" in push(repo, "git push origin")  # no refspec on the line: the remote's own is used
+
+
+def test_a_branch_whose_push_destination_is_the_default_branch_is_refused(repo):
+    git(repo, "switch", "-q", "-c", "feature", "--track", "origin/main")
+    git(repo, "config", "push.default", "upstream")
+    commit(repo, "second")
+    assert "pull request" in push(repo, "git push")
+
+
+def test_a_remote_that_fetches_from_one_repository_and_pushes_to_a_gated_one_is_gated(repo, tmp_path):
+    commit(repo, "second")
+    git(repo, "remote", "set-url", "--push", "fork", str(tmp_path / "acme" / "skills.git"))
+    assert "pull request" in push(repo, "git push fork HEAD:main")
+
+
+def test_a_destination_given_as_an_option_is_read(repo, tmp_path):
+    commit(repo, "second")
+    git(repo, "remote", "remove", "origin")
+    assert "pull request" in push(repo, f"git push --repo={tmp_path / 'acme' / 'skills.git'} main")
+
+
+def test_pushing_every_branch_passes_when_the_default_branch_would_not_move(repo):
+    git(repo, "switch", "-q", "-c", "feature")
+    commit(repo, "second")
+    assert push(repo, "git push --all origin") is None
+    git(repo, "switch", "-q", "main")
+    commit(repo, "third")
+    assert "pull request" in push(repo, "git push --all origin")
+
+
 # --- the doctor ----------------------------------------------------------------------------------
 
 
@@ -172,6 +234,13 @@ def test_merged_pull_requests_and_listed_exceptions_are_clean(repo):
 def test_commits_from_before_the_gate_began_do_not_count(repo):
     check = doctor.check_pr_gate(GATED["pr_gated"], [repo])  # the first commit is dated 2026-11-10
     assert check.status == "ok", check.detail
+
+
+def test_history_the_doctor_cannot_read_is_not_reported_clean(repo):
+    def failing(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 128, "", "fatal: bad object") if "log" in argv else subprocess.run(argv, **kwargs)
+    check = doctor.check_pr_gate(GATED["pr_gated"], [repo], run=failing)
+    assert check.status == "warn" and "cannot read" in check.detail and "acme/skills" in check.detail
 
 
 def test_a_gated_repository_with_no_checkout_or_no_start_date_is_named(repo, tmp_path):

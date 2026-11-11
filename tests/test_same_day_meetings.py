@@ -172,6 +172,63 @@ def test_a_local_time_with_a_named_zone_is_read_in_that_zone(monkeypatch):
         time.tzset()
 
 
+# --- found by an independent review of the first version (2026-11-11) -----------------------------
+
+
+def test_a_tool_named_move_event_is_held_too():
+    call = {"event_id": "e1", "start_time": f"{TODAY}T16:00:00", "user_google_email": "me@example.com"}
+    assert same_day(guards.check("mcp__calendar__move_event", call, CONFIG, cwd="/tmp"))
+    later = guards.check("mcp__calendar__move_event", {**call, "start_time": f"{TOMORROW}T16:00:00"}, CONFIG, cwd="/tmp")
+    assert later and "approval" in later and not same_day(later)  # moving a meeting notifies its guests
+
+
+def test_guests_nested_inside_the_call_are_not_a_quiet_write():
+    call = {"event": {"summary": "Follow-up", "start": f"{TODAY}T15:00", "attendees": ["a@example.com"]}, "send_updates": "none"}
+    assert same_day(guards.check(CREATE, call, CONFIG, cwd="/tmp"))
+    tomorrow = {"event": {"summary": "Follow-up", "start": f"{TOMORROW}T15:00", "attendees": ["a@example.com"]}, "send_updates": "none"}
+    assert "approval" in guards.check(CREATE, tomorrow, CONFIG, cwd="/tmp")  # adding guests is never quiet
+
+
+def test_only_a_guests_address_can_exempt_a_meeting_and_only_its_own_meeting():
+    named_like = event(attendees=[{"email": "guest@example.com", "displayName": "chief@example.com"}])
+    assert same_day(guards.check(CREATE, named_like, CONFIG, cwd="/tmp"))
+    batch = {"events": [{"title": "With the chief", "start": f"{TODAY}T10:00", "attendees": [{"email": "chief@example.com"}]},
+                        {"title": "With a guest", "start": f"{TODAY}T16:00", "attendees": [{"email": "b@example.com"}]}]}
+    reason = guards.check("mcp__planner__planner-calendar-create-events", batch, CONFIG, cwd="/tmp")
+    assert same_day(reason) and "1 other" in reason
+    graph = event(attendees=[{"emailAddress": {"address": "chief@example.com", "name": "The Chief"}, "type": "required"}])
+    assert not same_day(guards.check(CREATE, graph, CONFIG, cwd="/tmp"))
+
+
+def test_a_time_zone_this_machine_cannot_read_is_sent_back_rather_than_guessed(monkeypatch):
+    import time
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:  # 09:00 on the 10th in Tokyo is 19:00 on the 9th in New York; the name is a Windows one
+        call = {"subject": "Follow-up", "start": {"dateTime": "2026-11-10T09:00:00", "timeZone": "Tokyo Standard Time"},
+                "attendees": [{"emailAddress": {"address": "a@example.com"}}]}
+        reason = guards.check(CREATE, call, CONFIG, cwd="/tmp")
+        assert reason and "Tokyo Standard Time" in reason and "offset" in reason and "approve" not in reason
+        far = {**call, "start": {"dateTime": "2026-11-13T09:00:00", "timeZone": "Tokyo Standard Time"}}
+        ordinary = guards.check(CREATE, far, CONFIG, cwd="/tmp")
+        assert "approval" in ordinary and "Tokyo Standard Time" not in ordinary  # four days out cannot be today anywhere
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_an_update_that_sets_an_empty_guest_list_names_no_guests():
+    hold = {"action": "update", "event_id": "e1", "start_time": f"{TODAY}T16:00:00", "attendees": [], "user_google_email": "me@example.com"}
+    reason = guards.check(MANAGE, hold, CONFIG, cwd="/tmp")
+    assert "approval" in reason and not same_day(reason)
+
+
+@pytest.mark.parametrize("start", ["0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-12:00", "2026-13-45T99:99", "", "today"])
+def test_no_start_makes_the_guard_raise(start):
+    reason = guards.check(CREATE, event(start_time=start), CONFIG, cwd="/tmp")
+    assert reason and "approval" in reason
+
+
 def test_a_send_window_never_covers_a_meeting_today():
     config = {**CONFIG, "send_window_signatures": ["Helperbot"]}
     sends.open_window(1, ["calendar"], count=5)
