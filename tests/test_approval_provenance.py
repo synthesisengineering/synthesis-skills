@@ -1328,6 +1328,9 @@ def test_and_a_write_to_what_the_environment_names_stays_refused(saved, command,
     ("exec(\"from shutil import rmtree\\nrmtree('{state}')\")", True),                       # protected path it does not run
     ("import runpy\nrunpy.run_path('/tmp/pad/tool.py', init_globals=dict(target='{state}'))", True),
     ("print(eval('1 + 1'), __import__('os').getcwd())", False),                              # and one that names none does
+    ("name = 'o' + 's'\n__import__(name).remove('{state}/a.json')", True),                   # a module it names at run time
+    ("m = __import__('shutil')\nm.rmtree('{state}')", True),                                 # a module imported by a call is that module
+    ("rows = open('{state}/a.json').read()\nopen('/tmp/pad/o.json', 'w').write(__import__('json').dumps(rows))", False),
 ])
 def test_a_program_that_runs_code_it_builds_is_refused_while_it_names_a_protected_path(spots, program, held, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
