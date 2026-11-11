@@ -93,11 +93,16 @@ slot Thu 2026-11-12 15:30-16:00: REVIEW
 | same day | the slot is today (or past) and no attendee's timing binds | | `meeting_defaults.same_day_meetings` (true allows today) |
 | protected hours | it overlaps a protected window and no attendee's timing binds | | `protected_hours`: `[{"start": "09:00", "end": "11:00", "days": [0, 1, 2, 3, 4], "label": "..."}]` (`days` optional, Monday is 0) |
 | working hours | | it falls outside them | `working_hours.start`, `.end` |
-| deep work | it leaves fewer free blocks of the set length than the day must keep | | `calendar_guardian.thresholds.maker_block_minutes` (default 120), `.min_maker_blocks_per_day` (1) |
+| deep work | it leaves fewer free blocks of the set length than the day must keep, the trip there and back counted as taken | | `calendar_guardian.thresholds.maker_block_minutes` (default 120), `.min_maker_blocks_per_day` (1) |
+| travel | the trip there or back runs through another event (only with `--travel-before` or `--travel-after`) | | |
 | meeting load | the day's meetings with this one exceed the limit | | `.max_meeting_hours_per_day` (5) |
 | placement | | it sits in the middle of a free block long enough for deep work, away from any meeting | |
 | existing touchpoint | | a meeting with one of the same people is already on the calendar within the look-ahead | `.touchpoint_days` (7) |
 | deadline | the requester's timing binds and the slot is after their date | | |
+
+**A meeting in person takes the trip as well.** Give the minutes door to door on each side with `--travel-before` and
+`--travel-after`; `--in-person` with neither is refused (exit 2) until the trip is worked out. The trip itself is planned
+and recorded as [in-person-travel.md](in-person-travel.md) says.
 
 Whose timing binds: the addresses and patterns (`*@board.example.com`) in `tiers.priority`. A
 tier entry that is a name, or protected hours written as prose, cannot be matched; the report
