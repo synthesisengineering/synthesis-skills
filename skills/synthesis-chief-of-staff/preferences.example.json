@@ -24,13 +24,15 @@
     "thresholds": {
       "max_meeting_hours_per_day": 5,
       "min_maker_blocks_per_day": 1,
-      "max_consecutive_meetings": 3
+      "max_consecutive_meetings": 3,
+      "maker_block_minutes": 120,
+      "touchpoint_days": 7
     },
     "holds": {
       "title": "Hold",
       "ledger": "~/.synthesis/chief-of-staff/holds/events.jsonl",
       "expire": "end-of-day",
-      "engine": "scripts/holds_state.py \u2014 append-only; never hand-edit"
+      "engine": "scripts/holds_state.py — append-only; never hand-edit"
     },
     "same_day_exceptions": "reuse the tiers section",
     "weekly_review_day": "Friday"
@@ -38,5 +40,10 @@
   "travel": {
     "notification_tiers": [],
     "itinerary_recipients": []
+  },
+  "critical_deadlines": {
+    "classes": "Any deadline whose miss causes harm that cannot be undone or fixed until the next cycle: benefits and insurance enrollment, taxes, legal and patent filings, immigration and identity documents, pay, time-off and award actions for reports, account-security checks.",
+    "calendar": "The same day it is first seen: an all-day marker on the closing date and a working block early in the window, on the primary calendar.",
+    "standing_reminders": []
   }
 }

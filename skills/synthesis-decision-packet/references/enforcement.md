@@ -30,7 +30,11 @@ an option set with fewer than two options (a one-button set records no decision)
 in one set sharing a value or a value that is not a non-empty string (the value keys the pressed
 state and the summary label through a DOM dataset, which stores strings), a recommendation
 outside its own option set, a packet with no recommendations at all, malformed option sets at
-the packet level or on a row, malformed disagreement, impact, or glossary blocks.
+the packet level or on a row, malformed disagreement, impact, or glossary blocks. Since 2.3.0 it
+also refuses a row whose `tags` include `critical` (any case): a deadline whose miss cannot be
+undone is never one row among many. It leads the day plan in its own section and closes only on
+evidence (synthesis-daily-rituals, references/critical-deadlines.md). On 2026-11-06 an enrollment
+window sat as one row among two hundred in a packet and closed unanswered.
 
 ## Two defects that are permanent fixtures
 
