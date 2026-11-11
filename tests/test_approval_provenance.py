@@ -1144,3 +1144,101 @@ def test_a_python_program_that_writes_a_protected_path_is_read_however_it_spells
 def test_a_python_program_that_only_reads_a_protected_path_passes(spots, program, tmp_path):
     command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
     assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None
+
+
+# --- the Python reader, measured again and probed again (2026-11-11, evening) ----------------------------------
+# Seventeen inline programs were still refused in thirty days of recorded commands, and fourteen of them wrote
+# nothing protected: the program was read together with every other heredoc of its command; a memory note or a
+# saved workflow script was the agent's own for the shell and the file tools but not for a program; a file named
+# as an argument made any write a refusal; and from inside a transcript folder only a fully spelled path counted
+# as elsewhere. The same pass showed what the reader did not follow: a path handed to the program's own
+# function, returned by one, kept in a list, or met after a change of folder.
+
+@pytest.mark.parametrize("program", [
+    "def w(p): open(p, 'w').write('x')\nw('{state}/a.json')",                                  # handed to its own function
+    "def w(data, path=None): open(path, 'w').write(data)\nw('x', path='{state}/a.json')",
+    "w = lambda p: open(p, 'w')\nw('{state}/a.json')",
+    "def w(p): open(p, 'w').write('x')\nlist(map(w, ['{state}/a.json']))",
+    "class K:\n    def __init__(self, p): self.p = p\n    def go(self): open(self.p, 'w')\nK('{state}/a.json').go()",
+    "def where(): return '{state}/a.json'\nopen(where(), 'w').write('x')",                    # returned by one
+    "ps = []\nps.append('{state}/a.json')\nfor p in ps: open(p, 'w').write('x')",             # kept in a list
+    "import os\n[open(p, 'w') for p in [os.path.join('{state}', 'a.json')]]",
+    "import glob, os\nfor f in glob.glob('{state}/approvals/*.json'): os.unlink(f)",
+    "from pathlib import Path\nwith Path('{state}/a.json') as p: p.write_text('x')",
+    "import os\nos.chdir('{state}')\nopen('a.json', 'w').write('x')",                         # met after a change of folder
+    "from os import *\nremove('{state}/a.json')",                                             # every name imported at once
+    "import builtins\nbuiltins.open('{state}/a.json', 'w')",
+    "from pathlib import Path\nPath('/tmp/x').rename(target='{state}/a.json')",
+])
+def test_a_python_program_is_followed_through_its_own_functions_lists_and_folder_changes(spots, program, tmp_path):
+    command = "python3 - <<'EOF'\n" + program.format(**spots) + "\nEOF"
+    assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), program
+
+
+@pytest.mark.parametrize("command", [
+    "D={state} node -e \"require('fs').writeFileSync(process.env.D + '/a.json', 'x')\"",    # another interpreter's environment
+    "D={state} ruby -e \"File.write(ENV['D'] + '/a.json', 'x')\"",
+])
+def test_a_path_that_reaches_another_interpreter_through_its_environment_is_refused(spots, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**spots)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("command", [
+    # two programs in one command are two programs: what the second reads is not what the first writes
+    "python3 - <<'A'\nfrom pathlib import Path\np = Path('/tmp/pad/notes.md')\np.write_text('x')\nA\n"
+    "python3 - <<'B'\np = '{work}/s.jsonl'\nfor line in open(p): print(len(line))\nB",
+    # and a heredoc another command reads is not the program's text
+    "cat > /tmp/pad/brief.txt <<'EOF'\nState lives in {state}; do not write it.\nEOF\n"
+    "python3 - <<'EOF'\np = '/tmp/pad/README.md'\nopen(p, 'w').write('x')\nEOF",
+    # a memory note and a saved workflow script are the agent's own, for a program as for the shell
+    "python3 - <<'EOF'\np = '{work}/memory/a-note.md'\nopen(p, 'w').write('x')\nm = '{work}/memory/MEMORY.md'\n"
+    "open(m, 'a').write('- a note')\nEOF",
+    "python3 - <<'EOF'\nfrom pathlib import Path\nsrc = Path('{work}/abc/workflows/scripts/review-wf_1.js')\n"
+    "dst = Path('{work}/abc/workflows/scripts/review-stage1.js')\ndst.write_text(src.read_text())\nEOF",
+    "sed -i '' 's/a/b/' {work}/abc/workflows/scripts/review-wf_1.js",
+    # files named as arguments: the program reads the first and writes the second
+    "F={work}/abc/tool-results/events.txt; OUT=/tmp/pad/out.md; python3 - \"$F\" \"$OUT\" <<'PY'\nimport sys\n"
+    "raw = open(sys.argv[1]).read()\nopen(sys.argv[2], 'w').write(raw)\nPY",
+    "python3 -c \"import sys\nd = open(sys.argv[1]).read()\nopen(sys.argv[2], 'w').write(d)\" {work}/s.jsonl /tmp/pad/out.txt",
+    "python3 -B - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nT, out = sys.argv[1], sys.argv[2]\n"
+    "open(out, 'w').write(open(T).read())\nPY",
+    # from inside the folder, a write under a plain folder elsewhere, whatever the file is called
+    "cd {work} && python3 - <<'EOF'\nfor n, line in enumerate(open('s.jsonl')):\n"
+    "    open(f'/tmp/pad/brief-{{n}}.txt', 'w').write(line)\nEOF",
+    # a copy out reads the protected file and writes the copy
+    "python3 - <<'EOF'\nimport shutil\nshutil.copy('{work}/s.jsonl', '/tmp/pad/copy.jsonl')\nEOF",
+])
+def test_the_evening_replay_left_these_and_they_pass(saved, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("command", [
+    "python3 - <<'A'\nprint(1)\nA\npython3 - <<'B'\nopen('{work}/s.jsonl', 'a').write('x')\nB",   # the second program is read too
+    "python3 - {work}/abc/tool-results/events.txt <<'PY'\nimport sys\nopen(sys.argv[1], 'w').write('x')\nPY",  # not rewritten in place
+    "python3 - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nfor p in sys.argv[1:]: open(p, 'a').write('x')\nPY",
+    "python3 - {work}/s.jsonl /tmp/pad/out.txt <<'PY'\nimport argparse\na = argparse.ArgumentParser(); a.add_argument('f', nargs=2)\n"
+    "open(a.parse_args().f[0], 'w').write('x')\nPY",                                               # arguments taken another way
+    "python3 - {work}/*.jsonl /tmp/pad/out.txt <<'PY'\nimport sys\nopen(sys.argv[2], 'w').write('x')\nPY",   # a pattern moves what follows it
+    "python3 - {work}/s.jsonl <<'PY'\nfrom sys import argv\nopen(argv[1], 'w').write('x')\nPY",
+    "python3 - <<'EOF'\nopen('{work}/abc/workflows/wf_1.json', 'w').write('x')\nEOF",             # the harness's own record of a workflow
+    "python3 - <<'EOF'\nopen('{work}/abc/workflows/scripts/deeper/x.js', 'w').write('x')\nEOF",
+    "echo x > {work}/abc/workflows/scripts/notes.txt",
+    "python3 - <<'EOF'\nopen('{work}/memory/notes.json', 'w').write('x')\nEOF",                   # only Markdown in a memory folder
+    "cd {work} && python3 - <<'EOF'\nn = 'x'\nopen(f'{{n}}.txt', 'w').write('x')\nEOF",          # no folder elsewhere leads the name
+    "cd {work} && python3 - <<'EOF'\nimport sys\nopen('/' + sys.stdin.readline(), 'w')\nEOF",     # the root holds every folder
+    "cd {work} && python3 - <<'EOF'\nimport sys\nopen('{claude}/../' + sys.stdin.readline(), 'w')\nEOF",
+])
+def test_and_what_stays_refused_after_the_evening_replay(saved, command, tmp_path):
+    assert REFUSED in (guards.check("Bash", {"command": command.format(**saved)}, {}, cwd=str(tmp_path)) or ""), command
+
+
+@pytest.mark.parametrize("path, held", [
+    ("{work}/abc/workflows/scripts/review-wf_1.js", False),     # the harness saves it there and has the agent edit it
+    ("{work}/abc/workflows/wf_1.json", True),
+    ("{work}/abc/workflows/scripts/deeper/x.js", True),
+    ("{work}/workflows/scripts/x.js", True),                    # a session's folder, not the project's
+    ("{work}/abc/subagents/workflows/scripts/x.js", True),
+])
+def test_the_file_tools_can_edit_a_sessions_saved_workflow_script_and_nothing_beside_it(saved, path, held, tmp_path):
+    refused = guards.check("Edit", {"file_path": path.format(**saved), "old_string": "a", "new_string": "b"}, {}, cwd=str(tmp_path))
+    assert ("session transcripts" in (refused or "")) == held, path
