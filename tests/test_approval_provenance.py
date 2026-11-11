@@ -604,3 +604,74 @@ def test_a_pending_code_inside_markup_or_a_wrapped_block_is_still_named(isolated
     for code in (first, second):
         assert f"the pending code {code} is in the message" in out
     assert sorted(approvals.pending()) == sorted([first, second])
+
+
+# --- a path given through a variable, and a project's memory folder (2026-11-11) -------------------------
+# A write's target was expanded from the process environment only, so a folder named in a variable the same
+# command had just assigned was not seen: a memory note went into Claude Code's projects folder that way while
+# the file tools were refused there. Both halves were wrong. A variable assigned in the command is resolved
+# before the target is judged; and a project's memory folder, which only sits beside the transcripts, is the
+# file tools' to write.
+
+REFUSED = "Approvals come only from the principal's own prompt"
+
+
+@pytest.mark.parametrize("command", [
+    "D={state}/approvals; echo '{{}}' > \"$D/abc.json\"",
+    "D={state}/approvals\necho '{{}}' > $D/abc.json",
+    "export T={claude}/-work/s.jsonl && printf x >> \"${{T}}\"",
+    "T={claude}/-work; cp /tmp/forged.jsonl \"$T/s.jsonl\"",
+    "A={claude}; B=$A/-work; printf x | tee -a $B/s.jsonl",          # a variable built from another
+    "D='{state}/approvals' && mv /tmp/forged \"$D/abc.json\"",
+    "M={claude}/-work/memory; printf 'x\\n' >> \"$M/MEMORY.md\"",     # the shell stays refused in a memory folder too
+    "D={state}/approvals; printf x > \"$D/$(date +%s).json\"",        # what a variable leaves unread is still inside
+    "D={state}; echo x > \"$UNSET/$D/approvals/a.json\"",             # a target that starts with something unreadable
+])
+def test_a_write_through_a_variable_assigned_in_the_command_is_refused(roots, command, tmp_path):
+    assert REFUSED in guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path))
+
+
+@pytest.mark.parametrize("command", [
+    "D=/tmp/out; echo x > \"$D/a.txt\"",                              # a variable that points somewhere else
+    "D={claude}/-work; cat \"$D/s.jsonl\" | tail -3",                 # reading through one
+    "N=3; grep -c x {claude}/-work/s.jsonl > /tmp/count-$N.txt",
+    "grep -c x {claude}/-work/s.jsonl > /tmp/count-$RANDOM.txt",      # unread, but under a folder that is not protected
+    "OUT=report.txt; python3 tools/report.py > \"$OUT\"",
+])
+def test_a_variable_that_points_elsewhere_or_only_reads_changes_nothing(roots, command, tmp_path):
+    assert guards.check("Bash", {"command": command.format(**roots)}, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("tool, payload", [
+    ("Write", {"file_path": "{claude}/-work/memory/a-fact.md", "content": "x"}),
+    ("Edit", {"file_path": "{claude}/-work/memory/MEMORY.md", "old_string": "a", "new_string": "b"}),
+    ("Write", {"file_path": "{claude}/-work/memory/topics/a-fact.md", "content": "x"}),
+])
+def test_the_file_tools_can_write_a_projects_memory_folder(roots, tool, payload, tmp_path):
+    """Claude Code keeps each project's memory in a folder beside that project's session transcripts, and tells
+    the agent to write it with its file tools. It holds no transcript and no approval."""
+    payload = {k: v.format(**roots) for k, v in payload.items()}
+    assert guards.check(tool, payload, {}, cwd=str(tmp_path)) is None
+
+
+@pytest.mark.parametrize("path", [
+    "{claude}/-work/s.jsonl",                     # a transcript
+    "{claude}/-work/memory/../s.jsonl",           # out of the folder again
+    "{claude}/memory/s.jsonl",                    # not a project's memory folder
+    "{claude}/-work/sub/memory/a.md",             # deeper than a project's own
+    "{codex}/memory/a.md",                        # another harness keeps no memory under its transcripts
+    "{state}/memory/a.md",
+])
+def test_everything_beside_a_memory_folder_stays_protected(roots, path, tmp_path):
+    assert "session transcripts" in guards.check("Write", {"file_path": path.format(**roots), "content": "x"}, {}, cwd=str(tmp_path))
+
+
+def test_a_link_in_a_memory_folder_does_not_open_the_transcript_it_points_at(roots, tmp_path):
+    project = roots["claude"] / "-work"
+    (project / "memory").mkdir(parents=True)
+    (project / "s.jsonl").write_text("{}\n", encoding="utf-8")
+    (project / "memory" / "link.md").symlink_to(project / "s.jsonl")
+    refused = guards.check("Write", {"file_path": str(project / "memory" / "link.md"), "content": "x"}, {}, cwd=str(tmp_path))
+    assert "session transcripts" in refused
+    made = guards.check("Bash", {"command": f"ln -s {project}/s.jsonl {project}/memory/other.md"}, {}, cwd=str(tmp_path))
+    assert REFUSED in made  # and no command may make such a link there
