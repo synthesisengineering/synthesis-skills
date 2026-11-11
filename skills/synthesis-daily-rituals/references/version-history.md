@@ -10,10 +10,11 @@ the reasoning. Newest first.
 
 v3.8.0 (2026-11-11) adds LinkedIn messages as a declared surface: `linkedin_messages.py` reads the
 conversation list's saved text, lists the conversations that end with someone else and states how
-far back the read went; the `linkedin` watermark moves only with a complete read. The read opens a
-declared parking thread, because the bare messaging page opens the newest conversation by itself
-and marks it read ([linkedin-messages.md](linkedin-messages.md)). A principal had found messages
-there that no ritual had shown him. The deadline sweep also reads folders a workspace declares as
+far back the read went; the `linkedin` watermark moves only with a complete read. The read opens
+LinkedIn's new-message view, because the bare messaging page opens the newest conversation by
+itself and marks it read, and it stops at a named day, because the list loads older conversations
+for as long as it is scrolled ([linkedin-messages.md](linkedin-messages.md)). A principal had found
+messages there that no ritual had shown him. The deadline sweep also reads folders a workspace declares as
 `records_dirs` (drafts, a ledger): nine draft files and a ledger carried their own `**Decays:**`
 lines and were never read. A plan outranks a record.
 

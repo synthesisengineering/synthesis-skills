@@ -5,19 +5,22 @@ The list shows, without opening a thread: who, the day (the clock time for today
 last message, unread counts and LinkedIn's own "Reply?" nudge. This reads that text, lists the conversations
 that end with someone else, and prints one coverage line. It opens nothing and writes nothing.
 
-    linkedin_messages.py plan --config .agents/linkedin-sync.yaml
+    linkedin_messages.py plan --config .agents/linkedin-sync.yaml [--today YYYY-MM-DD]
     linkedin_messages.py parse --text list.txt --read-at 2026-11-11T09:45:00-05:00
         [--since YYYY-MM-DD] [--opened N] [--json]
 
-`plan` reads the workspace's declaration (`workspace`, `parking_thread`, `inboxes`) and prints the address to
-open and, per inbox, the day the last read reached. The address is always the parking thread's: the bare
-messaging page opens the newest conversation by itself, which marks an unread one read.
+`plan` reads the workspace's declaration (`workspace`, `inboxes`) and prints the address to open and, per
+inbox, the day to scroll back to: the day the last read reached, or two weeks back for a first read. The
+address is always the new-message view's. The bare messaging page opens the newest conversation by itself,
+which marks an unread one read; the new-message view shows the same list beside an empty composer and opens
+nothing. The list loads older conversations for as long as it is scrolled, so a read stops at that day.
 
 `list.txt` is the conversation list's text as the browser tool returned it (the list alone, or the whole
 page). `--since` is the day the last read reached: a read whose oldest conversation is newer than that
 stopped short, and its coverage carries no `through`, so the watermark cannot move. Exit 0 for a complete
 read, 1 for one that stopped short or could not read an entry, 2 when the text holds no conversation list
-or shows a sign-in page or security check.
+or shows a sign-in page or security check. A conversation the list marks as open was opened during the read:
+it is counted with `--opened` and named, since opening marks it read.
 """
 from __future__ import annotations
 
@@ -25,7 +28,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
@@ -39,6 +42,8 @@ MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", 
 UNREAD = re.compile(r"^(\d+) new notifications?$")
 NUDGE = re.compile(r"^Received .+ ago\. Reply\?$")
 STATUS = re.compile(r"^Status is \w+$")
+VIEW = "https://www.linkedin.com/messaging/thread/new/"
+FIRST_READ_DAYS = 14
 WALL = re.compile(r"security check|sign in|join now|captcha|unusual activity|verify (?:it'?s you|your identity)", re.I)
 
 
@@ -89,7 +94,9 @@ def entry(block: list, names: str, read: datetime):
         found["kind"] = "inmail"
     else:
         found["speaker"] = (re.match(r"([^:]{1,40}):\s", found["preview"]) or [None, None])[1]
-    found["account"] = names[:-len(" and " + found["who"])] if names.endswith(" and " + found["who"]) else None
+    who = found["who"]  # the closing sentence names the account holder and the participants, in either order
+    found["account"] = (names[:-len(" and " + who)] if names.endswith(" and " + who) else
+                        names[len(who + " and "):] if names.startswith(who + " and ") else None)
     return found
 
 
@@ -115,19 +122,20 @@ def parse(text: str, read: datetime, since: str = "", opened: int = 0) -> dict:
     complete = bool(threads) and not unreadable and not short
     owed = [t for t in threads if not t["from_me"]]
     unread, asked = sum(t["unread"] for t in threads), sum(t["nudge"] for t in owed)
+    opened = max(opened, sum(t["open"] for t in threads))  # the new-message view opens none; one marked open was opened
     line = (f"LinkedIn messages: {len(threads)} conversation{'s' * (len(threads) != 1)} read from the list, back to {oldest}; "
             f"{len(owed)} end with someone else ({unread} unread, LinkedIn asks for a reply on {asked}); "
             f"{opened or 'none'} opened"
             + (f"; {unreadable} could not be read" if unreadable else "")
             + (f"; the read stops short of {since}: scroll the list further and read again" if short else ""))
     return {"read_at": read.isoformat(), "account": accounts.pop() if len(accounts) == 1 else None, "threads": threads, "owed": owed,
-            "coverage": {"threads": len(threads), "oldest": oldest, "unreadable": unreadable, "since": since or None,
+            "coverage": {"threads": len(threads), "oldest": oldest, "unreadable": unreadable, "since": since or None, "opened": opened,
                          "complete": complete, "through": read.isoformat() if complete else None},
             "line": line}
 
 
-def plan(config: Path) -> list:
-    """What a read opens and how far back it must reach, from the workspace's declaration."""
+def plan(config: Path, today: date) -> list:
+    """What a read opens and the day it scrolls back to, from the workspace's declaration."""
     import sync_watermark as watermarks
     from synthesis.yamlish import load
     try:
@@ -136,26 +144,25 @@ def plan(config: Path) -> list:
         stop(f"cannot read the declaration {config} ({exc})")
     declared = declared if isinstance(declared, dict) else {}
     workspace, inboxes = declared.get("workspace"), declared.get("inboxes", ["focused"])
-    thread = re.search(r"(?:/messaging/thread/)?([\w=+-]{8,})/?$", str(declared.get("parking_thread") or "").strip())
     if not isinstance(workspace, str) or not workspace.strip():
         stop(f"{config} names no workspace")
-    if not thread:
-        stop(f"{config} names no parking_thread: a dormant conversation whose opening changes nothing. Without one the "
-             "read would load the bare messaging page, which opens the newest conversation and marks it read")
     if not isinstance(inboxes, list) or not inboxes or not all(isinstance(i, str) and i.strip() for i in inboxes):
         stop(f"{config}: inboxes is a list of the list views to read, for example [focused]")
-    lines = [f"open  https://www.linkedin.com/messaging/thread/{thread[1]}/  (the parking thread; never the bare messaging page)"]
+    lines = [f"open  {VIEW}  (the new-message view: the list beside an empty composer; never the bare messaging page)"]
     for inbox in inboxes:
         last = watermarks.window(workspace, "linkedin", inbox)["from"]
-        lines.append(f"read  {inbox}: read through {last[:10]}; scroll back to that day and pass --since {last[:10]}" if last
-                     else f"read  {inbox}: never read; scroll back two weeks")
+        day = last[:10] if last else (today - timedelta(days=FIRST_READ_DAYS)).isoformat()
+        lines.append(f"read  {inbox}: " + (f"read through {day}; scroll back to that day" if last else f"never read; scroll back to {day}")
+                     + f", stop there, and pass --since {day}")
     return lines
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("plan", help="what to open and how far back to read").add_argument("--config", required=True, type=Path)
+    ahead = sub.add_parser("plan", help="what to open and how far back to read")
+    ahead.add_argument("--config", required=True, type=Path)
+    ahead.add_argument("--today", type=date.fromisoformat, default=None, help="today, YYYY-MM-DD (default: the clock)")
     read = sub.add_parser("parse", help="read the saved text of the conversation list")
     read.add_argument("--text", required=True, type=Path)
     read.add_argument("--read-at", required=True, help="when the list was read, ISO-8601 with its offset")
@@ -164,7 +171,7 @@ def main(argv=None) -> int:
     read.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "plan":
-        print("\n".join(plan(args.config)))
+        print("\n".join(plan(args.config, args.today or date.today())))
         return 0
     try:
         moment = datetime.fromisoformat(args.read_at.replace("Z", "+00:00"))
@@ -178,6 +185,9 @@ def main(argv=None) -> int:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
         print(result["line"])
+        for t in result["threads"]:
+            if t["open"]:
+                print(f"  open during the read: {t['who']} (opening a conversation marks it read; name it in the plan)")
         for t in result["owed"]:
             marks = [m for m in ("InMail" if t["kind"] == "inmail" else "", f"{t['unread']} unread" if t["unread"] else "",
                                  "LinkedIn asks for a reply" if t["nudge"] else "") if m]

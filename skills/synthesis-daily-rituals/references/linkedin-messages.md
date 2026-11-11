@@ -15,28 +15,37 @@ last message, unread counts and LinkedIn's own "Reply?" nudge.
 ```yaml
 # .agents/linkedin-sync.yaml
 workspace: personal
-parking_thread: "2-ABCdef123xyz=="   # a dormant conversation whose opening changes nothing
-inboxes: [focused]                   # the list views to read
+inboxes: [focused]                   # the list views to read; focused when left out
 ```
 
-`parking_thread` is required. **Never load `https://www.linkedin.com/messaging/` itself:** it opens the newest
-conversation by itself, and when that one is unread the read marks it read. A thread's own address shows the same
-list and opens only that thread, so the read opens a conversation chosen because nothing in it changes (an old
-exchange, a note to self). Its id is the part of its address after `/messaging/thread/`.
+## The address
+
+**Never load `https://www.linkedin.com/messaging/` itself:** it opens the newest conversation by itself, and when
+that one is unread the read marks it read. The read opens the new-message view,
+`https://www.linkedin.com/messaging/thread/new/`: the same list on the left, an empty composer on the right, and
+no conversation opened. Nothing is typed into the composer. A conversation's own address shows the list too, but
+a conversation set aside for the read to open can gain a new message, which the read would then mark read.
+
+Once the page has loaded, check two things before reading: the address still ends `/messaging/thread/new/`, and
+no entry in the list is marked as the active conversation. If LinkedIn sent the page to a conversation, that
+conversation was opened: `parse` counts and names it, and the plan says so.
 
 ## The read
 
 1. `python3 <rituals>/scripts/linkedin_messages.py plan --config .agents/linkedin-sync.yaml` prints the address to
-   open and, per inbox, the day the last read reached:
+   open and, per inbox, the day to scroll back to: the day the last read reached, or two weeks back for a first
+   read.
 
    ```text
-   open  https://www.linkedin.com/messaging/thread/2-ABCdef123xyz==/  (the parking thread; never the bare messaging page)
-   read  focused: read through 2026-11-10; scroll back to that day and pass --since 2026-11-10
+   open  https://www.linkedin.com/messaging/thread/new/  (the new-message view: the list beside an empty composer; never the bare messaging page)
+   read  focused: read through 2026-11-10; scroll back to that day, stop there, and pass --since 2026-11-10
    ```
 
 2. Open that address in the browser profile where the principal is signed in to LinkedIn. Scroll the conversation
-   list (the left pane, not the page) until its oldest entry is on or before the day `plan` named: the list loads
-   as it scrolls. Click no conversation.
+   list (the left pane, not the page) one screen at a time, and look at the oldest entry's day after each step.
+   **Stop as soon as it is on or before the day `plan` named.** The list loads older conversations for as long as
+   it is scrolled, so a script that scrolls "to the bottom" never arrives: on the first live read one loaded more
+   than 500 conversations in about a minute before it was stopped. Click no conversation.
 3. Save the list's text to a file: the list element's text where the browser tool can run a page script, or the
    whole page's text where it returns that. Note the time of the read.
 4. `python3 <rituals>/scripts/linkedin_messages.py parse --text <file> --read-at <ISO time> --since <day>` prints
@@ -49,11 +58,12 @@ exchange, a note to self). Its id is the part of its address after `/messaging/t
      2026-11-06 Flo Fischer: InMail • Advisory project: how it works  [InMail, 1 unread]
    ```
 
-   Exit 0: the read is complete. Exit 1: it stopped short of `--since` or could not read an entry; scroll further
-   or look at the entry, and read again. Exit 2: the text holds no conversation list, or shows a sign-in page or a
+   A conversation the list marks as open is counted as opened and named on a line of its own, under the coverage
+   line. Exit 0: the read is complete. Exit 1: it stopped short of `--since` or could not read an entry; scroll
+   further or look at the entry, and read again. Exit 2: the text holds no conversation list, or shows a sign-in page or a
    security check. **At a sign-in page, a security check or any warning from LinkedIn, stop and tell the principal.**
-   `--json` gives every conversation (`who`, `last`, `from_me`, `speaker`, `kind`, `unread`, `nudge`, `preview`)
-   and the coverage.
+   `--json` gives every conversation (`who`, `last`, `from_me`, `speaker`, `kind`, `unread`, `nudge`, `open`,
+   `preview`) and the coverage (`threads`, `oldest`, `since`, `opened`, `unreadable`, `complete`, `through`).
 5. Record the read: `python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface linkedin --target
    <inbox> --through <read time> --coverage <the --json output>`. The watermark moves only with a complete read's
    coverage, as a local message store's does.
