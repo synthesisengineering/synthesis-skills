@@ -135,12 +135,18 @@ def travel(workspace: str, day: str, given) -> str:
                f"{again} over it, save what it prints and pass --travel <that file>")
     try:
         found = json.loads(Path(given).read_text(encoding="utf-8"))
-        window, events = found["window"], list(found["events"])
+        first, through = (date.fromisoformat(found["window"][key]).isoformat() for key in ("from", "through"))
+        events = found["events"]
         bare = [e for e in events if e["lacks"]]
+        sound = (isinstance(events, list) and all(isinstance(e["lacks"], list) for e in events) and
+                 (found["in_person"], found["flagged"], found["verdict"]) == (len(events), len(bare), "REFUSE" if bare else "OK"))
     except (OSError, ValueError, KeyError, TypeError) as exc:
         refuse(f"the travel result {given} cannot be read ({exc!r}); run {again} again")
-    if window.get("from") != day or str(window.get("through")) < last:
-        refuse(f"the travel result covers {window.get('from')} through {window.get('through')}, and this record needs {day} "
+    if not sound:  # a result edited by hand, or cut short
+        refuse(f"the travel result {given} does not agree with itself (its counts, its verdict and its events differ), "
+               f"so it is not what {again} printed; run it again")
+    if first != day or through < last:
+        refuse(f"the travel result covers {first} through {through}, and this record needs {day} "
                f"through {last}. Run {again} for those days")
     if bare:
         refuse(f"{len(bare)} in-person event(s) through {last} lack their travel, so this ritual is not recorded:\n"
